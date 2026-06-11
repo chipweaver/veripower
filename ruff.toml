@@ -1,0 +1,12 @@
+# Ruff config — VeriPower. Conservative lint set; ruff owns formatting.
+line-length = 88
+target-version = "py310"
+
+[lint]
+# E/F/W = pycodestyle+pyflakes errors; I = import sorting.
+# E501 (line length) is owned by the formatter, not the linter.
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[format]
+# Defaults are black-compatible; line-length inherited from above.

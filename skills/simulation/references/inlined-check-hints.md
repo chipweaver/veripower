@@ -1,0 +1,47 @@
+# `inlined_check_hints[]` handling rules
+
+`scaffold-specification.json.testpoints[].inlined_check_hints[]` is the field where the
+simulation-plan stage inlines the precise check semantics from `plan-data.json.check_hints[]`
+directly into the testpoint (see the field description in `simulation-plan/SKILL.md`). When
+materializing the TB / writing the refmodel and scoreboard, the env-build sub-Task MUST follow the
+rules below and is **not allowed** to silently downgrade to shadow-register mode or
+mismatch-as-uvm_info mode:
+
+- For each testpoint with a **non-empty** `testpoint.inlined_check_hints[]`, the refmodel /
+  scoreboard MUST generate cycle-accurate checks for every inlined check. Pick the implementation by
+  `implementation_detail` shape:
+  - **Assignment-formula shape** (e.g., `wb_ack_o = wb_cyc_i & wb_stb_i & ~wb_ack_o & int_ack`) → in
+    the refmodel, translate to `assign exp_<sig> = <expr>;` (or an equivalent always block); the
+    scoreboard uses `===` 4-state equality to compare against the DUT pin **on every clk edge**.
+  - **Behavioral-description shape** (e.g., `the shift register shifts on every rising edge of
+    sd_clk_o`) → implement a cycle-accurate behavioral model in the refmodel + DUT-signal comparison.
+  - **Algorithmic shape** (e.g., `7-bit LFSR` / `16-bit CRC ×4 channels`) → implement the reference
+    algorithm in the refmodel + output comparison.
+  - **Error-trigger-condition shape** (e.g., `timeout triggers CTE`) → scoreboard time-domain
+    monitoring of the trigger condition pin / status bit.
+- Mismatch handling:
+  - Mismatches MUST use `` `uvm_error ``, and the scoreboard's `fail_count` / `mismatch_count` MUST
+    actually increment.
+  - **Forbidden**: mismatch-as-uvm_info mode (carve-outs like "only logged at info level"):
+    self-admitting comments like "avoid spurious fail" and the equivalent are treated as a Rule A
+    semantic error — do not retry; end with `STATUS: BLOCKED <compile|smoke> <locus>` (the
+    orchestrator maps it to the `status=fail` envelope, per `repair-boundaries.md`).
+  - Read mismatch and write mismatch are equally strict; carve-outs that go beyond plain RW registers
+    (clear-on-read / status-bit, etc.) are not allowed.
+- The `observable` / `reference_rule` / `latency` / `reset_behavior` fields (if inlined) help select
+  signals, look up protocol reference points, set the expected trigger window, and write reset-period
+  assertions; when fields are missing, infer from `implementation_detail`.
+
+When `testpoint.inlined_check_hints[]` is **empty** (testpoints created by the LLM during the
+sim-plan stage — not derived from `plan-data.json.check_hints[]` but added as scenario-necessary
+supplements, e.g., `TP-IRQ` / `TP-RESET` / `TP-CARDET`), the env-build sub-Task may freely choose a
+functional-model mode (shadow register / RM abstraction, etc.); a cycle-accurate refmodel is not
+required — this branch covers scenario-class testpoints with no spec formula available at plan time.
+
+**Boundary case fallback (`covers[]` non-empty but `inlined_check_hints[]` empty / missing
+`implementation_detail`)**: treat as an upstream simulation-plan contract violation (the sim-plan
+stage's coverage-matrix self-check should have caught this case) → the env-build sub-Task does NOT
+try to fill in the inline content on its own (to avoid silently downgrading by treating a contract
+gap as the "free functional choice" branch); instead, it ends with `STATUS: BLOCKED scaffold-specification.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`, so the
+orchestrator maps it to `status=fail` + `failure_phase="prerequisite"` and rework goes back to
+simulation-plan to fill in the fields.

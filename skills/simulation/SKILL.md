@@ -1,0 +1,255 @@
+---
+name: simulation
+description: Use when materializing and running a module's UVM TB from an approved verification plan (regression, coverage); not for plan authoring or RTL changes.
+---
+
+# UVM Simulation
+
+This skill's sole responsibility: **orchestrate** the UVM verification flow as a thin dispatcher over
+two sequential sub-Tasks — **env-build** (bootstrap + fill scaffold + compile + smoke) → a
+deterministic **smoke gate** → **verify** (regress + coverage iterate + summary). The main thread
+reads only envelopes / status files / paths; it NEVER reads the TB body, never authors TB inline, and
+never re-runs heavy EDA. Each sub-Task's repair authority is bound by **Rule A** (scaffold vs.
+semantics, env phase) and **Rule B** (stimulus vs. intent, verify phase).
+
+**Load mode:** this skill runs main-thread, invoked via `Skill(veripower:simulation)` by its caller
+(not dispatched as a Task subagent). It uses the Task tool for **two sequential** fan-out waves (one
+sub-Task each), with a deterministic main-thread smoke gate between them and a scripted finalize after
+the second; the main thread never authors TB inline.
+
+## When to Use
+
+- First-time end-to-end run against the plan.
+- Incremental re-run after an RTL or plan change.
+- Trigger-driven rework after a downstream stage routes back.
+
+## Iron Rule
+
+- Do not modify `verification-plan.md` / `scaffold-specification.json` (the plan is a read-only
+  external reference for simulation). Shared by both sub-Tasks — see the task-contracts.
+- Do not modify RTL (RTL-class issues belong to the RTL editing stage; this stage does not exceed its
+  authority). Shared by both sub-Tasks.
+- Do not start if `Verification/simulation-plan/result.json` is not `status=pass` — the orchestrator
+  confirms this prerequisite in Step 1 before any dispatch.
+
+## Input Artifacts
+
+### Context variables
+
+| Variable | Purpose |
+|---|---|
+| `{workdir}` | Current run workspace root (the shared workdir both sub-Tasks write into). |
+| `{module}` | Module name. |
+| `{rework_trigger}` | Optional. Caller-injected canonical `result.json` path of the failed stage (its `stage_specific` shape is defined by that stage's result schema). Its presence distinguishes the rework branch from the first-run and incremental-update branches. |
+| `{orchestrator_context_path}` | Optional. Caller-injected fix-scope hint file path. |
+
+### External reference inputs
+
+| Path | Schema / Format | Required | Use |
+|---|---|---|---|
+| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | required (first-run) | envelope (upstream status confirmation; MUST be `status=pass`). |
+| `Verification/simulation-plan/result.json` | `skills/simulation-plan/references/result.schema.json` | required (first-run) | plan envelope (MUST be `status=pass`). |
+| `Verification/simulation-plan/verification-plan.md` | Custom markdown | required (first-run) | Verification plan — the env-build sub-Task's input; the main thread passes the path and does not read the body. |
+| `Verification/simulation-plan/scaffold-specification.json` | Custom JSON | required (first-run) | TB scaffold contract — the sub-Tasks' input; the main thread asserts the file exists but does not read its body. |
+
+When `{rework_trigger}` is injected, the orchestrator passes its path (and any
+`{orchestrator_context_path}`) to the env-build sub-Task, which reads the failed stage's
+`stage_specific` to drive this round's rewrite scope.
+
+## Output Artifacts
+
+`result.json` is the only artifact the **orchestrator** writes; every other artifact is produced by a
+sub-Task in the shared `{workdir}` and is listed in `result.json.artifacts[]` by the orchestrator at
+finalize. The env / verify phase split of the workdir artifacts is in
+[`references/artifact-contract.md`](references/artifact-contract.md).
+
+| Path (relative to `{workdir}`) | Schema / Format | Owner | Use |
+|---|---|---|---|
+| `result.json` | `references/result.schema.json` + envelope | orchestrator | This stage's status contract (`failure_phase` / `coverage_gaps`, etc.). |
+| `Makefile` / `env.sh` / `filelist.f` / `rtl_filelist.f` / `tb/uvm/` / `scripts/` / `tests/testlist.json` | per `artifact-contract.md` | env-build | TB infra + materialized UVM (bound by Rule A). |
+| `regression-log.txt` / `structural-coverage.json` / `coverage-summary.txt` / `case-results-summary.md` | per `artifact-contract.md` | verify | Regression log + machine-readable structural coverage (gate source for `validate_sim_exit`) + summaries. |
+| `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest handed to the verify phase (intra-stage handoff; not promoted). |
+
+> Every promoted path MUST appear in `result.json.artifacts[]`, otherwise it will not be promoted to
+> canonical (external read-only consumption of canonical `filelist.f` / `tb/uvm/`, etc. will fail).
+
+## Workflow (thin orchestrator; two sequential waves + smoke gate + scripted finalize)
+
+### Fan-out Dispatch Contract
+
+Framework-mechanism rules (the in-skill echo of `stage-subagent.md.tpl`); enforced at the
+framework layer (verify.py isolation gate + harness wake protocol), **not** by this skill's
+Completion Gate.
+
+- **No Level 2 dispatch:** this skill may dispatch Level-1 sub-Tasks (env-build, then verify), but a
+  dispatched sub-Task MUST NOT call the Task tool (audit boundary).
+- **R2 yield discipline:** after dispatching a wave's sub-Task, send one yield text and stop — no
+  other tool call in the same turn.
+- **Yield scope:** under `Skill(veripower:simulation)` this yields to the **Claude Code harness** (not
+  the caller); the sub-Task notification wakes the main thread directly.
+- **No `state.py`:** this skill does not call `state.py`.
+- **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a
+  **harness-level** signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the main
+  thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to trigger-driven rework.
+
+### Step 1: Prerequisite + branch select
+
+Read `Verification/simulation-plan/result.json` (MUST be `status=pass`) and
+`Design/rtl-design/result.json` (MUST be `status=pass`), and assert the plan artifacts
+(`verification-plan.md` + `scaffold-specification.json`) exist. If any is missing or not `pass`, write
+`{workdir}/result.json` with `status=fail` + `stage_specific.failure_phase="prerequisite"` +
+`stage_specific.fail_reason="external reference missing: <path>"` and return without dispatching. The
+main thread does **not** read the scaffold-spec / verification-plan body — only the envelopes + path
+existence.
+
+Select the branch (which references the env-build sub-Task consults when filling TODOs):
+
+- **Trigger-driven rework** (`{rework_trigger}` injected): the orchestrator pre-gates the trigger's
+  readability before dispatching — if the trigger path is unreadable, write `{workdir}/result.json`
+  with `status=fail` + `stage_specific.failure_phase="prerequisite"` +
+  `stage_specific.fail_reason="rework_trigger not readable"` and return without dispatching;
+  otherwise pass the trigger path (+ any `{orchestrator_context_path}`) into the env-build sub-Task.
+- **Incremental-update branch** (no trigger; canonical `Verification/simulation/result.json` exists):
+  the env-build sub-Task diffs the external references against the canonical baseline.
+- **First-run branch** (no trigger; no canonical): the env-build sub-Task uses the plan only.
+
+**Fresh empty workdir on rework.** `bootstrap_simulation.sh` aborts if a `Makefile` already exists in
+the workdir, so a re-run needs a fresh, empty workdir. The caller provides a fresh `{workdir}` per run,
+which is exactly that — the orchestrator dispatches the env-build sub-Task into this fresh
+`{workdir}`; it never reuses a workdir that already holds a deployed infra.
+
+### Step 2: Wave 1 — dispatch env-build
+
+Dispatch **one** `Task(run_in_background=True)` — the env-build child — whose prompt points to
+[`references/env-task-contract.md`](references/env-task-contract.md) and hands over **paths only**
+(`{workdir}`, `{module}`, scaffold-spec path, verification-plan path, and on rework the trigger /
+context paths). The main thread never reads the TB it produces.
+
+After dispatching, apply R2 yield discipline: yield immediately; no other tool call in the same turn.
+On wake-up, reap the env-build child's harness `STATUS:` last line + its JSON line. If
+`STATUS: BLOCKED <reason>`, write `result.json` `status=fail` + `fail_reason=<reason>` (with
+`failure_phase` per the reason — `compile` / `smoke` for a Rule A semantic block, `prerequisite` for
+an incomplete `inlined_check_hints[]` block) and return; do not dispatch wave 2.
+
+### Step 3: Smoke gate (deterministic; main thread)
+
+Gate on the smoke result emitted by the smoke run's **own tooling** in `{workdir}`, NOT on the
+env-build child's self-reported `STATUS:` prose. This is cheap and deterministic — the main thread
+reads a small status file, does NOT re-run heavy EDA, and does NOT read the TB body. Do **NOT** use
+`validate_sim_exit.py` here — its coverage gate hard-fails pre-regress (no `structural-coverage.json`
+exists yet).
+
+- **Compile failed (no smoke status):** `make simv` produced no `simv`, so `make smoke` ran no test
+  and `regression-log.txt` carries no `RESULT` line. Write `result.json` `status=fail` +
+  `failure_phase=compile` + `fail_reason` (+ `compile_rounds`); skip wave 2.
+- **Smoke ran but failed:** `regression-log.txt`'s `RESULT <test> <PASS|FAIL|MANUAL_REVIEW>` lines (or
+  the per-test `logs/<test>.status` files) contain any non-`PASS`. Write `result.json` `status=fail` +
+  `failure_phase=smoke` + `fail_reason` (+ `failing_cases`); skip wave 2.
+- **Smoke passed:** every `RESULT` line is `PASS` → proceed to wave 2.
+
+### Step 4: Wave 2 — dispatch verify
+
+Dispatch **one** `Task(run_in_background=True)` — the verify child — whose prompt points to
+[`references/verify-task-contract.md`](references/verify-task-contract.md) and hands over the **same**
+`{workdir}` (already holding the built TB + compiled `simv` + `verify-handoff.json`), the
+scaffold-spec testpoints path, and `{module}`.
+
+After dispatching, apply R2 yield discipline: yield immediately; no other tool call in the same turn.
+On wake-up, reap the verify child's `STATUS:` last line + its JSON line (the `stage_specific` fields).
+If `STATUS: BLOCKED <reason>`, map to `status=fail` + `fail_reason`.
+
+### Step 5: Finalize (script)
+
+Run the full exit self-check (unchanged) over the reaped workdir:
+
+```
+python3 ${CLAUDE_SKILL_DIR}/scripts/validate_sim_exit.py --workdir {workdir} --scaffold Verification/simulation-plan/scaffold-specification.json --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml
+```
+
+Its **exit code is the pass/fail truth**; always read the verdict from its **stdout** (the JSON line
+carries `coverage_extractable` / `dims` / `unmaterialized` / `todo_residue`). Copy the stdout verdict
+into `result.json.stage_specific`. On a non-zero exit: `status=fail` with `failure_phase=coverage` for
+coverage-extractable/threshold failures, or `failure_phase=compile` for thin-D1 file/TODO failures
+(when both trip in the same run, write `failure_phase=compile` — the earlier phase). This mirrors
+rtl-design's `validate_rtl_exit` finalize.
+
+### Step 6: Write result.json
+
+Assemble `{workdir}/result.json` (schema `references/result.schema.json` + envelope) by faithfully
+adopting the verify child's verdict and the gate results:
+
+- A wave that routed out (smoke gate fail in Step 3, env/verify `STATUS: BLOCKED`, or a non-zero
+  `validate_sim_exit` in Step 5) → `status=fail` with the `failure_phase` + `fail_reason` from that
+  step (companion fields per the table below).
+- A clean pass (smoke gate passed, verify child returned no `failure_phase`, `validate_sim_exit`
+  exited 0) → `status=pass`; fold in the verify child's informational `stage_specific` counts (e.g.
+  `stimulus_iterations`, `coverage_summary`). Omit `failure_phase` (the schema rejects `null`).
+
+**Verdict integrity (anti-gaming):** the orchestrator MUST NOT override a sub-Task's or the script's
+fail verdict to pass. A `status=pass` is written only when every gate above is clean — the smoke gate,
+the verify child's verdict, and `validate_sim_exit` all agree. This mirrors rtl-design's child-status
+precedence: the orchestrator records the most-failing verdict, never a more-optimistic one.
+
+`failure_phase` is required when `status=fail` (values below); `fail_reason` (one-line summary) is
+required on every fail path; omit both on pass.
+
+| failure_phase | First-failing phase | Companion fields (besides `fail_reason`) | Decided in |
+|---|---|---|---|
+| `prerequisite` | Step 1 reference missing / not pass, or `{rework_trigger}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | orchestrator |
+| `compile` | `make simv` failed (no smoke status); or `validate_sim_exit` thin-D1 file missing / `TODO(` residue | `compile_rounds` | smoke gate (Step 3) / finalize (Step 5) |
+| `smoke` | `make smoke` ran but a `RESULT` line is not `PASS` | `failing_cases` | smoke gate (Step 3) |
+| `regress` | Any case fails in `make regress` | `failing_cases` | verify child |
+| `coverage` | Rule-B uncovered bins, or `validate_sim_exit` coverage gate (dim below threshold / not extractable) | `coverage_gaps` + `gaps_not_in_testpoints` or `gaps_in_testpoints` (Rule B); `coverage_extractable` + `dims` (validate_sim_exit) | verify child / finalize (Step 5) |
+
+## Decision Rules
+
+The detailed Rule A / Rule B authority lives with the sub-Task that owns it:
+
+- **Rule A (scaffold vs semantics):** env phase — compile/smoke scaffold-repair budget. See
+  [`references/repair-boundaries.md`](references/repair-boundaries.md) and
+  [`references/env-task-contract.md`](references/env-task-contract.md).
+- **Rule B (stimulus vs intent):** verify phase — coverage stimulus iterate. See
+  [`references/coverage-iteration.md`](references/coverage-iteration.md) and
+  [`references/verify-task-contract.md`](references/verify-task-contract.md).
+- Regress fail → the verify child does **not** modify checker / scoreboard / RM; it writes
+  `failing_cases` and routes out for the caller to decide.
+
+The cycle-accurate check-authoring + anti-gaming rules (the `inlined_check_hints[]` handling) live in
+[`references/inlined-check-hints.md`](references/inlined-check-hints.md), cited by the env-build
+sub-Task.
+
+## Completion Gate (orchestrator)
+
+- [ ] `{workdir}/result.json` has been written and passes schema validation.
+- [ ] Every promoted artifact path is listed in `result.json.artifacts[]`.
+- [ ] No Iron Rule was triggered.
+- [ ] The env-build sub-Task was dispatched and reaped (DONE or BLOCKED).
+- [ ] The smoke gate (Step 3) was evaluated against the smoke run's own status (`regression-log.txt`
+      `RESULT` lines / per-test `.status`), not the child's prose; the verify wave was dispatched only
+      on a smoke pass.
+- [ ] On a smoke pass, the verify sub-Task was dispatched and reaped.
+- [ ] `validate_sim_exit.py` was run at finalize and exited 0 (or `status=fail` was written with the
+      appropriate `failure_phase`).
+
+## Return Contract
+
+Main-thread skill: control returns directly to the caller; the caller decides based on
+`{workdir}/result.json` (`status ∈ {pass, fail}`). There is no Task-subagent `STATUS:` last-line
+signal from this skill itself.
+
+Each dispatched sub-Task ends with a harness-level `STATUS: DONE` + a single JSON line, or
+`STATUS: BLOCKED <reason>` (schemas in `references/env-task-contract.md` /
+`references/verify-task-contract.md`). These signals are consumed by the simulation main thread
+(reaped into the gate + the `result.json` assembly), not by the caller.
+
+## Bundled References
+
+- [`references/env-task-contract.md`](references/env-task-contract.md) — wave-1 env-build sub-Task contract (bootstrap + fill + compile + smoke; defines `verify-handoff.json`).
+- [`references/verify-task-contract.md`](references/verify-task-contract.md) — wave-2 verify sub-Task contract (regress + coverage iterate + summary).
+- [`references/inlined-check-hints.md`](references/inlined-check-hints.md) — cycle-accurate check authoring + anti-gaming rules (cited by env-build).
+- [`references/artifact-contract.md`](references/artifact-contract.md) — simulation artifact contract, split by owning phase.
+- [`references/repair-boundaries.md`](references/repair-boundaries.md) — Rule A: scaffold vs. semantic repair boundary (env phase).
+- [`references/coverage-iteration.md`](references/coverage-iteration.md) — Rule B: stimulus vs. intent coverage classification (verify phase).
+- [`references/uvm-rules.md`](references/uvm-rules.md) — UVM coding rules.
+- [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
+- [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.

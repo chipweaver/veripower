@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/synthesis/result.schema.json",
+  "title": "synthesis result.json contract (schema_version 1)",
+  "description": "Complete contract for asic/<module>/Design/synthesis/result.json. On status=pass, stage_specific.ppa_actual carries area and timing_slack (one record each; power_mw lives in power-analysis, not synthesis). On status=fail, stage_specific.{fail_reason, failure_kind} are required (if/then below); fail_reason is the one-line failure narrative. ppa_actual / violations may still be populated for PPA-gate fails but are not required on early-fail (license / external-reference / trigger paths).",
+  "allOf": [
+    {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
+    {
+      "properties": {
+        "schema_version": {"const": 1},
+        "stage": {"const": "synthesis"},
+        "stage_specific": {
+          "type": "object",
+          "properties": {
+            "fail_reason":  {"type": "string", "minLength": 1},
+            "failure_kind": {"type": "string", "enum": ["infra", "tooling", "ppa"], "description": "Failure category on status=fail. infra = external reference / trigger / license missing (DC not run); tooling = DC ran but its output is unusable (compile/elab/synthesize error, or a required report missing/unparseable); ppa = PPA gate not met (area/timing)."},
+            "ppa_actual": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["dim", "value"],
+                "properties": {
+                  "dim":   {"type": "string", "enum": ["area_um2", "timing_slack_ns"]},
+                  "value": {"type": ["number", "null"]}
+                },
+                "additionalProperties": true
+              }
+            },
+            "violations": {
+              "type": "array",
+              "description": "PPA violations when status=fail. Lists each target not met.",
+              "items": {
+                "type": "object",
+                "required": ["dim", "target", "actual"],
+                "additionalProperties": false,
+                "properties": {
+                  "dim":    {"type": "string", "enum": ["area_um2", "timing_slack_ns"]},
+                  "target": {"type": "number"},
+                  "actual": {"type": "number"}
+                }
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["schema_version", "stage_specific"]
+    },
+    {
+      "if":   {"properties": {"status": {"const": "pass"}}, "required": ["status"]},
+      "then": {"properties": {"stage_specific": {"required": ["ppa_actual"]}}}
+    },
+    {
+      "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
+      "then": {"properties": {"stage_specific": {"required": ["fail_reason", "failure_kind"]}}}
+    }
+  ]
+}

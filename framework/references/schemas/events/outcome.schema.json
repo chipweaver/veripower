@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/schemas/events/outcome.schema.json",
+  "title": "outcome event",
+  "description": "events.jsonl record emitted when a stage completes, recording its result status (ts, type, stage, run, result_status).",
+  "type": "object",
+  "required": ["ts", "type", "stage", "run", "result_status"],
+  "additionalProperties": true,
+  "properties": {
+    "ts":            {"type": "string"},
+    "type":          {"const": "outcome"},
+    "stage":         {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","frontend-signoff"]},
+    "run":           {"type": "integer", "minimum": 1},
+    "result_status": {"type": "string", "enum": ["pass", "fail", "blocked", "invalid", "discarded", "promote_failed"]},
+    "reason":        {"type": "string"}
+  }
+}

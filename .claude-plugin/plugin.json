@@ -1,0 +1,10 @@
+{
+  "name": "veripower",
+  "description": "AI-assisted IC design flow skills — specification, RTL, lint/CDC, simulation, synthesis, timing analysis, and signoff",
+  "version": "0.1.0",
+  "author": { "name": "chipweaver" },
+  "repository": "https://github.com/chipweaver/veripower",
+  "license": "MIT",
+  "keywords": ["ic-design", "asic", "eda", "verification", "synthesis", "rtl", "uvm"],
+  "skills": "./skills/"
+}

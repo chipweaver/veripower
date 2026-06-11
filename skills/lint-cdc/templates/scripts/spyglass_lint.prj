@@ -1,0 +1,24 @@
+#!SPYGLASS_PROJECT_FILE
+#!VERSION 3.0
+# ==============================================================================
+# spyglass_lint.prj — SpyGlass project file.
+# After deploy, bootstrap_lint_cdc.sh substitutes MY_TOP with the actual top
+# module name. All paths are relative to the runs/<N>/ deploy directory
+# (the cwd from which SpyGlass is invoked).
+# ==============================================================================
+
+##Data Import Section
+read_file -type sourcelist scripts/filelist.txt
+read_file -type sgdc       scripts/constraints.sgdc
+
+##Common Options Section
+set_option projectwdir                  ./spyglass_work
+set_option language_mode                mixed
+set_option designread_enable_synthesis  no
+set_option designread_disable_flatten   no
+set_option enableSV                     yes
+set_option enableSV09                   yes
+set_option sort                         yes
+set_option stop                         {no}
+set_option allow_module_override        yes
+set_option top                          MY_TOP

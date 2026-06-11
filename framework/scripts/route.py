@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""VeriPower deterministic rework-router.
+
+Pure evaluator: maps a stage failure to a rework target, or to ESCALATE /
+NEED_INPUT. Holds no state; the only I/O is optionally reading a result.json
+passed by path. Sibling to state.py (which owns state and stays routing-free).
+The Orchestrator (design-flow) gathers inputs, calls this, and acts on `decision`
+— the same call-and-consume contract as state.py's cmd_convergence.
+
+This module is the SINGLE home for the static failure->target maps; no other
+file (SKILL.md / ARCHITECTURE.md / schemas) may restate them.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+ESCALATE = "ESCALATE"
+NEED_INPUT = "NEED_INPUT"
+
+# ── Routing policy: three pure enum->target maps ───────────────────
+
+# power-analysis tooling failures, keyed by failures[0].category.
+PA_CATEGORY: dict[str, str] = {
+    "netlist": "synthesis",
+    "sdf": "synthesis",
+    "tb_uvm": "simulation",
+    "gls_runtime": "simulation",
+    "saif_dump": "simulation",
+    "ptpx_data": "simulation",
+    "plan": "simulation-plan",
+    "tooling": ESCALATE,
+}
+
+# Stages whose failure always routes to one fixed ancestor.
+FIXED_TARGET: dict[str, str] = {
+    "lint-cdc": "rtl-design",
+    "simulation-plan": "specification",
+}
+
+# simulation-triage ANALYSIS.root_cause -> rework target.
+TRIAGE_ROOT_CAUSE: dict[str, str] = {
+    "rtl-design": "rtl-design",
+    "simulation-plan": "simulation-plan",
+    "specification": "specification",
+    "simulation": ESCALATE,
+}
+
+_PPA_STAGES = {"synthesis", "power-analysis", "timing-analysis"}
+
+
+def _decision(
+    decision: str, rule: str, *, need: str | None = None, reason_hint: str | None = None
+) -> dict:
+    """Build the result dict; optional keys (need / reason_hint) omitted when None."""
+    out = {"decision": decision, "rule": rule}
+    if need is not None:
+        out["need"] = need
+    if reason_hint is not None:
+        out["reason_hint"] = reason_hint
+    return out
+
+
+def route(
+    failed_stage: str,
+    *,
+    guideline: str,
+    by_target_rtl: int = 0,
+    failure_kind: str | None = None,
+    failures: list[dict] | None = None,
+    fail_reason: str | None = None,
+    root_cause: str | None = None,
+    analysis_state: str | None = None,
+) -> dict:
+    """Return {decision, rule, [need], [reason_hint]}.
+
+    decision ∈ {<stage>, ESCALATE, NEED_INPUT}. Total over all inputs — any value
+    outside a known enum falls through to a named `unrouted*` ESCALATE (never a
+    KeyError, never a silent drop). Every routing input is a closed enum or an
+    int already computed by state.py.
+    """
+    # 1. Convergence cap fires regardless of branch / missing inputs.
+    if guideline == "must_escalate":
+        return _decision(ESCALATE, "convergence_must_escalate")
+
+    # 2. Terminal stage — no DAG-internal target.
+    if failed_stage == "frontend-signoff":
+        return _decision(ESCALATE, "terminal_frontend_signoff", reason_hint=fail_reason)
+
+    # 3. Fixed-target stages.
+    if failed_stage in FIXED_TARGET:
+        target = FIXED_TARGET[failed_stage]
+        return _decision(
+            target, f"fixed:{failed_stage}->{target}", reason_hint=fail_reason
+        )
+
+    # 4. simulation — routed on triage ANALYSIS (in-message, supplied as args).
+    if failed_stage == "simulation":
+        if root_cause is None or analysis_state is None:
+            return _decision(NEED_INPUT, "need_input:root_cause", need="root_cause")
+        if analysis_state == "skipped":
+            return _decision(ESCALATE, "triage_skipped")
+        if root_cause not in TRIAGE_ROOT_CAUSE:
+            return _decision(ESCALATE, "unrouted:unknown_root_cause")
+        target = TRIAGE_ROOT_CAUSE[root_cause]
+        return _decision(target, f"triage_root_cause:{root_cause}->{target}")
+
+    # 5. PPA-class stages — failure_kind dispatch.
+    if failed_stage in _PPA_STAGES:
+        if failure_kind == "infra":
+            return _decision(ESCALATE, "failure_kind_infra", reason_hint=fail_reason)
+        if failure_kind == "tooling":
+            # Gate on the closed-enum failed_stage, NOT on failures[] presence:
+            # synthesis/timing schemas allow additionalProperties, so a stray
+            # failures[] there would pass validation and mis-route.
+            if failed_stage == "power-analysis" and failures:
+                cat = failures[0]["category"]
+                hint = failures[0].get("error_summary")
+                if cat not in PA_CATEGORY:
+                    return _decision(
+                        ESCALATE, "unrouted:unknown_category", reason_hint=hint
+                    )
+                target = PA_CATEGORY[cat]
+                return _decision(
+                    target, f"pa_category:{cat}->{target}", reason_hint=hint
+                )
+            return _decision(ESCALATE, "tooling_no_route", reason_hint=fail_reason)
+        if failure_kind == "ppa":
+            target = "specification" if by_target_rtl >= 2 else "rtl-design"
+            return _decision(
+                target,
+                f"ppa_gate:by_target_rtl={by_target_rtl}->{target}",
+                reason_hint=fail_reason,
+            )
+
+    # Defensive: unmodeled (failed_stage, failure_kind) — escalate, never silent.
+    return _decision(ESCALATE, "unrouted")
+
+
+def _inputs_from_result_json(path: str) -> dict:
+    ss = json.loads(Path(path).read_text()).get("stage_specific", {})
+    return {
+        "failure_kind": ss.get("failure_kind"),
+        "failures": ss.get("failures"),
+        "fail_reason": ss.get("fail_reason"),
+    }
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(
+        prog="route.py", description="VeriPower deterministic rework-router"
+    )
+    p.add_argument("--failed-stage", required=True)
+    p.add_argument(
+        "--guideline",
+        required=True,
+        help="state.py convergence guideline (continue|must_escalate)",
+    )
+    p.add_argument(
+        "--by-target-rtl",
+        type=int,
+        default=0,
+        help="convergence by_target['rtl-design'] count (ppa gate)",
+    )
+    p.add_argument(
+        "--result-json",
+        default=None,
+        help="canonical result.json path (PPA / lint-cdc / simulation-plan)",
+    )
+    p.add_argument(
+        "--root-cause",
+        default=None,
+        help="simulation-triage ANALYSIS root_cause (simulation only)",
+    )
+    p.add_argument(
+        "--analysis-state",
+        default=None,
+        help="simulation-triage ANALYSIS analysis_state (simulation only)",
+    )
+    args = p.parse_args()
+
+    kwargs: dict = {
+        "guideline": args.guideline,
+        "by_target_rtl": args.by_target_rtl,
+        "root_cause": args.root_cause,
+        "analysis_state": args.analysis_state,
+    }
+    if args.result_json:
+        kwargs.update(_inputs_from_result_json(args.result_json))
+
+    print(json.dumps(route(args.failed_stage, **kwargs), indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

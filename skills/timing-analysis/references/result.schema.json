@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/timing-analysis/result.schema.json",
+  "title": "timing-analysis result.json contract (schema_version 1)",
+  "description": "Complete contract for asic/<module>/Design/timing-analysis/result.json. On status=pass (and on failure_kind=ppa) stage_specific.timing carries setup/hold worst-slack + met flag (classified on the report MET/VIOLATED marker) and check_timing coverage counts; stage_specific.violations[] lists the binding violator per failing direction. On status=fail, stage_specific.{fail_reason, failure_kind} are required; timing{} is not required on infra/tooling early-fail (PT did not run / errored).",
+  "allOf": [
+    {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
+    {
+      "properties": {
+        "schema_version": {"const": 1},
+        "stage": {"const": "timing-analysis"},
+        "stage_specific": {
+          "type": "object",
+          "properties": {
+            "fail_reason":  {"type": "string", "minLength": 1},
+            "failure_kind": {"type": "string", "enum": ["infra", "tooling", "ppa"], "description": "Failure category on status=fail. infra = external reference / trigger / license missing (PT not run); tooling = PT setup/run errors; ppa = timing target not met (violations[].dim ∈ {timing_setup, timing_hold, ...} populated)."},
+            "violations": {
+              "type": "array",
+              "description": "Timing violations (setup/hold/other). Empty on pass, non-empty on rule-based fail.",
+              "items": {
+                "type": "object",
+                "required": ["dim", "target", "actual"],
+                "additionalProperties": false,
+                "properties": {
+                  "dim":      {"type": "string", "pattern": "^timing_[a-z0-9_]+$"},
+                  "target":   {"type": "number"},
+                  "actual":   {"type": "number"},
+                  "path_id": {"type": "string", "description": "Identifier for the violating timing path (e.g., 'u_ctrl/q_reg/CK -> u_ctrl/d_reg/D')."}
+                }
+              }
+            },
+            "timing": {
+              "type": "object",
+              "description": "Structured STA result (required on pass and on failure_kind=ppa). Worst slack + met flag per direction (classified on the report's MET/VIOLATED marker), plus check_timing coverage counts (recorded, not gated).",
+              "required": ["setup", "hold", "coverage"],
+              "additionalProperties": false,
+              "properties": {
+                "setup": {
+                  "type": "object",
+                  "required": ["worst_slack_ns", "met", "worst_path"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "worst_slack_ns": {"type": "number"},
+                    "met":            {"type": "boolean"},
+                    "worst_path":     {"type": "string"}
+                  }
+                },
+                "hold": {
+                  "type": "object",
+                  "required": ["worst_slack_ns", "met", "worst_path"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "worst_slack_ns": {"type": "number"},
+                    "met":            {"type": "boolean"},
+                    "worst_path":     {"type": "string"}
+                  }
+                },
+                "coverage": {
+                  "type": "object",
+                  "required": ["unconstrained_max_delay_endpoints", "register_pins_no_clock"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "unconstrained_max_delay_endpoints": {"type": "integer"},
+                    "register_pins_no_clock":            {"type": "integer"}
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["schema_version", "stage_specific"]
+    },
+    {
+      "if":   {"properties": {"status": {"const": "pass"}}, "required": ["status"]},
+      "then": {"properties": {"stage_specific": {"required": ["violations", "timing"]}}}
+    },
+    {
+      "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
+      "then": {"properties": {"stage_specific": {"required": ["fail_reason", "failure_kind"]}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {"const": "fail"},
+          "stage_specific": {"properties": {"failure_kind": {"const": "ppa"}}, "required": ["failure_kind"]}
+        },
+        "required": ["status", "stage_specific"]
+      },
+      "then": {"properties": {"stage_specific": {"required": ["violations", "timing"]}}}
+    }
+  ]
+}

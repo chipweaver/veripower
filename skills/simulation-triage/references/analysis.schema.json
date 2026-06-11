@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/simulation-triage/analysis.schema.json",
+  "title": "simulation-triage ANALYSIS routing block",
+  "description": "The routing-tier JSON emitted as the final ANALYSIS: block by simulation-triage. analysis_state discriminates: 'complete' carries root_cause; 'skipped' carries skipped_reason. The advisory analysis (root-cause narrative, findings, fix hint) is prose ABOVE this block and is NOT validated here. Not written to disk; not enveloped. Only root_cause + analysis_state are the hard contract here; the prose above is advisory.",
+  "type": "object",
+  "required": ["analysis_state"],
+  "properties": {
+    "analysis_state": {"type": "string", "enum": ["complete", "skipped"]},
+    "skipped_reason": {"type": "string", "minLength": 1},
+    "root_cause":     {"type": "string", "enum": ["rtl-design", "simulation-plan", "specification", "simulation"]}
+  },
+  "allOf": [
+    {
+      "if":   {"properties": {"analysis_state": {"const": "complete"}}, "required": ["analysis_state"]},
+      "then": {"required": ["root_cause"]}
+    },
+    {
+      "if":   {"properties": {"analysis_state": {"const": "skipped"}}, "required": ["analysis_state"]},
+      "then": {"required": ["skipped_reason"]}
+    }
+  ],
+  "additionalProperties": false
+}

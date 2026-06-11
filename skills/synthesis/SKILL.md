@@ -1,0 +1,156 @@
+---
+name: synthesis
+description: Use when running Design Compiler synthesis, analyzing timing/area/power reports, supplementing SDC exceptions, or re-synthesizing after RTL changes; not for power analysis or static timing.
+---
+
+# Synthesis
+
+This skill's sole responsibility: run Design Compiler synthesis against the RTL filelist and the SDC source of truth, iteratively supplement SDC timing exceptions, and self-judge the area_um2 / timing_slack_ns PPA dimensions.
+
+## When to Use
+
+- First-time setup of the DC synthesis environment.
+- Run synthesis (`make synthesis`).
+- Analyze timing / area reports.
+- Supplement SDC timing exceptions (false path / multicycle path / generated clock).
+- Re-synthesize after RTL changes.
+
+## Iron Rule
+
+- Do not modify any file under `Design/rtl-design/` or `Design/specification/` — these are read-only external references for synthesis.
+- Timing exceptions MUST be supplemented iteratively after RTL becomes visible; they cannot be pre-written at the specification stage (contract violation — RTL port names cannot be known in advance).
+- Do not start synthesis when `Design/lint-cdc/result.json.status≠pass` — write `status=fail` + `fail_reason="external reference not pass: Design/lint-cdc/result.json"` and exit.
+- Do not claim synthesis is complete when the DC license is missing — without a license, write `status=fail` + `fail_reason="DC license missing"`.
+- Do not claim synthesis is complete when the netlist (`out/<TOP>_syn.v`) does not exist — the netlist must land on disk.
+
+## Input Artifacts
+
+### Context variables
+
+| Variable | Purpose |
+|---|---|
+| `{workdir}` | Current run workspace root. |
+| `{module}` | Module name. |
+| `{rework_trigger}` | Optional. Caller-injected trigger-context file path; contains `stage_specific.violations[]` and related context needed for this rework round. Its presence distinguishes the rework branch from the first-run and incremental-update branches. |
+| `{orchestrator_context_path}` | Optional. Caller-injected fix-scope hint file path. When present, narrows the modification scope more precisely than `{rework_trigger}.violations[]` alone. |
+
+### External reference inputs
+
+| Path | Schema / Format | Required | Use |
+|---|---|---|---|
+| `Design/lint-cdc/result.json` | `skills/lint-cdc/references/result.schema.json` | required (first-run) | Confirm lint clean. |
+| `Design/rtl-design/filelist.txt` | text | required (first-run) | RTL file list. |
+| `Design/rtl-design/README.md` | Custom markdown | required (first-run) | Constraint-annotation note (SDC: generated clock / multicycle / false path). |
+| `Design/specification/constraints/<TOP>.sdc` | SDC | optional | SDC source of truth; when present, bootstrap copies it to the working `constraints.sdc` in preference to the template placeholder. |
+
+When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file: `stage_specific.violations[]` is the primary input (with fields such as `dim` / `target` / `actual`) and drives the SDC-exception scope for this round; the specific read scope is driven by the trigger's content and is not enumerated ahead of time. `ppa_targets` (area_um2 / timing_slack_ns dimensions) is injected by the caller in the prompt.
+
+## Output Artifacts
+
+| Path (relative to `{workdir}`) | Schema / Format | Use |
+|---|---|---|
+| `result.json` | `references/result.schema.json` + envelope.schema.json | This stage's status contract (`stage_specific.ppa_actual[]` + `violations[]` on failure; netlist / SDC / SDF paths go in envelope `artifacts[]`). |
+| `ppa-actual.json` | JSON (`verdict` + `ppa_actual[]` + `violations[]`) | Structured PPA record from `synthesis_rpt_parser.py` (Step 7 folds it into `result.json`). List it in `artifacts[]` when it exists on disk (the parser writes it only on exit 0). |
+| `out/<TOP>_syn.v` | Verilog | Synthesized gate-level netlist. |
+| `out/<TOP>_syn.sdc` | SDC | Post-synthesis SDC. |
+| `out/<TOP>_syn.sdf` | SDF v3.0 | SDF back-annotation file (includes state-dependent leakage data). |
+| `reports/qor.rpt` / `area.rpt` / `timing_setup.rpt` / `timing_hold.rpt` / `power.rpt` / `check_design.rpt` | text reports | DC synthesis report set. |
+| `constraints.sdc` | SDC | Working constraints (the file where exceptions are iteratively added). |
+| `run.log` | text | DC run log. |
+
+## Workflow
+
+### Step 1: Read inputs and select routing branch
+
+Based on whether `{rework_trigger}` is injected and whether the canonical path `Design/synthesis/result.json` already exists from a previous run, choose one of three branches:
+- **Trigger-driven rework** (`{rework_trigger}` injected): read the trigger's `stage_specific.violations[]` to build this round's fix list; if the trigger file is unreadable, write `result.json` with `status=fail` + `stage_specific.fail_reason="rework_trigger not readable"` and exit.
+- **Incremental-update branch** (no trigger; canonical path already has prior artifacts): read the diff of `Design/lint-cdc/result.json` / `Design/rtl-design/result.json` to determine the incremental scope.
+- **First-run branch** (no trigger; canonical path has no prior artifacts): run the first-pass serial flow.
+
+Then pre-check the external references: `Design/lint-cdc/result.json.status=pass` ∧ `Design/rtl-design/filelist.txt` (containing ≥1 RTL entry — not a comment, not a `+` / `-` directive) and `README.md` all present. If any file is missing → write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if filelist exists but has no usable RTL entries → write `fail_reason="external reference missing: Design/rtl-design/filelist.txt (no RTL entries)"` and exit; if `Design/lint-cdc/result.json.status≠pass` → write `fail_reason="external reference not pass: Design/lint-cdc/result.json"` and exit.
+
+When `{orchestrator_context_path}` is injected, Read that sibling file first as a fix-scope hint; it takes priority over the trigger content to further narrow the modification scope.
+
+**Branch scope.** Steps 2–8 run in the same order for all three branches and differ only in *scope*: Step 1 fixes the scope (first-run = full; incremental = the `Design/lint-cdc` / `Design/rtl-design` diff; trigger-driven = the trigger's `violations[]`), and the SDC / timing-exception edits in Steps 4 and 6 stay confined to it. Steps 2–3 (bootstrap + `LIB_DB`) are one-time workdir setup — Step 2 aborts once `{workdir}` is deployed; Steps 5 / 7 / 8 (synthesis run, PPA self-check, `result.json` write) are unconditional in every branch.
+
+### Step 2: Bootstrap (first-run only)
+
+`bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_synthesis.sh --module {module} --workdir {workdir} [--top <TOP>]`. Deploys the templates into `{workdir}`, generates `scripts/rtl_load.tcl` + `scripts/config.tcl`, and seeds `constraints.sdc`; aborts when `{workdir}` is already deployed. Mechanics — placeholder substitution, SDC source-of-truth, `+incdir+` handling, `LIB_DB`, `--top` inference — are documented once in `references/makefile-bootstrap.md`.
+
+### Step 3: Fill in `LIB_DB`
+
+`export LIB_DB=<path>` or edit `{workdir}/scripts/config.tcl` to replace `FILL_IN_LIB_DB_PATH`; `env.sh` and the Makefile both fail loudly when `LIB_DB` is unset.
+
+### Step 4: Edit `{workdir}/constraints.sdc`
+
+- Read the SDC portion of the "constraint-annotation note" in `Design/rtl-design/README.md`; add `create_generated_clock` entries (if any).
+- Replace the `set_clock_uncertainty -setup` / `-hold` placeholder values with the values from the process library (when undocumented, keep setup=`0.2 ns` / hold=`0.0 ns` and add a note; pre-CTS hold = 0 — see `specification/references/sdc-template.md`).
+- Fill `set_drive` / `set_load` per the IO cell library (when there is no spec, keep the placeholders and add a note).
+- Confirm `set_input_delay` / `set_output_delay` (replace from the interface spec when available).
+
+### Step 5: First synthesis run
+
+`cd {workdir} && make synthesis`.
+
+### Step 6: Iteratively supplement timing exceptions
+
+Extract the violated paths from `reports/timing_setup.rpt`, keeping each path's startpoint / endpoint / slack (the file/line/cause needed to classify it; e.g. `grep -B2 -A25 -i "violated" reports/timing_setup.rpt`, widening the window when a path needs deeper inspection).
+- Known multicycle paths → add `set_multicycle_path`.
+- Known static false paths → add `set_false_path`.
+- Re-run `make synthesis`; repeat until the remaining violations are real timing issues or have been excepted.
+
+### Step 7: PPA self-check (mandatory)
+
+Run the parser; do not extract or compare by hand:
+- Read `ppa_targets` from the prompt context (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream, never here).
+- Run `python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis_rpt_parser.py --reports-dir {workdir}/reports --out {workdir}/ppa-actual.json`, adding `--area-target <v>` / `--slack-target <v>` for whichever dims `ppa_targets` carries (omit a flag when its dim is absent; a no-targets run is a vacuous pass). The parser extracts total cell area and the worst setup slack (the `min` of `Critical Path Slack` across **all** clock-group blocks — not the first listed) and judges the gate (`area_um2`: `actual <= target`; `timing_slack_ns`: `actual >= target`).
+- **On exit 0**, read `{workdir}/ppa-actual.json` and fold it in: `ppa_actual` → `stage_specific.ppa_actual`, `violations` → `stage_specific.violations`, `verdict` → `status`. A `verdict="fail"` → `status=fail`, `failure_kind="ppa"`, plus a one-line `fail_reason` (e.g. `"PPA target(s) not met"`).
+- **On a non-zero exit**, the parser is authoritative — never infer pass from the netlist's presence. Read its `FAIL=` token and write `status=fail`, `failure_kind="tooling"`, the matching `fail_reason` (`FAIL=missing` → `"synthesis report missing"`; `FAIL=unparseable` → `"synthesis report unparseable"`), then exit. Do not read `ppa-actual.json` on a non-zero exit (it is written only on exit 0).
+
+### Step 8: Write `{workdir}/result.json`
+
+(schema: `references/result.schema.json` + envelope): when `status=pass`, the schema requires `stage_specific.ppa_actual` to list the dim/value measurements from Step 7; when `status=fail`, it requires the two fields `stage_specific.{fail_reason, failure_kind}` (`failure_kind ∈ {infra, tooling, ppa}` distinguishes the failure category):
+- `failure_kind="infra"`: rework_trigger unreadable / external reference missing or not passing / filelist has no RTL entries / DC license missing — i.e., DC never ran.
+- `failure_kind="tooling"`: DC ran but its output is unusable — the compile/elaborate/synthesize phase errored (design semantic error, library read error, optimization aborted, etc.), **or** a required report was missing/unparseable (`synthesis_rpt_parser.py` exit 1/3).
+- `failure_kind="ppa"`: DC ran to completion but PPA targets were missed (Step 7 comparison found area/timing not meeting targets); fill `violations[]` from the comparison result.
+
+## Decision Rules
+
+- Interface spec missing → keep the placeholder values and add a `# notes:` comment; do not guess port names.
+- Timing violation cannot be classified (neither known multicycle nor known false path) → `status=fail`, record it in `violations[]`.
+
+## Red Flags
+
+| Excuse | Reality |
+|---|---|
+| "Synthesis ran and the netlist is there — mark pass" when `synthesis_rpt_parser.py` exited non-zero | A non-zero parser exit is authoritative: read its `FAIL=` token and write `status=fail` + `failure_kind="tooling"`. Artifact presence is not a met gate — the parser owns extraction and the area/slack comparison. |
+
+## Pitfalls
+
+| Mistake | Fix |
+|------|------|
+| `rtl_load.tcl` out of sync with `filelist.txt` | After RTL changes, regenerate `rtl_load.tcl`. |
+| `set_clock_uncertainty` uses placeholder values without a note / collapses back to the single-value form | Placeholder values must be flagged in `constraints.sdc` with a `# notes:` comment for later replacement; keep the `-setup` / `-hold` split (pre-CTS hold = 0); do not merge them back into a single value. |
+
+## Completion Gate
+
+- [ ] `{workdir}/result.json` has been written and passes schema validation.
+- [ ] Every artifact path is listed in `result.json.artifacts[]`.
+- [ ] No Iron Rule or Red Flag was triggered.
+- [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept blocked); on `fail`, `stage_specific.{fail_reason, failure_kind}` are required (`failure_kind ∈ {infra, tooling, ppa}`).
+- [ ] The PPA gate ran via `synthesis_rpt_parser.py`: on `status=pass` / `failure_kind="ppa"`, its `ppa-actual.json` (exit 0) was folded into `stage_specific.ppa_actual` / `violations[]`; on a non-zero parser exit, `failure_kind="tooling"` + matching `fail_reason`; on `failure_kind ∈ {infra, tooling}`, only `fail_reason` + `failure_kind` are needed.
+- [ ] `scripts/rtl_load.tcl` matches `Design/rtl-design/filelist.txt`.
+- [ ] `create_generated_clock` covers every generated clock in the RTL (or the SDC remarks in `Design/rtl-design/README.md` confirm there are none).
+- [ ] `set_false_path` / `set_multicycle_path` cover the exception paths annotated in the RTL `README.md`.
+- [ ] Remaining timing violations have been classified (real violations have been recorded in `violations[]`).
+- [ ] `out/<TOP>_syn.v` / `out/<TOP>_syn.sdc` / `out/<TOP>_syn.sdf` exist.
+
+## Return Contract
+
+As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `STATUS: BLOCKED <one-line reason>` (when a program exception prevented the write). The harness uses this signal to fire the Task-completion notification; the caller then decides based on `result.json`.
+
+## Bundled References
+
+- [`references/makefile-bootstrap.md`](references/makefile-bootstrap.md) — Bootstrap and Makefile target quick reference.
+- [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
+- [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.

@@ -1,0 +1,32 @@
+Design Module List
+
+Total Module Definition Coverage Summary 
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 49.40  74.43  42.18  35.94  31.25  63.17 
+
+
+Total modules in report: 21
+-------------------------------------------------------------------------------
+SCORE  LINE   COND   TOGGLE FSM    BRANCH NAME                                
+ 13.87  39.52   0.00   4.23   4.17  21.43 sd_data_serial_host                 
+ 16.21  10.53 --       4.76 --      33.33 sd_crc_16                           
+ 22.36  53.66   0.00   2.44 --      33.33 sd_fifo_rx_filler                   
+ 22.58  46.88   8.33   1.79 --      33.33 sd_rx_fifo                          
+ 25.68 --     --      25.68 --     --     sdc_controller_wb_master_agent_if   
+ 31.39  58.12  13.04  15.09  31.25  39.44 sd_data_master                      
+ 54.17 --     --      54.17 --     --     sdc_controller_sd_dat_agent_if      
+ 57.01 --      73.08  32.96 --      65.00 sdc_controller                      
+ 63.85  95.45  42.86  29.59 --      87.50 sd_bd                               
+ 65.66  88.46  50.00  40.83 --      83.33 sd_tx_fifo                          
+ 70.00 --     --      70.00 --     --     sdc_controller_irq_agent_if         
+ 70.10  96.88  44.44  63.25  55.00  90.91 sd_cmd_serial_host                  
+ 71.67  90.00 --      75.00 --      50.00 sdc_controller_tb_top               
+ 71.68 100.00  66.67  34.34 --      85.71 sd_fifo_tx_filler                   
+ 77.85  92.31  83.33  49.65 --      86.11 sd_controller_wb                    
+ 78.95  93.46  85.71  58.36  75.00  82.22 sd_cmd_master                       
+ 83.33 --     --      83.33 --     --     sdc_controller_card_detect_agent_if 
+ 91.67 --     --      91.67 --     --     sdc_controller_sd_cmd_agent_if      
+ 93.29 --     --      93.29 --     --     sdc_controller_wb_slave_agent_if    
+ 98.25 100.00 --      94.74 --     100.00 sd_clock_divider                    
+100.00 100.00 --     100.00 --     100.00 sd_crc_7                            
+

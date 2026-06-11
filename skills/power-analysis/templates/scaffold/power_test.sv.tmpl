@@ -1,0 +1,62 @@
+// power_{{SEQUENCE_REF}}_test.sv — auto-generated UVM test wrapping {{MODULE}}_tb_pkg sequence
+// scenario_id    : {{SCENARIO_ID}}
+// scenario_desc  : {{SCENARIO_DESC}}
+// duration_cycles: {{DURATION_CYCLES}}
+// sequence_ref   : {{SEQUENCE_REF}}    (must match a sequences[].name in scaffold-specification.json)
+// uvm class      : {{MODULE}}_{{SEQUENCE_REF}}_seq    (already compiled into {{MODULE}}_tb_pkg by simulation)
+//
+// SAIF dump path: $set_gate_level_monitoring + $set_toggle_region +
+//                 $toggle_start/$toggle_stop + $toggle_report
+// VCS internally accumulates toggle counters; no VCD output.
+
+`timescale 1ns/1ps
+
+import uvm_pkg::*;
+`include "uvm_macros.svh"
+import {{MODULE}}_tb_pkg::*;
+
+class power_{{SEQUENCE_REF}}_test extends {{MODULE}}_base_test;
+  `uvm_component_utils(power_{{SEQUENCE_REF}}_test)
+
+  function new(string name = "power_{{SEQUENCE_REF}}_test", uvm_component parent = null);
+    super.new(name, parent);
+    m_test_id = "power_{{SEQUENCE_REF}}";
+  endfunction
+
+  task run_phase(uvm_phase phase);
+    string saif_path;
+    {{MODULE}}_{{SEQUENCE_REF}}_seq seq;
+
+    if (!$value$plusargs("saif_file=%s", saif_path))
+      saif_path = "default_{{SEQUENCE_REF}}.saif";
+
+    phase.raise_objection(this);
+
+    $set_gate_level_monitoring("on");
+    $set_toggle_region({{TOP}}_tb_top.u_dut);
+
+    // Start counting toggles after init noise settles.
+    $toggle_start;
+
+    // Drive stimulus via the simulation TB's already-compiled sequence class.
+    seq = {{MODULE}}_{{SEQUENCE_REF}}_seq::type_id::create("seq");
+    // Optional: if the sequence class exposes a duration / iteration field
+    // (typical names: num_cycles / hold_cycles / repeat_count), set it from
+    // the power scenario's duration_cycles. Field name is module-specific —
+    // uncomment + adjust to match the simulation seq class definition:
+    //   seq.num_cycles = {{DURATION_CYCLES}};
+    seq.start(m_env.m_{{AGENT_NAME}}_agent.m_sequencer);
+
+    // Allow last sample to be captured by the monitor.
+    #20ns;
+    $toggle_stop;
+
+    // SAIF dump: scale=1.0e-9 (= 1 ns/sim-time-unit; VCS NTB requires a real,
+    // not a time literal — '1ns' silently degrades to '1' = 1 s/unit, which
+    // produces SAIF (TIMESCALE 1 s) (DURATION ~0) and 0% PT annotation).
+    // scope = DUT instance.
+    $toggle_report(saif_path, 1.0e-9, "{{TOP}}_tb_top.u_dut");
+
+    phase.drop_objection(this);
+  endtask
+endclass

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/lint-cdc/result.schema.json",
+  "title": "lint-cdc result.json contract (schema_version 1)",
+  "description": "Complete contract for asic/<module>/Design/lint-cdc/result.json. On status=pass, stage_specific.violations[] enumerates structured lint/CDC findings (one record per id+rule+severity+reason); pass requires no severity=error entries. Counts and info-severity entries can be derived from violations[] by any reader that needs them. On status=fail, stage_specific.fail_reason is required (if/then below) — the one-line failure narrative. violations[] may still be populated when fail is rule-based but is not required on infra/license/external-reference early-fail paths.",
+  "allOf": [
+    {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
+    {
+      "properties": {
+        "schema_version": {"const": 1},
+        "stage": {"const": "lint-cdc"},
+        "stage_specific": {
+          "type": "object",
+          "properties": {
+            "fail_reason": {"type": "string", "minLength": 1},
+            "violations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "rule", "severity", "reason"],
+                "properties": {
+                  "id":       {"type": "string", "minLength": 1},
+                  "rule":     {"type": "string", "minLength": 1},
+                  "severity": {"type": "string", "enum": ["error", "warning", "info"]},
+                  "reason":   {"type": "string"}
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["schema_version", "stage_specific"]
+    },
+    {
+      "if":   {"properties": {"status": {"const": "pass"}}, "required": ["status"]},
+      "then": {"properties": {"stage_specific": {"required": ["violations"]}}}
+    },
+    {
+      "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
+      "then": {"properties": {"stage_specific": {"required": ["fail_reason"]}}}
+    }
+  ]
+}

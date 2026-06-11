@@ -1,0 +1,6 @@
+# Dependencies for VeriPower
+# Install: pip install -r requirements.txt
+jsonschema>=4.0
+referencing
+pytest
+PyYAML>=6.0

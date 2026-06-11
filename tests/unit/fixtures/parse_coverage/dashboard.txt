@@ -1,0 +1,28 @@
+Dashboard
+
+Date: Tue May 26 21:20:29 2026
+
+User: chenguanyuan
+
+Version: L-2016.06
+Command line: urg -dir simv.vdb -dir cov_test/cov_sdc_controller_test_bd_wr_test_20803904.vdb cov_test/cov_sdc_controller_test_card_detect_test_20803904.vdb cov_test/cov_sdc_controller_test_clkdiv_test_20803904.vdb cov_test/cov_sdc_controller_test_cmd_tx_test_20803904.vdb cov_test/cov_sdc_controller_test_crc_test_20803904.vdb cov_test/cov_sdc_controller_test_dma_rx_err_test_20803904.vdb cov_test/cov_sdc_controller_test_dma_rx_test_20803904.vdb cov_test/cov_sdc_controller_test_dma_tx_err_test_20803904.vdb cov_test/cov_sdc_controller_test_dma_tx_test_20803904.vdb cov_test/cov_sdc_controller_test_irq_test_20803904.vdb cov_test/cov_sdc_controller_test_reg_smoke_test_20803904.vdb cov_test/cov_sdc_controller_test_reset_test_20803904.vdb cov_test/cov_sdc_controller_test_resp_err_test_20803904.vdb cov_test/cov_sdc_controller_test_resp_short_test_20803904.vdb cov_test/cov_sdc_controller_test_srst_test_20803904.vdb cov_test/cov_sdc_controller_test_wbs_ack_test_20803904.vdb -report cov_merge -format text 
+
+Number of tests: 16
+
+-------------------------------------------------------------------------------
+Total Coverage Summary 
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 47.80  70.81  40.26  34.52  31.25  62.16 
+
+
+-------------------------------------------------------------------------------
+Hierarchical coverage data for top-level instances 
+SCORE  LINE   COND   TOGGLE FSM    BRANCH NAME                  
+ 47.80  70.81  40.26  34.52  31.25  62.16 sdc_controller_tb_top 
+
+
+-------------------------------------------------------------------------------
+Total Module Definition Coverage Summary 
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 49.40  74.43  42.18  35.94  31.25  63.17 
+

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/schemas/events/cascade.schema.json",
+  "title": "cascade event",
+  "description": "events.jsonl record emitted when invalidating a stage cascades staleness to its downstream stages (ts, type, source_stage, staled).",
+  "type": "object",
+  "required": ["ts", "type", "source_stage", "staled"],
+  "additionalProperties": true,
+  "properties": {
+    "ts":           {"type": "string"},
+    "type":         {"const": "cascade"},
+    "source_stage": {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","frontend-signoff"]},
+    "staled": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stage"],
+        "additionalProperties": true,
+        "properties": {
+          "stage": {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","frontend-signoff"]}
+        }
+      }
+    }
+  }
+}

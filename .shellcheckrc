@@ -1,0 +1,3 @@
+# Shellcheck config — VeriPower. Bash dialect auto-detected from shebang.
+# external-sources lets `source ./env.sh` resolve during lint when available.
+external-sources=true

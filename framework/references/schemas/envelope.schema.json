@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/schemas/envelope.schema.json",
+  "title": "result.json envelope",
+  "description": "Common envelope wrapping every stage's result.json (stage, module, produced_at, status, artifacts, stage_specific).",
+  "type": "object",
+  "required": ["stage", "module", "produced_at", "status", "artifacts", "stage_specific"],
+  "additionalProperties": true,
+  "properties": {
+    "stage":          {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","frontend-signoff"]},
+    "module":         {"type": "string"},
+    "produced_at":    {"type": "string"},
+    "status":         {"type": "string", "enum": ["pass", "fail"]},
+    "artifacts": {
+      "description": "Output paths produced by this stage, each promoted into the stage's canonical dir. result.json is promoted automatically and MUST NOT be self-listed here — self-listing collides with the canonical result.json during promote (FileExistsError).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string", "not": {"const": "result.json"}}
+        }
+      }
+    },
+    "stage_specific": {"type": "object"}
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/schemas/events/dispatch.schema.json",
+  "title": "dispatch event",
+  "description": "events.jsonl record emitted when a stage is dispatched (ts, type, stage, mode, run, workdir).",
+  "type": "object",
+  "required": ["ts", "type", "stage", "mode", "run", "workdir"],
+  "additionalProperties": true,
+  "properties": {
+    "ts":      {"type": "string"},
+    "type":    {"const": "dispatch"},
+    "stage":   {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","frontend-signoff"]},
+    "mode":    {"type": "string", "enum": ["forward", "rework"]},
+    "run":     {"type": "integer", "minimum": 1},
+    "workdir": {"type": "string"}
+  }
+}

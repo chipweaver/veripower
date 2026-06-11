@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local Claude Code settings (NOT the tracked .claude-plugin/ manifest)
+.claude/*
+!.claude/skills/
+
+# Per-module workspaces
+asic/
+
+# Brainstorm specs + implementation plans stay uncommitted by convention
+docs/superpowers/
+
+# Local test outputs
+tests/scenarios/results/

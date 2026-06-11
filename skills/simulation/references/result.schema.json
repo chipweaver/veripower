@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/simulation/result.schema.json",
+  "title": "simulation result.json contract (schema_version 1)",
+  "description": "Complete contract for asic/<module>/Verification/simulation/result.json. On status=fail, stage_specific.{failure_phase, fail_reason} are required (if/then below); fail_reason is the one-line failure narrative, and failure_phase identifies which sub-step (prerequisite/compile/smoke/regress/coverage) tripped. Both are absent on pass. Only routing-relevant fields are enumerated below; informational fields (compile_rounds, total_cases, coverage_summary, etc.) live free under additionalProperties.",
+  "allOf": [
+    {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
+    {
+      "properties": {
+        "schema_version": {"const": 1},
+        "stage": {"const": "simulation"},
+        "stage_specific": {
+          "type": "object",
+          "properties": {
+            "failure_phase": {"type": "string", "enum": ["prerequisite", "compile", "smoke", "regress", "coverage"]},
+            "fail_reason": {"type": "string", "minLength": 1},
+            "failing_cases": {"type": "array", "items": {"type": "object"}},
+            "coverage_gaps": {"type": "array", "items": {"type": "string"}},
+            "gaps_not_in_testpoints": {"type": "array", "items": {"type": "string"}},
+            "gaps_in_testpoints": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["schema_version", "stage_specific"]
+    },
+    {
+      "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
+      "then": {"properties": {"stage_specific": {"required": ["failure_phase", "fail_reason"]}}}
+    }
+  ]
+}

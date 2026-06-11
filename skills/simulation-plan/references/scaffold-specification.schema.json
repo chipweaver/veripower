@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/simulation-plan/scaffold-specification.schema.json",
+  "title": "scaffold-specification.json contract (post-materialize)",
+  "description": "Structural contract for asic/<module>/Verification/simulation-plan/scaffold-specification.json, validated at the sim-plan Completion Gate AFTER materialize_scaffold has run. Strongly validates LLM-authored fields; tolerates (does not deep-validate) the interface/transaction objects materialize_scaffold injects into agents[] (their content is owned by materialize_scaffold + derive_scaffold._agent_io). Referential integrity (compare_txn/inports/seqs/sequence_ref resolving to declared agents/sequences) is NOT expressible here; validate_scaffold.py's semantic layer enforces it.",
+  "type": "object",
+  "required": ["module", "top", "agents", "sequences", "tests", "rm", "scoreboard", "primary_clock", "reset", "testpoints", "power_scenarios"],
+  "additionalProperties": true,
+  "properties": {
+    "module": {"type": "string"},
+    "top": {"type": "string"},
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "mode", "interface_groups"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string"},
+          "mode": {"enum": ["active", "passive"]},
+          "interface_groups": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "interface": {"type": "object"},
+          "transaction": {"type": "object"}
+        }
+      }
+    },
+    "sequences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string"},
+          "agent": {"type": "string"},
+          "desc": {"type": "string"}
+        }
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string"},
+          "feature": {"type": "string"},
+          "test_id": {"type": "string"},
+          "seqs": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "rm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "inports": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "scoreboard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "compare_txn": {"type": "string"}
+      }
+    },
+    "primary_clock": {
+      "type": "object",
+      "required": ["dut_port_name", "period_ns"],
+      "additionalProperties": false,
+      "properties": {
+        "dut_port_name": {"type": "string"},
+        "period_ns": {"type": "string"}
+      }
+    },
+    "reset": {
+      "type": "object",
+      "required": ["dut_port_name"],
+      "additionalProperties": false,
+      "properties": {
+        "dut_port_name": {"type": "string"}
+      }
+    },
+    "testpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": true,
+        "properties": {
+          "id": {"type": "string"},
+          "bins": {"type": "array"},
+          "covers": {"type": "array"},
+          "inlined_check_hints": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["check_id"],
+              "additionalProperties": true,
+              "properties": {"check_id": {"type": "string"}}
+            }
+          }
+        }
+      }
+    },
+    "power_scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": true,
+        "properties": {"id": {"type": "string"}, "sequence_ref": {"type": "string"}}
+      }
+    },
+    "skipped_checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check_id", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "check_id": {"type": "string"},
+          "reason": {"type": "string"}
+        }
+      }
+    }
+  }
+}

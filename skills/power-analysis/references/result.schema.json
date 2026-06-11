@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/power-analysis/result.schema.json",
+  "title": "power-analysis result.json contract (schema_version 1, merged GLS+PT-PX, SAIF flow)",
+  "description": "Complete contract for asic/<module>/Verification/power-analysis/result.json. On status=pass, stage_specific requires saif_artifacts + compile_info + failures + ppa_actual + violations + power_by_corner (compile_info carries vcs_version only). On status=fail, stage_specific.{fail_reason, failure_kind} are required (if/then below); fail_reason is the one-line failure narrative. The heavy pass-shape is dropped on early-fail (external-reference / license / bootstrap paths). failure_kind classifies infra (GLS/PTPX not run) / tooling (failures[] populated with phase × category × error_summary) / ppa (power_mw exceeds target). ppa_actual / violations / power_by_corner carry PT averaged power_mw + three components for PPA gating.",
+  "allOf": [
+    {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
+    {
+      "properties": {
+        "schema_version": {"const": 1},
+        "stage": {"const": "power-analysis"},
+        "stage_specific": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "fail_reason":  {"type": "string", "minLength": 1},
+            "failure_kind": {"type": "string", "enum": ["infra", "tooling", "ppa"], "description": "Failure category on status=fail. infra = external reference / trigger / license / bootstrap missing (GLS/PTPX not run); tooling = GLS/PTPX errors (failures[] populated with phase × category × error_summary); ppa = power_mw exceeds target."},
+            "saif_artifacts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "saif_path", "canonical_path", "format", "corner_intent", "sequence_ref", "duration_cycles", "size_bytes"],
+                "properties": {
+                  "id":              {"type": "string"},
+                  "saif_path":       {"type": "string"},
+                  "canonical_path":  {"type": "string"},
+                  "format":          {"const": "saif"},
+                  "corner_intent":   {"type": "string"},
+                  "sequence_ref":    {"type": "string"},
+                  "duration_cycles": {"type": "integer", "minimum": 1},
+                  "size_bytes":      {"type": "integer", "minimum": 1}
+                }
+              }
+            },
+            "ppa_gate_skipped": {
+              "type": "boolean",
+              "description": "true when ppa_targets is empty (specification declared no power_mw target); status=pass is then vacuous, not a true PPA gate pass."
+            },
+            "compile_info": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["vcs_version"],
+              "properties": {
+                "vcs_version": {"type": "string"}
+              }
+            },
+            "failures": {
+              "type": "array",
+              "description": "Tooling/data failures (NOT PPA gate failures — those go in violations[]).",
+              "items": {
+                "type": "object",
+                "required": ["phase", "category", "error_summary"],
+                "properties": {
+                  "id":            {"type": "string"},
+                  "phase":         {"enum": ["compile", "run", "ptpx", "parse"]},
+                  "category":      {"enum": ["tooling", "sdf", "gls_runtime", "tb_uvm", "netlist", "plan", "saif_dump", "ptpx_data"], "description": "Failure root-cause class. tooling = this stage's own env/infra (incl. PT-side license, disambiguated by phase=ptpx); sdf/netlist = upstream synthesis artifacts; tb_uvm/gls_runtime/saif_dump/ptpx_data = TB infra or GLS/PTPX data; plan = power_scenarios[] data."},
+                  "error_summary": {"type": "string"},
+                  "log_excerpt":      {"type": "string"}
+                }
+              }
+            },
+            "ppa_actual": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["dim", "value", "scenario_id", "source"],
+                "properties": {
+                  "dim":         {"const": "power_mw"},
+                  "value":       {"type": ["number", "null"]},
+                  "scenario_id": {"type": "string"},
+                  "source":      {"type": "string"}
+                }
+              }
+            },
+            "violations": {
+              "type": "array",
+              "description": "PPA violations when status=fail (power_mw exceeds target). Tooling failures go in failures[], not here.",
+              "items": {
+                "type": "object",
+                "required": ["dim", "target", "actual", "scenario_id"],
+                "properties": {
+                  "dim":         {"const": "power_mw"},
+                  "target":      {"type": "number"},
+                  "actual":      {"type": "number"},
+                  "scenario_id": {"type": "string"}
+                }
+              }
+            },
+            "power_by_corner": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["scenario_id", "power_mw", "internal_mw", "switching_mw", "leakage_mw", "toggle_rate", "toggle_region", "corner_intent", "sequence_ref", "analysis_mode"],
+                "properties": {
+                  "scenario_id":   {"type": "string"},
+                  "power_mw":      {"type": ["number", "null"]},
+                  "internal_mw":   {"type": ["number", "null"]},
+                  "switching_mw":  {"type": ["number", "null"]},
+                  "leakage_mw":    {"type": ["number", "null"]},
+                  "toggle_rate":   {"type": ["number", "null"]},
+                  "toggle_region": {"type": ["string", "null"]},
+                  "corner_intent": {"type": "string"},
+                  "sequence_ref":  {"type": "string"},
+                  "analysis_mode": {"const": "averaged"}
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": ["schema_version", "stage_specific"]
+    },
+    {
+      "if":   {"properties": {"status": {"const": "pass"}}, "required": ["status"]},
+      "then": {"properties": {"stage_specific": {"required": ["saif_artifacts", "compile_info", "failures", "ppa_actual", "violations", "power_by_corner"]}}}
+    },
+    {
+      "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
+      "then": {"properties": {"stage_specific": {"required": ["fail_reason", "failure_kind"]}}}
+    }
+  ]
+}

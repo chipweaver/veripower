@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/schemas/events/rework_decision.schema.json",
+  "title": "rework_decision event",
+  "description": "events.jsonl record emitted when a failure is routed to a rework target stage (ts, type, failed_stage, target_stage, reason, run).",
+  "type": "object",
+  "required": ["ts", "type", "failed_stage", "target_stage", "reason", "run"],
+  "additionalProperties": true,
+  "properties": {
+    "ts":           {"type": "string"},
+    "type":         {"const": "rework_decision"},
+    "failed_stage": {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","frontend-signoff"]},
+    "target_stage": {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","frontend-signoff"]},
+    "reason":       {"type": "string", "pattern": ".*\\S.*"},
+    "run":          {"type": "integer", "minimum": 1}
+  }
+}

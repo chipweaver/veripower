@@ -1,0 +1,72 @@
+# ==============================================================================
+# constraints.sgdc — SpyGlass clock/reset/port constraints (SGDC format).
+# After deploy, fill in clock period, multi-clock-domain definitions, and
+# port associations to match the actual design.
+# ==============================================================================
+
+current_design MY_TOP
+
+# ------------------------------------------------------------------------------
+# Clock Constraints
+# Real clock with an RTL port:
+#   clock -name <signal>  -period <ns> -edge {<rise_ns> <fall_ns>}
+# Virtual clock (no RTL port; IO delay anchor only):
+#   clock -tag  <logical> -period <ns> -edge {<rise_ns> <fall_ns>}
+#   - SpyGlass requires -tag for virtual clocks (HLD 1.6 type=virtual);
+#     using -name triggers SGDC_clock01 (port-not-found fatal).
+#   - The four sources HLD/LLD/SDC/SGDC must carry identical period values
+#     (HLD 1.6 frequency table is the canonical source).
+# ------------------------------------------------------------------------------
+clock -name clk -period 10.0 -edge {0 5.0}
+
+# Multi-clock example (uncomment as needed):
+# clock -name clk2 -period 20.0 -edge {0 10.0}
+# Virtual-clock example (pure-combinational / IO anchor):
+# clock -tag vclk -period 10.0 -edge {0 5.0}
+
+# ------------------------------------------------------------------------------
+# Reset Constraints
+# ------------------------------------------------------------------------------
+reset -name rst_n -value 0 -async
+
+# Multi-reset example (uncomment as needed):
+# reset -name rst2_n -value 0 -async
+
+# ------------------------------------------------------------------------------
+# Reset Port Association — associate reset ports to clock domains
+# ------------------------------------------------------------------------------
+abstract_port -ports rst_n -clock clk -reset rst_n
+
+# ------------------------------------------------------------------------------
+# Input Port Clock Association — bind input ports to a driving clock domain.
+# Cross-domain ports must be associated separately so CDC recognises the
+# driver domain.
+# ------------------------------------------------------------------------------
+# abstract_port -ports <port_name> -clock clk
+
+# ------------------------------------------------------------------------------
+# Case Analysis — fix a port/pin to a constant during analysis to prune
+# unreachable paths.
+# Format: set_case_analysis <value> <objects>
+# ------------------------------------------------------------------------------
+# set_case_analysis 1 bypass_mode
+# set_case_analysis 0 se
+
+# ------------------------------------------------------------------------------
+# Quasi-Static Signals — config-class signals that toggle rarely at run time.
+# Distinguish them from real dynamic CDC paths so the tool focuses on genuine
+# cross-domain issues.
+# ------------------------------------------------------------------------------
+# quasi_static -name <signal_name>
+
+# ------------------------------------------------------------------------------
+# Sync Cell — hand-annotate synchronizer modules (when the tool cannot
+# auto-detect them).
+# ------------------------------------------------------------------------------
+# sync_cell -name synchronizer_2ff
+
+# ------------------------------------------------------------------------------
+# Reset Synchronizer — hand-annotate reset-synchronizer modules (when the tool
+# cannot auto-detect them).
+# ------------------------------------------------------------------------------
+# reset_synchronizer -name u_rst_sync

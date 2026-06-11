@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/schemas/events/escalation.schema.json",
+  "title": "escalation event",
+  "description": "events.jsonl record emitted when the orchestrator escalates to the human (ts, type, reason_code, reason).",
+  "type": "object",
+  "required": ["ts", "type", "reason_code", "reason"],
+  "additionalProperties": true,
+  "properties": {
+    "ts":          {"type": "string"},
+    "type":        {"const": "escalation"},
+    "reason_code": {"type": "string"},
+    "reason":      {"type": "string", "pattern": ".*\\S.*"}
+  }
+}
