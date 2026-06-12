@@ -49,6 +49,15 @@ tool (no Level-2 dispatch).
    not by reverse-engineering `derive_scaffold.py`. Reading the renderer source is a documented
    **fallback only** — when a stub comment is missing, self-contradictory, or conflicts with the
    observed structure. Do not whole-read `derive_scaffold.py` as a first resort.
+   **Reading discipline (U5):** do not whole-read `scaffold-specification.json` (it is large and the
+   first read gets truncated by the token cap, forcing a costly re-read). Instead: take **structural
+   facts** (interface signals, txn fields) from the **rendered stubs** (they are already materialized);
+   read **check semantics per-testpoint** via `testpoints[].inlined_check_hints[]` (not the whole
+   `check_hints` block at once); and read the small top-level arrays
+   (`sequences[].agent` / `tests[].seqs` / `rm` / `scoreboard`) for the testpoint→component mapping.
+   `testpoints[]` itself carries only `id/bins/covers/inlined_check_hints` — never agent/seq/rm — so
+   the cross-array join is over small arrays. (`verify-handoff.json` is this child's *output*, not an
+   input — it does not exist at fill time.)
 3. **Compile + smoke**: `make simv` → `make smoke`. The two steps **share** one
    `defaults.yaml.scaffold_repair_max_rounds` repair budget (compile + smoke do not each get N rounds;
    the combined count is recorded so the orchestrator can populate `stage_specific.compile_rounds`).
