@@ -314,10 +314,19 @@ def compute_self_containment(
 # Hard-token regex: fenced code blocks, assign/always RTL, sized literals (N'hXX),
 # timing (N.N ns), and parameter/localparam numeric definitions — the design
 # constants the refmodel/testbench depend on.
+#
+# TEMP bound (always-body length cap): a prose-embedded, backtick-quoted
+# `always @(...)` with no nearby `;` makes the unbounded `[^;]+;` run away to a
+# distant semicolon (here L167→L456 = 21KB, L1114→L2066 = 61KB), spanning many
+# unrelated sections — an unsatisfiable false-positive token. Real inline RTL
+# always-statements terminate within <200 chars; multi-line always blocks live
+# inside fenced ```code``` and are captured by the first alternative. Capping the
+# body at {1,200} drops only the prose runaways. Revisit: anchor `always` to code
+# context instead of a raw length cap.
 _HARD_TOKEN_RE = re.compile(
     r"(```[\s\S]*?```"
     r"|assign\s+\w+\s*=[^;]+;"
-    r"|always\s*@\([^)]+\)[^;]+;"
+    r"|always\s*@\([^)]+\)[^;]{1,200};"
     r"|(?:parameter|localparam)\s+(?:\[[^\]]*\]\s*)?\w+\s*=\s*[^;,\n]+"
     r"|\b\d+'[hbdo]\w+"
     r"|\b\d+\.\d+\s*ns)"
