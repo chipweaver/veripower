@@ -164,3 +164,35 @@ def test_verdict_json_on_stdout(tmp_path):
     verdict = json.loads(proc.stdout.strip().splitlines()[-1])
     assert verdict["coverage_extractable"] is True
     assert verdict["dims"]["fsm"]["pass"] is True
+
+
+def _run_thin(wd, check=True):
+    return subprocess.run(
+        ["python3", str(SCRIPT), "--workdir", str(wd),
+         "--scaffold", str(wd / "scaffold-specification.json"), "--thin-only"],
+        capture_output=True, text=True, check=check,
+    )
+
+
+def test_thin_only_clean_passes_without_thresholds(tmp_path):
+    """--thin-only gates on materialization only; --thresholds is NOT required and
+    coverage is not consulted (no structural-coverage.json present here)."""
+    proc = _run_thin(_workdir(tmp_path, cov=None))
+    assert proc.returncode == 0 and "OK" in proc.stdout
+
+
+def test_thin_only_todo_fails(tmp_path):
+    proc = _run_thin(_workdir(tmp_path, cov=None, todo=True), check=False)
+    assert proc.returncode != 0 and "TODO" in proc.stderr
+
+
+def test_thin_only_missing_file_fails(tmp_path):
+    proc = _run_thin(_workdir(tmp_path, cov=None, drop_seq=True), check=False)
+    assert proc.returncode != 0 and "m_smoke_seq" in proc.stderr
+
+
+def test_thin_only_verdict_is_trimmed(tmp_path):
+    """--thin-only verdict carries only {unmaterialized, todo_residue} -- no coverage keys."""
+    proc = _run_thin(_workdir(tmp_path, cov=None))
+    verdict = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert set(verdict.keys()) == {"unmaterialized", "todo_residue"}

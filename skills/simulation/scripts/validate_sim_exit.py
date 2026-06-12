@@ -123,20 +123,49 @@ def main() -> int:
     )
     p.add_argument("--scaffold", required=True, help="scaffold-specification.json path")
     p.add_argument(
-        "--thresholds", required=True, help="defaults.yaml path (coverage_thresholds)"
+        "--thresholds", help="defaults.yaml path (coverage_thresholds); required unless --thin-only"
+    )
+    p.add_argument(
+        "--thin-only",
+        action="store_true",
+        help="env-exit gate: run thin-D1 (materialization) only -- skip coverage/D5/D6; "
+        "--thresholds not required. Emits a trimmed {unmaterialized, todo_residue} verdict.",
     )
     args = p.parse_args()
+    if not args.thin_only and not args.thresholds:
+        p.error("--thresholds is required unless --thin-only is set")
 
     workdir = Path(args.workdir).resolve()
     scaffold = json.loads(Path(args.scaffold).read_text(encoding="utf-8"))
-    thresholds = _load_thresholds(Path(args.thresholds))
 
+    d1_errs = thin_d1(workdir, scaffold)
+
+    if args.thin_only:
+        # env-exit gate: materialization only. No coverage, no result.json write -- the
+        # env subagent gates its own STATUS: DONE on this exit code; finalize's full run
+        # remains the authoritative result.json verdict. thin-D1 fail -> failure_phase=compile
+        # (the existing mapping; Part A does not design a conformance route -- see Part B).
+        verdict = {
+            "unmaterialized": [e for e in d1_errs if "missing" in e],
+            "todo_residue": [e for e in d1_errs if "TODO" in e],
+        }
+        if d1_errs:
+            print(json.dumps(verdict))
+            sys.exit(
+                "validate_sim_exit --thin-only: materialization incomplete:\n  - "
+                + "\n  - ".join(d1_errs)
+                + "\nFill the scaffold (no TODO may survive; all required files present), "
+                "then re-run. Budget-exhausted-with-residue -> failure_phase=compile."
+            )
+        print("validate_sim_exit --thin-only: OK (thin-D1 clean -- materialization complete)")
+        print(json.dumps(verdict))
+        return 0
+
+    thresholds = _load_thresholds(Path(args.thresholds))
     cov_path = workdir / "structural-coverage.json"
     cov = (
         json.loads(cov_path.read_text(encoding="utf-8")) if cov_path.is_file() else None
     )
-
-    d1_errs = thin_d1(workdir, scaffold)
     cov_errs, dims = coverage_gate(cov, thresholds)
     errs = d1_errs + cov_errs
 
@@ -147,7 +176,7 @@ def main() -> int:
         "todo_residue": [e for e in d1_errs if "TODO" in e],
     }
     if errs:
-        print(json.dumps(verdict))  # verdict still emitted for the agent on fail
+        print(json.dumps(verdict))
         sys.exit(
             "validate_sim_exit: simulation exit checks failed:\n  - "
             + "\n  - ".join(errs)
