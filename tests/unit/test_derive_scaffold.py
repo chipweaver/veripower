@@ -180,3 +180,27 @@ def test_render_tb_pkg_env_before_base_test(tmp_path):
     out = _render(tmp_path)
     pkg = (out / "tb/uvm/pkg/tb_pkg.sv").read_text(encoding="utf-8")
     assert pkg.index('`include "m_env.sv"') < pkg.index('`include "base_test.sv"')
+
+
+def _collision_spec():
+    """Two agents declaring the same signal name -> cross-agent duplicate -> sys.exit."""
+    import copy
+
+    spec = copy.deepcopy(RENDER_SPEC)
+    spec["agents"][1]["interface"]["signals"] = [{"name": "wdata", "width": 32}]  # dup of drv
+    return spec
+
+
+def test_collision_writes_nothing(tmp_path):
+    """U1 atomicity: a port collision (raised during validation) must leave the output
+    dir with zero rendered SV files -- not a half-tree the env agent has to hand-patch."""
+    import json
+
+    plan = tmp_path / "scaffold-specification.json"
+    plan.write_text(json.dumps(_collision_spec()), encoding="utf-8")
+    out = tmp_path / "out"
+    with pytest.raises(SystemExit) as ei:
+        ds.run_scaffold(plan, TEMPLATE_DIR, out)
+    assert "wdata" in str(ei.value)
+    rendered = list(out.rglob("*.sv")) + list(out.rglob("*.svh")) if out.exists() else []
+    assert rendered == [], f"half-tree left on disk: {[str(p) for p in rendered]}"
