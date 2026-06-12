@@ -162,10 +162,12 @@ def test_fail_loud_reset_missing_kind(tmp_path):
     assert proc.returncode != 0 and "ResetKind" in proc.stderr
 
 
-def test_fail_loud_data_port_on_generated_clock(tmp_path):
-    # A data port whose Clock Domain is a GENERATED clock gets no abstract_port
-    # (period_of/clock_names exclude generated clocks) → self-check fail-louds rather
-    # than emitting a constraint against a clock with no create_clock/clock directive.
+def test_data_port_on_generated_clock_deferred(tmp_path):
+    # A data port whose Clock Domain is a GENERATED clock is deferred to RTL
+    # (create_generated_clock pin not yet known). generate_sdc/generate_sgdc skip it
+    # by design, so the self-check mirrors that skip — it must NOT fail-loud demanding
+    # an abstract_port the generators intentionally did not emit. Valid input → exit 0,
+    # and no abstract_port is emitted for the deferred port.
     design = _design(
         "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
         "| pgen | input | 8 | clk_div2 | cfg | APB3 | data | - | - |\n",
@@ -173,7 +175,9 @@ def test_fail_loud_data_port_on_generated_clock(tmp_path):
         "| clk_div2 | 50 | 20.0 | synchronous-related | yes | divider out |\n",
     )
     proc = _run(_wd(tmp_path, design), check=False)
-    assert proc.returncode != 0 and "pgen" in proc.stderr
+    assert proc.returncode == 0
+    sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
+    assert "abstract_port -ports {pgen}" not in sgdc
 
 
 def test_multi_domain_abstract_port_grouping(tmp_path):
@@ -228,8 +232,9 @@ def test_no_data_port_module(tmp_path):
     assert "set_input_delay" not in sdc and "set_output_delay" not in sdc
 
 
-def test_fail_loud_short_named_data_port_on_generated_clock(tmp_path):
-    # A short signal name must not let the self-check false-pass via header substring match.
+def test_short_named_data_port_on_generated_clock_deferred(tmp_path):
+    # The generated-clock deferral applies regardless of signal-name length: a short
+    # name 'd' on a generated clock is skipped (deferred to RTL), not fail-louded.
     design = _design(
         "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
         "| d | input | 8 | clk_div2 | cfg | APB3 | data | - | - |\n",
@@ -237,4 +242,6 @@ def test_fail_loud_short_named_data_port_on_generated_clock(tmp_path):
         "| clk_div2 | 50 | 20.0 | synchronous-related | yes | divider out |\n",
     )
     proc = _run(_wd(tmp_path, design), check=False)
-    assert proc.returncode != 0 and "'d'" in proc.stderr
+    assert proc.returncode == 0
+    sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
+    assert "abstract_port -ports {d}" not in sgdc

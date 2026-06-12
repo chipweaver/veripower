@@ -189,8 +189,19 @@ def _self_check(top: str, clocks: list[dict], ports: list[dict], sdc: str, sgdc:
             continue
         if f"create_clock -name {c['name']} " not in sdc:
             _fail(f"self-check: no create_clock for clock {c['name']!r}")
+    # A data port whose Clock Domain is a *generated* clock is deferred to RTL
+    # (create_generated_clock pin not yet known); generate_sdc/generate_sgdc skip it
+    # by design (see their "domain is a generated clock (deferred); defensive"
+    # branches), so the self-check must mirror that skip — not demand an abstract_port
+    # the generators intentionally did not emit. Only non-generated-clock data ports
+    # are required to carry one.
+    non_generated = {c["name"] for c in clocks if not c["generated"]}
     for p in ports:
-        if p["role"] == "data" and not _data_port_in_sgdc(p["signal"], sgdc):
+        if (
+            p["role"] == "data"
+            and p["domain"] in non_generated
+            and not _data_port_in_sgdc(p["signal"], sgdc)
+        ):
             _fail(f"self-check: no abstract_port for data port {p['signal']!r}")
         if p["role"] == "reset":
             if p["reset_polarity"] not in {"0", "1"}:

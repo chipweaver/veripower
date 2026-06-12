@@ -31,11 +31,11 @@ summary: coverage-summary  ## Generate review summary (case-results-summary.md)
 	@bash -lc 'source ./env.sh && "$$PYTHON" ./scripts/write_summary.py --verification-dir "$$PWD"'
 
 merge:  ## Merge per-test coverage vdb files
-	@bash -lc 'source ./env.sh && urg -dir ./cov_test/*.vdb -report both -dbname both.vdb'
+	@bash -lc 'source ./env.sh && urg -dir "$$SIMV.vdb" -dir ./cov_test/*.vdb -report both -dbname both.vdb'
 
 coverage:  ## Merge per-test coverage to a text report and emit structural-coverage.json
 	@bash -lc 'source ./env.sh && \
-		urg -dir ./cov_test/*.vdb -report cov_merge -format text && \
+		urg -dir "$$SIMV.vdb" -dir ./cov_test/*.vdb -report cov_merge -format text && \
 		"$$PYTHON" ./scripts/parse_coverage.py --cov-dir ./cov_merge --out ./structural-coverage.json'
 
 clean:  ## Remove intermediate artifacts and reports
