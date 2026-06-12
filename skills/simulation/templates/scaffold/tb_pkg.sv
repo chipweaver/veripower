@@ -4,7 +4,6 @@ package {{MODULE}}_tb_pkg;
 
   // === Shared base (do not modify) ===
   `include "base_seq.sv"
-  `include "base_test.sv"
 
   // === Transactions ===
 {{TXN_INCLUDES}}
@@ -18,6 +17,9 @@ package {{MODULE}}_tb_pkg;
 
   // === Environment ===
   `include "{{MODULE}}_env.sv"
+
+  // === Base test (after env: base_test instantiates {{MODULE}}_env) ===
+  `include "base_test.sv"
 
   // === Sequences ===
 {{SEQ_INCLUDES}}

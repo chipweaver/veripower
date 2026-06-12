@@ -278,12 +278,13 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
         write_text(dest, content)
         created_files.append(str(dest.relative_to(out_dir)))
 
-        # Driver (active agents only)
-        if mode == "active":
-            content = _render_template_file(template_dir, "agent_driver.sv", base)
-            dest = out_dir / "tb" / "uvm" / "agent" / f"{module}_{aname}_driver.sv"
-            write_text(dest, content)
-            created_files.append(str(dest.relative_to(out_dir)))
+        # Driver (rendered for every agent so agent_agent.sv's `m_driver` type
+        # declaration always resolves; a passive agent's driver class compiles but is
+        # never instantiated -- agent_agent.sv guards creation with get_is_active()).
+        content = _render_template_file(template_dir, "agent_driver.sv", base)
+        dest = out_dir / "tb" / "uvm" / "agent" / f"{module}_{aname}_driver.sv"
+        write_text(dest, content)
+        created_files.append(str(dest.relative_to(out_dir)))
 
         # Agent assembly
         content = _render_template_file(template_dir, "agent_agent.sv", base)
@@ -559,8 +560,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
     for agent in agents:
         aname = agent["name"]
         txn_includes.append(f'  `include "{module}_{aname}_txn.sv"')
-        if agent.get("mode", "active") == "active":
-            agent_includes.append(f'  `include "{module}_{aname}_driver.sv"')
+        agent_includes.append(f'  `include "{module}_{aname}_driver.sv"')
         agent_includes.append(f'  `include "{module}_{aname}_monitor.sv"')
         agent_includes.append(f'  `include "{module}_{aname}_agent.sv"')
 
