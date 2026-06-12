@@ -26,6 +26,7 @@ class {{MODULE}}_{{AGENT_NAME}}_monitor extends uvm_monitor;
     end
   endtask
 
+  // CONVENTION: `vif` is this agent's virtual interface (tb_top registers it in config_db under key "<agent>_vif"); sample DUT outputs via `vif`, publish observed txns on analysis port 'ap'.
   // TODO(monitor): Sample DUT outputs via virtual interface.
   virtual task sample_txn({{MODULE}}_{{AGENT_NAME}}_txn txn);
     @(posedge vif.clk);

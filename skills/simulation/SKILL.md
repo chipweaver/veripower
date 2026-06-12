@@ -131,6 +131,10 @@ Dispatch **one** `Task(run_in_background=True)` — the env-build child — whos
 (`{workdir}`, `{module}`, scaffold-spec path, verification-plan path, and on rework the trigger /
 context paths). The main thread never reads the TB it produces.
 
+The env-build child self-gates its `STATUS: DONE` on a presence-only thin-D1 check
+(`validate_sim_exit.py --thin-only`: no surviving TODO, all required scaffold files present) so a
+hollow TB never reaches the wave-2 verify run; semantic TB↔plan conformance remains a Part B concern.
+
 After dispatching, apply R2 yield discipline: yield immediately; no other tool call in the same turn.
 On wake-up, reap the env-build child's harness `STATUS:` last line + its JSON line. If
 `STATUS: BLOCKED <reason>`, write `result.json` `status=fail` + `fail_reason=<reason>` (with

@@ -24,6 +24,7 @@ class {{MODULE}}_{{RM_NAME}} extends uvm_component;
   // For streaming/pipelined predictions, switch to Pattern A:
   //   declare `uvm_analysis_port #(<obs_txn>) ap_predict;` and call
   //   ap_predict.write(predicted) from your write_<inport>() handler.
+  // CONVENTION: one write_<inport>() per rm.inports[] entry; update internal state, predict the observed txn.
   // TODO(rm): Implement prediction — parse inport txn, update state, produce expected output.
   virtual function {{MODULE}}_{{OBS_AGENT}}_txn predict();
     {{MODULE}}_{{OBS_AGENT}}_txn expected;

@@ -8,6 +8,7 @@ class {{MODULE}}_{{SEQ_NAME}}_seq extends {{MODULE}}_base_seq;
     super.new(name);
   endfunction
 
+  // CONVENTION: build/randomize txns of type <module>_<agent>_txn and send via the agent's m_sequencer.
   // TODO(sequence): Implement stimulus pattern — {{SEQ_DESC}}.
   task body();
     {{MODULE}}_{{AGENT_NAME}}_txn txn;
