@@ -43,6 +43,12 @@ tool (no Level-2 dispatch).
    in every `TODO(` across driver / monitor / checker / RM / functional seq / top. References are
    selected per the branch handed in above; any prior canonical TB is read-only reference — never
    copied — and all writes happen only in `{workdir}`.
+   **Trust the rendered tree (U4):** derive_scaffold renders an atomic, complete, self-describing
+   stub tree. Learn structure and fill-conventions from the **rendered stubs and their TODO/header
+   comments** (e.g. each stub's `// TODO(...)` states its config_db key, sequencer type, and intent),
+   not by reverse-engineering `derive_scaffold.py`. Reading the renderer source is a documented
+   **fallback only** — when a stub comment is missing, self-contradictory, or conflicts with the
+   observed structure. Do not whole-read `derive_scaffold.py` as a first resort.
 3. **Compile + smoke**: `make simv` → `make smoke`. The two steps **share** one
    `defaults.yaml.scaffold_repair_max_rounds` repair budget (compile + smoke do not each get N rounds;
    the combined count is recorded so the orchestrator can populate `stage_specific.compile_rounds`).
@@ -51,11 +57,26 @@ tool (no Level-2 dispatch).
    reason naming compile|smoke + the semantic locus>` so the orchestrator records
    `failure_phase=compile|smoke`. See `uvm-rules.md` for the UVM coding rules the filled scaffold must
    obey.
+4. **Env-exit completeness self-gate (thin-D1)**: before reporting `STATUS: DONE`, run
+   `python3 ${CLAUDE_SKILL_DIR}/scripts/validate_sim_exit.py --workdir {workdir} --scaffold scaffold-specification.json --thin-only`.
+   This is a **presence** gate: it fails (non-zero) if any required scaffold SV file is missing
+   or any `TODO` marker survives in `tb/uvm/**`. While the scaffold-repair budget remains and the
+   gate fails, **keep filling** the residual TODOs/files and re-run it. Only report `STATUS: DONE`
+   once it exits 0. If the budget is exhausted and it still fails, end with
+   `STATUS: BLOCKED compile <residual TODO/file locus>` (the existing compile mapping; this gate is
+   exit-code truth, not narration). It does **not** write `result.json` — the orchestrator's finalize
+   run remains the authoritative verdict; this is the env child's self-gate so a hollow TB never
+   reaches the wave-2 verify run. (Note: `make smoke` runs earlier in wave 1, *before* this gate —
+   the savings are that no regress/coverage wave runs on a hollow TB, not that smoke is skipped.)
+   **Limitation (by design):** thin-D1 is presence-only and intentionally does **not** resist marker
+   renaming / empty-stub / plausible-but-wrong fills — TB↔plan semantic conformance is Part B (U6),
+   not this gate.
 
 The smoke result is judged by the orchestrator's **deterministic gate** (the smoke run's own
 `regression-log.txt` `RESULT` lines / per-test `.status` files in `{workdir}`), **not** by this
 child's self-reported `STATUS:` prose. Report `STATUS: DONE` once `make simv` + `make smoke` have run
-to completion and the handoff is written; the gate decides pass/fail.
+to completion, the env-exit thin-D1 self-gate (Work step 4) exits 0, and the handoff is written; the
+smoke gate still decides smoke pass/fail.
 
 ## Anti-gaming (cycle-accurate checks)
 
