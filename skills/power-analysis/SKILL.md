@@ -61,6 +61,8 @@ This skill's sole responsibility: run VCS gate-level simulation against the post
 | `scripts/emit_power_tests.py` | python | Called by bootstrap + by `make refresh-tests`: renders power test classes from `power_scenarios[]`. |
 | `scripts/build_tb_filelist_abs.py` | python | Called by `make tb-shim`: rewrites `simulation/filelist.f` to an absolute-path version (drops `-f rtl_filelist.f` so GLS uses the netlist in place of RTL). |
 | `scripts/run_gls_power.sh` | shell | Per-scenario `simv` dispatch (dedup via `sequence_ref` hardlink). |
+| `scripts/extract_power_scenarios.py` | python | Internal to `run_gls_power.sh`: emits one `<id>\t<sequence_ref>` row per `power_scenarios[]` entry; never invoked directly. |
+| `scripts/check_sdf_annotated.sh` | shell | Internal to `make gls-compile`: gates on the SDF annotation summary in `gls-compile-log.txt` (0 annotated = fail); never invoked directly. |
 | `scripts/ptpx.tcl` | TCL | PT-PX averaged main script (single session loads the design + iterates all SAIFs in `SAIF_LIST`). |
 | `scaffold/power_test.sv.tmpl` | template | UVM test template (contains `$set_gate_level_monitoring + $toggle_*`; placeholders `{{MODULE}}` / `{{AGENT_NAME}}` / `{{SEQUENCE_REF}}` / `{{TOP}}`, etc. are substituted at render time). |
 | `scaffold/power_tests/power_<seq>_test.sv` | UVM SV | Auto-generated test class (`import {module}_tb_pkg`, `extends {module}_base_test`, calls the `{module}_<seq>_seq` already compiled by simulation). |
@@ -156,13 +158,13 @@ As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `
 ## Bundled References
 
 - [`templates/Makefile`](templates/Makefile) — `gls-compile` + `gls-run` + `ptpx` + `all` entry point.
-- [`templates/scripts/emit_power_tests.py`](templates/scripts/emit_power_tests.py) — power test template renderer.
-- [`templates/scripts/build_tb_filelist_abs.py`](templates/scripts/build_tb_filelist_abs.py) — absolute-path rewrite of the simulation filelist (consumed across stages by GLS).
-- [`templates/scripts/run_gls_power.sh`](templates/scripts/run_gls_power.sh) — per-scenario `simv` dispatch (dedup via hardlink).
-- [`templates/scripts/ptpx.tcl`](templates/scripts/ptpx.tcl) — PT-PX averaged main script (`read_saif` + 0% annotation hard gate).
+- `templates/scripts/emit_power_tests.py` — power test template renderer (make-internal).
+- `templates/scripts/build_tb_filelist_abs.py` — absolute-path rewrite of the simulation filelist (consumed across stages by GLS; make-internal).
+- `templates/scripts/run_gls_power.sh` — per-scenario `simv` dispatch (dedup via hardlink; make-internal).
+- `templates/scripts/ptpx.tcl` — PT-PX averaged main script (`read_saif` + 0% annotation hard gate; make-internal).
 - [`templates/scaffold/power_test.sv.tmpl`](templates/scaffold/power_test.sv.tmpl) — UVM test template (placeholders `MODULE` / `AGENT_NAME` / `SEQUENCE_REF` / `TOP` / `SCENARIO_ID` / `SCENARIO_DESC` / `DURATION_CYCLES`; contains `$set_gate_level_monitoring + $toggle_*`).
-- [`scripts/bootstrap_power_analysis.sh`](scripts/bootstrap_power_analysis.sh) — bootstrap script.
+- `scripts/bootstrap_power_analysis.sh` — bootstrap script (invocation contract: Step 2 + `--help`).
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
-- [`scripts/power_rpt_parser.py`](scripts/power_rpt_parser.py) — PT-PX report parser + PPA verdict script (assembles `power-actual.json`; exit code is the pass/fail truth — mirrors `synthesis_rpt_parser.py`).
+- `scripts/power_rpt_parser.py` — PT-PX report parser + PPA verdict script (assembles `power-actual.json`; exit code is the pass/fail truth — mirrors `synthesis_rpt_parser.py`; invocation contract: Step 3 + `--help`).
 - [`${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/references/power-scenarios-template.md`](../simulation-plan/references/power-scenarios-template.md) — `power_scenarios` field semantics.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.

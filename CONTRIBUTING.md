@@ -56,6 +56,7 @@ Testing a VeriPower skill **is** TDD applied to the skill document. The test *su
 
 ## Documentation
 
+- **Script contract sync (mandatory).** `CLAUDE.md §Scripts Are Black Boxes` declares each SKILL.md the *complete* runtime contract for the scripts it invokes — agents are forbidden from reading script source to fill gaps. Therefore: any change to a directly-invoked script's CLI flags, exit codes, or output shape MUST update the invoking SKILL.md (and the script's `--help` text) in the same commit; a new script MUST be classified at introduction (directly-invoked: document the full command line + failure protocol; bootstrap-/make-internal or import-only: one line marking it internal). Silent drift breaks the black-box rule for every downstream run.
 - **User/contributor-facing content** (architecture, contribution norms) — lives at the repo root: [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), this file.
 - **Brainstorming, design proposals, review records** — under `docs/superpowers/`. These are uncommitted by convention (see `.gitignore`).
 

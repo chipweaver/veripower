@@ -105,6 +105,9 @@ loop:
   if a.action in {YIELD, DONE, ESCALATE}: end turn
 ```
 
+`next` always exits 0 and prints exactly one JSON object; `action` selects the shape (complete enumeration):
+`DISPATCH {stage, kind: main-thread|task, ppa_targets[]}` (`ppa_targets` always present; non-empty only for synthesis / power-analysis) · `REAP {stage, run}` · `REWORK {failed_stage, target_stage, reason_hint}` · `YIELD {in_flight: [[stage, run], …]}` (triage-pending variant: `in_flight: []` + `waiting_on: "simulation-triage"`) · `DISPATCH_TRIAGE {}` · `ESCALATE {reason: <text>}` · `DONE {}`.
+
 Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notification>` (values from its `<output-file>` / stage binding), and **re-pass the same `--wake` on every re-query within the turn**. Once the named run is reaped it leaves `in_flight`, so a stale `--wake` is a safe no-op (the reducer's step-1 guard checks membership) — re-passing prevents a step-0 `promote_failed` retry on another stage from preempting the wake and orphaning the completed run (which would `YIELD` with that run still `in_flight` and no new notification → stall). Pass `--analysis -` and pipe the triage ANALYSIS JSON when this turn was triggered by a `simulation-triage` return.
 
 `execute(action)`:
@@ -112,8 +115,8 @@ Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notificatio
 | action | effect (LLM-only) |
 |---|---|
 | `REAP` | `state.py complete --stage <s> --run <n> --subagent-output-file <f?>` (no `--outcome`). If the stage was cascade-staled during execution, pass `--outcome blocked --reason "stage cascade-staled during execution; result not authoritative against current prereq snapshot"` to override derive mode. See promote_failed protocol (§Decision Rules) for `action=promote_failed` handling. |
-| `DISPATCH` kind=main-thread | `state.py start …` → `Skill(veripower:<skill>)` → `state.py complete --stage <s> --run <r>` |
-| `DISPATCH` kind=task | `state.py start …` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered + ppa_targets>)` |
+| `DISPATCH` kind=main-thread | `state.py start --module {module} --stage <s> [--orchestrator-context <file|->]` → `Skill(veripower:<skill>)` → `state.py complete --stage <s> --run <r>` |
+| `DISPATCH` kind=task | `state.py start --module {module} --stage <s> [--orchestrator-context <file|->]` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered + ppa_targets>)` |
 | `DISPATCH_TRIAGE` | `state.py log --event '{"type":"debug_dispatch","module":"{module}"}'` → `Task(… Skill(veripower:simulation-triage) …)`. The next loop iteration sees the triage pending and returns `YIELD` (which ends the turn). |
 | `REWORK` | author `orchestrator_context` (the one judgment) → `state.py rework --failed-stage <f> --target-stage <t> --reason "<≤200 from reason_hint>"` → on the next loop the reducer dispatches the now-eligible target |
 | `ESCALATE` | `state.py log --event '{"type":"escalation","reason_code":"…","reason":"<verbatim>"}'` → reply to user (verbatim subagent text + status snapshot + 2-3 next steps) |
@@ -177,8 +180,8 @@ Orchestrator-form specialization: this skill does not write `result.json`; each 
 
 ## Bundled References
 
-- [`${CLAUDE_PLUGIN_ROOT}/framework/scripts/state.py`](../../framework/scripts/state.py) — State-management tool (8 commands).
-- [`${CLAUDE_PLUGIN_ROOT}/framework/scripts/orchestrate.py`](../../framework/scripts/orchestrate.py) — The `next` reducer — reads on-disk state and returns exactly one action per call.
-- [`${CLAUDE_PLUGIN_ROOT}/framework/scripts/topology.py`](../../framework/scripts/topology.py) — DAG structural SSoT (`FORWARD_PRIORITY`, `PREREQ_OF`, `eligible()`).
+- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/state.py` — State-management tool (8 commands). Invocation contract: this file + `--help` (which prints each command's return shape); do not read the source.
+- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/orchestrate.py` — The `next` reducer. Invocation + output contract: §Executor loop above; do not read the source.
+- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/topology.py`, `route.py`, `artifacts.py` — import-only internals of state.py / orchestrate.py (DAG SSoT, rework-target maps, artifact promote/mirror); never invoked or read at runtime.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/prompts/stage-subagent.md.tpl`](../../framework/references/prompts/stage-subagent.md.tpl) — Task dispatch template.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — Common envelope schema.

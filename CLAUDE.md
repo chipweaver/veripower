@@ -58,12 +58,28 @@ Result-envelope schemas: `framework/references/schemas/`.
 
 Domain-specific coding rules live in each skill's references.
 
+## Scripts Are Black Boxes
+
+Scripts under `framework/scripts/`, `skills/*/scripts/`, `skills/*/templates/`, and their
+deployed copies are invoked per the command lines documented in the owning SKILL.md — that documentation is the
+**complete** runtime contract; the source contains no additional runtime information. Do NOT
+Read script source at runtime.
+
+- Unsure about flags → run `--help` (cheap), never Read the source.
+- Non-zero exit → act on the documented failure protocol (stderr message / `FAIL=` token /
+  stdout JSON verdict), never on the source.
+- Scripts marked **internal** (called by a bootstrap or a `make` target, or import-only
+  libraries) are never invoked directly and never read.
+- The only justified source read: debugging a suspected bug in the script itself (a
+  contract↔behavior mismatch) — that is a plugin bug to surface, not part of any pipeline stage.
+
 ## State Tool & Skill Dispatch
 
 - `framework/scripts/state.py` — 8 commands (init, status, start, complete, rework, invalidate-stage, convergence, log). No routing logic — scheduling is computed by `orchestrate.py next` (see below), which the `design-flow` Orchestrator executes.
 - `framework/scripts/topology.py` — DAG structural SSoT (`FORWARD_PRIORITY`, `PREREQ_OF`, `eligible()`); `state.py` imports the subset it uses (so those names also resolve as `state.X`), while `orchestrate.py` imports `topology` directly.
 - `framework/scripts/orchestrate.py` — the `next` reducer; reads on-disk state and returns exactly one action per call; the Orchestrator is a thin executor of `orchestrate.py next`.
 - `framework/scripts/route.py` — pure deterministic rework-target selection (sole home of the failure→target maps); composed unchanged inside `orchestrate.py`. No state.
+- `framework/scripts/artifacts.py` — artifact-lifecycle internals (promote, trace mirroring), imported by `state.py`; internal — never invoked directly.
 - Main-thread-loaded stages: `specification`, `simulation-plan`, `rtl-design`, and `simulation` — Orchestrator calls `Skill(veripower:...)` directly (specification + rtl-design + simulation hold Level-1 fan-out sub-Task dispatch authority — simulation dispatches env-build → smoke gate → verify as two sequential waves; rtl-design's fan-out is followed by a Step-4 deterministic conformance gate (≤2-round body-blind self-converge) + an advisory semantic review wave on every clean-gate finalize; simulation-plan authors the plan via dialogue). The other 5 stages (`lint-cdc`, `synthesis`, `timing-analysis`, `power-analysis`, `frontend-signoff`) are strictly Task-dispatched subagents. See `skills/design-flow/SKILL.md` and `ARCHITECTURE.md §2`.
 - `brainstorm` is a separate **pre-pipeline** skill (own session, NOT in the orchestrator-dispatch list above): it runs the D0–D7 dialogue and produces the approved `brainstorm.md` the pipeline starts from. It writes no `result.json` and calls no `state.py`.
 

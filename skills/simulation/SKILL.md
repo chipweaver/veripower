@@ -118,6 +118,12 @@ the workdir, so a re-run needs a fresh, empty workdir. The caller provides a fre
 which is exactly that — the orchestrator dispatches the env-build sub-Task into this fresh
 `{workdir}`; it never reuses a workdir that already holds a deployed infra.
 
+**Internal scripts.** Bootstrap internally runs `scripts/build_rtl_filelist.py` and (with `--plan`)
+`scripts/derive_scaffold.py`; the deployed `infra/scripts/` (`run_vcs_regression.sh` /
+`parse_coverage.py` / `write_summary.py`) are make-internal. The interfaces are
+`bootstrap_simulation.sh` and the `make` targets (`simv` / `smoke` / `regress` / `coverage` /
+`summary`) — none of these internal scripts is invoked or read directly.
+
 ### Step 2: Wave 1 — dispatch env-build
 
 Dispatch **one** `Task(run_in_background=True)` — the env-build child — whose prompt points to
@@ -167,7 +173,11 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/validate_sim_exit.py --workdir {workdir} --s
 ```
 
 Its **exit code is the pass/fail truth**; always read the verdict from its **stdout** (the JSON line
-carries `coverage_extractable` / `dims` / `unmaterialized` / `todo_residue`). Copy the stdout verdict
+carries `coverage_extractable` / `dims` / `unmaterialized` / `todo_residue`). It runs three checks:
+thin-D1 (every scaffold-spec sequence/agent SV file materialized, zero `TODO` residue), D5
+(`structural-coverage.json` present with an `aggregate` block), and D6 (every
+`defaults.yaml.coverage_thresholds` dim ≥ threshold; a dim measured null/absent — e.g. no FSM — is
+skipped). On failure its stderr names the exact cause — act on that, not on the script source. Copy the stdout verdict
 into `result.json.stage_specific`. On a non-zero exit: `status=fail` with `failure_phase=coverage` for
 coverage-extractable/threshold failures, or `failure_phase=compile` for thin-D1 file/TODO failures
 (when both trip in the same run, write `failure_phase=compile` — the earlier phase). This mirrors

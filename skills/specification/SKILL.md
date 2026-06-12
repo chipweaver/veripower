@@ -131,7 +131,7 @@ ports — the §1.4.2 wires whose Producer/Consumer RTL module is in that child'
 wave-2 port injection (children do **not** guess inter-module ports; top-level IO ports
 stay child-authored from §1.4.1 and are backstopped by `check_coverage.py`'s
 `ports ⊆ §1.4.1∪§1.4.2` subset check). If the script exits non-zero (a child has no
-`rtl_modules` — a wave-1 manifest defect), do NOT gate: route a wave-1 rework sub-Task to
+`rtl_modules` — a wave-1 manifest defect; stderr names the defect), do NOT gate: route a wave-1 rework sub-Task to
 add the missing `rtl_modules[]`, or write `result.json` `status=fail` +
 `fail_reason="manifest child missing rtl_modules"`.
 
@@ -184,7 +184,8 @@ After the design.md gate passes, run
 It generates the complete `constraints/<TOP>.{sdc,sgdc}` purely from the approved §1.6 +
 §1.4.1 tables (clocks + relationships, IO delays, abstract_ports, resets+polarity) and
 self-checks before writing. There is **no LLM constraint overlay and no separate constraint checker**.
-If it exits non-zero (a §1.6/§1.4.1 table defect that slipped the pre-gate checks), route a
+If it exits non-zero (a §1.6/§1.4.1 table defect that slipped the pre-gate checks; stderr names
+the exact defect — act on that, not on the script source), route a
 wave-1 rework sub-Task and re-run; if the defect cannot be resolved that way, write
 `result.json` `status=fail` + `fail_reason="constraint derivation: <table> defect"`.
 
