@@ -105,6 +105,12 @@ def test_obs_name_strips_canonical_txn():
 # of the bare stub tree requires a UVM simulator and lives in a separate simulator-gated
 # CI suite (see plan §U3), NOT here.
 TEMPLATE_DIR = ROOT / "skills/simulation/templates/scaffold"
+# NOTE (U3 tiering): these are RENDER-ONLY structural checks -- they run license-free in
+# the standard unit tier (no simulator). A full `render -> elaborate the bare stub tree`
+# regression needs a UVM-capable simulator + license and therefore belongs in a separate
+# simulator-gated CI suite, NOT here (the unit tier has no simulator; docs/eda-env.md lists
+# no CI simulator). Render-only catches the U2 bug classes (passive-driver dangling type,
+# include topology); elaborate-only errors are out of scope for this tier.
 
 RENDER_SPEC = {
     "module": "m",
@@ -204,3 +210,33 @@ def test_collision_writes_nothing(tmp_path):
     assert "wdata" in str(ei.value)
     rendered = list(out.rglob("*.sv")) + list(out.rglob("*.svh")) if out.exists() else []
     assert rendered == [], f"half-tree left on disk: {[str(p) for p in rendered]}"
+
+
+def test_render_no_dangling_driver_type_for_passive(tmp_path):
+    """U3 anti-regression: agent_agent.sv declares `<module>_<agent>_driver m_driver;`
+    unconditionally; for a passive agent that type MUST still be rendered as a file AND
+    included, or elaboration hits an unresolved type. Asserts both the file and the
+    include exist for the passive agent."""
+    out = _render(tmp_path)
+    agent_sv = (out / "tb/uvm/agent/m_obs_agent.sv").read_text(encoding="utf-8")
+    assert "m_obs_driver  m_driver;" in agent_sv  # the unconditional declaration is present...
+    assert (out / "tb/uvm/agent/m_obs_driver.sv").is_file()  # ...and its type is rendered
+    pkg = (out / "tb/uvm/pkg/tb_pkg.sv").read_text(encoding="utf-8")
+    assert '`include "m_obs_driver.sv"' in pkg  # ...and included before use
+
+
+def test_render_tb_pkg_include_topology(tmp_path):
+    """U3 anti-regression: tb_pkg include order must keep types defined before use --
+    transactions before agents; env before base_test (base_test instantiates env, U2②);
+    base_test before generated_tests (test classes extend base_test)."""
+    out = _render(tmp_path)
+    pkg = (out / "tb/uvm/pkg/tb_pkg.sv").read_text(encoding="utf-8")
+    order = [
+        "m_drv_txn.sv",
+        "m_drv_driver.sv",
+        "m_env.sv",
+        "base_test.sv",
+        "generated_tests.svh",
+    ]
+    positions = [pkg.index(tok) for tok in order]
+    assert positions == sorted(positions), f"tb_pkg include order broke: {list(zip(order, positions))}"
