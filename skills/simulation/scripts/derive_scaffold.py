@@ -163,6 +163,48 @@ def _check_list_or_omitted(value, field: str) -> None:
         )
 
 
+def validate_ports(
+    agents: list[dict], clk_port_name: str, rst_port_name: str
+) -> str:
+    """Validate per-agent signal names and build the DUT port-map block.
+
+    Fail loud (sys.exit) on a signal colliding with the clock/reset port name or
+    duplicated across agents. Called during the in-memory render pass *before any file
+    is written*, so a collision leaves nothing on disk (U1 atomicity). Returns the
+    dut_port_map string for tb_top (leading ',\\n' so it concatenates after .rst(rst_n)).
+    """
+    dut_port_lines: list[str] = []
+    seen_signals: set[str] = {clk_port_name, rst_port_name}
+    first_owner: dict[str, str] = {}
+    for agent in agents:
+        aname = agent["name"]
+        signals, _ = _agent_io(agent)
+        for s in signals:
+            sig = s["name"]
+            if sig in {clk_port_name, rst_port_name}:
+                sys.exit(
+                    f"scaffold: agent '{aname}' signal '{sig}' collides with "
+                    f"clock/reset port name (clk={clk_port_name!r}, rst={rst_port_name!r}). "
+                    f"Rename the signal in scaffold-spec or fix primary_clock.dut_port_name / "
+                    f"reset.dut_port_name to disambiguate."
+                )
+            if sig in seen_signals:
+                sys.exit(
+                    f"scaffold: signal '{sig}' duplicated across agents "
+                    f"(first declared in '{first_owner[sig]}', conflict in '{aname}'). "
+                    f"Adjust the agents' interface_groups in scaffold-specification.json so "
+                    f"the groups do not overlap, then re-run materialize_scaffold.py "
+                    f"(an agent's signals must be unique within the scaffold)."
+                )
+            seen_signals.add(sig)
+            first_owner[sig] = aname
+            dut_port_lines.append(f"    .{sig}({aname}_if.{sig}),")
+    if dut_port_lines:
+        dut_port_lines[-1] = dut_port_lines[-1].rstrip(",")
+        return ",\n" + "\n".join(dut_port_lines)
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Scaffold renderer (main logic)
 # ---------------------------------------------------------------------------
@@ -232,7 +274,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
     rm_inports = rm_cfg.get("inports", [])
     _check_list_or_omitted(rm_inports, "rm.inports")
 
-    created_files: list[str] = []
+    pending: list[tuple[Path, str]] = []  # (dest, content) staged in memory; written atomically at the end
 
     # --- Per-agent files ---
     for agent in agents:
@@ -255,8 +297,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
             },
         )
         dest = out_dir / "tb" / "uvm" / "interface" / f"{module}_{aname}_if.sv"
-        write_text(dest, content)
-        created_files.append(str(dest.relative_to(out_dir)))
+        pending.append((dest, content))
 
         # Transaction
         content = _render_template_file(
@@ -269,28 +310,24 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
             },
         )
         dest = out_dir / "tb" / "uvm" / "transaction" / f"{module}_{aname}_txn.sv"
-        write_text(dest, content)
-        created_files.append(str(dest.relative_to(out_dir)))
+        pending.append((dest, content))
 
         # Monitor (all agents have a monitor)
         content = _render_template_file(template_dir, "agent_monitor.sv", base)
         dest = out_dir / "tb" / "uvm" / "agent" / f"{module}_{aname}_monitor.sv"
-        write_text(dest, content)
-        created_files.append(str(dest.relative_to(out_dir)))
+        pending.append((dest, content))
 
         # Driver (rendered for every agent so agent_agent.sv's `m_driver` type
         # declaration always resolves; a passive agent's driver class compiles but is
         # never instantiated -- agent_agent.sv guards creation with get_is_active()).
         content = _render_template_file(template_dir, "agent_driver.sv", base)
         dest = out_dir / "tb" / "uvm" / "agent" / f"{module}_{aname}_driver.sv"
-        write_text(dest, content)
-        created_files.append(str(dest.relative_to(out_dir)))
+        pending.append((dest, content))
 
         # Agent assembly
         content = _render_template_file(template_dir, "agent_agent.sv", base)
         dest = out_dir / "tb" / "uvm" / "agent" / f"{module}_{aname}_agent.sv"
-        write_text(dest, content)
-        created_files.append(str(dest.relative_to(out_dir)))
+        pending.append((dest, content))
 
     # --- Sequences ---
     for seq in sequences:
@@ -307,8 +344,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
             },
         )
         dest = out_dir / "tb" / "uvm" / "seq" / f"{module}_{seq['name']}_seq.sv"
-        write_text(dest, content)
-        created_files.append(str(dest.relative_to(out_dir)))
+        pending.append((dest, content))
 
     # --- RM ---
     # Build analysis_imp declarations for each inport
@@ -362,8 +398,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
         },
     )
     dest = out_dir / "tb" / "uvm" / "refmodel" / f"{module}_{rm_name}.sv"
-    write_text(dest, content)
-    created_files.append(str(dest.relative_to(out_dir)))
+    pending.append((dest, content))
 
     # --- Scoreboard ---
     content = _render_template_file(
@@ -378,8 +413,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
         },
     )
     dest = out_dir / "tb" / "uvm" / "checker" / f"{module}_{sb_name}.sv"
-    write_text(dest, content)
-    created_files.append(str(dest.relative_to(out_dir)))
+    pending.append((dest, content))
 
     # --- Env ---
     agent_decl_lines: list[str] = []
@@ -427,8 +461,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
         },
     )
     dest = out_dir / "tb" / "uvm" / "env" / f"{module}_env.sv"
-    write_text(dest, content)
-    created_files.append(str(dest.relative_to(out_dir)))
+    pending.append((dest, content))
 
     # --- Tests (generated_tests.svh) ---
     test_lines = ["// Auto-generated from scaffold-specification.json."]
@@ -474,8 +507,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
         test_lines.append(content)
 
     dest = out_dir / "tb" / "uvm" / "test" / "generated_tests.svh"
-    write_text(dest, "\n".join(test_lines))
-    created_files.append(str(dest.relative_to(out_dir)))
+    pending.append((dest, "\n".join(test_lines)))
 
     # --- tb_top ---
     if_inst_lines: list[str] = []
@@ -489,52 +521,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
             f'    uvm_config_db#(virtual {module}_{aname}_if)::set(null, "uvm_test_top.*", "{aname}_vif", {aname}_if);'
         )
 
-    # Build DUT port-map lines from agents' driver/monitor signal lists.
-    # Per-signal: ".<signal_name>(<agent_name>_if.<signal_name>),"
-    #
-    # Pre-seed `seen_signals` with the clock/reset port names so that an agent
-    # accidentally declaring those names raises (template static prefix already
-    # owns the connections — duplicating breaks SV elaboration).
-    dut_port_lines: list[str] = []
-    seen_signals: set[str] = {clk_port_name, rst_port_name}
-    first_owner: dict[str, str] = {}
-    for agent in agents:
-        aname = agent["name"]
-        # Canonical shape only. The per-agent loop above already fail-loud-validated
-        # every agent via _agent_io; reuse it to extract the signal names (no flat fallback).
-        signals, _ = _agent_io(agent)
-        agent_sigs = [s["name"] for s in signals]
-        for sig in agent_sigs:
-            if sig in {clk_port_name, rst_port_name}:
-                sys.exit(
-                    f"scaffold: agent '{aname}' signal '{sig}' collides with "
-                    f"clock/reset port name (clk={clk_port_name!r}, rst={rst_port_name!r}). "
-                    f"Rename the signal in scaffold-spec or fix primary_clock.dut_port_name / "
-                    f"reset.dut_port_name to disambiguate."
-                )
-            if sig in seen_signals:
-                sys.exit(
-                    f"scaffold: signal '{sig}' duplicated across agents "
-                    f"(first declared in '{first_owner[sig]}', conflict in '{aname}'). "
-                    f"Adjust the agents' interface_groups in scaffold-specification.json so "
-                    f"the groups do not overlap, then re-run materialize_scaffold.py "
-                    f"(an agent's signals must be unique within the scaffold)."
-                )
-            seen_signals.add(sig)
-            first_owner[sig] = aname
-            dut_port_lines.append(f"    .{sig}({aname}_if.{sig}),")
-
-    # Build dut_port_map as a single block. Leading newline + comma is embedded
-    # so the template can place it as the only thing after .<rst>(rst_n)
-    # without trailing-comma artifacts on either side.
-    if dut_port_lines:
-        dut_port_lines[-1] = dut_port_lines[-1].rstrip(",")
-        # Prefix with ",\n" so it concatenates as ".rst(rst_n),\n  .sig0(...),\n ..."
-        dut_port_map = ",\n" + "\n".join(dut_port_lines)
-    else:
-        # No agent-covered DUT signals beyond clk/rst. dut_port_map is empty
-        # string → template renders as ".rst(rst_n)\n);" (no trailing comma, valid SV).
-        dut_port_map = ""
+    dut_port_map = validate_ports(agents, clk_port_name, rst_port_name)
 
     content = _render_template_file(
         template_dir,
@@ -551,8 +538,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
         },
     )
     dest = out_dir / "tb" / "uvm" / "top" / f"{top}_tb_top.sv"
-    write_text(dest, content)
-    created_files.append(str(dest.relative_to(out_dir)))
+    pending.append((dest, content))
 
     # --- tb_pkg.sv ---
     txn_includes: list[str] = []
@@ -582,8 +568,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
         },
     )
     dest = out_dir / "tb" / "uvm" / "pkg" / "tb_pkg.sv"
-    write_text(dest, content)
-    created_files.append(str(dest.relative_to(out_dir)))
+    pending.append((dest, content))
 
     # --- filelist.f ---
     if_file_lines: list[str] = []
@@ -601,8 +586,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
         },
     )
     dest = out_dir / "filelist.f"
-    write_text(dest, content)
-    created_files.append(str(dest.relative_to(out_dir)))
+    pending.append((dest, content))
 
     # --- testlist.json ---
     # Field format must match run_vcs_regression.sh:
@@ -638,12 +622,25 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
         "tests": testlist_entries,
     }
     dest = out_dir / "tests" / "testlist.json"
-    write_text(dest, json.dumps(testlist, indent=2, ensure_ascii=False))
-    created_files.append(str(dest.relative_to(out_dir)))
+    pending.append((dest, json.dumps(testlist, indent=2, ensure_ascii=False)))
 
-    print(f"scaffold: generated {len(created_files)} files in {out_dir}")
-    for f in created_files:
-        print(f"  {f}")
+    # Atomic commit: everything above rendered + validated in memory. Write now; if any
+    # write fails mid-loop, roll back the files already written so none of run_scaffold's own
+    # rendered files remain (bootstrap-deployed infra/dirs are untouched) rather than a half-tree
+    # (U1: "either nothing, or the complete tree" -- scoped to this renderer's own output).
+    written: list[Path] = []
+    try:
+        for dest, content in pending:
+            write_text(dest, content)
+            written.append(dest)
+    except OSError:
+        for p in written:
+            p.unlink(missing_ok=True)
+        raise
+
+    print(f"scaffold: generated {len(pending)} files in {out_dir}")
+    for dest, _ in pending:
+        print(f"  {dest.relative_to(out_dir)}")
     return 0
 
 
