@@ -28,6 +28,22 @@ Reasoning aid for classifying each case; surfaced in the `## Findings` prose (fr
 | Randomization conflict | `randomization_conflict` | randomization failed | `tb` | Inspect the constraint block; simplify or relax constraints. |
 | Coverage gap | `coverage_gap` | `gaps_in_testpoints` / `gaps_not_in_testpoints` non-empty | `rtl-design` (gap inside testpoints but RTL unreachable) / `tb` (gap outside testpoints — plan is missing a testpoint) / `specification` (the coverage dimension itself is missing from the requirements) | Check whether the gap bin lives under `scaffold-specification.json.testpoints[].bins[]`. Not there → plan problem. There but `stimulus_iterate` is exhausted → RTL dead code or a spec-level missing dimension. |
 
+## Conformance `category` → `root_cause_direction` (failure_phase=conformance)
+
+Conformance findings carry a reviewer-assigned `category` (not a log symptom). Map each to a
+`root_cause_direction`, then apply the same clustering + top-level selection + tiebreak as
+the other phases.
+
+| `category` | `root_cause_direction` | Rationale |
+|---|---|---|
+| `missing` / `wrong-behavior` / `fake-green` | `tb` (scaffold mistake) → stage `simulation` | env authored an inadequate check; with no in-skill fix-loop this routes to ESCALATE (operator). |
+| `intent-defect` | `tb` (plan problem) → stage `simulation-plan` | the `inlined_check_hints[]` itself is wrong; fix the plan. |
+
+> `unverifiable-arch` / `unavailable` are advisory and never reach triage (the gate does not
+> trip on them). If a finding's prose traces the gap to a vague/missing spec, attribute
+> `specification` per the Symptom table — `specification` is reachable by reasoning, not by a
+> reviewer category.
+
 ## Regression-level classification
 
 | Level | Trigger | Regression scope | Typical scenario |
