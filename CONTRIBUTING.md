@@ -35,6 +35,7 @@ VeriPower has two classes of structured output with different validation regimes
 
 - `tests/unit/` — pure-Python code-behavior tests (call a framework function, assert output). `tests/contracts/` — deterministic artifact sync/invariant lints (read declarations & compare; run no code). Run `pytest tests/unit/ tests/contracts/` for the fast loop when changing `state.py`, route maps, schemas, or any cross-artifact contract.
 - `tests/scenarios/` — skill-level discipline tests under pressure. No EDA tools; uses Claude (Opus) as the system under test, run via a **clean-isolation `claude -p` subprocess** (`tests/scenarios/scenario-run.sh`) — see **Bulletproofing a skill** below.
+- **CI** (`.github/workflows/ci.yml`) is the enforcement net for the gates you run locally: `pytest` on Python 3.10/3.11/3.12, and the `pre-commit` lint gate ([Coding Conventions](#coding-conventions)) on 3.12 — on every push and PR; PRs must be green to merge. Keep running both locally for fast feedback; CI is the net, not the loop. `tests/scenarios/` is deliberately **not** in CI: it drives a live `claude -p` subprocess (non-deterministic, needs model access) and stays a manual gate.
 
 ## Bulletproofing a skill (RED-GREEN-REFACTOR)
 
