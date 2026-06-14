@@ -15,8 +15,9 @@ semantics, env phase) and **Rule B** (stimulus vs. intent, verify phase).
 
 **Load mode:** this skill runs main-thread, invoked via `Skill(veripower:simulation)` by its caller
 (not dispatched as a Task subagent). It uses the Task tool for **three sequential** fan-out waves (one
-sub-Task each), with a deterministic main-thread smoke gate between them and a scripted finalize after
-the second; the main thread never authors TB inline.
+sub-Task each), with deterministic main-thread gates between the waves (the smoke gate, then the
+Step-3.5 conformance gate) and a scripted finalize after the final (verify) wave; the main thread never
+authors TB inline.
 
 ## When to Use
 
