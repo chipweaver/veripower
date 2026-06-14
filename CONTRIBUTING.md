@@ -91,6 +91,10 @@ A PR adds one authoritative source on top of the commits: the commit list itself
 
 One PR, one logical change; length scales with the change. The `.github/PULL_REQUEST_TEMPLATE.md` prefills this shape.
 
+### Merge strategy
+
+Rebase and merge — keeps history linear and preserves each commit's message. Squash only a PR of WIP/fixup commits not worth keeping apart. Avoid merge commits (they own nothing the commits / PR / CI don't already).
+
 ## Coding Conventions
 
 Enforced by `pre-commit` (`ruff` + `shellcheck` + `shfmt`); run `pre-commit run --all-files` (or `pre-commit install` once for the per-commit hook). Config: `ruff.toml`, `.shellcheckrc`, `.pre-commit-config.yaml`.
