@@ -1,7 +1,7 @@
 # env-build sub-Task contract (wave 1)
 
 The simulation main thread dispatches **one** Level-1 `Task(run_in_background=True)` — the
-env-build child — as the first of two sequential waves. Its job: bootstrap the stage workdir, fill
+env-build child — as the first of three sequential waves. Its job: bootstrap the stage workdir, fill
 the UVM scaffold, compile, and run the smoke suite. A dispatched sub-Task MUST NOT call the Task
 tool (no Level-2 dispatch).
 

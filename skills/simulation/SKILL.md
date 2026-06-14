@@ -6,14 +6,15 @@ description: Use when materializing and running a module's UVM TB from an approv
 # UVM Simulation
 
 This skill's sole responsibility: **orchestrate** the UVM verification flow as a thin dispatcher over
-two sequential sub-Tasks — **env-build** (bootstrap + fill scaffold + compile + smoke) → a
-deterministic **smoke gate** → **verify** (regress + coverage iterate + summary). The main thread
+three sequential sub-Tasks — **env-build** (bootstrap + fill scaffold + compile + smoke) → a
+deterministic **smoke gate** → a **conformance gate** (LLM check-adequacy review; Step 3.5) →
+**verify** (regress + coverage iterate + summary). The main thread
 reads only envelopes / status files / paths; it NEVER reads the TB body, never authors TB inline, and
 never re-runs heavy EDA. Each sub-Task's repair authority is bound by **Rule A** (scaffold vs.
 semantics, env phase) and **Rule B** (stimulus vs. intent, verify phase).
 
 **Load mode:** this skill runs main-thread, invoked via `Skill(veripower:simulation)` by its caller
-(not dispatched as a Task subagent). It uses the Task tool for **two sequential** fan-out waves (one
+(not dispatched as a Task subagent). It uses the Task tool for **three sequential** fan-out waves (one
 sub-Task each), with a deterministic main-thread smoke gate between them and a scripted finalize after
 the second; the main thread never authors TB inline.
 
@@ -69,11 +70,12 @@ finalize. The env / verify phase split of the workdir artifacts is in
 | `Makefile` / `env.sh` / `filelist.f` / `rtl_filelist.f` / `tb/uvm/` / `scripts/` / `tests/testlist.json` | per `artifact-contract.md` | env-build | TB infra + materialized UVM (bound by Rule A). |
 | `regression-log.txt` / `structural-coverage.json` / `coverage-summary.txt` / `case-results-summary.md` | per `artifact-contract.md` | verify | Regression log + machine-readable structural coverage (gate source for `validate_sim_exit`) + summaries. |
 | `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest handed to the verify phase (intra-stage handoff; not promoted). |
+| `conformance-review.json` | per `references/conformance-review.schema.json` | conformance gate (main thread) | Per-testpoint check-adequacy findings (gate source for Step 3.5); promoted advisory artifact. |
 
 > Every promoted path MUST appear in `result.json.artifacts[]`, otherwise it will not be promoted to
 > canonical (external read-only consumption of canonical `filelist.f` / `tb/uvm/`, etc. will fail).
 
-## Workflow (thin orchestrator; two sequential waves + smoke gate + scripted finalize)
+## Workflow (thin orchestrator; three sequential waves + smoke gate + scripted finalize)
 
 ### Fan-out Dispatch Contract
 
@@ -155,7 +157,43 @@ exists yet).
 - **Smoke ran but failed:** `regression-log.txt`'s `RESULT <test> <PASS|FAIL|MANUAL_REVIEW>` lines (or
   the per-test `logs/<test>.status` files) contain any non-`PASS`. Write `result.json` `status=fail` +
   `failure_phase=smoke` + `fail_reason` (+ `failing_cases`); skip wave 2.
-- **Smoke passed:** every `RESULT` line is `PASS` → proceed to wave 2.
+- **Smoke passed:** every `RESULT` line is `PASS` → proceed to Step 3.5 (conformance gate).
+
+### Step 3.5: Conformance gate (LLM check-adequacy review; gating)
+
+On a smoke pass, dispatch **one** `Task(run_in_background=True)` — the conformance reviewer —
+whose prompt points to [`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md)
+and hands over **paths only**: the `{workdir}` (filled `tb/uvm/**`), the scaffold-spec path
+(`testpoints[].inlined_check_hints[]`), the `verification-plan.md` path (§3 intent source),
+the DUT RTL filelist, and `{module}`. The main thread never reads the TB body. Apply R2 yield
+discipline: yield immediately; no other tool call in the same turn.
+
+On wake-up, reap the reviewer's `STATUS:` last line + its JSON line, assemble
+`{workdir}/conformance-review.json` (schema `references/conformance-review.schema.json`), and
+run `python3 ${CLAUDE_SKILL_DIR}/scripts/validate_conformance_review.py {workdir}/conformance-review.json`
+(non-zero exit → re-assemble the JSON and re-run; this is a main-thread fix, NOT a re-dispatch).
+Then apply the gate:
+
+- **Gate trips** iff any finding has `category ∈ {missing, wrong-behavior, fake-green, intent-defect}`
+  AND `severity ∈ {critical, important}`. On a trip: write `result.json` `status=fail` +
+  `stage_specific.failure_phase="conformance"` + `fail_reason` (flagged testpoints + dominant
+  category) + `stage_specific.conformance_findings` (the gating subset — informational, carried
+  to triage as `failure_signal`); list `conformance-review.json` in `artifacts[]`; **skip Step 4**
+  (do not dispatch verify), exactly as a smoke-gate fail skips wave 2.
+- **`unverifiable-arch` (any severity), `minor`, `unavailable` never trip** — advisory only:
+  record them in `conformance-review.json` and surface a `⚠ <tp> <category>` line in the
+  completion summary; proceed to Step 4.
+- **Review unavailable** (`STATUS: BLOCKED`, malformed/unparseable JSON, or any dispatch/reap/
+  aggregate/validate error) → **do NOT gate**: still write a minimal `conformance-review.json`
+  `{... "findings":[{"tp_id":"-","severity":"minor","category":"unavailable","location":"-","summary":"review (wave) failed: <reason>"}]}`
+  (so the absence of a real review is a first-class artifact, not invisible), note it in the
+  completion summary, and proceed to Step 4.
+- **Verdict integrity:** the main thread MUST NOT override a gate trip to pass (mirrors the
+  Step 6 anti-gaming rule).
+
+This stage runs **no in-skill fix-loop** — a conformance trip exits to the existing
+`failure_phase=conformance` → simulation-triage → route path. (Self-heal is deferred; see the
+DEFERRED conformance doc.)
 
 ### Step 4: Wave 2 — dispatch verify
 
@@ -212,6 +250,7 @@ required on every fail path; omit both on pass.
 | `prerequisite` | Step 1 reference missing / not pass, or `{rework_trigger}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | orchestrator |
 | `compile` | `make simv` failed (no smoke status); or `validate_sim_exit` thin-D1 file missing / `TODO(` residue | `compile_rounds` | smoke gate (Step 3) / finalize (Step 5) |
 | `smoke` | `make smoke` ran but a `RESULT` line is not `PASS` | `failing_cases` | smoke gate (Step 3) |
+| `conformance` | Conformance gate (Step 3.5): a finding `category ∈ {missing,wrong-behavior,fake-green,intent-defect}` at `critical`/`important` | `conformance_findings` | conformance gate (Step 3.5) |
 | `regress` | Any case fails in `make regress` | `failing_cases` | verify child |
 | `coverage` | Rule-B uncovered bins, or `validate_sim_exit` coverage gate (dim below threshold / not extractable) | `coverage_gaps` + `gaps_not_in_testpoints` or `gaps_in_testpoints` (Rule B); `coverage_extractable` + `dims` (validate_sim_exit) | verify child / finalize (Step 5) |
 
@@ -241,6 +280,7 @@ sub-Task.
 - [ ] The smoke gate (Step 3) was evaluated against the smoke run's own status (`regression-log.txt`
       `RESULT` lines / per-test `.status`), not the child's prose; the verify wave was dispatched only
       on a smoke pass.
+- [ ] On a smoke pass, the conformance reviewer (Step 3.5) was dispatched and reaped; `conformance-review.json` was written + schema-validated + listed in `artifacts[]`; the verify wave was dispatched only when the gate did not trip (or a review-unavailable fall-through); a gate trip wrote `status=fail` + `failure_phase=conformance`.
 - [ ] On a smoke pass, the verify sub-Task was dispatched and reaped.
 - [ ] `validate_sim_exit.py` was run at finalize and exited 0 (or `status=fail` was written with the
       appropriate `failure_phase`).
@@ -259,6 +299,8 @@ Each dispatched sub-Task ends with a harness-level `STATUS: DONE` + a single JSO
 ## Bundled References
 
 - [`references/env-task-contract.md`](references/env-task-contract.md) — wave-1 env-build sub-Task contract (bootstrap + fill + compile + smoke; defines `verify-handoff.json`).
+- [`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md) — Step 3.5 conformance reviewer sub-Task contract (gating; check-adequacy intent review).
+- [`references/conformance-review.schema.json`](references/conformance-review.schema.json) — schema for `conformance-review.json` (the gate source).
 - [`references/verify-task-contract.md`](references/verify-task-contract.md) — wave-2 verify sub-Task contract (regress + coverage iterate + summary).
 - [`references/inlined-check-hints.md`](references/inlined-check-hints.md) — cycle-accurate check authoring + anti-gaming rules (cited by env-build).
 - [`references/artifact-contract.md`](references/artifact-contract.md) — simulation artifact contract, split by owning phase.
