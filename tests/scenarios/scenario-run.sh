@@ -25,15 +25,33 @@ CLAUDE_MD="$REPO_ROOT/CLAUDE.md"
 SKILL="" SCEN="" MODE=""
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-	--skill) SKILL="$2"; shift 2 ;;
-	--scenario) SCEN="$2"; shift 2 ;;
-	--mode) MODE="$2"; shift 2 ;;
-	*) echo "unknown arg: $1" >&2; exit 2 ;;
+	--skill)
+		SKILL="$2"
+		shift 2
+		;;
+	--scenario)
+		SCEN="$2"
+		shift 2
+		;;
+	--mode)
+		MODE="$2"
+		shift 2
+		;;
+	*)
+		echo "unknown arg: $1" >&2
+		exit 2
+		;;
 	esac
 done
 [[ -n "$SKILL" && -n "$SCEN" && -n "$MODE" ]] ||
-	{ echo "usage: scenario-run.sh --skill <name> --scenario <id|path> --mode <red|green>" >&2; exit 2; }
-[[ "$MODE" == "red" || "$MODE" == "green" ]] || { echo "mode must be red|green" >&2; exit 2; }
+	{
+		echo "usage: scenario-run.sh --skill <name> --scenario <id|path> --mode <red|green>" >&2
+		exit 2
+	}
+[[ "$MODE" == "red" || "$MODE" == "green" ]] || {
+	echo "mode must be red|green" >&2
+	exit 2
+}
 
 # Resolve the scenario file (accept a path or a bare id like 01).
 if [[ -f "$SCEN" ]]; then
@@ -41,7 +59,10 @@ if [[ -f "$SCEN" ]]; then
 else
 	SCEN_FILE="$(find "$REPO_ROOT/tests/scenarios/$SKILL" -maxdepth 1 -name "scenario-${SCEN}*.md" 2>/dev/null | head -1)"
 fi
-[[ -f "$SCEN_FILE" ]] || { echo "scenario not found: $SCEN (skill $SKILL)" >&2; exit 2; }
+[[ -f "$SCEN_FILE" ]] || {
+	echo "scenario not found: $SCEN (skill $SKILL)" >&2
+	exit 2
+}
 
 TYPE="$(sed -n '/^---$/,/^---$/p' "$SCEN_FILE" | sed -n 's/^type:[[:space:]]*//p' | head -1)"
 
@@ -63,7 +84,10 @@ esac
 ARGS=(-p --model opus --no-session-persistence --allowedTools "" --append-system-prompt-file "$CLAUDE_MD")
 if [[ "$MODE" == "green" ]]; then
 	SKILL_MD="$REPO_ROOT/skills/$SKILL/SKILL.md"
-	[[ -f "$SKILL_MD" ]] || { echo "SKILL.md not found: $SKILL_MD" >&2; exit 2; }
+	[[ -f "$SKILL_MD" ]] || {
+		echo "SKILL.md not found: $SKILL_MD" >&2
+		exit 2
+	}
 	ARGS+=(--append-system-prompt-file "$SKILL_MD")
 fi
 
