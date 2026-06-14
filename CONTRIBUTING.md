@@ -73,6 +73,15 @@ For the environment contract (PATH entries, `LIB_DB`, `UVM_HOME`, `/bin/sh→bas
 
 For the plugin repository tree, see the "Repository layout" section of [README.md](README.md). Per-module workspace layout is documented in [ARCHITECTURE.md §7](ARCHITECTURE.md#7-workspace-layout).
 
+## Commit messages
+
+One inclusion test decides what goes in: **write only what a reader can't recover from a more authoritative source.** The diff already records *what changed*; CI records *whether it passes*. A message owns only what neither does:
+
+- **Subject** — imperative, intent not mechanism, with a `type:` prefix (`ci:`, `docs:`, `fix:`, `style:`, …). Self-evident commits can stop here.
+- **Body** (when warranted) — the *why*: problem + root cause (cause only when non-obvious). No file:line evidence (the diff has it); length scales with the change.
+- **Verification** — only for checks CI does *not* run: manual bring-up, a local EDA flow, a reproduced bug. Don't write "pytest passes" — CI is the authoritative pass/fail record.
+- **Trailers** — `Co-authored-by:`, issue refs.
+
 ## Coding Conventions
 
 Enforced by `pre-commit` (`ruff` + `shellcheck` + `shfmt`); run `pre-commit run --all-files` (or `pre-commit install` once for the per-commit hook). Config: `ruff.toml`, `.shellcheckrc`, `.pre-commit-config.yaml`.
