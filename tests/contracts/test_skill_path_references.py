@@ -76,7 +76,14 @@ def test_template_md_path_references_resolve(skill_name: str) -> None:
             cited = m.group(1)
             target = _resolve(skill_name, cited)
             if not target.exists():
-                missing.append((str(md.relative_to(tmpl_dir)), cited, str(target.relative_to(PLUGIN_ROOT))))
+                missing.append(
+                    (
+                        str(md.relative_to(tmpl_dir)),
+                        cited,
+                        str(target.relative_to(PLUGIN_ROOT)),
+                    )
+                )
     assert not missing, (
         f"templates markdown in {skill_name}: unresolved path refs — "
-        + "; ".join(f"{f}: `{c}` → {t}" for f, c, t in missing))
+        + "; ".join(f"{f}: `{c}` → {t}" for f, c, t in missing)
+    )

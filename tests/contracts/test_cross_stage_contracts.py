@@ -114,19 +114,30 @@ def test_result_path_references_match_state_dir(skill_name: str) -> None:
 
 def test_power_dut_path_matches_simulation_tb_top() -> None:
     """power's DUT scope must match simulation tb_top.sv's {{TOP}}_tb_top + u_dut SSoT."""
-    sim_tb = (PLUGIN_ROOT / "skills" / "simulation" / "templates" / "scaffold"
-              / "tb_top.sv").read_text(encoding="utf-8")
-    assert "{{TOP}}_tb_top" in sim_tb, "simulation tb_top module-name convention drifted"
-    assert re.search(r"\{\{TOP\}\}\s+u_dut\b", sim_tb), "simulation DUT instance name drifted from u_dut"
+    sim_tb = (
+        PLUGIN_ROOT / "skills" / "simulation" / "templates" / "scaffold" / "tb_top.sv"
+    ).read_text(encoding="utf-8")
+    assert "{{TOP}}_tb_top" in sim_tb, (
+        "simulation tb_top module-name convention drifted"
+    )
+    assert re.search(r"\{\{TOP\}\}\s+u_dut\b", sim_tb), (
+        "simulation DUT instance name drifted from u_dut"
+    )
 
     pa = PLUGIN_ROOT / "skills" / "power-analysis" / "templates"
     env_sh = (pa / "env.sh").read_text(encoding="utf-8")
     assert 'DUT_INST="u_dut"' in env_sh, "power env.sh DUT_INST drifted from u_dut"
-    assert 'TB_TOP="${TOP}_tb_top"' in env_sh, "power env.sh TB_TOP drifted from ${TOP}_tb_top"
+    assert 'TB_TOP="${TOP}_tb_top"' in env_sh, (
+        "power env.sh TB_TOP drifted from ${TOP}_tb_top"
+    )
     # power test template's toggle scope must use the same {TOP}_tb_top.u_dut convention.
     tmpl = (pa / "scaffold" / "power_test.sv.tmpl").read_text(encoding="utf-8")
     assert "{{TOP}}_tb_top.u_dut" in tmpl
     # ptpx.tcl must NOT hardcode the DUT path (S3: reads $STRIP_PATH, fail-loud if unset).
     ptpx = (pa / "scripts" / "ptpx.tcl").read_text(encoding="utf-8")
-    assert "_tb_top/u_dut" not in ptpx, "ptpx.tcl still hardcodes the DUT strip_path (should read $STRIP_PATH)"
-    assert "env(STRIP_PATH)" in ptpx, "ptpx.tcl must read strip_path from $STRIP_PATH (env.sh) — guard removed?"
+    assert "_tb_top/u_dut" not in ptpx, (
+        "ptpx.tcl still hardcodes the DUT strip_path (should read $STRIP_PATH)"
+    )
+    assert "env(STRIP_PATH)" in ptpx, (
+        "ptpx.tcl must read strip_path from $STRIP_PATH (env.sh) — guard removed?"
+    )

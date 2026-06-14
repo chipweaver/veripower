@@ -233,55 +233,104 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
         scenario_failed = False
 
         if size == 0:
-            failures.append({"id": sid, "phase": "run", "category": "saif_dump",
-                             "error_summary": f"SAIF empty or absent: {saif.name}",
-                             "log_excerpt": "gls-run-log.txt"})
+            failures.append(
+                {
+                    "id": sid,
+                    "phase": "run",
+                    "category": "saif_dump",
+                    "error_summary": f"SAIF empty or absent: {saif.name}",
+                    "log_excerpt": "gls-run-log.txt",
+                }
+            )
             scenario_failed = True
         else:
-            saif_artifacts.append({
-                "id": sid, "saif_path": f"saif/{sid}.saif",
-                "canonical_path": f"saif/_dedup/{seq}.saif", "format": "saif",
-                "corner_intent": corner, "sequence_ref": seq,
-                "duration_cycles": dur, "size_bytes": size})
+            saif_artifacts.append(
+                {
+                    "id": sid,
+                    "saif_path": f"saif/{sid}.saif",
+                    "canonical_path": f"saif/_dedup/{seq}.saif",
+                    "format": "saif",
+                    "corner_intent": corner,
+                    "sequence_ref": seq,
+                    "duration_cycles": dur,
+                    "size_bytes": size,
+                }
+            )
 
         if total is None:
-            summ = (f"power_flat.rpt not found: {flat.name}" if not flat.is_file()
-                    else f"power_flat.rpt missing Total Power: {flat.name}")
-            failures.append({"id": sid, "phase": "parse", "category": "ptpx_data",
-                             "error_summary": summ,
-                             "log_excerpt": f"reports_ptpx/{sid}/power_flat.rpt"})
+            summ = (
+                f"power_flat.rpt not found: {flat.name}"
+                if not flat.is_file()
+                else f"power_flat.rpt missing Total Power: {flat.name}"
+            )
+            failures.append(
+                {
+                    "id": sid,
+                    "phase": "parse",
+                    "category": "ptpx_data",
+                    "error_summary": summ,
+                    "log_excerpt": f"reports_ptpx/{sid}/power_flat.rpt",
+                }
+            )
             scenario_failed = True
 
         internal = three["internal_mw"] if three else None
         switching = three["switching_mw"] if three else None
         leakage = three["leakage_mw"] if three else None
 
-        if total is not None and three is not None and \
-                abs(total - (internal + switching + leakage)) > _EPS_MW:
-            failures.append({"id": sid, "phase": "parse", "category": "ptpx_data",
-                             "error_summary": f"power_mw {total} != internal+switching+leakage",
-                             "log_excerpt": f"reports_ptpx/{sid}/power_flat.rpt"})
+        if (
+            total is not None
+            and three is not None
+            and abs(total - (internal + switching + leakage)) > _EPS_MW
+        ):
+            failures.append(
+                {
+                    "id": sid,
+                    "phase": "parse",
+                    "category": "ptpx_data",
+                    "error_summary": f"power_mw {total} != internal+switching+leakage",
+                    "log_excerpt": f"reports_ptpx/{sid}/power_flat.rpt",
+                }
+            )
             scenario_failed = True
 
         # P1: a scenario with any deterministic failure has untrustworthy numbers → null them.
-        ppa_actual.append({"dim": "power_mw", "value": None if scenario_failed else total,
-                           "scenario_id": sid, "source": f"reports_ptpx/{sid}/power_flat.rpt"})
-        power_by_corner.append({
-            "scenario_id": sid,
-            "power_mw": None if scenario_failed else total,
-            "internal_mw": None if scenario_failed else internal,
-            "switching_mw": None if scenario_failed else switching,
-            "leakage_mw": None if scenario_failed else leakage,
-            "toggle_rate": rate, "toggle_region": region,
-            "corner_intent": corner, "sequence_ref": seq, "analysis_mode": "averaged"})
+        ppa_actual.append(
+            {
+                "dim": "power_mw",
+                "value": None if scenario_failed else total,
+                "scenario_id": sid,
+                "source": f"reports_ptpx/{sid}/power_flat.rpt",
+            }
+        )
+        power_by_corner.append(
+            {
+                "scenario_id": sid,
+                "power_mw": None if scenario_failed else total,
+                "internal_mw": None if scenario_failed else internal,
+                "switching_mw": None if scenario_failed else switching,
+                "leakage_mw": None if scenario_failed else leakage,
+                "toggle_rate": rate,
+                "toggle_region": region,
+                "corner_intent": corner,
+                "sequence_ref": seq,
+                "analysis_mode": "averaged",
+            }
+        )
 
     compile_info = {"vcs_version": _parse_vcs_version(workdir / "gls-compile-log.txt")}
 
     if failures:
-        payload = {"verdict": "fail", "failure_kind": "tooling",
-                   "saif_artifacts": saif_artifacts, "compile_info": compile_info,
-                   "failures": failures, "ppa_actual": ppa_actual,
-                   "violations": [], "power_by_corner": power_by_corner}
+        payload = {
+            "verdict": "fail",
+            "failure_kind": "tooling",
+            "saif_artifacts": saif_artifacts,
+            "compile_info": compile_info,
+            "failures": failures,
+            "ppa_actual": ppa_actual,
+            "violations": [],
+            "power_by_corner": power_by_corner,
+        }
         out_path.write_text(json.dumps(payload, indent=2) + "\n")
         f0 = failures[0]
         summ = f0["error_summary"]
@@ -293,7 +342,10 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
             token = "saif_empty"
         else:
             token = "unparseable"
-        print(f"[power_rpt_parser] FAIL={token}:{f0.get('id', '')} {summ}", file=sys.stderr)
+        print(
+            f"[power_rpt_parser] FAIL={token}:{f0.get('id', '')} {summ}",
+            file=sys.stderr,
+        )
         return 1
 
     violations: list[dict] = []
@@ -306,13 +358,25 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
             if tsid is not None and tsid != sid:
                 continue
             if actual > t["target"]:
-                violations.append({"dim": "power_mw", "target": t["target"],
-                                   "actual": actual, "scenario_id": sid})
+                violations.append(
+                    {
+                        "dim": "power_mw",
+                        "target": t["target"],
+                        "actual": actual,
+                        "scenario_id": sid,
+                    }
+                )
 
     verdict = "fail" if violations else "pass"
-    payload = {"verdict": verdict, "saif_artifacts": saif_artifacts,
-               "compile_info": compile_info, "failures": [], "ppa_actual": ppa_actual,
-               "violations": violations, "power_by_corner": power_by_corner}
+    payload = {
+        "verdict": verdict,
+        "saif_artifacts": saif_artifacts,
+        "compile_info": compile_info,
+        "failures": [],
+        "ppa_actual": ppa_actual,
+        "violations": violations,
+        "power_by_corner": power_by_corner,
+    }
     if violations:
         payload["failure_kind"] = "ppa"
     if not targets:
@@ -325,10 +389,15 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         prog="power_rpt_parser.py",
-        description="Parse PT-PX reports, assemble + judge power_mw PPA, write power-actual.json.")
+        description="Parse PT-PX reports, assemble + judge power_mw PPA, write power-actual.json.",
+    )
     ap.add_argument("--plan", required=True, type=Path)
     ap.add_argument("--workdir", required=True, type=Path)
-    ap.add_argument("--targets", default="[]", help="ppa_targets JSON array, verbatim from the prompt")
+    ap.add_argument(
+        "--targets",
+        default="[]",
+        help="ppa_targets JSON array, verbatim from the prompt",
+    )
     ap.add_argument("--out", required=True, type=Path)
     try:
         args = ap.parse_args(argv[1:])

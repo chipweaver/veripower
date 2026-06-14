@@ -1,5 +1,6 @@
 """Tests for skills/power-analysis/scripts/power_rpt_parser.py"""
 
+import json as _json
 import sys
 import textwrap
 from pathlib import Path
@@ -135,15 +136,14 @@ def test_parse_toggle_region(tmp_path):
     assert region == "0ns-10000ns"
 
 
-import json as _json
-
-
 def _flat_rpt(total_mw, internal=None, switching=None, leakage=None):
     lines = []
     if internal is not None:
-        lines += [f"Cell Internal Power = {internal:.4e} mW",
-                  f"Net Switching Power = {switching:.4e} mW",
-                  f"Cell Leakage Power = {leakage:.4e} mW"]
+        lines += [
+            f"Cell Internal Power = {internal:.4e} mW",
+            f"Net Switching Power = {switching:.4e} mW",
+            f"Cell Leakage Power = {leakage:.4e} mW",
+        ]
     lines.append(f"Total Power = {total_mw:.4e} mW")
     return "\n".join(lines) + "\n"
 
@@ -172,40 +172,84 @@ def _make_workdir(tmp_path, scenarios, sizes, flats):
 
 
 _SCEN = [
-    {"id": "S1", "sequence_ref": "idle_seq", "corner_intent": "TT@25C", "duration_cycles": 1000},
-    {"id": "S2", "sequence_ref": "busy_seq", "corner_intent": "TT@25C", "duration_cycles": 5000},
+    {
+        "id": "S1",
+        "sequence_ref": "idle_seq",
+        "corner_intent": "TT@25C",
+        "duration_cycles": 1000,
+    },
+    {
+        "id": "S2",
+        "sequence_ref": "busy_seq",
+        "corner_intent": "TT@25C",
+        "duration_cycles": 5000,
+    },
 ]
 
 
 def test_run_pass_within_targets(tmp_path):
-    wd, plan = _make_workdir(tmp_path, _SCEN, sizes={"S1": 2000, "S2": 4000},
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35), "S2": _flat_rpt(1.10, 0.45, 0.55, 0.10)})
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN,
+        sizes={"S1": 2000, "S2": 4000},
+        flats={
+            "S1": _flat_rpt(0.42, 0.05, 0.02, 0.35),
+            "S2": _flat_rpt(1.10, 0.45, 0.55, 0.10),
+        },
+    )
     out = tmp_path / "power-actual.json"
     rc = p.run(plan, wd, _json.dumps([{"dim": "power_mw", "target": 1.2}]), out)
     assert rc == 0
     data = _json.loads(out.read_text())
     assert data["verdict"] == "pass"
     assert data["violations"] == []
-    assert len(data["saif_artifacts"]) == len(data["ppa_actual"]) == len(data["power_by_corner"]) == 2
+    assert (
+        len(data["saif_artifacts"])
+        == len(data["ppa_actual"])
+        == len(data["power_by_corner"])
+        == 2
+    )
     assert data["compile_info"] == {"vcs_version": "L-2016.06_Full64"}
     assert "failure_kind" not in data
 
 
 def test_run_ppa_miss_is_exit0_fail(tmp_path):
-    wd, plan = _make_workdir(tmp_path, _SCEN, sizes={"S1": 2000, "S2": 4000},
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35), "S2": _flat_rpt(1.85, 0.62, 0.95, 0.28)})
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN,
+        sizes={"S1": 2000, "S2": 4000},
+        flats={
+            "S1": _flat_rpt(0.42, 0.05, 0.02, 0.35),
+            "S2": _flat_rpt(1.85, 0.62, 0.95, 0.28),
+        },
+    )
     out = tmp_path / "power-actual.json"
-    rc = p.run(plan, wd, _json.dumps([{"dim": "power_mw", "target": 1.2, "scenario_id": "S2"}]), out)
+    rc = p.run(
+        plan,
+        wd,
+        _json.dumps([{"dim": "power_mw", "target": 1.2, "scenario_id": "S2"}]),
+        out,
+    )
     assert rc == 0
     data = _json.loads(out.read_text())
     assert data["verdict"] == "fail" and data["failure_kind"] == "ppa"
     assert data["violations"] == [
-        {"dim": "power_mw", "target": 1.2, "actual": pytest.approx(1.85), "scenario_id": "S2"}]
+        {
+            "dim": "power_mw",
+            "target": 1.2,
+            "actual": pytest.approx(1.85),
+            "scenario_id": "S2",
+        }
+    ]
 
 
 def test_run_empty_targets_sets_gate_skipped(tmp_path):
-    wd, plan = _make_workdir(tmp_path, _SCEN[:1], sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)})
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN[:1],
+        sizes={"S1": 2000},
+        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+    )
     out = tmp_path / "power-actual.json"
     rc = p.run(plan, wd, "[]", out)
     assert rc == 0
@@ -215,8 +259,12 @@ def test_run_empty_targets_sets_gate_skipped(tmp_path):
 
 
 def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
-    wd, plan = _make_workdir(tmp_path, _SCEN[:1], sizes={"S1": 0},  # no saif file
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)})  # flat parses fine
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN[:1],
+        sizes={"S1": 0},  # no saif file
+        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+    )  # flat parses fine
     out = tmp_path / "power-actual.json"
     rc = p.run(plan, wd, "[]", out)
     assert rc != 0
@@ -224,15 +272,18 @@ def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
     data = _json.loads(out.read_text())
     assert data["failure_kind"] == "tooling"
     assert data["failures"][0]["category"] == "saif_dump"
-    assert data["failures"][0]["phase"] == "run"           # D: SAIF is a run product (no separate saif phase)
-    assert data["ppa_actual"][0]["value"] is None          # P1: nulled despite parseable flat
+    assert (
+        data["failures"][0]["phase"] == "run"
+    )  # D: SAIF is a run product (no separate saif phase)
+    assert data["ppa_actual"][0]["value"] is None  # P1: nulled despite parseable flat
     assert data["power_by_corner"][0]["power_mw"] is None
     assert all(a["id"] != "S1" for a in data["saif_artifacts"])
 
 
 def test_run_report_missing_token(tmp_path, capsys):
-    wd, plan = _make_workdir(tmp_path, _SCEN[:1], sizes={"S1": 2000},
-        flats={"S1": None})  # power_flat.rpt absent
+    wd, plan = _make_workdir(
+        tmp_path, _SCEN[:1], sizes={"S1": 2000}, flats={"S1": None}
+    )  # power_flat.rpt absent
     out = tmp_path / "power-actual.json"
     rc = p.run(plan, wd, "[]", out)
     assert rc != 0
@@ -241,8 +292,9 @@ def test_run_report_missing_token(tmp_path, capsys):
 
 
 def test_run_unparseable_total_token(tmp_path, capsys):
-    wd, plan = _make_workdir(tmp_path, _SCEN[:1], sizes={"S1": 2000},
-        flats={"S1": "no power numbers here\n"})
+    wd, plan = _make_workdir(
+        tmp_path, _SCEN[:1], sizes={"S1": 2000}, flats={"S1": "no power numbers here\n"}
+    )
     out = tmp_path / "power-actual.json"
     rc = p.run(plan, wd, "[]", out)
     assert rc != 0
@@ -251,8 +303,12 @@ def test_run_unparseable_total_token(tmp_path, capsys):
 
 
 def test_run_three_component_invariant_break(tmp_path, capsys):
-    wd, plan = _make_workdir(tmp_path, _SCEN[:1], sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(9.99, 0.05, 0.02, 0.35)})  # total != sum
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN[:1],
+        sizes={"S1": 2000},
+        flats={"S1": _flat_rpt(9.99, 0.05, 0.02, 0.35)},
+    )  # total != sum
     out = tmp_path / "power-actual.json"
     rc = p.run(plan, wd, "[]", out)
     assert rc != 0
@@ -260,8 +316,12 @@ def test_run_three_component_invariant_break(tmp_path, capsys):
 
 
 def test_run_unlinks_stale_out(tmp_path):
-    wd, plan = _make_workdir(tmp_path, _SCEN[:1], sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)})
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN[:1],
+        sizes={"S1": 2000},
+        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+    )
     out = tmp_path / "power-actual.json"
     out.write_text("STALE")
     p.run(plan, wd, "[]", out)
