@@ -35,8 +35,8 @@ This skill does not write any artifact and has no `{workdir}` concept. External 
 
 | Field | Source | Use |
 |---|---|---|
-| `failure_phase` | `Verification/simulation/result.json.stage_specific.failure_phase` | One of `prerequisite` / `compile` / `smoke` / `regress` / `coverage`. |
-| `failure_signal` | Phase-dependent | Log tail / `failing_cases` / `coverage_gaps` plus `gaps_not_in_testpoints`. |
+| `failure_phase` | `Verification/simulation/result.json.stage_specific.failure_phase` | One of `prerequisite` / `compile` / `smoke` / `regress` / `coverage` / `conformance`. |
+| `failure_signal` | Phase-dependent | Log tail / `failing_cases` / `coverage_gaps` plus `gaps_not_in_testpoints` / (conformance) `conformance_findings[]`. |
 | `repair_attempts` | Scaffold repairs + stimulus-iterate summary from the simulation stage | — |
 | `sim_plan_summary` | `Verification/simulation-plan/result.json.stage_specific` | — |
 | `rtl_summary` | `Design/rtl-design/result.json.stage_specific` | — |
@@ -62,6 +62,7 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
   - `regress` / `smoke` → cases = `failing_cases[]` (both run UVM test cases; the simulation stage writes `error_message` / `log_snippet` per failing case; consume the inline content from the prompt, do not read disk).
   - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail as a single synthetic case and describe it directly in the `## Root cause` prose — a single synthetic case emits **no** `## Findings`.
   - `coverage` → no `failing_cases[]` (regress already passed; only coverage is below target). cases = each gap bin in `coverage_gaps[]` (split by `gaps_in_testpoints` / `gaps_not_in_testpoints`); each gap bin is one case and becomes one `## Findings` bullet (a lone gap bin is a single case — describe it in `## Root cause` and omit `## Findings`, as in the degenerate path above).
+  - `conformance` → no `failing_cases[]` and no log tail (compile + smoke both passed). cases = each gating finding in `conformance_findings[]` (consume the inline content from the prompt); each finding is one case. Its `category` (`missing` / `wrong-behavior` / `fake-green` / `intent-defect`) is the reasoning key for Step 2 — there is no log to anchor on.
 
 ### Step 2: Per-case root-cause analysis
 
@@ -70,6 +71,7 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 - Take evidence along the Step 1 branch path:
   - Log-anchor path (`regress` / `compile` / `smoke` / `prerequisite`): locate the first occurrence of `UVM_ERROR` / `UVM_FATAL` / timeout from `failing_cases[i].error_message` / `log_snippet` or `fail_reason`.
   - Coverage path (`coverage`): classify each gap bin by whether it falls inside the scaffold testpoints (`gaps_in_testpoints` is pre-split; cross-reference the testpoints list in `sim_plan_summary`).
+  - Conformance path (`conformance`): there is no UVM_ERROR / gap-bin to anchor. Map each finding's `category` to a `root_cause_direction` via the "Conformance category → `root_cause_direction`" table in `references/fail-analysis-patterns.md`, then cluster + land one top-level `root_cause` per the existing attribution + tiebreak rule.
 - Classify the fault type and `root_cause_direction` per the classification table in `references/fail-analysis-patterns.md` (including the coverage-gap row).
 - Compare the expected behavior in `rtl_summary` / `sim_plan_summary` against the observed evidence to trace the discrepancy (only when both carry enough context).
 - Note the offending file and line (anchor), a fix suggestion, and the regression level (per the regression-level table).
