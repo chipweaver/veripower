@@ -17,7 +17,8 @@
             "failing_cases": {"type": "array", "items": {"type": "object"}},
             "coverage_gaps": {"type": "array", "items": {"type": "string"}},
             "gaps_not_in_testpoints": {"type": "array", "items": {"type": "string"}},
-            "gaps_in_testpoints": {"type": "array", "items": {"type": "string"}}
+            "gaps_in_testpoints": {"type": "array", "items": {"type": "string"}},
+            "conformance_findings": {"type": "array", "items": {"type": "object"}}
           },
           "additionalProperties": true
         }
