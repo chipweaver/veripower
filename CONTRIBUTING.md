@@ -82,6 +82,15 @@ One inclusion test decides what goes in: **write only what a reader can't recove
 - **Verification** — only for checks CI does *not* run: manual bring-up, a local EDA flow, a reproduced bug. Don't write "pytest passes" — CI is the authoritative pass/fail record.
 - **Trailers** — `Co-authored-by:`, issue refs.
 
+## Pull requests
+
+A PR adds one authoritative source on top of the commits: the commit list itself. So the same inclusion test gains a clause — **write only what the diff, CI, *and the individual commit messages* don't already give.** What's left is PR-unique: the umbrella *why* and reviewer guidance.
+
+- **Title** — like a commit subject (imperative, intent, `type:` prefix), but the *umbrella* intent of the whole PR, not a copy of one commit. If the repo squash-merges, this becomes the merge commit's subject — keep it convention-clean.
+- **Description** — the umbrella why (what these commits deliver together) plus reviewer guidance: where to start, what's risky, what's deliberately out of scope, what to verify by hand. Link issues with `Closes #N`. Don't re-list files (the diff has them), don't say "tests pass" (CI does), don't re-narrate each commit (the commit list does).
+
+One PR, one logical change; length scales with the change. The `.github/PULL_REQUEST_TEMPLATE.md` prefills this shape.
+
 ## Coding Conventions
 
 Enforced by `pre-commit` (`ruff` + `shellcheck` + `shfmt`); run `pre-commit run --all-files` (or `pre-commit install` once for the per-commit hook). Config: `ruff.toml`, `.shellcheckrc`, `.pre-commit-config.yaml`.
