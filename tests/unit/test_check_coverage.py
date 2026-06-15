@@ -618,7 +618,7 @@ def test_purity_impure_top_child_with_clean_sibling():
 
 
 def test_purity_missing_module_field():
-    # missing 'module' (the v4 SSoT top) must fail with a clear cause, not a
+    # missing 'module' (the manifest SSoT top) must fail with a clear cause, not a
     # misattributed "covered by 0 children".
     import check_coverage as cc
 

@@ -78,8 +78,8 @@ tool (no Level-2 dispatch).
    reaches the wave-2 verify run. (Note: `make smoke` runs earlier in wave 1, *before* this gate —
    the savings are that no regress/coverage wave runs on a hollow TB, not that smoke is skipped.)
    **Limitation (by design):** thin-D1 is presence-only and intentionally does **not** resist marker
-   renaming / empty-stub / plausible-but-wrong fills — TB↔plan semantic conformance is Part B (U6),
-   not this gate.
+   renaming / empty-stub / plausible-but-wrong fills — TB↔plan semantic conformance is the
+   conformance-review gate's job, not this gate.
 
 The smoke result is judged by the orchestrator's **deterministic gate** (the smoke run's own
 `regression-log.txt` `RESULT` lines / per-test `.status` files in `{workdir}`), **not** by this

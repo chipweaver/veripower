@@ -109,6 +109,81 @@ def test_verdict_inconsistent_exit_1(tmp_path):
     assert "conformance-review inconsistent" in r.stderr
 
 
+def test_gate_trips_on_critical_gating_finding(tmp_path):
+    doc = {
+        "schema_version": 1,
+        "stage": "simulation",
+        "module": "m",
+        "reviewed_testpoints": ["TP-1"],
+        "verdict": "concerns",
+        "has_critical": True,
+        "findings": [
+            {
+                "tp_id": "TP-1",
+                "severity": "critical",
+                "category": "missing",
+                "location": "x",
+                "summary": "y",
+            }
+        ],
+    }
+    r = _run(tmp_path, doc)
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == {
+        "gate": "trip",
+        "flagged": ["TP-1"],
+        "dominant_category": "missing",
+    }
+
+
+def test_gate_clears_on_advisory_only(tmp_path):
+    # unverifiable-arch never gates, even at critical severity.
+    doc = {
+        "schema_version": 1,
+        "stage": "simulation",
+        "module": "m",
+        "reviewed_testpoints": ["TP-1"],
+        "verdict": "concerns",
+        "has_critical": True,
+        "findings": [
+            {
+                "tp_id": "TP-1",
+                "severity": "critical",
+                "category": "unverifiable-arch",
+                "location": "x",
+                "summary": "y",
+            }
+        ],
+    }
+    r = _run(tmp_path, doc)
+    assert r.returncode == 0
+    assert json.loads(r.stdout)["gate"] == "clear"
+
+
+def test_gate_clears_on_minor_severity(tmp_path):
+    # a gating category at minor severity does not trip.
+    doc = {
+        "schema_version": 1,
+        "stage": "simulation",
+        "module": "m",
+        "reviewed_testpoints": ["TP-1"],
+        "verdict": "concerns",
+        "has_critical": False,
+        "findings": [
+            {
+                "tp_id": "TP-1",
+                "severity": "minor",
+                "category": "missing",
+                "location": "x",
+                "summary": "y",
+            }
+        ],
+    }
+    r = _run(tmp_path, doc)
+    assert r.returncode == 0
+    assert json.loads(r.stdout)["gate"] == "clear"
+
+
 def test_has_critical_inconsistent_exit_1(tmp_path):
     doc = {
         "schema_version": 1,

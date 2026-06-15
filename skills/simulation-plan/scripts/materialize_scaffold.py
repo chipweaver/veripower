@@ -17,8 +17,8 @@ group, has a duplicate group, a width is non-numeric, an interface row has an em
 there is no primary-relationship clock, there is no reset-role interface, or a testpoint's
 covers[] names a check_id absent from plan-data.
 
-Pairs with: derive_scaffold.py (simulation stage) consumes the materialized
-interface.signals / transaction.fields via its _agent_io() helper.
+Pairs with: derive_scaffold.py (the downstream scaffold derivation) consumes the
+materialized interface.signals / transaction.fields via its _agent_io() helper.
 """
 
 import argparse

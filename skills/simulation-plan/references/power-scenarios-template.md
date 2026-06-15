@@ -59,14 +59,14 @@ When the specification mentions a low-power feature (e.g., retention mode) that 
 
 `power_scenarios[].sequence_ref` is a reference into `sequences[].name`; **it is not an independent namespace.**
 
-The simulation stage materializes SV classes only from `sequences[]` (`tb/uvm/seq/{module}_{name}_seq.sv`, compiled into `{module}_tb_pkg`); it **does not read** `power_scenarios[]`. The `emit_power_tests.py` step in `power-analysis` resolves `power_scenarios[].sequence_ref` against the already-materialized `{module}_<sequence_ref>_seq` classes — if the ref is not registered in `sequences[]`, the simulation stage will not materialize it, and `power-analysis` emit validation fails closed.
+SV classes (`tb/uvm/seq/{module}_{name}_seq.sv`, compiled into `{module}_tb_pkg`) are materialized only from `sequences[]` — `power_scenarios[]` is **not** a materialization source. The downstream power-scenario emit resolves `power_scenarios[].sequence_ref` against the already-materialized `{module}_<sequence_ref>_seq` classes — if the ref is not registered in `sequences[]`, no SV class is materialized for it, so emit validation fails closed.
 
 | Situation | How to fill |
 |---|---|
 | Power scenario stimulus equals some functional sequence | `sequence_ref` = that functional sequence's `sequences[].name`. |
 | Power scenario needs independent stimulus (typical: clock-off / sustained idle / sustained saturated traffic / DVFS switching) | First add a new entry to `sequences[]` (with `name` + `agent`), then have `power_scenarios[].sequence_ref` reference that `name`. |
 
-**Forbidden:** inventing a new `sequence_ref` name **without syncing the same name into `sequences[]`** — the simulation stage will not materialize such a sequence, and `power-analysis` validation will always fail.
+**Forbidden:** inventing a new `sequence_ref` name **without syncing the same name into `sequences[]`** — without a backing `sequences[]` entry no SV class is materialized for it, so emit validation always fails.
 
 The template example name `<module>_traffic_200mbps_seq` and the like remain compliant — provided they are **simultaneously** registered as a `sequences[].name` entry (with the corresponding agent). Naming independence ≠ registration optional.
 

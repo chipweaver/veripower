@@ -53,9 +53,9 @@ The Orchestrator agent decides; `state.py` and skills execute; disk persists.
 │  start             │  │    fan-out → design.md       │  │  Debug: read-only triage │
 │  complete          │  │    design.md / manifest.json │  │    → returns ANALYSIS    │
 │  rework            │  │    SDC / SGDC / result.json  │  │                          │
-│  convergence       │  │  simulation-plan:            │  │  Must NOT call state.py  │
-│  log               │  │    plan generation +         │  │  or make routing calls   │
-│                    │  │    review loop               │  │  (see §6.1 for full)     │
+│  invalidate-stage  │  │  simulation-plan:            │  │  Must NOT call state.py  │
+│  convergence       │  │    plan generation +         │  │  or make routing calls   │
+│  log               │  │    review loop               │  │  (see §6.1 for full)     │
 │                    │  │  rtl-design:                 │  │                          │
 │                    │  │    per-child RTL fan-out     │  │                          │
 │                    │  │  simulation:                 │  │                          │

@@ -27,7 +27,7 @@ consumer (orchestrator, tests, debugging tools) validates against it.
 
 Schemas for `asic/<module>/events.jsonl` entries (one schema file per event
 type: `dispatch`, `outcome`, `rework_decision`, `cascade`, `escalation`,
-`debug_dispatch`, `debug_result`). Events are written by `state.py` (via Orchestrator)
+`invalidate`, `debug_dispatch`, `debug_result`). Events are written by `state.py` (via Orchestrator)
 and **readable by anyone debugging or auditing a pipeline run** — not just the
 writer.
 

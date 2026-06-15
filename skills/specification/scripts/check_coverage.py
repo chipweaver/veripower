@@ -514,7 +514,7 @@ def compute_purity(manifest: dict) -> list:
     """Mirror of validate_rtl_exit.py:49-61: exactly one child covers <TOP>, and that
     child's rtl_modules == [<TOP>] (no bundled logic). <TOP> = manifest['module'].
 
-    `module` is the v4 manifest SSoT top (same source derive_constraints uses as <TOP>);
+    `module` is the manifest SSoT top (same source derive_constraints uses as <TOP>);
     fail loud with a clear cause if it is absent rather than misattributing it as miscoverage
     (validate_rtl_exit takes <TOP> from a required CLI arg, which cannot be empty)."""
     top = manifest.get("module")

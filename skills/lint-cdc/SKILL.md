@@ -72,6 +72,8 @@ Then pre-check the external references: `Design/rtl-design/result.json.status=pa
 
 When `{orchestrator_context_path}` is injected, Read that sibling file first as a fix-scope hint. It takes priority over both the trigger content (trigger-driven path) and the external-reference diff (incremental-update path) to further narrow the modification scope.
 
+Steps 2–7 are mechanically identical across all three branches; the branch selected here sets only the **fix scope** — trigger-driven narrows the Step 4/5 triage to the trigger's `violations[]`, incremental-update to the `Design/rtl-design/result.json` diff, first-run covers everything — and `{orchestrator_context_path}` narrows it further when injected.
+
 ### Step 2: Bootstrap
 
 Run `bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_lint_cdc.sh --module {module} --workdir {workdir} [--top <TOP>]`. The script deploys the templates to `{workdir}`, substitutes the `MY_TOP` placeholder, and fills `scripts/constraints.sgdc` from the SGDC seed (warm → cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `orchestrator-context.md` does NOT count as "deployed"). When `--top` is omitted, infer it from `Design/rtl-design/README.md` or `filelist.txt` (inference failure aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files this stage edits are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.

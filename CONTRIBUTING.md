@@ -51,7 +51,7 @@ Testing a VeriPower skill **is** TDD applied to the skill document. The test *su
 
 **Scope (the CLAUDE.md-baseline rule):** target each skill's **marginal contribution over `CLAUDE.md`** — its mechanisms, exact gate sequences, thresholds — not high-level judgment that `CLAUDE.md` + Opus already nails. Skills with no rationalizable discipline beyond `CLAUDE.md` get few or zero scenarios; never manufacture pressure. (specification, probed 2026-06-10, was toothless across three invariants — a near-empty corpus is an honest outcome, not a gap.)
 
-**Scenario types:** `pressure` (`DECISION: A/B/C`) and `missing-info` (`ACTION: PROCEED/BLOCKED`) self-report a tag the runner extracts. `open` (answer key in `## 期望行为` / `## 反模式`) has no tag — human/main-agent judgment only.
+**Scenario types:** `pressure` (`DECISION: A/B/C`) and `missing-info` (`ACTION: PROCEED/BLOCKED`) self-report a tag the runner extracts. `open` (answer key in `## Expected Behavior` / `## Anti-Pattern`) has no tag — human/main-agent judgment only.
 
 **Regression (after editing a skill):** re-run that skill's scenarios `--mode green`. A previously-passing scenario that now fails means the edit reopened a hole — fix before merging.
 

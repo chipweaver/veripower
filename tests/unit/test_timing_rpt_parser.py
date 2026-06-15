@@ -221,7 +221,7 @@ def test_run_marker_vs_sign_contradiction_exit3(tmp_path):
 
 def test_run_violated_marker_with_positive_slack_exit3(tmp_path):
     # Symmetric to the MET-with-negative case: a VIOLATED marker carrying a clearly
-    # positive slack is a parse surprise -> exit 3 (spec §7 requires both directions).
+    # positive slack is a parse surprise -> exit 3 (both directions must be reported).
     contradiction = re.sub(
         r"slack \(MET\)\s+0\.20",
         "slack (VIOLATED)                                     2.5000",

@@ -240,7 +240,7 @@ omitted). When `status=fail`, only `stage_specific.fail_reason` is required.
   polarity, clock relationships); engineering soundness — the semantic "not contradictory"
   judgment the token check cannot catch.
 - No Iron Rule or Red Flag was triggered.
-- `result.json` written; its **verdict** is schema-validated by `state.py` (not this skill).
+- `result.json` written; its **verdict** is schema-validated externally, not by this skill.
 
 ## Return Contract
 

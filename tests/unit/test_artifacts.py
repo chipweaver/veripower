@@ -186,7 +186,7 @@ class TestPromoteAtomic:
         """A producer that self-lists result.json in artifacts[] must NOT crash
         promote with FileExistsError — result.json is already hardlinked at the
         top of the canonical view. Regression for the 11x promote_failed churn
-        in the sdc_controller-20260529 run (spec §5 item 3)."""
+        in the sdc_controller-20260529 run."""
         run_dir = self._setup_run(
             tmp_path, monkeypatch, "lint-cdc", 1, artifacts_list=["result.json"]
         )

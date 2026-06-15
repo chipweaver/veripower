@@ -136,7 +136,8 @@ context paths). The main thread never reads the TB it produces.
 
 The env-build child self-gates its `STATUS: DONE` on a presence-only thin-D1 check
 (`validate_sim_exit.py --thin-only`: no surviving TODO, all required scaffold files present) so a
-hollow TB never reaches the wave-2 verify run; semantic TB↔plan conformance remains a Part B concern.
+hollow TB never reaches the wave-2 verify run; semantic TB↔plan conformance is out of scope for this
+presence-only check (it is the conformance gate's job).
 
 After dispatching, apply R2 yield discipline: yield immediately; no other tool call in the same turn.
 On wake-up, reap the env-build child's harness `STATUS:` last line + its JSON line. If
@@ -173,28 +174,28 @@ On wake-up, reap the reviewer's `STATUS:` last line + its JSON line, assemble
 `{workdir}/conformance-review.json` (schema `references/conformance-review.schema.json`), and
 run `python3 ${CLAUDE_SKILL_DIR}/scripts/validate_conformance_review.py {workdir}/conformance-review.json`
 (non-zero exit → re-assemble the JSON and re-run; this is a main-thread fix, NOT a re-dispatch).
-Then apply the gate:
+On exit 0 it prints a one-line gate verdict `{"gate": "trip"|"clear", "flagged": [...],
+"dominant_category": ...}` — the mechanical category × severity reduction (per the reviewer
+contract's "Severity & gating"), computed by the script, not judged by eye. Apply it:
 
-- **Gate trips** iff any finding has `category ∈ {missing, wrong-behavior, fake-green, intent-defect}`
-  AND `severity ∈ {critical, important}`. On a trip: write `result.json` `status=fail` +
-  `stage_specific.failure_phase="conformance"` + `fail_reason` (flagged testpoints + dominant
-  category) + `stage_specific.conformance_findings` (the gating subset — informational, carried
-  to triage as `failure_signal`); list `conformance-review.json` in `artifacts[]`; **skip Step 4**
-  (do not dispatch verify), exactly as a smoke-gate fail skips wave 2.
-- **`unverifiable-arch` (any severity), `minor`, `unavailable` never trip** — advisory only:
-  record them in `conformance-review.json` and surface a `⚠ <tp> <category>` line in the
-  completion summary; proceed to Step 4.
+- **`gate=trip`:** write `result.json` `status=fail` + `stage_specific.failure_phase="conformance"`
+  + `fail_reason` (built from `flagged` + `dominant_category`) + `stage_specific.conformance_findings`
+  (the gating subset — informational, carried to triage as `failure_signal`); list
+  `conformance-review.json` in `artifacts[]`; **skip Step 4** (do not dispatch verify), exactly as a
+  smoke-gate fail skips wave 2.
+- **`gate=clear`:** proceed to Step 4. Advisory findings (`unverifiable-arch` any severity, `minor`,
+  `unavailable`) never trip the gate — record them in `conformance-review.json` and surface a
+  `⚠ <tp> <category>` line in the completion summary.
 - **Review unavailable** (`STATUS: BLOCKED`, malformed/unparseable JSON, or any dispatch/reap/
   aggregate/validate error) → **do NOT gate**: still write a minimal `conformance-review.json`
   `{... "findings":[{"tp_id":"-","severity":"minor","category":"unavailable","location":"-","summary":"review (wave) failed: <reason>"}]}`
-  (so the absence of a real review is a first-class artifact, not invisible), note it in the
-  completion summary, and proceed to Step 4.
-- **Verdict integrity:** the main thread MUST NOT override a gate trip to pass (mirrors the
+  (so the absence of a real review is a first-class artifact, not invisible; the validator reports
+  `gate=clear` for it), note it in the completion summary, and proceed to Step 4.
+- **Verdict integrity:** the main thread MUST NOT override a `gate=trip` to pass (mirrors the
   Step 6 anti-gaming rule).
 
 This stage runs **no in-skill fix-loop** — a conformance trip exits to the existing
-`failure_phase=conformance` → simulation-triage → route path. (Self-heal is deferred; see the
-DEFERRED conformance doc.)
+`failure_phase=conformance` → simulation-triage → route path. (Self-heal is deferred.)
 
 ### Step 4: Wave 2 — dispatch verify
 

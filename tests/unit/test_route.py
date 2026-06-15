@@ -1,4 +1,4 @@
-"""Exhaustive routing tests for framework/scripts/route.py (spec §5.1).
+"""Exhaustive routing tests for framework/scripts/route.py.
 
 route() is a pure total function over closed enums, so the whole decision
 space is enumerable. Each case asserts both `decision` and `rule`.

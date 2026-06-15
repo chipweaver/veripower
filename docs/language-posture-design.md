@@ -52,6 +52,12 @@ Examples of Surface 1:
 - `tests/scenarios/<stage>/scenario-*.md` frontmatter keys (parsed by
   the eval framework).
 
+**Note — matcher pattern data.** A Surface-1 script may carry Surface-2 literal tokens as
+*matcher pattern data* when its job is to detect user-language content — e.g. a coverage
+detector whose by-reference regex includes the Chinese forms of "see brainstorm" to catch a
+non-English by-reference jump in a Surface-2 `design.md`. Such tokens are matched data, not
+authored Surface-1 prose; the script's own Claude-facing output (stdout/stderr) stays English.
+
 ## 4. Surface 2 — user-data interfaces (bilingual)
 
 Content that is free-prose, flows between Claude and the user, or is

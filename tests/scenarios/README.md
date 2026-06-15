@@ -49,15 +49,15 @@ can read no repo file — only the context the runner injects. That is the only 
 |---|---|---|
 | `pressure` | `DECISION: A/B/C` (first line) | tag vs `expected_choice` (deterministic) |
 | `missing-info` | `ACTION: PROCEED/BLOCKED` (first line) | tag vs expected (deterministic) |
-| `open` | none | human / main-agent judgment + meta-test (answer key in `## 期望行为` / `## 反模式`) |
+| `open` | none | human / main-agent judgment + meta-test (answer key in `## Expected Behavior` / `## Anti-Pattern`) |
 
 `pressure` + `missing-info` are the regression-replayable subset (re-run `--mode green` after editing
 a skill; a previously-passing scenario that now fails means the edit reopened a hole). `open` is
 judgment-only.
 
 Scenario bodies are bilingual: Chinese narrative + an English pressure-injection block (project
-Surface-2 user-data posture). The answer-key sections (`## Expected Behavior` / `## 期望行为` /
-`## 反模式`) are truncated out of the injected prompt by the runner — never part of what the agent sees.
+Surface-2 user-data posture). The answer-key sections (`## Expected Behavior` / `## Anti-Pattern`)
+are truncated out of the injected prompt by the runner — never part of what the agent sees.
 
 ## Provenance stamps
 

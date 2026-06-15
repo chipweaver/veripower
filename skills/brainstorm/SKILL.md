@@ -20,8 +20,8 @@ inside its sub-agent contexts (it is the pipeline's input, not a pipeline stage)
 ## Iron Rule
 
 - This skill is **pre-pipeline**: it writes exactly one artifact, `asic/{module}/brainstorm.md`
-  (creating `asic/{module}/` if absent, before any `state.py init`). It writes **no**
-  `result.json` and calls **no** `state.py` command — it is not a pipeline stage.
+  (creating `asic/{module}/` if absent, before the module enters the pipeline). It writes
+  **no** `result.json` and is **not** a pipeline stage — it runs before any pipeline state exists.
 - **Do not author design.md / RTL / constraints / any downstream artifact.** This skill's
   output is the brainstorm only; `design.md` is derived from it downstream.
 - `brainstorm.md` is **immutable once approved** for the duration of a run. A requirements
@@ -44,8 +44,7 @@ No fixed external inputs. Revision mode additionally reads the existing
 |---|---|---|
 | `asic/{module}/brainstorm.md` | Custom markdown; frontmatter `Status: draft\|approved`; descriptive ATX sections per the checklist's Section Layout | The pipeline's frozen input (`design.md` is derived from it downstream). |
 
-`brainstorm.md` lives at the **module root** (sibling to `task.json` / `events.jsonl`),
-NOT under any stage workdir — it is the framework's input, not a stage's product. There
+`brainstorm.md` lives at the **module root**, NOT under any stage workdir — it is the framework's input, not a stage's product. There
 is **no** `version` frontmatter field (re-derivation after a revision is given naturally
 by the fresh run's empty workdir).
 
@@ -103,7 +102,7 @@ whole doc, so a changed dimension contradicting an untouched one is caught).
   candidates; feature IDs / interface-group names / scenario IDs are stable named
   anchors per the checklist's "Subsection IDs" section).
 - The brainstorm body was **not** echoed into the conversation (path-handoff only).
-- No `result.json` written; no `state.py` command issued.
+- No `result.json` written; no pipeline-state command issued.
 
 ## Return Contract
 

@@ -1,4 +1,4 @@
-"""Routing-table drift guard for route.py (spec §5.2).
+"""Routing-table drift guard for route.py.
 
 Locks route.py's maps against the schemas / DAG so a drift fails CI:
  - PA_CATEGORY keys == power-analysis failures[].category enum

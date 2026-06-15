@@ -6,8 +6,8 @@ and BEFORE the verify wave. This review is **gating**: findings above the thresh
 `SKILL.md` Step 3.5 set the stage `status=fail` (`failure_phase=conformance`). A dispatched
 sub-Task MUST NOT call the Task tool (no Level-2 dispatch) and MUST NOT call `state.py`.
 
-Mechanism = a hybrid of rtl-design's deterministic conformance gate (4.3) and its advisory
-semantic review (4.4): an LLM intent reviewer whose output is used as a gate.
+Mechanism = a hybrid of rtl-design's deterministic conformance gate and its advisory
+semantic review: an LLM intent reviewer whose output is used as a gate.
 
 ## Inputs handed to the child (paths only — the main thread does not read these bodies)
 
@@ -62,7 +62,7 @@ Check **both directions**:
 Other categories:
 - **`unverifiable-arch`** — the testpoint has no drive/observe path; it cannot be exercised
   without an architecture change (e.g. a reset/clock hardwired in `tb_top` with no agent
-  takeover path). This is the §6.7 / F-14 class. (Advisory — see "Severity & gating".)
+  takeover path). (Advisory — see "Severity & gating".)
 - **`intent-defect`** — `inlined_check_hints[]` is present but itself semantically wrong or
   self-contradictory (references a non-existent signal, formula contradicts the spec). This
   is an upstream plan defect. (NOTE: a testpoint with non-empty `covers[]` but EMPTY/missing
@@ -72,7 +72,7 @@ Other categories:
 coverage sufficiency (the verify phase covers it); lint / CDC / timing / synthesizability /
 pure syntax (other stages / the compiler); whether the DUT RTL has a bug (that is the
 rtl-design domain — you judge whether the *check* adequately verifies the intent, not whether
-the RTL is correct); over-engineering (deferred to U6-fixloop).
+the RTL is correct); over-engineering (deferred).
 
 ## Severity & gating (how the main thread uses your output)
 

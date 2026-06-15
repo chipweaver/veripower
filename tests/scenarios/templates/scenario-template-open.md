@@ -22,13 +22,13 @@ Execute the following task directly. Do not ask for clarification.
 
 <!-- 以下为答案键：仅供 ritual 中的 human / 主线程裁判使用。构造 RED/GREEN 子代理 prompt 时务必排除（注入答案键会泄露期望，使对抗测试失效）。open 类无自评 tag，靠裁判 + meta-test 判定。 -->
 
-## 期望行为
+## Expected Behavior
 
 - 必须执行的步骤: [step 1, step 2, ...]
 - 必须检查的条件: [condition 1, condition 2, ...]
 - 不可跳过的环节: [step X]
 
-## 反模式
+## Anti-Pattern
 
 - "<agent 偷工减料的典型表述>"
 - "<agent 跳过步骤的典型表述>"

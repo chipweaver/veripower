@@ -1,4 +1,4 @@
-"""Schema-vs-early-fail uniformity (charter §4.2 G1).
+"""Schema-vs-early-fail uniformity.
 
 Lock the if/then-gated pass-only required fields pattern. Without this,
 a stage shipping unconditional `required: [ppa_actual]` (or similar
@@ -59,3 +59,64 @@ def test_schema_validates_minimum_fail_envelope(stage, tmp_path, monkeypatch):
 
     valid, err = state.validate_result("M", stage)
     assert valid, f"stage {stage}: minimum status=fail envelope rejected: {err}"
+
+
+# A status=fail + failure_kind=ppa must additionally carry the measured numbers
+# (ppa_actual + violations), per ARCHITECTURE.md §6.2 (uniform across the three
+# failure_kind stages). timing-analysis locks its own variant in test_timing_schema.py;
+# synthesis + power-analysis are gated here.
+_PPA_FAIL_NUMBERS = {
+    "synthesis": {
+        "ppa_actual": [{"dim": "area_um2", "value": 1234.0}],
+        "violations": [{"dim": "area_um2", "target": 1000.0, "actual": 1234.0}],
+    },
+    "power-analysis": {
+        "ppa_actual": [
+            {"dim": "power_mw", "value": 12.0, "scenario_id": "s1", "source": "pt"}
+        ],
+        "violations": [
+            {"dim": "power_mw", "target": 10.0, "actual": 12.0, "scenario_id": "s1"}
+        ],
+    },
+}
+
+
+def _write_fail(tmp_path, stage, stage_specific):
+    rdir = state._result_path("M", stage).parent
+    rdir.mkdir(parents=True, exist_ok=True)
+    (rdir / "result.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "stage": stage,
+                "module": "M",
+                "produced_at": "2026-06-15T00:00:00Z",
+                "status": "fail",
+                "artifacts": [],
+                "stage_specific": stage_specific,
+            }
+        )
+    )
+
+
+@pytest.mark.parametrize("stage", sorted(_PPA_FAIL_NUMBERS))
+def test_ppa_fail_requires_numbers(stage, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    state.cmd_init("M")
+    numbers = _PPA_FAIL_NUMBERS[stage]
+
+    # Without the measured numbers, a failure_kind=ppa fail is rejected.
+    _write_fail(
+        tmp_path, stage, {"fail_reason": "PPA gate exceeded", "failure_kind": "ppa"}
+    )
+    valid, _ = state.validate_result("M", stage)
+    assert not valid, f"stage {stage}: ppa fail without ppa_actual/violations accepted"
+
+    # With ppa_actual + violations, it validates.
+    _write_fail(
+        tmp_path,
+        stage,
+        {"fail_reason": "PPA gate exceeded", "failure_kind": "ppa", **numbers},
+    )
+    valid, err = state.validate_result("M", stage)
+    assert valid, f"stage {stage}: ppa fail with numbers rejected: {err}"

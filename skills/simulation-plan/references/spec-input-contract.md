@@ -185,8 +185,8 @@ and tags each hint with a `child` field.
 
 - The `simulation-plan` stage derives `verification-plan.md` (human-readable review anchor, with testpoints and power-scenario sections) and `scaffold-specification.json` (machine-read contract, with `agents` / `sequences` / `tests` / `testpoints[]` / `power_scenarios[]`) from the fields above.
 - When §1.3 contains only the three columns `ID` / `Feature` / `Description`, the derivation script falls back to a minimum testpoint set; it **cannot** generate transactions / agents / seqs / checkers / RMs automatically. When the §1.4.1 Top-Level IO table and the §1.5 timing-scenarios table are missing, `simulation-plan` exits with `result.json status=fail` + `stage_specific.fail_reason`; do not "stretch" to generate.
-- Non-target capabilities (e.g., "does not support" / "does not include") should still appear in the §1.3 feature table so the simulation stage can derive negative tests and result summaries from them.
-- **Without structured verification inputs, do not enter automated environment generation.** The agent should fall back to the `specification` stage to request more inputs.
+- Non-target capabilities (e.g., "does not support" / "does not include") should still appear in the §1.3 feature table so negative tests and result summaries can be derived from them.
+- **Without structured verification inputs, do not enter automated environment generation.** The spec is inadequate and must be completed (more inputs gathered) before planning proceeds.
 
 ---
 
@@ -251,4 +251,4 @@ and tags each hint with a `child` field.
 - When reviewing `design.md` §1.4.2 (fan-out mode only), confirm: each cross-child wire is declared once with Producer / Consumer / Protocol / Timing; `<child>.md §2 Interface` only references — never redefines.
 - When reviewing `design.md` §1.5, confirm: the timing-scenarios table includes ScenarioID / trigger / expected / timing constraint.
 - When reviewing per-child `<child>.md §5` verification-hint tables, confirm: `ImplementationDetailVerbatim` (the cycle-accurate RM `predict()` formula source — preferred; the ≤20-word `ImplementationDetail` summary alone is NOT sufficient), `ReferenceRule` (RM core input), `Observable` (monitor observation point), `Latency` / `ResetBehavior` (checker boundary conditions) are present.
-- Before `specification` is set to `pass`, ensure that the downstream simulation stage will not need to ask the user "how exactly is this feature tested," "what fields are in the transaction," "what does the checker compare," "what is the RM rule."
+- Ensure the spec answers — before it is finalized — "how exactly is this feature tested," "what fields are in the transaction," "what does the checker compare," "what is the RM rule"; planning must not need to ask the user later.

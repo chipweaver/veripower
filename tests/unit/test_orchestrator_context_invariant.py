@@ -13,7 +13,7 @@ I1 — Round-trip: content in → file at returned path contains the content
 I2 — Absent when no source provided
 I3 — Returned path is module-root-relative (no leading `asic/`, no /)
 I4 — Path includes the dispatched run number
-I5 — Not promoted to canonical (spec §3.8 ii): the per-dispatch hint
+I5 — Not promoted to canonical: the per-dispatch hint
      stays under `runs/<N>/`; `Design/<stage>/orchestrator-context.md` is
      never created by the promote step.
 I6 — Compute-phase write (line 410-417 in state.py): if file write would
@@ -85,7 +85,7 @@ def test_i4_path_includes_dispatched_run_number(tmp_path, monkeypatch) -> None:
 
 
 def test_i5_not_promoted_to_canonical(tmp_path, monkeypatch) -> None:
-    """Per spec §3.8 ii: orchestrator-context.md is an ephemeral per-dispatch
+    """orchestrator-context.md is an ephemeral per-dispatch
     hint and must NOT be copied to the canonical Design/<stage>/ root by the
     promote step. The run-specific copy persists for forensic inspection.
     """
@@ -102,7 +102,7 @@ def test_i5_not_promoted_to_canonical(tmp_path, monkeypatch) -> None:
     # canonical Design/specification/ root.
     assert not (canonical_dir / "orchestrator-context.md").exists(), (
         "orchestrator-context.md must not be promoted to canonical "
-        "(spec §3.8 ii — ephemeral per-dispatch hint)"
+        "(ephemeral per-dispatch hint)"
     )
     # The run-specific copy is retained.
     assert (canonical_dir / "runs" / str(run) / "orchestrator-context.md").is_file()
@@ -112,7 +112,7 @@ def test_i6_no_state_mutation_on_write_failure(tmp_path, monkeypatch) -> None:
     """If the orchestrator-context.md write raises, cmd_start must propagate
     without appending a dispatch event or flipping the stage to in_progress.
 
-    Achieved by spec §3.3's compute-phase ordering: the file write happens
+    Achieved by the compute-phase ordering: the file write happens
     before the event append and state mutation (state.py:413-417).
     """
     monkeypatch.chdir(tmp_path)

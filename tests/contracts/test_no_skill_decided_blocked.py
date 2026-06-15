@@ -1,4 +1,4 @@
-"""No skill-decided BLOCKED — schema-layer lock (charter §4.2 G4).
+"""No skill-decided BLOCKED — schema-layer lock.
 
 VeriPower architectural invariant: only state.py program-exception paths
 emit BLOCKED-class sentinels. Skills emit `status ∈ {pass, fail}` in
@@ -14,7 +14,7 @@ discriminator to lock the invariant in schema form.
 
 Scope: this lint covers the *schema layer* only. SKILL.md text-layer
 regression (the 34fc144 form) is review-detected, not statically
-lintable — see spec §4.3 G4-text row for why.
+lintable.
 """
 
 import json

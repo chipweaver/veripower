@@ -243,10 +243,10 @@ def cmd_start(
     workdir_path.mkdir(parents=True, exist_ok=True)
 
     # === three-stage: compute → events first → state after ===
-    # spec §3.3: orchestrator_context per-dispatch ephemeral hint channel.
+    # orchestrator_context: per-dispatch ephemeral hint channel.
     # Orchestrator passes content (already extracted from --orchestrator-context FILE/-
     # in the CLI layer); state.py code-writes a sibling file in the run workdir
-    # and returns the relative path. Not promoted to canonical (spec §3.8 ii).
+    # and returns the relative path. Not promoted to canonical.
     # File-write happens in the compute phase BEFORE events-first/state-after so that an
     # OSError (disk full, permissions) propagates out of cmd_start before any
     # persistent state is mutated — cleanest failure mode.
@@ -306,7 +306,7 @@ def _find_rework_trigger(module: str, target_stage: str) -> str | None:
     canonical result.json:
         <area>/<failed_stage>/result.json
 
-    Post spec §2 (2026-05-06), canonical is hardlinked to the latest run's
+    Since 2026-05-06, canonical is hardlinked to the latest run's
     result.json regardless of pass/fail outcome, so this path always points
     at real fail data when target_stage's failed_stage just failed.
     """
@@ -552,7 +552,7 @@ def cmd_complete(
 
     def _non_success_finalize(reason_text: str, result_status: str) -> dict:
         """Unified rule for blocked/invalid/discarded(prereq_changed).
-        Final status derived from canonical.status field (spec §2.3)."""
+        Final status derived from canonical.status field."""
         # 1. Compute final state in-memory
         canonical_rj = _result_path(module, stage)
         st["in_flight"] = [x for x in st["in_flight"] if x["run"] != run]
@@ -578,7 +578,7 @@ def cmd_complete(
         write_task(module, task)
         return {"action": result_status, "result_status": result_status, "run": run}
 
-    # Reap derive-mode (spec §6.1): when --outcome is omitted, resolve the 3-way
+    # Reap derive-mode: when --outcome is omitted, resolve the 3-way
     # (pass/fail/blocked) from THIS run's result.json here, so the Orchestrator
     # never reads the 5-7KB result.json just to extract .status. Missing /
     # unparseable / malformed-status → blocked (resolved before validate_result,

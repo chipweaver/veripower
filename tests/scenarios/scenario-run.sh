@@ -67,11 +67,11 @@ fi
 TYPE="$(sed -n '/^---$/,/^---$/p' "$SCEN_FILE" | sed -n 's/^type:[[:space:]]*//p' | head -1)"
 
 # Body = post-frontmatter content, truncated BEFORE the answer-key heading
-# (## Expected Behavior / ## 期望行为 / ## 反模式) — never inject the answer key.
+# (## Expected Behavior / ## Anti-Pattern) — never inject the answer key.
 BODY="$(awk '
 	BEGIN { n = 0 }
 	/^---$/ { n++; next }
-	n >= 2 && (index($0, "## Expected Behavior") == 1 || index($0, "## 期望行为") == 1 || index($0, "## 反模式") == 1) { exit }
+	n >= 2 && (index($0, "## Expected Behavior") == 1 || index($0, "## Anti-Pattern") == 1) { exit }
 	n >= 2 { print }
 ' "$SCEN_FILE")"
 

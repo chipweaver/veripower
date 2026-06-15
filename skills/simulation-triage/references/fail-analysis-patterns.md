@@ -36,7 +36,7 @@ the other phases.
 
 | `category` | `root_cause_direction` | Rationale |
 |---|---|---|
-| `missing` / `wrong-behavior` / `fake-green` | `tb` (scaffold mistake) → stage `simulation` | env authored an inadequate check; with no in-skill fix-loop this routes to ESCALATE (operator). |
+| `missing` / `wrong-behavior` / `fake-green` | `tb` (scaffold mistake) → stage `simulation` | env authored an inadequate check; there is no in-skill fix-loop. |
 | `intent-defect` | `tb` (plan problem) → stage `simulation-plan` | the `inlined_check_hints[]` itself is wrong; fix the plan. |
 
 > `unverifiable-arch` / `unavailable` are advisory and never reach triage (the gate does not

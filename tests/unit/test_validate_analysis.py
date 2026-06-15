@@ -29,7 +29,7 @@ def _run(payload: dict):
 
 
 def test_minimal_complete_only_root_cause_exits_zero():
-    """瘦路由层:complete 仅需 root_cause(+ analysis_state),不再需要 groups/recommendations/root_cause_summary。"""
+    """Thin routing layer: complete needs only root_cause (+ analysis_state), no longer groups/recommendations/root_cause_summary."""
     r = _run({"analysis_state": "complete", "root_cause": "rtl-design"})
     assert r.returncode == 0, r.stderr
 
@@ -70,7 +70,7 @@ def test_root_cause_outside_enum_exits_nonzero():
 
 
 def test_advisory_keys_rejected_by_additional_properties_false():
-    """additionalProperties:false —— advisory 内容活在散文里,不准塞进路由 JSON。"""
+    """additionalProperties:false — advisory content lives in prose, not stuffed into the routing JSON."""
     payload = {
         "analysis_state": "complete",
         "root_cause": "rtl-design",

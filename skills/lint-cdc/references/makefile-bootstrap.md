@@ -23,7 +23,7 @@ bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_lint_cdc.sh \
 
 | Path | Source | Trigger condition | Behavior |
 |---|---|---|---|
-| warm | `Design/lint-cdc/scripts/constraints.sgdc` | The SGDC with depth annotations persisted by the previous lint-cdc run (`cmd_complete pass` and `result.json.artifacts[]` lists this entry). | Copy to `scripts/constraints.sgdc`; do **not** substitute `MY_TOP`. The next iteration inherits every already-converged `sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`. |
+| warm | `Design/lint-cdc/scripts/constraints.sgdc` | The SGDC with depth annotations persisted by a previous passing lint-cdc run (the run listed this entry in `result.json.artifacts[]`). | Copy to `scripts/constraints.sgdc`; do **not** substitute `MY_TOP`. The next iteration inherits every already-converged `sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`. |
 | cold | `Design/specification/constraints/<TOP>.sgdc` | No warm available, but the specification stage has persisted a seed. | Copy to `scripts/constraints.sgdc`; do **not** substitute `MY_TOP`. This round must re-iterate the depth annotations. |
 | template | `templates/scripts/constraints.sgdc` | Neither warm nor cold available (ad-hoc invocation / template testing). | Use the template with `MY_TOP` substituted; clock / reset constraints must be added by hand. |
 

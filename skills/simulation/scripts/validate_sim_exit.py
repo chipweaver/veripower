@@ -3,7 +3,7 @@
 
 Checks, against the produced workdir + scaffold-specification.json + defaults.yaml:
   thin-D1  materialization defense: every sequences[]/agents[] SV file present; no TODO residue
-           (any form -- a completed TB carries zero "TODO"; canonical templates pre-cleaned in Task 2b).
+           (any form -- a completed TB carries zero "TODO"; canonical templates carry none).
   D5       coverage extractable: structural-coverage.json present with an aggregate block.
   D6       coverage gate: each defaults.yaml.coverage_thresholds dim >= threshold
            (a dim whose measured value is null/absent -- e.g. a DUT with no FSM -- is skipped).
@@ -25,9 +25,9 @@ import yaml
 
 # Policy: ANY "TODO" in a materialized TB == unfinished work -> fail (a completed TB carries
 # zero "TODO" anywhere). Match the bare word so no stub format escapes the gate. This REQUIRES
-# the canonical templates to carry no non-marker "TODO" prose -- see Task 2b (base_seq.sv
-# reworded to NOTE; the 10 scaffold provenance headers reworded off "TODO"). After Task 2b the
-# only "TODO" left in a *generated* file is an UNFILLED fill marker (TODO(sequence)/TODO(rm)/
+# the canonical templates to carry no non-marker "TODO" prose (base_seq.sv uses NOTE; the
+# scaffold provenance headers avoid "TODO"), so the only "TODO" left in a *generated* file is
+# an UNFILLED fill marker (TODO(sequence)/TODO(rm)/
 # the no-seq test's "TODO: Start sequences here." ...), which is exactly what we want to fail on.
 _TODO_RE = re.compile(r"TODO")
 
@@ -41,7 +41,7 @@ def _load_thresholds(path: Path) -> dict:
 def thin_d1(workdir: Path, scaffold: dict) -> list[str]:
     """Materialization defense: required SV files present + no TODO residue (any form). Most
     files are guaranteed by derive_scaffold; this catches agent-side deletion/overwrite + any
-    unfilled stub. Canonical templates carry zero non-marker TODO prose (Task 2b), so a match
+    unfilled stub. Canonical templates carry zero non-marker TODO prose, so a match
     here is always a real unfilled marker."""
     module = scaffold.get("module", "")
     errs: list[str] = []
@@ -145,7 +145,7 @@ def main() -> int:
         # env-exit gate: materialization only. No coverage, no result.json write -- the
         # env subagent gates its own STATUS: DONE on this exit code; finalize's full run
         # remains the authoritative result.json verdict. thin-D1 fail -> failure_phase=compile
-        # (the existing mapping; Part A does not design a conformance route -- see Part B).
+        # (the existing mapping; this presence gate does not itself route conformance).
         verdict = {
             "unmaterialized": [e for e in d1_errs if "missing" in e],
             "todo_residue": [e for e in d1_errs if "TODO" in e],

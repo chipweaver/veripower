@@ -1112,7 +1112,7 @@ class TestCmdComplete:
         """End-to-end left-shift: a result.json that self-lists result.json is
         rejected at validation (action=invalid), NOT at promote (promote_failed).
         This turns the 11x promote_failed churn from sdc_controller-20260529 into a
-        single clean validation failure (spec §5 item 3 / §3.1 Driver 1)."""
+        single clean validation failure."""
         self._setup_in_progress(tmp_path, monkeypatch, "lint-cdc")
         # Overwrite the run result.json: schema-valid except artifacts self-lists result.json.
         write_run_result("m", "lint-cdc", 1, artifacts=[{"path": "result.json"}])
@@ -1126,7 +1126,7 @@ class TestCmdComplete:
         self, tmp_path, monkeypatch
     ):
         """Every cmd_complete return carries result_status mirroring the event log
-        (spec §6.1 附带工作项). stale_dispatch → result_status='discarded'."""
+        (an ancillary work item). stale_dispatch → result_status='discarded'."""
         monkeypatch.chdir(tmp_path)
         state.cmd_init("m")
         result = state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
@@ -1178,7 +1178,7 @@ class TestCmdComplete:
         assert result["result_status"] == "promote_failed"
 
     def test_complete_derive_pass_no_outcome(self, tmp_path, monkeypatch):
-        """Derive mode (spec §6.1): omit --outcome → cmd_complete reads the run
+        """Derive mode: omit --outcome → cmd_complete reads the run
         result.json itself and resolves pass. Orchestrator reads nothing."""
         self._setup_in_progress(
             tmp_path, monkeypatch
@@ -1262,7 +1262,7 @@ class TestCmdComplete:
         self, tmp_path, monkeypatch
     ):
         """Valid JSON but not an object (e.g. null / [] from a truncated write) →
-        blocked, not an uncaught AttributeError (spec §6.1 crash robustness)."""
+        blocked, not an uncaught AttributeError (crash robustness)."""
         self._setup_in_progress(tmp_path, monkeypatch)
         run_rj = (
             state._result_path("m", "rtl-design").parent / "runs" / "1" / "result.json"
@@ -2724,7 +2724,7 @@ class TestEnvelopeSchema:
     ):
         """artifacts[] must not contain result.json: it is auto-promoted and would
         collide with the canonical result.json during promote. The envelope rejects
-        it at validation (left-shift), before promote is ever attempted (spec §5#3)."""
+        it at validation (left-shift), before promote is ever attempted."""
         state = self._make_module(tmp_path, monkeypatch)
         self._write_result(
             tmp_path,
@@ -3227,7 +3227,7 @@ class TestCmdCompleteCLISmoke:
 
     def test_cli_complete_derives_without_outcome(self, tmp_path, monkeypatch):
         """End-to-end: `state.py complete` with NO --outcome derives the result from
-        the run's result.json (spec §6.1)."""
+        the run's result.json."""
         import subprocess
         import sys
 
