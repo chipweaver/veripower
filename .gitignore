@@ -16,3 +16,8 @@ docs/superpowers/
 
 # Local test outputs
 tests/scenarios/results/
+
+# grill-with-docs outputs — glossary/ADRs kept out of VCS by convention
+CONTEXT.md
+CONTEXT-MAP.md
+docs/adr/
