@@ -123,7 +123,8 @@ def main() -> int:
     )
     p.add_argument("--scaffold", required=True, help="scaffold-specification.json path")
     p.add_argument(
-        "--thresholds", help="defaults.yaml path (coverage_thresholds); required unless --thin-only"
+        "--thresholds",
+        help="defaults.yaml path (coverage_thresholds); required unless --thin-only",
     )
     p.add_argument(
         "--thin-only",
@@ -157,7 +158,9 @@ def main() -> int:
                 + "\nFill the scaffold (no TODO may survive; all required files present), "
                 "then re-run. Budget-exhausted-with-residue -> failure_phase=compile."
             )
-        print("validate_sim_exit --thin-only: OK (thin-D1 clean -- materialization complete)")
+        print(
+            "validate_sim_exit --thin-only: OK (thin-D1 clean -- materialization complete)"
+        )
         print(json.dumps(verdict))
         return 0
 

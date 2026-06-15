@@ -121,7 +121,9 @@ RENDER_SPEC = {
         {
             "name": "drv",
             "mode": "active",
-            "interface": {"signals": [{"name": "wdata", "width": 32}, {"name": "wen", "width": 1}]},
+            "interface": {
+                "signals": [{"name": "wdata", "width": 32}, {"name": "wen", "width": 1}]
+            },
             "transaction": {"fields": [{"name": "wdata", "width": 32, "rand": True}]},
         },
         {
@@ -164,7 +166,9 @@ def test_render_tb_pkg_includes_passive_driver(tmp_path):
     pkg = (out / "tb/uvm/pkg/tb_pkg.sv").read_text(encoding="utf-8")
     assert '`include "m_obs_driver.sv"' in pkg
     # driver-before-agent ordering within each agent's include group
-    assert pkg.index('`include "m_obs_driver.sv"') < pkg.index('`include "m_obs_agent.sv"')
+    assert pkg.index('`include "m_obs_driver.sv"') < pkg.index(
+        '`include "m_obs_agent.sv"'
+    )
 
 
 def test_render_produces_full_tree(tmp_path):
@@ -193,7 +197,9 @@ def _collision_spec():
     import copy
 
     spec = copy.deepcopy(RENDER_SPEC)
-    spec["agents"][1]["interface"]["signals"] = [{"name": "wdata", "width": 32}]  # dup of drv
+    spec["agents"][1]["interface"]["signals"] = [
+        {"name": "wdata", "width": 32}
+    ]  # dup of drv
     return spec
 
 
@@ -208,7 +214,9 @@ def test_collision_writes_nothing(tmp_path):
     with pytest.raises(SystemExit) as ei:
         ds.run_scaffold(plan, TEMPLATE_DIR, out)
     assert "wdata" in str(ei.value)
-    rendered = list(out.rglob("*.sv")) + list(out.rglob("*.svh")) if out.exists() else []
+    rendered = (
+        list(out.rglob("*.sv")) + list(out.rglob("*.svh")) if out.exists() else []
+    )
     assert rendered == [], f"half-tree left on disk: {[str(p) for p in rendered]}"
 
 
@@ -219,8 +227,12 @@ def test_render_no_dangling_driver_type_for_passive(tmp_path):
     include exist for the passive agent."""
     out = _render(tmp_path)
     agent_sv = (out / "tb/uvm/agent/m_obs_agent.sv").read_text(encoding="utf-8")
-    assert "m_obs_driver  m_driver;" in agent_sv  # the unconditional declaration is present...
-    assert (out / "tb/uvm/agent/m_obs_driver.sv").is_file()  # ...and its type is rendered
+    assert (
+        "m_obs_driver  m_driver;" in agent_sv
+    )  # the unconditional declaration is present...
+    assert (
+        out / "tb/uvm/agent/m_obs_driver.sv"
+    ).is_file()  # ...and its type is rendered
     pkg = (out / "tb/uvm/pkg/tb_pkg.sv").read_text(encoding="utf-8")
     assert '`include "m_obs_driver.sv"' in pkg  # ...and included before use
 
@@ -239,4 +251,6 @@ def test_render_tb_pkg_include_topology(tmp_path):
         "generated_tests.svh",
     ]
     positions = [pkg.index(tok) for tok in order]
-    assert positions == sorted(positions), f"tb_pkg include order broke: {list(zip(order, positions))}"
+    assert positions == sorted(positions), (
+        f"tb_pkg include order broke: {list(zip(order, positions))}"
+    )

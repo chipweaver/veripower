@@ -163,9 +163,7 @@ def _check_list_or_omitted(value, field: str) -> None:
         )
 
 
-def validate_ports(
-    agents: list[dict], clk_port_name: str, rst_port_name: str
-) -> str:
+def validate_ports(agents: list[dict], clk_port_name: str, rst_port_name: str) -> str:
     """Validate per-agent signal names and build the DUT port-map block.
 
     Fail loud (sys.exit) on a signal colliding with the clock/reset port name or
@@ -274,7 +272,9 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
     rm_inports = rm_cfg.get("inports", [])
     _check_list_or_omitted(rm_inports, "rm.inports")
 
-    pending: list[tuple[Path, str]] = []  # (dest, content) staged in memory; written atomically at the end
+    pending: list[
+        tuple[Path, str]
+    ] = []  # (dest, content) staged in memory; written atomically at the end
 
     # --- Per-agent files ---
     for agent in agents:

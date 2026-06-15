@@ -168,9 +168,18 @@ def test_verdict_json_on_stdout(tmp_path):
 
 def _run_thin(wd, check=True):
     return subprocess.run(
-        ["python3", str(SCRIPT), "--workdir", str(wd),
-         "--scaffold", str(wd / "scaffold-specification.json"), "--thin-only"],
-        capture_output=True, text=True, check=check,
+        [
+            "python3",
+            str(SCRIPT),
+            "--workdir",
+            str(wd),
+            "--scaffold",
+            str(wd / "scaffold-specification.json"),
+            "--thin-only",
+        ],
+        capture_output=True,
+        text=True,
+        check=check,
     )
 
 
