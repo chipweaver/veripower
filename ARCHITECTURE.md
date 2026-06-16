@@ -6,6 +6,7 @@
 
 ## Contents
 
+- [Glossary](#glossary)
 - [1. Why VeriPower](#1-why-veripower)
 - [2. System model](#2-system-model)
 - [3. Pipeline DAG](#3-pipeline-dag)
@@ -13,7 +14,25 @@
 - [5. Orchestrator decision loop](#5-orchestrator-decision-loop)
 - [6. Subagent contracts](#6-subagent-contracts)
 - [7. Workspace layout](#7-workspace-layout)
-- [Appendix A: Replay algorithm](#appendix-a-replay-algorithm)
+
+---
+
+## Glossary
+
+Core coined terms, each defined once here and elaborated in the linked section. Localized contracts (per-stage `result.json` fields, CLI flags, the routing table) are not duplicated in this document — they live in their owning schema / `--help` / `route.py`.
+
+| **Term** | **One-line meaning** |
+|---|---|
+| **Orchestrator** | The `design-flow` agent in the main conversation; the only role that calls `state.py`, dispatches `Task()`s, and talks to the user. (§2.3) |
+| **reducer** | `orchestrate.py next` — reads on-disk state and returns exactly one action per call; the Orchestrator is its thin executor. (§5) |
+| **main-thread-loaded** | A stage loaded via `Skill()` in the Orchestrator's own thread instead of via `Task()` — `specification`, `simulation-plan`, `rtl-design`, `simulation`. (§2.2) |
+| **Level-1 sub-Task** | A `Task()` a main-thread skill dispatches for intra-stage fan-out. Level-2 (a sub-Task dispatching a further `Task()`) is forbidden — the audit boundary. (§2.2, §6.3.1) |
+| **reap** | Closing an in-flight run with `state.py complete` (normally no `--outcome`), letting `cmd_complete` derive the outcome from the run's `result.json`. How every dispatch finishes and how a crashed run is repaired. (§5.1) |
+| **promote** | The per-entry hardlink merge from `runs/<N>/` to the canonical stage dir, run by `cmd_complete` on pass *and* fail. Idempotent. (§7.2) |
+| **cascade-stale** | BFS that sets every `pass`/`fail`/`in_progress` descendant of a just-passed or rework-targeted stage to `stale`. (§4.4) |
+| **status × freshness** | A stage's two independent attributes: `status ∈ {not_started, in_progress, pass, fail}`, `freshness ∈ {clean, stale}`. (§4.2) |
+| **in-flight / run** | `run` (= `current_run`) is the monotonically increasing dispatch number; `in_flight[]` lists runs not yet reaped. (§4.3) |
+| **determinism boundary** | The split everything hangs off: judgment in the Orchestrator, state in `state.py`, deterministic computation in sibling scripts (`route.py`, `orchestrate.py`, `convergence`). (§2.4) |
 
 ---
 
@@ -21,7 +40,11 @@
 
 VeriPower separates the deterministic state machine from the LLM Orchestrator: routing errors cannot corrupt completed work, because `state.py` never forgets. That separation is load-bearing, not incidental — every architectural decision in this document hangs off it.
 
-Three core commitments make this work: (1) A deterministic Python state machine (`state.py`, 8 commands, single-file CLI) owns all stage state, prerequisite checks, cascade-stale propagation, and event-log appends; the Orchestrator LLM owns rework decisions, escalation, and rework-context authoring, while the deterministic computations it acts on — convergence counting, rework-target selection, and the full control-loop decision (`orchestrate.py next` reducer) — live in sibling scripts the Orchestrator executes — this is the "determinism boundary". (2) Each stage carries a `status × freshness` pair (`in_progress/stale` legalizes rework arriving mid-run), and DAG-encoded prerequisites drive cascade-stale propagation structurally — the `distinct in-flight ≤ 2` concurrency cap emerges from topology, eliminating manual stage tracking. (3) `events.jsonl` is the audit truth; `task.json` is a rebuildable projection; the Orchestrator can author only 3 of the 8 typed event schemas via `cmd_log` — the other 5 are state-transition side-effects rejected if injected externally, making every AI routing decision tamper-evident.
+Three commitments make it work; each is elaborated where it lives:
+
+- **A deterministic core owns all state.** `state.py` owns stage state, prerequisite checks, cascade-stale, and event appends; the Orchestrator owns only judgment (rework, escalation, context-authoring), and the deterministic computations it acts on live in sibling scripts it executes — the *determinism boundary* (§2.4).
+- **Concurrency falls out of topology.** Each stage carries `status × freshness`, and DAG prerequisites drive cascade-stale; the `distinct in-flight ≤ 2` cap emerges from the DAG, not from policy (§3.2).
+- **The event log is tamper-evident.** `events.jsonl` is the audit truth and `task.json` a rebuildable projection; the Orchestrator may author only 3 of the 8 event types, so every AI routing decision is on the record (§4.5).
 
 VeriPower is not a service: no daemon, no DB, no HTTP — disk files are the database. It is not vendor-locked: skills are swappable at the `SKILL_OF` dispatch seam. It is not a one-shot agent: the flow tolerates multi-hour rework storms where stages fail, cascade-stale dependents, and retry across Orchestrator passes.
 
@@ -45,17 +68,17 @@ The Orchestrator agent decides; `state.py` and skills execute; disk persists.
    │                           │ (main-thread loaded)           │
    ▼                           ▼                                ▼
 ┌────────────────────┐  ┌─────────────────────────────┐  ┌──────────────────────────┐
-│  state.py          │  │  Main-thread skill           │  │  Stage / Debug Subagent  │
-│  (Python)          │  │  (runs in Orchestrator's     │  │  (isolated context)      │
+│ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent  │
+│ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)      │
 │                    │  │   main thread)               │  │                          │
-│  init              │  │                              │  │  Stage: executes stage   │
-│  status            │  │  specification:              │  │    → writes result.json  │
-│  start             │  │    fan-out → design.md       │  │  Debug: read-only triage │
-│  complete          │  │    design.md / manifest.json │  │    → returns ANALYSIS    │
-│  rework            │  │    SDC / SGDC / result.json  │  │                          │
-│  invalidate-stage  │  │  simulation-plan:            │  │  Must NOT call state.py  │
-│  convergence       │  │    plan generation +         │  │  or make routing calls   │
-│  log               │  │    review loop               │  │  (see §6.1 for full)     │
+│ state.py:          │  │                              │  │  Stage: executes stage   │
+│   state + 8 cmds   │  │  specification:              │  │    → writes result.json  │
+│ orchestrate.py:    │  │    fan-out → design.md       │  │  Debug: read-only triage │
+│   next (reducer)   │  │    design.md / manifest.json │  │    → returns ANALYSIS    │
+│ route.py:          │  │    SDC / SGDC / result.json  │  │                          │
+│   rework target    │  │  simulation-plan:            │  │  Must NOT call state.py  │
+│                    │  │    plan generation +         │  │  or make routing calls   │
+│                    │  │    review loop               │  │  (see §6.1 for full)     │
 │                    │  │  rtl-design:                 │  │                          │
 │                    │  │    per-child RTL fan-out     │  │                          │
 │                    │  │  simulation:                 │  │                          │
@@ -84,14 +107,18 @@ The three dispatch paths from the Orchestrator:
 
 ### 2.2 Main-thread-loaded stages
 
-`veripower:specification`, `veripower:simulation-plan`, `veripower:rtl-design`, and `veripower:simulation` are the only four stages in the pipeline that are NOT dispatched via `Task()`. All four are loaded in the Orchestrator's main thread via `Skill()`. The trigger is not identical across the four:
+`veripower:specification`, `veripower:simulation-plan`, `veripower:rtl-design`, and `veripower:simulation` are the only four stages NOT dispatched via `Task()` — all four load in the Orchestrator's main thread via `Skill()`. A `Task()` subagent can neither interact with the user mid-run nor dispatch further `Task()`s, and each of these four needs one of those two capabilities.
 
-- **specification** consumes a frozen, approved `brainstorm.md` and is a Level-0 fan-out dispatcher (two sub-Task waves — decompose + per-child — plus main-thread pre/post-gate scripts and two path-handoff gates) — main-thread-loaded for fan-out dispatch authority (same class as `rtl-design`), NOT for brainstorm dialogue. `derive_child_ports.py` runs main-thread before the partition gate (feeds the gate summary; no body read). `check_coverage.py` runs main-thread as a pre-gate (verdict feeds the design.md approval gate). `derive_constraints.py` runs main-thread post-gate and generates the complete SDC/SGDC as a pure derivation of the approved §1.6 + §1.4.1 design tables.
-- **simulation-plan** drives an iterative plan review loop with the user — multi-turn user dialogue.
-- **rtl-design** needs main-thread loading not for user dialogue but for **fan-out Level-1 sub-Task dispatch authority**: it always dispatches one Level-1 sub-Task per child (`N = len(manifest.children[])`, including the top-integration child; no N==1 inline exemption), and Task subagents are forbidden from dispatching further Task subagents (Level-2 forbidden, audit boundary). Main-thread loading is therefore the only way to retain dispatch authority while preserving the audit boundary.
-- **simulation** needs main-thread loading for the same reason as `rtl-design` — **fan-out Level-1 sub-Task dispatch authority**, not user dialogue (it runs none). It dispatches two sequential sub-Task waves sharing one stage `{workdir}`: an `env-child` (bootstrap + fill scaffold + compile + smoke) → a deterministic main-thread smoke gate → a `verify-child` (regress + coverage). Its two-wave-plus-mid-gate shape is closest to `specification`'s (decompose + per-child around a partition gate); the dispatch class is identical to `rtl-design`'s. As with `rtl-design`, Level-2 dispatch is forbidden (audit boundary), so main-thread loading is the only way to retain dispatch authority while preserving that boundary.
+> **Contract:** A `Task()` subagent may not dispatch another `Task()` — Level-2 dispatch is forbidden (the audit boundary). A stage that must fan out Level-1 sub-Tasks therefore cannot run as a Task subagent; main-thread loading is the *only* way to hold fan-out dispatch authority while preserving that boundary. `specification` / `rtl-design` / `simulation` are main-thread for fan-out authority; `simulation-plan` is main-thread for multi-turn user dialogue.
 
-`Task()` subagents cannot interact with the user mid-run nor dispatch further `Task()`s, so these four stages are instead loaded directly in the Orchestrator's main thread. The Orchestrator retains responsibility for calling `state.py start/complete/log` and reading canonical `result.json` for routing decisions (the failure-routing read in §5.4, not reap — reap reads nothing; see §5.1) — `Task()` (as the stage-level dispatch) simply does not appear in the tool history for these four stages.
+The per-stage trigger:
+
+- **specification** — consumes a frozen, approved `brainstorm.md`; a fan-out dispatcher (decompose + per-child sub-Task waves around a partition gate) plus three main-thread gate scripts: `derive_child_ports.py` (pre-gate, feeds the partition-gate summary; no body read), `check_coverage.py` (pre-gate, verdict feeds the design.md approval gate), `derive_constraints.py` (post-gate, derives the complete SDC/SGDC from the approved §1.6 + §1.4.1 tables). NOT main-thread for brainstorm dialogue — that moved to the pre-pipeline `brainstorm` skill.
+- **simulation-plan** — multi-turn plan-review dialogue with the user (its sole reason for main-thread loading).
+- **rtl-design** — fan-out only, no dialogue: one Level-1 sub-Task per child (`N = len(manifest.children[])`, including the top-integration child; no N==1 exemption), then a finalize sub-Task.
+- **simulation** — fan-out only, no dialogue: two sequential sub-Task waves sharing one stage `{workdir}` — an `env-child` (bootstrap + fill scaffold + compile + smoke) → a deterministic main-thread smoke gate → a `verify-child` (regress + coverage). Shape closest to `specification`'s two-wave-around-a-gate; dispatch class identical to `rtl-design`'s.
+
+For these four stages the Orchestrator still calls `state.py start/complete/log` and reads canonical `result.json` for failure routing (§5.4, not reap — reap reads nothing; §5.1); only the stage-level `Task()` is absent from its tool history.
 
 > **Red Flag:** If `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis|frontend-signoff)` appears in the Orchestrator's tool history, it is a bug — those five stages must dispatch via `Task()`.
 
@@ -110,8 +137,8 @@ The three dispatch paths from the Orchestrator:
 
 ### 2.4 Core design principles
 
-- **Judgment in the Orchestrator, state in Python, deterministic computation in sibling scripts.** The Orchestrator makes the judgment calls (escalation, rework-context); `state.py` maintains the state facts; deterministic decision-support that is neither — convergence counting (`cmd_convergence`), rework-target selection (`route.py`), and the full control-loop decision (`orchestrate.py next` reducer) — lives in scripts the Orchestrator executes. No mixing across the three.
-- **Decision boundary = tool boundary.** Between every two `state.py` calls there is exactly one Orchestrator decision point — and that decision point is now the `orchestrate.py next` call. If you find two consecutive `state.py` calls with no reducer call between them, either the tool boundary is wrong or the Orchestrator is doing work that should have been pushed down.
+- **Judgment in the Orchestrator, state in Python, deterministic computation in sibling scripts** — the *determinism boundary*. The Orchestrator makes the judgment calls (escalation, rework-context); `state.py` maintains the state facts; deterministic decision-support that is neither — convergence counting (`cmd_convergence`), rework-target selection (`route.py`), and the full control-loop decision (`orchestrate.py next` reducer) — lives in scripts the Orchestrator executes. No mixing across the three. The *enforceable* capability boundary (who may call `state.py` / `Task()` / the user) is the §2.3 role table.
+- **Decision boundary = tool boundary.** Every Orchestrator decision is pushed down to the `orchestrate.py next` reducer; the Orchestrator is a thin executor that does nothing between `state.py` calls except invoke the reducer. Its verifiable loop form — *two consecutive `state.py` calls with no reducer call between them is a bug* — lives in §5.5.
 - **Files are the database.** `task.json` is the snapshot, `events.jsonl` is the audit log, `result.json` files are stage outputs. No intermediate cache, no service-side store.
 - **Compaction-safe resume.** Because files are the database, a mid-session context compaction (or a process crash) is survivable: the Orchestrator and every subagent resume losslessly from disk alone, with no load-bearing information held only in the conversation. Durable truth is on disk — `task.json`, `events.jsonl`, `result.json` per stage. The Orchestrator holds **zero durable control state** between turns — every turn re-derives the next action from disk via `orchestrate.py next`. The only conversation-resident state is the `orchestrator_context` hint authored at a `REWORK` and consumed at the target's `DISPATCH` within the same turn — **re-derivable, not durable** (and once passed to `cmd_start` it is disk-backed as `orchestrator-context.md`); see §5.
 - **One-way communication.** Orchestrator → prompt → subagent → `result.json` + STATUS. No subagent-initiated callback into the Orchestrator; no subagent-to-subagent communication.
@@ -172,7 +199,9 @@ Forward dispatch follows the priority order `specification → simulation-plan �
 
 **Fan-out sub-Tasks are intra-stage and state.py-invisible.** When `specification`, `rtl-design`, or `simulation` dispatches Level-1 sub-Tasks (per-child work for the producers; env-build / verify waves for simulation), those sub-Tasks run inside the main-thread skill's own execution window; they do not write `task.json`, do not append events, and do not appear in `state.py`'s in-flight bookkeeping. They therefore **do not count against** the `distinct in-flight ≤ 2` DAG-topology property — that property applies only to stage-level dispatches tracked by `state.py`. See §6.3 for the dispatch privilege carve-out.
 
-**`distinct in-flight ≤ 2` is determined by DAG topology, not policy.** Phase 2 has two chains (`{lint-cdc → synthesis → timing-analysis}` and `{simulation}`); each chain is internally serial. Worst case: any one of `{lint-cdc, synthesis, timing-analysis}` is in-flight on chain 1 while `simulation` is in-flight on chain 2 — distinct *stages* = 2. `simulation` occupies a single stage slot on chain 2 regardless of how many intra-stage sub-Tasks it has in flight (those are state.py-invisible, per the paragraph above), so promoting it to a main-thread sub-orchestrator does not change this bound. Phase 3 is a single serial chain: power-analysis requires both timing-analysis and simulation to be complete before it becomes eligible; frontend-signoff waits for power-analysis to pass; distinct = 1. Same-stage multi-run shares a single distinct-stage slot (only `simulation` realistically does this); the physical Task count may briefly exceed 2 but the distinct-stage count stays ≤ 2. **Bottom line:** the Orchestrator does not need to enforce a concurrency cap — the DAG topology guarantees it.
+**`distinct in-flight ≤ 2` is determined by DAG topology, not policy.** Phase 2 has two chains (`{lint-cdc → synthesis → timing-analysis}` and `{simulation}`); each chain is internally serial. Worst case: any one of `{lint-cdc, synthesis, timing-analysis}` is in-flight on chain 1 while `simulation` is in-flight on chain 2 — distinct *stages* = 2. `simulation` occupies a single stage slot on chain 2 regardless of how many intra-stage sub-Tasks it has in flight (those are state.py-invisible, per the paragraph above), so promoting it to a main-thread sub-orchestrator does not change this bound. Phase 3 is a single serial chain: power-analysis requires both timing-analysis and simulation to be complete before it becomes eligible; frontend-signoff waits for power-analysis to pass; distinct = 1. Same-stage multi-run shares a single distinct-stage slot (only `simulation` realistically does this); the physical Task count may briefly exceed 2 but the distinct-stage count stays ≤ 2.
+
+> **Contract:** The Orchestrator writes no concurrency cap. `distinct in-flight ≤ 2` is guaranteed by DAG topology, not enforced by policy. This section is its home — the mentions in §1 and §5.2 refer here.
 
 ### 3.3 Forward dispatch and rework
 
@@ -248,7 +277,7 @@ When a stage transitions to `pass`, or is rework-targeted (set to `stale`), `sta
 | `debug_result` | Orchestrator (`log`) | (not currently emitted — validation moved to producer self-gate in `simulation-triage`; schema retained for forward compatibility) | `validation ∈ {ok, error}`, `root_cause?` |
 | `escalation` | Orchestrator (`log`) | Orchestrator gives up | `reason_code`, `reason` |
 
-`outcome.result_status` is a **6-value enum**. `pass` / `fail` / `blocked` are resolved at reap by `cmd_complete` from the run's `result.json` (or forced via an explicit `complete --outcome`); `invalid` (schema-failing `result.json`), `discarded` (runs superseded by rework or cascade-stale), and `promote_failed` (canonical hardlink merge fails) are always internally derived by `state.py`. The `discarded` sub-cases and their `reason_code` text format are a `state.py` implementation detail — replay (Appendix A) treats all four sub-cases identically. All events carry UTC ISO8601 timestamps.
+`outcome.result_status` is a **6-value enum**. `pass` / `fail` / `blocked` are resolved at reap by `cmd_complete` from the run's `result.json` (or forced via an explicit `complete --outcome`); `invalid` (schema-failing `result.json`), `discarded` (runs superseded by rework or cascade-stale), and `promote_failed` (canonical hardlink merge fails) are always internally derived by `state.py`. The `discarded` sub-cases and their `reason_code` text format are a `state.py` implementation detail — the projection (§4.6) treats all four sub-cases identically. All events carry UTC ISO8601 timestamps.
 
 `cmd_log` whitelist: the Orchestrator may write only **3 of the 8 event types** via `cmd_log` — `debug_dispatch`, `debug_result`, `escalation`. The other 5 (`dispatch`, `outcome`, `cascade`, `rework_decision`, `invalidate`) are produced as side-effects of `state.py` state transitions and are **rejected** if injected externally via `cmd_log`. This prevents the audit log from being forged through agent prompts.
 
@@ -260,9 +289,11 @@ All `state.py` state-mutating commands (`cmd_init`, `cmd_start`, `cmd_complete`,
 2. **Event-first**: one or more `append_event(...)` calls.
 3. **State-after**: a single `write_task(module, task_final)` to persist.
 
-**Why this order:** `events.jsonl` is the audit truth. If a crash occurs between step 2 and step 3, the events already record the full intent, and `task.json` can be reconstructed via replay (see Appendix A). The reverse order does not work — `write_task` before `append_event` would leave a state-events mismatch on crash.
+**Why this order:** `events.jsonl` is the audit truth. If a crash occurs between step 2 and step 3, the events already record the full intent, and `task.json` can be reconstructed from them (the projection contract below). The reverse order does not work — `write_task` before `append_event` would leave a state-events mismatch on crash.
 
-**Promote sits between validation and the success-path compute.** `cmd_complete` validates first (in-flight check, schema, prereq freshness, self-freshness) on every path. Non-success outcomes (`blocked`, `invalid`, `prereq_changed`, `stage_staled_during_run`) then diverge into `_non_success_finalize`, which runs its own compute-events-state and exits — promote is never called on these paths. Only `pass` and `fail` outcomes continue past validation; they call `promote()` (per-entry hardlink merge from `runs/<N>/` to canonical), then run the compute-events-state sequence. This disk write before the event is intentional — the promote outcome (success vs `promote_failed`) determines which compute branch runs at all. Crash recovery still holds because promote is **idempotent**: a redispatched `cmd_complete` after a crash repeats the hardlink merge (same inode = no-op) and lands exactly one clean `outcome` event. This idempotency is what lets event-first / state-after survive crashes that interrupt promote.
+**The projection contract.** `task.json` is the *projection* of `events.jsonl` — a pure function of the event log that reads only events, never `task.json`, which is what makes "events are truth" verifiable rather than a slogan. On the forward path it is exact: a `dispatch` sets the stage `in_progress/clean` and records the run; an `outcome` sets `pass`/`fail` and clears the run; a `cascade` stales `pass`/`fail`/`in_progress` descendants; `rework_decision` carries no state of its own (its effect lands via the following `cascade`). The non-success terminal states (`blocked`/`invalid`/`discarded`/`promote_failed`) are *not* reproducible from events alone — their finalization is `state.py` behavior, and an operator reconciling a crashed `task.json` derives those from canonical. So the projection is an exact inverse for clean histories and a recovery starting point otherwise — a reference definition, not shipped code.
+
+**Promote sits between validation and the success-path compute.** `cmd_complete` validates first (in-flight check, schema, prereq freshness, self-freshness) on every path. Non-success outcomes (`blocked`, `invalid`, `prereq_changed`, `stage_staled_during_run`) then diverge into `_non_success_finalize`, which runs its own compute-events-state and exits — promote is never called on these paths. Only `pass` and `fail` outcomes continue past validation; they call `promote()` (per-entry hardlink merge from `runs/<N>/` to canonical), then run the compute-events-state sequence. This disk write before the event is intentional — the promote outcome (success vs `promote_failed`) determines which compute branch runs at all. Crash recovery still holds because promote is idempotent (§7.2): that idempotency is what lets event-first / state-after survive a crash that interrupts promote.
 
 ### 4.7 Schema validation invariant
 
@@ -272,7 +303,7 @@ Each `result.json` validates against `framework/references/schemas/envelope.sche
 
 The Orchestrator is structured as 1 setup block plus a thin executor loop driven by the `orchestrate.py next` reducer. Control flow follows a turn discipline: each user message or task-notification triggers exactly one turn, ending with `YIELD`, `DONE`, or `ESCALATE`. The Claude Code harness re-enters the loop when the next notification arrives.
 
-Persistent state lives on disk (`task.json`, `events.jsonl`, `result.json` per stage). Transient planning state — e.g., cross-turn dispatch context composed after a simulation failure — lives in the Orchestrator's conversation history and reaches subagents only via the disk-backed `--orchestrator-context` channel at `cmd_start` time. The architecture commits to **disk-sourced payload at every cross-agent handoff**: every field rendered into a Task-subagent prompt originates from `state.py`'s on-disk artifacts (per-field detail in §5.3). Conversation-history state never reaches a subagent except through those channels, so audit truth is always on disk. This is what makes the flow **compaction-safe** (§2.4). That transient planning state is the read-only `simulation-triage` `ANALYSIS` plus the cross-turn dispatch context composed from it — held in the Orchestrator's conversation until injected at the next `cmd_start`, then persisted as `orchestrator-context.md`. Both are re-derivable: if a compaction discards them mid-failure, the next turn calls `orchestrate.py next`, finds the stage still `fail/clean`, and re-dispatches the read-only, idempotent `simulation-triage` before re-composing the context. The durable routing outcome (the `rework_decision` target+reason, or the escalation reason) is already on disk once decided, so at worst a compaction repeats one triage, never loses a routing decision. A subagent compacted or crashed mid-run is likewise stage-granular-lossless: its missing or half-written `result.json` is caught at reap (§5.1, the crash-recovery regime) and the stage re-runs from its on-disk inputs.
+Persistent state lives on disk (`task.json`, `events.jsonl`, `result.json` per stage); the loop is therefore **compaction-safe** (§2.4). What that requires of the loop specifically: every field rendered into a subagent prompt originates from `state.py`'s on-disk artifacts (the *disk-sourced payload* commitment; per-field detail in §5.3), so conversation-history state reaches a subagent only through the disk-backed `--orchestrator-context` channel at `cmd_start`. The only transient planning state is the read-only `simulation-triage` `ANALYSIS` and the dispatch context composed from it — held in conversation until injected at the next `cmd_start`, then persisted as `orchestrator-context.md`. Both are re-derivable: if a compaction discards them mid-failure, the next turn calls `orchestrate.py next`, finds the stage still `fail/clean`, and re-dispatches the read-only, idempotent `simulation-triage` before re-composing the context. The durable routing outcome (the `rework_decision` target+reason, or the escalation reason) is already on disk once decided, so at worst a compaction repeats one triage, never loses a decision. A subagent compacted or crashed mid-run is likewise stage-granular-lossless: its missing or half-written `result.json` is caught at reap (§5.1) and the stage re-runs from its on-disk inputs.
 
 ### 5.1 Setup and reap
 
@@ -328,7 +359,8 @@ Control flow inside the reducer (Step 3):
 
 ### 5.5 Architectural commitments embedded in this loop
 
-- Every `state.py` call is bracketed by exactly one `orchestrate.py next` call. Two consecutive `state.py` calls with no reducer call between them means the tool boundary is wrong or the Orchestrator is doing work that should have been pushed down.
+> **Contract:** Every `state.py` call is bracketed by exactly one `orchestrate.py next` call. Two consecutive `state.py` calls with no reducer call between them means the tool boundary is wrong, or the Orchestrator is doing work that should have been pushed down. This is the verifiable form of the *decision boundary = tool boundary* principle (§2.4).
+
 - `cmd_start` is the single source of eligibility truth. The reducer's `eligible()` predicate is informational only; `cmd_start` re-checks state at write time and returns `ok:false` if eligibility shifted between the scan and the actual write.
 - `cmd_complete --run <N>` is mandatory for every dispatched run. Runs are addressable by number; the same stage may have multiple concurrent runs (the DAG legalizes this for `simulation` under cascade-stale — see §4.2).
 - `convergence(events, stage)` returns a two-valued guideline (`continue` / `must_escalate`); the reducer's `route()` call decides whether to escalate. `state.py` issues no mandates.
@@ -393,14 +425,14 @@ The reducer's failure-routing (`_handle_failure` inside `orchestrate.py`) passes
 
 Their contract is the same as Stage subagent — **no `state.py`, no routing, no DAG awareness** — with two additional permissions:
 
-- May interact with the user across turns. `simulation-plan` runs the multi-turn plan-review loop; `specification` interacts only at its two path-handoff approval gates (the heavy D0–D7 brainstorm dialogue moved to the pre-pipeline `brainstorm` skill, §2.2). `rtl-design` and `simulation` do not require dialogue; each claims main-thread loading solely for fan-out dispatch authority (see §6.3 carve-out below). Task subagents cannot interact with the user.
+- May interact with the user across turns. `simulation-plan` runs the multi-turn plan-review loop; `specification` interacts only at its two path-handoff approval gates (the heavy D0–D7 brainstorm dialogue moved to the pre-pipeline `brainstorm` skill, §2.2). `rtl-design` and `simulation` do not require dialogue; each claims main-thread loading solely for fan-out dispatch authority (§2.2). Task subagents cannot interact with the user.
 - Has access to the main agent's full tool set. The contract is held by SKILL.md prose discipline, not tool gating.
 
 The Orchestrator loads the skill via `Skill(veripower:specification|simulation-plan|rtl-design|simulation)`, not `Task()`. It calls `cmd_complete` exactly once when the skill exits — intermediate dialogue iterations and intra-stage fan-out sub-Tasks are skill-internal scratch state and never enter the event log.
 
 #### 6.3.1 Fan-out dispatch privilege
 
-Fan-out main-thread skills (`specification`, `rtl-design`, `simulation`) may dispatch Level-1 sub-Task subagents via `Task(run_in_background=True)` — the producers fan out one sub-Task per child, `simulation` dispatches its env-build and verify waves. Sub-Tasks MUST NOT dispatch further Task subagents themselves (Level-2 forbidden, audit boundary preserved). `simulation-plan` is consumer-script class and does not fan out; its iron rule "must not call Task tool" is unchanged.
+Fan-out main-thread skills (`specification`, `rtl-design`, `simulation`) may dispatch Level-1 sub-Task subagents via `Task(run_in_background=True)` — the producers fan out one sub-Task per child, `simulation` dispatches its env-build and verify waves. Sub-Tasks MUST NOT dispatch further Task subagents (Level-2 forbidden — the audit boundary, §2.2). `simulation-plan` is consumer-script class and does not fan out; its iron rule "must not call Task tool" is unchanged.
 
 **Sub-Task `STATUS: BLOCKED` carve-out**: a dispatched sub-Task may end with last-line `STATUS: BLOCKED <reason>` as a **harness-level signal**. This is **distinct from envelope `result.json.status=blocked`** which the envelope schema enum forbids. The dispatching main-thread skill handles BLOCKED by writing `result.json` `status=fail` + `fail_reason` listing failed children; subsequent rework cycles can re-dispatch only failed children via the trigger-driven receiver-side analysis protocol.
 
@@ -499,58 +531,8 @@ asic/<module>/
 
 **Subagents always write to `runs/<N>/`** (the workdir from `cmd_start`); they never write to canonical paths directly. After a run completes (on either `pass` OR `fail`), `cmd_complete` invokes `promote()`: it builds a `.promote-tmp/` directory and per-entry hardlinks `runs/<N>/*` to the canonical `<area>/<stage>/` directory. Canonical files share an inode with the most recent promoted run. This means the canonical view always reflects the latest completed run (whether pass or fail), and downstream stages reading canonical paths see the freshest content.
 
-**Promote is idempotent.** If `cmd_complete` crashes mid-promote, the next dispatch (after `reap`) re-enters the same branch, the hardlinks are rewritten to the same inodes, and the `outcome` event lands exactly once. This idempotency is what allows the event-first / state-after invariant (§4.6) to survive crashes — the audit log records "this run completed" cleanly, regardless of how many crashed attempts preceded it.
+> **Contract:** Promote is idempotent. If `cmd_complete` crashes mid-promote, the next dispatch (after reap) re-enters the same branch, rewrites the hardlinks to the same inodes (a no-op), and lands exactly one `outcome` event. This is what lets the event-first / state-after invariant (§4.6) survive a crash mid-promote — the audit log records "this run completed" cleanly, regardless of how many crashed attempts preceded it.
 
 ### 7.3 Disk management
 
 By default, `runs/<N>/` directories persist (each rework or re-dispatch creates a new run, so disk usage grows monotonically without manual pruning). `state.py` does not provide a prune command; users may manually `rm -rf <stage>/runs/<N>/` after frontend-signoff passes or when debugging completes — canonical files survive because of hardlinks.
-
----
-
-## Appendix A: Replay algorithm
-
-`task.json` and `events.jsonl` are not atomically written — state changes follow event-first / state-after ordering (§4.6). The contract: `events.jsonl` is the audit truth; `task.json` is its projection, rebuildable from events via replay. The following Python algorithm specifies the projection.
-
-```python
-def replay(events: list[dict]) -> dict:
-    task = _blank_task(module="<placeholder>")
-    for e in events:
-        etype = e["type"]
-        if etype == "dispatch":
-            stg = task["stages"][e["stage"]]
-            stg["status"] = "in_progress"
-            stg["freshness"] = "clean"
-            stg["current_run"] = e["run"]
-            stg["in_flight"].append({"run": e["run"]})
-        elif etype == "outcome":
-            stg = task["stages"][e["stage"]]
-            rs = e["result_status"]
-            run = e["run"]
-            # promote_failed keeps the run in in_flight (Orchestrator will retry).
-            if rs != "promote_failed":
-                stg["in_flight"] = [x for x in stg["in_flight"] if x["run"] != run]
-            if rs == "pass":
-                stg["status"] = "pass"
-                stg["freshness"] = "clean"
-            elif rs == "fail":
-                stg["status"] = "fail"
-                stg["freshness"] = "clean"
-            elif rs in {"blocked", "invalid", "discarded"}:
-                # Non-success finalization: derive terminal status from canonical.
-                # Simplified replay branch — operators reconcile against canonical when needed.
-                stg["status"] = "not_started"
-                stg["freshness"] = "clean"
-            elif rs == "promote_failed":
-                pass  # status stays in_progress/clean; run stays in_flight.
-        elif etype == "cascade":
-            for s in e["staled"]:
-                stg = task["stages"][s["stage"]]
-                if stg["status"] in ("pass", "fail", "in_progress"):
-                    stg["freshness"] = "stale"
-        elif etype == "rework_decision":
-            pass  # derivative event; state change reflected by subsequent cascade.
-        # debug_dispatch / debug_result / escalation: do not affect task.json.
-    return task
-```
-
-Operationally, `replay()` is not a CLI command — it is the specification of the projection. When `task.json` and `events.jsonl` disagree (a rare crash artifact), operators reconstruct `task.json` from `events.jsonl` per this algorithm. The algorithm only reads `events`, never `task.json` — this is what makes "events are truth" verifiable: any reader can verify by inspection that the projection function takes the event log as input and emits the snapshot as output, with no side-channel reads.
