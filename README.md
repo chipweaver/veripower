@@ -160,11 +160,7 @@ veripower/
 
 ## Tests
 
-VeriPower ships three tiers of tests; each maps to a different question.
-
-- **`tests/unit/`** — pure Python, no EDA tools needed. Run `pytest tests/unit/ tests/contracts/` for the fast loop when changing `state.py` or any schema.
-- **`tests/contracts/`** — deterministic artifact-sync / invariant lints; no EDA tools, no code executed. Part of the fast loop.
-- **`tests/scenarios/`** — skill-level regression on agent prose discipline. No EDA tools; uses Claude as the system under test. Runner: `tests/scenarios/scenario-run.sh`.
+Three tiers, each answering a different question: **`tests/unit/`** (pure-Python code behavior), **`tests/contracts/`** (deterministic artifact-sync / invariant lints, no code executed), and **`tests/scenarios/`** (skill-level agent-discipline regression — Claude as the system under test, no EDA tools). How to run each, the fast loop, and the CI gate are in [CONTRIBUTING.md § Testing](CONTRIBUTING.md#testing).
 ## Status, license, contributing
 
 - **Status:** alpha (v0.1.0). Stable interfaces: the `state.py` CLI surface and the cross-stage envelope schema. Unstable: skill internals.

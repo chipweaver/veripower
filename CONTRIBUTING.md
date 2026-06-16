@@ -8,7 +8,7 @@ A stage skill's job is to "write `result.json` correctly." DAG routing and state
 
 Checklist for a new stage skill:
 
-1. `skills/<stage-skill>/SKILL.md` — skill description + instructions. Frontmatter carries only `name` and `description` (`allowed-tools` has been removed project-wide; subagent behavior is bound by `framework/references/prompts/stage-subagent.md.tpl`'s prose forbidden-actions list at dispatch time, not by tool gating).
+1. `skills/<stage-skill>/SKILL.md` — skill description + instructions. Frontmatter carries only `name` and `description` — no `allowed-tools`; subagent behavior is bound by the dispatch-time prose forbidden-actions list, not tool gating (see [ARCHITECTURE.md §6](ARCHITECTURE.md#6-subagent-contracts)).
 2. If needed, `skills/<stage-skill>/references/` — tool manuals, checklists, prompt fragments.
 3. If the stage is a new DAG node (not a replacement), update `framework/scripts/topology.py`'s `FORWARD_PRIORITY`, `PREREQ_OF`, `SKILL_OF`, and `_RESULT_DIR` mappings (`topology.py` is the SSoT for all four — see the Cross-module SSoT identity note under Coding Conventions). Add unit tests (code-behavior); put any new cross-artifact sync/invariant check in `tests/contracts/`.
 4. Add scenario tests under `tests/scenarios/<stage>/` — bulletproof them RED-first via the subagent ritual (see **Bulletproofing a skill**).
@@ -26,10 +26,10 @@ Rules:
 
 ## Validating new structured outputs
 
-VeriPower has two classes of structured output with different validation regimes (see `ARCHITECTURE.md §5.6`):
+Which validation regime a new structured output needs depends on its class — [ARCHITECTURE.md §5.6](ARCHITECTURE.md#56-validation-doctrine) owns the taxonomy. The contributor obligation per class:
 
-- **Routing verdict** (crosses into the deterministic core — `result.json`, event payloads): `state.py` validates these at write time. Do not add new verdict fields without a schema update and a `test_state.py` coverage test.
-- **Skill's own descriptive/advisory artifact** (e.g., triage ANALYSIS, verification scaffold): ship a `scripts/validate_*.py` producer self-gate (see `skills/simulation-triage/scripts/validate_analysis.py` and `skills/simulation-plan/scripts/validate_scaffold.py`). The skill runs this before emitting the artifact and fixes-and-retries on failure. `state.py` does not see the artifact — do not add new commands to `state.py` for advisory validation.
+- **Verdict output** (`result.json`, event payloads): do not add a field without a schema update **and** a `test_state.py` coverage test. `state.py` validates these at write time, so an unschema'd field corrupts the deterministic core.
+- **Descriptive/advisory artifact** (e.g., triage ANALYSIS, verification scaffold): ship a `scripts/validate_*.py` producer self-gate (pattern: `skills/simulation-triage/scripts/validate_analysis.py`, `skills/simulation-plan/scripts/validate_scaffold.py`); the skill fixes-and-retries before emitting. Do **not** add a `state.py` command for advisory validation — `state.py` never sees the artifact.
 
 ## Testing
 
@@ -39,7 +39,7 @@ VeriPower has two classes of structured output with different validation regimes
 
 ## Bulletproofing a skill (RED-GREEN-REFACTOR)
 
-Testing a VeriPower skill **is** TDD applied to the skill document. The test *subject* is a fresh, isolated `claude -p` subprocess — **not** an in-session subagent. This matters: an in-session subagent inherits the project `CLAUDE.md`, **the developer's auto-memory, and repo file-access**, all of which pre-encode the invariants under test and contaminate the RED baseline (verified 2026-06-10: a tools-off subagent still complied because it carried the auto-memory's "no skill-decided BLOCKED" note and could read `SKILL.md` from disk). The runner `tests/scenarios/scenario-run.sh` gives a clean baseline — a temp workdir (no developer auto-memory, no skill auto-load), `--allowedTools ""` (no file reads), and only the context it injects. Both RED and GREEN run on **Opus** (= production), so teeth are judged against the model that ships.
+Testing a VeriPower skill **is** TDD applied to the skill document. The test *subject* is a fresh, isolated `claude -p` subprocess — **not** an in-session subagent. This matters: an in-session subagent inherits the project `CLAUDE.md`, **the developer's auto-memory, and repo file-access**, all of which pre-encode the invariants under test and contaminate the RED baseline — even a tools-off subagent stays compliant, carrying the auto-memory's invariant notes and reading `SKILL.md` straight from disk. The runner `tests/scenarios/scenario-run.sh` gives a clean baseline — a temp workdir (no developer auto-memory, no skill auto-load), `--allowedTools ""` (no file reads), and only the context it injects. Both RED and GREEN run on **Opus** (= production), so teeth are judged against the model that ships.
 
 **RED-first acceptance gate:** keep a scenario only if it *fails RED and passes GREEN*. A scenario the agent gets right on RED is toothless against the `CLAUDE.md` baseline — discard or re-aim it.
 
@@ -49,7 +49,7 @@ Testing a VeriPower skill **is** TDD applied to the skill document. The test *su
 3. **REFACTOR (on GREEN failure)** — edit the skill: an explicit negation in the rule + a rationalization-table row (the agent's **verbatim** excuse → reality) + a Red-Flags entry + a `description` symptom. Then **meta-test** (a follow-up `claude -p` with the transcript, or in-session reasoning — meta-testing is not a baseline, so contamination is harmless): "you read the skill and still chose X; how should it have been written to make the compliant option unambiguous?" Apply the answer; re-run GREEN until it passes.
 4. **Record provenance** — stamp the scenario frontmatter `baseline: fail` / `green: pass` / `activated: <date>` / `model: opus`. For a borderline tag, run 2–3 times and take the majority.
 
-**Scope (the CLAUDE.md-baseline rule):** target each skill's **marginal contribution over `CLAUDE.md`** — its mechanisms, exact gate sequences, thresholds — not high-level judgment that `CLAUDE.md` + Opus already nails. Skills with no rationalizable discipline beyond `CLAUDE.md` get few or zero scenarios; never manufacture pressure. (specification, probed 2026-06-10, was toothless across three invariants — a near-empty corpus is an honest outcome, not a gap.)
+**Scope (the CLAUDE.md-baseline rule):** target each skill's **marginal contribution over `CLAUDE.md`** — its mechanisms, exact gate sequences, thresholds — not high-level judgment that `CLAUDE.md` + Opus already nails. Skills with no rationalizable discipline beyond `CLAUDE.md` get few or zero scenarios; never manufacture pressure — an empty per-skill corpus is an honest outcome, not a gap. Live corpus status lives in [`tests/scenarios/README.md`](tests/scenarios/README.md).
 
 **Scenario types:** `pressure` (`DECISION: A/B/C`) and `missing-info` (`ACTION: PROCEED/BLOCKED`) self-report a tag the runner extracts. `open` (answer key in `## Expected Behavior` / `## Anti-Pattern`) has no tag — human/main-agent judgment only.
 
@@ -57,7 +57,7 @@ Testing a VeriPower skill **is** TDD applied to the skill document. The test *su
 
 ## Documentation
 
-- **Script contract sync (mandatory).** `CLAUDE.md §Scripts Are Black Boxes` declares each SKILL.md the *complete* runtime contract for the scripts it invokes — agents are forbidden from reading script source to fill gaps. Therefore: any change to a directly-invoked script's CLI flags, exit codes, or output shape MUST update the invoking SKILL.md (and the script's `--help` text) in the same commit; a new script MUST be classified at introduction (directly-invoked: document the full command line + failure protocol; bootstrap-/make-internal or import-only: one line marking it internal). Silent drift breaks the black-box rule for every downstream run.
+- **Script contract sync (mandatory).** Because each SKILL.md is the *complete* runtime contract for the scripts it invokes (`CLAUDE.md § Scripts Are Black Boxes`), any change to a directly-invoked script's CLI flags, exit codes, or output shape MUST update the invoking SKILL.md (and the script's `--help` text) in the same commit; a new script MUST be classified at introduction (directly-invoked: document the full command line + failure protocol; bootstrap-/make-internal or import-only: one line marking it internal). Silent drift breaks the black-box rule for every downstream run.
 - **ARCHITECTURE.md no-restatement rule.** State each cross-cutting invariant **once** — either at a single home section (every other mention cross-refs it), or split across a rationale sentence + a `> **Contract:**` box that each state only their half (the *why* vs. the verifiable form). A *localized* contract — a per-stage `result.json` field, a CLI flag, the routing `category→target` map — is **never restated** here; link to its SSoT (the owning `result.schema.json` description / `state.py --help` / `route.py`) instead. New architectural content picks one home before it lands; if you find yourself writing a fact this document already states, cross-reference it rather than rephrasing it.
 - **User/contributor-facing content** (architecture, contribution norms) — lives at the repo root: [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), this file.
 - **Brainstorming, design proposals, review records** — under `docs/superpowers/`. These are uncommitted by convention (see `.gitignore`).
@@ -65,14 +65,6 @@ Testing a VeriPower skill **is** TDD applied to the skill document. The test *su
 ## Language posture
 
 VeriPower content lives on two surfaces: Surface 1 (runtime-LLM-consumed; English-only) and Surface 2 (user-data; bilingual, follows user language). For the full rule and the boundary criterion, see [`docs/language-posture-design.md`](docs/language-posture-design.md). When writing skill content, use the established workflow vocabulary already present in `skills/<name>/SKILL.md` and `skills/<name>/references/*.md` as the source of truth.
-
-## EDA tool environment
-
-For the environment contract (PATH entries, `LIB_DB`, `UVM_HOME`, `/bin/sh→bash`, optional `VCS_CC`, etc.), see [docs/eda-env.md](docs/eda-env.md).
-
-## Repository layout
-
-For the plugin repository tree, see the "Repository layout" section of [README.md](README.md). Per-module workspace layout is documented in [ARCHITECTURE.md §7](ARCHITECTURE.md#7-workspace-layout).
 
 ## Commit messages
 
@@ -121,3 +113,8 @@ Enforced by `pre-commit` (`ruff` + `shellcheck` + `shfmt`); run `pre-commit run 
 **Cross-module SSoT identity** — import shared SSoT modules the bare way (`from topology import X`), never via the package path (`framework.scripts.topology`); the latter creates a second module object and breaks `state.X is topology.X` identity (the M3 dup-module bug class, guarded by `tests/unit/test_topology.py`). Do not add re-exports for test convenience; tests read framework constants from their real home module.
 
 **File naming** — `verb_noun.py` for action scripts (`derive_*`, `build_*`, `validate_*`, `check_*`); domain-noun for libraries (`topology.py`, `artifacts.py`, `ledger_io.py`); `<domain>_rpt_parser.py` for report parsers; kebab-case skill directories; `bootstrap_<stage>.sh`.
+
+## Further reading
+
+- **EDA tool environment** — PATH, `LIB_DB`, `UVM_HOME`, `/bin/sh→bash`, optional `VCS_CC`: [docs/eda-env.md](docs/eda-env.md).
+- **Repository layout** — plugin tree: [README.md § Repository layout](README.md#repository-layout); per-module workspace: [ARCHITECTURE.md §7](ARCHITECTURE.md#7-workspace-layout).
