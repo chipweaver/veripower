@@ -67,7 +67,7 @@ The Orchestrator agent decides; `state.py` and skills execute; disk persists.
    │                           │ veripower:simulation           │
    │                           │ (main-thread loaded)           │
    ▼                           ▼                                ▼
-┌────────────────────┐  ┌─────────────────────────────┐  ┌──────────────────────────┐
+┌────────────────────┐  ┌──────────────────────────────┐  ┌──────────────────────────┐
 │ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent  │
 │ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)      │
 │                    │  │   main thread)               │  │                          │
@@ -83,7 +83,7 @@ The Orchestrator agent decides; `state.py` and skills execute; disk persists.
 │                    │  │    per-child RTL fan-out     │  │                          │
 │                    │  │  simulation:                 │  │                          │
 │                    │  │    env → smoke gate → verify │  │                          │
-└──────────┬─────────┘  └─────────────────────────────┘  └──────────────────────────┘
+└──────────┬─────────┘  └──────────────────────────────┘  └──────────────────────────┘
            │ reads/writes
            ▼
 ┌────────────────────────────────────────────────────────────────────────────────────┐
