@@ -249,6 +249,33 @@ Each stage carries two independent attributes — `status ∈ {not_started, in_p
 
 `in_progress/stale` is the inevitable consequence of cascade-stale hitting a running stage during dual-chain parallel execution — rework does NOT block, kill Tasks, or wait for exit.
 
+**Stage lifecycle.** The combinations above move through these transitions:
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "not_started / clean" as NS
+    state "in_progress / clean" as IPC
+    state "in_progress / stale" as IPS
+    state "pass / clean" as PC
+    state "pass / stale" as PS
+    state "fail / clean" as FC
+    state "fail / stale" as FS
+
+    [*] --> NS
+    NS --> IPC: dispatch
+    IPC --> PC: reap pass
+    IPC --> FC: reap fail
+    IPC --> IPS: cascade-stale
+    PC --> PS: cascade-stale
+    FC --> FS: cascade-stale
+    PS --> IPC: re-dispatch
+    FS --> IPC: re-dispatch
+    IPS --> IPC: re-dispatch
+```
+
+Edge labels are the trigger only; conditions live in the prose. A stale state re-dispatches once its prereqs are `pass/clean` again; `cascade-stale` fires when an upstream stage re-passes or a rework targets this stage or an ancestor; `in_progress/stale`'s original run is discarded (not promoted) at reap. Non-success reaps (`blocked` / `invalid` / `discarded`) clear the run without a terminal status (§5.1) and are omitted above. The `in_progress/clean → in_progress/stale → re-dispatch` path is what makes dual-chain rework non-blocking (§4.4).
+
 ### 4.3 task.json per-stage fields
 
 Beyond `status` and `freshness`, each stage carries:
@@ -318,6 +345,26 @@ Reap runs in two regimes:
 
 The Orchestrator calls `orchestrate.py next --module <M> [--wake <stage>:<run>] [--analysis -]` and executes exactly the one action it returns, looping until the action is `YIELD`, `DONE`, or `ESCALATE`. The reducer encodes the following decision steps; the prose below remains the authoritative contract.
 
+```mermaid
+flowchart TD
+    W(["wake: notification / user msg"]) --> N["orchestrate.py next"]
+    N --> S1["Step 1: read task.json + events.jsonl"]
+    S1 --> S2{"Step 2: signoff pass/clean?"}
+    S2 -- yes --> DONE(["DONE"])
+    S2 -- no --> S3{"Step 3: first fail/clean?"}
+    S3 -- yes --> RT{"route()"}
+    RT -- stage --> RW["REWORK (then re-query)"]
+    RT -- NEED_INPUT --> TR["DISPATCH_TRIAGE (then YIELD)"]
+    RT -- ESCALATE --> ESC(["ESCALATE"])
+    S3 -- no --> S4{"Step 4: any eligible?"}
+    S4 -- yes --> DSP["DISPATCH (then re-query)"]
+    S4 -- no --> S5{"Step 5: any in_progress?"}
+    S5 -- yes --> Y(["YIELD"])
+    S5 -- no --> ESC
+```
+
+The leaf actions encode what follows: `REWORK` and `DISPATCH` re-query `next` (the re-query loop — several failures or dispatches resolve in one turn); `DISPATCH_TRIAGE` ends the turn at `YIELD`. The prose steps below are the authoritative contract for each box.
+
 **Step 1: Read state.** The reducer reads `task.json` + `events.jsonl` in-process (`read_task` / `read_events`, plus the relevant `result.json` and any piped `--analysis` payload) — it does not shell out to `state.py status`. The resulting snapshot is the single source of truth for all decisions in this call.
 
 **Step 2: Terminate if done.** If `frontend-signoff` has `status=pass` and `freshness=clean` → return `DONE`.
@@ -356,6 +403,36 @@ Control flow inside the reducer (Step 3):
    - `<stage>` → return `REWORK` action. The Orchestrator calls `state.py rework --failed-stage <f> --target-stage <decision>` with a ≤200-char reason. For `simulation`, the Orchestrator also authors the per-dispatch `orchestrator_context` for the target — the one judgment step that stays LLM-side (§6.5).
 
 `route.py` consumes only closed-enum / integer inputs (`failed_stage`, `failure_kind`, `failures[0].category`, `root_cause`, `analysis_state`, `guideline`, `by_target`), all produced upstream by stage subagents, `simulation-triage`, or `state.py`. For the exact `category → target` map and rule identifiers, see `framework/scripts/route.py` and `tests/unit/test_route.py`.
+
+The `NEED_INPUT` path is the loop's only cross-turn handshake — a `simulation-triage` round-trip spanning two turns:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant O as Orchestrator
+    participant R as reducer
+    participant RT as route.py
+    participant T as simulation-triage
+    participant S as state.py
+    Note over O,S: Turn A — simulation is fail/clean
+    O->>R: next
+    R->>RT: route(simulation)
+    RT-->>R: NEED_INPUT
+    R-->>O: DISPATCH_TRIAGE
+    O->>S: log debug_dispatch
+    O->>T: Task (read-only triage)
+    Note over O: YIELD
+    Note over O,S: Turn B — triage notification arrives
+    T-->>O: ANALYSIS (root_cause)
+    O->>R: next --analysis -
+    R->>RT: route(root_cause)
+    RT-->>R: target (or ESCALATE)
+    R-->>O: REWORK target
+    Note over O: author orchestrator_context
+    O->>S: rework (simulation → target)
+    S-->>S: cascade-stale (target + descendants)
+    Note over O,S: next turn → DISPATCH target
+```
 
 ### 5.5 Architectural commitments embedded in this loop
 
