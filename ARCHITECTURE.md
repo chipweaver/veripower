@@ -518,11 +518,13 @@ deterministic conformance gate (`check_rtl_conformance`, spec↔RTL presence) wh
 **bounded (≤2 rounds) body-blind self-converge loop** — the main thread holds only the verdict and
 re-dispatches the failing children (intra-stage fan-out; skill-internal scratch, never event-logged;
 the repeated dispatch→yield→reap is the same primitive `simulation`'s two waves use), falling back to
-`status=fail` on bound exhaustion. On every clean-gate finalize it then dispatches an **advisory semantic
-review wave** (one sub-Task per child) whose aggregated `semantic-review.json` is promoted but **never
-gates `status`**. This refines §6.3's pure-dispatcher / operator-driven stance (stated in
-`skills/rtl-design/SKILL.md` failure-routing): rtl-design escalates upstream-locus failures but
-self-converges authoring-locus (conformance) ones.
+`status=fail` on bound exhaustion. On every clean-gate finalize it then dispatches a **gating semantic review wave** (one sub-Task per
+child) whose aggregated `semantic-review.json` is promoted and **gates `status`**: a `{missing,
+wrong-behavior}` finding at `critical`/`important` trips the gate, failing the stage out (locus-tagged via
+the reviewer-assigned `fix_locus`) to the operator — gate-then-route-out, with no in-skill autofix
+(deferred). This refines §6.3's pure-dispatcher / operator-driven stance (stated in
+`skills/rtl-design/SKILL.md` failure-routing): rtl-design escalates upstream-locus failures and
+semantic-gate trips, but self-converges authoring-locus (conformance presence) ones.
 
 ### 6.4 Debug subagent
 
