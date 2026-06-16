@@ -1,9 +1,9 @@
 # Conformance review sub-Task contract (gating)
 
 The simulation main thread dispatches one Level-1 `Task(run_in_background=True)` — the
-conformance reviewer — as a new wave (Step 3.5) AFTER the deterministic smoke gate passes
+conformance reviewer — as Wave 2 (Step 4) AFTER the deterministic smoke gate passes
 and BEFORE the verify wave. This review is **gating**: findings above the threshold in
-`SKILL.md` Step 3.5 set the stage `status=fail` (`failure_phase=conformance`). A dispatched
+`SKILL.md` Step 4 set the stage `status=fail` (`failure_phase=conformance`). A dispatched
 sub-Task MUST NOT call the Task tool (no Level-2 dispatch) and MUST NOT call `state.py`.
 
 Mechanism = a hybrid of rtl-design's deterministic conformance gate and its advisory

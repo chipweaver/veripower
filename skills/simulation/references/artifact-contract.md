@@ -1,7 +1,7 @@
 # `simulation` stage artifact contract
 
 The simulation stage runs as a thin orchestrator over three sequential sub-Tasks
-(`env-task-contract.md` → smoke gate → `conformance-review-task-contract.md` (Step 3.5) →
+(`env-task-contract.md` → smoke gate → `conformance-review-task-contract.md` (Step 4) →
 `verify-task-contract.md`); all share one stage `{workdir}`.
 The artifacts below are split by which phase **owns** (writes) them. `result.json` is assembled by
 the orchestrator, never by a sub-Task.
@@ -35,13 +35,13 @@ share it).
 | `logs/<test>.status` | same | Per-test `PASS`/`FAIL` status file written by each smoke `simv` run (the smoke gate reads these). |
 | `verify-handoff.json` | same | Per-testpoint check-intent digest handed to the verify phase (schema in `env-task-contract.md`). |
 
-### conformance gate phase (Step 3.5 — `conformance-review-task-contract.md`; main-thread aggregated)
+### conformance gate phase (wave 2, Step 4 — `conformance-review-task-contract.md`; main-thread aggregated)
 
 | Artifact | Path (relative to `{workdir}`) | Description |
 |------|------|------|
 | `conformance-review.json` | `conformance-review.json` | Per-testpoint check-adequacy findings (schema `conformance-review.schema.json`). The main thread assembles it from the reviewer Task's JSON, schema-validates it, and gates on it. Promoted advisory artifact. |
 
-### verify phase (wave 2 — `verify-task-contract.md`)
+### verify phase (wave 3 — `verify-task-contract.md`)
 
 | Artifact | Path (relative to `{workdir}`) | Description |
 |------|------|------|

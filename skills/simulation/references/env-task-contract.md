@@ -15,7 +15,7 @@ tool (no Level-2 dispatch).
 ## Inputs handed to the child (paths only — the main thread does not read these bodies)
 
 - `{workdir}` — the shared simulation stage workdir (the env-build child is the first writer; the
-  verify child runs in the same directory in wave 2).
+  verify child runs in the same directory in wave 3).
 - `{module}` — module name.
 - scaffold-specification path: `Verification/simulation-plan/scaffold-specification.json` — the TB
   scaffold contract. `agents` / `sequences` / `tests` are materialized into SV here;
@@ -75,7 +75,7 @@ tool (no Level-2 dispatch).
    `STATUS: BLOCKED compile <residual TODO/file locus>` (the existing compile mapping; this gate is
    exit-code truth, not narration). It does **not** write `result.json` — the orchestrator's finalize
    run remains the authoritative verdict; this is the env child's self-gate so a hollow TB never
-   reaches the wave-2 verify run. (Note: `make smoke` runs earlier in wave 1, *before* this gate —
+   reaches the wave-3 verify run. (Note: `make smoke` runs earlier in wave 1, *before* this gate —
    the savings are that no regress/coverage wave runs on a hollow TB, not that smoke is skipped.)
    **Limitation (by design):** thin-D1 is presence-only and intentionally does **not** resist marker
    renaming / empty-stub / plausible-but-wrong fills — TB↔plan semantic conformance is the
@@ -124,7 +124,7 @@ smoke gate still decides smoke pass/fail.
   lines + per-test `logs/<test>.status` files — surface these too, since the main-thread smoke gate
   reads exactly them. These are the env-phase artifacts (artifact ownership split is in
   `artifact-contract.md`); the full-regress / coverage / case-result artifacts are produced by the
-  verify child in wave 2 (it appends the regress `RESULT` lines to the env-written log), and
+  verify child in wave 3 (it appends the regress `RESULT` lines to the env-written log), and
   `result.json` is assembled by the orchestrator.
 - Emit `{workdir}/verify-handoff.json` — a per-testpoint check-intent digest (schema below) so the
   verify child gets check-intent without re-reading the whole TB.

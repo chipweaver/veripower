@@ -1,7 +1,7 @@
-# verify sub-Task contract (wave 2)
+# verify sub-Task contract (wave 3)
 
-The simulation main thread dispatches the **verify** child as the second sequential wave, only after
-the deterministic smoke gate passes. Its job: full regression, coverage iteration (Rule B), and the
+The simulation main thread dispatches the **verify** child as the third sequential wave, only after
+the smoke gate passes and the conformance gate clears. Its job: full regression, coverage iteration (Rule B), and the
 review summary. A dispatched sub-Task MUST NOT call the Task tool (no Level-2 dispatch).
 
 ## Shared Iron Rule (both sub-Tasks)

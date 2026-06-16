@@ -8,7 +8,7 @@ This directory is the deployment template for the `veripower:simulation` skill, 
 
 ## Automatic deployment
 
-Invoked by the simulation skill at stage SOP Step 2:
+Invoked by the env-build child (dispatched at stage SOP Step 2):
 
 ```bash
 bash ${CLAUDE_PLUGIN_ROOT}/skills/simulation/scripts/bootstrap_simulation.sh \
