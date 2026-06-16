@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "semantic-review.schema.json",
-  "title": "rtl-design semantic review (advisory, non-gating)",
+  "title": "rtl-design semantic review (gating reviewer output)",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "stage", "module", "reviewed_children", "verdict", "has_critical", "findings"],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "stage": {"const": "rtl-design"},
     "module": {"type": "string"},
     "reviewed_children": {"type": "array", "items": {"type": "string"}},
@@ -23,8 +23,18 @@
           "severity": {"enum": ["critical", "important", "minor"]},
           "category": {"enum": ["missing", "wrong-behavior", "over-engineering", "unavailable"]},
           "location": {"type": "string"},
-          "summary": {"type": "string"}
-        }
+          "summary": {"type": "string"},
+          "fix_locus": {"enum": ["rtl", "spec"]}
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {"category": {"not": {"const": "unavailable"}}},
+              "required": ["category"]
+            },
+            "then": {"required": ["fix_locus"]}
+          }
+        ]
       }
     }
   }
