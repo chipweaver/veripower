@@ -237,24 +237,23 @@ exit 0 it prints a one-line gate verdict `{"gate":"trip"|"clear","flagged":[{chi
 fix_locus}…],"loci":{"rtl":[…],"spec":[…]}}` — the mechanical `category × severity` reduction
 partitioned by `fix_locus`, computed by the script, not judged by eye. Write
 `stage_specific.semantic_gate` = that parsed verdict object **verbatim** (`{gate, flagged, loci}`, no
-transform — script-owned, main thread copies, mirroring the simulation conformance gate), so the result
-is self-describing. Then apply the verdict:
+transform — script-owned, the main thread copies it verbatim), so the result is self-describing. Then apply the verdict:
 
 - **`gate=clear`** → list `semantic-review.json` in `artifacts[]`, proceed to 4.5 (pass path).
   Advisory findings (`over-engineering` any severity, `minor`, `unavailable`) never trip — recorded,
   with a `⚠ <child> <category>` line in the completion summary.
 - **`gate=trip`** → write a complete fail `result.json` here and **stop — do not proceed to 4.5** (a
   gate fail writes its verdict and stops, exactly as the 4.2/4.3 gate fails do): `status=fail`,
-  `stage_specific.semantic_gate` (written above), a locus-tagged `fail_reason` from `flagged` + `loci` —
-  `"semantic gate: spec-rooted intent defect — <child>:<summary>"` when `loci.spec` is non-empty, else
+  `stage_specific.semantic_gate` (written above), a locus-tagged `fail_reason` from `flagged` + `loci`
+  (look up each finding's `<summary>` in the just-assembled `semantic-review.json` `findings[]` by `child`)
+  — `"semantic gate: spec-rooted intent defect — <child>:<summary>"` when `loci.spec` is non-empty, else
   `"semantic gate: rtl-local intent defect — <child>:<summary>"` (use the first matching `flagged[]`
   entry; if more than one is flagged, append ` (+N more)`) — and `semantic-review.json` plus the
-  already-built `filelist.txt` / `README.md` in `artifacts[]`. **No further dispatch** — a trip exits to
-  the existing `unrouted → ESCALATE → operator` path, exactly as the simulation conformance gate exits to
-  its `failure_phase=conformance → triage → route` path (in-skill self-heal deferred). The `loci`
-  partition is informational: it tells the operator whether the fix lands in the child RTL (`rtl`) or
-  `design.md` (`spec`), and reserves the routing key for deferred follow-ups (an rtl-local autofix on the
-  all-`rtl` branch; auto-routing the `spec` branch back to specification).
+  already-built `filelist.txt` / `README.md` in `artifacts[]`. **No further dispatch; this skill does not
+  self-loop on a semantic defect** — it is operator-driven (a `spec`-locus defect is a `design.md`
+  contradiction not fixable from this child's RTL; in-skill self-heal of the `rtl`-locus case is
+  deferred). The `loci` partition is informational: it tells the operator whether the fix lands in the
+  child RTL (`rtl`) or `design.md` (`spec`).
 - **Review unavailable** (the WHOLE wave is unusable: no `semantic-review.json` can be assembled at all
   — dispatch failure before any child reports, or an unrecoverable validate loop; individual child
   `BLOCKED`/malformed events are already handled by the aggregation bullets above, which keep the
@@ -266,22 +265,21 @@ is self-describing. Then apply the verdict:
 
 **4.5 Assemble `result.json`** (`{workdir}/result.json`; schema `references/result.schema.json` + envelope):
 `status`/`artifacts` from the gates (4.2/4.3 verdict + the 4.4 **semantic gate** verdict). In the
-completion summary, emit one line `semantic-gate: <clear | fail: N flagged (loci) | unavailable>; see
-semantic-review.json`; **if `has_critical`** (only possible on a cleared gate when the critical finding is
-a non-gating category, e.g. `over-engineering`), add `⚠ <child> critical <category> finding — recommend
-operator review before downstream`.
+completion summary, emit one line `semantic-gate: <clear | unavailable>; see semantic-review.json` (a
+`gate=trip` does not reach 4.5 — it stops in 4.4, where its `fail_reason` is the operator-facing summary);
+**if `has_critical`** (only possible on a cleared gate when the critical finding is a non-gating category,
+e.g. `over-engineering`), add `⚠ <child> critical <category> finding — recommend operator review before
+downstream`.
 
 rtl-design failures route by **fix-locus**. **(1) Upstream / architecture / intent** (`validate_rtl_exit`
 topology, `<child>.md §2` incomplete, PPA, `build_*` unexpected error, **or any semantic-gate trip** —
 `category ∈ {missing, wrong-behavior}` at `critical`/`important`) → `status=fail` + a locus-tagged
 `fail_reason`; **no internal loop, operator-driven** (the main thread stays a pure dispatcher and does not
 self-loop). The semantic trip's `fail_reason` names where the fix lands via `fix_locus`: `spec` = a
-`design.md` contradiction the child cannot self-fix (a deferred follow-up will auto-route it back to
-specification); `rtl` = the child's own RTL (the stage fails out so the operator fixes the child; a
-deferred follow-up will add a bounded self-converge autofix here, reusing the Step-4.3 mechanic). A
-semantic trip emits no
-`rework_decision` from this stage (it is `status=fail` → ESCALATE); a later operator-driven rework
-consumes the `total>=3` convergence cap like any other failure. **(2) Child-authoring presence defect**
+`design.md` contradiction the child cannot self-fix (left for operator-driven correction); `rtl` = the
+child's own RTL (the stage fails out so the operator fixes the child; in-skill self-heal of this case is
+a deferred follow-up, reusing the Step-4.3 mechanic). The stage emits one `status=fail` result and does
+not self-loop on a semantic defect. **(2) Child-authoring presence defect**
 (`check_rtl_conformance` spec↔RTL presence violations, or a mid-loop child `BLOCKED`) → fix-locus is the
 child itself, so it runs the **bounded body-blind self-converge loop** (Step 4.3: hold the verdict,
 re-dispatch the failing children, re-run the scripts, ≤2 rounds); exhausting the bound (or a mid-loop
