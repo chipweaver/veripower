@@ -13,7 +13,39 @@
           "type": "object",
           "properties": {
             "top_module":  {"type": "string", "minLength": 1},
-            "fail_reason": {"type": "string", "minLength": 1}
+            "fail_reason": {"type": "string", "minLength": 1},
+            "semantic_gate": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["gate", "flagged", "loci"],
+              "$comment": "Stores validate_semantic_review.py's stdout verdict verbatim (no transform). flagged.category is the GATING subset {missing,wrong-behavior} -- kept in sync with _GATING_CATEGORIES in that script; over-engineering/unavailable/minor never appear here.",
+              "properties": {
+                "gate": {"enum": ["trip", "clear"]},
+                "flagged": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["child", "category", "severity", "fix_locus"],
+                    "properties": {
+                      "child": {"type": "string"},
+                      "category": {"enum": ["missing", "wrong-behavior"]},
+                      "severity": {"enum": ["critical", "important"]},
+                      "fix_locus": {"enum": ["rtl", "spec"]}
+                    }
+                  }
+                },
+                "loci": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["rtl", "spec"],
+                  "properties": {
+                    "rtl": {"type": "array", "items": {"type": "string"}},
+                    "spec": {"type": "array", "items": {"type": "string"}}
+                  }
+                }
+              }
+            }
           },
           "additionalProperties": true
         }
