@@ -16,7 +16,7 @@ def _run(tmp_path, doc):
 
 def test_valid_doc_exit_0(tmp_path):
     doc = {
-        "schema_version": 2,
+        "schema_version": 1,
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
@@ -29,7 +29,7 @@ def test_valid_doc_exit_0(tmp_path):
 
 def test_invalid_doc_exit_1_with_stderr(tmp_path):
     doc = {
-        "schema_version": 2,
+        "schema_version": 1,
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
@@ -52,7 +52,7 @@ def test_invalid_doc_exit_1_with_stderr(tmp_path):
 
 def test_unavailable_category_exit_0(tmp_path):
     doc = {
-        "schema_version": 2,
+        "schema_version": 1,
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
@@ -73,7 +73,7 @@ def test_unavailable_category_exit_0(tmp_path):
 
 def test_missing_severity_exit_1(tmp_path):
     doc = {
-        "schema_version": 2,
+        "schema_version": 1,
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
@@ -88,24 +88,9 @@ def test_missing_severity_exit_1(tmp_path):
     assert "semantic-review invalid" in r.stderr
 
 
-def test_v1_schema_version_now_rejected(tmp_path):
-    doc = {
-        "schema_version": 1,  # const is now 2
-        "stage": "rtl-design",
-        "module": "m",
-        "reviewed_children": ["c"],
-        "verdict": "ok",
-        "has_critical": False,
-        "findings": [],
-    }
-    r = _run(tmp_path, doc)
-    assert r.returncode == 1
-    assert "semantic-review invalid" in r.stderr
-
-
 def test_gating_finding_without_fix_locus_rejected(tmp_path):
     doc = {
-        "schema_version": 2,
+        "schema_version": 1,
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
@@ -128,7 +113,7 @@ def test_gating_finding_without_fix_locus_rejected(tmp_path):
 
 def test_gating_finding_with_fix_locus_ok(tmp_path):
     doc = {
-        "schema_version": 2,
+        "schema_version": 1,
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
@@ -150,7 +135,7 @@ def test_gating_finding_with_fix_locus_ok(tmp_path):
 
 def test_bad_fix_locus_enum_rejected(tmp_path):
     doc = {
-        "schema_version": 2,
+        "schema_version": 1,
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
@@ -174,7 +159,7 @@ def test_bad_fix_locus_enum_rejected(tmp_path):
 
 def _gating_doc(fix_locus, *, severity="critical", category="missing"):
     return {
-        "schema_version": 2,
+        "schema_version": 1,
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
@@ -239,7 +224,7 @@ def test_gate_clears_on_minor_severity(tmp_path):
 
 def test_gate_clears_on_unavailable_only(tmp_path):
     doc = {
-        "schema_version": 2,
+        "schema_version": 1,
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
@@ -262,7 +247,7 @@ def test_gate_clears_on_unavailable_only(tmp_path):
 
 def test_mixed_locus_trip_partitions_loci(tmp_path):
     doc = {
-        "schema_version": 2,
+        "schema_version": 1,
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c1", "c2"],
