@@ -170,3 +170,141 @@ def test_bad_fix_locus_enum_rejected(tmp_path):
     r = _run(tmp_path, doc)
     assert r.returncode == 1
     assert "semantic-review invalid" in r.stderr
+
+
+def _gating_doc(fix_locus, *, severity="critical", category="missing"):
+    return {
+        "schema_version": 2,
+        "stage": "rtl-design",
+        "module": "m",
+        "reviewed_children": ["c"],
+        "verdict": "concerns",
+        "has_critical": severity == "critical",
+        "findings": [
+            {
+                "child": "c",
+                "severity": severity,
+                "category": category,
+                "location": "x",
+                "summary": "y",
+                "fix_locus": fix_locus,
+            }
+        ],
+    }
+
+
+def test_gate_trips_rtl_locus(tmp_path):
+    r = _run(tmp_path, _gating_doc("rtl"))
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == {
+        "gate": "trip",
+        "flagged": [
+            {
+                "child": "c",
+                "category": "missing",
+                "severity": "critical",
+                "fix_locus": "rtl",
+            }
+        ],
+        "loci": {"rtl": ["c"], "spec": []},
+    }
+
+
+def test_gate_trips_spec_locus(tmp_path):
+    r = _run(tmp_path, _gating_doc("spec"))
+    assert r.returncode == 0
+    v = json.loads(r.stdout)
+    assert v["gate"] == "trip"
+    assert v["loci"] == {"rtl": [], "spec": ["c"]}
+
+
+def test_gate_trips_on_important_severity(tmp_path):
+    r = _run(tmp_path, _gating_doc("rtl", severity="important"))
+    assert r.returncode == 0
+    assert json.loads(r.stdout)["gate"] == "trip"
+
+
+def test_gate_clears_on_over_engineering(tmp_path):
+    # over-engineering never gates, even at critical severity.
+    r = _run(tmp_path, _gating_doc("rtl", category="over-engineering"))
+    assert r.returncode == 0
+    assert json.loads(r.stdout)["gate"] == "clear"
+
+
+def test_gate_clears_on_minor_severity(tmp_path):
+    r = _run(tmp_path, _gating_doc("rtl", severity="minor"))
+    assert r.returncode == 0
+    assert json.loads(r.stdout)["gate"] == "clear"
+
+
+def test_gate_clears_on_unavailable_only(tmp_path):
+    doc = {
+        "schema_version": 2,
+        "stage": "rtl-design",
+        "module": "m",
+        "reviewed_children": ["c"],
+        "verdict": "ok",
+        "has_critical": False,
+        "findings": [
+            {
+                "child": "c",
+                "severity": "minor",
+                "category": "unavailable",
+                "location": "-",
+                "summary": "review unavailable: BLOCKED",
+            }
+        ],
+    }
+    r = _run(tmp_path, doc)
+    assert r.returncode == 0
+    assert json.loads(r.stdout)["gate"] == "clear"
+
+
+def test_mixed_locus_trip_partitions_loci(tmp_path):
+    doc = {
+        "schema_version": 2,
+        "stage": "rtl-design",
+        "module": "m",
+        "reviewed_children": ["c1", "c2"],
+        "verdict": "concerns",
+        "has_critical": True,
+        "findings": [
+            {
+                "child": "c1",
+                "severity": "critical",
+                "category": "missing",
+                "location": "x",
+                "summary": "y",
+                "fix_locus": "rtl",
+            },
+            {
+                "child": "c2",
+                "severity": "important",
+                "category": "wrong-behavior",
+                "location": "z",
+                "summary": "w",
+                "fix_locus": "spec",
+            },
+        ],
+    }
+    r = _run(tmp_path, doc)
+    assert r.returncode == 0
+    v = json.loads(r.stdout)
+    assert v["gate"] == "trip"
+    assert v["loci"] == {"rtl": ["c1"], "spec": ["c2"]}
+
+
+def test_has_critical_inconsistent_exit_1(tmp_path):
+    doc = _gating_doc("rtl", severity="critical")
+    doc["has_critical"] = False  # WRONG: a critical finding requires True
+    r = _run(tmp_path, doc)
+    assert r.returncode == 1
+    assert "semantic-review inconsistent" in r.stderr
+
+
+def test_verdict_inconsistent_exit_1(tmp_path):
+    doc = _gating_doc("rtl", severity="important")
+    doc["verdict"] = "ok"  # WRONG: a non-unavailable finding requires "concerns"
+    r = _run(tmp_path, doc)
+    assert r.returncode == 1
+    assert "semantic-review inconsistent" in r.stderr
