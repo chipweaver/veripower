@@ -14,6 +14,8 @@
 
 > **An agent flow that drives chip design and verification from spec to signoff — stage-gated, replayable, auditable.**
 
+> 🚀 **New here?** [**GETTING-STARTED.md**](GETTING-STARTED.md) walks you through running your first design flow end to end — spec to signoff. ([中文](GETTING-STARTED.zh.md))
+
 ## Why VeriPower
 
 Chip-design teams trying to put LLMs in their EDA flow hit three structural failures:
@@ -26,19 +28,17 @@ VeriPower's answer: the state machine is cleanly separated from the LLM, determi
 
 ## What a run looks like
 
-Kick off a module:
+Settle the module's requirements with the pre-pipeline `brainstorm` skill (its own session) until `asic/{module}/brainstorm.md` reads `Status: approved`, then ask the agent:
 
-```bash
-# in the Claude Code REPL, with the plugin loaded:
-python3 framework/scripts/state.py init --module counter4
-# then ask the agent: "Run the design flow for counter4"
-```
+> Run the design flow for {module}
 
-A run produces three artifacts:
+The `design-flow` Orchestrator bootstraps the module's state and walks the pipeline from there. A run produces:
 
-- `asic/counter4/events.jsonl` — append-only, schema-validated event log (the audit trail).
-- `asic/counter4/task.json` — current state snapshot, rebuildable by replaying the event log.
-- a per-run `trace_summary.json` from the end-to-end eval framework — token, cost, and duration metrics.
+- `asic/{module}/events.jsonl` — append-only, schema-validated event log (the audit trail).
+- `asic/{module}/task.json` — current state snapshot, rebuildable by replaying the event log.
+- per-stage `result.json` artifacts under `Design/` and `Verification/`, plus the terminal `frontend-signoff/result.json`.
+
+Full step-by-step walkthrough: [`GETTING-STARTED.md`](GETTING-STARTED.md).
 
 > **Coming soon:** sample trace excerpt + benchmark walkthrough once the first complete benchmark sweep lands.
 
@@ -133,13 +133,9 @@ The reference implementation ships Synopsys-backed skills because that's the too
 ```bash
 # launch Claude Code with the plugin
 claude --plugin-dir /path/to/veripower
-
-# in the Claude Code REPL, with the plugin loaded, init the module's state:
-python3 framework/scripts/state.py init --module mymodule
-
-# then ask the agent in chat:
-# > "Run the design flow for mymodule"
 ```
+
+Then settle requirements with the `brainstorm` skill and ask the agent in chat to *"Run the design flow for {module}"*. The full step-by-step walkthrough is in **[`GETTING-STARTED.md`](GETTING-STARTED.md)**.
 
 **What you'll need.** Commercial Synopsys EDA tools — SpyGlass (lint+CDC), Design Compiler (synthesis), PrimeTime (timing), VCS+UVM (simulation), PrimeTime PX (power). Swappable per skill — see [Swappable execution layer](#swappable-execution-layer). Python 3 + `jsonschema` + `referencing` are the only Python dependencies (`requirements.txt`).
 
@@ -148,6 +144,7 @@ python3 framework/scripts/state.py init --module mymodule
 ```
 veripower/
 ├── ARCHITECTURE.md          # full design spec
+├── GETTING-STARTED.md       # run your first design flow, end to end
 ├── CLAUDE.md                # project instructions auto-loaded by Claude Code
 ├── README.md                # this file
 ├── LICENSE                  # MIT
