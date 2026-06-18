@@ -13,7 +13,7 @@ Each entry:
 - **severity** — `must-fix` / `should-fix` / `consider`
 - **applies-to** — `any` / `skill-md` / `references` / `scripts` / `py-core` / `docs` / `result-schema` / `constraints`
 - **ssot** — Tier-A citation (pointer entries only; `—` for orphan lessons)
-- **provenance** — durable, shared origin (in-repo evidence / Tier-A section / commit subject / stated owner policy). Never a `~/.claude` path or a bare commit SHA.
+- **provenance** — durable, shared origin (in-repo evidence / Tier-A section / stated owner policy). Never a `~/.claude` path, a commit SHA, or a commit subject — git history is mutable and not re-checkable at review time.
 - **verified** — date + the ground truth checked
 
 ## Class 1 — Code & design quality, project invariants
@@ -25,7 +25,7 @@ Each entry:
 - **applies-to:** any
 - **ssot:** —
 - **provenance:** owner policy: fixes carry no backward-compat — pure-owner-policy lesson, no in-repo SSoT.
-- **verified:** 2026-06-06 — owner policy current; the rule's validity rests on the no-back-compat policy itself, not on a code-compliance count. (Durable corroboration only, not the basis: commit subject "refactor: introduce PyYAML, retire the two hand-rolled YAML parsers".) "single-owner" rejected as ssot (absent from all committed docs).
+- **verified:** 2026-06-06 — owner policy current; the rule's validity rests on the no-back-compat policy itself, not on a code-compliance count. "single-owner" rejected as ssot (absent from all committed docs).
 
 ### C1-02 — no-silent-transformation
 - **check:** Consumer code composes producer data (filelist entries, paths, IDs, schema fields) verbatim; it does not silently strip/normalize/transform it. A cross-stage contract is expressible in one sentence.
@@ -61,7 +61,7 @@ Each entry:
 - **applies-to:** any
 - **ssot:** —
 - **provenance:** owner policy / current practice (config overhauls re-justify each entry) — no in-repo SSoT.
-- **verified:** 2026-06-06 — owner policy current; the rule's validity rests on the audit-don't-grandfather policy itself, not on commit-compliance. (Durable corroboration only: "docs(specification): re-judge genuine scenarios to two-wave flow".)
+- **verified:** 2026-06-06 — owner policy current; the rule's validity rests on the audit-don't-grandfather policy itself, not on commit-compliance.
 
 ### C1-06 — fail-loud-on-bad-input
 - **check:** A producer/consumer script (`bootstrap_*.sh`, `derive_*.py`, a parser) validates the REQUIRED inputs of its contract and aborts with a clear error when one is missing/empty/malformed — it does not silently fall through to emit a degraded or wrong artifact. (Optional fields may default; a *warned* graceful degradation is not a violation.)
@@ -69,7 +69,7 @@ Each entry:
 - **severity:** must-fix
 - **applies-to:** scripts, py-core
 - **ssot:** —
-- **provenance:** commit subjects "fail loud on drift", "derive_scaffold … fails loud on empty", "bootstrap fail-closed", "exit on missing report", "driver-layer hardening (pipefail…)". ARCHITECTURE §5.6 "Validation doctrine" governs `result.json`/event + advisory-artifact validation, NOT this script-input layer — so orphan.
+- **provenance:** in-repo evidence — every `bootstrap_*.sh` carries `set -euo pipefail` and exits on missing inputs; `derive_constraints.py` `_fail()` and `derive_scaffold.py` raise on malformed/empty required fields. ARCHITECTURE §5.6 "Validation doctrine" governs `result.json`/event + advisory-artifact validation, NOT this script-input layer — so orphan.
 - **verified:** 2026-06-05 — 4/4 `bootstrap_*.sh` carry `set -euo pipefail` and exit on missing netlist/filelist; `derive_constraints.py` `_fail()` exits non-zero+stderr on every malformed table field; `derive_scaffold.py` raises on empty `interface.signals`.
 
 ### C1-07 — orchestrator-stage-isolation
@@ -123,7 +123,7 @@ Each entry:
 - **severity:** should-fix
 - **applies-to:** scripts, skill-md
 - **ssot:** —
-- **provenance:** in-repo pattern — `synthesis_rpt_parser.py` / `timing_rpt_parser.py` / `power_rpt_parser.py` / lint-cdc `collect_report.py`, each owning its stage verdict with a unit test; commit subjects "script PPA extract+gate (fail-loud), fix multi-group slack false-pass" + "power_rpt_parser owns verdict + result assembly". Complements C1-10 (orchestration-layer determinism) at the stage-verdict layer; no Tier-A doc owns it → orphan.
+- **provenance:** in-repo pattern — `synthesis_rpt_parser.py` / `timing_rpt_parser.py` / `power_rpt_parser.py` / lint-cdc `collect_report.py`, each owning its stage verdict with a unit test. Complements C1-10 (orchestration-layer determinism) at the stage-verdict layer; no Tier-A doc owns it → orphan.
 - **verified:** 2026-06-10 — timing-analysis SKILL.md "self-judge … via `timing_rpt_parser.py` — never by eye" (L8) + "the parser owns this; do not hand-classify" (L24); synthesis parser takes the `min` Critical Path Slack across all clock-group blocks (the false-pass fix); power "exit code is the pass/fail truth"; 4 parsers + 4 `tests/unit/test_*_parser.py` present.
 
 ### C1-13 — command-action-name-parity
@@ -132,7 +132,7 @@ Each entry:
 - **severity:** should-fix
 - **applies-to:** py-core, docs
 - **ssot:** ARCHITECTURE.md → "### 4.5 Event types"
-- **provenance:** ARCHITECTURE.md §4.5 "Naming invariant"; commit subjects "refactor(orchestrate): rename `next` to `decide` across command/function/role" + "refactor(state): rename `start`/`complete` commands to `dispatch`/`reap`".
+- **provenance:** ARCHITECTURE.md §4.5 "Naming invariant".
 - **verified:** 2026-06-18 — anchor "### 4.5 Event types" resolves (L292); its "Naming invariant" para owns the command==action-root rule; `state.py --help` lists `dispatch`/`reap`/`rework` matching decider actions `DISPATCH`/`REAP`/`REWORK`; no glossary term is defined 1:1 against a differently-named command.
 
 ## Class 2 — Skill / content hygiene & conventions
@@ -233,7 +233,7 @@ Each entry:
 - **severity:** must-fix
 - **applies-to:** result-schema, skill-md
 - **ssot:** ARCHITECTURE.md → "### 6.2 `failure_kind` envelope obligation"
-- **provenance:** ARCHITECTURE.md §6.2 + per-stage `result.schema.json` if/then gates; commit family "if/then-gate fail_reason across 7 stages", "mandate ppa_actual/violations on early-fail".
+- **provenance:** ARCHITECTURE.md §6.2 + per-stage `result.schema.json` if/then gates.
 - **verified:** 2026-06-06 — anchor "### 6.2 `failure_kind` envelope obligation" resolves (L372); per-stage schemas if/then-gate `stage_specific` on `status`.
 
 ### C2-12 — branch-coverage
