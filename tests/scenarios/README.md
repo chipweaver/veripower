@@ -18,6 +18,10 @@ judgment (`open`).
 > safety-framed prompt: 4/5 RED fail, 0/5 GREEN fail). Methodology note: single-probe RED is noisy —
 > the boundary cases need sharpening + a 5× majority vote to separate real teeth from sampling noise.
 > An empty per-skill dir is the honest outcome for that skill, not unfinished work.
+>
+> **(2026-06-18 — baseline change.)** RED no longer injects `CLAUDE.md`; it is now bare Opus (see
+> below). The toothlessness verdicts above were taken against the **old CLAUDE.md-inclusive RED**, so
+> some "toothless" invariants may bite under the bare baseline — the corpus may legitimately grow.
 
 ## Why a subprocess, not an in-session subagent
 
@@ -31,17 +35,26 @@ can read no repo file — only the context the runner injects. That is the only 
 ## How a scenario is run
 
 ```bash
-./tests/scenarios/scenario-run.sh --skill <name> --scenario <id> --mode red     # baseline: CLAUDE.md only
-./tests/scenarios/scenario-run.sh --skill <name> --scenario <id> --mode green    # + skills/<name>/SKILL.md
+./tests/scenarios/scenario-run.sh --skill <name> --scenario <id> --mode red     # bare: no project CLAUDE.md, no SKILL.md
+./tests/scenarios/scenario-run.sh --skill <name> --scenario <id> --mode green    # + skills/<name>/SKILL.md (SKILL.md alone)
 ```
 
-1. **RED** (`--mode red`) injects only the project `CLAUDE.md`. The agent should *fail* (pick the
-   violating option). A scenario that passes RED is toothless against the `CLAUDE.md` baseline —
-   discard or re-aim it at what the `SKILL.md` adds beyond `CLAUDE.md`.
-2. **GREEN** (`--mode green`) additionally injects `SKILL.md`. The agent should *comply*. On failure,
-   REFACTOR the skill (from the verbatim rationalization) and meta-test, then re-run (see CONTRIBUTING.md).
+1. **RED** (`--mode red`) injects **nothing** — no project `CLAUDE.md`, no `SKILL.md` (bare Opus).
+   The agent should *fail* (pick the violating option). A scenario that passes RED is toothless —
+   discard or re-aim it at what `SKILL.md` adds.
+2. **GREEN** (`--mode green`) injects `SKILL.md` **alone** — exactly what a plugin end-user receives
+   (they run VeriPower from outside this repo and never load its `CLAUDE.md`). The agent should
+   *comply*. On failure, REFACTOR the skill (from the verbatim rationalization) and meta-test, then
+   re-run (see CONTRIBUTING.md).
+
 3. **Record** the provenance stamp (below). The runner prints the self-report tag + the raw
    transcript; it does **no** keyword/regex scoring — you judge.
+
+> **Isolation caveat (A2) — this section is the authoritative baseline description.** `claude -p`
+> still auto-discovers the developer's user-level `~/.claude/CLAUDE.md` into both modes. The clean
+> fix `claude --bare` is not used: it forces `ANTHROPIC_API_KEY`/apiKeyHelper auth the team lacks.
+> Verdicts are therefore only as clean as the runner's `~/.claude/CLAUDE.md`; run with a
+> minimal/empty global. `CONTRIBUTING.md` and `tests/README.md` cross-ref this description.
 
 ## Scenario types
 
@@ -91,7 +104,8 @@ scenarios/
 ## Writing new scenarios
 
 Copy a template under `templates/`, fill in the frontmatter (`skill`, `scenario_id`, `title`, `type`,
-plus `expected_choice` for `pressure`), and target the skill's **marginal contribution over
-`CLAUDE.md`** (its mechanisms, exact gates, thresholds), not high-level judgment `CLAUDE.md` + Opus
-already nails. Then run it through the RED-first acceptance gate (CONTRIBUTING.md) before committing.
-A skill with no rationalizable discipline beyond `CLAUDE.md` legitimately gets few or zero scenarios.
+plus `expected_choice` for `pressure`), and target what the skill's **`SKILL.md` must carry on its
+own** (its mechanisms, exact gates, thresholds) — the production end-user has the `SKILL.md` but not
+veripower's `CLAUDE.md`. Then run it through the RED-first acceptance gate (CONTRIBUTING.md) before
+committing. A skill whose discipline **bare Opus already holds unaided** legitimately gets few or
+zero scenarios.

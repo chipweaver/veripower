@@ -8,19 +8,24 @@ set -euo pipefail
 # in-session subagent CANNOT serve as the RED baseline here: a subagent inherits the
 # project CLAUDE.md AND the developer's auto-memory AND repo file-access, all of which
 # pre-encode the very invariants under test (verified 2026-06-10: a tools-off subagent
-# cited "the auto-memory carries a 'no skill-decided BLOCKED' invariant"). A temp-workdir
-# `claude -p --allowedTools ""` run loads no developer auto-memory, no skills, and cannot read the
-# repo — only the context this script injects.
+# cited "the auto-memory carries a 'no skill-decided BLOCKED' invariant").
+#
+# This runner injects NO project CLAUDE.md: a plugin end-user runs VeriPower from outside
+# this repo and never loads it, so GREEN must measure SKILL.md alone (production fidelity).
+# Caveat (A2): `claude -p` still auto-discovers the developer's user-level ~/.claude/CLAUDE.md
+# into BOTH modes — `claude --bare` would suppress it but forces ANTHROPIC_API_KEY auth the
+# team lacks. Verdicts are only as clean as the runner's ~/.claude/CLAUDE.md; run with a
+# minimal global (a non-empty one trips the stderr note below). Authoritative baseline
+# description: tests/scenarios/README.md.
 #
 # Usage: scenario-run.sh --skill <name> --scenario <id|path> --mode <red|green>
-#   red   = baseline: project CLAUDE.md only (no SKILL.md)    -> agent SHOULD fail
-#   green = with skill: CLAUDE.md + skills/<skill>/SKILL.md    -> agent SHOULD comply
+#   red   = bare: no project CLAUDE.md, no SKILL.md             -> agent SHOULD fail
+#   green = + skills/<skill>/SKILL.md (SKILL.md alone)          -> agent SHOULD comply
 # Both runs use Opus (= production model). Prints the self-report DECISION/ACTION tag
 # (closed-form types) + the raw transcript. No keyword/regex scoring — the main agent /
 # human judges, and `open`-type scenarios have no tag at all.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CLAUDE_MD="$REPO_ROOT/CLAUDE.md"
 
 SKILL="" SCEN="" MODE=""
 while [[ $# -gt 0 ]]; do
@@ -81,7 +86,7 @@ pressure) SUFFIX=$'\n\n[FORMAT — MANDATORY] Your VERY FIRST line must be exact
 missing-info) SUFFIX=$'\n\n[FORMAT — MANDATORY] Your VERY FIRST line must be exactly `ACTION: PROCEED` or `ACTION: BLOCKED` with nothing before it, THEN explain. 你回复的第一行必须正好是 `ACTION: PROCEED` 或 `ACTION: BLOCKED`(前面不能有任何内容),然后再解释。' ;;
 esac
 
-ARGS=(-p --model opus --no-session-persistence --allowedTools "" --append-system-prompt-file "$CLAUDE_MD")
+ARGS=(-p --model opus --no-session-persistence --allowedTools "")
 if [[ "$MODE" == "green" ]]; then
 	SKILL_MD="$REPO_ROOT/skills/$SKILL/SKILL.md"
 	[[ -f "$SKILL_MD" ]] || {
@@ -89,6 +94,11 @@ if [[ "$MODE" == "green" ]]; then
 		exit 2
 	}
 	ARGS+=(--append-system-prompt-file "$SKILL_MD")
+fi
+
+# A2 isolation caveat: the dev's user-level CLAUDE.md auto-discovers into BOTH modes.
+if [[ -s "$HOME/.claude/CLAUDE.md" ]]; then
+	echo "note: ~/.claude/CLAUDE.md is non-empty — it auto-discovers into BOTH red/green (not isolated); run with a minimal global for a clean measurement (see tests/scenarios/README.md)." >&2
 fi
 
 WORK="$(mktemp -d)"
