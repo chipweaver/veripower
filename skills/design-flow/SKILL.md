@@ -17,6 +17,7 @@ This skill is the **orchestrator** — each turn it calls the deterministic deci
 
 - This skill **does not** run EDA tools (make / vcs / dc_shell / pt_shell / spyglass) — that is the stage subagent's job.
 - This skill **does not** directly modify `task.json` / `events.jsonl` — all changes go through `state.py` commands (any bypass is a contract violation — schema validation gets skipped).
+- Scripts are black boxes — never Read their source. Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 
@@ -180,8 +181,8 @@ Orchestrator-form specialization: this skill does not write `result.json`; each 
 
 ## Bundled References
 
-- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/state.py` — State-management tool (8 commands). Invocation contract: this file + `--help` (which prints each command's return shape); do not read the source.
-- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/orchestrate.py` — the control-loop decider (`orchestrate.py decide`). Invocation + output contract: §Executor loop above; do not read the source.
+- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/state.py` — State-management tool (8 commands). Invocation contract: this file + `--help` (which prints each command's return shape).
+- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/orchestrate.py` — the control-loop decider (`orchestrate.py decide`). Invocation + output contract: §Executor loop above.
 - `${CLAUDE_PLUGIN_ROOT}/framework/scripts/topology.py`, `route.py`, `artifacts.py` — import-only internals of state.py / orchestrate.py (DAG SSoT, rework-target maps, artifact promote/mirror); never invoked or read at runtime.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/prompts/stage-subagent.md.tpl`](../../framework/references/prompts/stage-subagent.md.tpl) — Task dispatch template.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — Common envelope schema.
