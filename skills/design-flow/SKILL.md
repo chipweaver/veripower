@@ -116,8 +116,8 @@ Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notificatio
 | action | effect (LLM-only) |
 |---|---|
 | `REAP` | `state.py reap --stage <s> --run <n> --subagent-output-file <f?>` (no `--outcome`). If the stage was cascade-staled during execution, pass `--outcome blocked --reason "stage cascade-staled during execution; result not authoritative against current prereq snapshot"` to override derive mode. See promote_failed protocol (§Decision Rules) for `action=promote_failed` handling. |
-| `DISPATCH` kind=main-thread | `state.py dispatch --module {module} --stage <s> [--orchestrator-context <file|->]` → `Skill(veripower:<skill>)` → `state.py reap --stage <s> --run <r>` |
-| `DISPATCH` kind=task | `state.py dispatch --module {module} --stage <s> [--orchestrator-context <file|->]` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered + ppa_targets>)` |
+| `DISPATCH` kind=main-thread | `state.py dispatch --module {module} --stage <s> [--orchestrator-context <file\|->]` → `Skill(veripower:<skill>)` → `state.py reap --stage <s> --run <r>` |
+| `DISPATCH` kind=task | `state.py dispatch --module {module} --stage <s> [--orchestrator-context <file\|->]` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered + ppa_targets>)` |
 | `DISPATCH_TRIAGE` | `state.py log --event '{"type":"debug_dispatch","module":"{module}"}'` → `Task(… Skill(veripower:simulation-triage) …)`. The next loop iteration sees the triage pending and returns `YIELD` (which ends the turn). |
 | `REWORK` | author `orchestrator_context` (the one judgment) → `state.py rework --failed-stage <f> --target-stage <t> --reason "<≤200 from reason_hint>"` → on the next loop the decider dispatches the now-eligible target |
 | `ESCALATE` | `state.py log --event '{"type":"escalation","reason_code":"…","reason":"<verbatim>"}'` → reply to user (verbatim subagent text + status snapshot + 2-3 next steps) |
