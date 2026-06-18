@@ -44,7 +44,7 @@ VeriPower 把确定性状态机和 LLM Orchestrator 分开：路由错误不会�
 
 - **确定性核心掌管全部状态。** `state.py` 持有阶段状态、前置检查、cascade-stale 和事件追加；Orchestrator 只管判断（返工、升级、上下文撰写），它做判断所依据的确定性计算都在它执行的那些同级脚本里——这就是 *determinism boundary*（§2.4）。
 - **并发从拓扑自然得出。** 每个阶段自带 `status × freshness`，DAG 前置关系驱动 cascade-stale；`distinct in-flight ≤ 2` 是拓扑属性，不是拍脑袋定的上限（§3.2）。
-- **事件日志不可篡改。** `events.jsonl` 是审计真相，`task.json` 只是可重建的投影；Orchestrator 只能写 8 类事件中的 3 类，每一次 AI 路由决策都落在纸面上（§4.5）。
+- **事件日志不可篡改。** `events.jsonl` 是审计真相，`task.json` 只是可重建的投影；Orchestrator 只能写 7 类事件中的 2 类，每一次 AI 路由决策都落在纸面上（§4.5）。
 
 VeriPower 不是服务：没有 daemon、没有数据库、没有 HTTP——磁盘文件就是数据库。不绑供应商：skills 在 `SKILL_OF` 这个派发接缝处可替换。不是跑一次就完的 Agent：它扛得住数小时的返工风暴——阶段失败、cascade-stale 塌及下游、跨 Orchestrator 轮次重来。
 
@@ -291,7 +291,7 @@ stateDiagram-v2
 
 ### 4.5 事件类型
 
-`events.jsonl` 包含 **8 类事件**，每类由 `framework/references/schemas/events/<type>.schema.json` 中对应的 JSON Schema 校验；`append_event` 在写入时校验。
+`events.jsonl` 包含 **7 类事件**，每类由 `framework/references/schemas/events/<type>.schema.json` 中对应的 JSON Schema 校验；`append_event` 在写入时校验。
 
 | **type** | **写入者** | **触发条件** | **关键正文字段** |
 |---|---|---|---|
@@ -301,12 +301,11 @@ stateDiagram-v2
 | `rework_decision` | `state.py`（自动） | `rework` 命令 | `failed_stage`、`target_stage`、`reason`、`run`（failed_stage 的 current_run，必填） |
 | `invalidate` | `state.py`（自动） | `invalidate-stage` 命令 | `stage`、`reason` |
 | `debug_dispatch` | Orchestrator（`log`） | 派发 `simulation-triage` | `module`、`failure_phase?` |
-| `debug_result` | Orchestrator（`log`） | （当前未触发——校验已移至 `simulation-triage` 的生产者自检门；schema 保留为向前兼容） | `validation ∈ {ok, error}`、`root_cause?` |
 | `escalation` | Orchestrator（`log`） | Orchestrator 放弃 | `reason_code`、`reason` |
 
 `outcome.result_status` 是 **6 值枚举**。`pass` / `fail` / `blocked` 在 reap 时由 `cmd_reap` 从 run 的 `result.json` 解析（或通过显式 `reap --outcome` 强制指定）；`invalid`（schema 不合规的 `result.json`）、`discarded`（被返工或 cascade-stale 取代的 run）和 `promote_failed`（规范 hardlink 合并失败）始终由 `state.py` 内部推导。`discarded` 的子情形及其 `reason_code` 文本格式属于 `state.py` 实现细节——投影（§4.6）对四种子情形一视同仁。全部事件携带 UTC ISO8601 时间戳。
 
-`cmd_log` 白名单：Orchestrator 只能通过 `cmd_log` 写 **8 类事件中的 3 类**——`debug_dispatch`、`debug_result`、`escalation`。其余 5 类（`dispatch`、`outcome`、`cascade`、`rework_decision`、`invalidate`）作为 `state.py` 状态转换的副作用产生，若通过 `cmd_log` 外部注入将被**拒绝**。这杜绝了通过 Agent prompt 伪造审计日志的可能。
+`cmd_log` 白名单：Orchestrator 只能通过 `cmd_log` 写 **7 类事件中的 2 类**——`debug_dispatch`、`escalation`。其余 5 类（`dispatch`、`outcome`、`cascade`、`rework_decision`、`invalidate`）作为 `state.py` 状态转换的副作用产生，若通过 `cmd_log` 外部注入将被**拒绝**。这杜绝了通过 Agent prompt 伪造审计日志的可能。
 
 **命名不变量。** 一个编排操作在它的 `state.py` 命令与 decider 动作上只用一个词根——`dispatch`/`DISPATCH`、`reap`/`REAP`、`rework`/`REWORK`。事件按其所记录的内容命名，因此事件词根可以与发出它的命令不同（`reap` 命令写 `outcome` 事件）。规则是：一个操作 → 一个「命令+动作」词，绝不用 prose-only 同义词把命令桥接到一个异名概念（即 `next`→`decide` 改名所消除的那种失败模式）。
 
@@ -570,7 +569,7 @@ Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|si
 ```
 asic/<module>/
 ├── task.json                  # 快照
-├── events.jsonl               # 审计日志（追加式，8 类事件）
+├── events.jsonl               # 审计日志（追加式，7 类事件）
 ├── brainstorm.md              # 流水线前输入（模块根；由 brainstorm skill 编写，本 run 期间冻结）
 ├── Design/
 │   ├── specification/

@@ -44,7 +44,7 @@ Three commitments make it work; each is elaborated where it lives:
 
 - **A deterministic core owns all state.** `state.py` owns stage state, prerequisite checks, cascade-stale, and event appends; the Orchestrator owns only judgment (rework, escalation, context-authoring), and the deterministic computations it acts on live in sibling scripts it executes — the *determinism boundary* (§2.4).
 - **Concurrency falls out of topology.** Each stage carries `status × freshness`, and DAG prerequisites drive cascade-stale; the `distinct in-flight ≤ 2` cap emerges from the DAG, not from policy (§3.2).
-- **The event log is tamper-evident.** `events.jsonl` is the audit truth and `task.json` a rebuildable projection; the Orchestrator may author only 3 of the 8 event types, so every AI routing decision is on the record (§4.5).
+- **The event log is tamper-evident.** `events.jsonl` is the audit truth and `task.json` a rebuildable projection; the Orchestrator may author only 2 of the 7 event types, so every AI routing decision is on the record (§4.5).
 
 VeriPower is not a service: no daemon, no DB, no HTTP — disk files are the database. It is not vendor-locked: skills are swappable at the `SKILL_OF` dispatch seam. It is not a one-shot agent: the flow tolerates multi-hour rework storms where stages fail, cascade-stale dependents, and retry across Orchestrator passes.
 
@@ -291,7 +291,7 @@ When a stage transitions to `pass`, or is rework-targeted (set to `stale`), `sta
 
 ### 4.5 Event types
 
-`events.jsonl` has **8 event types**, each validated by its own JSON Schema at `framework/references/schemas/events/<type>.schema.json`; `append_event` validates at write time.
+`events.jsonl` has **7 event types**, each validated by its own JSON Schema at `framework/references/schemas/events/<type>.schema.json`; `append_event` validates at write time.
 
 | **type** | **Writer** | **Trigger** | **Key body fields** |
 |---|---|---|---|
@@ -301,12 +301,11 @@ When a stage transitions to `pass`, or is rework-targeted (set to `stale`), `sta
 | `rework_decision` | `state.py` (auto) | `rework` command | `failed_stage`, `target_stage`, `reason`, `run` (failed_stage's current_run, mandatory) |
 | `invalidate` | `state.py` (auto) | `invalidate-stage` command | `stage`, `reason` |
 | `debug_dispatch` | Orchestrator (`log`) | dispatching `simulation-triage` | `module`, `failure_phase?` |
-| `debug_result` | Orchestrator (`log`) | (not currently emitted — validation moved to producer self-gate in `simulation-triage`; schema retained for forward compatibility) | `validation ∈ {ok, error}`, `root_cause?` |
 | `escalation` | Orchestrator (`log`) | Orchestrator gives up | `reason_code`, `reason` |
 
 `outcome.result_status` is a **6-value enum**. `pass` / `fail` / `blocked` are resolved at reap by `cmd_reap` from the run's `result.json` (or forced via an explicit `reap --outcome`); `invalid` (schema-failing `result.json`), `discarded` (runs superseded by rework or cascade-stale), and `promote_failed` (canonical hardlink merge fails) are always internally derived by `state.py`. The `discarded` sub-cases and their `reason_code` text format are a `state.py` implementation detail — the projection (§4.6) treats all four sub-cases identically. All events carry UTC ISO8601 timestamps.
 
-`cmd_log` whitelist: the Orchestrator may write only **3 of the 8 event types** via `cmd_log` — `debug_dispatch`, `debug_result`, `escalation`. The other 5 (`dispatch`, `outcome`, `cascade`, `rework_decision`, `invalidate`) are produced as side-effects of `state.py` state transitions and are **rejected** if injected externally via `cmd_log`. This prevents the audit log from being forged through agent prompts.
+`cmd_log` whitelist: the Orchestrator may write only **2 of the 7 event types** via `cmd_log` — `debug_dispatch`, `escalation`. The other 5 (`dispatch`, `outcome`, `cascade`, `rework_decision`, `invalidate`) are produced as side-effects of `state.py` state transitions and are **rejected** if injected externally via `cmd_log`. This prevents the audit log from being forged through agent prompts.
 
 **Naming invariant.** An orchestration operation carries one root across its `state.py` command and the decider's action — `dispatch`/`DISPATCH`, `reap`/`REAP`, `rework`/`REWORK`. Events are named for what they record, so an event root may legitimately differ from the command that emits it (the `reap` command writes the `outcome` event). The rule is: one operation → one command-and-action word, never a prose-only synonym bridging a command to a differently-named concept (the failure mode the `next`→`decide` rename retired).
 
@@ -581,7 +580,7 @@ Each module's working state lives under `asic/<module>/`, created by `state.py i
 ```
 asic/<module>/
 ├── task.json                  # snapshot
-├── events.jsonl               # audit log (append-only, 8 event types)
+├── events.jsonl               # audit log (append-only, 7 event types)
 ├── brainstorm.md              # pre-pipeline input (module root; written by the brainstorm skill, frozen for the run)
 ├── Design/
 │   ├── specification/

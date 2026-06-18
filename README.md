@@ -110,7 +110,7 @@ Full mechanics: [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-state-model).
 
 ### 3. Event-sourced audit log: events.jsonl is truth, task.json is a projection
 
-> Eight typed event schemas with a strict "event-first, state-after" write order; `task.json` is always rebuildable by replaying `events.jsonl`. The Orchestrator can only write 3 of the 8 event types via `log` — the other 5 are side-effects of state transitions, rejected if injected externally, so the audit log cannot be forged.
+> Seven typed event schemas with a strict "event-first, state-after" write order; `task.json` is always rebuildable by replaying `events.jsonl`. The Orchestrator can only write 2 of the 7 event types via `log` — the other 5 are side-effects of state transitions, rejected if injected externally, so the audit log cannot be forged.
 
 **For chip-design teams.** Every AI-driven decision in the design flow leaves a tamper-evident record — the table-stakes property that converts an "AI demo" into a production-defensible EDA tool. Crash recovery is a free side effect: if a write crashes between event and state, the event already exists and replay reconstructs the state.
 

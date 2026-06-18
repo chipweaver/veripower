@@ -964,7 +964,6 @@ def cmd_convergence(module: str, stage: str) -> dict:
 # (dispatch / outcome / cascade / rework_decision / invalidate).
 _LOG_ALLOWED_TYPES = {
     "debug_dispatch",
-    "debug_result",
     "escalation",
 }
 
@@ -1125,7 +1124,7 @@ def main() -> None:
     p_log.add_argument(
         "--event",
         required=True,
-        help="JSON object with 'type' field; allowed types: debug_dispatch | debug_result | escalation",
+        help="JSON object with 'type' field; allowed types: debug_dispatch | escalation",
     )
 
     args = parser.parse_args()

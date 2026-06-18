@@ -63,11 +63,10 @@ class TestDAGConstants:
     def test_simulation_result_dir(self):
         assert topology._RESULT_DIR["simulation"] == ("Verification", "simulation")
 
-    def test_log_allowed_types_is_3_orchestrator_types(self):
-        """Only 3 orchestrator-writable log types remain: debug_dispatch / debug_result / escalation."""
+    def test_log_allowed_types_is_2_orchestrator_types(self):
+        """Only 2 orchestrator-writable log types remain: debug_dispatch / escalation."""
         assert state._LOG_ALLOWED_TYPES == {
             "debug_dispatch",
-            "debug_result",
             "escalation",
         }
 
@@ -1759,11 +1758,9 @@ class TestCmdLog:
         monkeypatch.chdir(tmp_path)
         state.cmd_init("m")
         # escalation requires reason_code+reason — tested separately
-        # debug_dispatch requires module; debug_result requires validation
+        # debug_dispatch requires module
         result = state.cmd_log("m", {"type": "debug_dispatch", "module": "m"})
         assert result == {"ok": True}, "debug_dispatch should be accepted"
-        result = state.cmd_log("m", {"type": "debug_result", "validation": "ok"})
-        assert result == {"ok": True}, "debug_result should be accepted"
 
     def test_log_escalation_rejects_empty_reason(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -1823,22 +1820,6 @@ class TestCmdLog:
                 "type": "escalation",
                 "reason_code": "convergence_must_escalate",
                 "reason": "convergence must_escalate",
-            },
-        )
-        assert result["ok"] is True
-
-    def test_log_debug_result_reason_not_validated(self, tmp_path, monkeypatch):
-        """debug_result.validation is required; extra fields like recommendations are allowed."""
-        monkeypatch.chdir(tmp_path)
-        state.cmd_init("m")
-        result = state.cmd_log(
-            "m",
-            {
-                "type": "debug_result",
-                "validation": "ok",
-                "recommendations": [
-                    {"stage": "rtl-design", "confidence": 0.8, "reason": "x"}
-                ],
             },
         )
         assert result["ok"] is True
