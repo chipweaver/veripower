@@ -17,6 +17,7 @@ This skill's sole responsibility: aggregate every upstream `result.json` envelop
 - The gate and the `result.json` envelope are owned by `aggregate_signoff.py`. Run it; never re-decide its verdict by eye and never hand-author the JSON.
 - Sign-off MUST stand on a fully-passing chain: the script writes `status=fail` (with `fail_reason` listing the failing items) if any upstream envelope is missing / unparseable / not `pass`, any evidence path is unreachable, or specification passed yet its traceability inputs are unreadable.
 - `stage_specific` is intentionally an empty object — sign-off content lives in `checklist.md` / `traceability.md`, not in named envelope fields.
+- Scripts are black boxes — never Read their source. Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 

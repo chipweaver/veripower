@@ -23,6 +23,7 @@ Boundary of this skill:
 - **Do not decide what happens after this skill completes.** Return control to the caller.
 - **Do not start before `specification/result.json` has `status=pass`.** Confirm precondition before entry.
 - **Do not write `result.json.status=blocked`.** The envelope does not accept this value; any failure must be `status=fail` + `fail_reason`.
+- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 

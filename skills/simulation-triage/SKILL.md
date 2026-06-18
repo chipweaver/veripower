@@ -20,6 +20,7 @@ The result has two tiers:
 
 - **read-only**: do not write files, do not modify any external state, do not perform fixes.
 - The final `ANALYSIS:` routing block MUST validate against `references/analysis.schema.json` (contract violation). `root_cause`'s legal values are enforced there — do not re-enumerate them here.
+- Scripts are black boxes — never Read their source. Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 

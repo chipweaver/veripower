@@ -22,6 +22,7 @@ This skill's sole responsibility: **orchestrate** per-child RTL authoring as a p
 - **No child RTL in the main thread:** every child (including the top-integration child) is dispatched in the fan-out wave. The main thread consumes each sub-Task's `files[]` paths only (the scripts aggregate them into `filelist.txt`) and **MUST NOT read the dispatched child's** `.v`/`.sv` content back into the main-thread context — child RTL would otherwise compound across the long-lived main thread. There is no main-thread TOP authoring: even a single child is written by a sub-Task, never by the main thread.
 - **No whole-design elaboration in any child sub-Task:** per `references/child-task-contract.md`, no child may whole-design elaborate/compile, read sibling RTL bodies, or reverse-read an external verification harness; integration/elaboration correctness is verified by downstream verification. A unit child may best-effort `verilator --lint-only` its own module only.
 - **`<child>.md §2 Interface` incomplete:** if the interface spec is missing or underspecified, write `status=fail` + `fail_reason="<child>.md §2 Interface incomplete"`; do not invent interfaces.
+- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 

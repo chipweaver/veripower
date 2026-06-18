@@ -22,6 +22,7 @@ This skill's sole responsibility: run independent PrimeTime STA on the post-synt
 - If synthesis products (netlist / SDC) do not exist, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"`; do not bypass.
 - `timing-report.txt` MUST be written to disk; claiming STA complete without it is not allowed.
 - Classify on the report's `(VIOLATED)` / `(MET)` marker — never on the displayed slack number (a sub-rounding violation prints `0.00`). The parser owns this; do not hand-classify.
+- Scripts are black boxes — never Read their source. Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 

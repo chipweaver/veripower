@@ -20,6 +20,7 @@ This skill's sole responsibility: run SpyGlass lint / CDC against the RTL and th
 - Do not modify the read-only external references — `Design/rtl-design/filelist.txt`, `Design/specification/design.md`, or `Design/specification/constraints/<TOP>.{sdc,sgdc}`. SGDC depth annotations belong to this stage's own canonical (`Design/lint-cdc/scripts/constraints.sgdc`); iterate only there, never write back to the spec source of truth.
 - `{workdir}/scripts/constraints.sgdc` MUST be listed in `result.json.artifacts[]` — it then lands at the canonical path and the next bootstrap warm-starts from it; without that entry the file is not promoted and depth annotations must re-converge from scratch.
 - Do not start when `Design/rtl-design/result.json.status≠pass` — write `status=fail` with `fail_reason="external reference not pass: Design/rtl-design/result.json"` and exit.
+- Scripts are black boxes — never Read their source. Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 

@@ -27,6 +27,7 @@ Boundary of this skill:
 - **`result.json.status` must be `pass` or `fail` — never `blocked`.** The envelope `status` enum accepts only `{pass, fail}`; any failure must be `status=fail` + `fail_reason`.
 - **`design.md` must not contain by-reference jumps.** `design.md` is the unique source of truth; downstream stages do not read `brainstorm.md`. Any `see brainstorm`, `see spec D`, `refer to brainstorm`, etc. = information loss. The referenced passage must be inlined verbatim.
 - **`manifest.json` is read-only after the partition gate.** Changes to N require a fresh specification run (or re-dispatching wave 1 with new grouping before the partition gate is reconfirmed).
+- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 

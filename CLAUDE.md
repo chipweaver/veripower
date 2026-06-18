@@ -59,21 +59,6 @@ Result-envelope schemas: `framework/references/schemas/`.
 
 Domain-specific coding rules live in each skill's references.
 
-## Scripts Are Black Boxes
-
-Scripts under `framework/scripts/`, `skills/*/scripts/`, `skills/*/templates/`, and their
-deployed copies are invoked per the command lines documented in the owning SKILL.md — that documentation is the
-**complete** runtime contract; the source contains no additional runtime information. Do NOT
-Read script source at runtime.
-
-- Unsure about flags → run `--help` (cheap), never Read the source.
-- Non-zero exit → act on the documented failure protocol (stderr message / `FAIL=` token /
-  stdout JSON verdict), never on the source.
-- Scripts marked **internal** (called by a bootstrap or a `make` target, or import-only
-  libraries) are never invoked directly and never read.
-- The only justified source read: debugging a suspected bug in the script itself (a
-  contract↔behavior mismatch) — that is a plugin bug to surface, not part of any pipeline stage.
-
 ## State Tool & Skill Dispatch
 
 - `framework/scripts/state.py` — 8 commands (init, status, start, complete, rework, invalidate-stage, convergence, log). No routing logic — scheduling is computed by `orchestrate.py decide` (see below), which the `design-flow` Orchestrator executes.
