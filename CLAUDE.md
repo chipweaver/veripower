@@ -61,7 +61,7 @@ Domain-specific coding rules live in each skill's references.
 
 ## State Tool & Skill Dispatch
 
-- `framework/scripts/state.py` — 8 commands (init, status, start, complete, rework, invalidate-stage, convergence, log). No routing logic — scheduling is computed by `orchestrate.py decide` (see below), which the `design-flow` Orchestrator executes.
+- `framework/scripts/state.py` — 8 commands (init, status, dispatch, reap, rework, invalidate-stage, convergence, log). No routing logic — scheduling is computed by `orchestrate.py decide` (see below), which the `design-flow` Orchestrator executes.
 - `framework/scripts/topology.py` — DAG structural SSoT (`FORWARD_PRIORITY`, `PREREQ_OF`, `eligible()`); `state.py` imports the subset it uses (so those names also resolve as `state.X`), while `orchestrate.py` imports `topology` directly.
 - `framework/scripts/orchestrate.py` — the decider (`orchestrate.py decide`); reads on-disk state and returns exactly one action per call; the Orchestrator is a thin executor of it.
 - `framework/scripts/route.py` — pure deterministic rework-target selection (sole home of the failure→target maps); composed unchanged inside `orchestrate.py`. No state.
