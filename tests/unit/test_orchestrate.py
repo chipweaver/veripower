@@ -55,7 +55,7 @@ def _write(tmp, task, events=None):
 
 def _next(tmp, monkeypatch, **kw):
     monkeypatch.chdir(tmp)
-    return orchestrate.next_action("m", **kw)
+    return orchestrate.decide("m", **kw)
 
 
 def test_done(tmp_path, monkeypatch):

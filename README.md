@@ -90,7 +90,7 @@ Full DAG semantics including rework edges live in [`ARCHITECTURE.md §3`](ARCHIT
 
 ### 1. Determinism boundary: judgment in the agent, state in Python
 
-> A deterministic Python CLI (`framework/scripts/state.py`, 8 commands) owns all state; the `orchestrate.py next` reducer owns all control-loop decisions; the Orchestrator agent is a thin executor. Between every two CLI calls sits exactly one reducer call — if not, the boundary is wrong.
+> A deterministic Python CLI (`framework/scripts/state.py`, 8 commands) owns all state; `orchestrate.py decide` owns all control-loop decisions; the Orchestrator agent is a thin executor. Between every two CLI calls sits exactly one decider call — if not, the boundary is wrong.
 
 **For chip-design teams.** State is replayable from disk and unit-testable in Python. The bookkeeping cannot drift even when the agent does — the same property regulated EDA flows demand from their existing toolchains.
 

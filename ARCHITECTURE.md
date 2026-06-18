@@ -24,7 +24,7 @@ Core coined terms, each defined once here and elaborated in the linked section. 
 | **Term** | **One-line meaning** |
 |---|---|
 | **Orchestrator** | The `design-flow` agent in the main conversation; the only role that calls `state.py`, dispatches `Task()`s, and talks to the user. (§2.3) |
-| **reducer** | `orchestrate.py next` — reads on-disk state and returns exactly one action per call; the Orchestrator is its thin executor. (§5) |
+| **decider** | `orchestrate.py decide` — reads on-disk state and returns exactly one action per call; the Orchestrator is its thin executor. (§5) |
 | **main-thread-loaded** | A stage loaded via `Skill()` in the Orchestrator's own thread instead of via `Task()` — `specification`, `simulation-plan`, `rtl-design`, `simulation`. (§2.2) |
 | **Level-1 sub-Task** | A `Task()` a main-thread skill dispatches for intra-stage fan-out. Level-2 (a sub-Task dispatching a further `Task()`) is forbidden — the audit boundary. (§2.2, §6.3.1) |
 | **reap** | Closing an in-flight run with `state.py complete` (normally no `--outcome`), letting `cmd_complete` derive the outcome from the run's `result.json`. How every dispatch finishes and how a crashed run is repaired. (§5.1) |
@@ -74,7 +74,7 @@ The Orchestrator agent decides; `state.py` and skills execute; disk persists.
 │ state.py:          │  │                              │  │  Stage: executes stage   │
 │   state + 8 cmds   │  │  specification:              │  │    → writes result.json  │
 │ orchestrate.py:    │  │    fan-out → design.md       │  │  Debug: read-only triage │
-│   next (reducer)   │  │    design.md / manifest.json │  │    → returns ANALYSIS    │
+│  decide → action   │  │    design.md / manifest.json │  │    → returns ANALYSIS    │
 │ route.py:          │  │    SDC / SGDC / result.json  │  │                          │
 │   rework target    │  │  simulation-plan:            │  │  Must NOT call state.py  │
 │                    │  │    plan generation +         │  │  or make routing calls   │
@@ -101,7 +101,7 @@ The Orchestrator agent decides; `state.py` and skills execute; disk persists.
 
 The three dispatch paths from the Orchestrator:
 
-- **Bash** → `state.py` CLI (8 commands: `init`, `status`, `start`, `complete`, `rework`, `invalidate-stage`, `convergence`, `log`), the `orchestrate.py next` reducer (returns one action per call; see §5), the `topology.py` DAG SSoT (`PREREQ_OF`, `eligible()`), and the `route.py` rework-router (pure target selection; composed inside `orchestrate.py`; see §5.4)
+- **Bash** → `state.py` CLI (8 commands: `init`, `status`, `start`, `complete`, `rework`, `invalidate-stage`, `convergence`, `log`), `orchestrate.py decide` (returns one action per call; see §5), the `topology.py` DAG SSoT (`PREREQ_OF`, `eligible()`), and the `route.py` rework-router (pure target selection; composed inside `orchestrate.py`; see §5.4)
 - **Skill()** → main-thread skills (`specification`, `simulation-plan`, `rtl-design`, and `simulation`)
 - **Task()** → stage subagents and the debug subagent
 
@@ -137,10 +137,10 @@ For these four stages the Orchestrator still calls `state.py start/complete/log`
 
 ### 2.4 Core design principles
 
-- **Judgment in the Orchestrator, state in Python, deterministic computation in sibling scripts** — the *determinism boundary*. The Orchestrator makes the judgment calls (escalation, rework-context); `state.py` maintains the state facts; deterministic decision-support that is neither — convergence counting (`cmd_convergence`), rework-target selection (`route.py`), and the full control-loop decision (`orchestrate.py next` reducer) — lives in scripts the Orchestrator executes. No mixing across the three. The *enforceable* capability boundary (who may call `state.py` / `Task()` / the user) is the §2.3 role table.
-- **Decision boundary = tool boundary.** Every Orchestrator decision is pushed down to the `orchestrate.py next` reducer; the Orchestrator is a thin executor that does nothing between `state.py` calls except invoke the reducer. Its verifiable loop form — *two consecutive `state.py` calls with no reducer call between them is a bug* — lives in §5.5.
+- **Judgment in the Orchestrator, state in Python, deterministic computation in sibling scripts** — the *determinism boundary*. The Orchestrator makes the judgment calls (escalation, rework-context); `state.py` maintains the state facts; deterministic decision-support that is neither — convergence counting (`cmd_convergence`), rework-target selection (`route.py`), and the full control-loop decision (`orchestrate.py decide`) — lives in scripts the Orchestrator executes. No mixing across the three. The *enforceable* capability boundary (who may call `state.py` / `Task()` / the user) is the §2.3 role table.
+- **Decision boundary = tool boundary.** Every Orchestrator decision is pushed down to `orchestrate.py decide`; the Orchestrator is a thin executor that does nothing between `state.py` calls except invoke the decider. Its verifiable loop form — *two consecutive `state.py` calls with no decider call between them is a bug* — lives in §5.5.
 - **Files are the database.** `task.json` is the snapshot, `events.jsonl` is the audit log, `result.json` files are stage outputs. No intermediate cache, no service-side store.
-- **Compaction-safe resume.** Because files are the database, a mid-session context compaction (or a process crash) is survivable: the Orchestrator and every subagent resume losslessly from disk alone, with no load-bearing information held only in the conversation. Durable truth is on disk — `task.json`, `events.jsonl`, `result.json` per stage. The Orchestrator holds **zero durable control state** between turns — every turn re-derives the next action from disk via `orchestrate.py next`. The only conversation-resident state is the `orchestrator_context` hint authored at a `REWORK` and consumed at the target's `DISPATCH` within the same turn — **re-derivable, not durable** (and once passed to `cmd_start` it is disk-backed as `orchestrator-context.md`); see §5.
+- **Compaction-safe resume.** Because files are the database, a mid-session context compaction (or a process crash) is survivable: the Orchestrator and every subagent resume losslessly from disk alone, with no load-bearing information held only in the conversation. Durable truth is on disk — `task.json`, `events.jsonl`, `result.json` per stage. The Orchestrator holds **zero durable control state** between turns — every turn re-derives the next action from disk via `orchestrate.py decide`. The only conversation-resident state is the `orchestrator_context` hint authored at a `REWORK` and consumed at the target's `DISPATCH` within the same turn — **re-derivable, not durable** (and once passed to `cmd_start` it is disk-backed as `orchestrator-context.md`); see §5.
 - **One-way communication.** Orchestrator → prompt → subagent → `result.json` + STATUS. No subagent-initiated callback into the Orchestrator; no subagent-to-subagent communication.
 - **Context isolation.** Subagents receive a fresh prompt; they inherit no history from the parent session. All required inputs are passed explicitly via file paths or prompt fields.
 
@@ -212,7 +212,7 @@ Forward dispatch follows the priority order `specification → simulation-plan �
 Typical rework closures:
 
 - **simulation failure** → `simulation-triage` debug subagent → rework to `rtl-design` / `specification` / `simulation-plan`.
-- **PPA failure**: synthesis judges area/timing_slack; power-analysis judges power_mw; timing-analysis judges setup/hold. Any of these fails → the reducer routes it (convergence-based, via `route.py`; see §5), returning `REWORK`/`ESCALATE` for the Orchestrator to execute. For power-analysis tooling failures (GLS errors, SAIF missing), the subagent writes `failures[].{phase, category, error_summary}`; `route.py` maps `category` to the upstream DAG target (see §5.4 and `framework/scripts/route.py`).
+- **PPA failure**: synthesis judges area/timing_slack; power-analysis judges power_mw; timing-analysis judges setup/hold. Any of these fails → the decider routes it (convergence-based, via `route.py`; see §5), returning `REWORK`/`ESCALATE` for the Orchestrator to execute. For power-analysis tooling failures (GLS errors, SAIF missing), the subagent writes `failures[].{phase, category, error_summary}`; `route.py` maps `category` to the upstream DAG target (see §5.4 and `framework/scripts/route.py`).
 
 ## 4. State model
 
@@ -328,9 +328,9 @@ Each `result.json` validates against `framework/references/schemas/envelope.sche
 
 ## 5. Orchestrator decision loop
 
-The Orchestrator is structured as 1 setup block plus a thin executor loop driven by the `orchestrate.py next` reducer. Control flow follows a turn discipline: each user message or task-notification triggers exactly one turn, ending with `YIELD`, `DONE`, or `ESCALATE`. The Claude Code harness re-enters the loop when the next notification arrives.
+The Orchestrator is structured as 1 setup block plus a thin executor loop driven by `orchestrate.py decide`. Control flow follows a turn discipline: each user message or task-notification triggers exactly one turn, ending with `YIELD`, `DONE`, or `ESCALATE`. The Claude Code harness re-enters the loop when the next notification arrives.
 
-Persistent state lives on disk (`task.json`, `events.jsonl`, `result.json` per stage); the loop is therefore **compaction-safe** (§2.4). What that requires of the loop specifically: every field rendered into a subagent prompt originates from `state.py`'s on-disk artifacts (the *disk-sourced payload* commitment; per-field detail in §5.3), so conversation-history state reaches a subagent only through the disk-backed `--orchestrator-context` channel at `cmd_start`. The only transient planning state is the read-only `simulation-triage` `ANALYSIS` and the dispatch context composed from it — held in conversation until injected at the next `cmd_start`, then persisted as `orchestrator-context.md`. Both are re-derivable: if a compaction discards them mid-failure, the next turn calls `orchestrate.py next`, finds the stage still `fail/clean`, and re-dispatches the read-only, idempotent `simulation-triage` before re-composing the context. The durable routing outcome (the `rework_decision` target+reason, or the escalation reason) is already on disk once decided, so at worst a compaction repeats one triage, never loses a decision. A subagent compacted or crashed mid-run is likewise stage-granular-lossless: its missing or half-written `result.json` is caught at reap (§5.1) and the stage re-runs from its on-disk inputs.
+Persistent state lives on disk (`task.json`, `events.jsonl`, `result.json` per stage); the loop is therefore **compaction-safe** (§2.4). What that requires of the loop specifically: every field rendered into a subagent prompt originates from `state.py`'s on-disk artifacts (the *disk-sourced payload* commitment; per-field detail in §5.3), so conversation-history state reaches a subagent only through the disk-backed `--orchestrator-context` channel at `cmd_start`. The only transient planning state is the read-only `simulation-triage` `ANALYSIS` and the dispatch context composed from it — held in conversation until injected at the next `cmd_start`, then persisted as `orchestrator-context.md`. Both are re-derivable: if a compaction discards them mid-failure, the next turn calls `orchestrate.py decide`, finds the stage still `fail/clean`, and re-dispatches the read-only, idempotent `simulation-triage` before re-composing the context. The durable routing outcome (the `rework_decision` target+reason, or the escalation reason) is already on disk once decided, so at worst a compaction repeats one triage, never loses a decision. A subagent compacted or crashed mid-run is likewise stage-granular-lossless: its missing or half-written `result.json` is caught at reap (§5.1) and the stage re-runs from its on-disk inputs.
 
 ### 5.1 Setup and reap
 
@@ -343,11 +343,11 @@ Reap runs in two regimes:
 
 ### 5.2 Executor loop (per turn)
 
-The Orchestrator calls `orchestrate.py next --module <M> [--wake <stage>:<run>] [--analysis -]` and executes exactly the one action it returns, looping until the action is `YIELD`, `DONE`, or `ESCALATE`. The reducer encodes the following decision steps; the prose below remains the authoritative contract.
+The Orchestrator calls `orchestrate.py decide --module <M> [--wake <stage>:<run>] [--analysis -]` and executes exactly the one action it returns, looping until the action is `YIELD`, `DONE`, or `ESCALATE`. The decider encodes the following decision steps; the prose below remains the authoritative contract.
 
 ```mermaid
 flowchart TD
-    W(["wake: notification / user msg"]) --> N["orchestrate.py next"]
+    W(["wake: notification / user msg"]) --> N["orchestrate.py decide"]
     N --> S1["Step 1: read task.json + events.jsonl"]
     S1 --> S2{"Step 2: signoff pass/clean?"}
     S2 -- yes --> DONE(["DONE"])
@@ -363,43 +363,43 @@ flowchart TD
     S5 -- no --> ESC
 ```
 
-The leaf actions encode what follows: `REWORK` and `DISPATCH` re-query `next` (the re-query loop — several failures or dispatches resolve in one turn); `DISPATCH_TRIAGE` ends the turn at `YIELD`. The prose steps below are the authoritative contract for each box.
+The leaf actions encode what follows: `REWORK` and `DISPATCH` re-query `decide` (the re-query loop — several failures or dispatches resolve in one turn); `DISPATCH_TRIAGE` ends the turn at `YIELD`. The prose steps below are the authoritative contract for each box.
 
-**Step 1: Read state.** The reducer reads `task.json` + `events.jsonl` in-process (`read_task` / `read_events`, plus the relevant `result.json` and any piped `--analysis` payload) — it does not shell out to `state.py status`. The resulting snapshot is the single source of truth for all decisions in this call.
+**Step 1: Read state.** The decider reads `task.json` + `events.jsonl` in-process (`read_task` / `read_events`, plus the relevant `result.json` and any piped `--analysis` payload) — it does not shell out to `state.py status`. The resulting snapshot is the single source of truth for all decisions in this call.
 
 **Step 2: Terminate if done.** If `frontend-signoff` has `status=pass` and `freshness=clean` → return `DONE`.
 
-**Step 3: Handle first failure.** Scan stages by `FORWARD_PRIORITY`. Find the first stage with `status=fail` and `freshness=clean`. If any exists, route it through `route.py` (composing convergence + result inputs) and return the appropriate action (`REWORK`, `DISPATCH_TRIAGE`, or `ESCALATE`). Invariant: **one failure per reducer (`next`) call; several may resolve in one turn via the re-query loop** — when the rework target is a common ancestor of multiple `fail/clean` stages, cascade turns them `fail/stale` on the first REWORK, so subsequent re-queries see no further failures.
+**Step 3: Handle first failure.** Scan stages by `FORWARD_PRIORITY`. Find the first stage with `status=fail` and `freshness=clean`. If any exists, route it through `route.py` (composing convergence + result inputs) and return the appropriate action (`REWORK`, `DISPATCH_TRIAGE`, or `ESCALATE`). Invariant: **one failure per decider (`decide`) call; several may resolve in one turn via the re-query loop** — when the rework target is a common ancestor of multiple `fail/clean` stages, cascade turns them `fail/stale` on the first REWORK, so subsequent re-queries see no further failures.
 
 **Step 4: Forward dispatch.** For each stage that is `eligible(stage)` by `FORWARD_PRIORITY` order, return `DISPATCH`. `eligible` requires: all DAG prerequisites are `pass/clean`; the stage itself is not `in_progress/clean`, `pass/clean`, or `fail/clean`. Invariant: distinct in-flight stages ≤ 2 emerges from DAG topology (see §3.2) — the Orchestrator writes no explicit cap.
 
 **Step 5: Yield or escalate.** If any stage is `in_progress` → return `YIELD`. If no stage is in-flight and no forward progress is possible → return `ESCALATE`.
 
-The loop is harness-driven. When a background `Task()` writes its final STATUS line, the Claude Code harness injects a `<task-notification>` into the conversation and re-enters the Orchestrator, which calls `orchestrate.py next --wake <stage>:<run>` to reap and continue.
+The loop is harness-driven. When a background `Task()` writes its final STATUS line, the Claude Code harness injects a `<task-notification>` into the conversation and re-enters the Orchestrator, which calls `orchestrate.py decide --wake <stage>:<run>` to reap and continue.
 
 ### 5.3 Executing a `DISPATCH` / `REWORK` action
 
-The reducer returns the *decision*; the Orchestrator (the executor) issues the effects it cannot — `state.py` mutations, `Skill()`/`Task()`, and the one judgment (rework-context authoring).
+The decider returns the *decision*; the Orchestrator (the executor) issues the effects it cannot — `state.py` mutations, `Skill()`/`Task()`, and the one judgment (rework-context authoring).
 
-**`DISPATCH <stage>`** (the action carries `kind ∈ {main-thread, task}` and, for synthesis/power-analysis, `ppa_targets`). Call `state.py start --module <M> --stage <stage>` (piping `--orchestrator-context -` when the Orchestrator authored context for this stage at a preceding `REWORK`). On `ok:false` (eligibility shifted between the reducer's scan and this write), log the skip and re-query. The response carries `run`, `workdir`, `mode`, `skill`, `upstream_results`, and optionally `rework_trigger` / `orchestrator_context_path`. Then branch on `kind`:
+**`DISPATCH <stage>`** (the action carries `kind ∈ {main-thread, task}` and, for synthesis/power-analysis, `ppa_targets`). Call `state.py start --module <M> --stage <stage>` (piping `--orchestrator-context -` when the Orchestrator authored context for this stage at a preceding `REWORK`). On `ok:false` (eligibility shifted between the decider's scan and this write), log the skip and re-query. The response carries `run`, `workdir`, `mode`, `skill`, `upstream_results`, and optionally `rework_trigger` / `orchestrator_context_path`. Then branch on `kind`:
 - **main-thread** (`specification` / `simulation-plan` / `rtl-design` / `simulation`) → `Skill(veripower:<skill>)` in the current Orchestrator context (the skill drives the sub-design / env→verify fan-out or multi-turn dialogue, then writes its `result.json`); the Orchestrator calls `cmd_complete` once when the skill exits (synchronous).
 - **task** (the other 5) → `Task(subagent_type="general-purpose", prompt=<rendered + ppa_targets>, run_in_background=True)`. The Orchestrator does NOT block — completion is reaped on the wake turn.
 
-The `ppa_targets` for synthesis / power-analysis are **computed by the reducer** (`_ppa_targets`: it reads `specification/result.json` and filters by `dim` — `{area_um2, timing_slack_ns}` for synthesis, `{power_mw}` for power-analysis — see §9.3 of the spec) and returned *in the `DISPATCH` action*. The Orchestrator therefore performs **no `result.json` read of its own**, preserving the "no full-file read by Orchestrator" invariant.
+The `ppa_targets` for synthesis / power-analysis are **computed by the decider** (`_ppa_targets`: it reads `specification/result.json` and filters by `dim` — `{area_um2, timing_slack_ns}` for synthesis, `{power_mw}` for power-analysis — see §9.3 of the spec) and returned *in the `DISPATCH` action*. The Orchestrator therefore performs **no `result.json` read of its own**, preserving the "no full-file read by Orchestrator" invariant.
 
-**`REWORK`.** The Orchestrator authors the `orchestrator_context` (the one judgment — reasoned hints that help the target, never file dumps or info already in the target's inputs), then `state.py rework --failed-stage <f> --target-stage <t> --reason <≤200 chars>`. The cascade stales the target + its DAG-downstream (including the just-failed stage). The next `orchestrate.py next` returns `DISPATCH <target>`, at which point the authored context is piped via `--orchestrator-context`. (`orchestrator_context` is per-dispatch ephemeral — it does not persist to a later dispatch of the same stage.)
+**`REWORK`.** The Orchestrator authors the `orchestrator_context` (the one judgment — reasoned hints that help the target, never file dumps or info already in the target's inputs), then `state.py rework --failed-stage <f> --target-stage <t> --reason <≤200 chars>`. The cascade stales the target + its DAG-downstream (including the just-failed stage). The next `orchestrate.py decide` returns `DISPATCH <target>`, at which point the authored context is piped via `--orchestrator-context`. (`orchestrator_context` is per-dispatch ephemeral — it does not persist to a later dispatch of the same stage.)
 
-### 5.4 Failure routing (inside the reducer)
+### 5.4 Failure routing (inside the decider)
 
-All deterministic rework-target selection lives in `framework/scripts/route.py` — a pure sibling script; `state.py` stays routing-free. The `orchestrate.py next` reducer composes `route.py` in-process: it gathers the structured inputs a failure exposes, calls `route()`, and returns the appropriate action. It restates none of the category / failure_kind / fixed-target / root_cause maps — `route.py` is their sole home (`tests/unit/test_route.py` is the exhaustive behavioral spec; `tests/contracts/test_routing_table_consistency.py` guards it against schema drift).
+All deterministic rework-target selection lives in `framework/scripts/route.py` — a pure sibling script; `state.py` stays routing-free. `orchestrate.py decide` composes `route.py` in-process: it gathers the structured inputs a failure exposes, calls `route()`, and returns the appropriate action. It restates none of the category / failure_kind / fixed-target / root_cause maps — `route.py` is their sole home (`tests/unit/test_route.py` is the exhaustive behavioral spec; `tests/contracts/test_routing_table_consistency.py` guards it against schema drift).
 
-Control flow inside the reducer (Step 3):
+Control flow inside the decider (Step 3):
 
 1. `convergence(events, failed_stage)` (pure fn, in-process) supplies `guideline` and `by_target["rtl-design"]`.
 2. Call `route()` *early* with cheap inputs (on-disk `result.json` for the PPA / lint-cdc / simulation-plan classes; nothing extra for simulation / frontend-signoff), so a failure that will escalate never burns a triage dispatch.
 3. Act on `decision`:
    - `ESCALATE` → return `ESCALATE` action (reason = `route.py`'s `reason_hint` or the canonical `fail_reason`, verbatim). Covers `must_escalate`, `failure_kind=infra`, terminal `frontend-signoff`, and `tooling` failures with no upstream target.
-   - `NEED_INPUT` (realistically only `simulation`, which needs the triage `root_cause`) → return `DISPATCH_TRIAGE`. The Orchestrator logs the `debug_dispatch` event, dispatches the `simulation-triage` debug subagent, and ends the turn (`YIELD`). Next turn, the Orchestrator passes `--analysis -` with the triage ANALYSIS JSON to the reducer; `route()` is called with `--root-cause`/`--analysis-state`. A `skipped` analysis or a `simulation` root_cause yields `ESCALATE`; otherwise the root_cause maps to a `REWORK` target.
+   - `NEED_INPUT` (realistically only `simulation`, which needs the triage `root_cause`) → return `DISPATCH_TRIAGE`. The Orchestrator logs the `debug_dispatch` event, dispatches the `simulation-triage` debug subagent, and ends the turn (`YIELD`). Next turn, the Orchestrator passes `--analysis -` with the triage ANALYSIS JSON to the decider; `route()` is called with `--root-cause`/`--analysis-state`. A `skipped` analysis or a `simulation` root_cause yields `ESCALATE`; otherwise the root_cause maps to a `REWORK` target.
    - `<stage>` → return `REWORK` action. The Orchestrator calls `state.py rework --failed-stage <f> --target-stage <decision>` with a ≤200-char reason. For `simulation`, the Orchestrator also authors the per-dispatch `orchestrator_context` for the target — the one judgment step that stays LLM-side (§6.5).
 
 `route.py` consumes only closed-enum / integer inputs (`failed_stage`, `failure_kind`, `failures[0].category`, `root_cause`, `analysis_state`, `guideline`, `by_target`), all produced upstream by stage subagents, `simulation-triage`, or `state.py`. For the exact `category → target` map and rule identifiers, see `framework/scripts/route.py` and `tests/unit/test_route.py`.
@@ -410,7 +410,7 @@ The `NEED_INPUT` path is the loop's only cross-turn handshake — a `simulation-
 sequenceDiagram
     autonumber
     participant O as Orchestrator
-    participant R as reducer
+    participant R as decider
     participant RT as route.py
     participant T as simulation-triage
     participant S as state.py
@@ -436,12 +436,12 @@ sequenceDiagram
 
 ### 5.5 Architectural commitments embedded in this loop
 
-> **Contract:** Every `state.py` call is bracketed by exactly one `orchestrate.py next` call. Two consecutive `state.py` calls with no reducer call between them means the tool boundary is wrong, or the Orchestrator is doing work that should have been pushed down. This is the verifiable form of the *decision boundary = tool boundary* principle (§2.4).
+> **Contract:** Every `state.py` call is bracketed by exactly one `orchestrate.py decide` call. Two consecutive `state.py` calls with no decider call between them means the tool boundary is wrong, or the Orchestrator is doing work that should have been pushed down. This is the verifiable form of the *decision boundary = tool boundary* principle (§2.4).
 
-- `cmd_start` is the single source of eligibility truth. The reducer's `eligible()` predicate is informational only; `cmd_start` re-checks state at write time and returns `ok:false` if eligibility shifted between the scan and the actual write.
+- `cmd_start` is the single source of eligibility truth. The decider's `eligible()` predicate is informational only; `cmd_start` re-checks state at write time and returns `ok:false` if eligibility shifted between the scan and the actual write.
 - `cmd_complete --run <N>` is mandatory for every dispatched run. Runs are addressable by number; the same stage may have multiple concurrent runs (the DAG legalizes this for `simulation` under cascade-stale — see §4.2).
-- `convergence(events, stage)` returns a two-valued guideline (`continue` / `must_escalate`); the reducer's `route()` call decides whether to escalate. `state.py` issues no mandates.
-- The reducer handles at most one `fail/clean` stage per call (Step 3). Several failures may resolve in one turn via the re-query loop; multiple independent failures accumulate across turns — this is intentional, not a limitation.
+- `convergence(events, stage)` returns a two-valued guideline (`continue` / `must_escalate`); the decider's `route()` call decides whether to escalate. `state.py` issues no mandates.
+- The decider handles at most one `fail/clean` stage per call (Step 3). Several failures may resolve in one turn via the re-query loop; multiple independent failures accumulate across turns — this is intentional, not a limitation.
 - `state.py`'s argparse output is the **single authoritative source for the CLI surface** — flag signatures, return JSON shapes, outcome enums, error cases. No parallel reference document is maintained; run `python3 framework/scripts/state.py [<cmd>] --help` to consult it.
 
 ### 5.6 Validation doctrine
@@ -492,7 +492,7 @@ Stage subagents for `synthesis`, `power-analysis`, and `timing-analysis` carry a
 | `tooling` | Tool ran but produced errors (synthesis: DC error; power-analysis: GLS or PTPX error; timing-analysis: PT error). For power-analysis only, the subagent **may also populate** `stage_specific.failures[]` (optional per schema on `status=fail`; required only on `status=pass`) with entries carrying `phase`, `category`, and `error_summary`. `route.py` consumes `failures[0].category` to select the power-analysis tooling rework target; when `failures[]` is absent it escalates. synthesis and timing-analysis define no `failures[]`, so their `tooling` failures always escalate (see `framework/scripts/route.py`). |
 | `ppa` | Tool ran successfully but a PPA gate was exceeded (synthesis: area or timing_slack; power-analysis: power_mw; timing-analysis: setup or hold). `ppa_actual` / `violations[]` carry the numbers. |
 
-The reducer's failure-routing (`_handle_failure` inside `orchestrate.py`) passes `failure_kind` to `route.py`, which selects the rework target (see §5.4 and `framework/scripts/route.py`). Subagents emitting an absent or wrong-enum value fail schema validation at `cmd_complete`, and the run lands as `status=invalid`, not `fail`.
+The decider's failure-routing (`_handle_failure` inside `orchestrate.py`) passes `failure_kind` to `route.py`, which selects the rework target (see §5.4 and `framework/scripts/route.py`). Subagents emitting an absent or wrong-enum value fail schema validation at `cmd_complete`, and the run lands as `status=invalid`, not `fail`.
 
 **Script-authored envelope (frontend-signoff).** One further per-stage envelope carve-out: `frontend-signoff`'s `result.json` is produced by its `aggregate_signoff.py` (gate + envelope in one deterministic pass), not hand-authored by the subagent — it is the pipeline's only script-authored envelope. It is validated by the same `cmd_complete` schema check as every other stage (a malformed envelope lands as `status=invalid`, never reaching the pipeline as a `fail`). The generic "write an envelope-conformant `result.json`" obligation (§6.1 #3) is satisfied unchanged; only the author differs.
 
@@ -534,7 +534,7 @@ semantic-gate trips, but self-converges authoring-locus (conformance presence) o
 - **Output:** a two-tier ANALYSIS — a routing block (`root_cause`/`analysis_state`, schema-validated) plus a prose analysis section (clustering is a reasoning method that produces the `## Findings` narrative and a single `root_cause`, not a serialized sorted-candidates array).
 - **Side effects:** none. Does NOT edit `task.json`, write `result.json`, or touch RTL / tests / simulation infrastructure.
 
-`simulation-triage` self-validates its ANALYSIS via `scripts/validate_analysis.py` (the producer self-gate — see §5.6 validation doctrine) before emitting. The Orchestrator extracts `root_cause` from the validated ANALYSIS, passes it to `route.py` inside the `orchestrate.py next` reducer to select the `target_stage` (see §5.4), and the reducer returns a `REWORK` action which the Orchestrator executes via `state.py rework`.
+`simulation-triage` self-validates its ANALYSIS via `scripts/validate_analysis.py` (the producer self-gate — see §5.6 validation doctrine) before emitting. The Orchestrator extracts `root_cause` from the validated ANALYSIS, passes it to `route.py` inside `orchestrate.py decide` to select the `target_stage` (see §5.4), and the decider returns a `REWORK` action which the Orchestrator executes via `state.py rework`.
 
 ### 6.5 `orchestrator_context` injection field
 

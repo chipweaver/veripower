@@ -5,7 +5,7 @@ description: Use when progressing IC design through stages, checking module stat
 
 # Design Flow Orchestrator
 
-This skill is the **orchestrator** — each turn it calls the deterministic reducer `orchestrate.py next` (which computes the single next action: forward dispatch / rework routing / convergence judgment / escalation / yield / done) and **executes** that action — dispatching stage subagents through the Task tool and managing state through `state.py`. The routing decisions live in the reducer, not this skill; `state.py` is a pure state tool with no routing logic.
+This skill is the **orchestrator** — each turn it calls the deterministic decider `orchestrate.py decide` (which computes the single next action: forward dispatch / rework routing / convergence judgment / escalation / yield / done) and **executes** that action — dispatching stage subagents through the Task tool and managing state through `state.py`. The routing decisions live in the decider, not this skill; `state.py` is a pure state tool with no routing logic.
 
 ## When to Use
 
@@ -50,7 +50,7 @@ This skill is loaded on the main thread and reads `{module}` (the sole external 
 - `t = state.py status --module {module}`.
 - Crash-recovery reap helper — for every `<run>` in `t.stages[<S>].in_flight[]`:
   - `state.py complete --module {module} --stage <S> --run <run>` (no `--outcome`). cmd_complete reads that run's own `result.json` and resolves the outcome itself — `status` ∈ {pass, fail} → pass/fail; status missing/illegal → blocked (malformed status); file missing or JSON unparseable → blocked (stage crashed or produced no result.json); present-but-schema-invalid → invalid. The Orchestrator never reads `result.json` (no full-file read by Orchestrator). cmd_complete derives the run-specific path via `state._result_path()` (which indexes `topology._RESULT_DIR`); if that mapping drifts, only topology.py changes.
-- Canonical `result.json` paths (read by the reducer for failure routing + ppa-target extraction) follow `topology._RESULT_DIR`:
+- Canonical `result.json` paths (read by the decider for failure routing + ppa-target extraction) follow `topology._RESULT_DIR`:
   - `specification` / `rtl-design` / `lint-cdc` / `synthesis` / `timing-analysis` → `asic/{module}/Design/<S>/result.json`.
   - `simulation-plan` / `simulation` / `power-analysis` → `asic/{module}/Verification/<S>/result.json`.
   - `frontend-signoff` → `asic/{module}/frontend-signoff/result.json` (top-level, no area prefix).
@@ -77,38 +77,38 @@ This skill is loaded on the main thread and reads `{module}` (the sole external 
 
 ### Executor loop (each turn)
 
-Call the reducer; execute exactly the effect it names; end the turn only on `YIELD`/`DONE`/`ESCALATE`:
+Call the decider; execute exactly the effect it names; end the turn only on `YIELD`/`DONE`/`ESCALATE`:
 
 ```dot
 digraph {
   rankdir=LR
   node [shape=box]
-  start -> next [label="orchestrate.py next"]
-  next -> REAP [label="REAP"]
-  next -> DISPATCH [label="DISPATCH"]
-  next -> DISPATCH_TRIAGE [label="DISPATCH_TRIAGE"]
-  next -> REWORK [label="REWORK"]
-  next -> YIELD [label="YIELD → end turn"]
-  next -> DONE [label="DONE → end turn"]
-  next -> ESCALATE [label="ESCALATE → end turn"]
-  REAP -> next [label="loop"]
-  DISPATCH -> next [label="loop"]
+  start -> decide [label="orchestrate.py decide"]
+  decide -> REAP [label="REAP"]
+  decide -> DISPATCH [label="DISPATCH"]
+  decide -> DISPATCH_TRIAGE [label="DISPATCH_TRIAGE"]
+  decide -> REWORK [label="REWORK"]
+  decide -> YIELD [label="YIELD → end turn"]
+  decide -> DONE [label="DONE → end turn"]
+  decide -> ESCALATE [label="ESCALATE → end turn"]
+  REAP -> decide [label="loop"]
+  DISPATCH -> decide [label="loop"]
   DISPATCH_TRIAGE -> YIELD [label="→ end turn"]
-  REWORK -> next [label="loop"]
+  REWORK -> decide [label="loop"]
 }
 ```
 
 ```
 loop:
-  a = orchestrate.py next --module {module} [--wake <stage>:<run>] [--analysis -]
+  a = orchestrate.py decide --module {module} [--wake <stage>:<run>] [--analysis -]
   execute(a)
   if a.action in {YIELD, DONE, ESCALATE}: end turn
 ```
 
-`next` always exits 0 and prints exactly one JSON object; `action` selects the shape (complete enumeration):
+`decide` always exits 0 and prints exactly one JSON object; `action` selects the shape (complete enumeration):
 `DISPATCH {stage, kind: main-thread|task, ppa_targets[]}` (`ppa_targets` always present; non-empty only for synthesis / power-analysis) · `REAP {stage, run}` · `REWORK {failed_stage, target_stage, reason_hint}` · `YIELD {in_flight: [[stage, run], …]}` (triage-pending variant: `in_flight: []` + `waiting_on: "simulation-triage"`) · `DISPATCH_TRIAGE {}` · `ESCALATE {reason: <text>}` · `DONE {}`.
 
-Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notification>` (values from its `<output-file>` / stage binding), and **re-pass the same `--wake` on every re-query within the turn**. Once the named run is reaped it leaves `in_flight`, so a stale `--wake` is a safe no-op (the reducer's step-1 guard checks membership) — re-passing prevents a step-0 `promote_failed` retry on another stage from preempting the wake and orphaning the completed run (which would `YIELD` with that run still `in_flight` and no new notification → stall). Pass `--analysis -` and pipe the triage ANALYSIS JSON when this turn was triggered by a `simulation-triage` return.
+Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notification>` (values from its `<output-file>` / stage binding), and **re-pass the same `--wake` on every re-query within the turn**. Once the named run is reaped it leaves `in_flight`, so a stale `--wake` is a safe no-op (the decider's step-1 guard checks membership) — re-passing prevents a step-0 `promote_failed` retry on another stage from preempting the wake and orphaning the completed run (which would `YIELD` with that run still `in_flight` and no new notification → stall). Pass `--analysis -` and pipe the triage ANALYSIS JSON when this turn was triggered by a `simulation-triage` return.
 
 `execute(action)`:
 
@@ -118,12 +118,12 @@ Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notificatio
 | `DISPATCH` kind=main-thread | `state.py start --module {module} --stage <s> [--orchestrator-context <file|->]` → `Skill(veripower:<skill>)` → `state.py complete --stage <s> --run <r>` |
 | `DISPATCH` kind=task | `state.py start --module {module} --stage <s> [--orchestrator-context <file|->]` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered + ppa_targets>)` |
 | `DISPATCH_TRIAGE` | `state.py log --event '{"type":"debug_dispatch","module":"{module}"}'` → `Task(… Skill(veripower:simulation-triage) …)`. The next loop iteration sees the triage pending and returns `YIELD` (which ends the turn). |
-| `REWORK` | author `orchestrator_context` (the one judgment) → `state.py rework --failed-stage <f> --target-stage <t> --reason "<≤200 from reason_hint>"` → on the next loop the reducer dispatches the now-eligible target |
+| `REWORK` | author `orchestrator_context` (the one judgment) → `state.py rework --failed-stage <f> --target-stage <t> --reason "<≤200 from reason_hint>"` → on the next loop the decider dispatches the now-eligible target |
 | `ESCALATE` | `state.py log --event '{"type":"escalation","reason_code":"…","reason":"<verbatim>"}'` → reply to user (verbatim subagent text + status snapshot + 2-3 next steps) |
 | `YIELD` | reply the `in_flight` list to the user. (A triage-pending YIELD carries `waiting_on: "simulation-triage"` with empty `in_flight` — say a triage subagent is running.) |
 | `DONE` | reply a completion summary; session ends |
 
-> `execute(DISPATCH_TRIAGE)` writes the `debug_dispatch` marker itself (state.py does not auto-emit it) — the reducer reads that marker to avoid re-dispatching triage on a later turn. This is the L4 guard, now structural: after the ANALYSIS wake reworks `simulation`, it is `fail/stale`, so it is no longer selected for failure handling at all. Same-turn optimization only: if a context compaction discards the pending ANALYSIS, re-triage is correct recovery (triage is read-only/idempotent).
+> `execute(DISPATCH_TRIAGE)` writes the `debug_dispatch` marker itself (state.py does not auto-emit it) — the decider reads that marker to avoid re-dispatching triage on a later turn. This is the L4 guard, now structural: after the ANALYSIS wake reworks `simulation`, it is `fail/stale`, so it is no longer selected for failure handling at all. Same-turn optimization only: if a context compaction discards the pending ANALYSIS, re-triage is correct recovery (triage is read-only/idempotent).
 
 ## Decision Rules
 
@@ -181,7 +181,7 @@ Orchestrator-form specialization: this skill does not write `result.json`; each 
 ## Bundled References
 
 - `${CLAUDE_PLUGIN_ROOT}/framework/scripts/state.py` — State-management tool (8 commands). Invocation contract: this file + `--help` (which prints each command's return shape); do not read the source.
-- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/orchestrate.py` — The `next` reducer. Invocation + output contract: §Executor loop above; do not read the source.
+- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/orchestrate.py` — the control-loop decider (`orchestrate.py decide`). Invocation + output contract: §Executor loop above; do not read the source.
 - `${CLAUDE_PLUGIN_ROOT}/framework/scripts/topology.py`, `route.py`, `artifacts.py` — import-only internals of state.py / orchestrate.py (DAG SSoT, rework-target maps, artifact promote/mirror); never invoked or read at runtime.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/prompts/stage-subagent.md.tpl`](../../framework/references/prompts/stage-subagent.md.tpl) — Task dispatch template.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — Common envelope schema.

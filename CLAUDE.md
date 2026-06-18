@@ -76,9 +76,9 @@ Read script source at runtime.
 
 ## State Tool & Skill Dispatch
 
-- `framework/scripts/state.py` — 8 commands (init, status, start, complete, rework, invalidate-stage, convergence, log). No routing logic — scheduling is computed by `orchestrate.py next` (see below), which the `design-flow` Orchestrator executes.
+- `framework/scripts/state.py` — 8 commands (init, status, start, complete, rework, invalidate-stage, convergence, log). No routing logic — scheduling is computed by `orchestrate.py decide` (see below), which the `design-flow` Orchestrator executes.
 - `framework/scripts/topology.py` — DAG structural SSoT (`FORWARD_PRIORITY`, `PREREQ_OF`, `eligible()`); `state.py` imports the subset it uses (so those names also resolve as `state.X`), while `orchestrate.py` imports `topology` directly.
-- `framework/scripts/orchestrate.py` — the `next` reducer; reads on-disk state and returns exactly one action per call; the Orchestrator is a thin executor of `orchestrate.py next`.
+- `framework/scripts/orchestrate.py` — the decider (`orchestrate.py decide`); reads on-disk state and returns exactly one action per call; the Orchestrator is a thin executor of it.
 - `framework/scripts/route.py` — pure deterministic rework-target selection (sole home of the failure→target maps); composed unchanged inside `orchestrate.py`. No state.
 - `framework/scripts/artifacts.py` — artifact-lifecycle internals (promote, trace mirroring), imported by `state.py`; internal — never invoked directly.
 - Main-thread-loaded stages: `specification`, `simulation-plan`, `rtl-design`, and `simulation` — Orchestrator calls `Skill(veripower:...)` directly (specification + rtl-design + simulation hold Level-1 fan-out sub-Task dispatch authority — simulation dispatches env-build → smoke gate → conformance gate → verify as three sequential waves; rtl-design's fan-out is followed by a Step-4 deterministic conformance gate (≤2-round body-blind self-converge) + a gating semantic gate (Step 4.4) on every clean-gate finalize; simulation-plan authors the plan via dialogue). The other 5 stages (`lint-cdc`, `synthesis`, `timing-analysis`, `power-analysis`, `frontend-signoff`) are strictly Task-dispatched subagents. See `skills/design-flow/SKILL.md` and `ARCHITECTURE.md §2`.

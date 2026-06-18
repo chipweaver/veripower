@@ -128,7 +128,7 @@ for design stages, `Verification/` for verification stages.
 
 ## Step 4 — When a stage fails (rework)
 
-Stage failures are **routed automatically** — a deterministic reducer picks the
+Stage failures are **routed automatically** — a deterministic decider picks the
 rework target and the Orchestrator re-dispatches the right stage. You don't
 route anything by hand, and work already in flight isn't thrown away. (The full
 state model and rework edges live in [`ARCHITECTURE.md §3`](ARCHITECTURE.md#3-pipeline-dag)

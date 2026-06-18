@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""VeriPower orchestration reducer — the deterministic control loop.
+"""VeriPower orchestration decider — the deterministic control loop.
 
-`orchestrate.py next` reads on-disk state and returns EXACTLY ONE next action
+`orchestrate.py decide` reads on-disk state and returns EXACTLY ONE next action
 for the design-flow Orchestrator to execute. Decision-support only: it reads
 state and decides; it never mutates (state.py owns mutations). Composes the
 pure deciders route() / eligible() / convergence(). Reproduces ARCHITECTURE.md
-§5's loop as tested code. The LLM loops on `next` until YIELD/DONE/ESCALATE.
+§5's loop as tested code. The LLM loops on `decide` until YIELD/DONE/ESCALATE.
 """
 
 from __future__ import annotations
@@ -103,9 +103,7 @@ def _handle_failure(
     }
 
 
-def next_action(
-    module: str, wake: str | None = None, analysis: dict | None = None
-) -> dict:
+def decide(module: str, wake: str | None = None, analysis: dict | None = None) -> dict:
     task = read_task(module)
     stages = task["stages"]
     events = read_events(module)
@@ -172,7 +170,9 @@ def next_action(
 def main() -> None:
     ap = argparse.ArgumentParser(prog="orchestrate.py")
     sub = ap.add_subparsers(dest="command")
-    p = sub.add_parser("next", help="Return the single next orchestrator action.")
+    p = sub.add_parser(
+        "decide", help="Return the single orchestrator action to take now."
+    )
     p.add_argument("--module", required=True)
     p.add_argument(
         "--wake", default=None, help="<stage>:<run> from the task-notification"
@@ -183,15 +183,11 @@ def main() -> None:
         help="'-' to read a triage ANALYSIS payload from stdin",
     )
     args = ap.parse_args()
-    if args.command != "next":
+    if args.command != "decide":
         ap.print_help()
         sys.exit(1)
     analysis = json.loads(sys.stdin.read()) if args.analysis == "-" else None
-    print(
-        json.dumps(
-            next_action(args.module, wake=args.wake, analysis=analysis), indent=2
-        )
-    )
+    print(json.dumps(decide(args.module, wake=args.wake, analysis=analysis), indent=2))
 
 
 if __name__ == "__main__":

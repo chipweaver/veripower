@@ -48,9 +48,9 @@ The authoritative source for stage state; re-exports `PREREQ_OF` and other DAG c
 
 The authoritative source for `PREREQ_OF` (the stage DAG), `FORWARD_PRIORITY`, `SKILL_OF`, `eligible()`, and `descendants()`. Dependency-light leaf with no I/O — importable without pulling in `jsonschema`.
 
-### `scripts/orchestrate.py` — `next` reducer
+### `scripts/orchestrate.py` — the decider
 
-A standalone Python CLI that reads on-disk state and returns exactly one action per call (`orchestrate.py next --module <M> [--wake <stage>:<run>] [--analysis -]`). The `design-flow` Orchestrator executes this action and loops until `YIELD`/`DONE`/`ESCALATE`. All deterministic control-loop logic lives here (composes `route.py`, `eligible()`, and `convergence()`); the Orchestrator is a thin executor.
+A standalone Python CLI that reads on-disk state and returns exactly one action per call (`orchestrate.py decide --module <M> [--wake <stage>:<run>] [--analysis -]`). The `design-flow` Orchestrator executes this action and loops until `YIELD`/`DONE`/`ESCALATE`. All deterministic control-loop logic lives here (composes `route.py`, `eligible()`, and `convergence()`); the Orchestrator is a thin executor.
 
 Primary caller is the `design-flow` Orchestrator loop, but the tool is **runnable
 by anyone**: humans manually driving a pipeline, tests, CI, future automated

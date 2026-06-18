@@ -109,8 +109,8 @@ Each entry:
 - **verified:** 2026-06-06 — anchor "### 2.4 Core design principles" resolves (L107); CONTRIBUTING "Modifying `state.py`" present (L17).
 
 ### C1-11 — eligibility-recheck-at-write
-- **check:** `cmd_start` re-checks eligibility at write time and returns `ok:false` if state shifted since the reducer's scan; the reducer's `eligible()` is informational only; a caller handles `ok:false` (log the skip + re-query), never acting on the scan alone.
-- **signal:** a dispatch path acting on the reducer's `eligible()` result with no `cmd_start` `ok:false` handling — a TOCTOU dispatch race.
+- **check:** `cmd_start` re-checks eligibility at write time and returns `ok:false` if state shifted since the decider's scan; the decider's `eligible()` is informational only; a caller handles `ok:false` (log the skip + re-query), never acting on the scan alone.
+- **signal:** a dispatch path acting on the decider's `eligible()` result with no `cmd_start` `ok:false` handling — a TOCTOU dispatch race.
 - **severity:** must-fix
 - **applies-to:** py-core, scripts
 - **ssot:** ARCHITECTURE.md → "### 5.5 Architectural commitments embedded in this loop"

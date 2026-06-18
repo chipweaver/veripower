@@ -1,7 +1,7 @@
 """VeriPower pipeline topology — the structural SSoT (the stage DAG).
 
 Dependency-light leaf: NO jsonschema/referencing imports, so importers
-(state.py, and the forthcoming orchestrate.py reducer) do not inherit them.
+(state.py and the orchestrate.py decider) do not inherit them.
 Holds the DAG constants, graph queries, and the eligibility predicate.
 No I/O, no state. Import it the bare way (`import topology`), never via
 `framework.scripts.topology` (that would split it into a 2nd module object).
