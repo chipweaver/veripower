@@ -126,6 +126,15 @@ Each entry:
 - **provenance:** in-repo pattern — `synthesis_rpt_parser.py` / `timing_rpt_parser.py` / `power_rpt_parser.py` / lint-cdc `collect_report.py`, each owning its stage verdict with a unit test; commit subjects "script PPA extract+gate (fail-loud), fix multi-group slack false-pass" + "power_rpt_parser owns verdict + result assembly". Complements C1-10 (orchestration-layer determinism) at the stage-verdict layer; no Tier-A doc owns it → orphan.
 - **verified:** 2026-06-10 — timing-analysis SKILL.md "self-judge … via `timing_rpt_parser.py` — never by eye" (L8) + "the parser owns this; do not hand-classify" (L24); synthesis parser takes the `min` Critical Path Slack across all clock-group blocks (the false-pass fix); power "exit code is the pass/fail truth"; 4 parsers + 4 `tests/unit/test_*_parser.py` present.
 
+### C1-13 — command-action-name-parity
+- **check:** A control-plane operation carries one root across its `state.py` command and the decider's action (`dispatch`/`DISPATCH`, `reap`/`REAP`, `rework`/`REWORK`); events stay named for what they record (`dispatch`, `outcome`, `cascade`). A coined term (glossary / ARCHITECTURE prose) is never defined 1:1 as a single command of a different name — a term equals its code identifier, or carries its own action/event anchor.
+- **signal:** a new `state.py` command whose root differs from its `decide`-emitted action; a glossary/ARCHITECTURE term defined as "= `state.py <cmd>`" / "= `orchestrate.py <cmd>`" whose own name doesn't match that command and which no action/event anchors — the prose-to-command bridge the `next`→`decide` and `start`/`complete`→`dispatch`/`reap` renames retired.
+- **severity:** should-fix
+- **applies-to:** py-core, docs
+- **ssot:** ARCHITECTURE.md → "### 4.5 Event types"
+- **provenance:** ARCHITECTURE.md §4.5 "Naming invariant"; commit subjects "refactor(orchestrate): rename `next` to `decide` across command/function/role" + "refactor(state): rename `start`/`complete` commands to `dispatch`/`reap`".
+- **verified:** 2026-06-18 — anchor "### 4.5 Event types" resolves (L292); its "Naming invariant" para owns the command==action-root rule; `state.py --help` lists `dispatch`/`reap`/`rework` matching decider actions `DISPATCH`/`REAP`/`REWORK`; no glossary term is defined 1:1 against a differently-named command.
+
 ## Class 2 — Skill / content hygiene & conventions
 
 ### C2-01 — skill-md-formatting-conventions
