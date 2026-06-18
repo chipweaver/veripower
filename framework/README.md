@@ -41,7 +41,7 @@ documents in its SKILL.md input table.
 ### `scripts/state.py` — orchestration-protocol CLI
 
 A standalone Python CLI implementing the state machine. 8 commands:
-`init`, `status`, `start`, `complete`, `rework`, `invalidate-stage`, `convergence`, `log`.
+`init`, `status`, `dispatch`, `reap`, `rework`, `invalidate-stage`, `convergence`, `log`.
 The authoritative source for stage state; re-exports `PREREQ_OF` and other DAG constants from `topology.py`.
 
 ### `scripts/topology.py` — pipeline DAG structural SSoT

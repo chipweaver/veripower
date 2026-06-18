@@ -1,4 +1,4 @@
-"""Verify the rework-trigger invariant for the dispatcher (state.cmd_start).
+"""Verify the rework-trigger invariant for the dispatcher (state.cmd_dispatch).
 
 Invariant: ``mode == "rework"`` ⟹ ``rework_trigger`` is injected into the
 dispatch payload **OR** the canonical workdir already holds prev artifacts
@@ -24,22 +24,22 @@ from conftest import write_run_result
 
 from framework.scripts.state import (
     _result_path,
-    cmd_complete,
+    cmd_dispatch,
     cmd_init,
+    cmd_reap,
     cmd_rework,
-    cmd_start,
 )
 
 
 def _start_pass_complete(module: str, stage: str) -> int:
     """Dispatch + complete a stage with outcome=pass. Returns the run number."""
-    r = cmd_start(module, stage)
-    assert r["ok"], f"cmd_start({stage}) failed: {r}"
+    r = cmd_dispatch(module, stage)
+    assert r["ok"], f"cmd_dispatch({stage}) failed: {r}"
     run = r["run"]
     write_run_result(module, stage, run)
-    res = cmd_complete(module, stage, run=run, outcome="pass")
+    res = cmd_reap(module, stage, run=run, outcome="pass")
     assert res.get("action") == "completed" and res.get("result_status") == "pass", (
-        f"cmd_complete({stage}, run={run}, pass) failed: {res}"
+        f"cmd_reap({stage}, run={run}, pass) failed: {res}"
     )
     return run
 
@@ -59,18 +59,18 @@ def test_cascade_rework_skips_not_started_stages(tmp_path, monkeypatch):
     cmd_init("M1")
 
     # specification first run, pass
-    r = cmd_start("M1", "specification")
+    r = cmd_dispatch("M1", "specification")
     assert r["ok"] and r["mode"] == "forward"
     assert "rework_trigger" not in r
     write_run_result("M1", "specification", r["run"])
-    cmd_complete("M1", "specification", run=r["run"], outcome="pass")
+    cmd_reap("M1", "specification", run=r["run"], outcome="pass")
 
     # simulation-plan first run, pass (rtl-design's direct prereq)
     _start_pass_complete("M1", "simulation-plan")
 
     # rtl-design first dispatch — was not_started while specification/simulation-plan transitioned to
     # pass, so cascade did not touch it; mode must be forward, no trigger.
-    r2 = cmd_start("M1", "rtl-design")
+    r2 = cmd_dispatch("M1", "rtl-design")
     assert r2["ok"]
     assert r2["mode"] == "forward", (
         f"first-time rtl-design after specification+simulation-plan pass should be forward, got {r2['mode']}"
@@ -81,7 +81,7 @@ def test_cascade_rework_skips_not_started_stages(tmp_path, monkeypatch):
 def test_explicit_rework_has_trigger(tmp_path, monkeypatch):
     """Orchestrator cmd_rework dispatches a target stage with mode=rework + populated trigger.
 
-    After cmd_rework(failed_stage=rtl-design, target_stage=specification), the next cmd_start(specification)
+    After cmd_rework(failed_stage=rtl-design, target_stage=specification), the next cmd_dispatch(specification)
     must inject rework_trigger pointing to the failed stage's canonical result path
     (Design/rtl-design/result.json).
     """
@@ -104,7 +104,7 @@ def test_explicit_rework_has_trigger(tmp_path, monkeypatch):
     assert rew.get("ok", True) is not False, f"cmd_rework failed: {rew}"
 
     # Re-dispatch specification — must arrive as rework with trigger pointing at rtl-design
-    r3 = cmd_start("M1", "specification")
+    r3 = cmd_dispatch("M1", "specification")
     assert r3["ok"]
     assert r3["mode"] == "rework", f"expected rework, got {r3['mode']}"
     assert "rework_trigger" in r3, (
@@ -120,7 +120,7 @@ def test_cascade_rework_no_trigger_but_prev_artifacts(tmp_path, monkeypatch):
 
     Sequence: specification → simulation-plan → rtl-design all pass (canonical Design/rtl-design/result.json
     promoted) → cmd_rework(rtl-design→specification) (stales specification/simulation-plan/rtl-design via cascade) →
-    specification re-pass and simulation-plan re-pass restore the chain → cmd_start(rtl-design) yields
+    specification re-pass and simulation-plan re-pass restore the chain → cmd_dispatch(rtl-design) yields
     mode=rework (rtl-design is pass/stale from the most recent cascade) WITH NO
     rework_decision targeting rtl-design. Per the invariant, prev artifacts —
     canonical Design/rtl-design/result.json promoted by the first rtl-design run — must
@@ -157,9 +157,9 @@ def test_cascade_rework_no_trigger_but_prev_artifacts(tmp_path, monkeypatch):
     # rework_decision in the event log targets specification, not rtl-design.
     _start_pass_complete("M1", "simulation-plan")
 
-    # cmd_start(rtl-design) — rtl-design is pass/stale (cascade), and no rework_decision
+    # cmd_dispatch(rtl-design) — rtl-design is pass/stale (cascade), and no rework_decision
     # targets rtl-design, so trigger is None. This is the cascade-rework path.
-    r4 = cmd_start("M1", "rtl-design")
+    r4 = cmd_dispatch("M1", "rtl-design")
     assert r4["ok"]
     assert r4["mode"] == "rework", (
         f"cascade rework should set mode=rework, got {r4['mode']}"

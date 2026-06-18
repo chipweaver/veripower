@@ -109,12 +109,12 @@ Each entry:
 - **verified:** 2026-06-06 — anchor "### 2.4 Core design principles" resolves (L107); CONTRIBUTING "Modifying `state.py`" present (L17).
 
 ### C1-11 — eligibility-recheck-at-write
-- **check:** `cmd_start` re-checks eligibility at write time and returns `ok:false` if state shifted since the decider's scan; the decider's `eligible()` is informational only; a caller handles `ok:false` (log the skip + re-query), never acting on the scan alone.
-- **signal:** a dispatch path acting on the decider's `eligible()` result with no `cmd_start` `ok:false` handling — a TOCTOU dispatch race.
+- **check:** `cmd_dispatch` re-checks eligibility at write time and returns `ok:false` if state shifted since the decider's scan; the decider's `eligible()` is informational only; a caller handles `ok:false` (log the skip + re-query), never acting on the scan alone.
+- **signal:** a dispatch path acting on the decider's `eligible()` result with no `cmd_dispatch` `ok:false` handling — a TOCTOU dispatch race.
 - **severity:** must-fix
 - **applies-to:** py-core, scripts
 - **ssot:** ARCHITECTURE.md → "### 5.5 Architectural commitments embedded in this loop"
-- **provenance:** ARCHITECTURE.md §5.3 (`cmd_start` is eligibility truth) + §5.5.
+- **provenance:** ARCHITECTURE.md §5.3 (`cmd_dispatch` is eligibility truth) + §5.5.
 - **verified:** 2026-06-06 — anchors "### 5.3 Executing a `DISPATCH` / `REWORK` action" (L298) + "### 5.5 Architectural commitments embedded in this loop" (L325) resolve.
 
 ### C1-12 — scripted-verdict-gate

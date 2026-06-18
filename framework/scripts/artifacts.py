@@ -54,7 +54,7 @@ def _mirror_subagent_trace(
     leaving stage trace permanently unavailable for downstream analysis
     (external analysis / postmortem). Orchestrator forwards the value of
     the notification's <output-file> tag via --subagent-output-file on the
-    reap state.py complete call; this helper copies it to a stable workdir
+    reap state.py reap call; this helper copies it to a stable workdir
     relative path so the trace outlives the session.
 
     Destination: <workdir>/.subagent_traces/<stage>-<agent_id>.output
@@ -62,7 +62,7 @@ def _mirror_subagent_trace(
 
     Returns the destination path on success, or None on any skip / failure
     (missing source, empty arg, OSError). Never raises — caller is in the
-    cmd_complete reap path and must not be aborted by trace-mirror issues.
+    cmd_reap reap path and must not be aborted by trace-mirror issues.
     """
     if not output_file:
         return None
@@ -182,7 +182,7 @@ def repair_partial_promote_if_needed(module: str, stage: str) -> None:
     Note: this DOES NOT restore canonical to a known-good state. Canonical
     may remain in a partial state (some entries from run N, some still
     from run N-1, some missing). The subsequent promote() retry in
-    cmd_complete (called by orchestrator) will overwrite whatever partial
+    cmd_reap (called by orchestrator) will overwrite whatever partial
     state exists via the per-entry merge step.
 
     Idempotent: safe to call repeatedly with no .promote-tmp present.

@@ -13,7 +13,7 @@ Provides, for the skill-lint + state-machine tests:
 - `STAGE_SPECIFIC_MINIMAL` — minimum `stage_specific` payloads that satisfy
   each per-stage `result.schema.json`. Consumed by
   `test_state.TestCmdComplete / TestFullLoop` and
-  `test_dispatcher_trigger_invariant` to drive cmd_complete pass paths.
+  `test_dispatcher_trigger_invariant` to drive cmd_reap pass paths.
 
 - `PLUGIN_ROOT` — repo root, derived from this file's location.
 

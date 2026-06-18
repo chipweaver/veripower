@@ -2,7 +2,7 @@
 
 Moved from test_state.py (TestPromoteAtomic + TestSubagentTraceMirror).
 Imports the artifact functions from the artifacts module directly to verify
-the module boundary; also imports state for cmd_init/cmd_start/cmd_complete
+the module boundary; also imports state for cmd_init/cmd_dispatch/cmd_reap
 integration tests.
 """
 
@@ -294,19 +294,19 @@ class TestSubagentTraceMirror:
         assert artifacts._mirror_subagent_trace(workdir, "simulation", "") is None
         assert not (workdir / ".subagent_traces").exists()
 
-    def test_cmd_complete_backward_compat_no_subagent_output_file(
+    def test_cmd_reap_backward_compat_no_subagent_output_file(
         self, tmp_path, monkeypatch
     ):
         """Existing callers that do not pass --subagent-output-file must still work."""
         monkeypatch.chdir(tmp_path)
         state.cmd_init("foo")
         bootstrap_prereqs_pass_clean("foo", "specification")
-        result = state.cmd_start("foo", "specification")
+        result = state.cmd_dispatch("foo", "specification")
         run_n = result["run"]
         write_run_result("foo", "specification", run_n)
 
         # no subagent_output_file kwarg — must not raise
-        resp = state.cmd_complete("foo", "specification", run=run_n, outcome="pass")
+        resp = state.cmd_reap("foo", "specification", run=run_n, outcome="pass")
         assert resp.get("action") == "completed"
         assert resp.get("result_status") == "pass"
         # no .subagent_traces created (None output_file path)
@@ -322,7 +322,7 @@ class TestSubagentTraceMirror:
         not abort the caller — best-effort contract per docstring 'Never raises'.
 
         Covers the except OSError branch: helper logs to stderr and returns None
-        so the cmd_complete reap path continues uninterrupted.
+        so the cmd_reap reap path continues uninterrupted.
         """
         src_dir = tmp_path / "claude-1001" / "wd-enc" / "uuid" / "tasks"
         src_dir.mkdir(parents=True)
@@ -355,12 +355,12 @@ class TestSubagentTraceMirror:
             workdir / ".subagent_traces" / f"simulation-{agent_id}.output"
         ).exists()
 
-    def test_cmd_complete_forwards_subagent_output_file(self, tmp_path, monkeypatch):
-        """End-to-end: cmd_complete with subagent_output_file mirrors the
+    def test_cmd_reap_forwards_subagent_output_file(self, tmp_path, monkeypatch):
+        """End-to-end: cmd_reap with subagent_output_file mirrors the
         transcript into <workdir>/.subagent_traces/ during the reap path.
 
         Complements the 4 helper-level cases above (happy / missing / None /
-        empty) by verifying the cmd_complete integration: the new kwarg
+        empty) by verifying the cmd_reap integration: the new kwarg
         actually flows through to _mirror_subagent_trace and lands the file.
         """
         monkeypatch.chdir(tmp_path)
@@ -373,11 +373,11 @@ class TestSubagentTraceMirror:
 
         state.cmd_init("foo")
         bootstrap_prereqs_pass_clean("foo", "specification")
-        result = state.cmd_start("foo", "specification")
+        result = state.cmd_dispatch("foo", "specification")
         run_n = result["run"]
         write_run_result("foo", "specification", run_n)
 
-        resp = state.cmd_complete(
+        resp = state.cmd_reap(
             "foo",
             "specification",
             run=run_n,

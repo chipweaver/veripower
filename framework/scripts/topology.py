@@ -100,7 +100,7 @@ def descendants(stage: str) -> list[str]:
 
 
 def eligible(stage: str, task: dict) -> bool:
-    """Dispatch eligibility — mirrors cmd_start's gate (state.py) exactly:
+    """Dispatch eligibility — mirrors cmd_dispatch's gate (state.py) exactly:
     own status is not_started/clean (forward) or */stale (rework, incl
     in_progress/stale); all prerequisites are pass/clean."""
     st = task["stages"][stage]

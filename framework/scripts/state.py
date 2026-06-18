@@ -73,14 +73,14 @@ def _validate_reason(s: str | None) -> str | None:
     """Return error message, or None if reason is acceptable.
 
     Used at the CLI input layer for commands where --reason is provided directly
-    by the operator/Orchestrator: cmd_rework and cmd_complete (blocked branch). The
+    by the operator/Orchestrator: cmd_rework and cmd_reap (blocked branch). The
     purpose is fail-fast with a clear message ('--reason: reason must be
     non-empty') before constructing the event body.
 
     Note: cmd_log (escalation) does NOT call this — `escalation.schema.json`
     enforces the same rule via `pattern: ".*\\\\S.*"`, and append_event runs
     that schema check single-pointedly. Internally-emitted reasons (e.g.
-    cmd_complete's discarded/invalid/promote_failed branches) are likewise
+    cmd_reap's discarded/invalid/promote_failed branches) are likewise
     non-empty by construction.
     """
     if s is None or not s.strip():
@@ -127,7 +127,7 @@ def write_task(module: str, task: dict) -> None:
 
 # append_event is the SINGLE point of event schema validation.
 # A SystemExit raised here indicates a state.py self-bug (malformed event
-# constructed by cmd_start / cmd_complete / cmd_rework). When this happens
+# constructed by cmd_dispatch / cmd_reap / cmd_rework). When this happens
 # AFTER a sibling write_task in those commands, task.json is left ahead of
 # events.jsonl — the next replay must reconcile by treating events as
 # authoritative and rebuilding task.json from event history.
@@ -196,7 +196,7 @@ def cmd_status(module: str) -> dict:
     }
 
 
-def cmd_start(
+def cmd_dispatch(
     module: str, stage: str, *, orchestrator_context_source: str | None = None
 ) -> dict:
     repair_partial_promote_if_needed(module, stage)
@@ -248,7 +248,7 @@ def cmd_start(
     # in the CLI layer); state.py code-writes a sibling file in the run workdir
     # and returns the relative path. Not promoted to canonical.
     # File-write happens in the compute phase BEFORE events-first/state-after so that an
-    # OSError (disk full, permissions) propagates out of cmd_start before any
+    # OSError (disk full, permissions) propagates out of cmd_dispatch before any
     # persistent state is mutated — cleanest failure mode.
     orchestrator_context_rel: str | None = None
     if orchestrator_context_source is not None:
@@ -465,7 +465,7 @@ def validate_result(
     return True, ""
 
 
-def cmd_complete(
+def cmd_reap(
     module: str,
     stage: str,
     *,
@@ -721,7 +721,7 @@ def cmd_complete(
         promote(module, stage, run)
     except Exception as e:
         # promote_failed: state stays in_progress/clean, run remains in_flight.
-        # Orchestrator can retry by calling cmd_complete again
+        # Orchestrator can retry by calling cmd_reap again
         # No write_task; only event
         append_event(
             module,
@@ -866,7 +866,7 @@ def cmd_invalidate_stage(module: str, stage: str, reason: str) -> dict:
     _compute_cascade). Use case: brainstorm-level rework recovery — the user re-ran the
     pre-pipeline brainstorm skill (new brainstorm.md) and needs specification re-derived
     from scratch with the downstream cascade. The fresh run gets an empty workdir
-    (cmd_start mkdir's but does not seed), so specification routes to its first-run
+    (cmd_dispatch mkdir's but does not seed), so specification routes to its first-run
     branch and re-derives in full from the current module-root brainstorm.md — no
     version/hash compare needed.
 
@@ -1013,14 +1013,14 @@ def main() -> None:
     )
     p_status.add_argument("--module", required=True, help="Module name")
 
-    # start
-    p_start = sub.add_parser(
-        "start",
+    # dispatch
+    p_dispatch = sub.add_parser(
+        "dispatch",
         help="Dispatch a stage run. Returns {ok, stage, mode (forward|rework), run, workdir, skill, upstream_results, [rework_trigger], [orchestrator_context_path]}.",
     )
-    p_start.add_argument("--module", required=True, help="Module name")
-    p_start.add_argument("--stage", required=True, choices=FORWARD_PRIORITY)
-    p_start.add_argument(
+    p_dispatch.add_argument("--module", required=True, help="Module name")
+    p_dispatch.add_argument("--stage", required=True, choices=FORWARD_PRIORITY)
+    p_dispatch.add_argument(
         "--orchestrator-context",
         metavar="FILE_OR_-",
         default=None,
@@ -1028,31 +1028,31 @@ def main() -> None:
         "writes to <workdir>/orchestrator-context.md.",
     )
 
-    # complete
-    p_complete = sub.add_parser(
-        "complete",
-        help="Record outcome of a run. Returns {action, result_status, run, staled} on success or {action, reason|reason_code, run} for discarded/blocked/invalid/promote_failed.",
+    # reap
+    p_reap = sub.add_parser(
+        "reap",
+        help="Reap a run — record its outcome. Returns {action, result_status, run, staled} on success or {action, reason|reason_code, run} for discarded/blocked/invalid/promote_failed.",
     )
-    p_complete.add_argument("--module", required=True, help="Module name")
-    p_complete.add_argument("--stage", required=True, choices=FORWARD_PRIORITY)
-    p_complete.add_argument(
-        "--run", required=True, type=int, help="Run number from `start` output"
+    p_reap.add_argument("--module", required=True, help="Module name")
+    p_reap.add_argument("--stage", required=True, choices=FORWARD_PRIORITY)
+    p_reap.add_argument(
+        "--run", required=True, type=int, help="Run number from `dispatch` output"
     )
-    p_complete.add_argument(
+    p_reap.add_argument(
         "--outcome",
         required=False,
         default=None,
         choices=["pass", "fail", "blocked"],
-        help="Optional. Omit at reap: cmd_complete reads the run's result.json and derives "
+        help="Optional. Omit at reap: cmd_reap reads the run's result.json and derives "
         "pass/fail, or blocked (missing/unparseable/malformed status). When given, forces "
         "that outcome; invalid/discarded/promote_failed are internally derived either way",
     )
-    p_complete.add_argument(
+    p_reap.add_argument(
         "--reason",
         default=None,
         help="Required when --outcome=blocked; forbidden for pass/fail",
     )
-    p_complete.add_argument(
+    p_reap.add_argument(
         "--subagent-output-file",
         default=None,
         help="Optional /tmp/.../tasks/<agent_id>.output path "
@@ -1133,11 +1133,11 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
-    # `start` pre-reads --orchestrator-context FILE outside the SystemExit
+    # `dispatch` pre-reads --orchestrator-context FILE outside the SystemExit
     # catcher below so that file-read errors emit a clean structured envelope
     # and exit 1, rather than getting wrapped in a second `{"ok": false, "error": "1"}` envelope.
     ctx_source = None
-    if args.command == "start" and args.orchestrator_context:
+    if args.command == "dispatch" and args.orchestrator_context:
         if args.orchestrator_context == "-":
             ctx_source = sys.stdin.read()
         else:
@@ -1157,15 +1157,15 @@ def main() -> None:
             _output(cmd_init(args.module))
         elif args.command == "status":
             _output(cmd_status(args.module))
-        elif args.command == "start":
+        elif args.command == "dispatch":
             _output(
-                cmd_start(
+                cmd_dispatch(
                     args.module, args.stage, orchestrator_context_source=ctx_source
                 )
             )
-        elif args.command == "complete":
+        elif args.command == "reap":
             _output(
-                cmd_complete(
+                cmd_reap(
                     args.module,
                     args.stage,
                     run=args.run,

@@ -10,7 +10,7 @@ added to `SKILL_DIRS`), the surrounding surfaces must come with it:
     covered in test_state.TestDAGConstants —
     test_result_dir_keys_match_forward_priority)
 
-These tests turn the SKILL.md / schema runtime failures (`cmd_start` 500 from a
+These tests turn the SKILL.md / schema runtime failures (`cmd_dispatch` 500 from a
 missing skill, schema 404 inside `validate_result`) into clear unit-test
 diagnostics naming the exact path that's missing.
 
@@ -57,7 +57,7 @@ def test_stage_has_result_schema(stage: str) -> None:
     p = PLUGIN_ROOT / "skills" / stage / "references" / "result.schema.json"
     assert p.is_file(), (
         f"FORWARD_PRIORITY lists {stage!r} but {p.relative_to(PLUGIN_ROOT)} "
-        f"is missing. state.validate_result will raise at cmd_complete time."
+        f"is missing. state.validate_result will raise at cmd_reap time."
     )
 
 

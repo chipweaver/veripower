@@ -75,7 +75,7 @@ their literal use as protocol tokens. The `simulation-triage` `root_cause` enum 
 |---|---|---|
 | *"This skill is the canonical input source for all downstream stages."* | *"This skill's sole responsibility: collapse X into a frozen Y artifact."* | Pipeline position |
 | *"This skill is the DAG root; on failure, the orchestrator escalates directly."* | *(delete the sentence; how failure is handled is not this skill's concern)* | DAG + orchestrator + routing |
-| *"The orchestrator reads `result.json.status` and calls `state.py complete`."* | *"On completion, write `result.json` and return."* | Orchestrator implementation |
+| *"The orchestrator reads `result.json.status` and calls `state.py reap`."* | *"On completion, write `result.json` and return."* | Orchestrator implementation |
 | `{rework_trigger}` *"points at the downstream stage's `result.json` that triggered this run"* | `{rework_trigger}` *"caller-injected context-file path; contains `violations[]`"* | DAG language in variable description |
 | `### Upstream Artifacts` (heading) | `### External reference inputs` (heading) | Structural DAG vocabulary |
 

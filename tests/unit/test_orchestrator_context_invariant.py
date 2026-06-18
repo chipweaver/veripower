@@ -1,7 +1,7 @@
 """Freeze the orchestrator_context_path lifecycle (D4).
 
 The `orchestrator_context` channel: Orchestrator passes content via
-`cmd_start(..., orchestrator_context_source=…)`, state.py writes
+`cmd_dispatch(..., orchestrator_context_source=…)`, state.py writes
 `runs/<N>/orchestrator-context.md`, and the dispatch payload returns
 `orchestrator_context_path` (module-root-relative). The dispatched
 subagent reads that sibling file.
@@ -28,9 +28,9 @@ from conftest import write_run_result
 
 from framework.scripts.state import (
     _result_path,
-    cmd_complete,
+    cmd_dispatch,
     cmd_init,
-    cmd_start,
+    cmd_reap,
     read_events,
 )
 
@@ -42,7 +42,7 @@ def _module_root(module: str) -> Path:
 def test_i1_roundtrip_content_written(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     cmd_init("M1")
-    r = cmd_start(
+    r = cmd_dispatch(
         "M1", "specification", orchestrator_context_source="hint: focus on FSM coverage"
     )
     assert r["ok"] and "orchestrator_context_path" in r
@@ -55,7 +55,7 @@ def test_i1_roundtrip_content_written(tmp_path, monkeypatch) -> None:
 def test_i2_absent_when_source_none(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     cmd_init("M1")
-    r = cmd_start("M1", "specification")
+    r = cmd_dispatch("M1", "specification")
     assert r["ok"]
     assert "orchestrator_context_path" not in r
     workdir = _result_path("M1", "specification").parent / "runs" / str(r["run"])
@@ -65,7 +65,7 @@ def test_i2_absent_when_source_none(tmp_path, monkeypatch) -> None:
 def test_i3_path_is_module_root_relative(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     cmd_init("M1")
-    r = cmd_start("M1", "specification", orchestrator_context_source="x")
+    r = cmd_dispatch("M1", "specification", orchestrator_context_source="x")
     rel = r["orchestrator_context_path"]
     assert not rel.startswith("/"), f"expected relative path, got absolute: {rel!r}"
     assert not rel.startswith("asic/"), (
@@ -77,7 +77,7 @@ def test_i3_path_is_module_root_relative(tmp_path, monkeypatch) -> None:
 def test_i4_path_includes_dispatched_run_number(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     cmd_init("M1")
-    r = cmd_start("M1", "specification", orchestrator_context_source="x")
+    r = cmd_dispatch("M1", "specification", orchestrator_context_source="x")
     rel = r["orchestrator_context_path"]
     assert f"runs/{r['run']}/" in rel, (
         f"path should sit under runs/{r['run']}/, got {rel!r}"
@@ -91,10 +91,10 @@ def test_i5_not_promoted_to_canonical(tmp_path, monkeypatch) -> None:
     """
     monkeypatch.chdir(tmp_path)
     cmd_init("M1")
-    r = cmd_start("M1", "specification", orchestrator_context_source="rework hint")
+    r = cmd_dispatch("M1", "specification", orchestrator_context_source="rework hint")
     run = r["run"]
     write_run_result("M1", "specification", run)
-    res = cmd_complete("M1", "specification", run=run, outcome="pass")
+    res = cmd_reap("M1", "specification", run=run, outcome="pass")
     assert res["action"] == "completed" and res["result_status"] == "pass"
 
     canonical_dir = _result_path("M1", "specification").parent
@@ -109,7 +109,7 @@ def test_i5_not_promoted_to_canonical(tmp_path, monkeypatch) -> None:
 
 
 def test_i6_no_state_mutation_on_write_failure(tmp_path, monkeypatch) -> None:
-    """If the orchestrator-context.md write raises, cmd_start must propagate
+    """If the orchestrator-context.md write raises, cmd_dispatch must propagate
     without appending a dispatch event or flipping the stage to in_progress.
 
     Achieved by the compute-phase ordering: the file write happens
@@ -128,7 +128,7 @@ def test_i6_no_state_mutation_on_write_failure(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(Path, "write_text", fake_write_text)
 
     with pytest.raises(OSError):
-        cmd_start(
+        cmd_dispatch(
             "M1", "specification", orchestrator_context_source="should not survive"
         )
 

@@ -468,7 +468,7 @@ class TestCmdStatus:
         assert result["stages"]["simulation"]["status"] == "in_progress"
 
 
-# ── start command ──
+# ── dispatch command ──
 
 
 class TestCmdStart:
@@ -481,9 +481,9 @@ class TestCmdStart:
                 t["stages"][stage].update(vals)
             state.write_task("m", t)
 
-    def test_start_forward_specification(self, tmp_path, monkeypatch):
+    def test_dispatch_forward_specification(self, tmp_path, monkeypatch):
         self._setup_module(tmp_path, monkeypatch)
-        result = state.cmd_start("m", "specification")
+        result = state.cmd_dispatch("m", "specification")
         assert result["ok"] is True
         assert result["mode"] == "forward"
         assert result["skill"] == "veripower:specification"
@@ -496,7 +496,7 @@ class TestCmdStart:
         assert events[0]["type"] == "dispatch"
         assert events[0]["mode"] == "forward"
 
-    def test_start_forward_rtl_design_after_simulation_plan_pass(
+    def test_dispatch_forward_rtl_design_after_simulation_plan_pass(
         self, tmp_path, monkeypatch
     ):
         """rtl-design prereq is simulation-plan (not specification)."""
@@ -508,28 +508,28 @@ class TestCmdStart:
                 "simulation-plan": {"status": "pass"},
             },
         )
-        result = state.cmd_start("m", "rtl-design")
+        result = state.cmd_dispatch("m", "rtl-design")
         assert result["ok"] is True
         assert result["mode"] == "forward"
         assert result["upstream_results"] == [
             "Verification/simulation-plan/result.json"
         ]
 
-    def test_start_rejects_unmet_prereqs(self, tmp_path, monkeypatch):
+    def test_dispatch_rejects_unmet_prereqs(self, tmp_path, monkeypatch):
         self._setup_module(tmp_path, monkeypatch)  # specification is not_started
-        result = state.cmd_start("m", "rtl-design")
+        result = state.cmd_dispatch("m", "rtl-design")
         assert result["ok"] is False
         assert "prerequisite" in result["error"]
 
-    def test_start_rejects_already_in_progress(self, tmp_path, monkeypatch):
+    def test_dispatch_rejects_already_in_progress(self, tmp_path, monkeypatch):
         self._setup_module(
             tmp_path, monkeypatch, {"specification": {"status": "in_progress"}}
         )
-        result = state.cmd_start("m", "specification")
+        result = state.cmd_dispatch("m", "specification")
         assert result["ok"] is False
         assert "in_progress" in result["error"]
 
-    def test_start_rework_mode_for_stale(self, tmp_path, monkeypatch):
+    def test_dispatch_rework_mode_for_stale(self, tmp_path, monkeypatch):
         """rtl-design prereq is simulation-plan; must have simulation-plan pass/clean for rtl-design rework.
         rework_trigger points at the failed stage's canonical result.json
         (canonical = latest run regardless of pass/fail)."""
@@ -554,12 +554,12 @@ class TestCmdStart:
                 "run": 3,
             },
         )
-        result = state.cmd_start("m", "rtl-design")
+        result = state.cmd_dispatch("m", "rtl-design")
         assert result["ok"] is True
         assert result["mode"] == "rework"
         assert result["rework_trigger"] == "Design/lint-cdc/result.json"
 
-    def test_start_rework_no_trigger_for_cascade_stale(self, tmp_path, monkeypatch):
+    def test_dispatch_rework_no_trigger_for_cascade_stale(self, tmp_path, monkeypatch):
         """pass/stale from cascade — no rework_decision targeting this stage."""
         self._setup_module(
             tmp_path,
@@ -570,28 +570,30 @@ class TestCmdStart:
                 "lint-cdc": {"status": "pass", "freshness": "stale"},
             },
         )
-        result = state.cmd_start("m", "lint-cdc")
+        result = state.cmd_dispatch("m", "lint-cdc")
         assert result["ok"] is True
         assert result["mode"] == "rework"
         assert "rework_trigger" not in result
 
-    def test_start_dispatch_event_has_no_prompt_summary(self, tmp_path, monkeypatch):
+    def test_dispatch_dispatch_event_has_no_prompt_summary(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         state.cmd_init("m")
-        r = state.cmd_start("m", "specification")
+        r = state.cmd_dispatch("m", "specification")
         assert r["ok"] is True
         events = state.read_events("m")
         dispatch = [e for e in events if e["type"] == "dispatch"][0]
         assert "prompt_summary" not in dispatch
 
-    def test_cmd_start_with_orchestrator_context_writes_sibling(
+    def test_cmd_dispatch_with_orchestrator_context_writes_sibling(
         self, tmp_path, monkeypatch
     ):
-        """cmd_start orchestrator_context_source → writes a sibling file on disk + returns the path field."""
+        """cmd_dispatch orchestrator_context_source → writes a sibling file on disk + returns the path field."""
         monkeypatch.chdir(tmp_path)
         state.cmd_init("m")
         content = "# Triage hint\n- root_cause: rtl-design\n- location: mod_a.sv:42\n"
-        r = state.cmd_start("m", "specification", orchestrator_context_source=content)
+        r = state.cmd_dispatch(
+            "m", "specification", orchestrator_context_source=content
+        )
         assert r["ok"]
         assert "orchestrator_context_path" in r
         expected_path = "Design/specification/runs/1/orchestrator-context.md"
@@ -600,17 +602,17 @@ class TestCmdStart:
         assert abs_path.exists()
         assert abs_path.read_text() == content
 
-    def test_cmd_start_without_orchestrator_context(self, tmp_path, monkeypatch):
+    def test_cmd_dispatch_without_orchestrator_context(self, tmp_path, monkeypatch):
         """when orchestrator_context_source is not supplied, no sibling file is created and the return value has no path field."""
         monkeypatch.chdir(tmp_path)
         state.cmd_init("m")
-        r = state.cmd_start("m", "specification")
+        r = state.cmd_dispatch("m", "specification")
         assert r["ok"]
         assert "orchestrator_context_path" not in r
         abs_path = Path("asic/m/Design/specification/runs/1/orchestrator-context.md")
         assert not abs_path.exists()
 
-    def test_start_frontend_signoff_blocks_when_power_analysis_missing(
+    def test_dispatch_frontend_signoff_blocks_when_power_analysis_missing(
         self, tmp_path, monkeypatch
     ):
         """frontend-signoff direct prereq = power-analysis (T2 narrowing).
@@ -635,14 +637,14 @@ class TestCmdStart:
             }
         # power-analysis deliberately not_started
         state.write_task("foo", task)
-        result = state.cmd_start("foo", "frontend-signoff")
+        result = state.cmd_dispatch("foo", "frontend-signoff")
         assert result["ok"] is False
         assert "power-analysis" in result["error"]
 
-    def test_start_rejects_fail_clean(self, tmp_path, monkeypatch):
-        """fail/clean must be routed to rework, not start. cmd_start rejects it
+    def test_dispatch_rejects_fail_clean(self, tmp_path, monkeypatch):
+        """fail/clean must be routed to rework, not start. cmd_dispatch rejects it
         even when prereqs are pass/clean — this guards the rework branch order
-        (Orchestrator must call cmd_rework, not cmd_start, for failed stages)."""
+        (Orchestrator must call cmd_rework, not cmd_dispatch, for failed stages)."""
         self._setup_module(
             tmp_path,
             monkeypatch,
@@ -651,13 +653,13 @@ class TestCmdStart:
                 "simulation-plan": {"status": "fail"},  # prereqs ok, self failed
             },
         )
-        result = state.cmd_start("m", "simulation-plan")
+        result = state.cmd_dispatch("m", "simulation-plan")
         assert result["ok"] is False
         assert "fail" in result["error"]
 
-    def test_start_in_progress_stale_redispatchable(self, tmp_path, monkeypatch):
+    def test_dispatch_in_progress_stale_redispatchable(self, tmp_path, monkeypatch):
         """cascade can hit a running stage, marking it in_progress/stale.
-        cmd_start must accept this state for re-dispatch (multi-run coexistence)."""
+        cmd_dispatch must accept this state for re-dispatch (multi-run coexistence)."""
         self._setup_module(
             tmp_path,
             monkeypatch,
@@ -673,7 +675,7 @@ class TestCmdStart:
                 },
             },
         )
-        result = state.cmd_start("m", "simulation")
+        result = state.cmd_dispatch("m", "simulation")
         assert result["ok"] is True
         assert result["mode"] == "rework"
         assert result["run"] == 2  # new run alongside the old in_flight one
@@ -683,7 +685,7 @@ class TestCmdStart:
         assert runs == {1, 2}
 
 
-# ── complete command ──
+# ── reap command ──
 
 
 class TestCmdComplete:
@@ -692,7 +694,7 @@ class TestCmdComplete:
     def _setup_in_progress(
         self, tmp_path, monkeypatch, stage="rtl-design", extra_overrides=None
     ):
-        """Set up a stage as in_progress/clean with run=1 via cmd_start, plus
+        """Set up a stage as in_progress/clean with run=1 via cmd_dispatch, plus
         a schema-valid runs/1/result.json (validate_result reads before promote).
         """
         monkeypatch.chdir(tmp_path)
@@ -703,20 +705,20 @@ class TestCmdComplete:
             for s, vals in extra_overrides.items():
                 t["stages"][s].update(vals)
             state.write_task("m", t)
-        r = state.cmd_start("m", stage)
-        assert r["ok"], f"cmd_start failed: {r}"
+        r = state.cmd_dispatch("m", stage)
+        assert r["ok"], f"cmd_dispatch failed: {r}"
         write_run_result("m", stage, 1)
 
-    def test_complete_pass(self, tmp_path, monkeypatch):
+    def test_reap_pass(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         assert result["action"] == "completed"
         assert result["result_status"] == "pass"
         t = state.read_task("m")
         assert t["stages"]["rtl-design"]["status"] == "pass"
         assert t["stages"]["rtl-design"]["freshness"] == "clean"
 
-    def test_complete_fail_promotes_to_canonical(self, tmp_path, monkeypatch):
+    def test_reap_fail_promotes_to_canonical(self, tmp_path, monkeypatch):
         """After a fail outcome, canonical exists and status=fail."""
         self._setup_in_progress(tmp_path, monkeypatch, "rtl-design")
         # Overwrite run-specific result.json with status=fail
@@ -736,7 +738,7 @@ class TestCmdComplete:
                 }
             )
         )
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="fail")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="fail")
         assert result["action"] == "completed"
         assert result["result_status"] == "fail"
         # canonical exists post-promote
@@ -744,7 +746,7 @@ class TestCmdComplete:
         assert canonical_rj.exists()
         assert json.loads(canonical_rj.read_text())["status"] == "fail"
 
-    def test_complete_fail_canonical_holds_fail_status(self, tmp_path, monkeypatch):
+    def test_reap_fail_canonical_holds_fail_status(self, tmp_path, monkeypatch):
         """canonical.status field = 'fail'; the return value does not carry result_path."""
         self._setup_in_progress(tmp_path, monkeypatch, "rtl-design")
         run_rj = (
@@ -763,16 +765,14 @@ class TestCmdComplete:
                 }
             )
         )
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="fail")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="fail")
         # result_path field removed (canonical replaces it)
         assert "result_path" not in result
         canonical_rj = state._result_path("m", "rtl-design")
         canonical_data = json.loads(canonical_rj.read_text())
         assert canonical_data["status"] == "fail"
 
-    def test_complete_fail_promote_failed_keeps_in_progress(
-        self, tmp_path, monkeypatch
-    ):
+    def test_reap_fail_promote_failed_keeps_in_progress(self, tmp_path, monkeypatch):
         """On the fail path, a promote() exception → promote_failed; state remains in_progress."""
         self._setup_in_progress(tmp_path, monkeypatch, "rtl-design")
         run_rj = (
@@ -793,7 +793,7 @@ class TestCmdComplete:
                 }
             )
         )
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="fail")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="fail")
         assert result["action"] == "promote_failed"
         assert "FileNotFoundError" in result["reason"]
         # state stays in_progress; run remains in_flight for retry
@@ -801,7 +801,7 @@ class TestCmdComplete:
         assert t["stages"]["rtl-design"]["status"] == "in_progress"
         assert {"run": 1} in t["stages"]["rtl-design"]["in_flight"]
 
-    def test_complete_pass_cascades(self, tmp_path, monkeypatch):
+    def test_reap_pass_cascades(self, tmp_path, monkeypatch):
         """rtl-design pass cascade-stales its pass/clean child lint-cdc."""
         self._setup_in_progress(
             tmp_path,
@@ -816,7 +816,7 @@ class TestCmdComplete:
                 },
             },
         )
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         assert result["action"] == "completed"
         assert result["result_status"] == "pass"
         staled_stages = {x["stage"] for x in result["staled"]}
@@ -824,11 +824,11 @@ class TestCmdComplete:
         t = state.read_task("m")
         assert t["stages"]["lint-cdc"]["freshness"] == "stale"
 
-    def test_complete_pass_no_cascade_means_single_event(self, tmp_path, monkeypatch):
+    def test_reap_pass_no_cascade_means_single_event(self, tmp_path, monkeypatch):
         """When rtl-design has no stale-able children, no cascade event is written."""
         self._setup_in_progress(tmp_path, monkeypatch)
         # rtl-design's children (lint-cdc, simulation) are not_started by default → nothing to stale
-        state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         events = state.read_events("m")
         outcome_events = [e for e in events if e["type"] == "outcome"]
         assert len(outcome_events) == 1
@@ -836,7 +836,7 @@ class TestCmdComplete:
         # No pass/fail/in_progress children → no cascade event
         assert not any(e["type"] == "cascade" for e in events)
 
-    def test_complete_pass_outcome_ts_matches_cascade_ts(self, tmp_path, monkeypatch):
+    def test_reap_pass_outcome_ts_matches_cascade_ts(self, tmp_path, monkeypatch):
         """outcome + cascade events share ts (single transaction)."""
         self._setup_in_progress(
             tmp_path,
@@ -851,7 +851,7 @@ class TestCmdComplete:
                 },
             },
         )
-        state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         events = state.read_events("m")
         outcome_events = [e for e in events if e["type"] == "outcome"]
         assert len(outcome_events) == 1
@@ -860,10 +860,10 @@ class TestCmdComplete:
         assert len(cascade_events) == 1
         assert outcome_events[0]["ts"] == cascade_events[0]["ts"]
 
-    def test_complete_pass_outcome_event_flat_shape(self, tmp_path, monkeypatch):
+    def test_reap_pass_outcome_event_flat_shape(self, tmp_path, monkeypatch):
         """outcome uses a single result_status — no separate status/discarded fields."""
         self._setup_in_progress(tmp_path, monkeypatch)
-        state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         events = state.read_events("m")
         outcome = [e for e in events if e["type"] == "outcome"][0]
         assert outcome["result_status"] == "pass"
@@ -872,7 +872,7 @@ class TestCmdComplete:
         assert "reason" not in outcome
         assert "archive" not in outcome
 
-    def test_complete_fail(self, tmp_path, monkeypatch):
+    def test_reap_fail(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
         # write fail result to run-specific path (validate_result reads runs/<N>/result.json)
         run_rj = (
@@ -891,7 +891,7 @@ class TestCmdComplete:
                 }
             )
         )
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="fail")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="fail")
         assert result["action"] == "completed"
         assert result["result_status"] == "fail"
         # fail branch returns staled=[] for symmetry with pass — callers can always
@@ -926,8 +926,8 @@ class TestCmdComplete:
                 }
             )
         )
-        # 3. cmd_complete fail → canonical now has fail data (promote on fail)
-        state.cmd_complete("m", "rtl-design", run=1, outcome="fail")
+        # 3. cmd_reap fail → canonical now has fail data (promote on fail)
+        state.cmd_reap("m", "rtl-design", run=1, outcome="fail")
         # 4. Orchestrator decides rework: failed=rtl-design → target=specification
         state.cmd_rework(
             "m",
@@ -936,7 +936,7 @@ class TestCmdComplete:
             reason="cascade",
         )
         # 5. Dispatch specification → trigger should resolve to rtl-design canonical
-        r = state.cmd_start("m", "specification")
+        r = state.cmd_dispatch("m", "specification")
         assert r["ok"]
         assert r["mode"] == "rework"
         trigger = r["rework_trigger"]
@@ -947,7 +947,7 @@ class TestCmdComplete:
         abs_trigger = Path("asic/m") / trigger
         assert abs_trigger.exists()
 
-    def test_complete_fail_schema_bad_goes_to_invalid(self, tmp_path, monkeypatch):
+    def test_reap_fail_schema_bad_goes_to_invalid(self, tmp_path, monkeypatch):
         """fail outcome with broken result.json → invalid (symmetric with pass)."""
         self._setup_in_progress(tmp_path, monkeypatch)
         # overwritethe run-specific result.json with bad schema
@@ -955,12 +955,12 @@ class TestCmdComplete:
             state._result_path("m", "rtl-design").parent / "runs" / "1" / "result.json"
         )
         run_rj.write_text('{"bad": "schema"}')
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="fail")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="fail")
         assert result["action"] == "invalid"
 
-    def test_complete_blocked(self, tmp_path, monkeypatch):
+    def test_reap_blocked(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
-        result = state.cmd_complete(
+        result = state.cmd_reap(
             "m", "rtl-design", run=1, outcome="blocked", reason="no license"
         )
         assert result["action"] == "blocked"
@@ -968,28 +968,26 @@ class TestCmdComplete:
         t = state.read_task("m")
         assert t["stages"]["rtl-design"]["status"] == "not_started"
 
-    def test_complete_blocked_rejects_empty_reason(self, tmp_path, monkeypatch):
+    def test_reap_blocked_rejects_empty_reason(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
-        result = state.cmd_complete(
-            "m", "rtl-design", run=1, outcome="blocked", reason=""
-        )
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="blocked", reason="")
         assert result["ok"] is False
         assert "reason" in result["error"]
 
-    def test_complete_blocked_rejects_missing_reason(self, tmp_path, monkeypatch):
+    def test_reap_blocked_rejects_missing_reason(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="blocked")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="blocked")
         assert result["ok"] is False
 
-    def test_complete_pass_rejects_reason(self, tmp_path, monkeypatch):
+    def test_reap_pass_rejects_reason(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
-        result = state.cmd_complete(
+        result = state.cmd_reap(
             "m", "rtl-design", run=1, outcome="pass", reason="explaining myself"
         )
         assert result["ok"] is False
         assert "not accepted" in result["error"]
 
-    def test_complete_fail_rejects_reason(self, tmp_path, monkeypatch):
+    def test_reap_fail_rejects_reason(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
         # write fail result to run-specific path
         run_rj = (
@@ -1008,57 +1006,57 @@ class TestCmdComplete:
                 }
             )
         )
-        result = state.cmd_complete(
+        result = state.cmd_reap(
             "m", "rtl-design", run=1, outcome="fail", reason="also fail detail"
         )
         assert result["ok"] is False
 
-    def test_complete_rejects_not_in_progress(self, tmp_path, monkeypatch):
+    def test_reap_rejects_not_in_progress(self, tmp_path, monkeypatch):
         """calling complete on a stage with no in_flight run → stale_dispatch discard.
 
-        cmd_complete uses an in_flight membership check rather than an
+        cmd_reap uses an in_flight membership check rather than an
         in_progress guard; the result is no state mutation, expressed as a
         discarded outcome rather than a hard error.
         """
         monkeypatch.chdir(tmp_path)
         state.cmd_init("m")
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         assert result["action"] == "discarded"
         assert result["reason_code"] == "stale_dispatch"
 
-    def test_complete_invalid_result_schema(self, tmp_path, monkeypatch):
+    def test_reap_invalid_result_schema(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
         # overwriterun-specific result.json with bad schema
         run_rj = (
             state._result_path("m", "rtl-design").parent / "runs" / "1" / "result.json"
         )
         run_rj.write_text('{"bad": "schema"}')
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         assert result["action"] == "invalid"
         t = state.read_task("m")
         assert t["stages"]["rtl-design"]["status"] == "not_started"
 
-    def test_complete_invalid_event_carries_reason(self, tmp_path, monkeypatch):
+    def test_reap_invalid_event_carries_reason(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
         # overwriterun-specific result.json with bad schema
         run_rj = (
             state._result_path("m", "rtl-design").parent / "runs" / "1" / "result.json"
         )
         run_rj.write_text('{"bad": "schema"}')
-        state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         events = state.read_events("m")
         outcome = [e for e in events if e["type"] == "outcome"][0]
         assert outcome["result_status"] == "invalid"
         assert outcome["reason"]  # validator error message captured
 
-    def test_complete_pass_discards_if_prereqs_changed(self, tmp_path, monkeypatch):
+    def test_reap_pass_discards_if_prereqs_changed(self, tmp_path, monkeypatch):
         """prereq stale during exec → discarded (prereq_changed).
         Non-success finalize: canonical absent → not_started/clean."""
         self._setup_in_progress(tmp_path, monkeypatch)
         t = state.read_task("m")
         t["stages"]["simulation-plan"]["freshness"] = "stale"
         state.write_task("m", t)
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         assert result["action"] == "discarded"
         assert result["reason_code"] == "prereq_changed"
         t = state.read_task("m")
@@ -1066,7 +1064,7 @@ class TestCmdComplete:
         assert t["stages"]["rtl-design"]["status"] == "not_started"
         assert t["stages"]["rtl-design"]["freshness"] == "clean"
 
-    def test_complete_discarded_archives_result(self, tmp_path, monkeypatch):
+    def test_reap_discarded_archives_result(self, tmp_path, monkeypatch):
         """prereq_changed discard → no archive (canonical absent → not_started/clean).
         The run result.json stays in runs/<N>/ (not promoted to canonical).
         No archive key in return dict."""
@@ -1074,20 +1072,20 @@ class TestCmdComplete:
         t = state.read_task("m")
         t["stages"]["simulation-plan"]["freshness"] = "stale"
         state.write_task("m", t)
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         assert result["action"] == "discarded"
         # no archive in discarded — run result stays in runs/1/result.json, not promoted
         assert "archive" not in result
         # canonical result.json absent (not promoted)
         assert not state._result_path("m", "rtl-design").exists()
 
-    def test_complete_discarded_event_shape(self, tmp_path, monkeypatch):
+    def test_reap_discarded_event_shape(self, tmp_path, monkeypatch):
         """prereq_changed discard event has reason but no archive field."""
         self._setup_in_progress(tmp_path, monkeypatch)
         t = state.read_task("m")
         t["stages"]["simulation-plan"]["freshness"] = "stale"
         state.write_task("m", t)
-        state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         events = state.read_events("m")
         outcome = [e for e in events if e["type"] == "outcome"][0]
         assert outcome["result_status"] == "discarded"
@@ -1097,16 +1095,16 @@ class TestCmdComplete:
         # no cascade event for discarded
         assert not any(e["type"] == "cascade" for e in events)
 
-    def test_complete_writes_outcome_event(self, tmp_path, monkeypatch):
+    def test_reap_writes_outcome_event(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
-        state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         events = state.read_events("m")
         outcome_events = [e for e in events if e["type"] == "outcome"]
         assert len(outcome_events) == 1
         assert outcome_events[0]["stage"] == "rtl-design"
         assert outcome_events[0]["result_status"] == "pass"
 
-    def test_complete_self_listed_result_json_is_invalid_not_promote_failed(
+    def test_reap_self_listed_result_json_is_invalid_not_promote_failed(
         self, tmp_path, monkeypatch
     ):
         """End-to-end left-shift: a result.json that self-lists result.json is
@@ -1116,44 +1114,40 @@ class TestCmdComplete:
         self._setup_in_progress(tmp_path, monkeypatch, "lint-cdc")
         # Overwrite the run result.json: schema-valid except artifacts self-lists result.json.
         write_run_result("m", "lint-cdc", 1, artifacts=[{"path": "result.json"}])
-        result = state.cmd_complete("m", "lint-cdc", run=1, outcome="pass")
+        result = state.cmd_reap("m", "lint-cdc", run=1, outcome="pass")
         assert result["action"] == "invalid"
         # State untouched — validation rejected before any promote.
         t = state.read_task("m")
         assert t["stages"]["lint-cdc"]["status"] == "not_started"
 
-    def test_complete_stale_dispatch_return_has_result_status(
-        self, tmp_path, monkeypatch
-    ):
-        """Every cmd_complete return carries result_status mirroring the event log
+    def test_reap_stale_dispatch_return_has_result_status(self, tmp_path, monkeypatch):
+        """Every cmd_reap return carries result_status mirroring the event log
         (an ancillary work item). stale_dispatch → result_status='discarded'."""
         monkeypatch.chdir(tmp_path)
         state.cmd_init("m")
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         assert result["action"] == "discarded"
         assert result["result_status"] == "discarded"
 
-    def test_complete_blocked_return_has_result_status(self, tmp_path, monkeypatch):
+    def test_reap_blocked_return_has_result_status(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
-        result = state.cmd_complete(
+        result = state.cmd_reap(
             "m", "rtl-design", run=1, outcome="blocked", reason="no license"
         )
         assert result["action"] == "blocked"
         assert result["result_status"] == "blocked"
 
-    def test_complete_invalid_return_has_result_status(self, tmp_path, monkeypatch):
+    def test_reap_invalid_return_has_result_status(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
         run_rj = (
             state._result_path("m", "rtl-design").parent / "runs" / "1" / "result.json"
         )
         run_rj.write_text('{"bad": "schema"}')
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         assert result["action"] == "invalid"
         assert result["result_status"] == "invalid"
 
-    def test_complete_promote_failed_return_has_result_status(
-        self, tmp_path, monkeypatch
-    ):
+    def test_reap_promote_failed_return_has_result_status(self, tmp_path, monkeypatch):
         self._setup_in_progress(tmp_path, monkeypatch)
         run_rj = (
             state._result_path("m", "rtl-design").parent / "runs" / "1" / "result.json"
@@ -1173,21 +1167,21 @@ class TestCmdComplete:
                 }
             )
         )
-        result = state.cmd_complete("m", "rtl-design", run=1, outcome="pass")
+        result = state.cmd_reap("m", "rtl-design", run=1, outcome="pass")
         assert result["action"] == "promote_failed"
         assert result["result_status"] == "promote_failed"
 
-    def test_complete_derive_pass_no_outcome(self, tmp_path, monkeypatch):
-        """Derive mode: omit --outcome → cmd_complete reads the run
+    def test_reap_derive_pass_no_outcome(self, tmp_path, monkeypatch):
+        """Derive mode: omit --outcome → cmd_reap reads the run
         result.json itself and resolves pass. Orchestrator reads nothing."""
         self._setup_in_progress(
             tmp_path, monkeypatch
         )  # writes a valid pass result.json
-        result = state.cmd_complete("m", "rtl-design", run=1)  # no outcome
+        result = state.cmd_reap("m", "rtl-design", run=1)  # no outcome
         assert result["action"] == "completed"
         assert result["result_status"] == "pass"
 
-    def test_complete_derive_fail_no_outcome(self, tmp_path, monkeypatch):
+    def test_reap_derive_fail_no_outcome(self, tmp_path, monkeypatch):
         """Derive mode: omit --outcome with a valid fail result.json → resolves fail."""
         self._setup_in_progress(tmp_path, monkeypatch)
         run_rj = (
@@ -1206,36 +1200,34 @@ class TestCmdComplete:
                 }
             )
         )
-        result = state.cmd_complete("m", "rtl-design", run=1)  # no outcome
+        result = state.cmd_reap("m", "rtl-design", run=1)  # no outcome
         assert result["action"] == "completed"
         assert result["result_status"] == "fail"
 
-    def test_complete_derive_blocked_when_result_json_missing(
-        self, tmp_path, monkeypatch
-    ):
+    def test_reap_derive_blocked_when_result_json_missing(self, tmp_path, monkeypatch):
         """No result.json → blocked 'crash recovery' (NOT invalid)."""
         monkeypatch.chdir(tmp_path)
         state.cmd_init("m")
         bootstrap_prereqs_pass_clean("m", "rtl-design")
-        r = state.cmd_start("m", "rtl-design")
+        r = state.cmd_dispatch("m", "rtl-design")
         assert r["ok"]
         # deliberately do NOT write runs/1/result.json
-        result = state.cmd_complete("m", "rtl-design", run=1)  # no outcome
+        result = state.cmd_reap("m", "rtl-design", run=1)  # no outcome
         assert result["result_status"] == "blocked"
         assert "missing" in result["reason"]
 
-    def test_complete_derive_blocked_when_status_malformed(self, tmp_path, monkeypatch):
+    def test_reap_derive_blocked_when_status_malformed(self, tmp_path, monkeypatch):
         """Valid JSON but status not in {pass,fail} → blocked 'malformed' (before validate)."""
         self._setup_in_progress(tmp_path, monkeypatch)
         run_rj = (
             state._result_path("m", "rtl-design").parent / "runs" / "1" / "result.json"
         )
         run_rj.write_text(json.dumps({"status": "weird"}))
-        result = state.cmd_complete("m", "rtl-design", run=1)  # no outcome
+        result = state.cmd_reap("m", "rtl-design", run=1)  # no outcome
         assert result["result_status"] == "blocked"
         assert "malformed" in result["reason"]
 
-    def test_complete_derive_schema_invalid_is_invalid_not_blocked(
+    def test_reap_derive_schema_invalid_is_invalid_not_blocked(
         self, tmp_path, monkeypatch
     ):
         """status='pass' but schema-broken → invalid (NOT blocked) — the distinction
@@ -1245,22 +1237,18 @@ class TestCmdComplete:
             state._result_path("m", "rtl-design").parent / "runs" / "1" / "result.json"
         )
         run_rj.write_text(json.dumps({"status": "pass"}))  # status ok, rest missing
-        result = state.cmd_complete("m", "rtl-design", run=1)  # no outcome
+        result = state.cmd_reap("m", "rtl-design", run=1)  # no outcome
         assert result["result_status"] == "invalid"
 
-    def test_complete_derive_rejects_reason(self, tmp_path, monkeypatch):
+    def test_reap_derive_rejects_reason(self, tmp_path, monkeypatch):
         """Omitting --outcome but passing --reason is a misuse: derive mode supplies
         its own blocked reason."""
         self._setup_in_progress(tmp_path, monkeypatch)
-        result = state.cmd_complete(
-            "m", "rtl-design", run=1, reason="stray"
-        )  # no outcome
+        result = state.cmd_reap("m", "rtl-design", run=1, reason="stray")  # no outcome
         assert result["ok"] is False
         assert "reason" in result["error"]
 
-    def test_complete_derive_blocked_when_result_json_not_dict(
-        self, tmp_path, monkeypatch
-    ):
+    def test_reap_derive_blocked_when_result_json_not_dict(self, tmp_path, monkeypatch):
         """Valid JSON but not an object (e.g. null / [] from a truncated write) →
         blocked, not an uncaught AttributeError (crash robustness)."""
         self._setup_in_progress(tmp_path, monkeypatch)
@@ -1268,7 +1256,7 @@ class TestCmdComplete:
             state._result_path("m", "rtl-design").parent / "runs" / "1" / "result.json"
         )
         run_rj.write_text("null")
-        result = state.cmd_complete("m", "rtl-design", run=1)  # no outcome
+        result = state.cmd_reap("m", "rtl-design", run=1)  # no outcome
         assert result["result_status"] == "blocked"
         assert "object" in result["reason"]
 
@@ -1923,7 +1911,7 @@ class TestCLI:
         output = json.loads(r.stdout)
         assert "module" in output
 
-    def test_cli_complete_rejects_block_reason_flag(self, tmp_path, monkeypatch):
+    def test_cli_reap_rejects_block_reason_flag(self, tmp_path, monkeypatch):
         # argparse rejects the unrecognized --block-reason flag (returncode != 0).
         # Note: since the CLI requires --run, argparse may emit the --run error first
         # or the unrecognized-argument error — either way, exit code must be non-zero.
@@ -1935,7 +1923,7 @@ class TestCLI:
             [
                 sys.executable,
                 script,
-                "complete",
+                "reap",
                 "--module",
                 "any",
                 "--stage",
@@ -1959,7 +1947,15 @@ class TestCLI:
             Path(__file__).resolve().parents[2] / "framework" / "scripts" / "state.py"
         )
         r = subprocess.run(
-            [sys.executable, script, "start", "--module", "M", "--stage", "badstage"],
+            [
+                sys.executable,
+                script,
+                "dispatch",
+                "--module",
+                "M",
+                "--stage",
+                "badstage",
+            ],
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -1990,8 +1986,8 @@ class TestCLI:
         assert out["ok"] is False
         assert "JSON parse error" in out["error"]
 
-    def test_cli_complete_accepts_reason(self, tmp_path, monkeypatch):
-        """CLI complete --outcome blocked --reason requires --run. Use cmd_start to get run."""
+    def test_cli_reap_accepts_reason(self, tmp_path, monkeypatch):
+        """CLI reap --outcome blocked --reason requires --run. Use cmd_dispatch to get run."""
         monkeypatch.chdir(tmp_path)
         script = str(
             Path(__file__).resolve().parents[2] / "framework" / "scripts" / "state.py"
@@ -2012,15 +2008,15 @@ class TestCLI:
             "in_flight": [],
         }
         state.write_task("cli2", t)
-        # Dispatch rtl-design via cmd_start to get proper run + in_flight
-        r_start = state.cmd_start("cli2", "rtl-design")
+        # Dispatch rtl-design via cmd_dispatch to get proper run + in_flight
+        r_start = state.cmd_dispatch("cli2", "rtl-design")
         assert r_start["ok"]
         run_n = r_start["run"]
         r = subprocess.run(
             [
                 sys.executable,
                 script,
-                "complete",
+                "reap",
                 "--module",
                 "cli2",
                 "--stage",
@@ -2056,37 +2052,35 @@ class TestFullLoop:
         state.cmd_init(m)
 
         # specification: start → pass
-        r = state.cmd_start(m, "specification")
+        r = state.cmd_dispatch(m, "specification")
         assert r["ok"] and r["mode"] == "forward"
         run_specification = r["run"]
         write_run_result(m, "specification", run_specification)
-        r = state.cmd_complete(
-            m, "specification", run=run_specification, outcome="pass"
-        )
+        r = state.cmd_reap(m, "specification", run=run_specification, outcome="pass")
         assert r["action"] == "completed" and r["result_status"] == "pass"
 
         # simulation-plan: start → pass (rtl-design prereq is simulation-plan)
-        r = state.cmd_start(m, "simulation-plan")
+        r = state.cmd_dispatch(m, "simulation-plan")
         assert r["ok"] and r["mode"] == "forward"
         run_sp = r["run"]
         write_run_result(m, "simulation-plan", run_sp)
-        r = state.cmd_complete(m, "simulation-plan", run=run_sp, outcome="pass")
+        r = state.cmd_reap(m, "simulation-plan", run=run_sp, outcome="pass")
         assert r["action"] == "completed" and r["result_status"] == "pass"
 
         # rtl-design: start → pass
-        r = state.cmd_start(m, "rtl-design")
+        r = state.cmd_dispatch(m, "rtl-design")
         assert r["ok"] and r["mode"] == "forward"
         run_rtl_design = r["run"]
         write_run_result(m, "rtl-design", run_rtl_design)
-        r = state.cmd_complete(m, "rtl-design", run=run_rtl_design, outcome="pass")
+        r = state.cmd_reap(m, "rtl-design", run=run_rtl_design, outcome="pass")
         assert r["action"] == "completed"
 
         # lint-cdc: start → fail
-        r = state.cmd_start(m, "lint-cdc")
+        r = state.cmd_dispatch(m, "lint-cdc")
         assert r["ok"]
         run_lc1 = r["run"]
         write_run_result(m, "lint-cdc", run_lc1, status="fail")
-        r = state.cmd_complete(m, "lint-cdc", run=run_lc1, outcome="fail")
+        r = state.cmd_reap(m, "lint-cdc", run=run_lc1, outcome="fail")
         assert r["result_status"] == "fail"
 
         # convergence check
@@ -2103,23 +2097,23 @@ class TestFullLoop:
         # rtl-design rework: start → pass
         # rework_trigger points at the failed lint-cdc canonical result.json
         # (canonical = latest run regardless of pass/fail).
-        r = state.cmd_start(m, "rtl-design")
+        r = state.cmd_dispatch(m, "rtl-design")
         assert r["mode"] == "rework"
         assert r["rework_trigger"] == "Design/lint-cdc/result.json"
         run_rtl2 = r["run"]
         write_run_result(m, "rtl-design", run_rtl2)
-        r = state.cmd_complete(m, "rtl-design", run=run_rtl2, outcome="pass")
+        r = state.cmd_reap(m, "rtl-design", run=run_rtl2, outcome="pass")
         assert r["action"] == "completed"
 
         # lint-cdc re-run: start → pass
-        r = state.cmd_start(m, "lint-cdc")
+        r = state.cmd_dispatch(m, "lint-cdc")
         assert r["mode"] == "rework"  # stale from cascade
         assert (
             "rework_trigger" not in r
         )  # cascade-stale, no explicit rework targeting lint-cdc
         run_lc2 = r["run"]
         write_run_result(m, "lint-cdc", run_lc2)
-        r = state.cmd_complete(m, "lint-cdc", run=run_lc2, outcome="pass")
+        r = state.cmd_reap(m, "lint-cdc", run=run_lc2, outcome="pass")
         assert r["action"] == "completed"
 
         # Verify final state — four stages pass/clean
@@ -2804,8 +2798,8 @@ class TestDirectIndexing:
     early rather than silently producing defaults.
     """
 
-    def test_cmd_start_keyerror_on_missing_status(self, tmp_path, monkeypatch):
-        """cmd_start directly indexes st['status'] — missing field raises KeyError."""
+    def test_cmd_dispatch_keyerror_on_missing_status(self, tmp_path, monkeypatch):
+        """cmd_dispatch directly indexes st['status'] — missing field raises KeyError."""
         monkeypatch.chdir(tmp_path)
         # Hand-craft a pseudo task.json with stage dict missing 'status'
         p = tmp_path / "asic" / "foo" / "task.json"
@@ -2833,12 +2827,12 @@ class TestDirectIndexing:
                 }
             )
         )
-        # cmd_start directly indexes st["status"] → KeyError on missing field
+        # cmd_dispatch directly indexes st["status"] → KeyError on missing field
         with pytest.raises(KeyError):
-            state.cmd_start("foo", "specification")
+            state.cmd_dispatch("foo", "specification")
 
-    def test_cmd_complete_keyerror_on_missing_status(self, tmp_path, monkeypatch):
-        """cmd_complete's in_flight check precedes status indexing.
+    def test_cmd_reap_keyerror_on_missing_status(self, tmp_path, monkeypatch):
+        """cmd_reap's in_flight check precedes status indexing.
 
         A stage dict missing 'status' but with valid in_flight=[{run:1}]
         reaches the blocked branch via _non_success_finalize without a
@@ -2871,7 +2865,7 @@ class TestDirectIndexing:
             )
         )
         # run=1 IS in in_flight → reaches blocked branch → no KeyError on status
-        result = state.cmd_complete(
+        result = state.cmd_reap(
             "foo", "specification", run=1, outcome="blocked", reason="test"
         )
         assert result["action"] == "blocked"
@@ -2883,21 +2877,21 @@ class TestCmdStartBranches:
         state.cmd_init("foo")
         bootstrap_prereqs_pass_clean("foo", stage)
 
-    def test_start_returns_run_and_workdir(self, tmp_path, monkeypatch):
+    def test_dispatch_returns_run_and_workdir(self, tmp_path, monkeypatch):
         self._bootstrap_for_stage(tmp_path, monkeypatch, "specification")
-        result = state.cmd_start("foo", "specification")
+        result = state.cmd_dispatch("foo", "specification")
         assert result["ok"] is True
         assert result["run"] == 1
         assert result["workdir"] == "asic/foo/Design/specification/runs/1/"
         # workdir physical dir created
         assert (tmp_path / "asic/foo/Design/specification/runs/1").is_dir()
 
-    def test_start_appends_dispatch_event_before_write_task(
+    def test_dispatch_appends_dispatch_event_before_write_task(
         self, tmp_path, monkeypatch
     ):
         """append_event before write_task — events.jsonl is authoritative."""
         self._bootstrap_for_stage(tmp_path, monkeypatch, "specification")
-        state.cmd_start("foo", "specification")
+        state.cmd_dispatch("foo", "specification")
         events = state.read_events("foo")
         # last event is dispatch with run + workdir + mode
         assert events[-1]["type"] == "dispatch"
@@ -2910,9 +2904,9 @@ class TestCmdStartBranches:
         assert task["stages"]["specification"]["current_run"] == 1
         assert task["stages"]["specification"]["in_flight"] == [{"run": 1}]
 
-    def test_start_increments_current_run(self, tmp_path, monkeypatch):
+    def test_dispatch_increments_current_run(self, tmp_path, monkeypatch):
         self._bootstrap_for_stage(tmp_path, monkeypatch, "specification")
-        r1 = state.cmd_start("foo", "specification")
+        r1 = state.cmd_dispatch("foo", "specification")
         assert r1["run"] == 1
         # Simulate specification re-becoming eligible (manually set to pass/stale)
         task = state.read_task("foo")
@@ -2924,7 +2918,7 @@ class TestCmdStartBranches:
         }
         state.write_task("foo", task)
         # Second start increments run
-        r2 = state.cmd_start("foo", "specification")
+        r2 = state.cmd_dispatch("foo", "specification")
         assert r2["run"] == 2
         assert r2["workdir"] == "asic/foo/Design/specification/runs/2/"
         assert (tmp_path / "asic/foo/Design/specification/runs/2").is_dir()
@@ -2932,7 +2926,7 @@ class TestCmdStartBranches:
         task = state.read_task("foo")
         assert task["stages"]["specification"]["current_run"] == 2
 
-    def test_start_allows_in_progress_stale_redispatch(self, tmp_path, monkeypatch):
+    def test_dispatch_allows_in_progress_stale_redispatch(self, tmp_path, monkeypatch):
         """in_progress/stale allows multi-run dispatch (simulation case)."""
         self._bootstrap_for_stage(tmp_path, monkeypatch, "simulation")
         # Construct simulation in_progress/stale (simulating cascade hitting running simulation)
@@ -2944,7 +2938,7 @@ class TestCmdStartBranches:
             "in_flight": [{"run": 1}],
         }
         state.write_task("foo", task)
-        result = state.cmd_start("foo", "simulation")
+        result = state.cmd_dispatch("foo", "simulation")
         assert result["ok"] is True
         assert result["run"] == 2  # current_run incremented
         # in_flight now has both run 1 (still running) and run 2 (new)
@@ -2952,7 +2946,7 @@ class TestCmdStartBranches:
         assert {"run": 1} in task["stages"]["simulation"]["in_flight"]
         assert {"run": 2} in task["stages"]["simulation"]["in_flight"]
 
-    def test_start_rejects_in_progress_clean(self, tmp_path, monkeypatch):
+    def test_dispatch_rejects_in_progress_clean(self, tmp_path, monkeypatch):
         self._bootstrap_for_stage(tmp_path, monkeypatch, "specification")
         task = state.read_task("foo")
         task["stages"]["specification"] = {
@@ -2962,11 +2956,11 @@ class TestCmdStartBranches:
             "in_flight": [{"run": 1}],
         }
         state.write_task("foo", task)
-        result = state.cmd_start("foo", "specification")
+        result = state.cmd_dispatch("foo", "specification")
         assert result["ok"] is False
 
 
-# ── cmd_complete: all branches ──────────────────────────────────
+# ── cmd_reap: all branches ──────────────────────────────────
 
 
 class TestCmdCompleteBranches:
@@ -2975,7 +2969,7 @@ class TestCmdCompleteBranches:
         monkeypatch.chdir(tmp_path)
         state.cmd_init("foo")
         bootstrap_prereqs_pass_clean("foo", stage)
-        r = state.cmd_start("foo", stage)
+        r = state.cmd_dispatch("foo", stage)
         assert r["ok"], r
         return r
 
@@ -2986,20 +2980,20 @@ class TestCmdCompleteBranches:
             "foo", stage, run_n, status=status, stage_specific=stage_specific
         )
 
-    def test_complete_requires_run_keyword(self, tmp_path, monkeypatch):
-        """cmd_complete signature must require run as keyword argument (not positional 3rd)."""
+    def test_reap_requires_run_keyword(self, tmp_path, monkeypatch):
+        """cmd_reap signature must require run as keyword argument (not positional 3rd)."""
         monkeypatch.chdir(tmp_path)
         state.cmd_init("foo")
         # Old positional call (module, stage, outcome) should fail
         with pytest.raises(TypeError):
-            state.cmd_complete("foo", "specification", "pass")
+            state.cmd_reap("foo", "specification", "pass")
 
-    def test_complete_ghost_when_run_not_in_in_flight(self, tmp_path, monkeypatch):
+    def test_reap_ghost_when_run_not_in_in_flight(self, tmp_path, monkeypatch):
         """Run not in in_flight → discarded with reason stale_dispatch; no state change."""
         monkeypatch.chdir(tmp_path)
         state.cmd_init("foo")
         # No dispatch happened; run=1 not in in_flight
-        result = state.cmd_complete("foo", "specification", run=1, outcome="pass")
+        result = state.cmd_reap("foo", "specification", run=1, outcome="pass")
         assert result["action"] == "discarded"
         assert result["reason_code"] == "stale_dispatch"
         # task.json status unchanged
@@ -3011,14 +3005,14 @@ class TestCmdCompleteBranches:
         assert events[-1]["result_status"] == "discarded"
         assert events[-1]["reason"] == "stale_dispatch"
 
-    def test_complete_superseded_when_run_not_current(self, tmp_path, monkeypatch):
+    def test_reap_superseded_when_run_not_current(self, tmp_path, monkeypatch):
         """Run in in_flight but != current_run → discarded with reason superseded_run."""
         self._bootstrap_in_progress(tmp_path, monkeypatch, "simulation")
         # Cascade hits simulation → in_progress/stale → re-dispatch run 2
         task = state.read_task("foo")
         task["stages"]["simulation"]["freshness"] = "stale"
         state.write_task("foo", task)
-        r2 = state.cmd_start("foo", "simulation")
+        r2 = state.cmd_dispatch("foo", "simulation")
         assert r2["run"] == 2
         # Now run 1 finishes (late) — should be superseded
         # Write a result.json for run 1 (won't be promoted)
@@ -3037,7 +3031,7 @@ class TestCmdCompleteBranches:
                 ]
             },
         )
-        result = state.cmd_complete("foo", "simulation", run=1, outcome="pass")
+        result = state.cmd_reap("foo", "simulation", run=1, outcome="pass")
         assert result["action"] == "discarded"
         assert result["reason_code"] == "superseded_run"
         # run 1 removed from in_flight; current_run still 2
@@ -3046,12 +3040,12 @@ class TestCmdCompleteBranches:
         assert {"run": 1} not in task["stages"]["simulation"]["in_flight"]
         assert {"run": 2} in task["stages"]["simulation"]["in_flight"]
 
-    def test_complete_blocked_canonical_absent_returns_not_started(
+    def test_reap_blocked_canonical_absent_returns_not_started(
         self, tmp_path, monkeypatch
     ):
         """blocked outcome + no canonical → not_started/clean."""
         r = self._bootstrap_in_progress(tmp_path, monkeypatch, "specification")
-        result = state.cmd_complete(
+        result = state.cmd_reap(
             "foo",
             "specification",
             run=r["run"],
@@ -3063,7 +3057,7 @@ class TestCmdCompleteBranches:
         assert task["stages"]["specification"]["status"] == "not_started"
         assert task["stages"]["specification"]["freshness"] == "clean"
 
-    def test_complete_invalid_when_schema_fails(self, tmp_path, monkeypatch):
+    def test_reap_invalid_when_schema_fails(self, tmp_path, monkeypatch):
         """Malformed result.json → invalid → not_started/clean."""
         r = self._bootstrap_in_progress(tmp_path, monkeypatch, "lint-cdc")
         # Write malformed result.json in the run directory
@@ -3074,16 +3068,16 @@ class TestCmdCompleteBranches:
             / "result.json"
         )
         rj.write_text("{}")  # missing all required fields
-        result = state.cmd_complete("foo", "lint-cdc", run=r["run"], outcome="pass")
+        result = state.cmd_reap("foo", "lint-cdc", run=r["run"], outcome="pass")
         assert result["action"] == "invalid"
         task = state.read_task("foo")
         assert task["stages"]["lint-cdc"]["status"] == "not_started"
 
-    def test_complete_pass_promotes_and_state(self, tmp_path, monkeypatch):
+    def test_reap_pass_promotes_and_state(self, tmp_path, monkeypatch):
         """Happy path: pass → state pass/clean + canonical result.json exists."""
         r = self._bootstrap_in_progress(tmp_path, monkeypatch, "lint-cdc")
         self._write_valid_result(tmp_path, "lint-cdc", r["run"], status="pass")
-        result = state.cmd_complete("foo", "lint-cdc", run=r["run"], outcome="pass")
+        result = state.cmd_reap("foo", "lint-cdc", run=r["run"], outcome="pass")
         assert result["action"] == "completed"
         assert result["result_status"] == "pass"
         # canonical has result.json
@@ -3096,18 +3090,18 @@ class TestCmdCompleteBranches:
         # run removed from in_flight
         assert {"run": r["run"]} not in task["stages"]["lint-cdc"]["in_flight"]
 
-    def test_complete_fail(self, tmp_path, monkeypatch):
+    def test_reap_fail(self, tmp_path, monkeypatch):
         """Fail outcome → state fail/clean."""
         r = self._bootstrap_in_progress(tmp_path, monkeypatch, "lint-cdc")
         self._write_valid_result(tmp_path, "lint-cdc", r["run"], status="fail")
-        result = state.cmd_complete("foo", "lint-cdc", run=r["run"], outcome="fail")
+        result = state.cmd_reap("foo", "lint-cdc", run=r["run"], outcome="fail")
         assert result["action"] == "completed"
         assert result["result_status"] == "fail"
         task = state.read_task("foo")
         assert task["stages"]["lint-cdc"]["status"] == "fail"
         assert task["stages"]["lint-cdc"]["freshness"] == "clean"
 
-    def test_complete_discarded_when_prereq_changed(self, tmp_path, monkeypatch):
+    def test_reap_discarded_when_prereq_changed(self, tmp_path, monkeypatch):
         """Prereq stale during exec → discarded with reason prereq_changed."""
         r = self._bootstrap_in_progress(tmp_path, monkeypatch, "lint-cdc")
         # Stale rtl-design while lint-cdc is running
@@ -3116,14 +3110,14 @@ class TestCmdCompleteBranches:
         state.write_task("foo", task)
         # Write valid result for lint-cdc run
         self._write_valid_result(tmp_path, "lint-cdc", r["run"])
-        result = state.cmd_complete("foo", "lint-cdc", run=r["run"], outcome="pass")
+        result = state.cmd_reap("foo", "lint-cdc", run=r["run"], outcome="pass")
         assert result["action"] == "discarded"
         assert result["reason_code"] == "prereq_changed"
         task = state.read_task("foo")
         # canonical absent → not_started/clean
         assert task["stages"]["lint-cdc"]["status"] == "not_started"
 
-    def test_complete_blocked_with_canonical_pass_returns_pass_stale(
+    def test_reap_blocked_with_canonical_pass_returns_pass_stale(
         self, tmp_path, monkeypatch
     ):
         """when canonical has prior pass result.json, non-success
@@ -3131,7 +3125,7 @@ class TestCmdCompleteBranches:
         # First, complete lint-cdc successfully so canonical exists
         r1 = self._bootstrap_in_progress(tmp_path, monkeypatch, "lint-cdc")
         self._write_valid_result(tmp_path, "lint-cdc", r1["run"], status="pass")
-        result1 = state.cmd_complete("foo", "lint-cdc", run=r1["run"], outcome="pass")
+        result1 = state.cmd_reap("foo", "lint-cdc", run=r1["run"], outcome="pass")
         assert result1["action"] == "completed"
         # Confirm canonical exists
         canonical = state._result_path("foo", "lint-cdc")
@@ -3140,10 +3134,10 @@ class TestCmdCompleteBranches:
         task = state.read_task("foo")
         task["stages"]["lint-cdc"]["freshness"] = "stale"
         state.write_task("foo", task)
-        r2 = state.cmd_start("foo", "lint-cdc")
+        r2 = state.cmd_dispatch("foo", "lint-cdc")
         assert r2["run"] == 2
         # Run 2 reports blocked (subagent gave up)
-        result2 = state.cmd_complete(
+        result2 = state.cmd_reap(
             "foo", "lint-cdc", run=r2["run"], outcome="blocked", reason="cannot proceed"
         )
         assert result2["action"] == "blocked"
@@ -3152,19 +3146,19 @@ class TestCmdCompleteBranches:
         assert task["stages"]["lint-cdc"]["status"] == "pass"
         assert task["stages"]["lint-cdc"]["freshness"] == "stale"
 
-    def test_complete_blocked_with_canonical_fail_returns_fail_stale(
+    def test_reap_blocked_with_canonical_fail_returns_fail_stale(
         self, tmp_path, monkeypatch
     ):
         """_non_success_finalize new branch: canonical.status=fail → fail/stale.
 
-        Because cmd_complete fail goes through promote, canonical can
+        Because cmd_reap fail goes through promote, canonical can
         contain fail content. blocked/invalid/discarded must derive task
         state from canonical.status, not just existence.
         """
         # First, run 1 fails — canonical now has status=fail
         r1 = self._bootstrap_in_progress(tmp_path, monkeypatch, "lint-cdc")
         self._write_valid_result(tmp_path, "lint-cdc", r1["run"], status="fail")
-        result1 = state.cmd_complete("foo", "lint-cdc", run=r1["run"], outcome="fail")
+        result1 = state.cmd_reap("foo", "lint-cdc", run=r1["run"], outcome="fail")
         assert result1["action"] == "completed"
         assert result1["result_status"] == "fail"
         # Verify canonical exists with status=fail
@@ -3175,17 +3169,17 @@ class TestCmdCompleteBranches:
         task = state.read_task("foo")
         assert task["stages"]["lint-cdc"]["status"] == "fail"
         assert task["stages"]["lint-cdc"]["freshness"] == "clean"
-        # Mark stale so cmd_start can re-dispatch (fail/clean alone is not eligible).
+        # Mark stale so cmd_dispatch can re-dispatch (fail/clean alone is not eligible).
         task["stages"]["lint-cdc"]["freshness"] = "stale"
         state.write_task("foo", task)
         # Re-dispatch run 2
-        r2 = state.cmd_start("foo", "lint-cdc")
-        assert r2["ok"], f"cmd_start failed: {r2}"
+        r2 = state.cmd_dispatch("foo", "lint-cdc")
+        assert r2["ok"], f"cmd_dispatch failed: {r2}"
         assert r2["run"] == 2
         # Write a valid run-specific result for run 2 (blocked still requires the dir)
         self._write_valid_result(tmp_path, "lint-cdc", r2["run"], status="pass")
         # Run 2 reports blocked
-        result2 = state.cmd_complete(
+        result2 = state.cmd_reap(
             "foo", "lint-cdc", run=r2["run"], outcome="blocked", reason="user blocked"
         )
         assert result2["action"] == "blocked"
@@ -3196,8 +3190,8 @@ class TestCmdCompleteBranches:
 
 
 class TestCmdCompleteCLISmoke:
-    def test_cli_complete_requires_run_arg(self, tmp_path, monkeypatch):
-        """End-to-end CLI: state.py complete without --run should fail at argparse."""
+    def test_cli_reap_requires_run_arg(self, tmp_path, monkeypatch):
+        """End-to-end CLI: state.py reap without --run should fail at argparse."""
         import subprocess
         from pathlib import Path
 
@@ -3209,7 +3203,7 @@ class TestCmdCompleteCLISmoke:
             [
                 "python3",
                 str(state_py),
-                "complete",
+                "reap",
                 "--module",
                 "foo",
                 "--stage",
@@ -3225,8 +3219,8 @@ class TestCmdCompleteCLISmoke:
         combined = result.stdout + result.stderr
         assert "--run" in combined or "run" in combined.lower()
 
-    def test_cli_complete_derives_without_outcome(self, tmp_path, monkeypatch):
-        """End-to-end: `state.py complete` with NO --outcome derives the result from
+    def test_cli_reap_derives_without_outcome(self, tmp_path, monkeypatch):
+        """End-to-end: `state.py reap` with NO --outcome derives the result from
         the run's result.json."""
         import subprocess
         import sys
@@ -3235,14 +3229,14 @@ class TestCmdCompleteCLISmoke:
         monkeypatch.chdir(tmp_path)
         state.cmd_init("cli3")
         bootstrap_prereqs_pass_clean("cli3", "rtl-design")
-        r = state.cmd_start("cli3", "rtl-design")
+        r = state.cmd_dispatch("cli3", "rtl-design")
         assert r["ok"]
         write_run_result("cli3", "rtl-design", r["run"])  # valid pass result.json
         proc = subprocess.run(
             [
                 sys.executable,
                 script,
-                "complete",
+                "reap",
                 "--module",
                 "cli3",
                 "--stage",
@@ -3262,7 +3256,7 @@ class TestCmdCompleteCLISmoke:
 class TestCascadeStaleIntoInProgress:
     def test_cascade_marks_in_progress_as_stale(self, tmp_path, monkeypatch):
         """cascade extends to in_progress (becomes in_progress/stale).
-        The subagent keeps running but its eventual cmd_complete will go
+        The subagent keeps running but its eventual cmd_reap will go
         through discarded(prereq_changed)."""
         monkeypatch.chdir(tmp_path)
         state.cmd_init("foo")
@@ -3342,13 +3336,13 @@ class TestComputeCascadePure:
 
 
 class TestPromoteFailedRetry:
-    def test_complete_promote_failed_then_retry_succeeds(self, tmp_path, monkeypatch):
+    def test_reap_promote_failed_then_retry_succeeds(self, tmp_path, monkeypatch):
         """When promote fails, state stays in_progress/clean; run remains in_flight.
-        Orchestrator can retry by calling cmd_complete again with the same run."""
+        Orchestrator can retry by calling cmd_reap again with the same run."""
         monkeypatch.chdir(tmp_path)
         state.cmd_init("foo")
         bootstrap_prereqs_pass_clean("foo", "lint-cdc")
-        r = state.cmd_start("foo", "lint-cdc")
+        r = state.cmd_dispatch("foo", "lint-cdc")
         # Write result.json with non-existent artifact (will trigger promote failure)
         rj_path = (
             state._result_path("foo", "lint-cdc").parent
@@ -3369,8 +3363,8 @@ class TestPromoteFailedRetry:
                 }
             )
         )
-        # First cmd_complete pass → promote fails
-        result1 = state.cmd_complete("foo", "lint-cdc", run=r["run"], outcome="pass")
+        # First cmd_reap pass → promote fails
+        result1 = state.cmd_reap("foo", "lint-cdc", run=r["run"], outcome="pass")
         assert result1["action"] == "promote_failed"
         # State stays in_progress/clean, run remains in_flight.
         task = state.read_task("foo")
@@ -3379,7 +3373,7 @@ class TestPromoteFailedRetry:
         assert {"run": r["run"]} in task["stages"]["lint-cdc"]["in_flight"]
         # Now create the missing artifact + retry
         (rj_path.parent / "missing.txt").write_text("now exists")
-        result2 = state.cmd_complete("foo", "lint-cdc", run=r["run"], outcome="pass")
+        result2 = state.cmd_reap("foo", "lint-cdc", run=r["run"], outcome="pass")
         assert result2["action"] == "completed"
         assert result2["result_status"] == "pass"
         # State now pass/clean
