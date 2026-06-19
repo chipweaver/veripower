@@ -5,13 +5,6 @@ env-build child — as the first of three sequential waves. Its job: bootstrap t
 the UVM scaffold, compile, and run the smoke suite. A dispatched sub-Task MUST NOT call the Task
 tool (no Level-2 dispatch).
 
-## Shared Iron Rule (both sub-Tasks)
-
-- Do not modify `verification-plan.md` / `scaffold-specification.json` (the plan is a read-only
-  external reference for simulation).
-- Do not modify RTL (RTL-class issues belong to the RTL editing stage; this stage does not exceed its
-  authority).
-
 ## Inputs handed to the child (paths only — the main thread does not read these bodies)
 
 - `{workdir}` — the shared simulation stage workdir (the env-build child is the first writer; the
@@ -107,7 +100,7 @@ smoke gate still decides smoke pass/fail.
 - **No Level-2 dispatch:** this sub-Task MUST NOT call the Task tool.
 - **No `state.py`:** the parent session owns state transitions.
 - Stay inside `{workdir}`: all writes confined to `{workdir}` (reading the upstream plan + any prior
-  canonical TB as read-only reference is allowed). Do not modify the plan or RTL (shared Iron Rule).
+  canonical TB as read-only reference is allowed). Do not modify the plan or RTL.
 
 ## Pitfalls
 

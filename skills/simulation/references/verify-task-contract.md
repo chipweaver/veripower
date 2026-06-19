@@ -4,13 +4,6 @@ The simulation main thread dispatches the **verify** child as the third sequenti
 the smoke gate passes and the conformance gate clears. Its job: full regression, coverage iteration (Rule B), and the
 review summary. A dispatched sub-Task MUST NOT call the Task tool (no Level-2 dispatch).
 
-## Shared Iron Rule (both sub-Tasks)
-
-- Do not modify `verification-plan.md` / `scaffold-specification.json` (the plan is a read-only
-  external reference for simulation).
-- Do not modify RTL (RTL-class issues belong to the RTL editing stage; this stage does not exceed its
-  authority).
-
 ## Inputs handed to the child (paths only — the main thread does not read these bodies)
 
 - `{workdir}` — the **same** shared workdir the env-build child wrote in wave 1. It already holds the
@@ -68,7 +61,7 @@ instead.
 - **No Level-2 dispatch:** this sub-Task MUST NOT call the Task tool.
 - **No `state.py`:** the parent session owns state transitions.
 - Stay inside `{workdir}`: all writes confined to the write-domain above. Do not modify the plan or
-  RTL (shared Iron Rule), and do not re-author the env child's scaffold / checker / RM.
+  RTL, and do not re-author the env child's scaffold / checker / RM.
 
 ## Red Flag
 
