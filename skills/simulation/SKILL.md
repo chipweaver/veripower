@@ -5,16 +5,16 @@ description: Use when materializing and running a module's UVM TB from an approv
 
 # UVM Simulation
 
-This skill's sole responsibility: **orchestrate** the UVM verification flow as a thin dispatcher over
-three sequential sub-Tasks — **env-build** (bootstrap + fill scaffold + compile + smoke) → a
-deterministic **smoke gate** → a **conformance gate** (LLM check-adequacy review; Step 4) →
-**verify** (regress + coverage iterate + summary). The main thread
+This skill's sole responsibility: orchestrate the UVM verification flow as a thin dispatcher over
+three sequential sub-Tasks — env-build (bootstrap + fill scaffold + compile + smoke) → a
+deterministic smoke gate → a conformance gate (LLM check-adequacy review; Step 4) →
+verify (regress + coverage iterate + summary). The main thread
 reads only envelopes / status files / paths; it NEVER reads the TB body, never authors TB inline, and
 never re-runs heavy EDA. Each sub-Task's repair authority is bound by **Rule A** (scaffold vs.
 semantics, env phase) and **Rule B** (stimulus vs. intent, verify phase).
 
 **Load mode:** this skill runs main-thread, invoked via `Skill(veripower:simulation)` by its caller
-(not dispatched as a Task subagent). It uses the Task tool for **three sequential** fan-out waves (one
+(not dispatched as a Task subagent). It uses the Task tool for three sequential fan-out waves (one
 sub-Task each — Wave 1 env-build, Wave 2 conformance reviewer, Wave 3 verify), each followed by a
 deterministic main-thread gate (the smoke gate after Wave 1, the conformance gate after Wave 2, the
 scripted finalize after Wave 3); the main thread never authors TB inline.
@@ -61,7 +61,7 @@ When `{rework_trigger}` is injected, the orchestrator passes its path (and any
 
 ## Output Artifacts
 
-`result.json` is the only artifact the **orchestrator** writes; every other artifact is produced by a
+`result.json` is the only artifact the orchestrator writes; every other artifact is produced by a
 sub-Task in the shared `{workdir}` and is listed in `result.json.artifacts[]` by the orchestrator at
 finalize. The env / verify phase split of the workdir artifacts is in
 [`references/artifact-contract.md`](references/artifact-contract.md).
@@ -82,7 +82,7 @@ finalize. The env / verify phase split of the workdir artifacts is in
 ### Fan-out Dispatch Contract
 
 Framework-mechanism rules (the subagent-side prohibitions echo `stage-subagent.md.tpl`; dispatch-and-wait below is the main-thread lifecycle); enforced at the
-framework layer (verify.py isolation gate + harness wake protocol), **not** by this skill's
+framework layer (verify.py isolation gate + harness wake protocol), not by this skill's
 Completion Gate.
 
 - **No Level 2 dispatch:** this skill may dispatch Level-1 sub-Tasks (env-build, conformance reviewer,
@@ -92,7 +92,7 @@ Completion Gate.
   caller). Reap the sub-Task on its wake before the downstream gate/wave.
 - **No `state.py`:** this skill does not call `state.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a
-  **harness-level** signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the main
+  harness-level signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the main
   thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to trigger-driven rework.
 
 ### Step 1: Prerequisite + branch select
@@ -102,7 +102,7 @@ Read `Verification/simulation-plan/result.json` (MUST be `status=pass`) and
 (`verification-plan.md` + `scaffold-specification.json`) exist. If any is missing or not `pass`, write
 `{workdir}/result.json` with `status=fail` + `stage_specific.failure_phase="prerequisite"` +
 `stage_specific.fail_reason="external reference missing: <path>"` and return without dispatching. The
-main thread does **not** read the scaffold-spec / verification-plan body — only the envelopes + path
+main thread does not read the scaffold-spec / verification-plan body — only the envelopes + path
 existence.
 
 Select the branch (which references the env-build sub-Task consults when filling TODOs):
@@ -129,8 +129,8 @@ which is exactly that — the orchestrator dispatches the env-build sub-Task int
 
 ### Step 2: Wave 1 — dispatch env-build
 
-Dispatch **one** `Task(run_in_background=True)` — the env-build child — whose prompt points to
-[`references/env-task-contract.md`](references/env-task-contract.md) and hands over **paths only**
+Dispatch one `Task(run_in_background=True)` — the env-build child — whose prompt points to
+[`references/env-task-contract.md`](references/env-task-contract.md) and hands over paths only
 (`{workdir}`, `{module}`, scaffold-spec path, verification-plan path, and on rework the trigger /
 context paths). The main thread never reads the TB it produces.
 
@@ -147,7 +147,7 @@ an incomplete `inlined_check_hints[]` block) and return; do not dispatch the dow
 
 ### Step 3: Smoke gate (deterministic; main thread)
 
-Gate on the smoke result emitted by the smoke run's **own tooling** in `{workdir}`, NOT on the
+Gate on the smoke result emitted by the smoke run's own tooling in `{workdir}`, NOT on the
 env-build child's self-reported `STATUS:` prose. This is cheap and deterministic — the main thread
 reads a small status file, does NOT re-run heavy EDA, and does NOT read the TB body. Do **NOT** use
 `validate_sim_exit.py` here — its coverage gate hard-fails pre-regress (no `structural-coverage.json`
@@ -163,9 +163,9 @@ exists yet).
 
 ### Step 4: Wave 2 — conformance gate (LLM check-adequacy review; gating)
 
-On a smoke pass, dispatch **one** `Task(run_in_background=True)` — the conformance reviewer —
+On a smoke pass, dispatch one `Task(run_in_background=True)` — the conformance reviewer —
 whose prompt points to [`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md)
-and hands over **paths only**: the `{workdir}` (filled `tb/uvm/**`), the scaffold-spec path
+and hands over paths only: the `{workdir}` (filled `tb/uvm/**`), the scaffold-spec path
 (`testpoints[].inlined_check_hints[]`), the `verification-plan.md` path (§3 intent source),
 the DUT RTL filelist, and `{module}`. The main thread never reads the TB body. After dispatching, end the turn and wait for the harness wake.
 
@@ -198,8 +198,8 @@ This stage runs **no in-skill fix-loop** — a conformance trip exits to the exi
 
 ### Step 5: Wave 3 — dispatch verify
 
-Dispatch **one** `Task(run_in_background=True)` — the verify child — whose prompt points to
-[`references/verify-task-contract.md`](references/verify-task-contract.md) and hands over the **same**
+Dispatch one `Task(run_in_background=True)` — the verify child — whose prompt points to
+[`references/verify-task-contract.md`](references/verify-task-contract.md) and hands over the same
 `{workdir}` (already holding the built TB + compiled `simv` + `verify-handoff.json`), the
 scaffold-spec testpoints path, and `{module}`.
 
@@ -215,7 +215,7 @@ Run the full exit self-check (unchanged) over the reaped workdir:
 python3 ${CLAUDE_SKILL_DIR}/scripts/validate_sim_exit.py --workdir {workdir} --scaffold Verification/simulation-plan/scaffold-specification.json --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml
 ```
 
-Its **exit code is the pass/fail truth**; always read the verdict from its **stdout** (the JSON line
+Its **exit code is the pass/fail truth**; always read the verdict from its stdout (the JSON line
 carries `coverage_extractable` / `dims` / `unmaterialized` / `todo_residue`). It runs three checks:
 thin-D1 (every scaffold-spec sequence/agent SV file materialized, zero `TODO` residue), D5
 (`structural-coverage.json` present with an `aggregate` block), and D6 (every
@@ -265,7 +265,7 @@ The detailed Rule A / Rule B authority lives with the sub-Task that owns it:
 - **Rule B (stimulus vs intent):** verify phase — coverage stimulus iterate. See
   [`references/coverage-iteration.md`](references/coverage-iteration.md) and
   [`references/verify-task-contract.md`](references/verify-task-contract.md).
-- Regress fail → the verify child does **not** modify checker / scoreboard / RM; it writes
+- Regress fail → the verify child does not modify checker / scoreboard / RM; it writes
   `failing_cases` and routes out for the caller to decide.
 
 The cycle-accurate check-authoring + anti-gaming rules (the `inlined_check_hints[]` handling) live in
@@ -277,7 +277,7 @@ sub-Task.
 | Excuse | Reality |
 |---|---|
 | "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `validate_sim_exit` exited non-zero) | The orchestrator records the most-failing verdict, never a more-optimistic one. `status=pass` is written only when the smoke gate, the conformance gate, the verify verdict, and `validate_sim_exit` all agree (Step 7); it MUST NOT override a `gate=trip` to pass (Step 4). |
-| "The env-build child's `STATUS:` line says smoke passed — that's my smoke gate" | The smoke gate reads the smoke run's **own tooling** (`regression-log.txt` `RESULT` lines / per-test `logs/<test>.status`), never the child's self-reported prose (Step 3). |
+| "The env-build child's `STATUS:` line says smoke passed — that's my smoke gate" | The smoke gate reads the smoke run's own tooling (`regression-log.txt` `RESULT` lines / per-test `logs/<test>.status`), never the child's self-reported prose (Step 3). |
 | "A case is failing — I'll open the TB to see why" | The main thread NEVER reads the TB body or re-runs heavy EDA; it consumes envelopes / status files / paths only and routes the failure out for the caller to decide (Iron Rule). |
 
 ## Completion Gate (orchestrator)

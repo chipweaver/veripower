@@ -5,7 +5,7 @@ description: Use when writing or reviewing design specification (design.md), def
 
 # Requirements and Specification Freeze
 
-This skill's sole responsibility: derive a frozen design source of truth from an **approved** `asic/{module}/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `coverage.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). It is a thin Level-0 dispatcher (two sub-agent waves + two path-handoff gates); the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
+This skill's sole responsibility: derive a frozen design source of truth from an approved `asic/{module}/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `coverage.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). It is a thin Level-0 dispatcher (two sub-agent waves + two path-handoff gates); the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
 
 ## When to Use
 
@@ -23,7 +23,7 @@ Boundary of this skill:
 - **Do not decide what happens after this skill completes.** Return control to the caller.
 - **No brainstorm here.** This skill consumes a frozen `asic/{module}/brainstorm.md` (produced by the pre-pipeline `brainstorm` skill). It runs two path-handoff gates (partition gate + design.md gate) but holds no document body and drives no D0–D7 dialogue.
 - **Deriving design.md requires an approved `brainstorm.md`.** `asic/{module}/brainstorm.md` must read `Status: approved` (design-flow's entry gate verifies it). A missing/draft brainstorm means the user must run `Skill(veripower:brainstorm)` first.
-- **Constraint correctness** (periods consistent, IO delays / `abstract_port`s present) is **generated and self-checked** by `derive_constraints.py` — not a human rule.
+- **Constraint correctness** (periods consistent, IO delays / `abstract_port`s present) is generated and self-checked by `derive_constraints.py` — not a human rule.
 - **`result.json.status` must be `pass` or `fail` — never `blocked`.** The envelope `status` enum accepts only `{pass, fail}`; any failure must be `status=fail` + `fail_reason`.
 - **`design.md` must not contain by-reference jumps.** `design.md` is the unique source of truth; downstream stages do not read `brainstorm.md`. Any `see brainstorm`, `see spec D`, `refer to brainstorm`, etc. = information loss. The referenced passage must be inlined verbatim.
 - **`manifest.json` is read-only after the partition gate.** Changes to N require a fresh specification run (or re-dispatching wave 1 with new grouping before the partition gate is reconfirmed).
@@ -54,16 +54,16 @@ No fixed external inputs. When `{rework_trigger}` is provided, read it once at i
 
 ## Workflow
 
-`specification` is loaded on the main thread but is a **thin Level-0 dispatcher**: it
+`specification` is loaded on the main thread but is a thin Level-0 dispatcher: it
 dispatches two waves of Level-1 sub-Tasks (decompose + per-child); coverage and constraints
 are deterministic main-thread scripts, gates twice on path-handoff, and finalizes
-`result.json`. The main thread holds **no** document body — `brainstorm.md`, `design.md`,
+`result.json`. The main thread holds no document body — `brainstorm.md`, `design.md`,
 and every `<child>.md` are read/written only inside sub-Task contexts.
 
 ### Fan-out Dispatch Contract
 
 Framework-mechanism rules (the subagent-side prohibitions echo `stage-subagent.md.tpl`; dispatch-and-wait below is the main-thread lifecycle); enforced at the
-framework layer (verify.py isolation gate + harness wake protocol), **not** by this skill's
+framework layer (verify.py isolation gate + harness wake protocol), not by this skill's
 Completion Gate.
 
 - **No Level 2 dispatch:** this skill may dispatch Level-1 sub-Tasks for the two Workflow
@@ -71,16 +71,16 @@ Completion Gate.
   call the Task tool (audit boundary).
 - **Dispatch-and-wait:** after dispatching a wave's sub-Task(s), send a brief status and end the
   turn; the harness wakes the main thread per completion. Reap each, and finalize only after
-  **all** dispatched sub-Tasks have reported — never against a partial set.
+  all dispatched sub-Tasks have reported — never against a partial set.
 - **No `state.py`:** this skill does not call `state.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>`
-  is a **harness-level** signal, distinct from the `result.json.status` enum (`pass`/`fail`
+  is a harness-level signal, distinct from the `result.json.status` enum (`pass`/`fail`
   only); the main thread maps it to `status=fail` + `fail_reason` listing failed children and
   defers per-child re-dispatch to trigger-driven rework.
 
 ### Step 1: Routing branch + brainstorm precondition (main thread)
 
-This skill consumes a **frozen** `asic/{module}/brainstorm.md` (produced by the
+This skill consumes a frozen `asic/{module}/brainstorm.md` (produced by the
 pre-pipeline `brainstorm` skill; `design-flow`'s entry gate already verified
 `Status: approved`). **Do not brainstorm here.** Select the branch:
 
@@ -89,7 +89,7 @@ pre-pipeline `brainstorm` skill; `design-flow`'s entry gate already verified
   amends `design.md` (body stays off the main thread) only — `brainstorm.md` is read-only.
   Then the main thread re-runs `check_coverage.py` (and, on pass, `derive_constraints.py`),
   exactly as in the first-run flow.
-  If the violations express a **requirements contradiction** that cannot be fixed
+  If the violations express a requirements contradiction that cannot be fixed
   without changing brainstorm.md (e.g., PPA unreachable, interface contradiction) →
   write `result.json` `status=fail` + `stage_specific.fail_reason="requirements need
   revision: <D-dim>"` (this routes to ESCALATE; recovery is out-of-band, outside this
@@ -111,14 +111,14 @@ Dispatch one sub-Task that, in its own context, reads `asic/{module}/brainstorm.
    - `design.md` §1.1–1.6 overview (incl. §1.4.1 Top-Level IO + §1.4.2 Inter-module
      Interconnects) + §1.7 submodule index.
 
-Child partition follows the **interface graph**, NOT line counts: each child is one or
-more **whole RTL modules** forming a coupling cluster, cut along the narrowest interfaces;
+Child partition follows the interface graph, NOT line counts: each child is one or
+more whole RTL modules forming a coupling cluster, cut along the narrowest interfaces;
 strongly-coupled modules stay together so their shared interface is internalized (small
 leaf modules join their cluster — there is no line-count floor / size class).
 
 **top-integration carve-out (best-effort hint):** `<TOP>` (= `manifest.module`) should form its
 own child whose `rtl_modules == [<TOP>]` — even though the top instantiates / is coupled to all
-leaves, do **not** bundle any logic module into the top child (leaf-to-leaf clustering rule is
+leaves, do not bundle any logic module into the top child (leaf-to-leaf clustering rule is
 unchanged). This is a soft hint; the hard guarantee is `check_coverage.py`'s purity gate.
 
 The module set (D4) + inter-module wire table (D2b → §1.4.2) come from the frozen brainstorm. Last
@@ -130,7 +130,7 @@ Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/specification/scripts/derive_child_por
 {workdir}`. Its small JSON output (`{child: [wire,...]}`) is each child's inter-module
 ports — the §1.4.2 wires whose Producer/Consumer RTL module is in that child's
 `rtl_modules`. This output is the partition gate's cut-edge summary AND each child's
-wave-2 port injection (children do **not** guess inter-module ports; top-level IO ports
+wave-2 port injection (children do not guess inter-module ports; top-level IO ports
 stay child-authored from §1.4.1 and are backstopped by `check_coverage.py`'s
 `ports ⊆ §1.4.1∪§1.4.2` subset check). If the script exits non-zero (a child has no
 `rtl_modules` — a wave-1 manifest defect; stderr names the defect), do NOT gate: route a wave-1 rework sub-Task to
@@ -160,7 +160,7 @@ have reported.
 ### Step 6: Coverage gate (main thread, deterministic) — verdict feeds the design.md gate
 
 Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/specification/scripts/check_coverage.py {workdir}
---brainstorm asic/{module}/brainstorm.md`. It reads brainstorm/children/design **in-process**
+--brainstorm asic/{module}/brainstorm.md`. It reads brainstorm/children/design in-process
 and writes `coverage.json` (sub-blocks: `brainstorm_coverage` / `frontmatter_subset` /
 `token_survival` / `self_containment` / `structure`); exit 0 = pass.
 
@@ -168,9 +168,9 @@ and writes `coverage.json` (sub-blocks: `brainstorm_coverage` / `frontmatter_sub
 rework sub-Task by category, then re-runs the script, looping until clean:
 - `gaps` / `orphans`; `structure` §1.3/§1.5 columns; period (R-B); Clock-Domain (R-F);
   `structure.purity_violations` (top-integration child not pure / mis-covered) →
-  **wave-1** rework (re-partition the manifest; `design.md` overview tables).
+  wave-1 rework (re-partition the manifest; `design.md` overview tables).
 - `token_survival`; `frontmatter_subset`; `self_containment`; child §5 columns; feature
-  coverage (R-C) → the affected **wave-2** child rework.
+  coverage (R-C) → the affected wave-2 child rework.
 The main thread holds only the verdict + the routing decision — never a body.
 
 ### Step 7: design.md gate (main thread)
@@ -204,9 +204,9 @@ omitted). When `status=fail`, only `stage_specific.fail_reason` is required.
 
 ## Self-checks (where the deterministic work runs)
 
-- `derive_child_ports.py` — main thread, **before** the partition gate (feeds the gate summary).
-- `check_coverage.py` — main thread, **before** the design.md gate (verdict feeds the gate).
-- `derive_constraints.py` — main thread, **after** the design.md gate (generates + self-checks SDC/SGDC).
+- `derive_child_ports.py` — main thread, before the partition gate (feeds the gate summary).
+- `check_coverage.py` — main thread, before the design.md gate (verdict feeds the gate).
+- `derive_constraints.py` — main thread, after the design.md gate (generates + self-checks SDC/SGDC).
 - Finalize assertions — main thread. No constraint sub-Task; no separate constraint checker.
 
 ## Decision Rules
@@ -242,7 +242,7 @@ omitted). When `status=fail`, only `stage_specific.fail_reason` is required.
   polarity, clock relationships); engineering soundness — the semantic "not contradictory"
   judgment the token check cannot catch.
 - No Iron Rule or Red Flag was triggered.
-- `result.json` written; its **verdict** is schema-validated externally, not by this skill.
+- `result.json` written; its verdict is schema-validated externally, not by this skill.
 
 ## Return Contract
 
@@ -250,7 +250,7 @@ Control returns directly to the caller; the caller decides based on `result.json
 
 ### Session-resume semantics
 
-This skill's sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, the Workflow's routing branch runs again (session-resume continues from the last incomplete wave; first-run if the workdir is empty). The two path-handoff gates (partition gate + design.md gate) **always re-ask** idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before this skill runs; this skill never approves or re-approves it.
+This skill's sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, the Workflow's routing branch runs again (session-resume continues from the last incomplete wave; first-run if the workdir is empty). The two path-handoff gates (partition gate + design.md gate) always re-ask idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before this skill runs; this skill never approves or re-approves it.
 
 ## Bundled References
 
