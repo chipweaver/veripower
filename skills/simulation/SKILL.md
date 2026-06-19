@@ -274,6 +274,14 @@ The cycle-accurate check-authoring + anti-gaming rules (the `inlined_check_hints
 [`references/inlined-check-hints.md`](references/inlined-check-hints.md), cited by the env-build
 sub-Task.
 
+## Red Flags
+
+| Excuse | Reality |
+|---|---|
+| "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `validate_sim_exit` exited non-zero) | The orchestrator records the most-failing verdict, never a more-optimistic one. `status=pass` is written only when the smoke gate, the conformance gate, the verify verdict, and `validate_sim_exit` all agree (Step 7); it MUST NOT override a `gate=trip` to pass (Step 4). |
+| "The env-build child's `STATUS:` line says smoke passed — that's my smoke gate" | The smoke gate reads the smoke run's **own tooling** (`regression-log.txt` `RESULT` lines / per-test `logs/<test>.status`), never the child's self-reported prose (Step 3). |
+| "A case is failing — I'll open the TB to see why" | The main thread NEVER reads the TB body or re-runs heavy EDA; it consumes envelopes / status files / paths only and routes the failure out for the caller to decide (Iron Rule). |
+
 ## Completion Gate (orchestrator)
 
 - [ ] `{workdir}/result.json` has been written and passes schema validation.
