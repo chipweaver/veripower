@@ -67,7 +67,7 @@ Step 2: make <target>
 Step 3: write result.json (status/artifacts/metrics); STATUS: DONE
 ```
 
-**Worked walk-through 2: dialogue 4-branch (simulation-plan archetype)** — `simulation-plan` adds session-resume as a fourth branch. When `{workdir}/verification-plan.md` is present but `{workdir}/result.json` is absent, a paused multi-turn review is inferred; the stage resumes from the last gate (otherwise the routing falls through to incremental update or first-run). The four branches are: trigger-driven / session-resume / cascade rework (incremental update) / first-run. Dialogue-form skills use session-resume because there is no external reference diff to anchor an incremental re-derivation against.
+**Worked walk-through 2: dialogue 4-branch (simulation-plan archetype)** — `simulation-plan` extends the three worker branches with a fourth, session-resume, giving: trigger-driven / session-resume / cascade rework (incremental update) / first-run. The session-resume branch — its trigger, its resume-from-last-gate mechanism, and why dialogue forms use it — is the §6.3 carve-out.
 
 **Note:** §5 (Examples) is intentionally absent. The two walk-throughs above absorb that role within §4. Section numbers are preserved to match the template positions used across the design-doc set.
 
@@ -94,8 +94,6 @@ Six skills deviate from the standard 3-branch worker pattern. Each must referenc
 ### 6.5 Analyzer exception (simulation-triage)
 
 `simulation-triage` receives all inputs as inline content in the dispatch prompt. It has no `{workdir}`, no `{rework_trigger}`, no disk-prev-artifact concept. The two-signal model does not apply. (`skills/simulation-triage/SKILL.md` line 30)
-
-**Critical:** This carve-out corrects a stale claim in the original source guide §6.0 that `simulation-triage`'s `{rework_trigger}` is "always present." The actual mechanism is inline prompt content; no `{rework_trigger}` variable exists for this skill.
 
 ### 6.6 Never-trigger-target / read-only re-verifier (timing-analysis)
 
