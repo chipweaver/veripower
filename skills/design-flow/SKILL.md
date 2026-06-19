@@ -73,8 +73,8 @@ This skill is loaded on the main thread and reads `{module}` (the sole external 
   next eligibility scan re-dispatches `specification` with a fresh empty workdir →
   first-run re-derivation from the updated brainstorm. `invalidate-stage` records an
   `invalidate` event (not `rework_decision`), so it does not count toward convergence.
-  Do not delete/edit the on-disk `design.md` (that trips the `parent_stage_writes>0`
-  isolation gate) — the empty new-run workdir is the entire mechanism.
+  Do not delete/edit the on-disk `design.md` (a main-thread write to a canonical artifact
+  breaks the orchestrator/subagent isolation) — the empty new-run workdir is the entire mechanism.
 
 ### Executor loop (each turn)
 
@@ -137,9 +137,9 @@ When the `REAP` execute step receives `cmd_reap` returning `action=promote_faile
 
 1. `state.py reap --stage X --run N` (no `--outcome`; cmd_reap derives the outcome from `result.json`) returns `action=promote_failed` → **single retry with the same args and same command** (do not touch disk, do not modify result.json, do not modify artifacts).
 2. Still returns `action=promote_failed` → `state.py log --module {module} --event '{"type":"escalation","reason_code":"promote_failed_persistent","reason":"<resp2.reason verbatim>"}'` + ESCALATE to upstream (user / higher-level agent), forwarding the reason verbatim.
-3. **Forbidden:** retrying > 1 time with the same args; any Write/Edit under `runs/N/` (see Red Flags "promote failed — I'll just Edit `runs/N/result.json`…") — either of these trips isolation gate FAIL.
+3. **Forbidden:** retrying > 1 time with the same args; any Write/Edit under `runs/N/` (see Red Flags "promote failed — I'll just Edit `runs/N/result.json`…") — either of these is an isolation violation (a main-thread write under `runs/N/`).
 
-**Anti-example (an empirically violated case):** main thread sees promote_failed → `ls .promote-tmp/` → Edit `runs/N/result.json` to drop some artifact entry (bypassing the promote check) → retry → another promote_failed → another Edit → … → finally complete pass. That path trips `parent_stage_writes > 0`, isolation gate FAIL; and the artifacts list Edit collateral-damaged (e.g., scripts/ / logs/) pollutes downstream reuse paths. **The only legal response** is a single retry followed by ESCALATE; never Edit.
+**Anti-example (an empirically violated case):** main thread sees promote_failed → `ls .promote-tmp/` → Edit `runs/N/result.json` to drop some artifact entry (bypassing the promote check) → retry → another promote_failed → another Edit → … → finally complete pass. That path is an isolation violation (the main thread must never write stage artifacts); and the artifacts list Edit collateral-damaged (e.g., scripts/ / logs/) pollutes downstream reuse paths. **The only legal response** is a single retry followed by ESCALATE; never Edit.
 
 ## Red Flags
 
@@ -147,7 +147,7 @@ When the `REAP` execute step receives `cmd_reap` returning `action=promote_faile
 
 | Excuse | Reality |
 |---|---|
-| "promote failed — I'll just Edit `runs/N/result.json` (or the RTL/UVM/netlist) so it passes" | That Edit **is** the isolation violation — it trips verify.py `parent_stage_writes > 0` → overall fail even if 9-stage signoff is clean. The only legal path: Read the artifact, then dispatch a subagent or ESCALATE. |
+| "promote failed — I'll just Edit `runs/N/result.json` (or the RTL/UVM/netlist) so it passes" | That Edit **is** the isolation violation — the main thread must never write stage artifacts; bypassing the promote check this way corrupts the canonical artifacts and the downstream reuse path even if 9-stage signoff is otherwise clean. The only legal path: Read the artifact, then dispatch a subagent or ESCALATE. |
 | "Let me Read the stage's SKILL.md so I understand what it does" | Reading the 5 Task-dispatched stages' SKILL.md invites inlining their work into the main thread; they run only inside a `Task(subagent_type="general-purpose", …)` that calls `Skill()` itself (see the literal tripwire above). Main-thread loading exception: `veripower:specification`, `veripower:simulation-plan`, `veripower:rtl-design`, and `veripower:simulation` are loaded via `Skill()` — their SKILL.md files are auto-loaded normally. The other 5 Task-dispatched stages do not get this exception. |
 | "This command hits the approval gate — I'll wrap it in `bash -c '…'` to get past it" | An approval trigger is a contract-violation signal, not an annoyance. Hand the whole command chain to a Task subagent; never rewrite around the gate. |
 | "I'll dump everything into `orchestrator_context` to be safe" | It carries only reasoned content that helps downstream do its work better — never a log/chat/dump slot, never info already in files the subagent reads. Single-dispatch lifetime. |

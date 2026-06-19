@@ -74,7 +74,7 @@ Each entry:
 
 ### C1-07 — orchestrator-stage-isolation
 - **check:** The orchestration audit boundary holds — a Task-dispatched stage sub-Task never calls `Task()` itself (Level-2 dispatch forbidden), and the Orchestrator never does a full-file Read of a Task-dispatched stage's SKILL.md (those six stages load their own skill inside the subagent).
-- **signal:** a `Task()` call inside a fan-out sub-Task; the Orchestrator `Read`-ing a Task-dispatched stage's SKILL.md to inline its work; a stage moved across the main-thread / Task-dispatched line without updating the isolation gate.
+- **signal:** a `Task()` call inside a fan-out sub-Task; the Orchestrator `Read`-ing a Task-dispatched stage's SKILL.md to inline its work; a stage moved across the main-thread / Task-dispatched line without updating the isolation boundary.
 - **severity:** must-fix
 - **applies-to:** skill-md, py-core
 - **ssot:** ARCHITECTURE.md → "#### 6.3.1 Fan-out dispatch privilege"

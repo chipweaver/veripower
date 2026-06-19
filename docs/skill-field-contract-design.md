@@ -328,8 +328,8 @@ exempt from the Step-heading rule: its Workflow is not a linear `Step 1..N` sequ
 sub-Tasks (currently `specification`, `rtl-design`, and `simulation`) include a numbered **Fan-out Dispatch
 Contract** sub-block under Workflow stating the framework dispatch rules (no Level 2, dispatch-and-wait,
 no `state.py`, sub-Task `STATUS: BLOCKED` handling). The subagent-side prohibitions echo `stage-subagent.md.tpl`; dispatch-and-wait is the
-main-thread orchestration lifecycle (harness wake protocol), enforced at the framework layer (`verify.py`
-isolation gate + harness wake protocol); they sit **outside** the Iron Rule / Red Flags /
+main-thread orchestration lifecycle (the harness wake protocol), enforced at the framework / harness
+layer, not by this skill; they sit **outside** the Iron Rule / Red Flags /
 Pitfalls severity axis and **outside** the Completion Gate by design.
 
 #### 4.3.8 Decision Rules

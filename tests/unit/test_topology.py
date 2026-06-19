@@ -74,7 +74,7 @@ def test_eligible_stale_is_eligible_inprogress_clean_is_not():
 
 
 def test_state_reexports_are_identical_objects():
-    # M2: 118 test refs + verify.py:23 read state.<symbol>; must stay valid.
+    # M2: the 118 test refs read state.<symbol>; must stay valid.
     assert state.FORWARD_PRIORITY is topology.FORWARD_PRIORITY
     assert state.PREREQ_OF is topology.PREREQ_OF
     assert state.SKILL_OF is topology.SKILL_OF

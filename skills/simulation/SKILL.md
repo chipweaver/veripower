@@ -82,7 +82,7 @@ finalize. The env / verify phase split of the workdir artifacts is in
 ### Fan-out Dispatch Contract
 
 Framework-mechanism rules (the subagent-side prohibitions echo `stage-subagent.md.tpl`; dispatch-and-wait below is the main-thread lifecycle); enforced at the
-framework layer (verify.py isolation gate + harness wake protocol), not by this skill's
+framework / harness layer (the wake protocol; writes confined to `runs/N/`, promoted on reap), not by this skill's
 Completion Gate.
 
 - **No Level 2 dispatch:** this skill may dispatch Level-1 sub-Tasks (env-build, conformance reviewer,
