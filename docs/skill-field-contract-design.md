@@ -104,6 +104,18 @@ by review.
 **Note:** `name` and `description` are frontmatter keys — they are not body fields. Their
 full rules live in `skill-frontmatter-design.md`.
 
+### 3.6 F6 — Voice
+
+Address the executing agent directly. Imperative for rules, steps, and gates ("Run `make synth`";
+"Do not modify `Design/rtl-design/`") — no hedging: use *must* / *never*, not *should* /
+*consider* (Workflow steps follow §3.3 F3). When a subject is needed, the executor is "you"; name
+any other agent by role (the child sub-Task, the orchestrator). The precise role-labels "the main
+thread" / "the orchestrator" / "the sub-Task" are sanctioned **only** where they make the
+multi-agent isolation boundary clearer than "you" would — a genre divergence from superpowers'
+all-"you" voice, justified by the load-bearing main-thread vs. sub-Task split — not as generic
+self-reference. Name a concept once and reuse the term verbatim (§3.5 F5); no synonyms for the
+same thing.
+
 ## 4. The 13-field contract
 
 ### 4.1 Field-set table
@@ -357,6 +369,13 @@ Placed immediately before Pitfalls.
 | "Only one line changed; no need to re-run schema validation." | Schema validation is a pre-return mandatory gate; the number of lines changed is irrelevant. |
 ```
 
+**Match the form to the failure.** A Red Flags table fits a *discipline* lapse — the agent knows
+the rule but rationalizes past it under pressure. A *wrong-shaped-output* failure (a bloated
+dispatch prompt, a malformed `result.json`, a restated spec) is not a rationalization; its
+countermeasure is a **positive recipe / contract** — the Fan-out Dispatch Contract, the
+`result.json` schema, the wave structure — not a prohibition table. Prohibitions backfire on
+shape failures: they enumerate what not to do without showing the shape to produce.
+
 #### 4.3.10 Pitfalls
 
 Structure: a single `Mistake → Fix` table of **recoverable** execution slips — non-rationalized
@@ -507,8 +526,11 @@ These conventions apply to every SKILL.md body and every `references/*.md` file:
   Smoke + Regression + Coverage Iteration` (step enumeration), `# Frontend Sign-off Checklist`
   (reduces a terminal gate to one of its outputs).
 - No `---` horizontal rules between H2 sections.
-- Bold-prefix callouts: `**Critical:**`, `**Rationale:**`, `**Why:**`, `**Note:**`. Never XML
-  tags (`<Bad>` / `<Good>`).
+- Bold: the sanctioned idiom is the **label lead-in** — a Title-Case label opening a load-bearing
+  bullet or line (`**Critical:**`, `**Rationale:**`, `**Why:**`, `**Note:**`, `**Dispatch-and-wait:**`,
+  … — illustrative, not a closed list) — plus whole-sentence load-bearing rules and defined terms /
+  field names. Inline single-word or short-phrase emphasis (`**not**`, `**only**`) is rare: prefer
+  rewording over mid-sentence bold. Never XML tags (`<Bad>` / `<Good>`).
 - Every fenced code block carries a language tag: `markdown`, `bash`, `json`, `yaml`, etc.
 - Inline backticks for paths, filenames, commands, schema field names, variable names:
   `{workdir}`, `result.json`, `STATUS: DONE`.
