@@ -48,7 +48,7 @@ carve-out context are scrubbed or rewritten per §5.
 `main-thread skill`, `Stage subagent`, `Task dispatch`, `dispatcher`,
 `ESCALATE`, `handle_failure`.
 
-**State-machine identifiers** — `state.py`, `events.jsonl`, `task.json` name
+**State-machine / orchestration-layer identifiers** — `state.py`, `events.jsonl`, `task.json`, `orchestrate.py`, `route.py`, `topology.py` name
 orchestration-layer internals. Stage skills write `result.json` and return; they do not
 reference the state-machine layer by name.
 
@@ -58,7 +58,7 @@ by named stages.
 
 ```bash
 # Forbidden orchestration vocabulary (use as a grep pattern):
-DAG|Orchestrator|design-flow|cascade rework|state\.py|events\.jsonl|task\.json|ESCALATE|handle_failure|convergence|dispatcher|main-thread skill|Stage subagent|Task dispatch
+DAG|Orchestrator|design-flow|cascade rework|state\.py|events\.jsonl|task\.json|orchestrate\.py|route\.py|topology\.py|ESCALATE|handle_failure|convergence|dispatcher|main-thread skill|Stage subagent|Task dispatch
 ```
 
 **Note — protocol-identifier carve-out.** Filename and variable-name occurrences of these
@@ -124,7 +124,7 @@ before the exemption applies to it.
   schema descriptions, comments)
 - [ ] Run forbidden-keyword grep across the skill directory:
   ```bash
-  grep -rn -E 'DAG|Orchestrator|design-flow|cascade rework|state\.py|events\.jsonl|task\.json|ESCALATE|handle_failure|convergence|dispatcher|main-thread skill|Stage subagent|Task dispatch' skills/<name>/
+  grep -rn -E 'DAG|Orchestrator|design-flow|cascade rework|state\.py|events\.jsonl|task\.json|orchestrate\.py|route\.py|topology\.py|ESCALATE|handle_failure|convergence|dispatcher|main-thread skill|Stage subagent|Task dispatch' skills/<name>/
   ```
   Filter results through the §4 protocol-identifier carve-out and the §6.1 dispatcher
   exemption before treating any hit as a violation.

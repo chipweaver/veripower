@@ -22,11 +22,11 @@ mismatch-as-uvm_info mode:
 - Mismatch handling:
   - Mismatches MUST use `` `uvm_error ``, and the scoreboard's `fail_count` / `mismatch_count` MUST
     actually increment.
-  - **Forbidden**: mismatch-as-uvm_info mode (carve-outs like "only logged at info level"):
+  - **Forbidden**: mismatch-as-uvm_info mode (loopholes like "only logged at info level"):
     self-admitting comments like "avoid spurious fail" and the equivalent are treated as a Rule A
     semantic error — do not retry; end with `STATUS: BLOCKED <compile|smoke> <locus>` (the
     orchestrator maps it to the `status=fail` envelope, per `repair-boundaries.md`).
-  - Read mismatch and write mismatch are equally strict; carve-outs that go beyond plain RW registers
+  - Read mismatch and write mismatch are equally strict; loopholes that go beyond plain RW registers
     (clear-on-read / status-bit, etc.) are not allowed.
 - The `observable` / `reference_rule` / `latency` / `reset_behavior` fields (if inlined) help select
   signals, look up protocol reference points, set the expected trigger window, and write reset-period

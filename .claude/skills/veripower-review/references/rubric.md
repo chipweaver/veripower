@@ -174,8 +174,8 @@ Each entry:
 - **verified:** 2026-06-05 — qualified residue grep across skills + framework returned 0 (no dead section-markers / dev-doc history residue).
 
 ### C2-05 — skill-self-containment
-- **check:** A stage skill describes only *itself* (its inputs, outputs, internal rules) — not its orchestration: no DAG / dispatch / sibling-stage vocabulary and no naming of orchestration-layer internals (`state.py` / `events.jsonl` / `task.json`); the rule applies recursively across the whole `skills/<name>/` tree.
-- **signal:** stage-skill prose naming who calls it / when it is dispatched / a sibling stage ("the downstream consumer"), or referencing `state.py` / `events.jsonl` / `task.json` / `Orchestrator` / `DAG`.
+- **check:** A stage skill describes only *itself* (its inputs, outputs, internal rules) — not its orchestration: no DAG / dispatch / sibling-stage vocabulary and no naming of orchestration-layer internals (`state.py` / `events.jsonl` / `task.json` / `orchestrate.py` / `route.py` / `topology.py`); the rule applies recursively across the whole `skills/<name>/` tree.
+- **signal:** stage-skill prose naming who calls it / when it is dispatched / a sibling stage ("the downstream consumer"), or referencing `state.py` / `events.jsonl` / `task.json` / `orchestrate.py` / `route.py` / `topology.py` / `Orchestrator` / `DAG`.
 - **severity:** should-fix
 - **applies-to:** skill-md, references
 - **ssot:** docs/skill-self-containment-design.md → "## 3. Principles" (P1 describe-self / P2 recursive scope)
