@@ -188,13 +188,10 @@ decides).
 
 #### 4.3.4 Iron Rule
 
-Operational definition: a statement qualifies for Iron Rule iff it is **hard** — violation
-irrecoverably corrupts a downstream consumer or breaks stage isolation (the contract / architecture
-criteria) — **and not tempting** (a well-informed agent has no incentive to break it; failure
-mode is ignorance, countermeasure is information). If a hard rule is one the agent is *tempted*
-to rationalize past under pressure — even when it is also a contract — it belongs in Red Flags
-(§4.3.9), not here. "Tempting" is judged against observed/plausible failure modes (e.g. the eval's
-patch-to-pass / gaming), not speculation; when uncertain, default to Red Flags. Framework-level
+Per the F2 axis (§3.2), a statement qualifies for Iron Rule iff it is **hard and not tempting**;
+a hard rule the agent is *tempted* to rationalize past — even when it is also a contract — belongs
+in Red Flags (§4.3.9), not here. "Tempting" is judged against observed/plausible failure modes
+(e.g. patch-to-pass / gaming), not speculation; when uncertain, default to Red Flags. Framework-level
 rules injected by the dispatcher template — or, for main-thread fan-out skills, stated in the
 Fan-out Dispatch Contract sub-block (§4.3.7) — do not belong here.
 
@@ -402,7 +399,7 @@ Return Contract. Per F2, this is the *pre-pass* cognitive section. Standard item
 - [ ] `{workdir}/result.json` has been written and passes schema validation.
 - [ ] Every artifact path is listed in `result.json.artifacts[]`.
 - [ ] No Iron Rule or Red Flag was triggered.
-- [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept `blocked`).
+- [ ] The `result.json.status` decision has been written (`pass` or `fail`).
 ```
 
 For non-worker forms, additional or replacement items apply (see §4.5 for the full form-by-field-delta catalog):
@@ -414,9 +411,9 @@ For non-worker forms, additional or replacement items apply (see §4.5 for the f
 #### 4.3.12 Return Contract
 
 Structure: the last line of the skill's response carries an ASCII protocol signal. The
-envelope schema accepts exactly two `status` values: `pass` and `fail`. Both are written to
-`result.json`; `fail` carries `stage_specific.fail_reason` with the sub-classification
-reason.
+envelope schema (`framework/references/schemas/envelope.schema.json`) accepts exactly two `status`
+values: `pass` and `fail`. Both are written to `result.json`; `fail` carries
+`stage_specific.fail_reason` with the sub-classification reason.
 
 **Critical:** `STATUS: BLOCKED` is a harness-emitted signal on program exception — the skill
 itself never writes it as a logic decision. `pass` and `fail` live in `result.json.status`.
@@ -479,7 +476,7 @@ of these breaks the contract they serve.
 | Layer | Tokens | Where it appears | Why ASCII-preserved |
 |---|---|---|---|
 | End-line protocol | `STATUS: DONE` / `STATUS: BLOCKED <reason>` | Last line of the skill response | Harness parses the literal string; non-ASCII breaks task-notification signal |
-| Envelope enum | `pass` / `fail` | `result.json.status` | JSON schema enum; not localized; envelope rejects `blocked` |
+| Envelope enum | `pass` / `fail` | `result.json.status` | JSON schema enum; not localized |
 
 **Note:** Scattered English keywords used as prose vocabulary inside a SKILL.md body (MUST,
 DO NOT, BLOCK, etc.) are in a different category from the two layers above. They are
