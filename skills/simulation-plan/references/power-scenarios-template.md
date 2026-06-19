@@ -43,12 +43,12 @@ The two copies must correspond one-to-one — same number of entries, matching r
 
 ## RTL-equivalent scenario deduplication
 
-Some scenarios produce identical RTL-layer stimulus and differ only in corner — a typical example is S1 (SS/125C, clock=off) and S7 (FF/125C, clock=off), both reduce on RTL to "clock=off + no traffic." This template requires `simulation-plan` to **keep independent IDs and `corner_intent`** but **reuse the same `sequence_ref`**. Consumers group by `sequence_ref` at execution time, run each group only once, but produce a VCD per ID (via hardlinks); later tools annotate by `corner_intent`.
+Some scenarios produce identical RTL-layer stimulus and differ only in corner — a typical example is S1 (SS/125C, clock=off) and S7 (FF/125C, clock=off), both reduce on RTL to "clock=off + no traffic." This template requires `simulation-plan` to **keep independent IDs and `corner_intent`** but **reuse the same `sequence_ref`**. Consumers group by `sequence_ref` at execution time, run each group only once, but produce a SAIF per ID (via hardlinks); later tools annotate by `corner_intent`.
 
 ## Role of corner annotation
 
 Corner (SS / TT / FF + temperature) **does not affect RTL simulation behavior** — RTL simulation is corner-agnostic. Corner is plan-layer annotation metadata, consumed by power-analysis tools (e.g., PrimeTime PX). At the RTL stage, its only role is:
-- Telling the consumer "which corner this VCD should be interpreted under."
+- Telling the consumer "which corner this SAIF should be interpreted under."
 - Guiding `simulation-plan` on which scenarios need independent stimulus vs. which are corner variants only.
 
 ## Handling missing scenarios

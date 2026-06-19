@@ -181,7 +181,7 @@ VeriPower's frontend pipeline has 9 fixed stages connected by a DAG of prerequis
 | lint-cdc | rtl-design | `veripower:lint-cdc` | `Design/lint-cdc/` (SpyGlass reports) |
 | synthesis | lint-cdc | `veripower:synthesis` | `Design/synthesis/` (netlist, *.ddc, reports) |
 | timing-analysis | synthesis | `veripower:timing-analysis` | `Design/timing-analysis/` (slack, constraint reports) |
-| simulation | rtl-design | `veripower:simulation` (main-thread) | `Verification/simulation/` (UVM env / regression reports / logs / VCD) |
+| simulation | rtl-design | `veripower:simulation` (main-thread) | `Verification/simulation/` (UVM env / regression reports / logs) |
 | power-analysis | timing-analysis + simulation | `veripower:power-analysis` | `Verification/power-analysis/` (GLS simv / saif/`<id>`.saif / scaffold/power_tests/ / averaged power reports) |
 | frontend-signoff | power-analysis | `veripower:frontend-signoff` | `frontend-signoff/` (checklist, traceability reports) |
 

@@ -124,7 +124,7 @@ before the exemption applies to it.
   schema descriptions, comments)
 - [ ] Run forbidden-keyword grep across the skill directory:
   ```bash
-  grep -rn -E 'DAG|Orchestrator|design-flow|cascade rework|state\.py|events\.jsonl|task\.json|ESCALATE|handle_failure|convergence|dispatcher' skills/<name>/
+  grep -rn -E 'DAG|Orchestrator|design-flow|cascade rework|state\.py|events\.jsonl|task\.json|ESCALATE|handle_failure|convergence|dispatcher|main-thread skill|Stage subagent|Task dispatch' skills/<name>/
   ```
   Filter results through the §4 protocol-identifier carve-out and the §6.1 dispatcher
   exemption before treating any hit as a violation.
@@ -138,7 +138,7 @@ before the exemption applies to it.
 
 ## 8. Process for changing
 
-**Extending §4:** propose in a spec, grep the candidate pattern across all 10 skills,
+**Extending §4:** propose in a spec, grep the candidate pattern across all 12 SKILL.md,
 classify each hit as true-violation or carve-out, and update affected skills atomically in
 the same commit.
 

@@ -26,7 +26,7 @@ formatting conventions that govern the whole body.
 A SKILL.md body contains 11 body fields (the full 13-field set includes 2 frontmatter keys).
 Those 11 fields carry the operational contract the executing agent follows: when to apply the
 skill, what files it reads and writes, how it performs its work, and under what conditions it
-returns control. A formal contract prevents drift across 10 skills and gives reviewers a
+returns control. A formal contract prevents drift across all 12 SKILL.md and gives reviewers a
 stable audit surface — without it, each skill accumulates local idioms that erode cross-skill
 consistency and make automated compliance checks unreliable.
 
@@ -83,7 +83,7 @@ require cultural context to interpret.
 
 ### 3.4 F4 — Form emerges from function
 
-Four observed forms exist across the 10 skills: **worker**, **dialogue**, **analyzer**,
+Four observed forms exist across the 12 SKILL.md: **worker**, **dialogue**, **analyzer**,
 **orchestrator**. These are *descriptive classifications* of how skills compose their fields —
 they are not pre-imposed templates the author selects. The form of a skill is determined by
 what it does; form differences manifest as deltas within specific field rules (§4.3.5, §4.3.6,
@@ -96,7 +96,7 @@ per-field rules.
 Field titles are English-only contract; the canonical English form of each field title
 appears in §4.1 below.
 
-For workflow vocabulary used inside SKILL.md bodies, the 11 stage skills under `skills/`
+For workflow vocabulary used inside SKILL.md bodies, the 12 SKILL.md under `skills/`
 are the source of truth — read the already-translated bodies and references to discover
 the canonical English terms. There is no separate glossary doc; consistency is enforced
 by review.
@@ -138,7 +138,7 @@ The following fields are forbidden — they MUST NOT appear in any SKILL.md:
 | `Quick Reference` | Commands belong embedded in Workflow step text; a separate command table duplicates and drifts |
 | `Integration` | Upstream/downstream relations are owned by the `design-flow` orchestrator; stage-to-stage data flows through `result.json`, not document cross-links |
 | `Suggested Response Structure` / `Reusable Outputs` | Low ROI; overlaps with Output Artifacts table |
-| Status-explanation / stage-wrap-up prose paragraphs | Identical across all 10 skills; promoted to framework-level template (`stage-subagent.md.tpl`); per-skill copy is drift-only overhead |
+| Status-explanation / stage-wrap-up prose paragraphs | Identical across all 12 SKILL.md; promoted to framework-level template (`stage-subagent.md.tpl`); per-skill copy is drift-only overhead |
 | Per-stage artifact-summary headings (`Stage Artifacts`, `Minimum Stage Artifacts`, `Deliverable: result.json`, or similar) | Merged into the Output Artifacts table |
 | `Prerequisites` | Merged into Input Artifacts |
 | Mode-dispatch heading (`Mode Selection` or similar) | Mode dispatch is expressed implicitly through the branch-routing two-signal model (`{rework_trigger}` × disk-prev-artifact); see `skill-branch-routing-design.md` for the full table |
@@ -566,14 +566,14 @@ Use at review time. Every item should be verifiable by reading the SKILL.md file
 
 ## 8. Process for changing
 
-**Changing a field tier (MUST ↔ SHOULD):** requires empirical evidence across all 10 skills
+**Changing a field tier (MUST ↔ SHOULD):** requires empirical evidence across all 12 SKILL.md
 that the trigger consistently applies or consistently does not apply. Speculative upgrades
 (e.g., "most skills will need this") are not sufficient. A tier change is a breaking change
 for compliance tooling — frontmatter changes are validated by `veripower-review` (C2-07); there is no deterministic frontmatter test to update.
 
-**Adding a new field:** requires an audit-driven justification (a demonstrated gap in all 10
+**Adding a new field:** requires an audit-driven justification (a demonstrated gap in all 12
 SKILL.md files that cannot be served by an existing field), consensus on the field's cognitive
-role per F2, and an atomic update across all 10 SKILL.md files. Adding a field that only one
+role per F2, and an atomic update across all 12 SKILL.md files. Adding a field that only one
 or two skills need is a sign the information belongs in those skills' `references/` content
 instead.
 
