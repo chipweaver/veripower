@@ -63,16 +63,16 @@ When `{rework_trigger}` is injected, read additional context from the same direc
 
 ### Fan-out Dispatch Contract
 
-Framework-mechanism rules (the in-skill echo of `stage-subagent.md.tpl`); enforced at the
+Framework-mechanism rules (the subagent-side prohibitions echo `stage-subagent.md.tpl`; dispatch-and-wait below is the main-thread lifecycle); enforced at the
 framework layer (verify.py isolation gate + harness wake protocol), **not** by this skill's
 Completion Gate.
 
 - **No Level 2 dispatch:** this skill may dispatch Level-1 per-child sub-Tasks, but a dispatched
   sub-Task MUST NOT call the Task tool (audit boundary).
-- **R2 yield discipline:** after dispatching the fan-out wave's sub-Tasks, send one yield text and
-  stop — no other tool call in the same turn.
-- **Yield scope:** under `Skill(veripower:rtl-design)` this yields to the **Claude Code harness**
-  (not the caller); sub-Task notifications wake the main thread directly.
+- **Dispatch-and-wait:** after dispatching the fan-out wave's sub-Tasks, send a brief status and
+  end the turn; the harness wakes the main thread per completion (the wake is to the harness, not
+  back to the caller). Reap each, and finalize only after **all** dispatched children have
+  reported — never against a partial set.
 - **No `state.py`:** this skill does not call `state.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a
   **harness-level** signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the
@@ -155,7 +155,7 @@ child (including the top-integration child) is dispatched here — no `name=="to
 N==1 inline exemption (even a single child is one sub-Task). The per-child sub-Task prompt + the
 returned annotation schema are in [`references/child-task-contract.md`](references/child-task-contract.md).
 
-After dispatching, apply R2 yield discipline: yield immediately; no other tool call in the same turn.
+After dispatching, end the turn and wait for the harness wake.
 On wake-up, reap each dispatched child's harness `STATUS:` last line + its JSON line. Proceed to
 Step 4 only after every dispatched child has reported (DONE or BLOCKED); if woken with fewer reports
 than dispatched, re-yield and keep waiting (do not finalize against a partial report set).
@@ -192,8 +192,7 @@ also carries `owner_child`). These are **child-authoring defects** (fix-locus = 
   `top_instantiation` violation reach the sibling that renamed the module, not only the top child. The
   main thread reads the **verdict only — never the RTL**.
 - Re-dispatch ONLY those children (reduced fan-out, `references/child-task-contract.md`), injecting the
-  conformance verdict slice as fix-scope feedback. **R2 yield discipline holds per round** (one yield text,
-  no other tool call that turn) — the per-cycle dispatch→yield→reap primitive is the same one this skill's fan-out wave already uses,
+  conformance verdict slice as fix-scope feedback. **Dispatch-and-wait holds per round** — the per-cycle dispatch→reap-on-wake primitive is the same one this skill's fan-out wave already uses,
   but the sequential depth here is greater than any existing skill (a rework finalize
   chains Step-3 dispatch → ≤2 loop rounds → the 4.4 review wave = up to 4 dispatch-reap cycles in one
   invocation); confirm the harness reaps across that depth at runtime.
@@ -221,7 +220,7 @@ retried incrementally — would otherwise never be semantically reviewed):
 
 Dispatch N `Task(run_in_background=True)`, one per `manifest.children[]`, per
 `references/rtl-review-task-contract.md` (paths only: child `files[]` + the child's per-child doc resolved
-via `manifest.children[].doc` + design.md §1.4 slice; the main thread reads no RTL). R2 yield → reap.
+via `manifest.children[].doc` + design.md §1.4 slice; the main thread reads no RTL). Dispatch → reap on wake.
 Aggregate into `{workdir}/semantic-review.json` (schema `references/semantic-review.schema.json`):
 - `STATUS: DONE` + valid finding JSON → fold its findings in (each carries reviewer-assigned
   `fix_locus ∈ {rtl, spec}`).

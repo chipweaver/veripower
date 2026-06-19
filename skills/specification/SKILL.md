@@ -62,15 +62,16 @@ and every `<child>.md` are read/written only inside sub-Task contexts.
 
 ### Fan-out Dispatch Contract
 
-Framework-mechanism rules (the in-skill echo of `stage-subagent.md.tpl`); enforced at the
+Framework-mechanism rules (the subagent-side prohibitions echo `stage-subagent.md.tpl`; dispatch-and-wait below is the main-thread lifecycle); enforced at the
 framework layer (verify.py isolation gate + harness wake protocol), **not** by this skill's
 Completion Gate.
 
 - **No Level 2 dispatch:** this skill may dispatch Level-1 sub-Tasks for the two Workflow
   waves (decompose / per-child sub-designs), but a dispatched sub-Task MUST NOT
   call the Task tool (audit boundary).
-- **R2 yield discipline:** after dispatching sub-Task(s), send one yield text and stop — no
-  other tool call in the same turn.
+- **Dispatch-and-wait:** after dispatching a wave's sub-Task(s), send a brief status and end the
+  turn; the harness wakes the main thread per completion. Reap each, and finalize only after
+  **all** dispatched sub-Tasks have reported — never against a partial set.
 - **No `state.py`:** this skill does not call `state.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>`
   is a **harness-level** signal, distinct from the `result.json.status` enum (`pass`/`fail`
@@ -153,8 +154,8 @@ Dispatch N sub-Tasks (one per child), each writing `{workdir}/<child>.md` per
 `references/child-design-template.md`. `frontmatter.ports` = the derived cut-edge list
 (previous step) for inter-module wires + any child-authored top-IO ports. **wave 2 is
 ALWAYS dispatched (N=1 → ×1 sub-Task); there is no inline N==1 branch — a child body
-never lives on the main thread.** R2 yield discipline: after dispatching all N, send one
-yield text and stop.
+never lives on the main thread.** After dispatching all N, end the turn; reap each child on its wake and proceed only after all N
+have reported.
 
 ### Step 6: Coverage gate (main thread, deterministic) — verdict feeds the design.md gate
 

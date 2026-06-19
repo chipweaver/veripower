@@ -81,16 +81,15 @@ finalize. The env / verify phase split of the workdir artifacts is in
 
 ### Fan-out Dispatch Contract
 
-Framework-mechanism rules (the in-skill echo of `stage-subagent.md.tpl`); enforced at the
+Framework-mechanism rules (the subagent-side prohibitions echo `stage-subagent.md.tpl`; dispatch-and-wait below is the main-thread lifecycle); enforced at the
 framework layer (verify.py isolation gate + harness wake protocol), **not** by this skill's
 Completion Gate.
 
 - **No Level 2 dispatch:** this skill may dispatch Level-1 sub-Tasks (env-build, conformance reviewer,
   then verify), but a dispatched sub-Task MUST NOT call the Task tool (audit boundary).
-- **R2 yield discipline:** after dispatching a wave's sub-Task, send one yield text and stop — no
-  other tool call in the same turn.
-- **Yield scope:** under `Skill(veripower:simulation)` this yields to the **Claude Code harness** (not
-  the caller); the sub-Task notification wakes the main thread directly.
+- **Dispatch-and-wait:** after dispatching a wave's sub-Task, send a brief status and end the turn;
+  the harness wakes the main thread per completion (the wake is to the harness, not back to the
+  caller). Reap the sub-Task on its wake before the downstream gate/wave.
 - **No `state.py`:** this skill does not call `state.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a
   **harness-level** signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the main
@@ -140,7 +139,7 @@ The env-build child self-gates its `STATUS: DONE` on a presence-only thin-D1 che
 hollow TB never reaches the Wave-3 verify run; semantic TB↔plan conformance is out of scope for this
 presence-only check (it is the conformance gate's job).
 
-After dispatching, apply R2 yield discipline: yield immediately; no other tool call in the same turn.
+After dispatching, end the turn and wait for the harness wake.
 On wake-up, reap the env-build child's harness `STATUS:` last line + its JSON line. If
 `STATUS: BLOCKED <reason>`, write `result.json` `status=fail` + `fail_reason=<reason>` (with
 `failure_phase` per the reason — `compile` / `smoke` for a Rule A semantic block, `prerequisite` for
@@ -168,8 +167,7 @@ On a smoke pass, dispatch **one** `Task(run_in_background=True)` — the conform
 whose prompt points to [`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md)
 and hands over **paths only**: the `{workdir}` (filled `tb/uvm/**`), the scaffold-spec path
 (`testpoints[].inlined_check_hints[]`), the `verification-plan.md` path (§3 intent source),
-the DUT RTL filelist, and `{module}`. The main thread never reads the TB body. Apply R2 yield
-discipline: yield immediately; no other tool call in the same turn.
+the DUT RTL filelist, and `{module}`. The main thread never reads the TB body. After dispatching, end the turn and wait for the harness wake.
 
 On wake-up, reap the reviewer's `STATUS:` last line + its JSON line, assemble
 `{workdir}/conformance-review.json` (schema `references/conformance-review.schema.json`), and
@@ -205,7 +203,7 @@ Dispatch **one** `Task(run_in_background=True)` — the verify child — whose p
 `{workdir}` (already holding the built TB + compiled `simv` + `verify-handoff.json`), the
 scaffold-spec testpoints path, and `{module}`.
 
-After dispatching, apply R2 yield discipline: yield immediately; no other tool call in the same turn.
+After dispatching, end the turn and wait for the harness wake.
 On wake-up, reap the verify child's `STATUS:` last line + its JSON line (the `stage_specific` fields).
 If `STATUS: BLOCKED <reason>`, map to `status=fail` + `fail_reason`.
 
