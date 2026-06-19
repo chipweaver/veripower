@@ -7,7 +7,6 @@
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
       "properties": {
-        "schema_version": {"const": 1},
         "stage": {"const": "power-analysis"},
         "stage_specific": {
           "type": "object",
@@ -108,7 +107,7 @@
           }
         }
       },
-      "required": ["schema_version", "stage_specific"]
+      "required": ["stage_specific"]
     },
     {
       "if":   {"properties": {"status": {"const": "pass"}}, "required": ["status"]},

@@ -7,7 +7,6 @@
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
       "properties": {
-        "schema_version": {"const": 1},
         "stage": {"const": "simulation"},
         "stage_specific": {
           "type": "object",
@@ -23,7 +22,7 @@
           "additionalProperties": true
         }
       },
-      "required": ["schema_version", "stage_specific"]
+      "required": ["stage_specific"]
     },
     {
       "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
