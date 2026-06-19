@@ -100,7 +100,8 @@ smoke gate still decides smoke pass/fail.
 - **No Level-2 dispatch:** this sub-Task MUST NOT call the Task tool.
 - **No `state.py`:** the parent session owns state transitions.
 - Stay inside `{workdir}`: all writes confined to `{workdir}` (reading the upstream plan + any prior
-  canonical TB as read-only reference is allowed). Do not modify the plan or RTL.
+  canonical TB as read-only reference is allowed). Do not modify the plan or RTL — RTL-class issues
+  belong to the RTL editing stage; this stage does not exceed its authority.
 
 ## Pitfalls
 

@@ -61,7 +61,8 @@ instead.
 - **No Level-2 dispatch:** this sub-Task MUST NOT call the Task tool.
 - **No `state.py`:** the parent session owns state transitions.
 - Stay inside `{workdir}`: all writes confined to the write-domain above. Do not modify the plan or
-  RTL, and do not re-author the env child's scaffold / checker / RM.
+  RTL (RTL-class issues belong to the RTL editing stage; this stage does not exceed its authority),
+  and do not re-author the env child's scaffold / checker / RM.
 
 ## Red Flag
 
