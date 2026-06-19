@@ -532,7 +532,7 @@ Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|si
 
 ### 6.6 异步子 Agent 转录镜像
 
-异步派发的 Task 子 Agent（`run_in_background=True`，五个 Task 派发阶段都用这个——`rtl-design` 和 `simulation` 是主线程加载的，不产生*阶段级*异步转录，见 §6.6.1；它们的阶段内子 Task 转录在 §6.6.2 覆盖）在 `/tmp/claude-*/<workdir-encoded>/tasks/<agent_id>.output` 产生 JSONL 转录。这个路径归 Claude Code 管，会话结束时被垃圾回收，所以如果不做镜像，转录就永久丢了——下游分析（外部评估框架抽取各阶段工具调用计数、错误或返工触发条件）就无法把行为追溯到异步阶段。
+异步派发的 Task 子 Agent（`run_in_background=True`，五个 Task 派发阶段都用这个——`rtl-design` 和 `simulation` 是主线程加载的，见 §6.6.1；它们的阶段内子 Task 转录在 §6.6.2 覆盖）在 `/tmp/claude-*/<workdir-encoded>/tasks/<agent_id>.output` 产生 JSONL 转录。这个路径归 Claude Code 管，会话结束时被垃圾回收，所以如果不做镜像，转录就永久丢了——下游分析（外部评估框架抽取各阶段工具调用计数、错误或返工触发条件）就无法把行为追溯到异步阶段。
 
 当 Orchestrator 在 Step 5 reap 时调 `state.py reap` 并附 `--subagent-output-file <output-file-tag-value>`（该值来自 `<task-notification>` 的 `<output-file>` 标签），`state.py` 尽力将转录镜像到：
 
@@ -542,7 +542,7 @@ Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|si
 
 其中 `<workdir>` 是 per-run 规范目录 `asic/<module>/<area>/<stage>/runs/<N>/`。镜像发生在 `cmd_reap` 早期（`repair_partial_promote_if_needed` 之后、任何分支决策之前），所以 `stale_dispatch` / `superseded_run` / `promote_failed` 路径都保留追踪。
 
-**尽力而为语义**——源文件缺失 / `None` / 空参数 / 复制时 `OSError` 各自静默返回 `None`（OSError 时 stderr 记一条日志）；reap 路径绝不被 trace mirror 失败所中断。同步派发阶段（`specification`、`simulation-plan`、`rtl-design`、`simulation`——见 §6.6.1）不产生*阶段级*异步转录；因此以阶段名为键的 `<stage>-<agent_id>.output` 镜像文件永不为它们写入。它们的阶段内子 Task 转录是另一回事（§6.6.2）。
+**尽力而为语义**——源文件缺失 / `None` / 空参数 / 复制时 `OSError` 各自静默返回 `None`（OSError 时 stderr 记一条日志）；reap 路径绝不被 trace mirror 失败所中断。同步派发的主线程阶段不产生可镜像的阶段级转录（§6.6.1）。
 
 **这是 `state.py` 的有意副作用扩展**——`state.py` 原本只管状态转换 / 事件日志追加。镜像留在 `state.py` 里（而非独立工具），是因为它必须与 `cmd_reap` 的 reap 路径原子执行，且共享 `<workdir>` 推导；这个副作用是单向的（只写磁盘，状态机不回读），明确位于路由 / 决策边界之外。
 
@@ -552,7 +552,7 @@ Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|si
 
 `rtl-design` 和 `simulation` 各自通过 `Skill(veripower:<skill>)` 加载，在 Orchestrator 主线程中运行。作为同步派发的主线程 skill（和 `specification`、`simulation-plan` 一样），二者都不在 `/tmp/claude-*/<workdir-encoded>/tasks/<agent_id>.output` 产生*阶段级*异步转录。`<workdir>/.subagent_traces/rtl-design-<agent_id>.output` / `simulation-<agent_id>.output` 不由 `state.py:_mirror_subagent_trace` 写入。
 
-因此新 run 不产生以阶段名为键的 `rtl-design-<agent_id>.output` / `simulation-<agent_id>.output` 追踪；只有历史上把这些阶段当作 Task 子 Agent 跑过的模块才可能还残留这类文件。外部工具应从 `result.json` 信封读取 `rtl-design` / `simulation` 阶段级信息，而不是去翻 per-agent trace 文件。
+因此新 run 不产生以阶段名为键的 `rtl-design-<agent_id>.output` / `simulation-<agent_id>.output` 追踪。外部工具应从 `result.json` 信封读取 `rtl-design` / `simulation` 阶段级信息，而不是去翻 per-agent trace 文件。
 
 #### 6.6.2 扇出子 Task 追踪（非 DAG 阶段）
 
