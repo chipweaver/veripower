@@ -118,7 +118,7 @@ Orchestrator 的三条派发路径：
 - **rtl-design** — 只扇出，无对话：每个 child 派一个一级子 Task（`N = len(manifest.children[])`，含顶层集成 child；不存在 N==1 豁免），末尾再加一个 finalize 子 Task。
 - **simulation** — 只扇出，无对话：两个顺序 sub-Task 波次共享一个阶段 `{workdir}`——`env-child`（bootstrap + 填充 scaffold + 编译 + smoke）→ 确定性主线程 smoke gate → `verify-child`（regress + coverage）。形态最接近 `specification` 的"两波夹一门"；派发类别与 `rtl-design` 一致。
 
-对这四个阶段，Orchestrator 照样调 `state.py dispatch/complete/log`，照样读规范的 `result.json` 做失败路由（§5.4；reap 不读任何文件，见 §5.1）；差别仅在于它的工具历史里没有阶段级的 `Task()` 调用。
+对这四个阶段，Orchestrator 照样调 `state.py dispatch/reap/log`，照样读规范的 `result.json` 做失败路由（§5.4；reap 不读任何文件，见 §5.1）；差别仅在于它的工具历史里没有阶段级的 `Task()` 调用。
 
 > **警告：** 如果 `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis|frontend-signoff)` 出现在 Orchestrator 的工具历史中，这是个 bug——那五个阶段必须走 `Task()` 派发。
 

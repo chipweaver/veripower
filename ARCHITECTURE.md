@@ -118,7 +118,7 @@ The per-stage trigger:
 - **rtl-design** — fan-out only, no dialogue: one Level-1 sub-Task per child (`N = len(manifest.children[])`, including the top-integration child; no N==1 exemption), then a finalize sub-Task.
 - **simulation** — fan-out only, no dialogue: two sequential sub-Task waves sharing one stage `{workdir}` — an `env-child` (bootstrap + fill scaffold + compile + smoke) → a deterministic main-thread smoke gate → a `verify-child` (regress + coverage). Shape closest to `specification`'s two-wave-around-a-gate; dispatch class identical to `rtl-design`'s.
 
-For these four stages the Orchestrator still calls `state.py dispatch/complete/log` and reads canonical `result.json` for failure routing (§5.4, not reap — reap reads nothing; §5.1); only the stage-level `Task()` is absent from its tool history.
+For these four stages the Orchestrator still calls `state.py dispatch/reap/log` and reads canonical `result.json` for failure routing (§5.4, not reap — reap reads nothing; §5.1); only the stage-level `Task()` is absent from its tool history.
 
 > **Red Flag:** If `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis|frontend-signoff)` appears in the Orchestrator's tool history, it is a bug — those five stages must dispatch via `Task()`.
 
@@ -325,7 +325,7 @@ All `state.py` state-mutating commands (`cmd_init`, `cmd_dispatch`, `cmd_reap`, 
 
 ### 4.7 Schema validation invariant
 
-Each `result.json` validates against `framework/references/schemas/envelope.schema.json` (cross-stage envelope: `stage` / `module` / `produced_at` / `status` / `artifacts` / `stage_specific`) plus a per-stage schema at `skills/<stage>/references/result.schema.json`. Each event validates against `framework/references/schemas/events/<type>.schema.json` (8 schemas, one per type). Validation runs at `cmd_reap` (for `result.json`) and `append_event` (for every event); per-field semantics live in each schema's `description` strings.
+Each `result.json` validates against `framework/references/schemas/envelope.schema.json` (cross-stage envelope: `stage` / `module` / `produced_at` / `status` / `artifacts` / `stage_specific`) plus a per-stage schema at `skills/<stage>/references/result.schema.json`. Each event validates against `framework/references/schemas/events/<type>.schema.json` (7 schemas, one per type). Validation runs at `cmd_reap` (for `result.json`) and `append_event` (for every event); per-field semantics live in each schema's `description` strings.
 
 ## 5. Orchestrator decision loop
 
