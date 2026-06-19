@@ -106,15 +106,16 @@ full rules live in `skill-frontmatter-design.md`.
 
 ### 3.6 F6 — Voice
 
-Address the executing agent directly. Imperative for rules, steps, and gates ("Run `make synth`";
-"Do not modify `Design/rtl-design/`") — no hedging: use *must* / *never*, not *should* /
-*consider* (Workflow steps follow §3.3 F3). When a subject is needed, the executor is "you"; name
-any other agent by role (the child sub-Task, the orchestrator). The precise role-labels "the main
-thread" / "the orchestrator" / "the sub-Task" are sanctioned **only** where they make the
-multi-agent isolation boundary clearer than "you" would — a genre divergence from superpowers'
-all-"you" voice, justified by the load-bearing main-thread vs. sub-Task split — not as generic
-self-reference. Name a concept once and reuse the term verbatim (§3.5 F5); no synonyms for the
-same thing.
+Address the executing agent directly and imperatively. For rules, steps, and gates, command —
+"Run `make synth`"; "Do not modify `Design/rtl-design/`" — with no hedging: use *must* / *never*,
+not *should* / *consider* (Workflow steps follow §3.3 F3). When an actor must be named, name it by
+role: "the main thread" / "the orchestrator" for the dispatching self, "the sub-Task" / "the child"
+for a dispatched agent. This is how superpowers' own multi-agent skills
+(`subagent-driven-development`, `dispatching-parallel-agents`) write the agents around a dispatch
+boundary; the fan-out stage skills follow the same role-noun convention rather than the
+second-person "you" of a single-actor skill, because the load-bearing main-thread vs. sub-Task
+split reads clearer when each side is named. Name a concept once and reuse the term verbatim
+(§3.5 F5); no synonyms for the same thing.
 
 ## 4. The 13-field contract
 
