@@ -532,6 +532,7 @@ These conventions apply to every SKILL.md body and every `references/*.md` file:
   field names. Inline single-word or short-phrase emphasis (`**not**`, `**only**`) is rare: prefer
   rewording over mid-sentence bold. Never XML tags (`<Bad>` / `<Good>`).
 - Every fenced code block carries a language tag: `markdown`, `bash`, `json`, `yaml`, etc.
+- Diagrams use Mermaid (` ```mermaid `) — the house format, matching ARCHITECTURE.md and the repo's render pipeline; not Graphviz `dot`.
 - Inline backticks for paths, filenames, commands, schema field names, variable names:
   `{workdir}`, `result.json`, `STATUS: DONE`.
 - In SKILL.md, top-level Workflow steps are `### Step N:` headings (§4.3.7), not a numbered

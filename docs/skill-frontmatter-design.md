@@ -33,6 +33,10 @@ The `name` value must use lowercase letters, digits, and hyphens only, ≤3 segm
 value is `rtl-design`, not `veripower:rtl-design`. It must equal the skill's directory name;
 the plugin loader uses the directory name to locate the skill.
 
+Names are stage / domain nouns (`rtl-design`, `timing-analysis`), not gerund-first verbs
+(superpowers' `writing-plans`) — a deliberate genre divergence: the name denotes the DAG node /
+artifact the skill owns, not a user-invoked action.
+
 ### 3.2 P2 — `description` sentence shape
 
 Mandatory pattern: `Use when <trigger>; not for <anti-pattern>.` Single line, ≤200 chars,
@@ -64,8 +68,14 @@ The description must contain searchable domain terms, tool names, and symptom ph
 Keyword density drives discovery when Claude matches description text against task context.
 
 Aim for 2+ domain-specific keywords (e.g., `RTL`, `Verilog`, `SDC`, `SGDC`, `lint`,
-`synthesis`, `UVM`, `SAIF`). Generic descriptions cannot be reliably retrieved from a pool
-of 10 skill descriptions.
+`synthesis`, `UVM`, `SAIF`). Generic descriptions cannot be reliably retrieved from the
+description-discovered pool.
+
+**Genre note — VeriPower dispatch is deterministic.** The 9 pipeline stages are dispatched by
+`orchestrate.py`, not retrieved by description-matching, so P3/P4's discovery pressure binds
+only for the description-discovered skills (`brainstorm`, `design-flow`, `simulation-triage`).
+For the orchestrate-dispatched stages, treat P3 (no workflow summary) and P4 (keyword coverage)
+as scope-clarity + human-readability discipline, not as load-bearing for dispatch.
 
 ### 3.5 P5 — Frontmatter language is strictly English
 
