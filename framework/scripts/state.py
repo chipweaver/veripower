@@ -19,7 +19,7 @@ from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
 # ── DAG topology (single source of truth: topology.py) ──────────
-# Re-exported so existing `state.X` references (verify.py:23 + ~118 test
+# Re-exported so existing `state.X` references (the external verify.py + ~118 test
 # refs + state.py's own internal uses) keep resolving — do NOT rewrite
 # call sites to topology.X.
 # Ensure framework/scripts/ is on sys.path so the bare `topology` import
