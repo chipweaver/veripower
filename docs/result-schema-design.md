@@ -191,8 +191,7 @@ keeping it.
 - **Aspirational fields ("may be useful someday").** If no consumer exists today, the field
   doesn't go in. Schema can be extended later when a real consumer appears (envelope's
   `additionalProperties: true` allows graceful extension).
-- **Duplicates of artifact content.** If full data lives in `design.md` / `scaffold-specification.json` /
-  RTL files, `stage_specific` should not summarize or copy it.
+- **Duplicates of artifact content** — covered by the §3.1 derivability rule.
 
 ## 7. Compliance checklist (for schema review)
 
@@ -206,9 +205,8 @@ When reviewing a `result.schema.json`, check:
       hand-waving).
 - [ ] No orchestration-internal fields (run identity, dispatch state, etc.).
 - [ ] `stage_specific.required[]` is minimum sufficient — every required field is load-bearing
-      (adding one obliges the producer to emit it). `stage_specific` changes are versioned by
-      this per-stage schema (its `properties` + `status` if/then), not by `schema_version`,
-      which bumps only on a shared envelope-contract change (see §8).
+      (adding one obliges the producer to emit it). (How `stage_specific` vs `schema_version` are
+      versioned: see §8.)
 
 ## 8. Process for changing a schema
 
