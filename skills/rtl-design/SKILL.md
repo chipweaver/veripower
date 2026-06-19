@@ -104,7 +104,7 @@ branches:
 
 On the incremental/rework branches (canonical holds prior artifacts), run:
 
-```
+```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/seed_rework.py --workdir {workdir}
 ```
 
@@ -119,7 +119,7 @@ takes priority over both the trigger content (trigger-driven path) and the exter
 **Pre-dispatch purity gate (fail-fast).** After reading `manifest.json` and before the Step 3
 fan-out, run:
 
-```
+```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/validate_rtl_exit.py --phase pre --manifest <manifest> --top <top_module>
 ```
 
@@ -168,7 +168,7 @@ than dispatched, re-yield and keep waiting (do not finalize against a partial re
 **4.2 Build + topology gate** (`<manifest>` = `Design/specification/manifest.json`; `<top_module>` =
 `result.json.stage_specific.top_module`; `<design>` = `Design/specification/design.md`):
 
-```
+```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/build_ledger.py   --fresh {workdir}/fresh_reports.json --manifest <manifest> --out {workdir}/.child_reports.json [--seeded {workdir}/.child_reports.json]
 python3 ${CLAUDE_SKILL_DIR}/scripts/build_filelist.py --ledger {workdir}/.child_reports.json --out {workdir}/filelist.txt
 python3 ${CLAUDE_SKILL_DIR}/scripts/build_readme.py   --ledger {workdir}/.child_reports.json --top <top_module> --out {workdir}/README.md
@@ -181,7 +181,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/validate_rtl_exit.py --manifest <manifest> -
 
 **4.3 Conformance gate + bounded self-converge loop** (deterministic; runs EVERY invocation):
 
-```
+```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/check_rtl_conformance.py --workdir {workdir} --manifest <manifest> --top <top_module> --ledger {workdir}/.child_reports.json --design <design>
 ```
 

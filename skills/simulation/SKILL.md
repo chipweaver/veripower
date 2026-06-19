@@ -211,7 +211,7 @@ If `STATUS: BLOCKED <reason>`, map to `status=fail` + `fail_reason`.
 
 Run the full exit self-check (unchanged) over the reaped workdir:
 
-```
+```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/validate_sim_exit.py --workdir {workdir} --scaffold Verification/simulation-plan/scaffold-specification.json --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml
 ```
 

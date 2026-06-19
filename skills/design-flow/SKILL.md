@@ -99,7 +99,7 @@ digraph {
 }
 ```
 
-```
+```text
 loop:
   a = orchestrate.py decide --module {module} [--wake <stage>:<run>] [--analysis -]
   execute(a)
