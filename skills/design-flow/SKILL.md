@@ -128,7 +128,7 @@ Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notificatio
 
 ## Decision Rules
 
-- **Priority conflict:** when `frontend-signoff = pass/clean`, **DONE is mandatory** — no subsequent dispatch should occur.
+- **Priority conflict:** when `frontend-signoff = pass/clean`, **DONE is mandatory** — no subsequent dispatch occurs.
 - **Multiple fails:** handled one-at-a-time — each executor-loop pass handles exactly one fail/clean stage (the first by FORWARD_PRIORITY). When the rework `target_stage` is a common ancestor of the other fail/clean stages, cascade turns the latter to fail/stale together and they vanish the next pass; when it is not a common ancestor (e.g., both lint-cdc and simulation are failing on independent two-chain branches), the remaining fail/clean stages are processed one by one in subsequent turns. Each pass moves only one; do not assume a single pass clears everything.
 
 ### promote_failed protocol (single-retry cap)
@@ -157,7 +157,7 @@ When the `REAP` execute step receives `cmd_reap` returning `action=promote_faile
 
 | Mistake | Fix |
 |---|---|
-| Orchestrator main thread sees an Edit-before-Read ("File has not been read yet") error | This is a second-order symptom of "inlining stage work into the main thread" — this skill only Reads `result.json` / `task.json` for routing decisions and should never produce a substantive Edit. If the tool has already rejected it, stop that Edit chain immediately and move the stage work back into a Task dispatch. |
+| Orchestrator main thread sees an Edit-before-Read ("File has not been read yet") error | This is a second-order symptom of "inlining stage work into the main thread" — this skill only Reads `result.json` / `task.json` for routing decisions and never produces a substantive Edit. If the tool has already rejected it, stop that Edit chain immediately and move the stage work back into a Task dispatch. |
 | DISPATCH task fills `subagent_type="veripower:<stage>"` | A stage skill is not an agent type; you must use `general-purpose`. |
 | REAP omits `--subagent-output-file <output_file>` when calling `state.py reap` on the async dispatch path | `<output_file>` is taken from the `<task-notification>`'s `<output-file>` tag value; without this flag the trace is not mirrored to `{workdir}/.subagent_traces/`, and downstream analysis (e.g., the external eval harness's fact extraction) is blind for that stage. Note: this flag is best-effort optional in state.py — neither a missing flag nor an invalid path raises — self-audit all three reap call sites (staled-blocked / pass-or-fail / promote_failed retry) carry this flag. Exception: all four main-thread skills (specification / simulation-plan / rtl-design / simulation) complete via the `kind=main-thread` path (`state.py reap --stage --run`, no `--subagent-output-file`) and emit no stage-level async transcript — exempt by forward. (rtl-design and simulation do dispatch async *intra-stage* sub-Tasks, but those child traces are not mirrored at the stage level — ARCHITECTURE.md §6.6.2, future work — and are not carried by this flag.) |
 | `cmd_reap`'s returned `r.action == "promote_failed"` is not handled | `r.action ∈ {completed, discarded, blocked, invalid, promote_failed}`; of these, `promote_failed` is the only value the Orchestrator must inline-handle at REAP time (single retry, then ESCALATE if still failing — see §Decision Rules promote_failed protocol). The other four mean state.py has already settled the state, and the next executor loop re-query is enough. |
