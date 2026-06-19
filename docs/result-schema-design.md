@@ -142,7 +142,7 @@ A "no" to any of them is grounds for deprecation.
 - Small: yes, single string.
 - Not derivable: yes, not in any other artifact.
 
-### 5.3 Fail: spec `interfaces` (vestigial — to be removed)
+### 5.3 Fail: spec `interfaces` (correctly excluded — never added)
 ```json
 "interfaces": [{"group": "APB", "signals": [{"name": "psel", "dir": "input", "width": 1}, ...]}]
 ```
@@ -154,7 +154,7 @@ A "no" to any of them is grounds for deprecation.
 
 Three of four conditions fail.
 
-### 5.4 Fail: sim-plan `testpoint_count` (vestigial — to be removed)
+### 5.4 Fail: sim-plan `testpoint_count` (vestigial — removed)
 ```json
 "testpoint_count": 16
 ```

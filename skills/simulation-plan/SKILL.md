@@ -146,7 +146,7 @@ Branch scope: **first-run** fully generates both artifacts; **trigger-driven rew
 (schema: `references/result.schema.json` + envelope).
 
 - Required top-level fields: `schema_version: 1`, `stage: "simulation-plan"`, `module`, `produced_at` (ISO8601), `status`, `artifacts[]`, `stage_specific{}`.
-- Under `stage_specific`, only `fail_reason` is hard-required by the schema when `status=fail` (one-line missing-field summary / user-rejection reason). Recommended informational fields (not schema-required): `testpoint_count` / `feature_count` / `scaffold_summary{agent_count, sequence_count, test_count}` / `power_scenario_count`, useful for status panels and analyzer prompt context.
+- Under `stage_specific`, only `fail_reason` is hard-required by the schema when `status=fail` (one-line missing-field summary / user-rejection reason).
 - `status` ∈ {pass, fail} — never `blocked` (Iron Rule).
 
 Note: the plan's structured data (`agents` / `sequences` / `tests` / `testpoints` / `power_scenarios`) lives in `scaffold-specification.json` and is not duplicated into `stage_specific`.
