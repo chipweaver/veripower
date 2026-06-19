@@ -33,8 +33,8 @@ The `name` value must use lowercase letters, digits, and hyphens only, ≤3 segm
 value is `rtl-design`, not `veripower:rtl-design`. It must equal the skill's directory name;
 the plugin loader uses the directory name to locate the skill.
 
-Names are stage / domain nouns (`rtl-design`, `timing-analysis`), not gerund-first verbs
-(superpowers' `writing-plans`) — a deliberate genre divergence: the name denotes the DAG node /
+Names are stage / domain nouns (`rtl-design`, `timing-analysis`), not gerund-first action verbs
+(`write-the-design`, `run-synthesis`) — a deliberate genre choice: the name denotes the DAG node /
 artifact the skill owns, not a user-invoked action.
 
 ### 3.2 P2 — `description` sentence shape
@@ -60,7 +60,7 @@ summarizes the workflow, the agent follows that summary instead of reading the f
 
 **Rationale:** Testing confirmed that the bad form causes the agent to follow the description
 summary (one review) instead of the skill body (two reviews). The description shortcut
-overrides the body. Source: `superpowers/skills/writing-skills/SKILL.md` §CSO.
+overrides the body.
 
 ### 3.4 P4 — CSO keyword coverage
 

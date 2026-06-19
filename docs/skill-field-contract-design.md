@@ -110,10 +110,8 @@ Address the executing agent directly and imperatively. For rules, steps, and gat
 "Run `make synth`"; "Do not modify `Design/rtl-design/`" — with no hedging: use *must* / *never*,
 not *should* / *consider* (Workflow steps follow §3.3 F3). When an actor must be named, name it by
 role: "the main thread" / "the orchestrator" for the dispatching self, "the sub-Task" / "the child"
-for a dispatched agent. This is how superpowers' own multi-agent skills
-(`subagent-driven-development`, `dispatching-parallel-agents`) write the agents around a dispatch
-boundary; the fan-out stage skills follow the same role-noun convention rather than the
-second-person "you" of a single-actor skill, because the load-bearing main-thread vs. sub-Task
+for a dispatched agent. The fan-out stage skills name both sides by role throughout, rather than
+the second-person "you" of a single-actor skill, because the load-bearing main-thread vs. sub-Task
 split reads clearer when each side is named. Name a concept once and reuse the term verbatim
 (§3.5 F5); no synonyms for the same thing.
 
@@ -533,7 +531,7 @@ These conventions apply to every SKILL.md body and every `references/*.md` file:
   field names. Inline single-word or short-phrase emphasis (`**not**`, `**only**`) is rare: prefer
   rewording over mid-sentence bold. Never XML tags (`<Bad>` / `<Good>`).
 - Every fenced code block carries a language tag: `markdown`, `bash`, `json`, `yaml`, etc.
-- Diagrams: SKILL.md decision flowcharts use Graphviz `dot` (aligns with superpowers); `references/` architecture / structure diagrams use Mermaid (` ```mermaid `, as in ARCHITECTURE.md).
+- Diagrams: SKILL.md decision flowcharts use Graphviz `dot`; `references/` architecture / structure diagrams use Mermaid (` ```mermaid `, as in ARCHITECTURE.md).
 - Inline backticks for paths, filenames, commands, schema field names, variable names:
   `{workdir}`, `result.json`, `STATUS: DONE`.
 - In SKILL.md, top-level Workflow steps are `### Step N:` headings (§4.3.7), not a numbered
