@@ -158,7 +158,7 @@ returned annotation schema are in [`references/child-task-contract.md`](referenc
 After dispatching, end the turn and wait for the harness wake.
 On wake-up, reap each dispatched child's harness `STATUS:` last line + its JSON line. Proceed to
 Step 4 only after every dispatched child has reported (DONE or BLOCKED); if woken with fewer reports
-than dispatched, re-yield and keep waiting (do not finalize against a partial report set).
+than dispatched, keep waiting (do not finalize against a partial report set).
 
 ### Step 4: Finalize (scripts + gates + semantic gate) + result.json
 

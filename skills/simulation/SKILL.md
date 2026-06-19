@@ -28,7 +28,7 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
 ## Iron Rule
 
 - Do not modify `verification-plan.md` / `scaffold-specification.json` (the plan is a read-only
-  external reference for simulation). Shared by both sub-Tasks — see the task-contracts.
+  external reference for simulation). Shared by both sub-Tasks — see each contract's Prohibitions.
 - Do not modify RTL (RTL-class issues belong to the RTL editing stage; this stage does not exceed its
   authority). Shared by both sub-Tasks.
 - Do not start if `Verification/simulation-plan/result.json` is not `status=pass` — the orchestrator
@@ -149,7 +149,7 @@ an incomplete `inlined_check_hints[]` block) and return; do not dispatch the dow
 
 Gate on the smoke result emitted by the smoke run's own tooling in `{workdir}`, NOT on the
 env-build child's self-reported `STATUS:` prose. This is cheap and deterministic — the main thread
-reads a small status file, does NOT re-run heavy EDA, and does NOT read the TB body. Do **NOT** use
+reads a small status file, does NOT re-run heavy EDA, and does NOT read the TB body. Do NOT use
 `validate_sim_exit.py` here — its coverage gate hard-fails pre-regress (no `structural-coverage.json`
 exists yet).
 
@@ -240,7 +240,7 @@ adopting the verify child's verdict and the gate results:
 
 **Verdict integrity (anti-gaming):** the orchestrator MUST NOT override a sub-Task's or the script's
 fail verdict to pass. A `status=pass` is written only when every gate above is clean — the smoke gate,
-the verify child's verdict, and `validate_sim_exit` all agree. This mirrors rtl-design's child-status
+the conformance gate, the verify child's verdict, and `validate_sim_exit` all agree. This mirrors rtl-design's child-status
 precedence: the orchestrator records the most-failing verdict, never a more-optimistic one.
 
 `failure_phase` is required when `status=fail` (values below); `fail_reason` (one-line summary) is

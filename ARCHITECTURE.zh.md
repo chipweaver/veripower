@@ -181,7 +181,7 @@ VeriPower 前端流水线共 9 个固定阶段，由 DAG 前置关系连接；�
 | lint-cdc | rtl-design | `veripower:lint-cdc` | `Design/lint-cdc/`（SpyGlass 报告） |
 | synthesis | lint-cdc | `veripower:synthesis` | `Design/synthesis/`（网表、*.ddc、报告） |
 | timing-analysis | synthesis | `veripower:timing-analysis` | `Design/timing-analysis/`（slack、约束报告） |
-| simulation | rtl-design | `veripower:simulation`（主线程） | `Verification/simulation/`（UVM 环境 / 回归报告 / 日志 / VCD） |
+| simulation | rtl-design | `veripower:simulation`（主线程） | `Verification/simulation/`（UVM 环境 / 回归报告 / 日志） |
 | power-analysis | timing-analysis + simulation | `veripower:power-analysis` | `Verification/power-analysis/`（GLS simv / saif/`<id>`.saif / scaffold/power_tests/ / 平均功耗报告） |
 | frontend-signoff | power-analysis | `veripower:frontend-signoff` | `frontend-signoff/`（检查清单、可追溯性报告） |
 
@@ -514,7 +514,7 @@ Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|si
 
 **子 Task `STATUS: BLOCKED` 例外**：被派发的子 Task 可以以最后一行 `STATUS: BLOCKED <reason>` 结束，这是**框架级信号**，**不同于信封的 `result.json.status=blocked`**（信封 schema 枚举里没有这个值）。派发方主线程 skill 收到 BLOCKED 后，写 `result.json` `status=fail` + `fail_reason` 列出失败的 child；后续返工循环可通过触发驱动的接收侧分析协议只重派发失败的 child。
 
-**rtl-design 波次结构。** rtl-design 的扇出不再是单波次：Step 4 引入了一个确定性合规门（`check_rtl_conformance`，spec↔RTL 存在性检查），其失败走**有界（≤2 轮）体盲自收敛循环**——主线程只持有裁决并重派发失败的 child（阶段内扇出；skill 内部临时状态，不落事件日志；反复的 dispatch→yield→reap 就是 `simulation` 两波次复用的同一套原语），边界耗尽则退回 `status=fail`。每次合规门干净通过后，紧接着派发一个**门控性语义审查波次**（每个 child 一个子 Task），聚合后的 `semantic-review.json` 经 promote 后**直接决定 `status`**：凡出现 `{missing, wrong-behavior}` 且严重程度为 `critical` 或 `important` 的发现即绊倒该门，阶段以 `status=fail` 结束，由审查者标注的 `fix_locus` 指明失效位置，交给操作者处理——先门控再路由，skill 内部不做自动修复（留待后续）。这细化了 §6.3 的纯派发器/操作者驱动定位（见 `skills/rtl-design/SKILL.md` 失败路由声明）：rtl-design 对上游定位（spec 层）的失败和语义门绊倒走升级，对编写定位（合规存在性）的失败走自收敛。
+**rtl-design 波次结构。** rtl-design 的扇出不再是单波次：Step 4 引入了一个确定性合规门（`check_rtl_conformance`，spec↔RTL 存在性检查），其失败走**有界（≤2 轮）体盲自收敛循环**——主线程只持有裁决并重派发失败的 child（阶段内扇出；skill 内部临时状态，不落事件日志；反复的 dispatch→reap-on-wake 就是 `simulation` 两波次复用的同一套原语），边界耗尽则退回 `status=fail`。每次合规门干净通过后，紧接着派发一个**门控性语义审查波次**（每个 child 一个子 Task），聚合后的 `semantic-review.json` 经 promote 后**直接决定 `status`**：凡出现 `{missing, wrong-behavior}` 且严重程度为 `critical` 或 `important` 的发现即绊倒该门，阶段以 `status=fail` 结束，由审查者标注的 `fix_locus` 指明失效位置，交给操作者处理——先门控再路由，skill 内部不做自动修复（留待后续）。这细化了 §6.3 的纯派发器/操作者驱动定位（见 `skills/rtl-design/SKILL.md` 失败路由声明）：rtl-design 对上游定位（spec 层）的失败和语义门绊倒走升级，对编写定位（合规存在性）的失败走自收敛。
 
 ### 6.4 调试子 Agent
 

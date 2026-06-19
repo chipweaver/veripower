@@ -169,7 +169,7 @@ Orchestrator-form specialization: this skill does not write `result.json`; each 
 - **Terminate (DONE):** `frontend-signoff = pass/clean` → end of the executor loop, reply to the user with a summary, session ends.
 - **Yield turn (YIELD):** all in-flight stages dispatched, no new eligible stages → yield the turn and wait for a notification to wake back up.
 - **Escalate (ESCALATE):** `cmd_convergence.must_escalate` or unrecoverable blocked → first log the escalation event, then reply to the user:
-  ```
+  ```bash
   state.py log --module {module} --event \
     '{"type":"escalation","reason_code":"<code>","reason":"<text>"}'
   ```

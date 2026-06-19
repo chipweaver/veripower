@@ -518,7 +518,7 @@ Fan-out main-thread skills (`specification`, `rtl-design`, `simulation`) may dis
 deterministic conformance gate (`check_rtl_conformance`, spec↔RTL presence) whose failures run a
 **bounded (≤2 rounds) body-blind self-converge loop** — the main thread holds only the verdict and
 re-dispatches the failing children (intra-stage fan-out; skill-internal scratch, never event-logged;
-the repeated dispatch→yield→reap is the same primitive `simulation`'s two waves use), falling back to
+the repeated dispatch→reap-on-wake is the same primitive `simulation`'s two waves use), falling back to
 `status=fail` on bound exhaustion. On every clean-gate finalize it then dispatches a **gating semantic review wave** (one sub-Task per
 child) whose aggregated `semantic-review.json` is promoted and **gates `status`**: a `{missing,
 wrong-behavior}` finding at `critical`/`important` trips the gate, failing the stage out (locus-tagged via

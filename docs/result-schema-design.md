@@ -214,7 +214,8 @@ When reviewing a `result.schema.json`, check:
 
 **What `schema_version` versions.** `schema_version` is the **completion-certificate (R1)
 contract version** — the cross-stage `result.json` shape every stage shares. It is pinned
-uniformly (`const: 1`) across all nine stage schemas, and no consumer branches on its value
+once, in `envelope.schema.json` (`const: 1`), and inherited by all nine stage schemas via their
+`allOf` envelope `$ref`; no consumer branches on its value
 (state.py validates it via the schema; nothing reads it to select behavior). A change confined
 to ONE stage's `stage_specific` (R3) is versioned by that stage's own `result.schema.json` (its
 `properties` + the `status` if/then gates), NOT by `schema_version` — bumping a shared marker for
@@ -230,7 +231,8 @@ a stage-local change would diverge it across stages for a reader that does not e
   This is coordinated co-update, not a `schema_version` bump.
 - **Changing the shared envelope / completion-certificate contract** — a universal R1/R2 field in
   `envelope.schema.json`, the `status` enum, or the artifact-manifest shape (a change that alters
-  what EVERY stage's `result.json` must look like): **bump `schema_version`** across all nine
-  stages. This is the contract `schema_version` actually tracks.
+  what EVERY stage's `result.json` must look like): **bump `schema_version`** — a one-line
+  change to the `const` in `envelope.schema.json`, inherited by every stage. This is the contract
+  `schema_version` actually tracks.
 - **Editing only a `description` string** (no change to shape, `required`, or types): not a
   contract change — do NOT bump `schema_version`.
