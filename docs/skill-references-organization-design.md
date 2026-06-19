@@ -56,7 +56,7 @@ Apply steps in order; stop at the first match.
    - Machine contract: program-consumed structured data (e.g., `result.schema.json`,
      `envelope.schema.json`).
    - Cross-skill shared: consumers in different skills; not externalizing forces N drift copies.
-   - Fits a §3.4 six-suffix type AND is ≥ 30 lines (self-contained; readable without surrounding
+   - Fits a §3.4 suffix type AND is ≥ 30 lines (self-contained; readable without surrounding
      SKILL.md context).
 
 2. **If no hard criterion matched, check soft signals (reviewer-only):**
@@ -66,15 +66,12 @@ Apply steps in order; stop at the first match.
 
 3. **Default: keep inline.**
 
-Six-suffix taxonomy:
+Suffix taxonomy (the patterns in use; extend it when a new type acquires a real instance):
 
 | Suffix pattern | Type | Examples |
 |---|---|---|
 | `*.schema.json` | machine contract | `result.schema.json`, `analysis.schema.json` |
-| `*-template.md` | reusable template | (none currently — placeholder for future) |
 | `*-rules.md` | rule set | `coding-rules.md`, `uvm-rules.md` |
-| `*-checklist.md` | check list | (placeholder) |
-| `*-patterns.md` | taxonomy / playbook | (placeholder) |
 | `<topic>.md` | fallback | `coverage-iteration.md`, `repair-boundaries.md` |
 
 ## 5. Two examples
@@ -135,7 +132,7 @@ Consult these ground-truth sources before drafting (review framework B1 sidebar)
 - [ ] Externalization decisions follow §4 hard criteria (not soft signals alone)
 - [ ] `references/` has no nested subdirectories
 - [ ] Private references do not cross-reference other skills' private `references/` files
-- [ ] Filenames follow kebab-case + Python snake_case + six-suffix conventions from §3.4
+- [ ] Filenames follow kebab-case + Python snake_case + suffix conventions from §3.4
 - [ ] SKILL.md body ≤ 250 lines (smell threshold; not a hard limit)
 - [ ] Cross-skill references use `veripower:<name>` syntax, not `@`-path or file-path includes
 

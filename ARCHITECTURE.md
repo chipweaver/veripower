@@ -543,7 +543,7 @@ The dispatcher option `state.py dispatch --orchestrator-context FILE_OR_-` write
 
 ### 6.6 Async subagent transcript mirroring
 
-Async-dispatched Task subagents (`run_in_background=True`, used by all five Task-dispatched Stage subagents — `rtl-design` and `simulation` are main-thread and produce no *stage-level* async transcript, see §6.6.1; their intra-stage sub-Task transcripts are covered in §6.6.2) produce a JSONL transcript at `/tmp/claude-*/<workdir-encoded>/tasks/<agent_id>.output`. This path is owned and garbage-collected by Claude Code at session end, so without mirroring, the transcript is permanently lost — leaving downstream analysis (external eval harnesses extracting per-stage tool counts, errors, or rework triggers) unable to attribute behavior to async stages.
+Async-dispatched Task subagents (`run_in_background=True`, used by all five Task-dispatched Stage subagents — `rtl-design` and `simulation` are main-thread, see §6.6.1; their intra-stage sub-Task transcripts are covered in §6.6.2) produce a JSONL transcript at `/tmp/claude-*/<workdir-encoded>/tasks/<agent_id>.output`. This path is owned and garbage-collected by Claude Code at session end, so without mirroring, the transcript is permanently lost — leaving downstream analysis (external eval harnesses extracting per-stage tool counts, errors, or rework triggers) unable to attribute behavior to async stages.
 
 When the Orchestrator's Step 5 reap calls `state.py reap` with `--subagent-output-file <output-file-tag-value>` (the value carried by the `<task-notification>` `<output-file>` tag), `state.py` best-effort mirrors the transcript to:
 
@@ -553,7 +553,7 @@ When the Orchestrator's Step 5 reap calls `state.py reap` with `--subagent-outpu
 
 where `<workdir>` is the canonical per-run dir `asic/<module>/<area>/<stage>/runs/<N>/`. The mirror happens early in `cmd_reap` (after `repair_partial_promote_if_needed`, before any branch decision), so `stale_dispatch` / `superseded_run` / `promote_failed` paths all preserve trace.
 
-**Best-effort semantics** — missing source / `None` / empty arg / `OSError` on copy each return `None` silently (with a stderr log on OSError); the reap path is never aborted by trace-mirror failures. Sync-dispatched stages (`specification`, `simulation-plan`, `rtl-design`, `simulation` — see §6.6.1) produce no *stage-level* async transcript; the stage-keyed `<stage>-<agent_id>.output` mirror is therefore never written for them. Their intra-stage sub-Task transcripts are a separate matter (§6.6.2).
+**Best-effort semantics** — missing source / `None` / empty arg / `OSError` on copy each return `None` silently (with a stderr log on OSError); the reap path is never aborted by trace-mirror failures. Sync-dispatched main-thread stages produce no stage-level transcript to mirror (§6.6.1).
 
 **This is a deliberate side-effect extension of `state.py`** — `state.py` otherwise owns only state transitions / event-log appends. The mirror lives in `state.py` (not a separate tool) because it must execute atomically with `cmd_reap`'s reap path and share `<workdir>` derivation; the side-effect is single-direction (write-only to disk, no state-machine read-back) and explicitly out of the routing / decision boundary.
 
@@ -563,7 +563,7 @@ where `<workdir>` is the canonical per-run dir `asic/<module>/<area>/<stage>/run
 
 `rtl-design` and `simulation` are each loaded via `Skill(veripower:<skill>)` and run in the Orchestrator's main thread. As sync-dispatched main-thread skills (like `specification` and `simulation-plan`), neither produces a *stage-level* async transcript at `/tmp/claude-*/<workdir-encoded>/tasks/<agent_id>.output`. The stage-keyed `<workdir>/.subagent_traces/rtl-design-<agent_id>.output` / `simulation-<agent_id>.output` files are not written by `state.py:_mirror_subagent_trace`.
 
-New runs therefore emit no stage-keyed `rtl-design-<agent_id>.output` / `simulation-<agent_id>.output` trace; only modules that previously ran these stages as Task subagents may still carry such files. External tooling should read `rtl-design` / `simulation` stage-level facts from their `result.json` envelope rather than from per-agent trace files.
+New runs therefore emit no stage-keyed `rtl-design-<agent_id>.output` / `simulation-<agent_id>.output` trace. External tooling should read `rtl-design` / `simulation` stage-level facts from their `result.json` envelope rather than from per-agent trace files.
 
 #### 6.6.2 Fan-out sub-Task trace (not a DAG stage)
 

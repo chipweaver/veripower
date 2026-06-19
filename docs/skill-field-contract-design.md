@@ -17,7 +17,7 @@ formatting conventions that govern the whole body.
 - `skill-self-containment-design.md` — governs the orchestration-vocabulary prohibition that
   constrains the content of every field in SKILL.md.
 - `skill-references-organization-design.md` — governs the Bundled References field rule:
-  externalization criteria and the six-suffix naming taxonomy.
+  externalization criteria and the suffix naming taxonomy.
 - `result-schema-design.md` — covers `result.json` content (what fields belong inside it);
   no overlap with this document, which covers the SKILL.md prose that produces `result.json`.
 
@@ -297,9 +297,7 @@ Step 1 is a read-inputs step; the worker form's three-branch decision is the def
 degenerate forms collapse to fewer branches (a stage that never receives `{rework_trigger}`
 has no rework branch; the analyzer reads inline input with no disk scan).
 See `skill-branch-routing-design.md` for the complete two-signal table and the
-branch-coverage = step-coverage rule. Apply F3 LLM-friendliness sub-rules throughout: `if X
-then Y` decisions, action verbs, concrete paths, no regional shorthand or implicit
-assumptions.
+branch-coverage = step-coverage rule. Apply the F3 LLM-friendliness sub-rules (§3.3) throughout.
 
 Commands are embedded directly in the relevant step text — no separate Quick Reference table.
 
@@ -457,7 +455,7 @@ per-turn return contract). Replace with a "main-loop termination" section listin
 
 Structure: a link list pointing to externalized `references/*.md` or `references/*.json`
 files. For the externalization decision criteria (hard conditions, soft signals, carve-outs)
-and the six-suffix naming taxonomy, see `skill-references-organization-design.md`.
+and the suffix naming taxonomy, see `skill-references-organization-design.md`.
 
 **Good:**
 
