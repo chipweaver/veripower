@@ -43,16 +43,7 @@ STAGE_SPECIFIC_MINIMAL: dict[str, dict] = {
     "simulation-plan": {},
     "rtl-design": {},
     "lint-cdc": {"violations": []},
-    "simulation": {
-        "vcd_artifacts": [
-            {
-                "id": "S1",
-                "path": "vcd/S1.vcd",
-                "corner_intent": "TT",
-                "sequence_ref": "test_a",
-            }
-        ],
-    },
+    "simulation": {},
     "synthesis": {
         "ppa_actual": [{"dim": "area_um2", "value": 1000.0}],
     },

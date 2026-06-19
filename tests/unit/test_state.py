@@ -2306,16 +2306,7 @@ class TestSchemaValidation:
             (
                 "simulation",
                 ("Verification", "simulation"),
-                {
-                    "vcd_artifacts": [
-                        {
-                            "id": "S1",
-                            "path": "vcd/S1.vcd",
-                            "corner_intent": "TT",
-                            "sequence_ref": "test_a",
-                        }
-                    ],
-                },
+                {},
             ),
             (
                 "synthesis",
@@ -3001,16 +2992,7 @@ class TestCmdCompleteBranches:
             tmp_path,
             "simulation",
             1,
-            stage_specific={
-                "vcd_artifacts": [
-                    {
-                        "id": "S1",
-                        "path": "vcd/S1.vcd",
-                        "corner_intent": "TT",
-                        "sequence_ref": "test_a",
-                    }
-                ]
-            },
+            stage_specific={},
         )
         result = state.cmd_reap("foo", "simulation", run=1, outcome="pass")
         assert result["action"] == "discarded"
