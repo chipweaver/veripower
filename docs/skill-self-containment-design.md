@@ -117,12 +117,6 @@ before the exemption applies to it.
 |---|---|
 | *"The orchestrator dispatches this stage, then routes its `result.json` to the downstream consumer."* | *"This skill dispatches one Level-1 sub-Task per child, reaps each, then writes `result.json`."* |
 
-**Note.** Prior versions of this doc had a §6.2 domain-sense carve-out (for circuit-sense
-`cascade`, `upstream`, `downstream`) and a §6.3 protocol-identifier carve-out. §6.2 was
-dropped during the 2026-05-27 English standardization — the post-flip forbidden catalog
-does not include bare `upstream` / `downstream` / `cascade`, so no false-positive trigger
-remains and no carve-out is needed. §6.3 was collapsed into the §4 note above.
-
 ## 7. Compliance checklist
 
 - [ ] No P1 violations in `SKILL.md` (manual review against §4 + §5 table)

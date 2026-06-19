@@ -94,8 +94,7 @@ per-field rules.
 ### 3.5 F5 — English field titles
 
 Field titles are English-only contract; the canonical English form of each field title
-appears in §4.1 below. The bilingual mapping that previous versions of this doc carried
-(F5) was deleted as part of the 2026-05-27 English standardization.
+appears in §4.1 below.
 
 For workflow vocabulary used inside SKILL.md bodies, the 11 stage skills under `skills/`
 are the source of truth — read the already-translated bodies and references to discover
@@ -286,7 +285,9 @@ Structure: numbered step **headings** — each top-level step is an H3 heading `
 <Title>` (colon separator; the em-dash is reserved for *intra-title* clauses, e.g.
 `### Step 2: Wave 1 — dispatch env-build`). Numbered markdown lists (`1.` `2.`) are used only
 for sub-steps inside a step and other ordered sub-sequences, never for the top-level steps.
-Step 1 is always a read-inputs step with a three-branch decision.
+Step 1 is a read-inputs step; the worker form's three-branch decision is the default, but
+degenerate forms collapse to fewer branches (a stage that never receives `{rework_trigger}`
+has no rework branch; the analyzer reads inline input with no disk scan).
 See `skill-branch-routing-design.md` for the complete two-signal table and the
 branch-coverage = step-coverage rule. Apply F3 LLM-friendliness sub-rules throughout: `if X
 then Y` decisions, action verbs, concrete paths, no regional shorthand or implicit
@@ -301,8 +302,9 @@ The `external-reference pre-check` and `status=fail` + `fail_reason` semantics a
 as in worker form.
 
 **Form delta — analyzer:** Step 1 reads the inline prompt content — there is no disk scan.
-The `{rework_trigger}` field is always populated and serves as the primary input, not as a
-routing signal. Standard worker three-branch logic does not apply.
+The analyzer has **no** `{rework_trigger}` variable; its inputs (the failed-case material) are
+inlined directly into the dispatch prompt (consistent with §4.3.5 and the §6.5 carve-out in
+`skill-branch-routing-design.md`). Standard worker three-branch logic does not apply.
 
 **Form delta — orchestrator:** Step 1 reads `task.json` dispatch state (the §6.1 dispatcher
 exemption in `skill-self-containment-design.md` applies; the orchestrator is the dispatcher
@@ -312,7 +314,7 @@ exempt from the Step-heading rule: its Workflow is not a linear `Step 1..N` sequ
 (`### Setup (once per session)`, `### Executor loop (each turn)`) with no Step numbering.
 
 **Cross-cutting addendum — main-thread fan-out (not a form).** Skills loaded via `Skill()` that dispatch Level-1
-sub-Tasks (currently `specification` and `rtl-design`) include a numbered **Fan-out Dispatch
+sub-Tasks (currently `specification`, `rtl-design`, and `simulation`) include a numbered **Fan-out Dispatch
 Contract** sub-block under Workflow stating the framework dispatch rules (no Level 2, R2 yield,
 no `state.py`, sub-Task `STATUS: BLOCKED` handling). These are framework-mechanism rules — the
 in-skill echo of `stage-subagent.md.tpl` — enforced at the framework layer (`verify.py`

@@ -8,7 +8,7 @@ This document governs how every skill's Workflow field expresses its Step 1 rout
 
 Every stage faces three logical paths: (1) **first-run** — initial dispatch, no prior artifacts on disk; (2) **explicit rework** — caller injects `{rework_trigger}` pointing at a failed downstream `result.json` with a `violations[]` payload; (3) **cascade rework** — caller re-dispatches without a trigger; the stage detects prior artifacts on disk and updates incrementally.
 
-The design problem is to express all three paths without a `mode` parameter that would require per-form branching from the caller. The solution is a two-signal read performed entirely inside Step 1. For the bilingual field-title mapping see `skill-field-contract-design.md` §3.5 (F5).
+The design problem is to express all three paths without a `mode` parameter that would require per-form branching from the caller. The solution is a two-signal read performed entirely inside Step 1. For the English field-title convention see `skill-field-contract-design.md` §3.5 (F5).
 
 ## 3. Principles
 

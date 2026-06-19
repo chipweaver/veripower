@@ -9,8 +9,8 @@ This document governs the 2-key frontmatter contract (`name` and `description`) 
 
 **Companion documents.**
 
-- `skill-field-contract-design.md` — body field rules including the F5 bilingual
-  field-title mapping (frontmatter keys have no Chinese titles and are not in that table).
+- `skill-field-contract-design.md` — body field rules including the F5 English field-title
+  convention (frontmatter keys have no Chinese titles and are not in that table).
 - `skill-references-organization-design.md` — `references/` directory organization and
   naming.
 
@@ -20,7 +20,7 @@ Frontmatter is the 2-key contract (`name` + `description`); both are injected in
 prompt. The `description` is the load-bearing surface for skill discovery: the runtime reads
 it to decide which skill loads for a given task.
 
-The bilingual field-title mapping for body fields lives in `skill-field-contract-design.md`
+The English field-title convention for body fields lives in `skill-field-contract-design.md`
 §3.5 F5. Frontmatter keys `name` and `description` carry no Chinese titles and are not in
 that table.
 

@@ -115,7 +115,7 @@ or file-path cross-links that force-load another skill's context.
 **Bad:** *"Read `skills/simulation-plan/SKILL.md` first, then return here."* (sequence dependency)
 
 **Note:** Markdown links within a doc are fine — e.g.,
-`[F5 mapping](skill-field-contract-design.md#35-f5--bilingual-field-title-mapping-canonical-home)` —
+`[F5 mapping](skill-field-contract-design.md#35-f5--english-field-titles)` —
 they are navigation aids that do not force-load context.
 
 ### 6.3 Authoritative artifacts to consult before drafting

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """VeriPower orchestration — state tool.
 
-Single-file CLI. 8 commands: init, status, start, complete, rework, invalidate-stage,
+Single-file CLI. 8 commands: init, status, dispatch, reap, rework, invalidate-stage,
 convergence, log. No routing logic — all decisions belong to
 Orchestrator agent.
 """
