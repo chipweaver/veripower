@@ -185,7 +185,7 @@ keeping it.
 
 - **Orchestration-internal tracking metadata.** Fields like `__run` (run-identity check)
   belong in `task.json` / `events.jsonl`, owned by state.py. They are not cross-stage
-  envelope concerns. (See `2026-05-XX-__run-removal` commit history.)
+  envelope concerns.
 - **Documentation of what the stage produces.** That belongs in SKILL.md prose (the Input
   Artifacts / Output Artifacts sections). Schema = consumer contract, not stage description.
 - **Aspirational fields ("may be useful someday").** If no consumer exists today, the field
