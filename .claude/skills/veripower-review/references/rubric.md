@@ -210,13 +210,13 @@ Each entry:
 - **verified:** 2026-06-06 — anchor "## 3. Surface 1 — runtime-LLM-consumed content (English)" resolves (L29); §3 enumerates scripts/templates/state.py/*.tpl/schemas/tests as Surface 1; §7 states `docs/*.md` are English-by-standardization.
 
 ### C2-09 — result-schema
-- **check:** A `result.schema.json` change keeps `stage_specific.required[]` minimum-sufficient (every required field answers the §4 test questions), adds no orchestration-internal or artifact-duplicating field, and keeps each `description`'s consumer relationship accurate. `schema_version` is the shared completion-certificate (R1) contract version, pinned uniformly across all nine stage schemas; it bumps ONLY on a cross-stage envelope-contract change (a universal R1/R2 field, the `status` enum, the artifact-manifest shape) — NOT for a stage-local `stage_specific` (R3) add/remove/retype, which the per-stage schema's `properties` + `status` if/then versions (co-updated with its consumers + test fixtures).
+- **check:** A `result.schema.json` change keeps `stage_specific.required[]` minimum-sufficient (every required field answers the §4 test questions), adds no orchestration-internal or artifact-duplicating field, and keeps each `description`'s consumer relationship accurate. `schema_version` is the shared completion-certificate (R1) contract version, pinned once in the envelope schema (`const: 1`) and inherited by all nine stage schemas via their `allOf` envelope `$ref`; it bumps ONLY on a cross-stage envelope-contract change (a universal R1/R2 field, the `status` enum, the artifact-manifest shape) — NOT for a stage-local `stage_specific` (R3) add/remove/retype, which the per-stage schema's `properties` + `status` if/then versions (co-updated with its consumers + test fixtures).
 - **signal:** a `*.schema.json` diff adding a `required` field that isn't load-bearing or that duplicates another artifact; a `description` with "may be useful" hand-waving; a `stage_specific` removal/retype not co-updated in its consumers + test fixtures; or a shared envelope-contract change (universal field / `status` enum / artifact-manifest shape) with no `schema_version` bump. (A status-gated `stage_specific` addition with no `schema_version` bump is NOT a violation.)
 - **severity:** should-fix
 - **applies-to:** result-schema, py-core
 - **ssot:** docs/result-schema-design.md → "## 7. Compliance checklist (for schema review)" + "## 8. Process for changing a schema" (what `schema_version` versions + bump triggers)
 - **provenance:** docs/result-schema-design.md §7 + §8 (`schema_version` = shared envelope-tier contract version; `stage_specific` evolution is versioned by the per-stage schema + co-update, not a bump).
-- **verified:** 2026-06-08 — all nine stage schemas pin `schema_version {const: 1}`; no consumer branches on its value (grep of framework/scripts); no stage redesign (synthesis / lint-cdc / rtl-design / specification / timing-analysis) has bumped it for a `stage_specific` addition. §8 reconciled to scope bumps to the shared envelope contract (the practice this entry now codifies); anchors "## 7. Compliance checklist (for schema review)" + "## 8. Process for changing a schema" resolve.
+- **verified:** 2026-06-19 — `envelope.schema.json` pins `schema_version {const: 1}`; the nine stage schemas inherit it via their `allOf` envelope `$ref` and none re-pins (single-source refactor); no consumer branches on its value (grep of framework/scripts); a `stage_specific` add/remove carries no bump (e.g. the sim-plan informational-count removal). §8 now documents the single-source bump — a one-line envelope `const` change; anchors "## 7. Compliance checklist (for schema review)" + "## 8. Process for changing a schema" resolve.
 
 ### C2-10 — workdir-path-contract
 - **check:** A SKILL.md (and its scripts via `--workdir`) addresses files through the dispatcher-injected `{workdir}` / `{module}` placeholders — never a hardcoded `asic/<M>` / `asic/<module>` angle-bracket fragment, a literal module-named path (`asic/alu16/…`), or a `runs/<N>` path.
@@ -253,6 +253,24 @@ Each entry:
 - **ssot:** CONTRIBUTING.md → "Adding or modifying a stage skill"
 - **provenance:** CONTRIBUTING.md "Adding or modifying a stage skill" (items 3–5).
 - **verified:** 2026-06-06 — heading "Adding or modifying a stage skill" resolves (CONTRIBUTING.md L5).
+
+### C2-14 — skill-voice
+- **check:** A SKILL.md uses imperative voice for rules / steps / gates with no hedging (`must` / `never`, not `should` / `consider`); a skill with a dispatch boundary (the fan-out / orchestrator skills) names the dispatching self by role-noun ("the main thread" / "the orchestrator") and a dispatched agent by role ("the sub-Task" / "the child"), not second-person "you" (which is the voice of a single-actor skill).
+- **signal:** `should` / `consider` hedging where a rule or gate means `must` / `never`; a fan-out or orchestrator skill referring to the dispatching self as "you" / "your" instead of a role-noun.
+- **severity:** should-fix
+- **applies-to:** skill-md
+- **ssot:** docs/skill-field-contract-design.md → "### 3.6 F6 — Voice"
+- **provenance:** docs/skill-field-contract-design.md §3.6 (imperative + no-hedging; role-noun at a dispatch boundary).
+- **verified:** 2026-06-19 — anchor "### 3.6 F6 — Voice" resolves; §3.6 owns the imperative/no-hedging rule and the role-noun-for-self/other-at-a-dispatch-boundary convention; the three fan-out skills name the self "the main thread" / "the orchestrator" and never use "you".
+
+### C2-15 — design-docs-self-standing
+- **check:** A Tier-A doc (`docs/*-design.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `README.md`) states VeriPower's conventions on their own terms, with no coupling to anything outside the repo: no rule grounded in "aligns with <external project>" / "<external project> does X" instead of on its own merits, and no path or file belonging to another repo (e.g. an out-of-repo `verify.py`). The in-repo `docs/superpowers/` working directory is a local path, not external coupling. (The runtime-content counterpart is C2-04.)
+- **signal:** a Tier-A doc grounding a convention in an external project ("aligns with superpowers", "superpowers does X") or citing an out-of-repo file / path; NOT a mere reference to the in-repo `docs/superpowers/` directory.
+- **severity:** should-fix
+- **applies-to:** docs
+- **ssot:** —
+- **provenance:** owner policy — the design docs are VeriPower's own SSoT, so a rule contingent on an external project is not self-standing; pure-owner-policy lesson, no in-repo SSoT.
+- **verified:** 2026-06-19 — no Tier-A doc grounds a rule in an external project or cites an out-of-repo file; the lone `superpowers` string in `CONTRIBUTING.md` is the in-repo `docs/superpowers/` working-directory path (legitimate), not an external-project reference.
 
 ## Class 3 — Verification & epistemic discipline
 
