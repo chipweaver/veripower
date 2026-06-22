@@ -36,6 +36,37 @@
                 },
                 "additionalProperties": true
               }
+            },
+            "spec_gate": {
+              "type": "object",
+              "properties": {
+                "gate":     {"enum": ["trip", "clear"]},
+                "flagged":  {"type": "array", "items": {
+                  "type": "object",
+                  "properties": {
+                    "child":    {"type": "string"},
+                    "lens":     {"type": "string"},
+                    "severity": {"type": "string"}
+                  }
+                }},
+                "must_ack": {"type": "array", "items": {
+                  "type": "object",
+                  "properties": {
+                    "child":    {"type": "string"},
+                    "severity": {"type": "string"}
+                  }
+                }},
+                "waived": {"type": "array", "items": {
+                  "type": "object",
+                  "properties": {
+                    "child":          {"type": "string"},
+                    "lens":           {"type": "string"},
+                    "location":       {"type": "string"},
+                    "classification": {"enum": ["false-positive", "accepted-risk"]},
+                    "reason":         {"type": "string"}
+                  }
+                }}
+              }
             }
           },
           "additionalProperties": true
