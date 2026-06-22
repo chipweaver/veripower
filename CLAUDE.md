@@ -43,6 +43,7 @@ Per-module work tree under `asic/<module>/`:
 - `Design/rtl-design/semantic-review.json` — gating per-child intent-review produced by rtl-design's Step-4.4 semantic gate (schema `skills/rtl-design/references/semantic-review.schema.json`).
 - `Verification/<stage>/result.json` — for simulation-plan, simulation, power-analysis
 - `Verification/simulation/conformance-review.json` — gating per-testpoint check-adequacy review produced by the simulation stage's Step-4 conformance gate (schema `skills/simulation/references/conformance-review.schema.json`); promoted advisory artifact, gate source for `failure_phase=conformance`.
+- `Verification/simulation-plan/plan-review.json` — gating testpoint-adequacy review (`coverage` vs spec blocks; `adequacy` check-strategy soundness is advisory must-acknowledge) produced by simulation-plan's Step-3.5 adequacy gate via a self-dispatched Level-1 reviewer (schema `skills/simulation-plan/references/plan-review.schema.json`).
 - `frontend-signoff/result.json` — terminal signoff
 - `brainstorm.md` (module root, `asic/<module>/brainstorm.md`) — sole upstream of `design.md`; produced by the pre-pipeline `brainstorm` skill (own session), frozen for the run, NOT listed in specification's `result.json.artifacts[]`.
 - `Design/specification/manifest.json` — child registry SSoT (every module, N≥1; contains `module`, `children[]` with `name` / `doc` / `rtl_modules[]` / `brainstorm_anchor` / `role`, and optional `shared_subsections[]`).

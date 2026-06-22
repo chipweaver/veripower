@@ -11,7 +11,38 @@
         "stage_specific": {
           "type": "object",
           "properties": {
-            "fail_reason":          {"type": "string",  "minLength": 1}
+            "fail_reason":          {"type": "string",  "minLength": 1},
+            "plan_adequacy_gate": {
+              "type": "object",
+              "properties": {
+                "gate":     {"enum": ["trip", "clear"]},
+                "flagged":  {"type": "array", "items": {
+                  "type": "object",
+                  "properties": {
+                    "tp_id":    {"type": "string"},
+                    "lens":     {"type": "string"},
+                    "severity": {"type": "string"}
+                  }
+                }},
+                "must_ack": {"type": "array", "items": {
+                  "type": "object",
+                  "properties": {
+                    "tp_id":    {"type": "string"},
+                    "severity": {"type": "string"}
+                  }
+                }},
+                "waived": {"type": "array", "items": {
+                  "type": "object",
+                  "properties": {
+                    "tp_id":          {"type": "string"},
+                    "lens":           {"type": "string"},
+                    "location":       {"type": "string"},
+                    "classification": {"enum": ["false-positive", "accepted-risk"]},
+                    "reason":         {"type": "string"}
+                  }
+                }}
+              }
+            }
           },
           "additionalProperties": true
         }
