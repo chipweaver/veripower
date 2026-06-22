@@ -69,7 +69,10 @@ def test_faithfulness_critical_trips(tmp_path):
 def test_faithfulness_important_trips(tmp_path):
     r = _run(tmp_path, _doc([_finding("faithfulness", severity="important")]))
     assert r.returncode == 0
-    assert json.loads(r.stdout)["gate"] == "trip"
+    v = json.loads(r.stdout)
+    assert v["gate"] == "trip"
+    assert v["flagged"] == [{"child": "c", "lens": "faithfulness", "severity": "important"}]
+    assert v["must_ack"] == []
 
 
 def test_soundness_never_trips_and_is_must_ack(tmp_path):
@@ -85,7 +88,10 @@ def test_soundness_never_trips_and_is_must_ack(tmp_path):
 def test_minor_severity_clears(tmp_path):
     r = _run(tmp_path, _doc([_finding("faithfulness", severity="minor")]))
     assert r.returncode == 0
-    assert json.loads(r.stdout)["gate"] == "clear"
+    v = json.loads(r.stdout)
+    assert v["gate"] == "clear"
+    assert v["flagged"] == []
+    assert v["must_ack"] == []
 
 
 def test_unavailable_only_clears(tmp_path):
@@ -98,7 +104,10 @@ def test_unavailable_only_clears(tmp_path):
     }
     r = _run(tmp_path, _doc([f], verdict="ok"))
     assert r.returncode == 0
-    assert json.loads(r.stdout)["gate"] == "clear"
+    v = json.loads(r.stdout)
+    assert v["gate"] == "clear"
+    assert v["flagged"] == []
+    assert v["must_ack"] == []
 
 
 def test_has_critical_inconsistent_exit_1(tmp_path):
