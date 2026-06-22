@@ -149,6 +149,20 @@ def parse_markdown_table(section_text: str) -> list[dict]:
     return rows
 
 
+# Cells that mean "unfilled". Width and Clock Domain also reject a bare dash (a wire always
+# has a concrete width and a real timing domain).
+_BLANK_CELL = {"", "…", "...", "tbd", "todo", "?", "n/a"}
+_DASHES = {"-", "–", "—"}
+
+
+def _is_blank(v: str) -> bool:
+    return v.strip().lower() in _BLANK_CELL
+
+
+def _blank_or_dash(v: str) -> bool:
+    return _is_blank(v) or v.strip() in _DASHES
+
+
 # ---------- frontmatter subset (English canonical anchors) ----------
 
 # Every child .md must declare these frontmatter keys (presence check; empty value is OK).
@@ -496,6 +510,39 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
         if child_texts
         else []
     )
+    # ----- §1.4.2 interconnect completeness (Width + Clock Domain). A heterogeneous
+    # control bundle cannot fill one honest Width row → forced into per-field rows.
+    inter_rows = parse_markdown_table(
+        extract_section(
+            main_design_text, r"§?\s*1\.4\.2.*Inter.module\s+Interconnects?"
+        )
+    )
+    real_rows = [
+        r
+        for r in inter_rows
+        if r.get("Wire", "").strip()
+        and not r.get("Wire", "").strip().lower().startswith("(none")
+    ]
+    interconnect_v: list[dict] = []
+    if real_rows:
+        header = set(real_rows[0].keys())
+        for col in ("Width", "Clock Domain"):
+            if col not in header:
+                interconnect_v.append({"missing_column": col})
+        for row in real_rows:
+            wire = row["Wire"].strip()
+            if "Width" in header and _blank_or_dash(row.get("Width", "")):
+                interconnect_v.append({"wire": wire, "missing_field": "Width"})
+            if "Clock Domain" in header:
+                dom = row.get("Clock Domain", "").strip()
+                if _blank_or_dash(dom):
+                    interconnect_v.append(
+                        {"wire": wire, "missing_field": "Clock Domain"}
+                    )
+                elif clock_names and dom not in clock_names:
+                    interconnect_v.append(
+                        {"wire": wire, "clock_domain": dom, "error": "not in §1.6"}
+                    )
     return {
         "presence_violations": presence,
         "column_violations": columns,
@@ -504,6 +551,7 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
         "manifest_violations": manifest_v,
         "feature_coverage_gaps": feature_gaps,
         "hint_column_violations": hint_col_v,
+        "interconnect_violations": interconnect_v,
     }
 
 

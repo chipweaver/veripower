@@ -625,3 +625,57 @@ def test_purity_missing_module_field():
     m = {"children": [{"name": "c", "rtl_modules": ["c"]}]}
     v = cc.compute_purity(m)
     assert v and "missing required 'module'" in v[0]["error"]
+
+
+# ---------- §1.4.2 interconnect completeness ----------
+
+_DESIGN_142 = (  # one fully-pinned §1.4.2 wire (Width + Clock Domain)
+    "# m Design\n\n"
+    "#### 1.4.2 Inter-module Interconnects\n\n"
+    "| Wire | Producer (RTL module) | Consumer (RTL module) | Width | Clock Domain "
+    "| Protocol | Timing Constraint | Notes |\n"
+    "|------|-----------------------|-----------------------|-------|--------------"
+    "|----------|-------------------|-------|\n"
+    "| score_S | pe_array | row_reduce | 32 | clk | stream | t | fp32 |\n\n"
+    "### 1.6 Clocks and Frequencies\n\n"
+    "| Clock Name | Nominal Frequency (MHz) | SDC Period (ns) | Relationship |\n"
+    "|------------|-------------------------|-----------------|--------------|\n"
+    "| clk | 100 | 10.0 | primary |\n"
+)
+
+
+def test_interconnect_clean_passes():
+    assert _struct(_DESIGN_142)["interconnect_violations"] == []
+
+
+def test_interconnect_n1_none_is_clean():
+    # _GOOD_DESIGN's §1.4.2 is the prose sentinel "(none — N=1)" with no table rows.
+    assert _struct(_GOOD_DESIGN)["interconnect_violations"] == []
+
+
+def test_interconnect_missing_width():
+    bad = _DESIGN_142.replace("| 32 | clk |", "| - | clk |")  # width dash = unpinned
+    iv = _struct(bad)["interconnect_violations"]
+    assert any(
+        v.get("wire") == "score_S" and v.get("missing_field") == "Width" for v in iv
+    )
+
+
+def test_interconnect_clock_not_in_16():
+    bad = _DESIGN_142.replace("| 32 | clk |", "| 32 | clk_x |")  # clk_x not in §1.6
+    iv = _struct(bad)["interconnect_violations"]
+    assert any(
+        v.get("wire") == "score_S" and v.get("clock_domain") == "clk_x" for v in iv
+    )
+
+
+def test_interconnect_missing_column_reported_once():
+    design = (
+        "# m\n\n#### 1.4.2 Inter-module Interconnects\n\n"
+        "| Wire | Producer (RTL module) | Consumer (RTL module) | Protocol | Notes |\n"
+        "|------|----|----|----|----|\n"
+        "| w | a | b | p | n |\n"
+    )
+    iv = _struct(design)["interconnect_violations"]
+    assert iv.count({"missing_column": "Width"}) == 1
+    assert {"missing_column": "Clock Domain"} in iv

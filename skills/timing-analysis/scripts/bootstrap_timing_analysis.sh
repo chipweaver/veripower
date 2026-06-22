@@ -63,10 +63,10 @@ done
 	exit 1
 }
 
-# Resolve WORKDIR to absolute, then to a tree-root-relative path for the TCL.
+# Resolve WORKDIR to absolute; MODULE_ROOT_ABS is the absolute module root for the TCL.
 if [[ "$WORKDIR" != /* ]]; then WORKDIR="$REPO_ROOT/$WORKDIR"; fi
 WORKDIR="${WORKDIR%/}"
-WORKDIR_REL="$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$WORKDIR" "$REPO_ROOT")"
+MODULE_ROOT_ABS="$REPO_ROOT/asic/$MODULE"
 
 SYN_DIR="$REPO_ROOT/asic/$MODULE/Design/synthesis"
 SYN_RESULT="$SYN_DIR/result.json"
@@ -113,11 +113,11 @@ fi
 cp -a "$TEMPLATE_DIR/." "$WORKDIR"
 
 # Substitute placeholders. Use '|' as sed delimiter (paths contain '/').
-sed -i "s|MY_MODULE|${MODULE}|g; s|MY_WORKDIR|${WORKDIR_REL}|g" "$WORKDIR/run_sta.tcl"
+sed -i "s|MY_MODULE_ROOT|${MODULE_ROOT_ABS}|g; s|MY_WORKDIR|${WORKDIR}|g" "$WORKDIR/run_sta.tcl"
 
 LIB_DB_VALUE="${LIB_DB:-FILL_IN_LIB_DB_PATH}"
 sed -i "s|MY_TOP|${TOP}|g; s|FILL_IN_LIB_DB_PATH|${LIB_DB_VALUE}|g" "$WORKDIR/config.tcl"
 
 echo "bootstrap_timing_analysis: deployed $WORKDIR (TOP=$TOP, LIB_DB=$LIB_DB_VALUE)"
-echo "  Next: ensure LIB_DB is set in $WORKDIR/config.tcl, then from the tree root:"
-echo "        pt_shell -f $WORKDIR_REL/run_sta.tcl"
+echo "  Next: ensure LIB_DB is set in $WORKDIR/config.tcl, then from the workdir:"
+echo "        cd $WORKDIR && pt_shell -f run_sta.tcl"

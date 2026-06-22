@@ -72,12 +72,15 @@ def test_deploys_and_substitutes(tmp_path):
     assert "MY_TOP" not in cfg
 
 
-def test_workdir_is_tree_root_relative(tmp_path):
+def test_workdir_and_module_root_are_absolute(tmp_path):
     m, workdir, bs = _make_tree(tmp_path)
     assert _run(m, workdir, bs).returncode == 0
     tcl = (workdir / "run_sta.tcl").read_text()
-    # WORKDIR must be tree-root-relative (pt_shell runs from the tree root).
-    assert "set WORKDIR     asic/sdc_controller/Design/timing-analysis/runs/1" in tcl
+    # pt_shell runs from the workdir; MODULE_ROOT/WORKDIR are absolute so reads resolve
+    # from any CWD and PT's auto-logs land inside the gitignored workdir.
+    assert f"set WORKDIR     {workdir}" in tcl
+    assert str(tmp_path / "asic" / m) in tcl  # MODULE_ROOT is absolute
+    assert "set WORKDIR     asic/" not in tcl  # the old tree-root-relative form is gone
 
 
 def test_lib_db_captured_when_exported(tmp_path, monkeypatch):

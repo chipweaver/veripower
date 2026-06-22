@@ -24,7 +24,7 @@ features:                          # required (may be empty)
 
 ## §2 Interface
 
-Detailed port table (covers frontmatter `ports` with detailed signal direction / width / clock domain / protocol / timing semantics). Child-internal-only boundary ports (test-mode strobe / debug tap / internal handshake) appear here too but are NOT in frontmatter `ports`.
+Detailed port table (covers frontmatter `ports` with detailed signal direction / width / clock domain / protocol / timing semantics). Child-internal-only boundary ports (test-mode strobe / debug tap / internal handshake) appear here too but are NOT in frontmatter `ports`. For an inter-module port (a §1.4.2 wire), its width and clock domain MUST match the §1.4.2 row verbatim — §1.4.2 is the single source of truth; do not introduce a divergent value here.
 
 ## §3 Internal Behavior
 
