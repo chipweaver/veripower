@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "plan-review.schema.json",
+  "title": "simulation-plan adequacy review (gating reviewer output)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "stage", "module", "reviewed_testpoints", "verdict", "has_critical", "findings"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "stage": {"const": "simulation-plan"},
+    "module": {"type": "string"},
+    "reviewed_testpoints": {"type": "array", "items": {"type": "string"}},
+    "verdict": {"enum": ["ok", "concerns"]},
+    "has_critical": {"type": "boolean"},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tp_id", "lens", "severity", "location", "summary"],
+        "properties": {
+          "tp_id": {"type": "string"},
+          "lens": {"enum": ["coverage", "adequacy", "unavailable"]},
+          "severity": {"enum": ["critical", "important", "minor"]},
+          "location": {"type": "string"},
+          "summary": {"type": "string"}
+        }
+      }
+    }
+  }
+}
