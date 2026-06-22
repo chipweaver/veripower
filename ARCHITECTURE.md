@@ -114,7 +114,7 @@ The three dispatch paths from the Orchestrator:
 The per-stage trigger:
 
 - **specification** — consumes a frozen, approved `brainstorm.md`; a fan-out dispatcher (decompose + per-child sub-Task waves around a partition gate) plus three main-thread gate scripts: `derive_child_ports.py` (pre-gate, feeds the partition-gate summary; no body read), `check_coverage.py` (pre-gate, verdict feeds the design.md approval gate), `derive_constraints.py` (post-gate, derives the complete SDC/SGDC from the approved §1.6 + §1.4.1 tables). NOT main-thread for brainstorm dialogue — that moved to the pre-pipeline `brainstorm` skill.
-- **simulation-plan** — multi-turn plan-review dialogue with the user (plus a single Level-1 plan-adequacy review dispatch, Step 3.5 / §6.3.1).
+- **simulation-plan** — multi-turn plan-review dialogue with the user; it also self-dispatches a single Level-1 plan-adequacy review sub-Task (Step 3.5 / §6.3.1).
 - **rtl-design** — fan-out only, no dialogue: one Level-1 sub-Task per child (`N = len(manifest.children[])`, including the top-integration child; no N==1 exemption), then a finalize sub-Task.
 - **simulation** — fan-out only, no dialogue: two sequential sub-Task waves sharing one stage `{workdir}` — an `env-child` (bootstrap + fill scaffold + compile + smoke) → a deterministic main-thread smoke gate → a `verify-child` (regress + coverage). Shape closest to `specification`'s two-wave-around-a-gate; dispatch class identical to `rtl-design`'s.
 
@@ -503,7 +503,7 @@ The decider's failure-routing (`_handle_failure` inside `orchestrate.py`) passes
 
 Their contract is the same as Stage subagent — **no `state.py`, no routing, no DAG awareness** — with two additional permissions:
 
-- May interact with the user across turns. `simulation-plan` runs the multi-turn plan-review loop; `specification` interacts only at its two path-handoff approval gates (the heavy D0–D7 brainstorm dialogue moved to the pre-pipeline `brainstorm` skill, §2.2). `rtl-design` and `simulation` do not require dialogue; each claims main-thread loading solely for fan-out dispatch authority (§2.2). `simulation-plan` similarly now holds a scoped Level-1 review dispatch privilege (Step 3.5, §6.3.1). Task subagents cannot interact with the user.
+- May interact with the user across turns. `simulation-plan` runs the multi-turn plan-review loop; `specification` interacts only at its two path-handoff approval gates (the heavy D0–D7 brainstorm dialogue moved to the pre-pipeline `brainstorm` skill, §2.2). `rtl-design` and `simulation` do not require dialogue; each claims main-thread loading solely for fan-out dispatch authority (§2.2). `simulation-plan`, while loaded primarily for its multi-turn dialogue, additionally holds a scoped Level-1 review dispatch privilege (Step 3.5, §6.3.1). Task subagents cannot interact with the user.
 - Has access to the main agent's full tool set. The contract is held by SKILL.md prose discipline, not tool gating.
 
 The Orchestrator loads the skill via `Skill(veripower:specification|simulation-plan|rtl-design|simulation)`, not `Task()`. It calls `cmd_reap` exactly once when the skill exits — intermediate dialogue iterations and intra-stage fan-out sub-Tasks are skill-internal scratch state and never enter the event log.
