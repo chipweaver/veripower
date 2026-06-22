@@ -65,7 +65,7 @@ Confirm `Design/synthesis/result.json` exists and `status=pass`, and `Design/syn
 
 ### Step 3: Set `LIB_DB`
 
-(`export LIB_DB=<path-to-slow.db>` — the same `.db` as synthesis — or edit `{workdir}/config.tcl`) and **run STA** from the tree root (the dir containing `asic/`): `pt_shell -f {workdir}/run_sta.tcl`. The TCL's `redirect` writes `{workdir}/timing-report.txt`.
+(`export LIB_DB=<path-to-slow.db>` — the same `.db` as synthesis — or edit `{workdir}/config.tcl`) and **run STA from the workdir** so PrimeTime's auto-logs (`pt_shell_command.log`, `.svf`) land inside the gitignored workdir, not the tree root: `cd {workdir} && pt_shell -f run_sta.tcl`. The TCL uses absolute paths (set by bootstrap) and its `redirect` writes `{workdir}/timing-report.txt`.
 
 ### Step 4: Run the parser
 
