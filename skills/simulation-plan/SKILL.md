@@ -18,12 +18,23 @@ This skill's sole responsibility: from `specification`, generate or evolve two a
 Boundary of this skill:
 
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
-- **Do not recursively dispatch subtasks** (do not call Task tool; sim-plan is Consumer-script class and must NOT use Task).
+- **Dispatch is limited to the Step-3.5 review wave.** This skill may dispatch a single Level-1 `Task(run_in_background=True)` plan-adequacy reviewer (Step 3.5); the dispatched sub-Task MUST NOT call the Task tool (Level-2 forbidden — the audit boundary). No other fan-out.
 - **Do not read RTL source, do not invoke EDA tools, and do not write `tb/uvm/` / `Makefile` / `vcd/`.** These belong to the TB-materialization stage.
 - **Do not decide what happens after this skill completes.** Return control to the caller.
 - **Do not start before `specification/result.json` has `status=pass`.** Confirm precondition before entry.
 - **Do not write `result.json.status=blocked`.** The envelope does not accept this value; any failure must be `status=fail` + `fail_reason`.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
+
+## Fan-out Dispatch Contract
+
+- **One Level-1 review sub-Task only:** this skill dispatches the Step-3.5 plan-adequacy reviewer
+  via `Task(run_in_background=True)`; the dispatched sub-Task MUST NOT call the Task tool
+  (Level-2 forbidden). It is intra-stage and state.py-invisible (§3.2 / §6.3.1 of ARCHITECTURE.md):
+  it writes no `task.json`, appends no events, and does not count against the orchestrator's
+  in-flight bound.
+- **Dispatch-and-wait:** after dispatching, end the turn; reap on the harness wake; aggregate the
+  reviewer's report and proceed only after it reports (DONE or BLOCKED).
+- **No `state.py`.**
 
 ## Input Artifacts
 
@@ -112,7 +123,7 @@ Authoring judgment the schema/validator cannot express:
 Read `Design/specification/result.json` + `design.md` + `manifest.json`; if any required input missing, write `result.json` with `status=fail` + `stage_specific.fail_reason="external reference missing: <path>"`, then exit. Select among four branches in this order:
 
 - **Trigger-driven rework** (`{rework_trigger}` injected): read the attribution structure and the context for this round's revision from the trigger file (field names come from the triggering stage's own `result.schema.json`); Read the canonical baseline (`Verification/simulation-plan/verification-plan.md` + `scaffold-specification.json`; when `{workdir}` already holds an updated version, prefer the `{workdir}` copy) as the revision baseline; amend per the violation-type targeting table in Decision Rules. If the trigger is unreadable → write `status=fail` + `fail_reason="rework_trigger not readable"`.
-- **Session-resume branch** (no trigger + `{workdir}/verification-plan.md` present + `{workdir}/result.json` absent): use the residual `{workdir}` artifacts as the baseline; depending on how complete the residue is, return to Step 3 or Step 4 to continue (preserve already-written sections verbatim; only fill in the missing parts).
+- **Session-resume branch** (no trigger + `{workdir}/verification-plan.md` present + `{workdir}/result.json` absent): use the residual `{workdir}` artifacts as the baseline; depending on how complete the residue is, return to Step 3 or Step 4 to continue (preserve already-written sections verbatim; only fill in the missing parts). **Before continuing, if `stage_specific.plan_adequacy_gate` is not `clear`-or-all-`waived` (absent / `trip` / written by a wave predating the latest plan edit), route to Step 3.5 first — not straight to Step 4.**
 - **Incremental-update branch** (no trigger + `{workdir}` empty + canonical `Verification/simulation-plan/verification-plan.md` present): Read the canonical existing artifacts as the baseline; diff `Design/specification/result.json` against that baseline; amend only the affected sections incrementally. **Sections not affected by the diff — together with their testpoint IDs / sequence names / `power_scenarios.sequence_ref` — are preserved verbatim** (keep ID / naming as stable anchors so coverage data / scaffold / SAIF caches do not drift on ID changes).
 - **First-run branch** (no trigger + `{workdir}` empty + canonical absent): full generation of plan + scaffold.
 
@@ -133,12 +144,61 @@ Branch scope: **first-run** fully generates both artifacts; **trigger-driven rew
 - **Validate (gate):** `python3 ${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/scripts/validate_scaffold.py --scaffold {workdir}/scaffold-specification.json --plan-data {workdir}/plan-data.json`. Structural + semantic + coverage-matrix (every check_id covered-or-skipped; every `covers[]` resolves). Fix and re-run on non-zero exit. Runs on every branch.
 - **Cross-stage contract:** every `power_scenarios[].sequence_ref` MUST appear in `sequences[].name` (`sequence_ref` is a reference into `sequences[]`, not an independent namespace — an unregistered ref has no backing sequence to materialize into an SV class, so the downstream power-scenario emit cannot resolve it and fails closed). When a power scenario needs independent stimulus (typical: clock-off / sustained idle / DVFS switching), first add a new entry to `sequences[]` (with `name` + `agent`), then have `power_scenarios[].sequence_ref` reference that `name`. See the final section "sequence_ref naming rules and sequences[] sync" in `references/power-scenarios-template.md`.
 
+### Step 3.5: Plan-adequacy review (self-dispatched Level-1 reviewer) — gating
+
+Runs after `validate_scaffold.py` is green (Step 3) and before the Step-4 user review loop, on
+every branch. Dispatch ONE Level-1 reviewer per `references/plan-review-task-contract.md` (paths
+only — the main thread reads no body): it judges testpoints vs spec (lens `coverage`) and
+check-strategy soundness (lens `adequacy`).
+
+> **Gate semantics invert the rtl/sim template.** The schema/validator structure mirrors
+> `conformance-review`, but a `gate=trip` here does **NOT** write `status=fail` or route out (as
+> sim Step 4 does). It blocks `status=pass` **in place** and surfaces findings into the Step-4
+> user review-loop (T2). Do not copy the fail-out wiring.
+
+Dispatch → reap on wake. Aggregate into `{workdir}/plan-review.json` (schema
+`references/plan-review.schema.json`):
+- `STATUS: DONE` + valid finding JSON → fold its findings in.
+- `STATUS: BLOCKED` OR malformed JSON → record one `{tp_id:"plan", lens:"unavailable",
+  severity:"minor", location:"-", summary:"review unavailable: <reason>"}` finding.
+- `verdict="concerns"` iff any finding with `lens ≠ unavailable`; `has_critical` iff any
+  `severity=critical`.
+
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/scripts/validate_plan_review.py
+{workdir}/plan-review.json` (non-zero exit → re-assemble the JSON and re-run; main-thread fix,
+NOT re-dispatch). On exit 0 it prints
+`{"gate":"trip"|"clear","flagged":[{tp_id,lens,severity}…],"must_ack":[{tp_id,severity}…]}` (the
+script-owned `lens × severity` reduction: coverage at critical/important blocks; adequacy is
+advisory must-acknowledge; unavailable never blocks). Write `stage_specific.plan_adequacy_gate`
+= that parsed verdict object verbatim, and list `plan-review.json` in `artifacts[]` (so it
+promotes to canonical — see the resume-guard below).
+
+The verdict feeds Step 4 (**T2** — block into the user loop; this stage never auto-fixes the plan).
+`waived[]` is appended by the main thread on a human waiver, NOT part of the verbatim copy.
+- **`gate=trip`** → each `flagged` (coverage) item MUST be either resolved (user directs the
+  revision; re-run Step 3 + this step) or **human-waived**: the operator records `{tp_id, lens,
+  location, classification ∈ {false-positive, accepted-risk}, reason}` into
+  `plan_adequacy_gate.waived[]`. **The `reason` is human-authored — the main thread PROMPTS the
+  operator at Step 4 and blocks until provided, never auto-writes it. No counter, no cross-round
+  matching, no auto-downgrade.** For a **critical-severity coverage** waiver, surface: "no
+  downstream stage re-checks testpoint-vs-spec (sim conformance judges TB-vs-testpoint) — terminal
+  accept." `status=pass` requires `gate==clear` **OR** every still-`flagged` finding is in
+  `waived[]`.
+- **`must_ack`** items are surfaced and acknowledged by approval, **deduped**: an adequacy item is
+  re-surfaced only if NEW or CHANGED vs the prior promoted `plan-review.json` wave (match by
+  `tp_id`+`summary`).
+- **Review unavailable** → minimal `plan-review.json` with one `unavailable` finding (validator
+  reports `gate=clear`); surface "review unavailable" as a **must-acknowledge** item at Step 4
+  (deduped) — the user's approval explicitly acknowledges the gate did not run; do not silently
+  pass. (Stops a SILENT disarm, not a CHRONIC one — the sim conformance backstop covers the
+  TB-conformance subset meanwhile.)
+
 ### Step 4: User review loop
 
-- Present `verification-plan.md` to the user.
+- Present `verification-plan.md` to the user, together with the `plan-review.json` verdict — `plan_adequacy_gate.flagged` blocking items + `plan_adequacy_gate.must_ack` advisory items (deduped to NEW/CHANGED) + any `review unavailable` ack item (point to `plan-review.json` for summaries). A **`gate=trip` is a hard block**: each `flagged` item must be either resolved (Step 3.5 re-runs to `clear`) or **human-waived** (operator records `plan_adequacy_gate.waived[]` with a human-authored `classification`+`reason` the main thread prompts for; critical-coverage waiver shows the "no downstream re-check — terminal accept" warning) before `approve`. **Do not accept `approve` unless `gate==clear` OR every `flagged` is in `waived[]`.**
 - Ask: approve / request changes / reject.
-- approve → proceed to Step 5.
-- request changes → revise the artifacts incrementally per user feedback (return to Step 3), then come back to this step and re-present.
+- approve → **[hard precondition]** the main thread MUST NOT accept `approve` unless `plan_adequacy_gate.gate==clear` OR every `flagged` is in `waived[]`; re-run Step 3.5 first if not. Any `request changes` rework first clears `plan_adequacy_gate=clear` (invalidate-on-rework), so a stale `clear` cannot survive a post-clear plan edit. → proceed to Step 5.
+- request changes → revise the artifacts incrementally per user feedback (return to Step 3), then re-run Step 3.5, then come back to this step and re-present.
 - reject → write `result.json` (`status=fail`, `stage_specific.fail_reason="user rejected plan"`) and exit.
 
 ### Step 5: Write `result.json`
@@ -196,6 +256,7 @@ Note: the plan's structured data (`agents` / `sequences` / `tests` / `testpoints
 - [ ] The number of entries in `verification-plan.md` §4 power scenarios matches the length of `scaffold-specification.json.power_scenarios[]`.
 - [ ] `validate_scaffold.py --plan-data` coverage-matrix layer passes: every `check_hints[]` check_id is in some `testpoints[].covers[]` or in `skipped_checks[]`, and every `covers[]` resolves.
 - [ ] **Every `power_scenarios[].sequence_ref` appears in `sequences[].name`** (an unregistered ref has no backing sequence to materialize → the downstream power-scenario emit fails closed; see `references/power-scenarios-template.md`). (schema/script enforced by validate_scaffold.py)
+- [ ] **Plan-adequacy gate (Step 3.5):** `validate_plan_review.py` reports `plan_adequacy_gate.gate==clear` (or every `flagged` is in `plan_adequacy_gate.waived[]`, or the wave was `unavailable` and acknowledged); `stage_specific.plan_adequacy_gate` written; `plan-review.json` in `artifacts[]`. `status=pass` requires that AND user approval.
 
 ## Return Contract
 
@@ -205,9 +266,13 @@ Control returns directly to the caller; the caller decides based on `result.json
 
 This skill's sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, Workflow Step 1's four branches run again (trigger still injected → trigger-driven; otherwise `{workdir}` has residue → session-resume; otherwise canonical present → incremental update; otherwise → first-run). Step 4 (the user review loop) **always re-runs**: it is idempotent with "ask the user again," re-presenting the current state of `verification-plan.md` for the user to reconfirm. There is no cross-session "already complete" flag.
 
+> **Adequacy-gate resume-guard:** the Step-3.5 verdict lives in `{workdir}` scratch + the promoted canonical `plan-review.json`. The guard is enforced in Step 1's session-resume branch and at Step 4's approve precondition (above), so a mid-wave compaction or a stale `clear` cannot yield an unreviewed/unre-reviewed pass.
+
 ## Bundled References
 
 - [`references/spec-input-contract.md`](references/spec-input-contract.md) — `design.md` (module-level) + per-child `<child>.md` (fan-out) minimum field completeness check + field-to-UVM derivation rules + complete derivation-chain example.
 - [`references/power-scenarios-template.md`](references/power-scenarios-template.md) — power-scenarios template.
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
+- [`references/plan-review.schema.json`](references/plan-review.schema.json) — gating plan-adequacy review schema (Step 3.5).
+- [`references/plan-review-task-contract.md`](references/plan-review-task-contract.md) — self-dispatched reviewer sub-Task contract (Step 3.5).
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.
