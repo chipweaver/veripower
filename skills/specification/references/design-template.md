@@ -73,9 +73,11 @@ The columns of the table below must satisfy the "minimum field completeness" req
 
 > Fan-out mode (N≥2): authoritative list of all RTL-module-to-RTL-module wires. N=1 modules: this table is empty + a single row with `(none — N=1 module has no inter-module wires)` or omit the table entirely.
 
-| Wire | Producer (RTL module) | Consumer (RTL module) | Protocol | Timing Constraint | Notes |
-|------|-----------------------|-----------------------|----------|-------------------|-------|
-| … | … | … | … | … | … |
+| Wire | Producer (RTL module) | Consumer (RTL module) | Width | Clock Domain | Protocol | Timing Constraint | Notes |
+|------|-----------------------|-----------------------|-------|--------------|----------|-------------------|-------|
+| … | … | … | … | … | … | … | … |
+
+> **Width** and **Clock Domain** are **gated**: every inter-module wire pins a concrete Width (`-` is not valid) and a Clock Domain that is a §1.6 clock name. (Direction is encoded by Producer/Consumer. ResetPolarity/ResetKind are NOT gated on §1.4.2 — reset is enforced only at constraint generation on §1.4.1 `Role=reset` rows.) A heterogeneous control bundle (fields of differing width, e.g. an old `ctrl_bus`) cannot fill one honest Width row — break it into per-field wires. Enforced by `check_coverage.py:structure.interconnect_violations`.
 
 ### 1.5 Interface Timing Scenarios
 
