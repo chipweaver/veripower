@@ -21,3 +21,11 @@ tests/scenarios/results/
 CONTEXT.md
 CONTEXT-MAP.md
 docs/adr/
+
+# EDA tool auto-logs at the tree root (belt-and-suspenders; tools write into the
+# gitignored per-run workdir under asic/, but an ad-hoc root run must not pollute VCS)
+/pt_shell_command.log
+/command.log
+/*.svf
+/*.pvl
+/svf.txt
