@@ -543,6 +543,54 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
                     interconnect_v.append(
                         {"wire": wire, "clock_domain": dom, "error": "not in §1.6"}
                     )
+    # ----- §1.4.1 top-IO Owner (deterministic). Every output declares an Owner child that
+    # lists the signal; Owner DECLARES the driver (not inferred from claimer counts, which
+    # cannot tell a top mux of N leaf sources from N leaves conflicting). Owner = the
+    # top-integration child passes here (a valid child listing its boundary outputs); the
+    # leaf-owner preference is documented template guidance, not a deterministic block.
+    # Needs child frontmatter → skip when child_texts is None.
+    top_io_driver_v: list[dict] = []
+    if child_texts:
+        child_names = {c["name"] for c in manifest.get("children", [])}
+        child_ports = {
+            cname: set(parse_frontmatter(body).get("ports") or [])
+            for cname, body in child_texts.items()
+        }
+        io_out_rows = [
+            r
+            for r in parse_markdown_table(
+                extract_section(main_design_text, _GATED_COLS["1.4.1"][0])
+            )
+            if r.get("Direction", "").strip().lower() == "output"
+            and r.get("Signal", "").strip()
+        ]
+        if io_out_rows and "Owner" not in io_out_rows[0]:
+            top_io_driver_v.append({"missing_column": "Owner"})
+        else:
+            for row in io_out_rows:
+                sig = row["Signal"].strip()
+                owner = row.get("Owner", "").strip()
+                if _blank_or_dash(owner):
+                    top_io_driver_v.append(
+                        {"signal": sig, "error": "output missing Owner"}
+                    )
+                elif owner not in child_names:
+                    top_io_driver_v.append(
+                        {
+                            "signal": sig,
+                            "owner": owner,
+                            "error": "Owner is not a manifest child",
+                        }
+                    )
+                elif sig not in child_ports.get(owner, set()):
+                    top_io_driver_v.append(
+                        {
+                            "signal": sig,
+                            "owner": owner,
+                            "error": "Owner child does not list this signal in its "
+                            "ports (declared driver does not drive it)",
+                        }
+                    )
     return {
         "presence_violations": presence,
         "column_violations": columns,
@@ -552,6 +600,7 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
         "feature_coverage_gaps": feature_gaps,
         "hint_column_violations": hint_col_v,
         "interconnect_violations": interconnect_v,
+        "top_io_driver_violations": top_io_driver_v,
     }
 
 

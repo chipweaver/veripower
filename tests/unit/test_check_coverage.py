@@ -679,3 +679,137 @@ def test_interconnect_missing_column_reported_once():
     iv = _struct(design)["interconnect_violations"]
     assert iv.count({"missing_column": "Width"}) == 1
     assert {"missing_column": "Clock Domain"} in iv
+
+
+# ---------- §1.4.1 top-IO Owner (deterministic) ----------
+
+
+def _io_design(rows_md):
+    return (
+        "# m\n\n#### 1.4.1 Top-Level IO\n\n"
+        "| Signal | Direction | Owner | Width | Clock Domain | Interface Group "
+        "| Protocol | Role | ResetPolarity | ResetKind |\n"
+        "|--------|-----------|-------|-------|--------------|-----------------"
+        "|----------|------|---------------|-----------|\n" + rows_md
+    )
+
+
+def _io_fm(name, ports):
+    plist = "".join(f"  - {p}\n" for p in ports)
+    return (
+        f'---\nchild: {name}\nparent: top\nbrainstorm_anchor: "lines 1-1"\n'
+        f"ports:\n{plist}clocks: []\nfeatures: []\n---\nbody\n"
+    )
+
+
+_IO_MANIFEST = {
+    "module": "top",
+    "children": [
+        {"name": "top", "doc": "top.md", "rtl_modules": ["top"]},
+        {"name": "drv", "doc": "drv.md", "rtl_modules": ["drv"]},
+        {"name": "other", "doc": "other.md", "rtl_modules": ["other"]},
+    ],
+}
+
+
+def _driver(design, bodies, manifest=None):
+    import check_coverage as cc
+
+    return cc.compute_structure(manifest or _IO_MANIFEST, design, child_texts=bodies)[
+        "top_io_driver_violations"
+    ]
+
+
+def _row(owner):
+    return f"| sig_o | output | {owner} | 8 | clk | g | - | data | - | - |\n"
+
+
+def test_driver_clean_leaf_owner():
+    bodies = {
+        "top": _io_fm("top", ["sig_o"]),
+        "drv": _io_fm("drv", ["sig_o"]),
+        "other": _io_fm("other", []),
+    }
+    assert _driver(_io_design(_row("drv")), bodies) == []
+
+
+def test_driver_owner_top_passes_deterministic():
+    # Owner=top is a valid child that lists its boundary output → passes the gate.
+    # The leaf-owner preference is documented guidance, not a deterministic block.
+    bodies = {
+        "top": _io_fm("top", ["sig_o"]),
+        "drv": _io_fm("drv", []),
+        "other": _io_fm("other", []),
+    }
+    assert _driver(_io_design(_row("top")), bodies) == []
+
+
+def test_driver_owner_missing():
+    bodies = {
+        "top": _io_fm("top", ["sig_o"]),
+        "drv": _io_fm("drv", ["sig_o"]),
+        "other": _io_fm("other", []),
+    }
+    v = _driver(_io_design(_row("-")), bodies)
+    assert any(
+        x.get("signal") == "sig_o" and "missing Owner" in x.get("error", "") for x in v
+    )
+
+
+def test_driver_owner_not_a_child():
+    bodies = {
+        "top": _io_fm("top", []),
+        "drv": _io_fm("drv", []),
+        "other": _io_fm("other", []),
+    }
+    v = _driver(_io_design(_row("ghost")), bodies)
+    assert any(
+        x.get("signal") == "sig_o" and "not a manifest child" in x.get("error", "")
+        for x in v
+    )
+
+
+def test_driver_owner_does_not_list_signal():
+    bodies = {
+        "top": _io_fm("top", []),
+        "drv": _io_fm("drv", []),
+        "other": _io_fm("other", []),
+    }
+    v = _driver(_io_design(_row("drv")), bodies)
+    assert any(
+        x.get("signal") == "sig_o" and "does not list" in x.get("error", "") for x in v
+    )
+
+
+def test_driver_input_not_gated():
+    design = _io_design("| in_i | input | - | 8 | clk | g | - | data | - | - |\n")
+    bodies = {
+        "top": _io_fm("top", ["in_i"]),
+        "drv": _io_fm("drv", ["in_i"]),
+        "other": _io_fm("other", ["in_i"]),
+    }
+    assert _driver(design, bodies) == []
+
+
+def test_driver_missing_owner_column():
+    design = (  # old §1.4.1 header (no Owner) with an output row
+        "# m\n\n#### 1.4.1 Top-Level IO\n\n"
+        "| Signal | Direction | Width | Clock Domain | Interface Group | Protocol "
+        "| Role | ResetPolarity | ResetKind |\n"
+        "|--------|-----------|-------|--------------|-----------------|----------"
+        "|------|---------------|-----------|\n"
+        "| sig_o | output | 8 | clk | g | - | data | - | - |\n"
+    )
+    bodies = {
+        "top": _io_fm("top", ["sig_o"]),
+        "drv": _io_fm("drv", ["sig_o"]),
+        "other": _io_fm("other", []),
+    }
+    assert _driver(design, bodies).count({"missing_column": "Owner"}) == 1
+
+
+def test_driver_skipped_without_child_texts():
+    import check_coverage as cc
+
+    s = cc.compute_structure(_IO_MANIFEST, _io_design(_row("drv")))  # child_texts=None
+    assert s["top_io_driver_violations"] == []

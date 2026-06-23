@@ -56,11 +56,13 @@ The columns of the table below must satisfy the "minimum field completeness" req
 
 #### 1.4.1 Top-Level IO
 
-| Signal | Direction | Width | Clock Domain | Interface Group | Protocol | Role | ResetPolarity | ResetKind |
-|--------|-----------|-------|--------------|-----------------|----------|------|---------------|-----------|
-| clk    | input  | 1 | clk | clk     | -    | clock | -  | -     |
-| rst_n  | input  | 1 | clk | reset   | -    | reset | 0  | async |
-| cfg_addr | input | 8 | clk | cfg_bus | APB3 | data  | -  | -     |
+| Signal | Direction | Owner | Width | Clock Domain | Interface Group | Protocol | Role | ResetPolarity | ResetKind |
+|--------|-----------|-------|-------|--------------|-----------------|----------|------|---------------|-----------|
+| clk    | input  | - | 1 | clk | clk     | -    | clock | -  | -     |
+| rst_n  | input  | - | 1 | clk | reset   | -    | reset | 0  | async |
+| cfg_addr | input | - | 8 | clk | cfg_bus | APB3 | data  | -  | -     |
+
+> **Owner** (Output rows — **gated**: present, a manifest child, and that child lists the signal in its frontmatter `ports`): the child that drives this output. **Guidance (not gated):** prefer a **leaf child** that the pure top-integration child passes through to the boundary; an output driven by the top-integration child's own combinational glue (mux / reduction / constant) is discouraged — prefer a dedicated child (e.g. an arbiter). `Owner` = the top-integration child still passes the gate; this preference is a design note, not enforced. Input/inout rows use `-`. The gated part is enforced by `check_coverage.py:structure.top_io_driver_violations`.
 
 > **Role** (required — `derive_constraints.py` reads it): `clock` / `reset` / `data`.
 > **ResetPolarity** (reset rows only): `0` = active-low, `1` = active-high.
