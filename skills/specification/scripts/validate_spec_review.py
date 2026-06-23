@@ -8,12 +8,12 @@ not re-dispatch) on a non-zero exit. Validates against references/spec-review.sc
 gate verdict (the mechanical lens x severity reduction) and prints it as a one-line JSON the main
 thread copies -- so the gate is script-owned, not judged by eye.
 
-Gate policy: faithfulness (vs frozen brainstorm intent) findings at critical/important BLOCK
-(gate=trip) -- brainstorm.md is the reference frame. soundness (micro-arch realizability + any
-observed cross-interface inconsistency, no reference frame) is advisory must-acknowledge and
-never blocks; unavailable never blocks. (Mechanically-decidable defects are out of the reviewer's
-scope -- the §1.4.2 deterministic gate / Layer-1 own them -- so they never reach this validator
-as faithfulness; an observed one is reported soundness.)
+Gate policy: faithfulness (vs frozen brainstorm intent) AND conformance (vs the §1.4.x pinned
+Encoding the child consumes/produces) findings at critical/important BLOCK (gate=trip) -- both have
+a reference frame (brainstorm.md / the §1.4.x Encoding row). soundness (micro-arch realizability +
+any other observed cross-interface inconsistency, no reference frame) is advisory must-acknowledge
+and never blocks; unavailable never blocks. There is no deterministic encoding gate -- encoding
+adequacy is a judgment, owned by this LLM lens, not check_coverage.py.
 
 Usage: validate_spec_review.py <spec-review.json>
 Exit: 0 valid (stdout: {"gate","flagged","must_ack"}) / 1 invalid (stderr message).
@@ -31,7 +31,7 @@ _SCHEMA = (
     Path(__file__).resolve().parent.parent / "references" / "spec-review.schema.json"
 )
 
-_GATING_LENSES = {"faithfulness"}
+_GATING_LENSES = {"faithfulness", "conformance"}
 _GATING_SEVERITIES = {"critical", "important"}
 
 

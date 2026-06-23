@@ -71,7 +71,9 @@ def test_faithfulness_important_trips(tmp_path):
     assert r.returncode == 0
     v = json.loads(r.stdout)
     assert v["gate"] == "trip"
-    assert v["flagged"] == [{"child": "c", "lens": "faithfulness", "severity": "important"}]
+    assert v["flagged"] == [
+        {"child": "c", "lens": "faithfulness", "severity": "important"}
+    ]
     assert v["must_ack"] == []
 
 
@@ -138,3 +140,25 @@ def test_mixed_trip_and_must_ack(tmp_path):
         {"child": "c1", "lens": "faithfulness", "severity": "critical"}
     ]
     assert v["must_ack"] == [{"child": "c2", "severity": "important"}]
+
+
+def test_conformance_critical_trips(tmp_path):
+    r = _run(tmp_path, _doc([_finding("conformance", "critical")], has_critical=True))
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["gate"] == "trip"
+    assert {"child": "c", "lens": "conformance", "severity": "critical"} in out[
+        "flagged"
+    ]
+
+
+def test_conformance_important_trips(tmp_path):
+    r = _run(tmp_path, _doc([_finding("conformance", "important")]))
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["gate"] == "trip"
+
+
+def test_conformance_minor_does_not_trip(tmp_path):
+    r = _run(tmp_path, _doc([_finding("conformance", "minor")]))
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["gate"] == "clear"
