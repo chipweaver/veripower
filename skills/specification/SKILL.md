@@ -185,9 +185,11 @@ Runs after the coverage gate is clean (Step 6) and before the design.md gate (St
 finalize that reaches a clean coverage gate (NOT first-run only). Dispatch **N per-child Level-1
 reviewers** (one per `manifest.children[]`) per `references/spec-review-task-contract.md` (paths
 only — the main thread reads no body): each judges its `<child>.md` against its `brainstorm_anchor`
-slice (lens `faithfulness`) and the soundness of its spec-introduced micro-arch + any observed
-cross-interface inconsistency (lens `soundness`). There is no separate cross-child reviewer this
-round (deferred — design §6).
+slice (lens `faithfulness`), the conformance of its decode/obligations to the §1.4.x pinned
+Encoding it consumes/drives (lens `conformance`), and the soundness of its spec-introduced
+micro-arch + any other observed cross-interface inconsistency (lens `soundness`). There is no
+separate cross-child reviewer this round, so cross-**bus** phase-fold stays advisory soundness
+(deferred — design §6).
 
 > **Gate semantics invert the rtl/sim template.** The schema/validator structure mirrors
 > `semantic-review`, but a `gate=trip` here does **NOT** write `status=fail` or route out of the
@@ -208,8 +210,9 @@ Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/specification/scripts/validate_spec_re
 {workdir}/spec-review.json` (non-zero exit → re-assemble the JSON and re-run; this is a
 main-thread fix, NOT a re-dispatch). On exit 0 it prints
 `{"gate":"trip"|"clear","flagged":[{child,lens,severity}…],"must_ack":[{child,severity}…]}` — the
-mechanical `lens × severity` reduction (faithfulness at critical/important blocks; soundness is
-advisory must-acknowledge; unavailable never blocks), computed by the script, not by eye. Write
+mechanical `lens × severity` reduction (faithfulness AND conformance at critical/important block;
+soundness is advisory must-acknowledge; unavailable never blocks), computed by the script, not by
+eye. Write
 `stage_specific.spec_gate` = that parsed verdict object verbatim, and list `spec-review.json` in
 `artifacts[]` (so it promotes to canonical — see Session-resume below).
 
