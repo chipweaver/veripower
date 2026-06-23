@@ -142,6 +142,13 @@ by general standardization policy for consistency and contributor
 friendliness, but it is not part of the LLM runtime contract and does
 not fall under the Bilingual Invariant.
 
+**Committed bilingual mirrors.** A few human-facing docs carry a committed
+`.zh.md` mirror for Chinese readers (currently `ARCHITECTURE.zh.md` and
+`GETTING-STARTED.zh.md`). A mirror is a translation of its English source, not
+an independent document: the English source is authoritative and the mirror is a
+**propagation target** that MUST be updated in the same change as that source,
+so the two never diverge on a load-bearing fact.
+
 ## 8. Enforcement posture
 
 - **No SKILL.md cross-references this principle or any file in `docs/`.**

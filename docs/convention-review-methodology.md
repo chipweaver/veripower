@@ -49,8 +49,8 @@ Each proposal carries its propagation impact, so applying it is *complete* — n
 behind:
 
 - **Consistency fan-out** — every sibling site that must state the convention identically. This
-  includes a doc's `.zh` mirror (e.g. `ARCHITECTURE.md` → `ARCHITECTURE.zh.md`), though that
-  obligation has no canonical home yet — treat it as a Phase-1 candidate gap, not a settled rule.
+  includes a doc's `.zh` mirror (e.g. `ARCHITECTURE.md` → `ARCHITECTURE.zh.md`) — owned by
+  `language-posture-design.md §7` (committed bilingual mirrors) and checked by `veripower-review` C2-08.
 - **Conformance fan-out** — every implementation spot that must follow the convention.
 
 Because the method is propose-only, the consistency work rides on each proposal as its impact rather
