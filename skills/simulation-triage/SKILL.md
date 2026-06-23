@@ -94,7 +94,13 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 
 Write the structured-prose analysis, then on a line by itself the literal prefix `ANALYSIS:` immediately followed by one routing JSON object (the final block). The caller locates the prefix and extracts the JSON.
 
-Before emitting, validate the routing block: `echo "<json>" | python3 ${CLAUDE_PLUGIN_ROOT}/skills/simulation-triage/scripts/validate_analysis.py --schema ${CLAUDE_SKILL_DIR}/references/analysis.schema.json --json-stdin`. On non-zero exit, read stderr, fix, and re-run — the authoritative gate for the routing contract (mirrors `simulation-plan`'s `validate_scaffold.py`).
+Before emitting, validate the routing block:
+
+```bash
+echo "<json>" | python3 ${CLAUDE_SKILL_DIR}/scripts/validate_analysis.py --schema ${CLAUDE_SKILL_DIR}/references/analysis.schema.json --json-stdin
+```
+
+On non-zero exit, read stderr, fix, and re-run — the authoritative gate for the routing contract (mirrors `simulation-plan`'s `validate_scaffold.py`).
 
 **Message-body shape (`complete`):**
 

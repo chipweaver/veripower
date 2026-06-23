@@ -62,15 +62,29 @@ Confirm `Design/synthesis/result.json` exists and `status=pass`, and `Design/syn
 
 ### Step 2: Bootstrap
 
-`bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_timing_analysis.sh --module {module} --workdir {workdir}`. Deploys `run_sta.tcl` + `config.tcl`, resolves `<TOP>`, verifies the netlist/SDC, and aborts if `{workdir}` is already deployed.
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_timing_analysis.sh --module {module} --workdir {workdir}
+```
+
+Deploys `run_sta.tcl` + `config.tcl`, resolves `<TOP>`, verifies the netlist/SDC, and aborts if `{workdir}` is already deployed.
 
 ### Step 3: Set `LIB_DB`
 
-(`export LIB_DB=<path-to-slow.db>` — the same `.db` as synthesis — or edit `{workdir}/config.tcl`) and **run STA from the workdir** so PrimeTime's auto-logs (`pt_shell_command.log`, `.svf`) land inside the gitignored workdir, not the tree root: `cd {workdir} && pt_shell -f run_sta.tcl`. The TCL uses absolute paths (set by bootstrap) and its `redirect` writes `{workdir}/timing-report.txt`.
+(`export LIB_DB=<path-to-slow.db>` — the same `.db` as synthesis — or edit `{workdir}/config.tcl`) and **run STA from the workdir** so PrimeTime's auto-logs (`pt_shell_command.log`, `.svf`) land inside the gitignored workdir, not the tree root:
+
+```bash
+cd {workdir} && pt_shell -f run_sta.tcl
+```
+
+The TCL uses absolute paths (set by bootstrap) and its `redirect` writes `{workdir}/timing-report.txt`.
 
 ### Step 4: Run the parser
 
-(mandatory; do not classify by hand): `python3 ${CLAUDE_SKILL_DIR}/scripts/timing_rpt_parser.py --report {workdir}/timing-report.txt --out {workdir}/timing-actual.json`.
+(mandatory; do not classify by hand):
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/timing_rpt_parser.py --report {workdir}/timing-report.txt --out {workdir}/timing-actual.json
+```
 - **On exit 0**, read `{workdir}/timing-actual.json` and fold it in: `timing` → `stage_specific.timing`, `violations` → `stage_specific.violations`, `verdict` → `status`. A `verdict="fail"` → `status=fail`, `failure_kind="ppa"`, plus a one-line `fail_reason` (e.g. `"setup/hold timing not met"`).
 - **On a non-zero exit**, the parser is authoritative — never infer pass from the report's presence. Read its `FAIL=` token and write `status=fail`, `failure_kind="tooling"`, the matching `fail_reason` (`FAIL=missing` → `"timing-report.txt missing"`; `FAIL=unparseable` → `"timing-report.txt unparseable"`), then exit.
 

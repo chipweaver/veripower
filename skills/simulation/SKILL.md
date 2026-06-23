@@ -170,9 +170,13 @@ and hands over paths only: the `{workdir}` (filled `tb/uvm/**`), the scaffold-sp
 the DUT RTL filelist, and `{module}`. The main thread never reads the TB body. After dispatching, end the turn and wait for the harness wake.
 
 On wake-up, reap the reviewer's `STATUS:` last line + its JSON line, assemble
-`{workdir}/conformance-review.json` (schema `references/conformance-review.schema.json`), and
-run `python3 ${CLAUDE_SKILL_DIR}/scripts/validate_conformance_review.py {workdir}/conformance-review.json`
-(non-zero exit → re-assemble the JSON and re-run; this is a main-thread fix, NOT a re-dispatch).
+`{workdir}/conformance-review.json` (schema `references/conformance-review.schema.json`), and run:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/validate_conformance_review.py {workdir}/conformance-review.json
+```
+
+Non-zero exit → re-assemble the JSON and re-run (this is a main-thread fix, NOT a re-dispatch).
 On exit 0 it prints a one-line gate verdict `{"gate": "trip"|"clear", "flagged": [...],
 "dominant_category": ...}` — the mechanical category × severity reduction (per the reviewer
 contract's "Severity & gating"), computed by the script, not judged by eye. Apply it:

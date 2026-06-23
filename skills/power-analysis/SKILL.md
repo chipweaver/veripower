@@ -91,7 +91,11 @@ Confirm `Verification/simulation/result.json.status=pass` AND `Design/timing-ana
 
 ### Step 2: Bootstrap (first-run only)
 
-`bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_power_analysis.sh --module {module} --workdir {workdir} [--top <TOP>]`. Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a `Makefile` is already deployed (incremental updates go through `make refresh-tests`).
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_power_analysis.sh --module {module} --workdir {workdir} [--top <TOP>]
+```
+
+Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a `Makefile` is already deployed (incremental updates go through `make refresh-tests`).
 
 ### Step 3: Run and judge
 
@@ -112,7 +116,7 @@ Confirm `Verification/simulation/result.json.status=pass` AND `Design/timing-ana
 
 - **`make` exited 0** → run the verdict script:
 
-  ```
+  ```bash
   python3 ${CLAUDE_SKILL_DIR}/scripts/power_rpt_parser.py \
       --plan Verification/simulation-plan/scaffold-specification.json \
       --workdir {workdir} --targets '<ppa_targets JSON from prompt>' \

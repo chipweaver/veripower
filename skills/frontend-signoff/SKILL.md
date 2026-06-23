@@ -53,7 +53,10 @@ Single linear flow (read-only aggregator — every run does identical work, no b
 ### Step 1: Run the aggregator
 
 (mandatory; it owns the gate + envelope):
-`python3 ${CLAUDE_SKILL_DIR}/scripts/aggregate_signoff.py --workdir {workdir} --module {module}`
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/aggregate_signoff.py --workdir {workdir} --module {module}
+```
 
 ### Step 2: On exit 0
 

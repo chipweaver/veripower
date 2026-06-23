@@ -130,8 +130,13 @@ line: `STATUS: DONE` + paths, or `STATUS: BLOCKED <reason>`.
 
 ### Step 3: Derive cut-edge ports (main thread, deterministic) — runs BEFORE the gate
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/specification/scripts/derive_child_ports.py
-{workdir}`. Its small JSON output (`{child: [wire,...]}`) is each child's inter-module
+Run:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/derive_child_ports.py {workdir}
+```
+
+Its small JSON output (`{child: [wire,...]}`) is each child's inter-module
 ports — the §1.4.2 wires whose Producer/Consumer RTL module is in that child's
 `rtl_modules`. This output is the partition gate's cut-edge summary AND each child's
 wave-2 port injection (children do not guess inter-module ports; top-level IO ports
@@ -163,8 +168,13 @@ have reported.
 
 ### Step 6: Coverage gate (main thread, deterministic) — verdict feeds the design.md gate
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/specification/scripts/check_coverage.py {workdir}
---brainstorm asic/{module}/brainstorm.md`. It reads brainstorm/children/design in-process
+Run:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/check_coverage.py {workdir} --brainstorm asic/{module}/brainstorm.md
+```
+
+It reads brainstorm/children/design in-process
 and writes `coverage.json` (sub-blocks: `brainstorm_coverage` / `frontmatter_subset` /
 `token_survival` / `self_containment` / `structure`); exit 0 = pass.
 
@@ -205,9 +215,13 @@ schema requires `child` per finding):
 - `verdict="concerns"` iff any finding with `lens ≠ unavailable`; `has_critical` iff any
   `severity=critical`.
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/specification/scripts/validate_spec_review.py
-{workdir}/spec-review.json` (non-zero exit → re-assemble the JSON and re-run; this is a
-main-thread fix, NOT a re-dispatch). On exit 0 it prints
+Run:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/validate_spec_review.py {workdir}/spec-review.json
+```
+
+Non-zero exit → re-assemble the JSON and re-run (a main-thread fix, NOT a re-dispatch). On exit 0 it prints
 `{"gate":"trip"|"clear","flagged":[{child,lens,severity}…],"must_ack":[{child,severity}…]}` — the
 mechanical `lens × severity` reduction (faithfulness AND conformance at critical/important block;
 soundness is advisory must-acknowledge; unavailable never blocks), computed by the script, not by
@@ -251,8 +265,12 @@ Path-handoff: give the user the `design.md` (+ per-child) paths + the `coverage.
 
 ### Step 9: Derive constraints (main thread, deterministic) — post-gate
 
-After the design.md gate passes, run
-`python3 ${CLAUDE_PLUGIN_ROOT}/skills/specification/scripts/derive_constraints.py {workdir}`.
+After the design.md gate passes, run:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/derive_constraints.py {workdir}
+```
+
 It generates the complete `constraints/<TOP>.{sdc,sgdc}` purely from the approved §1.6 +
 §1.4.1 tables (clocks + relationships, IO delays, abstract_ports, resets+polarity) and
 self-checks before writing. There is **no LLM constraint overlay and no separate constraint checker**.

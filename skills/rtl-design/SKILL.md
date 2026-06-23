@@ -231,8 +231,13 @@ Aggregate into `{workdir}/semantic-review.json` (schema `references/semantic-rev
 - `verdict="concerns"` iff any finding with category ≠ `unavailable`; `has_critical` iff any
   `severity=critical`.
 
-Run `${CLAUDE_SKILL_DIR}/scripts/validate_semantic_review.py {workdir}/semantic-review.json`
-(non-zero exit → re-assemble the JSON and re-run; this is a main-thread fix, NOT a re-dispatch). On
+Run:
+
+```bash
+${CLAUDE_SKILL_DIR}/scripts/validate_semantic_review.py {workdir}/semantic-review.json
+```
+
+Non-zero exit → re-assemble the JSON and re-run (this is a main-thread fix, NOT a re-dispatch). On
 exit 0 it prints a one-line gate verdict `{"gate":"trip"|"clear","flagged":[{child,category,severity,
 fix_locus}…],"loci":{"rtl":[…],"spec":[…]}}` — the mechanical `category × severity` reduction
 partitioned by `fix_locus`, computed by the script, not judged by eye. Write

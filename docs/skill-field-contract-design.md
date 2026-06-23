@@ -526,8 +526,15 @@ These conventions apply to every SKILL.md body and every `references/*.md` file:
   field names. Inline single-word or short-phrase emphasis (`**not**`, `**only**`) is rare: prefer
   rewording over mid-sentence bold. Never XML tags (`<Bad>` / `<Good>`).
 - Every fenced code block carries a language tag: `markdown`, `bash`, `json`, `yaml`, etc.
+- A runnable script invocation — a full command line the operator executes as a step
+  (`python3 ${CLAUDE_SKILL_DIR}/scripts/…`, `bash …`, `echo … | python3 …`) — goes in its own
+  ` ```bash ` fenced block, not inline; the prose around it describes what the command does and
+  the non-zero-exit protocol. A skill names its **own** `scripts/` and `references/` via
+  `${CLAUDE_SKILL_DIR}/…`; the verbose `${CLAUDE_PLUGIN_ROOT}/skills/<self>/…` is reserved for
+  cross-skill and framework paths, plus artifacts deployed into a workdir (a deployed `templates/`
+  README is read where no skill is active, so `${CLAUDE_SKILL_DIR}` does not resolve there).
 - Diagrams: SKILL.md decision flowcharts use Graphviz `dot`; `references/` architecture / structure diagrams use Mermaid (` ```mermaid `, as in ARCHITECTURE.md).
-- Inline backticks for paths, filenames, commands, schema field names, variable names:
+- Inline backticks for paths, filenames, command / script names and flags, schema field names, variable names:
   `{workdir}`, `result.json`, `STATUS: DONE`.
 - In SKILL.md, top-level Workflow steps are `### Step N:` headings (§4.3.7), not a numbered
   list; numbered lists are for sub-steps within a step and other ordered sub-sequences. Bullets
@@ -573,6 +580,9 @@ Use at review time. Every item should be verifiable by reading the SKILL.md file
   `STATUS: BLOCKED`; `pass` / `fail` in `result.json.status`)?
 - [ ] Does the skill body avoid orchestration vocabulary per `skill-self-containment-design.md`?
 - [ ] Are all code fences language-tagged?
+- [ ] Is every runnable script invocation in its own ` ```bash ` block (not inline), and does a
+  skill name its own `scripts/`/`references/` via `${CLAUDE_SKILL_DIR}` (verbose
+  `${CLAUDE_PLUGIN_ROOT}/skills/<self>/` only for cross-skill / framework / workdir-deployed paths)?
 - [ ] Are SKILL.md H2 headings the canonical field titles (not `## 1.`-numbered), and are
   Workflow steps `### Step N: <Title>` headings (orchestrator exempt — descriptive block
   headings, no Step numbering)?

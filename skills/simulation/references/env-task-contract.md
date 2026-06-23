@@ -29,8 +29,12 @@ tool (no Level-2 dispatch).
 ## Work
 
 1. **Bootstrap + scaffold**:
-   `bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_simulation.sh --module {module} --workdir {workdir} [--top <TOP>] --plan scaffold-specification.json`
-   → deploys infrastructure + scaffold to `{workdir}`, including functional sequence placeholders. All
+
+   ```bash
+   bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_simulation.sh --module {module} --workdir {workdir} [--top <TOP>] --plan scaffold-specification.json
+   ```
+
+   Deploys infrastructure + scaffold to `{workdir}`, including functional sequence placeholders. All
    subsequent `make` targets run with `cd {workdir}`.
 2. **Fill scaffold TODOs** (bound by **Rule A**, see `repair-boundaries.md`): inside `{workdir}`, fill
    in every `TODO(` across driver / monitor / checker / RM / functional seq / top. References are
@@ -60,7 +64,11 @@ tool (no Level-2 dispatch).
    `failure_phase=compile|smoke`. See `uvm-rules.md` for the UVM coding rules the filled scaffold must
    obey.
 4. **Env-exit completeness self-gate (thin-D1)**: before reporting `STATUS: DONE`, run
-   `python3 ${CLAUDE_SKILL_DIR}/scripts/validate_sim_exit.py --workdir {workdir} --scaffold scaffold-specification.json --thin-only`.
+
+   ```bash
+   python3 ${CLAUDE_SKILL_DIR}/scripts/validate_sim_exit.py --workdir {workdir} --scaffold scaffold-specification.json --thin-only
+   ```
+
    This is a **presence** gate: it fails (non-zero) if any required scaffold SV file is missing
    or any `TODO` marker survives in `tb/uvm/**`. While the scaffold-repair budget remains and the
    gate fails, **keep filling** the residual TODOs/files and re-run it. Only report `STATUS: DONE`

@@ -76,7 +76,11 @@ When `{orchestrator_context_path}` is injected, Read that sibling file first as 
 
 ### Step 2: Bootstrap (first-run only)
 
-`bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_synthesis.sh --module {module} --workdir {workdir} [--top <TOP>]`. Deploys the templates into `{workdir}`, generates `scripts/rtl_load.tcl` + `scripts/config.tcl`, and seeds `constraints.sdc`; aborts when `{workdir}` is already deployed. Mechanics — placeholder substitution, SDC source-of-truth, `+incdir+` handling, `LIB_DB`, `--top` inference — are documented once in `references/makefile-bootstrap.md`.
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_synthesis.sh --module {module} --workdir {workdir} [--top <TOP>]
+```
+
+Deploys the templates into `{workdir}`, generates `scripts/rtl_load.tcl` + `scripts/config.tcl`, and seeds `constraints.sdc`; aborts when `{workdir}` is already deployed. Mechanics — placeholder substitution, SDC source-of-truth, `+incdir+` handling, `LIB_DB`, `--top` inference — are documented once in `references/makefile-bootstrap.md`.
 
 ### Step 3: Fill in `LIB_DB`
 
@@ -104,7 +108,13 @@ Extract the violated paths from `reports/timing_setup.rpt`, keeping each path's 
 
 Run the parser; do not extract or compare by hand:
 - Read `ppa_targets` from the prompt context (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream, never here).
-- Run `python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis_rpt_parser.py --reports-dir {workdir}/reports --out {workdir}/ppa-actual.json`, adding `--area-target <v>` / `--slack-target <v>` for whichever dims `ppa_targets` carries (omit a flag when its dim is absent; a no-targets run is a vacuous pass). The parser extracts total cell area and the worst setup slack (the `min` of `Critical Path Slack` across **all** clock-group blocks — not the first listed) and judges the gate (`area_um2`: `actual <= target`; `timing_slack_ns`: `actual >= target`).
+- Run (adding `--area-target <v>` / `--slack-target <v>` for whichever dims `ppa_targets` carries — omit a flag when its dim is absent; a no-targets run is a vacuous pass):
+
+  ```bash
+  python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis_rpt_parser.py --reports-dir {workdir}/reports --out {workdir}/ppa-actual.json
+  ```
+
+  The parser extracts total cell area and the worst setup slack (the `min` of `Critical Path Slack` across **all** clock-group blocks — not the first listed) and judges the gate (`area_um2`: `actual <= target`; `timing_slack_ns`: `actual >= target`).
 - **On exit 0**, read `{workdir}/ppa-actual.json` and fold it in: `ppa_actual` → `stage_specific.ppa_actual`, `violations` → `stage_specific.violations`, `verdict` → `status`. A `verdict="fail"` → `status=fail`, `failure_kind="ppa"`, plus a one-line `fail_reason` (e.g. `"PPA target(s) not met"`).
 - **On a non-zero exit**, the parser is authoritative — never infer pass from the netlist's presence. Read its `FAIL=` token and write `status=fail`, `failure_kind="tooling"`, the matching `fail_reason` (`FAIL=missing` → `"synthesis report missing"`; `FAIL=unparseable` → `"synthesis report unparseable"`), then exit. Do not read `ppa-actual.json` on a non-zero exit (it is written only on exit 0).
 

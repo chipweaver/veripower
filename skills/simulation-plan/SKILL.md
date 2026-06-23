@@ -134,11 +134,29 @@ Per `references/spec-input-contract.md`, validate the required columns of `desig
 
 Branch scope: **first-run** fully generates both artifacts; **trigger-driven rework** / **incremental-update** amend only the sections targeted by the violation-type targeting table in Decision Rules / specification diff, with unaffected parts — and their testpoint IDs / sequence names / `sequence_ref` — preserved verbatim as stable anchors; **session-resume** reuses the `{workdir}` residue and fills only the missing parts.
 
-- Derive plan-data (run on every branch): `python3 ${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/scripts/derive_plan_data.py --workdir <spec-workdir>` → `{workdir}/plan-data.json`. It reads `manifest.json` + `design.md` + each `<child>.md §5`; cheap, deterministic, idempotent.
+- Derive plan-data (run on every branch):
+
+  ```bash
+  python3 ${CLAUDE_SKILL_DIR}/scripts/derive_plan_data.py --workdir <spec-workdir>
+  ```
+
+  Writes `{workdir}/plan-data.json`; reads `manifest.json` + `design.md` + each `<child>.md §5`; cheap, deterministic, idempotent.
 - Author the judgment fields into `scaffold-specification.json` (`agents` `{name, mode, interface_groups}`, `sequences`, `tests`, `rm`, `scoreboard`, `testpoints` `{id, bins, intent, covers}`, `skipped_checks`) and write `verification-plan.md` per the section outline. Author interface-group NAMES only (design.md §1.4.1); never hand-write signals, `primary_clock`/`reset`, or `inlined_check_hints[]`.
-- **Materialize (deterministic):** `python3 ${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/scripts/materialize_scaffold.py --plan-data {workdir}/plan-data.json --scaffold {workdir}/scaffold-specification.json`. Fills agent `interface.signals` (all group signals; clk/rst kept) + `transaction.fields` (clk/rst excluded via §1.4.1 Role), `primary_clock` (§1.6 Relationship=primary), `reset` (§1.4.1 Role=reset), and `inlined_check_hints[]` (from `covers[]`). On non-zero exit, read stderr for the exact cause (unknown/empty/duplicate `interface_group`, empty Role, no primary clock / reset, unknown `covers[]` check_id, non-numeric width), fix the scaffold or design.md §1.4.1/§1.6, and re-run.
+- **Materialize (deterministic):**
+
+  ```bash
+  python3 ${CLAUDE_SKILL_DIR}/scripts/materialize_scaffold.py --plan-data {workdir}/plan-data.json --scaffold {workdir}/scaffold-specification.json
+  ```
+
+  Fills agent `interface.signals` (all group signals; clk/rst kept) + `transaction.fields` (clk/rst excluded via §1.4.1 Role), `primary_clock` (§1.6 Relationship=primary), `reset` (§1.4.1 Role=reset), and `inlined_check_hints[]` (from `covers[]`). On non-zero exit, read stderr for the exact cause (unknown/empty/duplicate `interface_group`, empty Role, no primary clock / reset, unknown `covers[]` check_id, non-numeric width), fix the scaffold or design.md §1.4.1/§1.6, and re-run.
 - Power scenarios: load `references/power-scenarios-template.md`, materialize, write into both `verification-plan.md` §4 and `scaffold-specification.json.power_scenarios`.
-- **Validate (gate):** `python3 ${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/scripts/validate_scaffold.py --scaffold {workdir}/scaffold-specification.json --plan-data {workdir}/plan-data.json`. Structural + semantic + coverage-matrix (every check_id covered-or-skipped; every `covers[]` resolves). Fix and re-run on non-zero exit. Runs on every branch.
+- **Validate (gate):**
+
+  ```bash
+  python3 ${CLAUDE_SKILL_DIR}/scripts/validate_scaffold.py --scaffold {workdir}/scaffold-specification.json --plan-data {workdir}/plan-data.json
+  ```
+
+  Structural + semantic + coverage-matrix (every check_id covered-or-skipped; every `covers[]` resolves). Fix and re-run on non-zero exit. Runs on every branch.
 - **Cross-stage contract:** every `power_scenarios[].sequence_ref` MUST appear in `sequences[].name` (`sequence_ref` is a reference into `sequences[]`, not an independent namespace — an unregistered ref has no backing sequence to materialize into an SV class, so the downstream power-scenario emit cannot resolve it and fails closed). When a power scenario needs independent stimulus (typical: clock-off / sustained idle / DVFS switching), first add a new entry to `sequences[]` (with `name` + `agent`), then have `power_scenarios[].sequence_ref` reference that `name`. See the final section "sequence_ref naming rules and sequences[] sync" in `references/power-scenarios-template.md`.
 
 ### Step 4: Plan-adequacy review (self-dispatched Level-1 reviewer) — gating
@@ -160,9 +178,13 @@ Dispatch → reap on wake. Aggregate into `{workdir}/plan-review.json` (schema
 - `verdict="concerns"` iff any finding with `lens ≠ unavailable`; `has_critical` iff any
   `severity=critical`.
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/scripts/validate_plan_review.py
-{workdir}/plan-review.json` (non-zero exit → re-assemble the JSON and re-run; main-thread fix,
-NOT re-dispatch). On exit 0 it prints
+Run:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/validate_plan_review.py {workdir}/plan-review.json
+```
+
+Non-zero exit → re-assemble the JSON and re-run (main-thread fix, NOT re-dispatch). On exit 0 it prints
 `{"gate":"trip"|"clear","flagged":[{tp_id,lens,severity}…],"must_ack":[{tp_id,severity}…]}` (the
 script-owned `lens × severity` reduction: coverage at critical/important blocks; adequacy is
 advisory must-acknowledge; unavailable never blocks). Write `stage_specific.plan_adequacy_gate`
