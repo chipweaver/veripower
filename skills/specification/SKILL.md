@@ -172,7 +172,8 @@ and writes `coverage.json` (sub-blocks: `brainstorm_coverage` / `frontmatter_sub
 rework sub-Task by category, then re-runs the script, looping until clean:
 - `gaps` / `orphans`; `structure` §1.3/§1.5 columns; period (R-B); Clock-Domain (R-F);
   `structure.purity_violations` (top-integration child not pure / mis-covered);
-  `structure.interconnect_violations` (§1.4.2 Width / Clock Domain incomplete) →
+  `structure.interconnect_violations` (§1.4.2 Width / Clock Domain incomplete);
+  `structure.top_io_driver_violations` (§1.4.1 output Owner missing / not a child / not listed by the owner) →
   wave-1 rework (re-partition the manifest; `design.md` overview tables).
 - `token_survival`; `frontmatter_subset`; `self_containment`; child §5 columns; feature
   coverage (R-C) → the affected wave-2 child rework.
