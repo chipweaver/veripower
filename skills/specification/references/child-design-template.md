@@ -24,7 +24,7 @@ features:                          # required (may be empty)
 
 ## §2 Interface
 
-Detailed port table (covers frontmatter `ports` with detailed signal direction / width / clock domain / protocol / timing semantics). Child-internal-only boundary ports (test-mode strobe / debug tap / internal handshake) appear here too but are NOT in frontmatter `ports`. For an inter-module port (a §1.4.2 wire), its width and clock domain MUST match the §1.4.2 row verbatim — §1.4.2 is the single source of truth; do not introduce a divergent value here. A top-IO **output** is owned by exactly one child (listed in that child's frontmatter `ports`); a leaf child passed through the pure top is preferred.
+Detailed port table (covers frontmatter `ports` with detailed signal direction / width / clock domain / protocol / timing semantics). Child-internal-only boundary ports (test-mode strobe / debug tap / internal handshake) appear here too but are NOT in frontmatter `ports`. For an inter-module port (a §1.4.2 wire), its width and clock domain MUST match the §1.4.2 row verbatim — §1.4.2 is the single source of truth; do not introduce a divergent value here. A top-IO **output** is owned by exactly one child (listed in that child's frontmatter `ports`); a leaf child passed through the pure top is preferred. For a control/status inter-module port, its **Encoding** (bit/field→symbol meaning + per-code consumer obligation) MUST match the §1.4.x row verbatim — the §1.4.x row is the single source; restate, do not introduce a divergent decode here.
 
 ## §3 Internal Behavior
 

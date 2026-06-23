@@ -56,15 +56,24 @@ The columns of the table below must satisfy the "minimum field completeness" req
 
 #### 1.4.1 Top-Level IO
 
-| Signal | Direction | Owner | Width | Clock Domain | Interface Group | Protocol | Role | ResetPolarity | ResetKind |
-|--------|-----------|-------|-------|--------------|-----------------|----------|------|---------------|-----------|
-| clk    | input  | - | 1 | clk | clk     | -    | clock | -  | -     |
-| rst_n  | input  | - | 1 | clk | reset   | -    | reset | 0  | async |
-| cfg_addr | input | - | 8 | clk | cfg_bus | APB3 | data  | -  | -     |
+| Signal | Direction | Owner | Width | Clock Domain | Interface Group | Protocol | Role | Encoding | ResetPolarity | ResetKind |
+|--------|-----------|-------|-------|--------------|-----------------|----------|------|----------|---------------|-----------|
+| clk    | input  | - | 1 | clk | clk     | -    | clock | - | -  | -     |
+| rst_n  | input  | - | 1 | clk | reset   | -    | reset | - | 0  | async |
+| cfg_addr | input | - | 8 | clk | cfg_bus | APB3 | data  | - | -  | -     |
 
 > **Owner** (Output rows — **gated**: present, a manifest child, and that child lists the signal in its frontmatter `ports`): the child that drives this output. **Guidance (not gated):** prefer a **leaf child** that the pure top-integration child passes through to the boundary; an output driven by the top-integration child's own combinational glue (mux / reduction / constant) is discouraged — prefer a dedicated child (e.g. an arbiter). `Owner` = the top-integration child still passes the gate; this preference is a design note, not enforced. Input/inout rows use `-`. The gated part is enforced by `check_coverage.py:structure.top_io_driver_violations`.
 
 > **Role** (required — `derive_constraints.py` reads it): `clock` / `reset` / `data`.
+
+> **Encoding** (required content rule — enforced by the spec-review `conformance` lens, NOT a
+> deterministic gate): a **control or status** signal MUST pin its bit/field→symbol meaning here.
+> Single-bit: `0:<meaning>; 1:<meaning>`. Multi-bit: per field `bit[h:l] <name>: <code>:<symbol>; …`,
+> and for a phase/command code write the **consumer obligation**, not just a label
+> (e.g. `3:PV (consumer re-preloads the stationary operand, then streams)`). A raw data / clock /
+> reset signal uses `-` (no encoded value). The single source of truth is this row; a child restates
+> it verbatim, never diverges.
+
 > **ResetPolarity** (reset rows only): `0` = active-low, `1` = active-high.
 > **ResetKind** (reset rows only): `sync` / `async`.
 > Clock and reset ports carry no IO delay; each `data` port gets
@@ -75,11 +84,19 @@ The columns of the table below must satisfy the "minimum field completeness" req
 
 > Fan-out mode (N≥2): authoritative list of all RTL-module-to-RTL-module wires. N=1 modules: this table is empty + a single row with `(none — N=1 module has no inter-module wires)` or omit the table entirely.
 
-| Wire | Producer (RTL module) | Consumer (RTL module) | Width | Clock Domain | Protocol | Timing Constraint | Notes |
-|------|-----------------------|-----------------------|-------|--------------|----------|-------------------|-------|
-| … | … | … | … | … | … | … | … |
+| Wire | Producer (RTL module) | Consumer (RTL module) | Width | Clock Domain | Protocol | Encoding | Timing Constraint | Notes |
+|------|-----------------------|-----------------------|-------|--------------|----------|----------|-------------------|-------|
+| … | … | … | … | … | … | … | … | … |
 
 > **Width** and **Clock Domain** are **gated**: every inter-module wire pins a concrete Width (`-` is not valid) and a Clock Domain that is a §1.6 clock name. (Direction is encoded by Producer/Consumer. ResetPolarity/ResetKind are NOT gated on §1.4.2 — reset is enforced only at constraint generation on §1.4.1 `Role=reset` rows.) A heterogeneous control bundle (fields of differing width, e.g. an old `ctrl_bus`) cannot fill one honest Width row — break it into per-field wires. Enforced by `check_coverage.py:structure.interconnect_violations`.
+
+> **Encoding** (required content rule — enforced by the spec-review `conformance` lens, NOT a
+> deterministic gate): a wire that carries an **encoded control/status value** (a command/phase bus,
+> a status/mode bus) MUST pin its bit/field→symbol meaning here, using the same format and
+> obligation-semantics rule as §1.4.1 `Encoding`. A raw data wire (e.g. an operand/score beat) uses
+> `-`. This row is the single source; producer and consumer children read the same row, so per-wire
+> agreement is structural. (Cross-**bus** consistency — multiple control buses that project one FSM —
+> is NOT pinned here; see the design spec's honest-residual list.)
 
 ### 1.5 Interface Timing Scenarios
 
