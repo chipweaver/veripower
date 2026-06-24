@@ -5,7 +5,7 @@ description: Use when materializing and running a module's UVM TB from an approv
 
 # UVM Simulation
 
-This skill's sole responsibility: orchestrate the UVM verification flow as a thin dispatcher over
+Your sole responsibility: orchestrate the UVM verification flow as a thin dispatcher over
 three sequential sub-Tasks — env-build (bootstrap + fill scaffold + compile + smoke) → a
 deterministic smoke gate → a conformance gate (LLM check-adequacy review; Step 4) →
 verify (regress + coverage iterate + summary). The main thread

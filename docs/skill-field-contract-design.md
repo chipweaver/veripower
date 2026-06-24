@@ -110,9 +110,11 @@ Address the executing agent directly and imperatively. For rules, steps, and gat
 "Run `make synth`"; "Do not modify `Design/rtl-design/`" — with no hedging: use *must* / *never*,
 not *should* / *consider* (Workflow steps follow §3.3 F3). When an actor must be named, name it by
 role: "the main thread" / "the orchestrator" for the dispatching self, "the sub-Task" / "the child"
-for a dispatched agent. The fan-out stage skills name both sides by role throughout, rather than
-the second-person "you" of a single-actor skill, because the load-bearing main-thread vs. sub-Task
-split reads clearer when each side is named. Name a concept once and reuse the term verbatim
+for a dispatched agent. The fan-out stage skills name both sides by role only where the
+main-thread vs. sub-Task split is load-bearing — a step where each side acts and the
+distinction drives the instruction — because naming each side reads clearer there. Elsewhere,
+where a single actor is meant and no such ambiguity exists, address it directly with the
+second-person "you", as a single-actor skill does. Name a concept once and reuse the term verbatim
 (§3.5 F5); no synonyms for the same thing.
 
 ## 4. The 13-field contract

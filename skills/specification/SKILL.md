@@ -5,7 +5,7 @@ description: Use when writing or reviewing design specification (design.md), def
 
 # Requirements and Specification Freeze
 
-This skill's sole responsibility: derive a frozen design source of truth from an approved `asic/{module}/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `coverage.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). It is a thin Level-0 dispatcher (two sub-agent waves + two path-handoff gates); the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
+Your sole responsibility: derive a frozen design source of truth from an approved `asic/{module}/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `coverage.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). It is a thin Level-0 dispatcher (two sub-agent waves + two path-handoff gates); the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
 
 ## When to Use
 
@@ -20,7 +20,7 @@ Boundary of this skill:
 
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
 - **Do not write files outside `{workdir}` and do not read or write other modules' artifacts.** Reading reference material outside `{workdir}` (e.g., plugin-internal templates) is allowed.
-- **Do not decide what happens after this skill completes.** Return control to the caller.
+- **Do not decide what happens after you complete.** Return control to the caller.
 - **No brainstorm here.** This skill consumes a frozen `asic/{module}/brainstorm.md` (produced by the pre-pipeline `brainstorm` skill). It runs two path-handoff gates (partition gate + design.md gate) but holds no document body and drives no D0–D7 dialogue.
 - **Deriving design.md requires an approved `brainstorm.md`.** `asic/{module}/brainstorm.md` must read `Status: approved` (design-flow's entry gate verifies it). A missing/draft brainstorm means the user must run `Skill(veripower:brainstorm)` first.
 - **Constraint correctness** (periods consistent, IO delays / `abstract_port`s present) is generated and self-checked by `derive_constraints.py` — not a human rule.

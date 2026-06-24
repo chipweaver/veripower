@@ -5,7 +5,7 @@ description: Use when generating or evolving the verification plan, scaffold spe
 
 # Verification Planning
 
-This skill's sole responsibility: from `specification`, generate or evolve two artifacts — `verification-plan.md` (human-readable review anchor, with a testpoints section and a power-scenarios section) and `scaffold-specification.json` (machine-read contract, with `agents` / `sequences` / `tests` / `testpoints[]` / `power_scenarios[]`). **Does not read RTL source; does not invoke EDA tools.**
+Your sole responsibility: from `specification`, generate or evolve two artifacts — `verification-plan.md` (human-readable review anchor, with a testpoints section and a power-scenarios section) and `scaffold-specification.json` (machine-read contract, with `agents` / `sequences` / `tests` / `testpoints[]` / `power_scenarios[]`). **Does not read RTL source; does not invoke EDA tools.**
 
 ## When to Use
 
@@ -20,7 +20,7 @@ Boundary of this skill:
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
 - **Dispatch is limited to a single Level-1 plan-adequacy review sub-Task.** No other fan-out; the dispatched sub-Task MUST NOT call the Task tool (Level-2 forbidden — the audit boundary).
 - **Do not read RTL source, do not invoke EDA tools, and do not write `tb/uvm/` / `Makefile` / `vcd/`.** These belong to the TB-materialization stage.
-- **Do not decide what happens after this skill completes.** Return control to the caller.
+- **Do not decide what happens after you complete.** Return control to the caller.
 - **Do not start before `specification/result.json` has `status=pass`.** Confirm precondition before entry.
 - **Do not write `result.json.status=blocked`.** The envelope does not accept this value; any failure must be `status=fail` + `fail_reason`.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
