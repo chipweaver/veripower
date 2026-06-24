@@ -109,12 +109,12 @@ Orchestrator 的三条派发路径：
 
 `veripower:specification`、`veripower:simulation-plan`、`veripower:rtl-design`、`veripower:simulation`——只有这四个阶段不通过 `Task()` 派发，而是由 Orchestrator 以 `Skill()` 在主线程中直接加载。原因很直接：`Task()` 子 Agent 既不能在中途与用户交互，也不能再派发 `Task()`，而这四个阶段各需其中一项能力。
 
-> **契约：** `Task()` 子 Agent 不准再派发 `Task()`——禁止二级派发（审计边界）。因此，需要扇出一级子 Task 的阶段不可能作为 Task 子 Agent 运行；走主线程加载是保有扇出派发权同时又守住这条边界的*唯一*方式。`specification` / `rtl-design` / `simulation` 走主线程是因为需要扇出派发权；`simulation-plan` 走主线程是因为需要多轮用户对话。
+> **契约：** `Task()` 子 Agent 不准再派发 `Task()`——禁止二级派发（审计边界）。因此，需要扇出一级子 Task 的阶段不可能作为 Task 子 Agent 运行；走主线程加载是保有扇出派发权同时又守住这条边界的*唯一*方式。`specification` / `rtl-design` / `simulation` 走主线程是因为需要扇出派发权；`simulation-plan` 走主线程是因为需要多轮用户对话，外加一次一级 plan-adequacy 审查派发（Step 4）。
 
 各阶段触发条件：
 
 - **specification** — 消费已冻结、已批准的 `brainstorm.md`；内含一个扇出派发器（分解 + 围绕分区门的按 child 的 sub-Task 波次），外加三个主线程门控脚本：`derive_child_ports.py`（门前，为分区门提供摘要；不读正文）、`check_coverage.py`（门前，其裁决喂给 design.md 批准门）、`derive_constraints.py`（门后，从已批准的 §1.6 + §1.4.1 表推导完整 SDC/SGDC）。不是因为头脑风暴对话才走主线程——那个对话已前移到流水线外的 `brainstorm` skill。
-- **simulation-plan** — 与用户的多轮计划审查对话（它走主线程的唯一原因）。
+- **simulation-plan** — 与用户的多轮计划审查对话；它还自派发一次一级 plan-adequacy 审查 sub-Task（Step 4 / §6.3.1）。
 - **rtl-design** — 只扇出，无对话：每个 child 派一个一级子 Task（`N = len(manifest.children[])`，含顶层集成 child；不存在 N==1 豁免），末尾再加一个 finalize 子 Task。
 - **simulation** — 只扇出，无对话：两个顺序 sub-Task 波次共享一个阶段 `{workdir}`——`env-child`（bootstrap + 填充 scaffold + 编译 + smoke）→ 确定性主线程 smoke gate → `verify-child`（regress + coverage）。形态最接近 `specification` 的"两波夹一门"；派发类别与 `rtl-design` 一致。
 
@@ -129,7 +129,7 @@ Orchestrator 的三条派发路径：
 | **角色** | **载体** | **职责** | **能力边界** |
 |---|---|---|---|
 | **Orchestrator Agent** | `design-flow` skill，主会话 | 前向派发、返工路由（执行 `route.py` 选出的目标）、收敛判断、升级、用户协作；同时作为 `specification` / `simulation-plan` / `rtl-design` / `simulation` 四个阶段的主线程执行器 | 系统中唯一有权调用 `state.py`、使用 Task 工具、与用户交互的角色 |
-| **主线程 skill** | `veripower:specification`、`veripower:simulation-plan`、`veripower:rtl-design` 或 `veripower:simulation`，由 Orchestrator 通过 `Skill()` 加载 | 在 Orchestrator 线程中自驱动工作：`specification` 跑两波 sub-Task（分解 + 按 child）加主线程脚本和两次路径交接门（D0–D7 对话已前移到流水线外的 `brainstorm` skill）；`simulation-plan` 跑多轮计划审查对话；`rtl-design` 无对话但持有一级扇出派发权（§2.2）；`simulation` 同样无对话且持有一级扇出派发权——两波顺序 sub-Task（env-build → smoke gate → verify，§2.2）。各自写入自己的产物和 `result.json`。 | `simulation-plan` 可跨轮次与用户交互；`specification` 额外在两次路径交接门处交互；`specification` / `rtl-design` / `simulation` 可派发一级 sub-Task（§6.3.1）。其余边界与阶段子 Agent 相同（禁 `state.py`、禁路由）。契约靠 SKILL.md 中的条文纪律约束，不靠工具门控。 |
+| **主线程 skill** | `veripower:specification`、`veripower:simulation-plan`、`veripower:rtl-design` 或 `veripower:simulation`，由 Orchestrator 通过 `Skill()` 加载 | 在 Orchestrator 线程中自驱动工作：`specification` 跑两波 sub-Task（分解 + 按 child）加主线程脚本和两次路径交接门（D0–D7 对话已前移到流水线外的 `brainstorm` skill）；`simulation-plan` 跑多轮计划审查对话并自派发一次一级 plan-adequacy 审查 sub-Task；`rtl-design` 无对话但持有一级扇出派发权（§2.2）；`simulation` 同样无对话且持有一级扇出派发权——两波顺序 sub-Task（env-build → smoke gate → verify，§2.2）。各自写入自己的产物和 `result.json`。 | `simulation-plan` 可跨轮次与用户交互；`specification` 额外在两次路径交接门处交互；`specification` / `rtl-design` / `simulation`（及 `simulation-plan`，限单次审查 sub-Task）可派发一级 sub-Task（§6.3.1）。其余边界与阶段子 Agent 相同（禁 `state.py`、禁路由）。契约靠 SKILL.md 中的条文纪律约束，不靠工具门控。 |
 | **阶段子 Agent** | 五个以 Task 方式派发的阶段 skills（`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis` / `frontend-signoff`），通过 Task 工具派发 | 执行单个阶段：读上游 → 做工作 → 写 `result.json` → 返回 STATUS 行 | 不准调 `state.py`，不准做路由决策（完整 5 条清单见 §6.1） |
 | **调试子 Agent** | `simulation-triage` skill，通过 Task 工具派发 | 对仿真失败做只读根因分析；返回两层 ANALYSIS（路由 JSON 块——`root_cause`/`analysis_state`——加散文分析） | 不修改任何状态——绝不碰 `task.json`、`result.json`、RTL 或测试代码 |
 | **`state.py`** | Python CLI | 状态转换、前置校验、cascade-stale 传播、事件日志追加、上下文收集；尽力而为的异步子 Agent 转录镜像（`cmd_reap` 时的遥测副作用，见 §6.6） | 不含路由逻辑，不做判断 |
@@ -503,14 +503,14 @@ decider 的失败路由（`orchestrate.py` 内 `_handle_failure`）将 `failure_
 
 契约基底与阶段子 Agent 相同——**禁 `state.py`、禁路由、禁 DAG 感知**——额外享有两项权限：
 
-- 可跨轮次与用户交互。`simulation-plan` 跑多轮计划审查循环；`specification` 仅在其两个路径交接批准门处交互（重量级 D0–D7 头脑风暴对话已前移至流水线外的 `brainstorm` skill，§2.2）。`rtl-design` 和 `simulation` 无需对话；各自只因扇出派发权才走 main-thread-loaded（§2.2）。Task 子 Agent 不能与用户交互。
+- 可跨轮次与用户交互。`simulation-plan` 跑多轮计划审查循环；`specification` 仅在其两个路径交接批准门处交互（重量级 D0–D7 头脑风暴对话已前移至流水线外的 `brainstorm` skill，§2.2）。`rtl-design` 和 `simulation` 无需对话；各自只因扇出派发权才走 main-thread-loaded（§2.2）。`simulation-plan` 虽主要因多轮对话而加载，但额外持有一项 scoped 一级审查派发权（Step 4，§6.3.1）。Task 子 Agent 不能与用户交互。
 - 可访问主 Agent 的完整工具集。契约靠 SKILL.md 条文纪律约束，不靠工具门控。
 
 Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|simulation)` 加载这些 skill，而非 `Task()`。每个 skill 退出时 Orchestrator 恰好调一次 `cmd_reap`——中途的对话迭代和阶段内扇出子 Task 是 skill 内部临时状态，从不进事件日志。
 
 #### 6.3.1 扇出派发权限
 
-扇出型主线程 skill（`specification`、`rtl-design`、`simulation`）可通过 `Task(run_in_background=True)` 派发一级子 Task——生产者对每个 child 扇出一个子 Task，`simulation` 派发其 env-build 和 verify 两个波次。子 Task 不准再派发 Task（禁止二级——审计边界，§2.2）。`simulation-plan` 属消费者脚本类，不扇出；其铁律"不准调 Task 工具"不变。
+扇出型主线程 skill（`specification`、`rtl-design`、`simulation`——以及 `simulation-plan`，限单次审查 sub-Task）可通过 `Task(run_in_background=True)` 派发一级子 Task——生产者对每个 child 扇出一个子 Task，`simulation` 派发其 env-build 和 verify 两个波次。子 Task 不准再派发 Task（禁止二级——审计边界，§2.2）。`simulation-plan` 自派发一次一级 plan-adequacy 审查 sub-Task（Step 4）——不是按 child 扇出；该 sub-Task 不准再派发（禁止二级）。其先前消费者脚本类“不准调 Task 工具”的铁律，已被这项 scoped 审查派发权取代。
 
 **子 Task `STATUS: BLOCKED` 例外**：被派发的子 Task 可以以最后一行 `STATUS: BLOCKED <reason>` 结束，这是**框架级信号**，**不同于信封的 `result.json.status=blocked`**（信封 schema 枚举里没有这个值）。派发方主线程 skill 收到 BLOCKED 后，写 `result.json` `status=fail` + `fail_reason` 列出失败的 child；后续返工循环可通过触发驱动的接收侧分析协议只重派发失败的 child。
 

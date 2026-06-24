@@ -39,6 +39,8 @@
             },
             "spec_gate": {
               "type": "object",
+              "additionalProperties": false,
+              "required": ["gate"],
               "properties": {
                 "gate":     {"enum": ["trip", "clear"]},
                 "flagged":  {"type": "array", "items": {

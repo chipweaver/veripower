@@ -99,9 +99,9 @@ pre-pipeline `brainstorm` skill; `design-flow`'s entry gate already verified
 - **Session-resume** (no trigger + this run's `{workdir}` already holds partial wave
   products — `manifest.json` / `design.md`): continue from the last incomplete wave;
   do not rewrite products already on disk; gates re-ask idempotently. **Before continuing
-  to the design.md gate (Step 7), if `stage_specific.spec_gate` is not `clear`-or-all-`waived`
+  to the design.md gate (Step 8), if `stage_specific.spec_gate` is not `clear`-or-all-`waived`
   (e.g. absent / `trip` / written by a wave that predates the latest design.md edit),
-  re-run Step 6.5 (the review wave) first.**
+  re-run Step 7 (the review wave) first.**
 - **First-run** (no trigger + empty `{workdir}`): full two-wave fan-out below.
   **Brainstorm-level rework recovery also lands here** — a fresh run gets an empty
   workdir, so it re-derives in full from the current
@@ -179,9 +179,9 @@ rework sub-Task by category, then re-runs the script, looping until clean:
   coverage (R-C) → the affected wave-2 child rework.
 The main thread holds only the verdict + the routing decision — never a body.
 
-### Step 6.5: Semantic review wave (Layer-2 LLM judge) — gating
+### Step 7: Semantic review wave (Layer-2 LLM judge) — gating
 
-Runs after the coverage gate is clean (Step 6) and before the design.md gate (Step 7), on every
+Runs after the coverage gate is clean (Step 6) and before the design.md gate (Step 8), on every
 finalize that reaches a clean coverage gate (NOT first-run only). Dispatch **N per-child Level-1
 reviewers** (one per `manifest.children[]`) per `references/spec-review-task-contract.md` (paths
 only — the main thread reads no body): each judges its `<child>.md` against its `brainstorm_anchor`
@@ -191,10 +191,9 @@ micro-arch + any other observed cross-interface inconsistency (lens `soundness`)
 separate cross-child reviewer this round, so cross-**bus** phase-fold stays advisory soundness
 (deferred — design §6).
 
-> **Gate semantics invert the rtl/sim template.** The schema/validator structure mirrors
-> `semantic-review`, but a `gate=trip` here does **NOT** write `status=fail` or route out of the
-> stage (as rtl Step 4.4 / sim Step 4 do). It blocks `status=pass` **in place** and surfaces
-> findings into the design.md human review-loop (T2). Do not copy the rtl/sim fail-out wiring.
+> **Gate semantics (block-in-place).** A `gate=trip` here does **NOT** write `status=fail` and
+> does **NOT** route out of the stage: it blocks `status=pass` **in place** and surfaces findings
+> into the design.md human review-loop (T2). This is a block-in-place gate, never a fail-out verdict.
 
 Dispatch → reap on wake. Aggregate into `{workdir}/spec-review.json` (schema
 `references/spec-review.schema.json`), **stamping each folded finding with its reporting `child`**
@@ -216,14 +215,14 @@ eye. Write
 `stage_specific.spec_gate` = that parsed verdict object verbatim, and list `spec-review.json` in
 `artifacts[]` (so it promotes to canonical — see Session-resume below).
 
-The verdict feeds Step 7 (**T2** — block into the human gate; this stage never auto-fixes design.md).
+The verdict feeds Step 8 (**T2** — block into the human gate; this stage never auto-fixes design.md).
 `waived[]` is appended by the main thread on a human waiver and is NOT part of the verbatim `spec_gate` copy.
-- **`gate=clear`** → carry the `must_ack` list into Step 7, **deduped**: surface a soundness item
+- **`gate=clear`** → carry the `must_ack` list into Step 8, **deduped**: surface a soundness item
   only if NEW or CHANGED vs the prior promoted `spec-review.json` wave (match by `child`+`summary`);
   an unchanged advisory item was already acknowledged and is not re-surfaced (anti rubber-stamp).
 - **`gate=trip`** → the `flagged` items MUST be resolved before pass. Carry them into Step 7. For
   each, the operator either:
-  - **fixes it** → directs a rework sub-Task (body off the main thread, as a Step-7 reject), then
+  - **fixes it** → directs a rework sub-Task (body off the main thread, as a Step-8 reject), then
     re-run Step 6 (coverage) + this step; or
   - **waives it (human waiver)** → records `{child, lens, location, classification ∈
     {false-positive, accepted-risk}, reason}` into `spec_gate.waived[]`. **The `reason` is
@@ -233,24 +232,24 @@ The verdict feeds Step 7 (**T2** — block into the human gate; this stage never
     downstream stage re-checks spec-vs-brainstorm — this is a terminal accept."
   - **partition-rooted** (defect rooted in the child partition, not a design.md body —
     `manifest.json` is read-only after the partition gate): the design.md-only rework cannot clear
-    it; take the Step-7 reject → `requirements need revision` / fresh run path.
+    it; take the Step-8 reject → `requirements need revision` / fresh run path.
   **The main thread MUST NOT mark `status=pass` while any `flagged` finding is neither cleared nor
   in `waived[]`.**
 - **Review unavailable** (the whole wave is unusable) → write a minimal `spec-review.json` with a
   single `unavailable` finding (the validator reports `gate=clear`; `stage_specific.spec_gate` is
-  written `clear`), and surface "review unavailable" as a **must-acknowledge** item at the Step-7
+  written `clear`), and surface "review unavailable" as a **must-acknowledge** item at the Step-8
   human gate (deduped like other must-ack items) — the user's approval explicitly acknowledges the
   gate did not run. **Do not silently treat it as a clean pass.** (This stops a SILENT disarm, not a
   CHRONIC one — a persistently-unavailable reviewer still passes on approve; the rtl backstop covers
   the spec-faithful subset meanwhile.)
 
-### Step 7: design.md gate (main thread)
+### Step 8: design.md gate (main thread)
 
-Path-handoff: give the user the `design.md` (+ per-child) paths + the `coverage.json` verdict + the `spec-review.json` verdict (`spec_gate.flagged` blocking items + `spec_gate.must_ack` advisory items, deduped to NEW/CHANGED + any `review unavailable` ack item — point to `spec-review.json` for the one-line summaries; **do not echo any body**). A **`spec_gate.gate=trip` is a hard block**: its `flagged` items must each be either resolved (Step 6.5 re-runs to `clear`) or **human-waived** (operator records `spec_gate.waived[]` with a human-authored `classification`+`reason` the main thread prompts for; critical-faithfulness waiver shows the "no downstream re-check — terminal accept" warning) before approval. `must_ack` (and any `unavailable`) items are surfaced and acknowledged by the user's approval. Iterate; reject → route a rework sub-Task (body stays off the main thread; this rework **first clears `spec_gate=clear`** — invalidate-on-rework), then re-run Step 6 + Step 6.5.
+Path-handoff: give the user the `design.md` (+ per-child) paths + the `coverage.json` verdict + the `spec-review.json` verdict (`spec_gate.flagged` blocking items + `spec_gate.must_ack` advisory items, deduped to NEW/CHANGED + any `review unavailable` ack item — point to `spec-review.json` for the one-line summaries; **do not echo any body**). A **`spec_gate.gate=trip` is a hard block**: its `flagged` items must each be either resolved (Step 7 re-runs to `clear`) or **human-waived** (operator records `spec_gate.waived[]` with a human-authored `classification`+`reason` the main thread prompts for; critical-faithfulness waiver shows the "no downstream re-check — terminal accept" warning) before approval. `must_ack` (and any `unavailable`) items are surfaced and acknowledged by the user's approval. Iterate; reject → route a rework sub-Task (body stays off the main thread; this rework **first clears `spec_gate=clear`** — invalidate-on-rework), then re-run Step 6 + Step 7.
 
-**Approve precondition:** the main thread MUST NOT accept the user's approval unless `spec_gate.gate==clear` OR every `flagged` finding is in `spec_gate.waived[]`; if not, re-run Step 6.5 first. (The Step-7 reject→rework edge already clears `spec_gate=clear` per the paragraph above, so a post-clear body edit cannot leave a stale `clear`.)
+**Approve precondition:** the main thread MUST NOT accept the user's approval unless `spec_gate.gate==clear` OR every `flagged` finding is in `spec_gate.waived[]`; if not, re-run Step 7 first. (The Step-8 reject→rework edge already clears `spec_gate=clear` per the paragraph above, so a post-clear body edit cannot leave a stale `clear`.)
 
-### Step 8: Derive constraints (main thread, deterministic) — post-gate
+### Step 9: Derive constraints (main thread, deterministic) — post-gate
 
 After the design.md gate passes, run
 `python3 ${CLAUDE_PLUGIN_ROOT}/skills/specification/scripts/derive_constraints.py {workdir}`.
@@ -262,9 +261,9 @@ the exact defect — act on that, not on the script source), route a
 wave-1 rework sub-Task and re-run; if the defect cannot be resolved that way, write
 `result.json` `status=fail` + `fail_reason="constraint derivation: <table> defect"`.
 
-### Step 9: Finalize result.json (main thread)
+### Step 10: Finalize result.json (main thread)
 
-Set `status` from the main-thread coverage-gate verdict + the design.md gate verdict + the Step-6.5 `spec_gate` verdict (`status=pass` requires `spec_gate.gate==clear` OR every `flagged` finding is in `spec_gate.waived[]`; `spec_gate` was written in Step 6.5).
+Set `status` from the main-thread coverage-gate verdict + the design.md gate verdict + the Step-7 `spec_gate` verdict (`status=pass` requires `spec_gate.gate==clear` OR every `flagged` finding is in `spec_gate.waived[]`; `spec_gate` was written in Step 7).
 `artifacts[]` lists `design.md`, `manifest.json`, `coverage.json`, `spec-review.json`, the N `<child>.md`,
 `constraints/<TOP>.sdc`, `constraints/<TOP>.sgdc` — **NOT `brainstorm.md`** (it lives at
 the module root, outside the run workdir; listing it makes `promote()` fail to find the
@@ -312,7 +311,7 @@ omitted). When `status=fail`, only `stage_specific.fail_reason` is required.
 - **Human:** the design.md review-loop is approved (now including port roles, reset
   polarity, clock relationships); engineering soundness — the semantic "not contradictory"
   judgment the token check cannot catch.
-- **Semantic gate (Step 6.5):** `validate_spec_review.py` reports `spec_gate.gate==clear` (or
+- **Semantic gate (Step 7):** `validate_spec_review.py` reports `spec_gate.gate==clear` (or
   every `flagged` is in `spec_gate.waived[]`, or the whole wave was `unavailable` and acknowledged);
   `stage_specific.spec_gate` written; `spec-review.json` in `artifacts[]`.
 - No Iron Rule or Red Flag was triggered.
@@ -326,7 +325,7 @@ Control returns directly to the caller; the caller decides based on `result.json
 
 This skill's sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, the Workflow's routing branch runs again (session-resume continues from the last incomplete wave; first-run if the workdir is empty). The two path-handoff gates (partition gate + design.md gate) always re-ask idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before this skill runs; this skill never approves or re-approves it.
 
-**Semantic-gate resume-guard:** the Step-6.5 verdict lives in `{workdir}` scratch + the promoted canonical `spec-review.json`; it is not itself a completion marker. The guard is enforced in Step 1's session-resume branch and at Step 7's approve precondition (above), so a mid-wave compaction (or a stale `clear` predating a later design.md edit) cannot yield an unreviewed/unre-reviewed pass.
+**Semantic-gate resume-guard:** the Step-7 verdict lives in `{workdir}` scratch + the promoted canonical `spec-review.json`; it is not itself a completion marker. The guard is enforced in Step 1's session-resume branch and at Step 8's approve precondition (above), so a mid-wave compaction (or a stale `clear` predating a later design.md edit) cannot yield an unreviewed/unre-reviewed pass.
 
 ## Bundled References
 
@@ -334,5 +333,5 @@ This skill's sole on-disk completion signal is `{workdir}/result.json` present w
 - [`references/sdc-template.md`](references/sdc-template.md) — SDC generated-output reference (what `derive_constraints.py` emits).
 - [`references/sgdc-template.md`](references/sgdc-template.md) — SGDC generated-output reference (what `derive_constraints.py` emits).
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema (`schema_version: 1`).
-- [`references/spec-review.schema.json`](references/spec-review.schema.json) — gating Layer-2 semantic-review schema (Step 6.5).
-- [`references/spec-review-task-contract.md`](references/spec-review-task-contract.md) — per-child reviewer sub-Task contract (Step 6.5).
+- [`references/spec-review.schema.json`](references/spec-review.schema.json) — gating Layer-2 semantic-review schema (Step 7).
+- [`references/spec-review-task-contract.md`](references/spec-review-task-contract.md) — per-child reviewer sub-Task contract (Step 7).

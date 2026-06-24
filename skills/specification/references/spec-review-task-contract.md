@@ -1,7 +1,7 @@
 # Spec semantic review sub-Task contract (gating)
 
 The specification main thread dispatches a Level-1 per-child review wave **on every finalize that
-reaches a clean coverage gate** (Step 6.5), AFTER `check_coverage.py` is green and BEFORE the
+reaches a clean coverage gate** (Step 7), AFTER `check_coverage.py` is green and BEFORE the
 design.md approval gate. This review is **gating** (T2): `faithfulness` AND `conformance` findings at
 `severity ∈ {critical, important}` BLOCK the stage from `status=pass` until resolved; `soundness`
 findings are advisory **must-acknowledge** (surfaced to the user, never block). The main thread

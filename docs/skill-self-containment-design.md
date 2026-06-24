@@ -88,12 +88,14 @@ matter rather than a violation:
 
 1. **Router** — `design-flow`. Its output *is* a routing decision; DAG / orchestrator /
    routing vocabulary is what the skill is about.
-2. **Fan-out dispatchers** — `specification`, `rtl-design`, `simulation`. These are
-   main-thread skills that hold Level-1 fan-out sub-Task dispatch authority
+2. **Fan-out dispatchers** — `specification`, `rtl-design`, `simulation`, and `simulation-plan`
+   (scoped). These are main-thread skills that hold Level-1 sub-Task dispatch authority
    (ARCHITECTURE §6.3.1): `specification` runs two sub-Task waves around its partition
-   gate (decompose + per-child), `rtl-design` runs one per-child fan-out wave, and
+   gate (decompose + per-child), `rtl-design` runs one per-child fan-out wave,
    `simulation` runs two sequential waves around its smoke gate (env-build → smoke gate
-   → verify). Because dispatching and reaping their own Level-1 sub-Tasks *is* their
+   → verify), and `simulation-plan` self-dispatches a single Level-1 plan-adequacy review
+   sub-Task at its adequacy gate (one scoped review dispatch, not a per-child fan-out).
+   Because dispatching and reaping their own Level-1 sub-Tasks *is* their
    control flow, `dispatcher` / `orchestrate` / `sub-Task` / `wave` / `Task` vocabulary in
    their `SKILL.md` describes the skill's own operation, not a sibling stage or the DAG.
    The `No state.py` self-restriction these skills state is likewise in-role (it scopes
@@ -107,7 +109,7 @@ dispatcher. Producing a domain artifact (design.md, RTL, reports) does NOT by it
 the carve-out: a fan-out dispatcher both fans out sub-Tasks *and* finalizes an artifact, and
 the dispatch vocabulary that drives the fan-out stays exempt.
 
-The exempt set is closed: `design-flow` + the three fan-out dispatchers above. A new
+The exempt set is closed: `design-flow` + the four fan-out dispatchers above. A new
 dispatcher (router or fan-out) must be explicitly added here, with the §8 atomic discipline,
 before the exemption applies to it.
 
@@ -116,6 +118,7 @@ before the exemption applies to it.
 | ✗ Bad (violation — sibling/DAG narrative) | ✓ Good (in-role — own fan-out control flow) |
 |---|---|
 | *"The orchestrator dispatches this stage, then routes its `result.json` to the downstream consumer."* | *"This skill dispatches one Level-1 sub-Task per child, reaps each, then writes `result.json`."* |
+| *"The review sub-Task writes no `task.json`, appends no events, and does not count against the orchestrator's in-flight bound (§6.3.1 of ARCHITECTURE.md)."* | *"This skill dispatches one Level-1 review sub-Task, reaps it, and folds the result."* |
 
 ## 7. Compliance checklist
 

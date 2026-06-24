@@ -2,7 +2,7 @@
 """Producer self-gate for the (gating) plan-review.json artifact.
 
 The simulation-plan main thread runs this AFTER assembling the fresh reviewer's findings into
-plan-review.json (Step 3.5) and BEFORE the Step-4 user review loop — fix-and-retry (main-thread
+plan-review.json (Step 4) and BEFORE the Step-5 user review loop — fix-and-retry (main-thread
 re-assembly, not re-dispatch) on a non-zero exit. Validates against
 references/plan-review.schema.json (Draft 2020-12), checks verdict<->findings and
 has_critical<->severity consistency, then computes the gate verdict (the mechanical lens x
