@@ -272,7 +272,6 @@ Note: the plan's structured data (`agents` / `sequences` / `tests` / `testpoints
 - [ ] The number of entries in `verification-plan.md` §3 testpoints table matches the length of `scaffold-specification.json.testpoints[]`.
 - [ ] The number of entries in `verification-plan.md` §4 power scenarios matches the length of `scaffold-specification.json.power_scenarios[]`.
 - [ ] `validate_scaffold.py --plan-data` coverage-matrix layer passes: every `check_hints[]` check_id is in some `testpoints[].covers[]` or in `skipped_checks[]`, and every `covers[]` resolves.
-- [ ] **Every `power_scenarios[].sequence_ref` appears in `sequences[].name`** (an unregistered ref has no backing sequence to materialize → the downstream power-scenario emit fails closed; see `references/power-scenarios-template.md`). (schema/script enforced by validate_scaffold.py)
 - [ ] **Plan-adequacy gate (Step 4):** `validate_plan_review.py` reports `plan_adequacy_gate.gate==clear` (or every `flagged` is in `plan_adequacy_gate.waived[]`, or the wave was `unavailable` and acknowledged); `stage_specific.plan_adequacy_gate` written; `plan-review.json` in `artifacts[]`. `status=pass` requires that AND user approval.
 
 ## Return Contract
