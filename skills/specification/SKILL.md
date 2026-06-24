@@ -196,8 +196,8 @@ finalize that reaches a clean coverage gate (NOT first-run only). Dispatch **N p
 reviewers** (one per `manifest.children[]`) per `references/spec-review-task-contract.md` (paths
 only — the main thread reads no body): each judges its `<child>.md` against its `brainstorm_anchor`
 slice (lens `faithfulness`), the conformance of its decode/obligations to the §1.4.x pinned
-Encoding **and the §1.4.2.1 inter-module behavior contract** it consumes/drives — encoding
-decode/adequacy, plus behavior-contract **name-resolution** (≥2 §1.4.2 wires citing the same
+Encoding it consumes/drives **and to the module-level §1.4.2.1 inter-module behavior contract** —
+encoding decode/adequacy, plus behavior-contract **name-resolution** (≥2 §1.4.2 wires citing the same
 phase/sequence name that the §1.4.2.1 companion must then declare) (lens `conformance`) — and the
 soundness of its spec-introduced micro-arch + any other observed cross-interface inconsistency
 (lens `soundness`). There is no separate cross-child reviewer this round, so the **correctness** of
