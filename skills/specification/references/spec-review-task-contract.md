@@ -34,12 +34,25 @@ Read the `<child>.md` against its `brainstorm_anchor` intent and against `design
   decode/obligation that contradicts a well-formed row, is `conformance` (block). NOTE: there is no
   deterministic encoding gate — judging adequacy IS your job here (do not assume a mechanical check
   caught it).
+  Additionally, **name-resolution** for an inter-module behavior contract: when **two or more §1.4.2
+  wires reference the same named phase / sequence** (in their `Timing Constraint` cells or control-bus
+  `Encoding` symbols) but that name is **not declared in the §1.4.2.1 companion** — including the case
+  where such named references exist yet there is no companion at all — the references do not resolve,
+  and that is a `conformance` finding (block). The conformance block line is **encoding decode/adequacy
+  + name-resolution only** — both objective. Two things are NOT conformance (report as `soundness`
+  advisory, never block): (a) whether this module *ought* to have a joint contract it never referenced
+  (a pure judgment, like deciding what counts as control/status); (b) whether the stated
+  co-assertions / relative offsets / mutual-exclusion are *correct*, or whether a coarse symbol
+  resolves to several companion phases (ambiguous projection — the reference resolves, but not to one).
 - **`soundness`** (advisory must-acknowledge) — is the child's spec-introduced micro-architecture
   (timing assumptions, state-machine / datapath choices) logically self-consistent and able to
   realize the required behavior? (NO upstream reference — pure design judgment). **Also report here**
-  any cross-interface inconsistency that is NOT a single-row encoding conformance issue — in
-  particular **cross-bus** phase-fold concerns (two control buses projecting one FSM, which you
-  cannot fully verify from one child) — advisory, since no per-child reviewer can confirm them.
+  any cross-interface inconsistency that is NOT a `conformance` issue (not an encoding decode/adequacy
+  defect, not a behavior-contract name-resolution failure — those block above). In particular the
+  **correctness** of a cross-bus behavior contract — whether co-assertions / relative offsets /
+  mutual-exclusion are right, whether a **coarse control-bus symbol resolves to several companion
+  phases (ambiguous projection)**, and any cross-**bus** phase-fold you cannot fully verify from one
+  child — is advisory soundness; downstream RTL semantic-review / simulation is the backstop.
 
 ### Out of scope (do NOT report as faithfulness)
 - **Width / Clock-Domain / Owner mechanical defects** — these are the deterministic §1.4.x coverage
