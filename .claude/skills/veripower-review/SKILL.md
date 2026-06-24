@@ -1,6 +1,7 @@
 ---
 name: veripower-review
 description: Use when reviewing your own VeriPower change (a commit or working-tree diff) or a named part of the current VeriPower codebase against VeriPower's own accumulated design discipline; advisory and read-only. Not for reviewing a user's chip design and not a pipeline stage.
+disable-model-invocation: true
 ---
 
 # VeriPower Conformance Review
