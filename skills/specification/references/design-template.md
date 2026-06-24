@@ -96,7 +96,47 @@ The columns of the table below must satisfy the "minimum field completeness" req
 > obligation-semantics rule as §1.4.1 `Encoding`. A raw data wire (e.g. an operand/score beat) uses
 > `-`. This row is the single source; producer and consumer children read the same row, so per-wire
 > agreement is structural. (Cross-**bus** consistency — multiple control buses that project one FSM —
-> is NOT pinned here; see the design spec's honest-residual list.)
+> is not pinned *in this row*; its joint contract is stated in the §1.4.2.1 Inter-module Behavior
+> Contract companion below.)
+
+> **Inter-module Behavior Contract** (required content rule — enforced by the spec-review
+> `conformance` lens, NOT a deterministic gate): when a *group* of inter-module wires is governed by
+> a contract that **more than one wire / child must jointly agree on** — a shared operating-phase or
+> event timeline, a sequencing, a co-assertion or mutual-exclusion among control strobes — that joint
+> contract MUST be stated **once** as a shared artifact in the `##### 1.4.2.1 Inter-module Behavior
+> Contract` companion below, NOT left implicit in one child's body (where sibling children and their
+> per-child reviewers cannot see it). A behavior fully captured by a single wire's own row (a plain
+> valid/ready handshake, a single-clock latency) needs no companion. The form adapts to the module: a
+> phase-sequenced datapath states an ordered operating-phase table; a handshake/arbitration module
+> states the co-assertion / mutual-exclusion rule in prose. Per-wire `Timing Constraint` cells and
+> control-bus `Encoding` symbols then reference the names declared in the companion. This pins the
+> *statement* of the contract and the *resolvability* of references to it; the *correctness* of the
+> co-assertions / relative offsets / mutual-exclusion is design judgment — advisory soundness +
+> downstream RTL/sim, not pinned here.
+
+##### 1.4.2.1 Inter-module Behavior Contract
+
+Present **only** when §1.4.2 wires share a joint contract (see the Inter-module Behavior Contract
+rule above); omit entirely otherwise. Place it here, **after** the §1.4.2 wire table and its column
+notes, so the deterministic §1.4.2 interconnect parse (first-table-only) is unaffected.
+
+Worked example A — a **phase-sequenced datapath** states an ordered operating-phase timeline;
+control buses project onto it (each `Encoding` symbol names its canonical phase(s)) and per-wire
+`Timing Constraint` windows reference these phase names:
+
+| # | Phase | Cycles | Notes (projection / co-assertion / boundary, as applicable) |
+|---|-------|--------|-------------------------------------------------------------|
+| 1 | LOAD    | 12 (handshake) | ctrl_phase=LOAD |
+| 2 | PRELOAD | 2N−1           | ctrl_fabric=PRELOAD |
+| … | …       | …              | … |
+
+Worked example B — a **handshake / arbitration** module states the joint contract in prose (no
+phase table). E.g. a TX/RX start mux:
+
+> `start_tx_fifo` and `start_rx_fifo` are mutually exclusive (never both high). The master-bus
+> outputs route to the TX variables when `start_tx_fifo` is high, to the RX variables when
+> `start_rx_fifo` is high, else to `0`. Consumers of the muxed bus rely on this exclusion to decode
+> the source.
 
 ### 1.5 Interface Timing Scenarios
 
