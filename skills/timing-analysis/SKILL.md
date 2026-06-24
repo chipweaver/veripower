@@ -22,7 +22,7 @@ This skill's sole responsibility: run independent PrimeTime STA on the post-synt
 - If synthesis products (netlist / SDC) do not exist, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"`; do not bypass.
 - `timing-report.txt` MUST be written to disk; claiming STA complete without it is not allowed.
 - Classify on the report's `(VIOLATED)` / `(MET)` marker — never on the displayed slack number (a sub-rounding violation prints `0.00`). The parser owns this; do not hand-classify.
-- Scripts are black boxes — never Read their source. Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
+- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 
@@ -95,7 +95,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/timing_rpt_parser.py --report {workdir}/timi
 - `failure_kind="tooling"`: PT ran but errored, or the report was missing/unparseable (parser exit 1/3).
 - `failure_kind="ppa"`: PT ran to completion but setup/hold not met — `timing{}` + `violations[]` carry the numbers.
 
-**Workflow rationale — single linear flow.** This stage is a read-only re-verifier — it cannot modify the synthesis netlist/SDC or apply any fix, so every run does identical work and there is no first-run / incremental / re-run fork to branch on. Step 1 is a linear pre-flight check, not a branch; each run uses a fresh `{workdir}` (Step 2 aborts if one is already deployed). For why this stage carries no branch fork (and receives no `{rework_trigger}`), see the carve-out in `docs/skill-branch-routing-design.md` §6.6.
+**Workflow rationale — single linear flow.** This stage is a read-only re-verifier — it cannot modify the synthesis netlist/SDC or apply any fix, so every run does identical work and there is no first-run / incremental / re-run fork to branch on. Step 1 is a linear pre-flight check, not a branch; each run uses a fresh `{workdir}` (Step 2 aborts if one is already deployed). This stage therefore carries no branch fork and receives no `{rework_trigger}`.
 
 ## Red Flags
 

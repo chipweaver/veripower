@@ -23,7 +23,7 @@ result.json contract (write to {workdir}/result.json):
 Reporting:
 - End your response with one of:
     STATUS: DONE              — work complete; result.json written in {workdir}
-    STATUS: BLOCKED <reason>  — cannot complete; orchestrator will route accordingly
+    STATUS: BLOCKED <reason>  — only when a program exception prevented writing result.json (never a logic decision)
 
 Note: workdir is relative to the working tree root (containing asic/).
 Set cwd accordingly or resolve paths from the tree root.

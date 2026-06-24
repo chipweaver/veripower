@@ -22,7 +22,7 @@ This skill's sole responsibility: run Design Compiler synthesis against the RTL 
 - Do not start synthesis when `Design/lint-cdc/result.json.status≠pass` — write `status=fail` + `fail_reason="external reference not pass: Design/lint-cdc/result.json"` and exit.
 - Do not claim synthesis is complete when the DC license is missing — without a license, write `status=fail` + `fail_reason="DC license missing"`.
 - Do not claim synthesis is complete when the netlist (`out/<TOP>_syn.v`) does not exist — the netlist must land on disk.
-- Scripts are black boxes — never Read their source. Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
+- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 

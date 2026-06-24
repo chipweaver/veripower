@@ -22,7 +22,7 @@ This skill's sole responsibility: run VCS gate-level simulation against the post
 - `ptpx.tcl` locks `power_analysis_mode averaged` + `read_saif`; the 0% Annotated cell percentage gate MUST be preserved: PT-PX triggers `exit 1` when 0% annotation is detected at the end of the batch (contract violation — silently passing on 0% annotation is equivalent to power-data corruption).
 - On failure, `failures[].{phase, category, error_summary}` MUST be filled in (contract violation — missing categorization makes the root cause unidentifiable).
 - `hier_separator` MUST be explicitly set to `"/"` at the top of `ptpx.tcl`: write both `catch {set_app_var hier_separator "/"}` + `set hier_separator "/"` — PT M-2016 treats this as a Tcl global (`set_app_var` reports CMD-104), while newer PT treats it as an application var; the default dot-separated value causes `strip_path` to silently mismatch (contract violation — power hierarchy paths become unresolvable).
-- Scripts are black boxes — never Read their source. Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
+- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 

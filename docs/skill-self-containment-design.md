@@ -134,7 +134,7 @@ before the exemption applies to it.
 - [ ] Every remaining hit resolves to the §4 protocol-identifier carve-out (filename or
   variable-name occurrence), OR is rewritten per §5
 - [ ] If the skill is `design-flow` (router) or one of the fan-out dispatchers
-  (`specification`, `rtl-design`, `simulation`), the §6.1 exemption covers vocabulary that
+  (`specification`, `rtl-design`, `simulation`, `simulation-plan`), the §6.1 exemption covers vocabulary that
   describes its own routing / intra-stage fan-out; only sibling-stage or DAG-position
   narrative (who calls it, what consumes its outputs, how failures route) still counts as a
   violation

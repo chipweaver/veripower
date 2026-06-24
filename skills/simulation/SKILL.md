@@ -33,7 +33,7 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
   authority). Shared by both sub-Tasks.
 - Do not start if `Verification/simulation-plan/result.json` is not `status=pass` — the orchestrator
   confirms this prerequisite in Step 1 before any dispatch.
-- Scripts are black boxes — never Read their source. Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
+- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 
