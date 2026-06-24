@@ -14,6 +14,9 @@ asic/
 # Brainstorm specs + implementation plans stay uncommitted by convention
 docs/superpowers/
 
+# Defect retrospectives are point-in-time working notes kept out of VCS
+docs/retrospective/
+
 # Local test outputs
 tests/scenarios/results/
 
