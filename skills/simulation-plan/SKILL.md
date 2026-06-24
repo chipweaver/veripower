@@ -267,7 +267,6 @@ Note: the plan's structured data (`agents` / `sequences` / `tests` / `testpoints
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] **The user has approved the review loop** (dialogue form — `status=pass` only after approval; `verification-plan.md` carries frontmatter `Status: approved`).
 - [ ] `verification-plan.md` contains §1–§4 (first-run must include §1 / §2 / §3 / §4; trigger-driven revision / incremental update adds §5 when a real diff is present).
-- [ ] `scaffold-specification.json` contains the 5 array fields `agents` / `sequences` / `tests` / `testpoints` / `power_scenarios`. (schema/script enforced by validate_scaffold.py)
 - [ ] Every `agents[]` entry declares a non-empty `interface_groups` array, and `materialize_scaffold.py` ran successfully (each agent now carries a non-empty `interface.signals`). `materialize_scaffold.py` + `validate_scaffold.py --plan-data` fail loud here on an empty/underivable interface; sim-plan's own gate is authoritative — the scaffold contract is fully validated here.
 - [ ] `scaffold-specification.json` contains the two single-object fields `primary_clock` (`dut_port_name` + `period_ns`) and `reset` (`dut_port_name`) (required; populated by materialize_scaffold.py — a non-zero materialize exit in Step 3 is the fail path).
 - [ ] The number of entries in `verification-plan.md` §3 testpoints table matches the length of `scaffold-specification.json.testpoints[]`.
