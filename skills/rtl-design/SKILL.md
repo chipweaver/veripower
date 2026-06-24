@@ -277,8 +277,7 @@ e.g. `over-engineering`), add `⚠ <child> critical <category> finding — recom
 downstream`.
 
 rtl-design failures route by fix-locus. **(1) Upstream / architecture / intent** (`validate_rtl_exit`
-topology, `<child>.md §2` incomplete, PPA, `build_*` unexpected error, or any semantic-gate trip —
-`category ∈ {missing, wrong-behavior}` at `critical`/`important`) → `status=fail` + a locus-tagged
+topology, `<child>.md §2` incomplete, PPA, `build_*` unexpected error, or any semantic-gate trip) → `status=fail` + a locus-tagged
 `fail_reason`; **no internal loop, operator-driven** (the main thread stays a pure dispatcher and does not
 self-loop). The semantic trip's `fail_reason` names where the fix lands via `fix_locus`: `spec` = a
 `design.md` contradiction the child cannot self-fix (left for operator-driven correction); `rtl` = the
