@@ -15,7 +15,8 @@ sub-Task MUST NOT call the Task tool.
 - `asic/{module}/brainstorm.md`, read-scope = the child's `manifest.children[<self>].brainstorm_anchor`
   slice — the frozen statement of *intent* to check faithfulness against.
 - `design.md` path, read-scope §1.4 only (top IO / interconnects, **including the §1.4.x Encoding
-  column**), as both integration context and the conformance reference frame.
+  column and the §1.4.2.1 Inter-module Behavior Contract companion when present**), as both
+  integration context and the conformance reference frame.
 
 ### Your job: skeptical intent review of the SPEC (NOT RTL / lint / PPA)
 You are a fresh reviewer. **Do not trust that the spec is correct because it is written.**
