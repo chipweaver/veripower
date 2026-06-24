@@ -33,7 +33,7 @@ This skill's sole responsibility: run independent PrimeTime STA on the post-synt
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
 
-This stage never receives a `{rework_trigger}` injection (it is not itself a valid fix target); only `{workdir}` / `{module}` are delivered. (See the Workflow rationale.)
+Only `{workdir}` / `{module}` are delivered. (See the Workflow rationale.)
 
 ### External reference inputs
 
