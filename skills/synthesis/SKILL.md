@@ -148,7 +148,7 @@ Run the parser; do not extract or compare by hand:
 - [ ] `{workdir}/result.json` has been written and passes schema validation.
 - [ ] Every artifact path is listed in `result.json.artifacts[]`.
 - [ ] No Iron Rule or Red Flag was triggered.
-- [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept blocked); on `fail`, `stage_specific.{fail_reason, failure_kind}` are required (`failure_kind ∈ {infra, tooling, ppa}`).
+- [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept blocked); on `fail`, `stage_specific.{fail_reason, failure_kind}` are required.
 - [ ] The PPA gate ran via `synthesis_rpt_parser.py`: on `status=pass` / `failure_kind="ppa"`, its `ppa-actual.json` (exit 0) was folded into `stage_specific.ppa_actual` / `violations[]`; on a non-zero parser exit, `failure_kind="tooling"` + matching `fail_reason`; on `failure_kind ∈ {infra, tooling}`, only `fail_reason` + `failure_kind` are needed.
 - [ ] `scripts/rtl_load.tcl` matches `Design/rtl-design/filelist.txt`.
 - [ ] `create_generated_clock` covers every generated clock in the RTL (or the SDC remarks in `Design/rtl-design/README.md` confirm there are none).
