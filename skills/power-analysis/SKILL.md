@@ -5,7 +5,7 @@ description: Use when running gate-level power simulation + PT-PX averaged power
 
 # Power Analysis
 
-This skill's sole responsibility: run VCS gate-level simulation against the post-synthesis netlist trio and the UVM TB infrastructure to produce SAIF, then run PrimeTime PX in averaged mode over each SAIF to compute `power_mw`; self-judge the `power_mw` PPA dimension.
+Your sole responsibility: run VCS gate-level simulation against the post-synthesis netlist trio and the UVM TB infrastructure to produce SAIF, then run PrimeTime PX in averaged mode over each SAIF to compute `power_mw`; self-judge the `power_mw` PPA dimension.
 
 ## When to Use
 

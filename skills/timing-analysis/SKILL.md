@@ -5,7 +5,7 @@ description: Use when running static timing analysis on synthesis netlist, analy
 
 # Static Timing Analysis
 
-This skill's sole responsibility: run independent PrimeTime STA on the post-synthesis netlist, classify setup / hold path-level violations, and self-judge the `timing_setup` / `timing_hold` dimensions via `timing_rpt_parser.py` — never by eye.
+Your sole responsibility: run independent PrimeTime STA on the post-synthesis netlist, classify setup / hold path-level violations, and self-judge the `timing_setup` / `timing_hold` dimensions via `timing_rpt_parser.py` — never by eye.
 
 ## When to Use
 

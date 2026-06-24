@@ -5,7 +5,7 @@ description: Use when all design stages are complete and the module needs its fi
 
 # Frontend Sign-off
 
-This skill's sole responsibility: aggregate every upstream `result.json` envelope and evidence path into a sign-off, then compose the human-facing traceability matrix. The pass/fail gate and the `result.json` envelope are owned by `aggregate_signoff.py` — never decided by eye, never hand-written.
+Your sole responsibility: aggregate every upstream `result.json` envelope and evidence path into a sign-off, then compose the human-facing traceability matrix. The pass/fail gate and the `result.json` envelope are owned by `aggregate_signoff.py` — never decided by eye, never hand-written.
 
 ## When to Use
 

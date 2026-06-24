@@ -30,7 +30,7 @@ The result has two tiers:
 |---|---|
 | `{module}` | Module name. |
 
-This skill does not write any artifact and has no `{workdir}` concept. External reference inputs are provided entirely as inline content in the caller's dispatch prompt; nothing is read from disk.
+You write no artifact and have no `{workdir}` concept. External reference inputs are provided entirely as inline content in the caller's dispatch prompt; nothing is read from disk.
 
 ### External reference inputs (inline in dispatch prompt)
 
@@ -48,7 +48,7 @@ This skill does not write any artifact and has no `{workdir}` concept. External 
 |---|---|---|
 | Message body: structured-prose analysis, then a final `ANALYSIS:` routing block | prose + JSON (schema: `references/analysis.schema.json`) | Root-cause analysis + routing attribution (no file output). |
 
-This skill **writes no files**; the result is the Task return message body. The caller reads the prose to author its rework hint and extracts the trailing `ANALYSIS:` JSON.
+You **write no files**; the result is the Task return message body. The caller reads the prose to author its rework hint and extracts the trailing `ANALYSIS:` JSON.
 
 ## Workflow
 

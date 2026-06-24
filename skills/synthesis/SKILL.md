@@ -5,7 +5,7 @@ description: Use when running Design Compiler synthesis, analyzing timing/area/p
 
 # Synthesis
 
-This skill's sole responsibility: run Design Compiler synthesis against the RTL filelist and the SDC source of truth, iteratively supplement SDC timing exceptions, and self-judge the area_um2 / timing_slack_ns PPA dimensions.
+Your sole responsibility: run Design Compiler synthesis against the RTL filelist and the SDC source of truth, iteratively supplement SDC timing exceptions, and self-judge the area_um2 / timing_slack_ns PPA dimensions.
 
 ## When to Use
 
