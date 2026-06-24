@@ -194,8 +194,7 @@ contract's "Severity & gating"), computed by the script, not judged by eye. Appl
   `{... "findings":[{"tp_id":"-","severity":"minor","category":"unavailable","location":"-","summary":"review (wave) failed: <reason>"}]}`
   (so the absence of a real review is a first-class artifact, not invisible; the validator reports
   `gate=clear` for it), note it in the completion summary, and proceed to Step 5.
-- **Verdict integrity:** the main thread MUST NOT override a `gate=trip` to pass (mirrors the
-  Step 7 anti-gaming rule).
+- **Verdict integrity:** the main thread MUST NOT override a `gate=trip` to pass.
 
 This stage runs **no in-skill fix-loop** — a conformance trip exits to the existing
 `failure_phase=conformance` → simulation-triage → route path. (Self-heal is deferred.)

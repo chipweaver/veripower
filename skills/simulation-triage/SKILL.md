@@ -100,7 +100,7 @@ Before emitting, validate the routing block:
 echo "<json>" | python3 ${CLAUDE_SKILL_DIR}/scripts/validate_analysis.py --schema ${CLAUDE_SKILL_DIR}/references/analysis.schema.json --json-stdin
 ```
 
-On non-zero exit, read stderr, fix, and re-run — the authoritative gate for the routing contract (mirrors `simulation-plan`'s `validate_scaffold.py`).
+On non-zero exit, read stderr, fix, and re-run — the authoritative gate for the routing contract.
 
 **Message-body shape (`complete`):**
 
