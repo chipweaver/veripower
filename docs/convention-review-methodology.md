@@ -27,10 +27,11 @@ is itself wrong.
 
 ### Phase 1 — Reconcile to reality (Layer-1a hygiene + Layer-2 conformance)
 
-Run `veripower-review` on the target (Mode-2 named path, or its §5 fan-out for a large target) for the
-hygiene and conformance checks it owns. Then read for **doc↔code drift** its fixed checks miss: for
-each convention the docs state, find the code that implements it and confirm the description still
-matches.
+Run `veripower-review` on the target (Mode-2 named path; its §5 runs independent multi-pass +
+refutation, fanning out by subsystem for a large target) for the hygiene and conformance checks it
+owns. It is now source-driven — its §4 walk reads each governing section's intent directly — so it
+catches most **doc↔code drift** itself; what this method adds on top is confirming, for each
+convention, that the code implementing it still matches the doc.
 
 A drift *class* the review structurally misses is a **rubric gap**: file it as a candidate rubric
 entry, keeping the single canonical home in the rubric (C2-06). This method adds no second checker —
@@ -39,8 +40,9 @@ its only original work is Phase 2.
 ### Phase 2 — Layer-1b quality (the dimension this method exists for)
 
 Judge the reconciled conventions against the quality lens (§3) with an **adversarial fan-out**:
-dispatch independent reviewers, scaled to target size, each prompted to **refute** against §3 and the
-convention's owning doc, cross-checking docs-vs-reality and docs-vs-criteria. Self-review
+dispatch independent reviewers, scaled to target size, each prompted to **refute** a convention's
+quality against §3 and its owning doc — not a conformance finding, which `veripower-review`'s own §5
+multi-pass already refutes — cross-checking docs-vs-reality and docs-vs-criteria. Self-review
 rationalizes; independent refutation catches more.
 
 ### Phase 3 — Impact-tag each proposal
