@@ -303,3 +303,25 @@ def test_finalize_cli_does_not_break_legacy_parse_cli(tmp_path):
         == 0
     )
     assert json.loads(out.read_text())["verdict"] == "pass"
+
+
+# ── reproducibility-header derivations (tool / lib_db / clock) ────────────────
+def test_parse_tool_from_report_version():
+    assert sp.parse_tool("Version: L-2016.03-SP1\n") == "Design Compiler L-2016.03-SP1"
+    assert sp.parse_tool("no version here") == "Design Compiler unknown"
+
+
+def test_read_lib_db_from_config_tcl(tmp_path):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "config.tcl").write_text(
+        'set ::env(LIB_DB) "/home/eda/Foundry/TSMC.90/slow.db"\n'
+    )
+    assert sp.read_lib_db(tmp_path) == "/home/eda/Foundry/TSMC.90/slow.db"
+    assert sp.read_lib_db(tmp_path / "nope") is None
+
+
+def test_parse_clock_from_sdc(tmp_path):
+    (tmp_path / "constraints.sdc").write_text(
+        "create_clock -name i_clk -period 10.0 [get_ports i_clk]\n"
+    )
+    assert sp.parse_clock(tmp_path) == {"name": "i_clk", "period_ns": 10.0}

@@ -240,19 +240,33 @@ def build_result(workdir, module, top, area_target, slack_target) -> int:
     return 0
 
 
-# --- derivations (Task 2) + artifacts (Task 3): stubs so Task 1 imports/runs ---
-def parse_tool(area_text: str):
-    return None
+_VERSION_RE = re.compile(r"^\s*Version:\s*(\S+)", re.M)
+_LIBDB_RE = re.compile(r'set ::env\(LIB_DB\)\s*"([^"]+)"')
+_CLOCK_RE = re.compile(r"create_clock\s+-name\s+(\S+)\s+-period\s+([0-9.]+)")
+
+
+def parse_tool(area_text: str) -> str:
+    m = _VERSION_RE.search(area_text)
+    return f"Design Compiler {m.group(1)}" if m else "Design Compiler unknown"
 
 
 def read_lib_db(workdir):
-    return None
+    cfg = Path(workdir) / "scripts" / "config.tcl"
+    if not cfg.is_file():
+        return None
+    m = _LIBDB_RE.search(cfg.read_text(errors="replace"))
+    return m.group(1) if m else None
 
 
 def parse_clock(workdir):
-    return None
+    sdc = Path(workdir) / "constraints.sdc"
+    if not sdc.is_file():
+        return None
+    m = _CLOCK_RE.search(sdc.read_text(errors="replace"))
+    return {"name": m.group(1), "period_ns": float(m.group(2))} if m else None
 
 
+# --- artifacts (Task 3): stub so Task 2 imports/runs ---
 def enumerate_artifacts(workdir, top):
     return []
 
