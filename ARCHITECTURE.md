@@ -461,6 +461,29 @@ Neither naive unification works: centralizing ANALYSIS validation in `state.py` 
 | `state.py append_event` | every event payload | Mandatory; command errors on failure |
 | `skills/<stage>/scripts/validate_*.py` | skill's own descriptive artifact | Producer self-gate; fix-and-retry before emit |
 
+### 5.7 Gate taxonomy
+
+Every stage decides its own `result.json` `status` through a gate. The gate a stage carries follows one question — *is the stage's output correctness deterministically computable from its inputs?* — which sorts the nine stages into three classes:
+
+| Class | Stages | Gate mechanism |
+|---|---|---|
+| **authoring** | specification, simulation-plan, rtl-design, simulation | Mechanizable structure is checked by a deterministic script (`check_coverage.py`, `check_rtl_conformance.py`, `validate_scaffold.py`, `validate_sim_exit.py`); the residual — faithful/complete realization of upstream intent — is judged by an **LLM intent-realization review** emitting a promoted `*-review.json`, reduced to a verdict by `validate_*_review.py`. |
+| **computation** | lint-cdc, synthesis, timing-analysis, power-analysis | The EDA tool is the oracle — a **deterministic report parser** (`synthesis_rpt_parser.py` / `timing_rpt_parser.py` / `power_rpt_parser.py` / `collect_report.py`) owns the pass/fail verdict; never judged by eye. |
+| **aggregation** | frontend-signoff | A **deterministic aggregator** (`aggregate_signoff.py`) gates on upstream-envelope status + evidence reachability and authors the envelope (§6.2). |
+
+**LLM review-gate contract** (the four authoring gates — specification, simulation-plan, rtl-design's semantic gate, simulation's conformance gate). Each emits one `*-review.json` with a fixed envelope: `schema_version` / `stage` / `module` / a reviewed-subjects array / `verdict ∈ {ok, concerns}` / `has_critical` / `findings[]`, with `findings[].severity ∈ {critical, important, minor}`. Each finding carries a dimension classifier partitioned into **one or more gating** dimensions and an **advisory must-acknowledge** dimension, plus an `unavailable` sentinel; the per-stage gating/advisory dimension enums live in the four `*-review.schema.json` (their SSoT). When a whole review cannot run, the stage emits a single `unavailable` finding (`gate=clear`), surfaced as must-acknowledge, never silently passed. A `validate_*_review.py` script owns the `dimension × severity` reduction to `gate ∈ {trip, clear}` and never overrides `gate=trip` to pass; specification, simulation-plan, and rtl-design record the gate-verdict object in `result.json` `stage_specific` (`spec_gate` / `plan_adequacy_gate` / `semantic_gate`), while simulation records `failure_phase` + the gating findings. The `*-review.json` is promoted to canonical.
+
+**Two axes fix a gate's gating strength and its closure.**
+
+| Axis | Value | Effect |
+|---|---|---|
+| **Evidence-frame availability** | a dimension judged against an upstream reference frame (e.g. faithfulness/conformance vs brainstorm + pinned encoding; coverage vs spec blocks) | objective → **hard-gates** |
+| | a dimension with no reference frame (e.g. soundness, adequacy, over-engineering) | subjective → **advisory must-acknowledge**, never auto-gates |
+| **Human-in-the-loop** | stage has a review-loop (specification, simulation-plan) | trip **blocks in place**: blocks `status=pass`, surfaces to the loop, offers a human waiver; no `status=fail`, no route-out |
+| | stage has none (rtl-design, simulation) | trip **fails out**: `status=fail` + standard failure routing (§5.4) — rtl-design tags each finding's `fix_locus` (§6.3.1); simulation sets `failure_phase` for triage |
+
+A review-gate verdict is intra-stage and introduces no orchestration edge: block-in-place trips close at the stage's human loop; fail-out trips reuse the failure routing of §5.4. The reduced verdict folded into `result.json` is a verdict output; the `*-review.json` is an advisory artifact — the two validation regimes of §5.6.
+
 ## 6. Subagent contracts
 
 Subagents are dispatched via Claude Code's Task tool with fresh context, a restricted prompt, and a per-dispatch workdir. VeriPower defines three contract families: (1) **Stage subagent** — the five Task-dispatched DAG stages lint-cdc, synthesis, timing-analysis, power-analysis, and frontend-signoff; (2) **Main-thread skill** — specification, simulation-plan, rtl-design, and simulation (see §2.2 for why they are loaded directly in the Orchestrator's thread rather than via Task — specification / rtl-design / simulation for fan-out dispatch authority, simulation-plan for user dialogue and a single Level-1 plan-adequacy review dispatch (§6.3.1)); (3) **Debug subagent** — simulation-triage. The shared prompt template is `framework/references/prompts/stage-subagent.md.tpl`. Its prose forbidden-actions list is the actual enforcement mechanism — NOT tool gating; `allowed-tools` in SKILL.md frontmatter is declarative only and has been removed from all skills.

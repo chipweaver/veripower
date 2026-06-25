@@ -461,6 +461,29 @@ VeriPower 产出两类结构化输出，各走各的验证通道：
 | `state.py append_event` | 每个事件负载 | 强制；不通过则命令报错 |
 | `skills/<stage>/scripts/validate_*.py` | 该 skill 自己的描述性产物 | 生产者自检门；修到通过才发出 |
 
+### 5.7 门禁分类
+
+每个阶段通过一道门（gate）裁定自己的 `result.json` `status`。阶段携带哪类门，取决于一个问题——*该阶段输出的正确性能否由其输入确定性算出*——据此把九个阶段分成三类：
+
+| 类 | 阶段 | 门的机制 |
+|---|---|---|
+| **创作类（authoring）** | specification、simulation-plan、rtl-design、simulation | 可机械判定的结构由确定性脚本检查（`check_coverage.py`、`check_rtl_conformance.py`、`validate_scaffold.py`、`validate_sim_exit.py`）；剩余部分——是否忠实/完整实现上游意图——由 **LLM 意图实现评审**裁判，产出 promoted `*-review.json`，再由 `validate_*_review.py` 归约成裁决。 |
+| **计算类（computation）** | lint-cdc、synthesis、timing-analysis、power-analysis | EDA 工具即 oracle——由**确定性报告解析器**（`synthesis_rpt_parser.py` / `timing_rpt_parser.py` / `power_rpt_parser.py` / `collect_report.py`）独占 pass/fail 裁决；绝不靠肉眼判。 |
+| **汇聚类（aggregation）** | frontend-signoff | 由**确定性汇聚器**（`aggregate_signoff.py`）按上游信封 status + 证据可达性裁决，并直接撰写信封（§6.2）。 |
+
+**LLM 评审门契约**（四道创作类门：specification、simulation-plan、rtl-design 的语义门、simulation 的 conformance 门）。每道门产出一份 `*-review.json`，信封固定：`schema_version` / `stage` / `module` / 受评主体数组 / `verdict ∈ {ok, concerns}` / `has_critical` / `findings[]`，且 `findings[].severity ∈ {critical, important, minor}`。每条 finding 带一个维度分类器，划分为**一个或多个门控（gating）**维度与一个**咨询 must-acknowledge** 维度，外加 `unavailable` 哨兵；各阶段的门控/咨询维度 enum 以四份 `*-review.schema.json` 为准（其 SSoT）。整份评审无法运行时，阶段产出单条 `unavailable` finding（`gate=clear`），作 must-acknowledge 呈现，绝不静默放行。`validate_*_review.py` 脚本独占 `维度 × severity` 到 `gate ∈ {trip, clear}` 的归约，且绝不把 `gate=trip` 改判为 pass；specification、simulation-plan、rtl-design 把门裁决对象记入 `result.json` `stage_specific`（`spec_gate` / `plan_adequacy_gate` / `semantic_gate`），simulation 则记 `failure_phase` + 门控 findings。`*-review.json` promote 到 canonical。
+
+**两条轴决定一道门的门控强度与闭环方式。**
+
+| 轴 | 取值 | 效果 |
+|---|---|---|
+| **判据帧可得性** | 维度对照上游参考帧（如 faithfulness/conformance vs brainstorm + 锁定的编码；coverage vs spec 块） | 客观 → **硬门控** |
+| | 维度无参考帧（如 soundness、adequacy、over-engineering） | 主观 → **咨询 must-acknowledge**，永不自动门控 |
+| **是否有人在 loop** | 阶段有评审 loop（specification、simulation-plan） | trip **原地 block**：阻断 `status=pass`、把 findings 抛进 loop、提供人工 waiver；不写 `status=fail`、不 route-out |
+| | 阶段无（rtl-design、simulation） | trip **fail-out**：`status=fail` + 标准失败路由（§5.4）——rtl-design 给每条 finding 打 `fix_locus`（§6.3.1）；simulation 写 `failure_phase` 供 triage |
+
+评审门裁决是阶段内的，不引入新的编排边：原地 block 的 trip 在该阶段的人工 loop 处闭环；fail-out 的 trip 复用 §5.4 的失败路由。归约后写入 `result.json` 的裁决是裁决输出，`*-review.json` 是咨询性产物——即 §5.6 的两类验证通道。
+
 ## 6. 子 Agent 契约
 
 子 Agent 通过 Claude Code 的 Task 工具派发，每次得到全新上下文、受限 prompt 和 per-dispatch workdir。VeriPower 定义了三族契约：(1) **阶段子 Agent**——五个以 Task 方式派发的 DAG 阶段 lint-cdc、synthesis、timing-analysis、power-analysis 和 frontend-signoff；(2) **主线程 skill**——specification、simulation-plan、rtl-design 和 simulation（不走 Task 的原因见 §2.2：specification / rtl-design / simulation 为扇出派发权，simulation-plan 为用户对话）；(3) **调试子 Agent**——simulation-triage。共享 prompt 模板是 `framework/references/prompts/stage-subagent.md.tpl`。模板中的禁止动作清单是实际约束机制——不靠工具门控；SKILL.md frontmatter 中的 `allowed-tools` 仅做声明，已从所有 skill 中移除。
