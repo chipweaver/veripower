@@ -104,26 +104,19 @@ Extract the violated paths from `reports/timing_setup.rpt`, keeping each path's 
 - Known static false paths → add `set_false_path`.
 - Re-run `make synthesis`; repeat until the remaining violations are real timing issues or have been excepted.
 
-### Step 7: PPA self-check (mandatory)
+### Step 7: Build `{workdir}/result.json` (mandatory)
 
-Run the parser; do not extract or compare by hand:
-- Read `ppa_targets` from the prompt context (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream, never here).
-- Run (adding `--area-target <v>` / `--slack-target <v>` for whichever dims `ppa_targets` carries — omit a flag when its dim is absent; a no-targets run is a vacuous pass):
+Run the parser's finalize subcommand; do not hand-assemble the envelope or extract/compare by hand. Read `ppa_targets` from the prompt context (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream):
 
-  ```bash
-  python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis_rpt_parser.py --reports-dir {workdir}/reports --out {workdir}/ppa-actual.json
-  ```
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis_rpt_parser.py finalize \
+  --workdir {workdir} --module <module> --top <top_module> \
+  [--area-target <v>] [--slack-target <v>]
+```
 
-  The parser extracts total cell area and the worst setup slack (the `min` of `Critical Path Slack` across **all** clock-group blocks — not the first listed) and judges the gate (`area_um2`: `actual <= target`; `timing_slack_ns`: `actual >= target`).
-- **On exit 0**, read `{workdir}/ppa-actual.json` and fold it in: `ppa_actual` → `stage_specific.ppa_actual`, `violations` → `stage_specific.violations`, `verdict` → `status`. A `verdict="fail"` → `status=fail`, `failure_kind="ppa"`, plus a one-line `fail_reason` (e.g. `"PPA target(s) not met"`).
-- **On a non-zero exit**, the parser is authoritative — never infer pass from the netlist's presence. Read its `FAIL=` token and write `status=fail`, `failure_kind="tooling"`, the matching `fail_reason` (`FAIL=missing` → `"synthesis report missing"`; `FAIL=unparseable` → `"synthesis report unparseable"`), then exit. Do not read `ppa-actual.json` on a non-zero exit (it is written only on exit 0).
+`finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`), derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
-### Step 8: Write `{workdir}/result.json`
-
-(schema: `references/result.schema.json` + envelope): when `status=pass`, the schema requires `stage_specific.ppa_actual` to list the dim/value measurements from Step 7; when `status=fail`, it requires the two fields `stage_specific.{fail_reason, failure_kind}` (`failure_kind ∈ {infra, tooling, ppa}` distinguishes the failure category):
-- `failure_kind="infra"`: rework_trigger unreadable / external reference missing or not passing / filelist has no RTL entries / DC license missing — i.e., DC never ran.
-- `failure_kind="tooling"`: DC ran but its output is unusable — the compile/elaborate/synthesize phase errored (design semantic error, library read error, optimization aborted, etc.), **or** a required report was missing/unparseable (`synthesis_rpt_parser.py` exit 1/3).
-- `failure_kind="ppa"`: DC ran to completion but PPA targets were missed (Step 7 comparison found area/timing not meeting targets); fill `violations[]` from the comparison result.
+`failure_kind` semantics (set by finalize): `infra` (DC never ran — external ref / license / trigger; the main thread writes this on the pre-checks of Steps 1–5 before finalize runs), `tooling` (report missing/unparseable — parser exit 1/3), `ppa` (area/timing target missed; `violations[]` filled).
 
 ## Decision Rules
 
@@ -146,10 +139,9 @@ Run the parser; do not extract or compare by hand:
 ## Completion Gate
 
 - [ ] `{workdir}/result.json` has been written and passes schema validation.
-- [ ] Every artifact path is listed in `result.json.artifacts[]`.
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept blocked); on `fail`, `stage_specific.{fail_reason, failure_kind}` are required.
-- [ ] The PPA gate ran via `synthesis_rpt_parser.py`: on `status=pass` / `failure_kind="ppa"`, its `ppa-actual.json` (exit 0) was folded into `stage_specific.ppa_actual` / `violations[]`; on a non-zero parser exit, `failure_kind="tooling"` + matching `fail_reason`; on `failure_kind ∈ {infra, tooling}`, only `fail_reason` + `failure_kind` are needed.
+- [ ] result.json was written by `synthesis_rpt_parser.py finalize` (it owns status / ppa_actual / artifacts / failure_kind / the reproducibility header).
 - [ ] `scripts/rtl_load.tcl` matches `Design/rtl-design/filelist.txt`.
 - [ ] `create_generated_clock` covers every generated clock in the RTL (or the SDC remarks in `Design/rtl-design/README.md` confirm there are none).
 - [ ] `set_false_path` / `set_multicycle_path` cover the exception paths annotated in the RTL `README.md`.
