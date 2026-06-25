@@ -35,6 +35,37 @@ _GATING_CATEGORIES = {"missing", "wrong-behavior"}
 _GATING_SEVERITIES = {"critical", "important"}
 
 
+def compute_gate(doc: dict) -> dict:
+    """Pure gate reduction over an already-valid semantic-review doc: the mechanical
+    category x severity filter partitioned by fix_locus. No schema/consistency checks here
+    (main() does those first; finalize calls this over the validated semantic-review.json)."""
+    findings = doc.get("findings", [])
+    gating = [
+        f
+        for f in findings
+        if f.get("category") in _GATING_CATEGORIES
+        and f.get("severity") in _GATING_SEVERITIES
+    ]
+    flagged = [
+        {
+            "child": f.get("child"),
+            "category": f.get("category"),
+            "severity": f.get("severity"),
+            "fix_locus": f.get("fix_locus"),
+        }
+        for f in sorted(
+            gating, key=lambda f: (f.get("child", ""), f.get("category", ""))
+        )
+    ]
+    loci = {
+        "rtl": sorted({f.get("child") for f in gating if f.get("fix_locus") == "rtl"}),
+        "spec": sorted(
+            {f.get("child") for f in gating if f.get("fix_locus") == "spec"}
+        ),
+    }
+    return {"gate": "trip" if gating else "clear", "flagged": flagged, "loci": loci}
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print(
@@ -83,34 +114,7 @@ def main() -> int:
         return 1
     # Gate verdict: the stage's pass/fail gate, computed here (not by eye). Printed as a
     # one-line JSON the main thread copies (mirrors validate_conformance_review.py's stdout).
-    gating = [
-        f
-        for f in findings
-        if f.get("category") in _GATING_CATEGORIES
-        and f.get("severity") in _GATING_SEVERITIES
-    ]
-    flagged = [
-        {
-            "child": f.get("child"),
-            "category": f.get("category"),
-            "severity": f.get("severity"),
-            "fix_locus": f.get("fix_locus"),
-        }
-        for f in sorted(
-            gating, key=lambda f: (f.get("child", ""), f.get("category", ""))
-        )
-    ]
-    loci = {
-        "rtl": sorted({f.get("child") for f in gating if f.get("fix_locus") == "rtl"}),
-        "spec": sorted(
-            {f.get("child") for f in gating if f.get("fix_locus") == "spec"}
-        ),
-    }
-    print(
-        json.dumps(
-            {"gate": "trip" if gating else "clear", "flagged": flagged, "loci": loci}
-        )
-    )
+    print(json.dumps(compute_gate(doc)))
     return 0
 
 

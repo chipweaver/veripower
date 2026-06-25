@@ -293,3 +293,58 @@ def test_verdict_inconsistent_exit_1(tmp_path):
     r = _run(tmp_path, doc)
     assert r.returncode == 1
     assert "semantic-review inconsistent" in r.stderr
+
+
+# ── compute_gate() direct, in-process — locks the X1 pure-fn extraction (Task 1.5) ───
+import sys  # noqa: E402
+
+sys.path.insert(0, str(ROOT / "skills" / "rtl-design" / "scripts"))
+import validate_semantic_review as vsr  # noqa: E402
+
+
+def test_compute_gate_pure_trip():
+    doc = {
+        "findings": [
+            {
+                "child": "c",
+                "category": "missing",
+                "severity": "critical",
+                "fix_locus": "rtl",
+            }
+        ]
+    }
+    assert vsr.compute_gate(doc) == {
+        "gate": "trip",
+        "flagged": [
+            {
+                "child": "c",
+                "category": "missing",
+                "severity": "critical",
+                "fix_locus": "rtl",
+            }
+        ],
+        "loci": {"rtl": ["c"], "spec": []},
+    }
+
+
+def test_compute_gate_pure_clear_on_over_engineering():
+    doc = {
+        "findings": [
+            {
+                "child": "c",
+                "category": "over-engineering",
+                "severity": "critical",
+                "fix_locus": "rtl",
+            }
+        ]
+    }
+    assert vsr.compute_gate(doc) == {
+        "gate": "clear",
+        "flagged": [],
+        "loci": {"rtl": [], "spec": []},
+    }
+
+
+def test_compute_gate_does_not_touch_schema(tmp_path):
+    # a BARE doc (no schema_version/stage/...) would crash main()'s schema gate; compute_gate must not.
+    assert vsr.compute_gate({"findings": []})["gate"] == "clear"

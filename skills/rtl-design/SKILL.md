@@ -176,8 +176,9 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/validate_rtl_exit.py --manifest <manifest> -
 ```
 
 `build_*` non-zero exit = unexpected error → `status=fail` (stderr as `fail_reason`), stop.
-`validate_rtl_exit` exit code = truth (topology + blocked-child); fail → copy its stdout verdict into
-`result.json`, stop. (`--seeded` only on incremental/rework, never first-run's initial build.)
+`validate_rtl_exit` exit code = truth (topology + blocked-child); a fail verdict here stops the stage —
+Step 4.5's `finalize` writes it into `result.json` (the gate is not reached past the exit fail).
+(`--seeded` only on incremental/rework, never first-run's initial build.)
 
 **4.3 Conformance gate + bounded self-converge loop** (deterministic; runs EVERY invocation):
 
@@ -240,21 +241,18 @@ ${CLAUDE_SKILL_DIR}/scripts/validate_semantic_review.py {workdir}/semantic-revie
 Non-zero exit → re-assemble the JSON and re-run (this is a main-thread fix, NOT a re-dispatch). On
 exit 0 it prints a one-line gate verdict `{"gate":"trip"|"clear","flagged":[{child,category,severity,
 fix_locus}…],"loci":{"rtl":[…],"spec":[…]}}` — the mechanical `category × severity` reduction
-partitioned by `fix_locus`, computed by the script, not judged by eye. Write
-`stage_specific.semantic_gate` = that parsed verdict object verbatim (`{gate, flagged, loci}`, no
-transform — script-owned, the main thread copies it verbatim), so the result is self-describing. Then apply the verdict:
+partitioned by `fix_locus`, computed by the script, not judged by eye (the same reduction Step 4.5's
+`finalize` re-computes in-process and writes verbatim as `stage_specific.semantic_gate`). Then apply the
+verdict:
 
-- **`gate=clear`** → list `semantic-review.json` in `artifacts[]`, proceed to 4.5 (pass path).
+- **`gate=clear`** → proceed to 4.5 (pass path); `finalize` lists `semantic-review.json` in `artifacts[]`.
   Advisory findings (`over-engineering` any severity, `minor`, `unavailable`) never trip — recorded,
   with a `⚠ <child> <category>` line in the completion summary.
-- **`gate=trip`** → write a complete fail `result.json` here and **stop — do not proceed to 4.5** (a
-  gate fail writes its verdict and stops, exactly as the 4.2/4.3 gate fails do): `status=fail`,
-  `stage_specific.semantic_gate` (written above), a locus-tagged `fail_reason` from `flagged` + `loci`
-  (look up each finding's `<summary>` in the just-assembled `semantic-review.json` `findings[]` by `child`)
-  — `"semantic gate: spec-rooted intent defect — <child>:<summary>"` when `loci.spec` is non-empty, else
-  `"semantic gate: rtl-local intent defect — <child>:<summary>"` (use the first matching `flagged[]`
-  entry; if more than one is flagged, append ` (+N more)`) — and `semantic-review.json` plus the
-  already-built `filelist.txt` / `README.md` in `artifacts[]`. **No further dispatch; this skill does not
+- **`gate=trip`** → proceed to 4.5: `finalize` folds the trip into `status=fail` with a locus-tagged
+  `fail_reason` (a gate trip stops the stage out, exactly as the 4.2/4.3 gate fails do) —
+  `"semantic gate: spec-rooted intent defect — <child>"` when `loci.spec` is non-empty, else
+  `"semantic gate: rtl-local intent defect — <child>"` (the first `flagged[]` child; if more than one is
+  flagged, ` (+N more)` is appended). **No further dispatch; this skill does not
   self-loop on a semantic defect** — it is operator-driven (a `spec`-locus defect is a `design.md`
   contradiction not fixable from this child's RTL; in-skill self-heal of the `rtl`-locus case is
   deferred). The `loci` partition is informational: it tells the operator whether the fix lands in the
@@ -264,17 +262,34 @@ transform — script-owned, the main thread copies it verbatim), so the result i
   `BLOCKED`/malformed events are already handled by the aggregation bullets above, which keep the
   surviving children's findings) → do NOT gate; write the minimal `semantic-review.json` with a single
   `unavailable` finding (so the absence of a real review is a first-class artifact, not invisible — the
-  validator reports `gate=clear` for it, and `stage_specific.semantic_gate` is written `clear`), note it
-  in the completion summary, and proceed to 4.5.
+  validator reports `gate=clear` for it, so finalize writes `stage_specific.semantic_gate` = `clear`),
+  note it in the completion summary, and proceed to 4.5.
 - **Verdict integrity:** the main thread MUST NOT override a `gate=trip` to pass.
 
-**4.5 Assemble `result.json`** (`{workdir}/result.json`; schema `references/result.schema.json` + envelope):
-`status`/`artifacts` from the gates (4.2/4.3 verdict + the 4.4 semantic gate verdict). In the
-completion summary, emit one line `semantic-gate: <clear | unavailable>; see semantic-review.json` (a
-`gate=trip` does not reach 4.5 — it stops in 4.4, where its `fail_reason` is the operator-facing summary);
-if `has_critical` (only possible on a cleared gate when the critical finding is a non-gating category,
-e.g. `over-engineering`), add `⚠ <child> critical <category> finding — recommend operator review before
-downstream`.
+**4.5 Build `result.json`** (`{workdir}/result.json`; schema `references/result.schema.json` + envelope):
+
+Run the finalize subcommand after the 4.2 exit gate, the 4.3 conformance gate (converged), and the 4.4
+semantic-review wave have completed (finalize assembles their on-disk outputs — it does NOT run the 4.3
+loop or the 4.4 wave):
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/validate_rtl_exit.py finalize --workdir {workdir} --module {module} --top <top_module> --manifest <manifest>
+```
+
+`finalize` re-derives the exit verdict in-process over the converged ledger (`status` + `fail_reason` +
+`artifacts[]`, verbatim) and folds in the semantic gate from `semantic-review.json` (its verdict =
+`stage_specific.semantic_gate`, verbatim); a `semantic_gate=trip` flips a passing exit-verdict to
+`status=fail` with a locus-tagged `fail_reason` (spec-rooted named first, else rtl-local). It adds
+`top_module` (= `manifest.module`, audit-only) and writes the complete envelope; the free-text run
+narration is NOT in result.json (it belongs in events.jsonl). Exit 0 = result.json written (status pass
+or fail). A non-zero finalize exit is a program exception (BLOCKED).
+
+A 4.2/4.3 gate that already failed writes its own `status=fail` and stops there (4.2 copies
+`validate_rtl_exit`'s verdict; 4.3 writes the unconverged/blocked fail) — finalize is reached only when
+the exit gate passes through to the semantic gate. In the completion summary, emit one line
+`semantic-gate: <clear | trip | unavailable>; see semantic-review.json`; if `has_critical` (possible on a
+cleared gate when the critical finding is a non-gating category, e.g. `over-engineering`), add `⚠ <child>
+critical <category> finding — recommend operator review before downstream`.
 
 rtl-design failures route by fix-locus. **(1) Upstream / architecture / intent** (`validate_rtl_exit`
 topology, `<child>.md §2` incomplete, PPA, `build_*` unexpected error, or any semantic-gate trip) → `status=fail` + a locus-tagged
@@ -311,10 +326,10 @@ terminal fail.
 
 - [ ] `{workdir}/result.json` has been written (the framework validates it against the schema at stage completion; this gate does not re-run that check).
 - [ ] No Iron Rule or Red Flag was triggered.
-- [ ] **Exit gate:** `validate_rtl_exit.py` exited 0, and its stdout verdict was copied verbatim into `result.json`. (The script owns the R-1 top-module coverage check + child-status precedence + the RTL `artifacts[]` (Step 4.4 adds `semantic-review.json`); this gate does not restate the formula.)
+- [ ] **Exit gate:** `validate_rtl_exit.py` exited 0 (or its fail verdict was written); `finalize` wrote the envelope from it (it owns `status` / `artifacts[]`; this gate does not restate the formula).
 - [ ] `{workdir}/.child_reports.json`, `{workdir}/filelist.txt`, and `{workdir}/README.md` were generated by the scripts (ledger / filelist / README respectively).
 - [ ] **Conformance gate:** `check_rtl_conformance.py` exited 0 (or self-converged within 2 rounds); on unconverged / mid-loop BLOCKED the verdict was copied to `result.json` `status=fail`.
-- [ ] **Semantic gate (every clean-gate finalize):** the review wave ran, `semantic-review.json` was written + self-validated, the script's gate verdict was applied (clear → proceed; trip → `status=fail` + locus-tagged `fail_reason`, **no in-skill autofix**), `stage_specific.semantic_gate` was written verbatim from the verdict, and `semantic-review.json` is in `artifacts[]`; BLOCKED/malformed reviewers recorded as "review unavailable" (not silently ok) → do NOT gate; a `gate=trip` was never overridden to pass.
+- [ ] **Semantic gate (every clean-gate finalize):** the review wave ran, `semantic-review.json` was written + self-validated, the gate verdict was applied (clear → proceed; trip → `status=fail` + locus-tagged `fail_reason`, **no in-skill autofix**), and `validate_rtl_exit.py finalize` wrote `semantic_gate` + `semantic-review.json` into the envelope; BLOCKED/malformed reviewers recorded as "review unavailable" (not silently ok) → do NOT gate; a `gate=trip` was never overridden to pass.
 
 ## Return Contract
 

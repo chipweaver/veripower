@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "stage": "rtl-design",
+  "module": "tpu_top",
+  "reviewed_children": ["mac", "systolic_reg", "fifo", "tpu_top"],
+  "verdict": "concerns",
+  "has_critical": false,
+  "findings": [
+    {
+      "child": "mac",
+      "severity": "minor",
+      "category": "over-engineering",
+      "fix_locus": "rtl",
+      "location": "asic/tpu_top/Design/rtl-design/runs/1/mac.v:18",
+      "summary": "parameter DATA_W=32 introduces width configurability that mac.md §1 explicitly excludes (fixed 32-bit); behavior correct at default but the parameter is unrequested per intent"
+    }
+  ]
+}
