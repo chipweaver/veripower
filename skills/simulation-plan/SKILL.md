@@ -219,15 +219,21 @@ The verdict feeds Step 5 (**T2** — block into the user loop; this stage never 
 - request changes → **first clear any prior `plan_adequacy_gate=clear`** (invalidate-on-rework — a stale `clear` must not survive a plan edit), then revise the artifacts incrementally per user feedback (return to Step 3), then re-run Step 4, then come back to this step and re-present.
 - reject → write `result.json` (`status=fail`, `stage_specific.fail_reason="user rejected plan"`) and exit.
 
-### Step 6: Write `result.json`
+### Step 6: Build `{workdir}/result.json` (mandatory)
 
-(schema: `references/result.schema.json` + envelope).
+Run the host tool's finalize subcommand; do not hand-assemble the envelope or hand-count anything. Pass the human-gate state from Step 5 (the γ-floor inputs the gate produced — nothing else is needed):
 
-- Required top-level fields: `schema_version: 1`, `stage: "simulation-plan"`, `module`, `produced_at` (ISO8601), `status`, `artifacts[]`, `stage_specific{}`.
-- Under `stage_specific`, only `fail_reason` is hard-required by the schema when `status=fail` (one-line missing-field summary / user-rejection reason).
-- `status` ∈ {pass, fail} — never `blocked` (Iron Rule).
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/validate_scaffold.py finalize \
+  --workdir {workdir} --module {module} \
+  [--waived '<json array of {tp_id,lens,location,classification,reason}>'] \
+  [--status fail]            # only on user reject \
+  [--revision '<one-line revision narrative>']   # trigger-driven rework only
+```
 
-Note: the plan's structured data (`agents` / `sequences` / `tests` / `testpoints` / `power_scenarios`) lives in `scaffold-specification.json` and is not duplicated into `stage_specific`.
+finalize re-derives `status` from the Step-4 plan-adequacy gate (it calls `validate_plan_review`'s verdict on the on-disk `plan-review.json` and copies `{gate, flagged, must_ack}` into `stage_specific.plan_adequacy_gate`; `--waived` is merged in as `plan_adequacy_gate.waived[]`), derives the summary counts as array-length reads of the promoted artifacts (`testpoint_count`/`power_scenario_count` + `scaffold_summary.{agent_count,sequence_count,test_count}` from `scaffold-specification.json`; `feature_count` = distinct `F-NN` in `verification-plan.md`), enumerates `artifacts[]` (plan + scaffold + plan-review), and writes the complete `result.json`. `status=pass` iff `gate==clear` OR every `flagged` is waived; `--status fail` (user reject) writes `fail_reason="user rejected plan"` and wins. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+
+The plan's canonical revision history lives in `verification-plan.md` §5; `--revision` carries the one-line machine-readable copy. The plan's structured data (`agents` / `sequences` / `tests` / `testpoints` / `power_scenarios`) lives in `scaffold-specification.json` and is not duplicated into `stage_specific`.
 
 ## Decision Rules
 
@@ -260,7 +266,7 @@ Note: the plan's structured data (`agents` / `sequences` / `tests` / `testpoints
 
 ## Completion Gate
 
-- [ ] `{workdir}/result.json` has been written and passes schema validation (`schema_version: 1`).
+- [ ] result.json was written by validate_scaffold.py finalize (it owns status / the derived counts / plan_adequacy_gate / artifacts[]; you supply only the γ-floor --waived/--status/--revision from Step 5).
 - [ ] `validate_scaffold.py --plan-data` passes — structural schema + semantic cross-refs; authoritative gate, runs on every branch.
 - [ ] When `status=fail`, `stage_specific.fail_reason` records the missing item / user-rejection reason.
 - [ ] `artifacts[]` has at least 2 entries (`verification-plan.md` + `scaffold-specification.json`); both files exist inside `{workdir}`.

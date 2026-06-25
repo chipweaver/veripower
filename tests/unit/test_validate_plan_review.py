@@ -114,3 +114,55 @@ def test_verdict_inconsistent_exit_1(tmp_path):
     r = _run(tmp_path, _doc([_finding("adequacy", severity="important")], verdict="ok"))
     assert r.returncode == 1
     assert "plan-review inconsistent" in r.stderr
+
+
+# ── extracted pure gate_verdict() (direct import — not subprocess) ───────────
+import sys  # noqa: E402
+
+sys.path.insert(0, str(ROOT / "skills" / "simulation-plan" / "scripts"))
+import validate_plan_review as vpr  # noqa: E402
+
+
+def test_gate_verdict_clear_on_empty():
+    assert vpr.gate_verdict({"findings": []}) == {
+        "gate": "clear",
+        "flagged": [],
+        "must_ack": [],
+    }
+
+
+def test_gate_verdict_coverage_critical_trips():
+    doc = {
+        "findings": [
+            {
+                "tp_id": "TP-1",
+                "lens": "coverage",
+                "severity": "critical",
+                "location": "x",
+                "summary": "y",
+            }
+        ]
+    }
+    g = vpr.gate_verdict(doc)
+    assert g["gate"] == "trip"
+    assert g["flagged"] == [
+        {"tp_id": "TP-1", "lens": "coverage", "severity": "critical"}
+    ]
+    assert g["must_ack"] == []
+
+
+def test_gate_verdict_adequacy_is_must_ack_only():
+    doc = {
+        "findings": [
+            {
+                "tp_id": "TP-1",
+                "lens": "adequacy",
+                "severity": "critical",
+                "location": "x",
+                "summary": "y",
+            }
+        ]
+    }
+    g = vpr.gate_verdict(doc)
+    assert g["gate"] == "clear" and g["flagged"] == []
+    assert g["must_ack"] == [{"tp_id": "TP-1", "severity": "critical"}]

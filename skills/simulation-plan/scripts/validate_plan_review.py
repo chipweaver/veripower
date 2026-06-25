@@ -33,6 +33,35 @@ _GATING_LENSES = {"coverage"}
 _GATING_SEVERITIES = {"critical", "important"}
 
 
+def gate_verdict(doc: dict) -> dict:
+    """Pure lens x severity reduction over a (schema-valid) plan-review doc.
+    coverage at critical/important blocks (gate=trip); adequacy is advisory must-acknowledge;
+    unavailable never blocks. Caller guarantees the doc passed the schema/consistency gate
+    (main()'s gate, or — for finalize — the on-disk plan-review.json already gated at Step 4)."""
+    findings = doc.get("findings", [])
+    gating = [
+        f
+        for f in findings
+        if f.get("lens") in _GATING_LENSES and f.get("severity") in _GATING_SEVERITIES
+    ]
+    flagged = [
+        {"tp_id": f.get("tp_id"), "lens": f.get("lens"), "severity": f.get("severity")}
+        for f in sorted(gating, key=lambda f: (f.get("tp_id", ""), f.get("lens", "")))
+    ]
+    must_ack = [
+        {"tp_id": f.get("tp_id"), "severity": f.get("severity")}
+        for f in sorted(
+            (f for f in findings if f.get("lens") == "adequacy"),
+            key=lambda f: (f.get("tp_id", ""), f.get("severity", "")),
+        )
+    ]
+    return {
+        "gate": "trip" if gating else "clear",
+        "flagged": flagged,
+        "must_ack": must_ack,
+    }
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("usage: validate_plan_review.py <plan-review.json>", file=sys.stderr)
@@ -74,31 +103,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    gating = [
-        f
-        for f in findings
-        if f.get("lens") in _GATING_LENSES and f.get("severity") in _GATING_SEVERITIES
-    ]
-    flagged = [
-        {"tp_id": f.get("tp_id"), "lens": f.get("lens"), "severity": f.get("severity")}
-        for f in sorted(gating, key=lambda f: (f.get("tp_id", ""), f.get("lens", "")))
-    ]
-    must_ack = [
-        {"tp_id": f.get("tp_id"), "severity": f.get("severity")}
-        for f in sorted(
-            (f for f in findings if f.get("lens") == "adequacy"),
-            key=lambda f: (f.get("tp_id", ""), f.get("severity", "")),
-        )
-    ]
-    print(
-        json.dumps(
-            {
-                "gate": "trip" if gating else "clear",
-                "flagged": flagged,
-                "must_ack": must_ack,
-            }
-        )
-    )
+    print(json.dumps(gate_verdict(doc)))
     return 0
 
 

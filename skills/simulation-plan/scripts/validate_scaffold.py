@@ -21,11 +21,20 @@ thin consumer-side backstops (defense-in-depth for scaffolds that bypass this ga
 """
 
 import argparse
+import datetime
 import json
+import re
 import sys
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from validate_plan_review import (  # noqa: E402,I001 — in-process; pure, no schema-gate crash
+    gate_verdict,
+)
+
+STAGE = "simulation-plan"
 
 _DEFAULT_SCHEMA = (
     Path(__file__).resolve().parent.parent
@@ -186,7 +195,145 @@ def validate(scaffold: dict, schema: dict) -> list:
     return semantic_errors(scaffold)
 
 
-def main() -> int:
+def _now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _envelope(module, *, status, stage_specific, artifacts) -> dict:
+    return {
+        "schema_version": 1,
+        "stage": STAGE,
+        "module": module,
+        "produced_at": _now_iso(),
+        "status": status,
+        "artifacts": artifacts,
+        "stage_specific": stage_specific,
+    }
+
+
+def _write_result(workdir: Path, env: dict) -> None:
+    (workdir / "result.json").write_text(json.dumps(env, indent=2) + "\n")
+    sys.stdout.write(
+        f"[validate_scaffold] Written: {workdir / 'result.json'} (status={env['status']})\n"
+    )
+
+
+def count_features(plan_md: str) -> int:
+    """feature_count = distinct F-NN testpoint-feature IDs in verification-plan.md (§3 table
+    feature column). The \\b boundary + \\d+ excludes a bare 'F-' and the 'Frame-01' substring."""
+    return len(set(re.findall(r"\bF-\d+\b", plan_md)))
+
+
+def enumerate_artifacts(workdir) -> list:
+    """Fixed simulation-plan artifact set, present-only, with kinds (plan-review.json promotes
+    per SKILL Step 4). Never lists result.json (self) — the envelope schema forbids it."""
+    workdir = Path(workdir)
+    fixed = [
+        ("verification-plan.md", "plan"),
+        ("scaffold-specification.json", "scaffold"),
+        ("plan-review.json", "plan-review"),
+    ]
+    return [{"path": p, "kind": k} for p, k in fixed if (workdir / p).is_file()]
+
+
+def build_result(workdir, module, *, waived, status, revision) -> int:
+    """Assemble the lean simulation-plan result.json from the workdir.
+    Re-derives the counts (scaffold arrays + distinct-F-NN in the plan md) and the
+    plan-adequacy gate verdict (gate_verdict over the on-disk plan-review.json) in-process,
+    then computes status. The human-gate state (waived / status=user-reject / revision) is
+    gamma-floor: passed in by the caller, NOT derivable from any artifact.
+    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED)."""
+    workdir = Path(workdir)
+    scaffold = json.loads(
+        (workdir / "scaffold-specification.json").read_text(encoding="utf-8")
+    )
+    plan_md = (workdir / "verification-plan.md").read_text(encoding="utf-8")
+    review = json.loads((workdir / "plan-review.json").read_text(encoding="utf-8"))
+
+    gate = gate_verdict(review)
+    if waived:
+        gate = {**gate, "waived": waived}
+    # status: pass iff gate clears OR every flagged is waived; user-reject (--status fail) wins.
+    flagged_ids = {(f.get("tp_id"), f.get("lens")) for f in gate.get("flagged", [])}
+    waived_ids = {(w.get("tp_id"), w.get("lens")) for w in (waived or [])}
+    gate_ok = gate["gate"] == "clear" or flagged_ids <= waived_ids
+    computed = "pass" if gate_ok else "fail"
+    final = "fail" if status == "fail" else computed
+
+    if final == "pass":
+        ss = {
+            "feature_count": count_features(plan_md),
+            "testpoint_count": len(scaffold.get("testpoints", [])),
+            "power_scenario_count": len(scaffold.get("power_scenarios", [])),
+            "scaffold_summary": {
+                "agent_count": len(scaffold.get("agents", [])),
+                "sequence_count": len(scaffold.get("sequences", [])),
+                "test_count": len(scaffold.get("tests", [])),
+            },
+            "plan_adequacy_gate": gate,
+        }
+    else:
+        reason = (
+            "user rejected plan"
+            if status == "fail"
+            else "plan-adequacy gate tripped (see plan-review.json)"
+        )
+        ss = {"fail_reason": reason, "plan_adequacy_gate": gate}
+    if revision:
+        ss["revision"] = revision
+    _write_result(
+        workdir,
+        _envelope(
+            module,
+            status=final,
+            stage_specific=ss,
+            artifacts=enumerate_artifacts(workdir),
+        ),
+    )
+    return 0
+
+
+def main(argv=None) -> int:
+    argv = sys.argv if argv is None else argv
+    if len(argv) > 1 and argv[1] == "finalize":
+        ap = argparse.ArgumentParser(
+            prog="validate_scaffold.py finalize",
+            description="Assemble the lean simulation-plan result.json from the workdir.",
+        )
+        ap.add_argument("--workdir", required=True, type=Path)
+        ap.add_argument("--module", required=True)
+        ap.add_argument(
+            "--waived",
+            default=None,
+            help="JSON array of human waiver objects (gamma-floor).",
+        )
+        ap.add_argument(
+            "--status",
+            choices=["pass", "fail"],
+            default=None,
+            help="Human Step-5 verdict; --status fail = user rejected plan (gamma-floor).",
+        )
+        ap.add_argument(
+            "--revision",
+            default=None,
+            help="Agent-composed revision narrative (gamma-floor).",
+        )
+        try:
+            a = ap.parse_args(argv[2:])
+        except SystemExit as exc:
+            if exc.code not in (0, None):
+                print("[validate_scaffold] ERROR: usage", file=sys.stderr)
+                return 2
+            return 0
+        try:
+            waived = json.loads(a.waived) if a.waived else None
+            return build_result(
+                a.workdir, a.module, waived=waived, status=a.status, revision=a.revision
+            )
+        except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
+            print(f"[validate_scaffold] FAIL=internal {exc}", file=sys.stderr)
+            return 2
+    # ── legacy validate CLI (UNCHANGED body) ────────────────────────────────
     p = argparse.ArgumentParser(
         description="Validate scaffold-specification.json (structural + semantic + coverage)."
     )
