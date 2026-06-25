@@ -325,3 +325,18 @@ def test_parse_clock_from_sdc(tmp_path):
         "create_clock -name i_clk -period 10.0 [get_ports i_clk]\n"
     )
     assert sp.parse_clock(tmp_path) == {"name": "i_clk", "period_ns": 10.0}
+
+
+# ── artifacts[] enumeration (present-only, no self-listing) ───────────────────
+def test_enumerate_artifacts_present_only_no_self(tmp_path):
+    (tmp_path / "out").mkdir()
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "scripts").mkdir()
+    for rel in ["out/tpu_top_syn.v", "reports/area.rpt", "constraints.sdc"]:
+        (tmp_path / rel).write_text("x")
+    (tmp_path / "result.json").write_text("{}")  # must NOT self-list
+    paths = [a["path"] for a in sp.enumerate_artifacts(tmp_path, top="tpu_top")]
+    assert "out/tpu_top_syn.v" in paths and "reports/area.rpt" in paths
+    assert "constraints.sdc" in paths
+    assert "result.json" not in paths
+    assert all((tmp_path / p).is_file() for p in paths)  # only present files

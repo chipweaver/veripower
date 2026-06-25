@@ -266,9 +266,26 @@ def parse_clock(workdir):
     return {"name": m.group(1), "period_ns": float(m.group(2))} if m else None
 
 
-# --- artifacts (Task 3): stub so Task 2 imports/runs ---
-def enumerate_artifacts(workdir, top):
-    return []
+def enumerate_artifacts(workdir, top: str) -> list[dict]:
+    workdir = Path(workdir)
+    candidates = [
+        f"out/{top}_syn.v",
+        f"out/{top}_syn.sdc",
+        f"out/{top}_syn.sdf",
+        "reports/qor.rpt",
+        "reports/area.rpt",
+        "reports/timing_setup.rpt",
+        "reports/timing_hold.rpt",
+        "reports/power.rpt",
+        "reports/check_design.rpt",
+        "constraints.sdc",
+        "run.log",
+        "ppa-actual.json",
+        "scripts/dc_run.tcl",
+        "scripts/rtl_load.tcl",
+        "scripts/config.tcl",
+    ]  # envelope.schema forbids listing result.json itself; excluded by construction
+    return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
 def main(argv: list[str]) -> int:
