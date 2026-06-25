@@ -1,0 +1,59 @@
+ 
+****************************************
+Report : area
+Design : tpu_top
+Version: L-2016.03-SP1
+Date   : Wed Jun 17 20:15:32 2026
+****************************************
+
+Library(s) Used:
+
+    slow (File: /home/eda/Foundry/TSMC.90/slow.db)
+
+Number of ports:                         2075
+Number of nets:                         11525
+Number of cells:                         7850
+Number of combinational cells:           6555
+Number of sequential cells:              1279
+Number of macros/black boxes:               0
+Number of buf/inv:                        718
+Number of references:                      27
+
+Combinational area:              50513.903396
+Buf/Inv area:                     1670.860855
+Noncombinational area:           20170.281753
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (No wire load specified)
+
+Total cell area:                 70684.185148
+Total area:                 undefined
+
+Hierarchical area distribution
+------------------------------
+
+                                  Global cell area            Local cell area
+                                  -------------------  ------------------------------ 
+Hierarchical cell                 Absolute    Percent  Combi-      Noncombi-   Black-
+                                  Total       Total    national    national    boxes   Design
+--------------------------------  ----------  -------  ----------  ----------  ------  -----------------
+tpu_top                           70684.1851    100.0    468.5184   2500.6465  0.0000  tpu_top
+fifo_00                            6638.2849      9.4   2569.7953   4068.4896  0.0000  fifo_0
+fifo_01                            6638.2849      9.4   2569.7953   4068.4896  0.0000  fifo_2
+fifo_result                        6638.2849      9.4   2569.7953   4068.4896  0.0000  fifo_1
+mac_00                            11569.7230     16.4     22.5792    993.4848  0.0000  mac_0
+mac_00/add_39                       550.3680      0.8    550.3680      0.0000  0.0000  mac_0_DW01_add_0
+mac_00/mult_39                    10003.2910     14.2  10003.2910      0.0000  0.0000  mac_0_DW02_mult_0
+mac_01                            11569.7230     16.4     22.5792    993.4848  0.0000  mac_3
+mac_01/add_39                       550.3680      0.8    550.3680      0.0000  0.0000  mac_3_DW01_add_0
+mac_01/mult_39                    10003.2910     14.2  10003.2910      0.0000  0.0000  mac_3_DW02_mult_0
+mac_10                            11569.7230     16.4     22.5792    993.4848  0.0000  mac_2
+mac_10/add_39                       550.3680      0.8    550.3680      0.0000  0.0000  mac_2_DW01_add_0
+mac_10/mult_39                    10003.2910     14.2  10003.2910      0.0000  0.0000  mac_2_DW02_mult_0
+mac_11                            11569.7230     16.4     22.5792    993.4848  0.0000  mac_1
+mac_11/add_39                       550.3680      0.8    550.3680      0.0000  0.0000  mac_1_DW01_add_0
+mac_11/mult_39                    10003.2910     14.2  10003.2910      0.0000  0.0000  mac_1_DW02_mult_0
+systolic_reg                       1521.2736      2.2     31.0464   1490.2272  0.0000  systolic_reg
+--------------------------------  ----------  -------  ----------  ----------  ------  -----------------
+Total                                                  50513.9034  20170.2818  0.0000
+
+1

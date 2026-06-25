@@ -1,0 +1,85 @@
+Information: Updating design information... (UID-85)
+Warning: Design 'tpu_top' contains 1 high-fanout nets. A fanout number of 1000 will be used for delay calculations involving these nets. (TIM-134)
+ 
+****************************************
+Report : qor
+Design : tpu_top
+Version: L-2016.03-SP1
+Date   : Wed Jun 17 20:15:32 2026
+****************************************
+
+
+  Timing Path Group 'i_clk'
+  -----------------------------------
+  Levels of Logic:              35.00
+  Critical Path Length:          8.93
+  Critical Path Slack:           0.73
+  Critical Path Clk Period:     10.00
+  Total Negative Slack:          0.00
+  No. of Violating Paths:        0.00
+  Worst Hold Violation:          0.00
+  Total Hold Violation:          0.00
+  No. of Hold Violations:        0.00
+  -----------------------------------
+
+
+  Cell Count
+  -----------------------------------
+  Hierarchical Cell Count:         16
+  Hierarchical Port Count:       1896
+  Leaf Cell Count:               7825
+  Buf/Inv Cell Count:             718
+  Buf Cell Count:                 214
+  Inv Cell Count:                 504
+  CT Buf/Inv Cell Count:            0
+  Combinational Cell Count:      6555
+  Sequential Cell Count:         1270
+  Macro Count:                      0
+  -----------------------------------
+
+
+  Area
+  -----------------------------------
+  Combinational Area:    50513.903396
+  Noncombinational Area: 20170.281753
+  Buf/Inv Area:           1670.860855
+  Total Buffer Area:           603.99
+  Total Inverter Area:        1066.87
+  Macro/Black Box Area:      0.000000
+  Net Area:                  0.000000
+  -----------------------------------
+  Cell Area:             70684.185148
+  Design Area:           70684.185148
+
+
+  Design Rules
+  -----------------------------------
+  Total Number of Nets:          9833
+  Nets With Violations:             0
+  Max Trans Violations:             0
+  Max Cap Violations:               0
+  -----------------------------------
+
+
+  Hostname: iv-yei188tw5cxjd1u6lntj
+
+  Compile CPU Statistics
+  -----------------------------------------
+  Resource Sharing:                    3.09
+  Logic Optimization:                  1.74
+  Mapping Optimization:                3.63
+  -----------------------------------------
+  Overall Compile Time:               10.20
+  Overall Compile Wall Clock Time:    12.36
+
+  --------------------------------------------------------------------
+
+  Design  WNS: 0.00  TNS: 0.00  Number of Violating Paths: 0
+
+
+  Design (Hold)  WNS: 0.00  TNS: 0.00  Number of Violating Paths: 0
+
+  --------------------------------------------------------------------
+
+
+1

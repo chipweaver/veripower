@@ -340,3 +340,67 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
     assert "constraints.sdc" in paths
     assert "result.json" not in paths
     assert all((tmp_path / p).is_file() for p in paths)  # only present files
+
+
+# ── golden: lean shape against the real tpu_top run ───────────────────────────
+_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "synthesis-tpu_top"
+
+
+def test_golden_lean_against_real_tpu_top(tmp_path):
+    import shutil
+
+    wd = tmp_path / "synthesis"
+    shutil.copytree(_FIXTURE, wd)
+    assert (
+        sp.build_result(
+            wd, module="tpu_top", top="tpu_top", area_target=None, slack_target=None
+        )
+        == 0
+    )
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert env["status"] == "pass"
+    area = [a for a in ss["ppa_actual"] if a["dim"] == "area_um2"][0]["value"]
+    slack = [a for a in ss["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]["value"]
+    assert area == pytest.approx(70684.185148) and slack == pytest.approx(0.73)
+    assert ss["violations"] == []
+    assert ss["tool"] == "Design Compiler L-2016.03-SP1"  # report header, NOT "dc2016"
+    assert ss["lib_db"] == "/home/eda/Foundry/TSMC.90/slow.db"
+    assert ss["clock"] == {"name": "i_clk", "period_ns": 10.0}
+    assert ss["top_module"] == "tpu_top" and ss["ppa_targets"] == []
+    for k in ("rtl_filelist", "power_report", "timing_exceptions", "notes"):
+        assert k not in ss
+    paths = [a["path"] for a in env["artifacts"]]
+    assert "out/tpu_top_syn.v" in paths and "reports/area.rpt" in paths
+    assert "result.json" not in paths
+    assert env["produced_at"].endswith("Z")
+
+
+def test_golden_is_schema_valid(tmp_path):
+    # Validate the in-memory envelope against {envelope schema + synthesis
+    # result.schema} via Registry. Not _validate_envelope (it is bound to the
+    # frontend-signoff schema) nor state.validate_result (on-disk-path coupled).
+    import shutil
+
+    from jsonschema import Draft202012Validator
+    from referencing import Registry, Resource
+
+    wd = tmp_path / "synthesis"
+    shutil.copytree(_FIXTURE, wd)
+    sp.build_result(
+        wd, module="tpu_top", top="tpu_top", area_target=None, slack_target=None
+    )
+    env = json.loads((wd / "result.json").read_text())
+    env_schema = json.loads(
+        (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()
+    )
+    stage_schema = json.loads(
+        (REPO_ROOT / "skills/synthesis/references/result.schema.json").read_text()
+    )
+    registry = Registry().with_resource(
+        "https://veripower.local/schemas/envelope.schema.json",
+        Resource.from_contents(env_schema),
+    )
+    Draft202012Validator(stage_schema, registry=registry).validate(
+        env
+    )  # raises on invalid
