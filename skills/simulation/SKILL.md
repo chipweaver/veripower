@@ -99,18 +99,18 @@ Completion Gate.
 
 Read `Verification/simulation-plan/result.json` (MUST be `status=pass`) and
 `Design/rtl-design/result.json` (MUST be `status=pass`), and assert the plan artifacts
-(`verification-plan.md` + `scaffold-specification.json`) exist. If any is missing or not `pass`, write
-`{workdir}/result.json` with `status=fail` + `stage_specific.failure_phase="prerequisite"` +
-`stage_specific.fail_reason="external reference missing: <path>"` and return without dispatching. The
+(`verification-plan.md` + `scaffold-specification.json`) exist. If any is missing or not `pass`, run
+`validate_sim_exit.py finalize --workdir {workdir} --module <module> --phase prerequisite
+--fail-reason "external reference missing: <path>"` and return without dispatching. The
 main thread does not read the scaffold-spec / verification-plan body — only the envelopes + path
 existence.
 
 Select the branch (which references the env-build sub-Task consults when filling TODOs):
 
 - **Trigger-driven rework** (`{rework_trigger}` injected): the orchestrator pre-gates the trigger's
-  readability before dispatching — if the trigger path is unreadable, write `{workdir}/result.json`
-  with `status=fail` + `stage_specific.failure_phase="prerequisite"` +
-  `stage_specific.fail_reason="rework_trigger not readable"` and return without dispatching;
+  readability before dispatching — if the trigger path is unreadable, run `validate_sim_exit.py
+  finalize --workdir {workdir} --module <module> --phase prerequisite --fail-reason
+  "rework_trigger not readable"` and return without dispatching;
   otherwise pass the trigger path (+ any `{orchestrator_context_path}`) into the env-build sub-Task.
 - **Incremental-update branch** (no trigger; canonical `Verification/simulation/result.json` exists):
   the env-build sub-Task diffs the external references against the canonical baseline.
@@ -141,9 +141,11 @@ presence-only check (it is the conformance gate's job).
 
 After dispatching, end the turn and wait for the harness wake.
 On wake-up, reap the env-build child's harness `STATUS:` last line + its JSON line. If
-`STATUS: BLOCKED <reason>`, write `result.json` `status=fail` + `fail_reason=<reason>` (with
-`failure_phase` per the reason — `compile` / `smoke` for a Rule A semantic block, `prerequisite` for
-an incomplete `inlined_check_hints[]` block) and return; do not dispatch the downstream waves.
+`STATUS: BLOCKED <reason>`, run `validate_sim_exit.py finalize --workdir {workdir} --module <module>
+--phase env-blocked --failure-phase <compile|smoke|prerequisite> --fail-reason "<reason>"`
+(`--failure-phase` per the reason — `compile` / `smoke` for a Rule A semantic block, `prerequisite`
+for an incomplete `inlined_check_hints[]` block; pass `--verify-verdict <reaped env JSON>` when it
+carries `compile_rounds`) and return; do not dispatch the downstream waves.
 
 ### Step 3: Smoke gate (deterministic; main thread)
 
@@ -154,11 +156,13 @@ reads a small status file, does NOT re-run heavy EDA, and does NOT read the TB b
 exists yet).
 
 - **Compile failed (no smoke status):** `make simv` produced no `simv`, so `make smoke` ran no test
-  and `regression-log.txt` carries no `RESULT` line. Write `result.json` `status=fail` +
-  `failure_phase=compile` + `fail_reason` (+ `compile_rounds`); skip the downstream waves.
+  and `regression-log.txt` carries no `RESULT` line. Run `validate_sim_exit.py finalize --phase smoke
+  --failure-phase compile --fail-reason "<…>"` (pass `--verify-verdict <reaped, carries compile_rounds>`);
+  skip the downstream waves.
 - **Smoke ran but failed:** `regression-log.txt`'s `RESULT <test> <PASS|FAIL|MANUAL_REVIEW>` lines (or
-  the per-test `logs/<test>.status` files) contain any non-`PASS`. Write `result.json` `status=fail` +
-  `failure_phase=smoke` + `fail_reason` (+ `failing_cases`); skip the downstream waves.
+  the per-test `logs/<test>.status` files) contain any non-`PASS`. Run `validate_sim_exit.py finalize
+  --phase smoke --failure-phase smoke --fail-reason "<…>"` (pass `--verify-verdict <reaped, carries
+  failing_cases>`); skip the downstream waves.
 - **Smoke passed:** every `RESULT` line is `PASS` → proceed to Step 4 (conformance gate).
 
 ### Step 4: Wave 2 — conformance gate (LLM check-adequacy review; gating)
@@ -181,10 +185,11 @@ On exit 0 it prints a one-line gate verdict `{"gate": "trip"|"clear", "flagged":
 "dominant_category": ...}` — the mechanical category × severity reduction (per the reviewer
 contract's "Severity & gating"), computed by the script, not judged by eye. Apply it:
 
-- **`gate=trip`:** write `result.json` `status=fail` + `stage_specific.failure_phase="conformance"`
-  + `fail_reason` (built from `flagged` + `dominant_category`) + `stage_specific.conformance_findings`
-  (the gating subset — informational, carried to triage as `failure_signal`); list
-  `conformance-review.json` in `artifacts[]`; **skip Step 5** (do not dispatch the verify wave), exactly
+- **`gate=trip`:** run `validate_sim_exit.py finalize --workdir {workdir} --module <module> --phase
+  conformance --fail-reason "<built from flagged + dominant_category>" --conformance-review
+  {workdir}/conformance-review.json` (finalize re-derives the gating `conformance_findings` subset
+  in-process via `compute_gate`, carried to triage as `failure_signal`, and enumerates
+  `conformance-review.json` in `artifacts[]`); **skip Step 5** (do not dispatch the verify wave), exactly
   as a smoke-gate fail skips the downstream waves.
 - **`gate=clear`:** proceed to Step 5. Advisory findings (`unverifiable-arch` any severity, `minor`,
   `unavailable`) never trip the gate — record them in `conformance-review.json` and surface a
@@ -207,47 +212,56 @@ Dispatch one `Task(run_in_background=True)` — the verify child — whose promp
 scaffold-spec testpoints path, and `{module}`.
 
 After dispatching, end the turn and wait for the harness wake.
-On wake-up, reap the verify child's `STATUS:` last line + its JSON line (the `stage_specific` fields).
-If `STATUS: BLOCKED <reason>`, map to `status=fail` + `fail_reason`.
+On wake-up, reap the verify child's `STATUS:` last line + its JSON line (the `stage_specific` fields),
+then branch on its verdict and write `status=fail` via finalize, **skipping Step 6/7** (do NOT call
+`--phase final`) — exactly as a smoke- or conformance-gate fail skips the downstream waves:
 
-### Step 6: Finalize (script)
+- a `make regress` case failed → `validate_sim_exit.py finalize --phase regress --failure-phase regress
+  --fail-reason "<…>" --verify-verdict <reaped, carries failing_cases>`;
+- Rule-B uncovered bins (`failure_phase=coverage` from the verify child) → `validate_sim_exit.py
+  finalize --phase regress --failure-phase coverage --fail-reason "<…>" --verify-verdict <reaped,
+  carries coverage_gaps + gaps_not_in_testpoints ∨ gaps_in_testpoints>`;
+- `STATUS: BLOCKED <reason>` → `validate_sim_exit.py finalize --phase verify-blocked --fail-reason
+  "verify child BLOCKED: <reason>"`.
 
-Run the full exit self-check (unchanged) over the reaped workdir:
+Only a **clean** verify verdict (no `failure_phase`, not BLOCKED) proceeds to Step 6/7.
+
+### Step 6: Finalize + write `{workdir}/result.json` (script)
+
+On a clean verify pass, run the finalize subcommand; do not hand-assemble the envelope, re-derive
+counts, or copy gate verdicts by hand. Pass the scaffold-spec + thresholds it reuses for the
+compile/coverage gate, the assembled `conformance-review.json`, and the reaped verify-child verdict
+(carrying `stimulus_iterations`):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/validate_sim_exit.py --workdir {workdir} --scaffold Verification/simulation-plan/scaffold-specification.json --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml
+python3 ${CLAUDE_SKILL_DIR}/scripts/validate_sim_exit.py finalize \
+  --workdir {workdir} --module <module> --phase final \
+  --scaffold Verification/simulation-plan/scaffold-specification.json \
+  --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml \
+  --conformance-review {workdir}/conformance-review.json \
+  --verify-verdict {workdir}/<reaped-verify-verdict>.json
 ```
 
-Its **exit code is the pass/fail truth**; always read the verdict from its stdout (the JSON line
-carries `coverage_extractable` / `dims` / `unmaterialized` / `todo_residue`). It runs three checks:
-thin-D1 (every scaffold-spec sequence/agent SV file materialized, zero `TODO` residue), D5
-(`structural-coverage.json` present with an `aggregate` block), and D6 (every
-`defaults.yaml.coverage_thresholds` dim ≥ threshold; a dim measured null/absent — e.g. no FSM — is
-skipped). On failure its stderr names the exact cause — act on that, not on the script source. Copy the stdout verdict
-into `result.json.stage_specific`. On a non-zero exit: `status=fail` with `failure_phase=coverage` for
-coverage-extractable/threshold failures, or `failure_phase=compile` for thin-D1 file/TODO failures
-(when both trip in the same run, write `failure_phase=compile` — the earlier phase). This mirrors
-rtl-design's `validate_rtl_exit` finalize.
+`finalize --phase final` reuses the host's own `thin_d1` + `coverage_gate` in-process for the
+exit-code gate (thin-D1 fail → `failure_phase=compile`, coverage fail → `failure_phase=coverage`,
+earlier phase wins), derives the informational pass-summary (`total_cases`/`passed`/`failed` from
+`coverage-summary.txt`, `coverage_summary` from `structural-coverage.json.aggregate`,
+`conformance_gate` + `conformance_advisory[]` from `conformance-review.json` with each advisory `note`
+copied verbatim from the finding `summary`, `stimulus_iterations` from the reaped verify verdict),
+enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status
+pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
-### Step 7: Write result.json
-
-Assemble `{workdir}/result.json` (schema `references/result.schema.json` + envelope) by faithfully
-adopting the verify child's verdict and the gate results:
-
-- A wave that routed out (smoke gate fail in Step 3, env/verify `STATUS: BLOCKED`, or a non-zero
-  `validate_sim_exit` in Step 6) → `status=fail` with the `failure_phase` + `fail_reason` from that
-  step (companion fields per the table below).
-- A clean pass (smoke gate passed, verify child returned no `failure_phase`, `validate_sim_exit`
-  exited 0) → `status=pass`; fold in the verify child's informational `stage_specific` counts (e.g.
-  `stimulus_iterations`, `coverage_summary`). Omit `failure_phase` (the schema rejects `null`).
-
-**Verdict integrity (anti-gaming):** the orchestrator MUST NOT override a sub-Task's or the script's
-fail verdict to pass. A `status=pass` is written only when every gate above is clean — the smoke gate,
-the conformance gate, the verify child's verdict, and `validate_sim_exit` all agree. This mirrors rtl-design's child-status
+**Verdict integrity (anti-gaming):** the orchestrator MUST NOT override any gate's fail to pass.
+`status=pass` is written by finalize only on `--phase final` when `thin_d1`/`coverage_gate` are clean
+and no upstream gate — smoke, conformance, **or the Step-5 verify wave** (`regress` / Rule-B `coverage` /
+`verify-blocked`) — routed out (each of those wrote its own `status=fail` via its own `--phase` call and
+skipped the downstream waves; so a regression/coverage/blocked failure can never reach the
+compile/coverage-only `--phase final` and be mis-written as pass). This mirrors rtl-design's child-status
 precedence: the orchestrator records the most-failing verdict, never a more-optimistic one.
 
-`failure_phase` is required when `status=fail` (values below); `fail_reason` (one-line summary) is
-required on every fail path; omit both on pass.
+The `failure_phase` value table below documents which step decides each phase; finalize owns the
+`compile`/`coverage` finalize rows and writes the rest via `--phase`. `failure_phase` is required when
+`status=fail`; `fail_reason` (one-line summary) is required on every fail path; both are absent on pass.
 
 | failure_phase | First-failing phase | Companion fields (besides `fail_reason`) | Decided in |
 |---|---|---|---|
@@ -285,17 +299,16 @@ sub-Task.
 
 ## Completion Gate (orchestrator)
 
-- [ ] `{workdir}/result.json` has been written and passes schema validation.
-- [ ] Every promoted artifact path is listed in `result.json.artifacts[]`.
 - [ ] No Iron Rule was triggered.
 - [ ] The env-build sub-Task was dispatched and reaped (DONE or BLOCKED).
 - [ ] The smoke gate (Step 3) was evaluated against the smoke run's own status (`regression-log.txt`
       `RESULT` lines / per-test `.status`), not the child's prose; the verify wave was dispatched only
       on a smoke pass.
-- [ ] On a smoke pass, the conformance reviewer (Step 4) was dispatched and reaped; `conformance-review.json` was written + schema-validated + listed in `artifacts[]`; the verify wave was dispatched only when the gate did not trip (or a review-unavailable fall-through); a gate trip wrote `status=fail` + `failure_phase=conformance`.
+- [ ] On a smoke pass, the conformance reviewer (Step 4) was dispatched and reaped; `conformance-review.json` was written + schema-validated; the verify wave was dispatched only when the gate did not trip (or a review-unavailable fall-through).
 - [ ] On a smoke pass, the verify sub-Task was dispatched and reaped.
-- [ ] `validate_sim_exit.py` was run at finalize and exited 0 (or `status=fail` was written with the
-      appropriate `failure_phase`).
+- [ ] `result.json` was written by `validate_sim_exit.py finalize` (it reuses `thin_d1`/`coverage_gate`
+      for the exit-code gate and owns status / failure_phase / the pass-summary / artifacts[]; every
+      exit path calls it via `--phase`).
 
 ## Return Contract
 

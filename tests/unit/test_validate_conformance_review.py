@@ -1,9 +1,17 @@
+import importlib.util
 import json
 import subprocess
+import sys as _sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "skills/simulation/scripts/validate_conformance_review.py"
+
+# Load the module in-process so the pure compute_gate() is directly callable.
+_spec = importlib.util.spec_from_file_location("validate_conformance_review", SCRIPT)
+vcr = importlib.util.module_from_spec(_spec)
+_sys.modules["validate_conformance_review"] = vcr
+_spec.loader.exec_module(vcr)
 
 
 def _run(tmp_path, doc):
@@ -205,3 +213,31 @@ def test_has_critical_inconsistent_exit_1(tmp_path):
     r = _run(tmp_path, doc)
     assert r.returncode == 1
     assert "conformance-review inconsistent" in r.stderr
+
+
+def test_compute_gate_pure_reduction():
+    doc = {
+        "findings": [
+            {"tp_id": "TP-1", "severity": "critical", "category": "missing"},
+            {
+                "tp_id": "TP-2",
+                "severity": "minor",
+                "category": "missing",
+            },  # severity gate-out
+            {
+                "tp_id": "TP-3",
+                "severity": "critical",
+                "category": "unverifiable-arch",
+            },  # category gate-out
+        ]
+    }
+    assert vcr.compute_gate(doc) == {
+        "gate": "trip",
+        "flagged": ["TP-1"],
+        "dominant_category": "missing",
+    }
+    assert vcr.compute_gate({"findings": []}) == {
+        "gate": "clear",
+        "flagged": [],
+        "dominant_category": None,
+    }

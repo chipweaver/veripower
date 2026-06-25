@@ -1,0 +1,20 @@
+# Global default thresholds, shared by all modules; per-module override is not supported (YAGNI).
+# Any threshold miss BLOCKs; waivers are applied externally by the caller as a manual override.
+
+# Structural coverage gate dims (VCS -cm, no covergroup needed). functional removed:
+# no covergroup substrate exists. Tuned 2026-06-04 against real eval traces: toggle 70->50
+# (70 was aes-anchored at 96-98%; deep-FSM DUTs e.g. sdc run far lower) and fsm 50->40 (still
+# above run2's present-but-shallow 36% ceiling, so shallow-FSM TBs are still failed). line/cond
+# kept (line is the core structural floor; manual gates used line>=70). These right-size the bar;
+# they do NOT make under-covered TBs pass -- deep-FSM DUTs still need external waiver until CR (F5).
+coverage_thresholds:
+  line:    80
+  cond:    60
+  fsm:     40
+  toggle:  50
+
+# Round budget for stimulus iterate (when coverage gaps all map to testpoints)
+stimulus_iterate_max_rounds: 3
+
+# Round budget for compile / smoke scaffold-class repair (triggered by Rule A)
+scaffold_repair_max_rounds: 3

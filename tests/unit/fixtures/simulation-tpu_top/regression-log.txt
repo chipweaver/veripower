@@ -1,0 +1,11 @@
+# suite: regress
+# module: tpu_top
+# top: tpu_top
+# seed: 66653347
+RESULT T-01 PASS feature=F-01 class=happy uvm_testname=tpu_top_tpu_top_mac_smoke_test_test log=logs/T-01.log
+RESULT T-02 PASS feature=F-01 class=happy uvm_testname=tpu_top_tpu_top_full_compute_test_test log=logs/T-02.log
+RESULT T-03 PASS feature=F-02 class=happy uvm_testname=tpu_top_tpu_top_skew_align_test_test log=logs/T-03.log
+RESULT T-04 PASS feature=F-03 class=happy uvm_testname=tpu_top_tpu_top_fifo_test_test log=logs/T-04.log
+RESULT T-05 PASS feature=F-04 class=happy uvm_testname=tpu_top_tpu_top_apb_regfile_test_test log=logs/T-05.log
+RESULT T-06 PASS feature=F-05 class=happy uvm_testname=tpu_top_tpu_top_counter_ctrl_test_test log=logs/T-06.log
+RESULT T-07 PASS feature=F-05 class=happy uvm_testname=tpu_top_tpu_top_rerun_test_test log=logs/T-07.log

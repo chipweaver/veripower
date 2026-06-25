@@ -1,0 +1,77 @@
+{
+  "aggregate": {
+    "score": 93.33,
+    "line": 100.0,
+    "cond": 88.89,
+    "toggle": 84.42,
+    "fsm": null,
+    "branch": 100.0
+  },
+  "per_module": [
+    {
+      "score": 87.5,
+      "line": 100.0,
+      "cond": null,
+      "toggle": 75.0,
+      "fsm": null,
+      "branch": null,
+      "name": "tpu_top_tb_top"
+    },
+    {
+      "score": 89.09,
+      "line": 100.0,
+      "cond": null,
+      "toggle": 67.26,
+      "fsm": null,
+      "branch": 100.0,
+      "name": "tpu_top_core_if"
+    },
+    {
+      "score": 94.42,
+      "line": 100.0,
+      "cond": null,
+      "toggle": 83.25,
+      "fsm": null,
+      "branch": 100.0,
+      "name": "mac"
+    },
+    {
+      "score": 97.19,
+      "line": 100.0,
+      "cond": null,
+      "toggle": 91.58,
+      "fsm": null,
+      "branch": 100.0,
+      "name": "tpu_top"
+    },
+    {
+      "score": 99.51,
+      "line": 100.0,
+      "cond": 100.0,
+      "toggle": 98.03,
+      "fsm": null,
+      "branch": 100.0,
+      "name": "fifo"
+    },
+    {
+      "score": 99.75,
+      "line": 100.0,
+      "cond": null,
+      "toggle": 99.26,
+      "fsm": null,
+      "branch": 100.0,
+      "name": "tpu_top_data_in_if"
+    },
+    {
+      "score": 99.93,
+      "line": 100.0,
+      "cond": null,
+      "toggle": 99.78,
+      "fsm": null,
+      "branch": 100.0,
+      "name": "systolic_reg"
+    }
+  ],
+  "source": "/home/haocheng/ai-try-ai/asic/tpu_top/Verification/simulation/runs/3/cov_merge/dashboard.txt",
+  "urg_version": "L-2016.06"
+}

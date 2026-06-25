@@ -36,6 +36,30 @@ _GATING_CATEGORIES = {"missing", "wrong-behavior", "fake-green", "intent-defect"
 _GATING_SEVERITIES = {"critical", "important"}
 
 
+def compute_gate(doc: dict) -> dict:
+    """Pure category x severity reduction over findings -> the stage gate verdict.
+    The schema gate + verdict/has_critical consistency stay in main(); this is the
+    mechanical fold, callable in-process by finalize on an already-on-disk doc."""
+    findings = doc.get("findings", [])
+    gating = [
+        f
+        for f in findings
+        if f.get("category") in _GATING_CATEGORIES
+        and f.get("severity") in _GATING_SEVERITIES
+    ]
+    flagged = sorted({f.get("tp_id") for f in gating if f.get("tp_id")})
+    dominant = (
+        Counter(f.get("category") for f in gating).most_common(1)[0][0]
+        if gating
+        else None
+    )
+    return {
+        "gate": "trip" if gating else "clear",
+        "flagged": flagged,
+        "dominant_category": dominant,
+    }
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print(
@@ -88,27 +112,7 @@ def main() -> int:
         return 1
     # Gate verdict: the stage's pass/fail gate, computed here (not by eye). Printed as a
     # one-line JSON the main thread copies (mirrors validate_sim_exit.py's stdout verdict).
-    gating = [
-        f
-        for f in findings
-        if f.get("category") in _GATING_CATEGORIES
-        and f.get("severity") in _GATING_SEVERITIES
-    ]
-    flagged = sorted({f.get("tp_id") for f in gating if f.get("tp_id")})
-    dominant = (
-        Counter(f.get("category") for f in gating).most_common(1)[0][0]
-        if gating
-        else None
-    )
-    print(
-        json.dumps(
-            {
-                "gate": "trip" if gating else "clear",
-                "flagged": flagged,
-                "dominant_category": dominant,
-            }
-        )
-    )
+    print(json.dumps(compute_gate(doc)))
     return 0
 
 

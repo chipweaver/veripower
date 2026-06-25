@@ -1,0 +1,95 @@
+{
+  "module": "tpu_top",
+  "testpoints": [
+    {
+      "tp_id": "TP-MAC-FUNC",
+      "asserts": "Registered MAC compute o_result<=(i_data*i_weight)+i_pre_result and data-forward o_data_next<=i_data across all four cells; verified end-to-end via the cycle-accurate RM matmul whose result propagates to o_prdata, compared every clk edge with 4-state ===.",
+      "seqs": ["tpu_top_apb_weight_load_seq->mac00,mac01,mac10,mac11", "tpu_top_data_in_stream_seq->data_forward", "tpu_top_start_seq->mac00,mac01,mac10,mac11", "tpu_top_apb_result_read_seq->mac00,mac01,mac10,mac11"]
+    },
+    {
+      "tp_id": "TP-MAC-PARTIALSUM",
+      "asserts": "Partial-sum chaining: top-row cells seeded with 32'h0 (pure multiply), bottom-row i_pre_result = top-row column partial sum; RM models the chain and the result read back over o_prdata is compared each clk edge with ===.",
+      "seqs": ["tpu_top_apb_weight_load_seq->seed_zero", "tpu_top_data_in_stream_seq->msb_accumulate", "tpu_top_start_seq->seed_zero,msb_accumulate", "tpu_top_apb_result_read_seq->seed_zero,msb_accumulate"]
+    },
+    {
+      "tp_id": "TP-MAC-WRAP",
+      "asserts": "32-bit multiply/accumulate wraps modulo 2^32 (no saturation); RM computes the wrapped product/sum in 32-bit logic and the o_prdata read-back is compared each clk edge with ===.",
+      "seqs": ["tpu_top_data_in_stream_seq->overflow_wrap", "tpu_top_start_seq->overflow_wrap", "tpu_top_apb_result_read_seq->overflow_wrap"]
+    },
+    {
+      "tp_id": "TP-MAC-UNCONNECTED",
+      "asserts": "Intentionally-unconnected mac_01/mac_11 o_data_next must not affect results; RM does not chain those forwards into any consumed signal, so the o_prdata read-back stays correct and is compared each clk edge with ===.",
+      "seqs": ["tpu_top_data_in_stream_seq->unconnected_forward", "tpu_top_start_seq->unconnected_forward", "tpu_top_apb_result_read_seq->unconnected_forward"]
+    },
+    {
+      "tp_id": "TP-SREG-SKEW",
+      "asserts": "Systolic skew: out1=in1 delayed 1 cycle, out2=in2 delayed 2 cycles (delay20->delay21); RM reproduces the skew lines feeding the MAC array, and the resulting o_prdata read-back is compared each clk edge with === (proven [7,10,15,22] for SC-001).",
+      "seqs": ["tpu_top_data_in_stream_seq->delay1,delay2,wavefront_align", "tpu_top_start_seq->delay1,delay2,wavefront_align"]
+    },
+    {
+      "tp_id": "TP-SREG-RESET",
+      "asserts": "Async active-low reset clears delay10/delay20/delay21 to 0; RM reset() zeroes the skew mirrors and post-reset predictions (propagating to o_prdata/counter/flags) are compared each clk edge with ===.",
+      "seqs": ["tpu_top_data_in_stream_seq->reset_clear", "tpu_top_start_seq->reset_clear"]
+    },
+    {
+      "tp_id": "TP-FIFO-WR",
+      "asserts": "FIFO write on i_wr & !o_full into mem[wr_addr] with wr_addr advance; RM mirrors all three FIFOs' write path and the downstream o_prdata/o_full/o_empty predictions are compared each clk edge with ===.",
+      "seqs": ["tpu_top_data_in_stream_seq->write", "tpu_top_start_seq->write", "tpu_top_apb_result_read_seq->write"]
+    },
+    {
+      "tp_id": "TP-FIFO-RD",
+      "asserts": "Combinational FIFO read o_data=mem[rd_addr], rd_addr advances on i_rd & !o_empty, FIFO order preserved; RM models the read path and the o_prdata read-back word order is compared each clk edge with ===.",
+      "seqs": ["tpu_top_data_in_stream_seq->read,fifo_order", "tpu_top_start_seq->read,fifo_order", "tpu_top_apb_result_read_seq->read,fifo_order"]
+    },
+    {
+      "tp_id": "TP-FIFO-FLAGS",
+      "asserts": "o_full and o_empty are INDEPENDENTLY PREDICTED by the RM per cycle (o_empty=(wr==rd), o_full=((wr+1)==rd) for all three FIFOs aggregated into the 3-bit {fr,f01,f00} buses) and the scoreboard COMPARES the RM prediction against DUT o_full/o_empty EACH CYCLE with 4-state === (each mismatch a uvm_error incrementing fail_count) — not mirrored from the DUT.",
+      "seqs": ["tpu_top_data_in_stream_seq->empty,full", "tpu_top_fifo_boundary_seq->full", "tpu_top_start_seq->empty,full", "tpu_top_apb_result_read_seq->empty"]
+    },
+    {
+      "tp_id": "TP-FIFO-BOUNDARY",
+      "asserts": "Write-while-full / read-while-empty ignored (pointer does not advance); RM guards writes with !full and reads with !empty, and the resulting o_full/o_empty/o_prdata predictions are compared each clk edge with ===.",
+      "seqs": ["tpu_top_fifo_boundary_seq->write_full_ignored", "tpu_top_data_in_stream_seq->read_empty_ignored", "tpu_top_start_seq->write_full_ignored,read_empty_ignored", "tpu_top_apb_result_read_seq->read_empty_ignored"]
+    },
+    {
+      "tp_id": "TP-FIFO-WRAP",
+      "asserts": "Modulo-8 (3-bit) pointer wrap; RM uses 3-bit pointers so wr/rd wrap identically, and the o_full/o_empty/o_prdata predictions remain correct across the wrap, compared each clk edge with ===.",
+      "seqs": ["tpu_top_fifo_boundary_seq->ptr_wrap", "tpu_top_data_in_stream_seq->ptr_wrap", "tpu_top_start_seq->ptr_wrap"]
+    },
+    {
+      "tp_id": "TP-FIFO-RESET",
+      "asserts": "Async active-low reset clears FIFO memory and both pointers to 0; RM reset() zeroes all FIFO mirrors/pointers and post-reset o_empty (high) / o_full (low) predictions are compared each clk edge with ===.",
+      "seqs": ["tpu_top_data_in_stream_seq->reset_clear", "tpu_top_fifo_boundary_seq->reset_clear", "tpu_top_start_seq->reset_clear"]
+    },
+    {
+      "tp_id": "TP-APB-WRITE",
+      "asserts": "APB weight load write_enb=i_psel&i_penable&i_pwrite -> mem[i_paddr]<=i_pwdata (clocked, no reset), address map W00=0..W11=3; RM mirrors the weight file (used by the MAC predict), and the resulting o_prdata read-back is compared each clk edge with ===. Rev 0.3: T-04/T-07 now run apb_weight_load FIRST so the read path never observes unwritten (X) weights.",
+      "seqs": ["tpu_top_apb_weight_load_seq->w00,w01,w10,w11", "tpu_top_apb_result_read_seq->w00,w01,w10,w11"]
+    },
+    {
+      "tp_id": "TP-APB-READ",
+      "asserts": "APB read_enb=i_psel&i_penable&!i_pwrite -> o_prdata=fifo_result.o_data (combinational) advancing rd ptr, o_prdata=0 when no read; RM predicts o_prdata per cycle (read-back word vs 0) and the scoreboard compares against DUT o_prdata each clk edge with === (proven SC-001 read-back [7,10,15,22]). Rev 0.3: weights are loaded before this read in T-04/T-07 so the predicted result is deterministic (no X).",
+      "seqs": ["tpu_top_apb_weight_load_seq->read_word", "tpu_top_apb_result_read_seq->read_word,no_read_zero"]
+    },
+    {
+      "tp_id": "TP-CTRL-COUNTER",
+      "asserts": "counter is INDEPENDENTLY PREDICTED by the RM per cycle (async reset->0; while start asserted counter[t+1]=counter[t]+1; when start deasserted counter[t+1]=0) and the scoreboard COMPARES the RM prediction against DUT counter EACH CYCLE with 4-state === (each mismatch a uvm_error incrementing fail_count) — sampled-and-compared, not just sampled.",
+      "seqs": ["tpu_top_apb_weight_load_seq->advance", "tpu_top_data_in_stream_seq->advance", "tpu_top_start_seq->advance,reset_on_deassert", "tpu_top_apb_result_read_seq->reset_on_deassert"]
+    },
+    {
+      "tp_id": "TP-CTRL-FIFOEN",
+      "asserts": "fifo_en=start&(counter<2) pops both input FIFOs at counter 0,1; RM applies the same pop window to the input-FIFO read pointers, and the resulting o_prdata/o_empty predictions are compared each clk edge with ===.",
+      "seqs": ["tpu_top_apb_weight_load_seq->pop_window", "tpu_top_data_in_stream_seq->pop_window", "tpu_top_start_seq->pop_window", "tpu_top_apb_result_read_seq->pop_window"]
+    },
+    {
+      "tp_id": "TP-CTRL-RESULTWR",
+      "asserts": "result_fifo_wr=(counter in {2,3,4,5}); routing result_fifo_i_data=out1 at counter{2,4}, out2 at {3,5}, else 0 (out1=mac_10.o_result, out2=mac_11.o_result); RM reproduces the write window + counter-routed mux, and the o_prdata read-back of the routed words is compared each clk edge with ===.",
+      "seqs": ["tpu_top_apb_weight_load_seq->wr_window", "tpu_top_data_in_stream_seq->route_out1,route_out2", "tpu_top_start_seq->wr_window,route_out1,route_out2", "tpu_top_apb_result_read_seq->wr_window"]
+    },
+    {
+      "tp_id": "TP-CTRL-DONE",
+      "asserts": "done is INDEPENDENTLY PREDICTED by the RM per cycle as done=(counter>=5) (computed from the RM's own counter FSM, NOT mirrored from the DUT) and the scoreboard COMPARES the RM prediction against DUT done EACH CYCLE with 4-state === (each mismatch a uvm_error incrementing fail_count); observed done rises at counter=5 and drops on start deassert (re-run via SC-003).",
+      "seqs": ["tpu_top_start_seq->done_assert,done_deassert", "tpu_top_rerun_seq->done_assert,done_deassert", "tpu_top_apb_result_read_seq->done_deassert"]
+    }
+  ]
+}
