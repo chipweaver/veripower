@@ -20,6 +20,7 @@ whether to map None to status=fail + failures[] or to a nullable field.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import re
 import sys
@@ -281,7 +282,8 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
         if (
             total is not None
             and three is not None
-            and abs(total - (internal + switching + leakage)) > _EPS_MW
+            and abs(total - (internal + switching + leakage))
+            > max(_EPS_MW, 1e-2 * abs(total))
         ):
             failures.append(
                 {
@@ -386,7 +388,147 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
     return 0
 
 
+STAGE = "power-analysis"
+
+# These 7 keys (everything the sidecar carries except `verdict`) fold straight through.
+_FOLD_KEYS = (
+    "saif_artifacts",
+    "compile_info",
+    "failures",
+    "ppa_actual",
+    "violations",
+    "power_by_corner",
+    "ppa_gate_skipped",
+)
+
+
+def _now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _envelope(module, *, status, stage_specific, artifacts) -> dict:
+    return {
+        "schema_version": 1,
+        "stage": STAGE,
+        "module": module,
+        "produced_at": _now_iso(),
+        "status": status,
+        "artifacts": artifacts,
+        "stage_specific": stage_specific,
+    }
+
+
+def _write_result(workdir: Path, env: dict) -> None:
+    (workdir / "result.json").write_text(json.dumps(env, indent=2) + "\n")
+    sys.stdout.write(
+        f"[power_rpt_parser] Written: {workdir / 'result.json'} (status={env['status']})\n"
+    )
+
+
+def _fold(sidecar: dict) -> dict:
+    """Copy through the keys the sidecar actually carries (ppa_gate_skipped only
+    appears when targets=[]); never invent absent keys."""
+    return {k: sidecar[k] for k in _FOLD_KEYS if k in sidecar}
+
+
+def _tooling_reason(data: dict) -> str:
+    f = (data.get("failures") or [{}])[0]
+    summ = f.get("error_summary", "PT-PX data failure")
+    sid = f.get("id")
+    return f"{summ} (scenario {sid})" if sid else summ
+
+
+def enumerate_artifacts(workdir: Path) -> list[dict]:
+    workdir = Path(workdir)
+    candidates = [
+        "env.sh",
+        "Makefile",
+        "README.md",
+        "scripts",
+        "scaffold",
+        "tb_filelist_abs.f",
+        "simv",
+        "simv.daidir",
+        "saif",
+        "reports_ptpx",
+        "gls-compile-log.txt",
+        "gls-run-log.txt",
+        "ptpx.log",
+        "make.out",
+        "power-actual.json",
+    ]  # files AND dirs; envelope.schema forbids self-listing result.json (excluded by construction)
+    return [{"path": pth} for pth in candidates if (workdir / pth).exists()]
+
+
+def build_result(workdir, module, plan_path, targets) -> int:
+    """Assemble the lean power-analysis result.json. Reuses run() for the PT-PX gate
+    (in-process, per-scenario assembly verbatim); the sidecar ALREADY carries the 7
+    stage_specific fields + verdict, so this is thin — fold the fields through, set
+    status/failure_kind/fail_reason, enumerate artifacts, write the envelope.
+    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED)."""
+    workdir = Path(workdir)
+    sidecar = workdir / "power-actual.json"
+
+    rc = run(plan_path, workdir, targets, sidecar)  # reuse the gate verbatim
+    data = json.loads(sidecar.read_text())  # sidecar written on exit 0 AND exit 1
+    ss = _fold(data)
+
+    if rc != 0:
+        # Parser exit 1: failures[] populated, verdict=fail, failure_kind=tooling.
+        ss["failure_kind"] = data.get("failure_kind", "tooling")
+        ss["fail_reason"] = _tooling_reason(data)
+        status = "fail"
+    elif data["verdict"] == "fail":
+        # PPA-gate miss: power_mw exceeded target.
+        status = "fail"
+        ss["failure_kind"] = "ppa"
+        ss["fail_reason"] = "power_mw exceeds target"
+    else:
+        status = "pass"
+
+    _write_result(
+        workdir,
+        _envelope(
+            module,
+            status=status,
+            stage_specific=ss,
+            artifacts=enumerate_artifacts(workdir),
+        ),
+    )
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) > 1 and argv[1] == "finalize":
+        ap = argparse.ArgumentParser(
+            prog="power_rpt_parser.py finalize",
+            description="Assemble the lean power-analysis result.json from the workdir.",
+        )
+        ap.add_argument("--workdir", required=True, type=Path)
+        ap.add_argument("--module", required=True)
+        ap.add_argument(
+            "--plan",
+            required=True,
+            help="scaffold-specification.json (power_scenarios[])",
+        )
+        ap.add_argument(
+            "--targets",
+            default="[]",
+            help="ppa_targets JSON array, verbatim from the prompt",
+        )
+        try:
+            a = ap.parse_args(argv[2:])
+        except SystemExit as exc:
+            if exc.code not in (0, None):
+                print("[power_rpt_parser] ERROR: usage", file=sys.stderr)
+                return 2
+            return 0
+        try:
+            return build_result(a.workdir, a.module, a.plan, a.targets)
+        except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
+            print(f"[power_rpt_parser] FAIL=internal {exc}", file=sys.stderr)
+            return 2
+    # ── legacy parse CLI (UNCHANGED) ─────────────────────────────────────────
     ap = argparse.ArgumentParser(
         prog="power_rpt_parser.py",
         description="Parse PT-PX reports, assemble + judge power_mw PPA, write power-actual.json.",

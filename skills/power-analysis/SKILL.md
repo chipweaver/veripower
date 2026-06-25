@@ -114,21 +114,20 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 
   Write `status=fail` + `failure_kind` (`infra` for missing-reference/license; else `tooling`) + `failures[].{phase, category, error_summary}` + `fail_reason`. **Write only the failure facts (`phase` / `category`); do NOT assign any rework or routing target — target selection is owned downstream, outside this stage.**
 
-- **`make` exited 0** → run the verdict script:
+- **`make` exited 0** → run the parser's finalize subcommand; do not run the parser separately, fold `power-actual.json` by hand, or hand-assemble the envelope:
 
   ```bash
-  python3 ${CLAUDE_SKILL_DIR}/scripts/power_rpt_parser.py \
-      --plan Verification/simulation-plan/scaffold-specification.json \
-      --workdir {workdir} --targets '<ppa_targets JSON from prompt>' \
-      --out {workdir}/power-actual.json
+  python3 ${CLAUDE_SKILL_DIR}/scripts/power_rpt_parser.py finalize \
+    --workdir {workdir} --module <module> \
+    --plan Verification/simulation-plan/scaffold-specification.json \
+    --targets '<ppa_targets JSON from prompt>'
   ```
 
-  - **exit 0** → read `{workdir}/power-actual.json`, fold its `stage_specific` fields in, and adopt its `verdict`: `pass` → `status=pass`; `fail` (a `power_mw` miss) → `status=fail` + `failure_kind="ppa"` + its `violations[]` + a one-line `fail_reason`.
-  - **non-zero exit** → the script is authoritative (never infer pass from report presence). Read its `FAIL=<token>` and fold the `failures[]` it wrote: `status=fail` + `failure_kind="tooling"` + `fail_reason` from the token.
+  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against `--targets`), writes `power-actual.json`, folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
-### Step 4: Write `{workdir}/result.json`
+  `failure_kind` semantics (set by finalize): `tooling` (gate exit 1 — `failures[].{phase, category, error_summary}` carry the data failure), `ppa` (a `power_mw` miss — `violations[]` filled). `infra` (external reference / license missing) is written by the Step-1 pre-check before finalize runs; the `make`-non-zero VCS-compile triage above also writes its `failures[]`/`failure_kind` on the main thread (the gate never runs there).
 
-(schema: `references/result.schema.json` + envelope). On `status=pass`, the schema requires `stage_specific.{saif_artifacts, compile_info, failures, ppa_actual, violations, power_by_corner}` (all folded from `power-actual.json`). On `status=fail`, it requires `stage_specific.{fail_reason, failure_kind}` (`failure_kind ∈ {infra, tooling, ppa}`; on `tooling`, `failures[]` required; on `ppa`, the six fields + `violations[]`). List every on-disk artifact in `artifacts[]`.
+### Step 4: (removed — finalize owns result.json; see the `make`-exited-0 branch above)
 
 ## Red Flags
 
@@ -146,15 +145,11 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 ## Completion Gate
 
 - [ ] `{workdir}/result.json` has been written and passes schema validation (`references/result.schema.json`).
-- [ ] Every artifact path is listed in `result.json.artifacts[]`.
 - [ ] No Iron Rule or Red Flag was triggered.
-- [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept `blocked`); on `fail`, `stage_specific.{fail_reason, failure_kind}` are required (`failure_kind ∈ {infra, tooling, ppa}`); on `failure_kind="tooling"`, `failures[]` is required; on `failure_kind="ppa"`, the six fields + `violations[]` are required.
+- [ ] result.json was written by `power_rpt_parser.py finalize` (it owns status / the 7 stage_specific fields / artifacts / failure_kind).
 - [ ] Every `saif_artifacts[].saif_path` file exists and `size > 0`.
 - [ ] Every `reports_ptpx/<id>/{power_hier.rpt, power_flat.rpt, switching_activity.rpt, ptpx.log}` is present.
 - [ ] `gls-compile-log.txt` and `gls-run-log.txt` are on disk.
-- [ ] `ppa_actual[]` and `power_by_corner[]` are equal-length and correspond one-to-one by `scenario_id`; every `saif_artifacts[]` entry has a matching `scenario_id` (a SAIF-empty scenario is absent from `saif_artifacts[]` but present in the other two).
-- [ ] The PPA self-check has compared `power_mw`, with the result written into `ppa_actual[]` (any miss is listed in `violations[]`).
-- [ ] When any scenario's parse fails, `status=fail` and that entry has `power_mw=null`.
 
 ## Return Contract
 

@@ -1,0 +1,49 @@
+****************************************
+Report : Averaged Power
+	-hierarchy
+	-verbose
+Design : tpu_top
+Version: M-2016.12-SP1
+Date   : Wed Jun 17 20:43:01 2026
+****************************************
+
+Library(s) Used:
+
+    slow (File: /home/eda/Foundry/TSMC.90/slow.db)
+
+
+Operating Conditions: slow   Library: slow
+Wire Load Model Mode: top
+
+<no wire load model is set>
+
+Power-specific unit information :
+    Voltage Units = 1 V
+    Capacitance Units = 1 pf
+    Time Units = 1 ns
+    Dynamic Power Units = 1 W
+    Leakage Power Units = 1 W
+
+
+
+                                      Int      Switch   Leak      Total
+Hierarchy                             Power    Power    Power     Power    %
+--------------------------------------------------------------------------------
+tpu_top                               1.42e-03 5.91e-05 2.79e-04  1.76e-03 100.0
+  systolic_reg (systolic_reg)         1.06e-04 9.20e-07 3.77e-06  1.10e-04   6.3
+  mac_00 (mac_0)                      7.07e-05 2.72e-06 5.34e-05  1.27e-04   7.2
+    add_39 (mac_0_DW01_add_0)            0.000    0.000 2.85e-06  2.85e-06   0.2
+    mult_39 (mac_0_DW02_mult_0)       1.75e-07 2.02e-06 4.79e-05  5.01e-05   2.8
+  mac_01 (mac_3)                      7.07e-05 2.46e-06 5.32e-05  1.26e-04   7.2
+    add_39 (mac_3_DW01_add_0)            0.000    0.000 2.85e-06  2.85e-06   0.2
+    mult_39 (mac_3_DW02_mult_0)       1.75e-07 2.02e-06 4.77e-05  4.99e-05   2.8
+  mac_10 (mac_2)                      7.00e-05 4.44e-07 5.09e-05  1.21e-04   6.9
+    add_39 (mac_2_DW01_add_0)            0.000    0.000 2.85e-06  2.85e-06   0.2
+    mult_39 (mac_2_DW02_mult_0)          0.000    0.000 4.56e-05  4.56e-05   2.6
+  mac_11 (mac_1)                      7.00e-05 4.44e-07 5.09e-05  1.21e-04   6.9
+    add_39 (mac_1_DW01_add_0)            0.000    0.000 2.85e-06  2.85e-06   0.2
+    mult_39 (mac_1_DW02_mult_0)          0.000    0.000 4.56e-05  4.56e-05   2.6
+  fifo_result (fifo_1)                2.87e-04 1.82e-06 1.83e-05  3.07e-04  17.4
+  fifo_00 (fifo_0)                    3.05e-04 2.61e-05 1.91e-05  3.51e-04  19.9
+  fifo_01 (fifo_2)                    3.01e-04 2.41e-05 1.96e-05  3.45e-04  19.6
+1

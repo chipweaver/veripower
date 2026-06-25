@@ -1,0 +1,50 @@
+****************************************
+Report : Averaged Power
+	-verbose
+Design : tpu_top
+Version: M-2016.12-SP1
+Date   : Wed Jun 17 20:43:01 2026
+****************************************
+
+Library(s) Used:
+
+    slow (File: /home/eda/Foundry/TSMC.90/slow.db)
+
+
+Operating Conditions: slow   Library: slow
+Wire Load Model Mode: top
+
+<no wire load model is set>
+
+Power-specific unit information :
+    Voltage Units = 1 V
+    Capacitance Units = 1 pf
+    Time Units = 1 ns
+    Dynamic Power Units = 1 W
+    Leakage Power Units = 1 W
+
+
+
+  Attributes
+  ----------
+      i  -  Including register clock pin internal power
+      u  -  User defined power group
+
+                        Internal  Switching  Leakage    Total
+Power Group             Power     Power      Power      Power   (     %)  Attrs
+--------------------------------------------------------------------------------
+clock_network           1.375e-03    0.0000    0.0000 1.375e-03 (78.15%)  i
+register                2.584e-05 2.478e-06 5.062e-05 7.894e-05 ( 4.49%)  
+combinational           2.008e-05 5.658e-05 2.288e-04 3.054e-04 (17.36%)  
+sequential                 0.0000    0.0000    0.0000    0.0000 ( 0.00%)  
+memory                     0.0000    0.0000    0.0000    0.0000 ( 0.00%)  
+io_pad                     0.0000    0.0000    0.0000    0.0000 ( 0.00%)  
+black_box                  0.0000    0.0000    0.0000    0.0000 ( 0.00%)  
+
+  Net Switching Power  = 5.906e-05   ( 3.36%)
+  Cell Internal Power  = 1.421e-03   (80.76%)
+  Cell Leakage Power   = 2.794e-04   (15.88%)
+                         ---------
+Total Power            = 1.759e-03  (100.00%)
+
+1

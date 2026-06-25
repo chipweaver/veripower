@@ -1,0 +1,28 @@
+
+============================================================
+INFO: scenario S1
+      saif        = /home/haocheng/ai-try-ai/asic/tpu_top/Verification/power-analysis/runs/1/saif/S1.saif
+      reports_dir = /home/haocheng/ai-try-ai/asic/tpu_top/Verification/power-analysis/runs/1/reports_ptpx/S1
+============================================================
+Information: Checked out license 'PrimeTime-PX' (PT-019)
+
+======================================================================
+Summary:
+Total number of nets = 10028
+Number of annotated nets = 10028 (100.00%)
+Total number of leaf cells = 7825
+Number of fully annotated leaf cells = 7825 (100.00%)
+======================================================================
+
+Warning: Zero transition time will be used at to pins of annotated arcs. Delays on not annotated delay arcs will be estimated using best available slew.  (PTE-066)
+Warning: Some timing arcs have been disabled for breaking timing loops or because of constant propagation. Use the 'report_disable_timing' command to get the list of these disabled timing arcs. (PTE-003)
+Information: Zero transition time used at to pin of annotated arcs. Delays on not annotated delay arcs will be estimated using best available slew.  (PTE-054)
+Information: Zero transition time used at to pin of annotated arcs. Delays on not annotated delay arcs will be estimated using best available slew.  (PTE-054)
+Information: Checking 'out_of_table_range'.
+Warning: There are 20825 out_of_range ramps.
+Warning: There are 907 out_of_range loads.
+Information: Checking 'missing_table'.
+Information: Checking 'missing_function'.
+Information: Running averaged power analysis... (PWR-601)
+Information: Running power calculation with 4 threads. (PWR-602)
+INFO: scenario S1 — ok

@@ -326,3 +326,239 @@ def test_run_unlinks_stale_out(tmp_path):
     out.write_text("STALE")
     p.run(plan, wd, "[]", out)
     assert "STALE" not in out.read_text()
+
+
+# ── Task 1: B3 invariant tolerance ────────────────────────────────────────────
+
+
+def test_invariant_tolerates_4sigfig_rounding(tmp_path):
+    # Real PrimeTime PX format: "Dynamic Power Units = 1 W" (no inline unit on summary lines).
+    # Values are in W; _resolve_mw converts to mW (multiply by 1000).
+    # After conversion: Total=1.653 mW, sum=1.652940 mW, diff=6.0e-5 mW.
+    # 6.0e-5 > _EPS_MW (1e-6) → trips the invariant AS-IS, but << 1% of total → must NOT flag.
+    wd = tmp_path / "wd"
+    (wd / "saif").mkdir(parents=True)
+    (wd / "saif" / "S1.saif").write_text("x" * 100)
+    rdir = wd / "reports_ptpx" / "S1"
+    rdir.mkdir(parents=True)
+    (rdir / "power_flat.rpt").write_text(
+        # Header declares units = 1 W (no inline unit on summary lines, parser uses header)
+        "Dynamic Power Units = 1 W\nLeakage Power Units = 1 W\n"
+        "Cell Internal Power  = 1.300e-03\n"  # 1.300e-03 W = 1.300 mW
+        "Net Switching Power  = 3.029e-04\n"  # 3.029e-04 W = 0.3029 mW
+        "Cell Leakage Power   = 5.000e-05\n"  # 5.000e-05 W = 0.05000 mW
+        "Total Power          = 1.653e-03\n"  # 1.653e-03 W = 1.653 mW; sum=1.65290 mW, diff=6.0e-5
+    )
+    (rdir / "switching_activity.rpt").write_text("")
+    (wd / "gls-compile-log.txt").write_text("VCS L-2016.06_Full64\n")
+    plan = tmp_path / "plan.json"
+    plan.write_text(
+        _json.dumps(
+            {
+                "power_scenarios": [
+                    {
+                        "id": "S1",
+                        "sequence_ref": "idle_seq",
+                        "corner_intent": "TT@25C",
+                        "duration_cycles": 2000,
+                    }
+                ]
+            }
+        )
+    )
+    out = wd / "power-actual.json"
+    rc = p.run(plan, wd, "[]", out)
+    data = _json.loads(out.read_text())
+    # Before the fix: rc==1, failures[0].category=="ptpx_data" (invariant). After: clean pass.
+    assert rc == 0, (
+        f"4-sig-fig rounding must not trip the invariant; failures={data.get('failures')}"
+    )
+    assert data["verdict"] == "pass"
+    assert data["failures"] == []
+
+
+# ── Task 2: build_result + finalize subcommand ────────────────────────────────
+
+
+def test_build_result_pass_lean_shape(tmp_path):
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN[:1],
+        sizes={"S1": 2000},
+        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+    )
+    assert p.build_result(wd, module="tpu_top", plan_path=str(plan), targets="[]") == 0
+    env = _json.loads((wd / "result.json").read_text())
+    assert (env["schema_version"], env["stage"], env["module"]) == (
+        1,
+        "power-analysis",
+        "tpu_top",
+    )
+    assert env["status"] == "pass" and env["produced_at"].endswith("Z")
+    ss = env["stage_specific"]
+    # the 7 fields the sidecar carries fold straight through (minus verdict)
+    assert "verdict" not in ss
+    assert ss["ppa_gate_skipped"] is True  # targets="[]"
+    assert ss["ppa_actual"][0]["value"] == pytest.approx(0.42)
+    assert ss["compile_info"]["vcs_version"] == "L-2016.06_Full64"
+    assert ss["violations"] == []
+    assert "notes" not in ss  # lean shape: dropped field absent
+
+
+def test_build_result_tooling_fail_on_invariant(tmp_path):
+    # A report whose Total != sum(components) by >> 1% (the parser's invariant)
+    # -> parser exit 1 -> build_result writes failure_kind=tooling + failures[].
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN[:1],
+        sizes={"S1": 2000},
+        flats={"S1": _flat_rpt(9.99, 0.05, 0.02, 0.35)},
+    )  # deliberately off
+    assert p.build_result(wd, module="tpu_top", plan_path=str(plan), targets="[]") == 0
+    ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["failure_kind"] == "tooling"
+    assert ss["failures"] and ss["failures"][0]["category"] == "ptpx_data"
+    assert isinstance(ss["fail_reason"], str) and ss["fail_reason"]
+
+
+def test_finalize_cli_does_not_break_legacy_parse_cli(tmp_path):
+    # the legacy bare-flag invocation still parses + judges (no subcommand) — back-compat guard
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN[:1],
+        sizes={"S1": 2000},
+        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+    )
+    out = tmp_path / "power-actual.json"
+    assert (
+        p.main(
+            [
+                "power_rpt_parser.py",
+                "--plan",
+                str(plan),
+                "--workdir",
+                str(wd),
+                "--targets",
+                "[]",
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    assert _json.loads(out.read_text())["verdict"] == "pass"
+
+
+# ── Task 4: artifacts[] enumeration ───────────────────────────────────────────
+
+
+def test_enumerate_artifacts_present_only_no_self(tmp_path):
+    wd = tmp_path / "wd"
+    wd.mkdir()
+    # present files + dirs
+    for f in [
+        "env.sh",
+        "Makefile",
+        "README.md",
+        "tb_filelist_abs.f",
+        "simv",
+        "gls-compile-log.txt",
+        "gls-run-log.txt",
+        "ptpx.log",
+        "make.out",
+        "power-actual.json",
+    ]:
+        (wd / f).write_text("x")
+    for d in ["scripts", "scaffold", "simv.daidir", "saif", "reports_ptpx"]:
+        (wd / d).mkdir()
+    (wd / "result.json").write_text("{}")  # must NOT self-list
+    paths = [a["path"] for a in p.enumerate_artifacts(wd)]
+    for expect in [
+        "env.sh",
+        "Makefile",
+        "scripts",
+        "saif",
+        "reports_ptpx",
+        "power-actual.json",
+        "simv.daidir",
+    ]:
+        assert expect in paths
+    assert "result.json" not in paths
+    assert all((wd / pth).exists() for pth in paths)  # only present paths (file OR dir)
+
+
+# ── Task 5: Golden test against the real tpu_top run ──────────────────────────
+
+
+def test_golden_real_reports_lean_pass(tmp_path):
+    import shutil
+
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
+    wd = tmp_path / "wd"
+    shutil.copytree(ROOT / "real", wd)
+    rc = p.build_result(
+        wd, module="tpu_top", plan_path=str(ROOT / "plan.json"), targets="[]"
+    )
+    assert rc == 0
+    env = _json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    # With B3 fixed (Task 1), the gate parses the real 4-sig-fig reports clean -> pass.
+    assert (env["schema_version"], env["stage"], env["module"]) == (
+        1,
+        "power-analysis",
+        "tpu_top",
+    )
+    assert env["status"] == "pass"
+    assert env["produced_at"].endswith("Z")
+    # the 7 stage_specific fields fold through verbatim from the clean sidecar (minus verdict)
+    assert set(ss) >= {
+        "saif_artifacts",
+        "compile_info",
+        "failures",
+        "ppa_actual",
+        "violations",
+        "power_by_corner",
+        "ppa_gate_skipped",
+    }
+    assert "verdict" not in ss
+    assert ss["failures"] == []  # clean parse — no ptpx_data failures
+    assert ss["violations"] == []  # targets="[]" -> ppa gate skipped
+    assert ss["ppa_gate_skipped"] is True
+    assert ss["compile_info"]["vcs_version"] == "L-2016.06_Full64"
+    assert all(
+        e["value"] is not None for e in ss["ppa_actual"]
+    )  # every scenario parsed
+    assert "notes" not in ss  # lean: dropped
+    paths = [a["path"] for a in env["artifacts"]]
+    assert "reports_ptpx" in paths and "power-actual.json" in paths
+    assert "result.json" not in paths
+
+
+def test_golden_is_schema_valid(tmp_path):
+    # Canonical pattern: validate the in-memory dict against {envelope schema + this
+    # stage's result.schema} via Registry (mirrors test_aggregate_signoff.py:316 pattern).
+    import shutil
+
+    from jsonschema import Draft202012Validator
+    from referencing import Registry, Resource
+
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
+    wd = tmp_path / "wd"
+    shutil.copytree(ROOT / "real", wd)
+    p.build_result(
+        wd, module="tpu_top", plan_path=str(ROOT / "plan.json"), targets="[]"
+    )
+    env = _json.loads((wd / "result.json").read_text())
+    env_schema = _json.loads(
+        (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()
+    )
+    stage_schema = _json.loads(
+        (REPO_ROOT / "skills/power-analysis/references/result.schema.json").read_text()
+    )
+    registry = Registry().with_resource(
+        "https://veripower.local/schemas/envelope.schema.json",
+        Resource.from_contents(env_schema),
+    )
+    Draft202012Validator(stage_schema, registry=registry).validate(
+        env
+    )  # raises on invalid

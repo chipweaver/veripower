@@ -1,0 +1,23 @@
+
+============================================================
+INFO: scenario S4a
+      saif        = /home/haocheng/ai-try-ai/asic/tpu_top/Verification/power-analysis/runs/1/saif/S4a.saif
+      reports_dir = /home/haocheng/ai-try-ai/asic/tpu_top/Verification/power-analysis/runs/1/reports_ptpx/S4a
+============================================================
+
+======================================================================
+Summary:
+Total number of nets = 10028
+Number of annotated nets = 10028 (100.00%)
+Total number of leaf cells = 7825
+Number of fully annotated leaf cells = 7825 (100.00%)
+======================================================================
+
+Information: Checking 'out_of_table_range'.
+Warning: There are 20825 out_of_range ramps.
+Warning: There are 907 out_of_range loads.
+Information: Checking 'missing_table'.
+Information: Checking 'missing_function'.
+Information: Running averaged power analysis... (PWR-601)
+Information: Running power calculation with 4 threads. (PWR-602)
+INFO: scenario S4a — ok
