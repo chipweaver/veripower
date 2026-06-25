@@ -30,6 +30,7 @@ authoritative for met/violated. On any parse surprise the parser fails loud
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import re
 import sys
@@ -181,7 +182,155 @@ def run(report_path, out_path) -> int:
     return 0
 
 
+STAGE = "timing-analysis"
+_FAIL_REASON = {
+    "missing": "timing-report.txt missing",
+    "unparseable": "timing-report.txt unparseable",
+}
+
+_VERSION_RE = re.compile(r"^\s*Version:\s*(\S+)", re.M)
+_LIBDB_RE = re.compile(r"set\s+LIB_DB\s+(\S+)")
+# Port-first create_clock (real synthesis SDC): create_clock [get_ports i_clk] -period 10 ...
+_CLOCK_RE = re.compile(
+    r"create_clock\s+\[get_ports\s+(\S+?)\][^\n]*?-period\s+([0-9.]+)"
+)
+
+
+def _now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _envelope(module, *, status, stage_specific, artifacts) -> dict:
+    return {
+        "schema_version": 1,
+        "stage": STAGE,
+        "module": module,
+        "produced_at": _now_iso(),
+        "status": status,
+        "artifacts": artifacts,
+        "stage_specific": stage_specific,
+    }
+
+
+def _write_result(workdir: Path, env: dict) -> None:
+    (workdir / "result.json").write_text(json.dumps(env, indent=2) + "\n")
+    sys.stdout.write(
+        f"[timing_rpt_parser] Written: {workdir / 'result.json'} (status={env['status']})\n"
+    )
+
+
+def parse_tool(report_text: str) -> str:
+    m = _VERSION_RE.search(report_text)
+    return f"PrimeTime {m.group(1)}" if m else "PrimeTime unknown"
+
+
+def read_lib_db(workdir: Path):
+    cfg = Path(workdir) / "config.tcl"
+    if not cfg.is_file():
+        return None
+    m = _LIBDB_RE.search(cfg.read_text(errors="replace"))
+    return m.group(1) if m else None
+
+
+def parse_clock(workdir: Path, top: str):
+    # The STA reads the synthesis SDC; workdir is .../Design/timing-analysis/runs/<N>.
+    # parents[0]=runs, [1]=timing-analysis, [2]=Design, [3]=module root
+    sdc = Path(workdir).parents[3] / "Design" / "synthesis" / "out" / f"{top}_syn.sdc"
+    if not sdc.is_file():
+        return None
+    m = _CLOCK_RE.search(sdc.read_text(errors="replace"))
+    return {"name": m.group(1), "period_ns": float(m.group(2))} if m else None
+
+
+def enumerate_artifacts(workdir: Path) -> list:
+    workdir = Path(workdir)
+    candidates = [
+        "run_sta.tcl",
+        "config.tcl",
+        "timing-report.txt",
+        "timing-actual.json",
+    ]
+    # envelope.schema forbids listing result.json itself; excluded by construction.
+    return [{"path": p} for p in candidates if (workdir / p).is_file()]
+
+
+def build_result(workdir, module, top) -> int:
+    """Assemble the lean timing-analysis result.json. Reuses run() for the timing gate
+    (in-process), then derives the header + artifacts + writes the envelope.
+    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED)."""
+    workdir = Path(workdir)
+    report = workdir / "timing-report.txt"
+    sidecar = workdir / "timing-actual.json"
+
+    rc = run(report, sidecar)  # reuse the gate verbatim
+    if rc != 0:
+        token = (
+            "missing" if rc == 1 else "unparseable"
+        )  # run(): 1=missing, 3=unparseable
+        ss = {
+            "top_module": top,
+            "fail_reason": _FAIL_REASON[token],
+            "failure_kind": "tooling",
+        }
+        _write_result(
+            workdir,
+            _envelope(
+                module,
+                status="fail",
+                stage_specific=ss,
+                artifacts=enumerate_artifacts(workdir),
+            ),
+        )
+        return 0
+
+    actual = json.loads(sidecar.read_text())  # the tool's own artifact (in-process)
+    status = "pass" if actual["verdict"] == "pass" else "fail"
+    report_text = report.read_text(errors="replace")
+    ss = {
+        "tool": parse_tool(report_text),
+        "top_module": top,
+        "lib_db": read_lib_db(workdir),
+        "clock": parse_clock(workdir, top),
+        "timing": actual["timing"],
+        "violations": actual["violations"],
+    }
+    if status == "fail":
+        ss["failure_kind"] = "ppa"
+        ss["fail_reason"] = "setup/hold timing not met"
+    _write_result(
+        workdir,
+        _envelope(
+            module,
+            status=status,
+            stage_specific=ss,
+            artifacts=enumerate_artifacts(workdir),
+        ),
+    )
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) > 1 and argv[1] == "finalize":
+        ap = argparse.ArgumentParser(
+            prog="timing_rpt_parser.py finalize",
+            description="Assemble the lean timing-analysis result.json from the workdir.",
+        )
+        ap.add_argument("--workdir", required=True, type=Path)
+        ap.add_argument("--module", required=True)
+        ap.add_argument("--top", default=None, help="top module; defaults to --module")
+        try:
+            a = ap.parse_args(argv[2:])
+        except SystemExit as exc:
+            if exc.code not in (0, None):
+                print("[timing_rpt_parser] ERROR: usage", file=sys.stderr)
+                return 2
+            return 0
+        try:
+            return build_result(a.workdir, a.module, a.top or a.module)
+        except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
+            print(f"[timing_rpt_parser] FAIL=internal {exc}", file=sys.stderr)
+            return 2
+    # ── legacy parse CLI (UNCHANGED) ──────────────────────────────────────────
     ap = argparse.ArgumentParser(
         prog="timing_rpt_parser.py",
         description="Classify a PrimeTime STA report (marker-keyed) and judge the gate.",

@@ -78,22 +78,18 @@ cd {workdir} && pt_shell -f run_sta.tcl
 
 The TCL uses absolute paths (set by bootstrap) and its `redirect` writes `{workdir}/timing-report.txt`.
 
-### Step 4: Run the parser
+### Step 4: Build `{workdir}/result.json` (mandatory)
 
-(mandatory; do not classify by hand):
+Run the parser's finalize subcommand; do not run the parser separately, fold `timing-actual.json` by hand, or hand-assemble the envelope:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/timing_rpt_parser.py --report {workdir}/timing-report.txt --out {workdir}/timing-actual.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/timing_rpt_parser.py finalize \
+  --workdir {workdir} --module <module> --top <top_module>
 ```
-- **On exit 0**, read `{workdir}/timing-actual.json` and fold it in: `timing` → `stage_specific.timing`, `violations` → `stage_specific.violations`, `verdict` → `status`. A `verdict="fail"` → `status=fail`, `failure_kind="ppa"`, plus a one-line `fail_reason` (e.g. `"setup/hold timing not met"`).
-- **On a non-zero exit**, the parser is authoritative — never infer pass from the report's presence. Read its `FAIL=` token and write `status=fail`, `failure_kind="tooling"`, the matching `fail_reason` (`FAIL=missing` → `"timing-report.txt missing"`; `FAIL=unparseable` → `"timing-report.txt unparseable"`), then exit.
 
-### Step 5: Write `{workdir}/result.json`
+`finalize` reuses the parser's timing gate (classifies each direction on the report's `(MET)`/`(VIOLATED)` marker — never the displayed number — and judges pass = setup MET and hold MET), writes `timing-actual.json`, derives the reproducibility header (tool from the report `Version:` line / lib_db from `config.tcl` / clock from the synthesis SDC), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
-(schema: `references/result.schema.json` + envelope). When `status=pass`, `stage_specific.{timing, violations}` are required (`violations=[]`). When `status=fail`, `stage_specific.{fail_reason, failure_kind}` are required (`failure_kind ∈ {infra, tooling, ppa}`):
-- `failure_kind="infra"`: external reference missing / not pass / PT license missing — PT did not run.
-- `failure_kind="tooling"`: PT ran but errored, or the report was missing/unparseable (parser exit 1/3).
-- `failure_kind="ppa"`: PT ran to completion but setup/hold not met — `timing{}` + `violations[]` carry the numbers.
+`failure_kind` semantics (set by finalize): `infra` (PT never ran — external ref / license missing; the main thread writes this in the Step-1 pre-check before finalize runs), `tooling` (report missing/unparseable — parser exit 1/3), `ppa` (setup/hold not met; `timing{}` + `violations[]` carry the numbers).
 
 **Workflow rationale — single linear flow.** This stage is a read-only re-verifier — it cannot modify the synthesis netlist/SDC or apply any fix, so every run does identical work and there is no first-run / incremental / re-run fork to branch on. Step 1 is a linear pre-flight check, not a branch; each run uses a fresh `{workdir}` (Step 2 aborts if one is already deployed). This stage therefore carries no branch fork and receives no `{rework_trigger}`.
 
@@ -115,10 +111,9 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/timing_rpt_parser.py --report {workdir}/timi
 ## Completion Gate
 
 - [ ] `{workdir}/result.json` written and passes schema validation.
-- [ ] Every artifact path is listed in `result.json.artifacts[]`.
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] `result.json.status` written (`pass` or `fail`; the envelope does not accept `blocked`); on `fail`, `stage_specific.{fail_reason, failure_kind}` required.
-- [ ] The gate ran via `timing_rpt_parser.py`: on `status=pass` / `failure_kind="ppa"`, its `timing-actual.json` (exit 0) was folded into `stage_specific.{timing, violations}`; on a non-zero parser exit, `failure_kind="tooling"` + matching `fail_reason`; on `failure_kind ∈ {infra, tooling}`, only `fail_reason` + `failure_kind` are needed (the parser did not run / produced no `timing-actual.json`).
+- [ ] result.json was written by timing_rpt_parser.py finalize (it owns status / timing / violations / artifacts / failure_kind / the reproducibility header).
 - [ ] `{workdir}/run_sta.tcl`, `{workdir}/config.tcl`, and `{workdir}/timing-report.txt` exist on disk.
 
 ## Return Contract

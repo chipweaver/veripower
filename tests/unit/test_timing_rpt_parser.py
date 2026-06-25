@@ -234,3 +234,185 @@ def test_run_violated_marker_with_positive_slack_exit3(tmp_path):
 
 def test_main_rejects_bad_arg_exit2():
     assert sp.main(["timing_rpt_parser.py"]) == 2
+
+
+# ── Task 1: build_result + finalize subcommand ───────────────────────────────
+
+
+def _workdir(tmp_path, report=None):
+    report = (
+        (_SETUP_MET + _HOLD_MET + _CHECK_TIMING_CLEAN) if report is None else report
+    )
+    (tmp_path / "timing-report.txt").write_text(report)
+    return tmp_path
+
+
+def test_build_result_pass_lean_shape(tmp_path):
+    wd = _workdir(tmp_path)
+    assert sp.build_result(wd, module="tpu_top", top="tpu_top") == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert (env["schema_version"], env["stage"], env["module"]) == (
+        1,
+        "timing-analysis",
+        "tpu_top",
+    )
+    assert env["status"] == "pass" and env["produced_at"].endswith("Z")
+    ss = env["stage_specific"]
+    assert ss["timing"]["setup"]["met"] is True and ss["timing"]["hold"]["met"] is True
+    assert ss["violations"] == []
+    assert "notes" not in ss  # lean shape: dropped field absent
+
+
+def test_build_result_tooling_fail_on_unparseable(tmp_path):
+    # A -delay max section with no slack line -> parser run() returns 3 (mirrors
+    # test_run_no_slack_line_exit3 above).
+    broken = re.sub(r"slack \(MET\)\s+2\.93", "", _SETUP_MET)
+    wd = _workdir(tmp_path, report=broken + _HOLD_MET + _CHECK_TIMING_CLEAN)
+    assert sp.build_result(wd, module="tpu_top", top="tpu_top") == 0
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert (
+        ss["failure_kind"] == "tooling"
+        and ss["fail_reason"] == "timing-report.txt unparseable"
+    )
+    assert "timing" not in ss  # heavy pass-shape dropped on tooling-fail
+
+
+def test_build_result_tooling_fail_on_missing_report(tmp_path):
+    assert (
+        sp.build_result(tmp_path, module="tpu_top", top="tpu_top") == 0
+    )  # no report file
+    ss = json.loads((tmp_path / "result.json").read_text())["stage_specific"]
+    assert (
+        ss["failure_kind"] == "tooling"
+        and ss["fail_reason"] == "timing-report.txt missing"
+    )
+
+
+def test_finalize_cli_does_not_break_legacy_parse_cli(tmp_path):
+    # the legacy bare-flag invocation still parses (no subcommand) — back-compat guard
+    rep, out = _write(tmp_path, _SETUP_MET + _HOLD_MET + _CHECK_TIMING_CLEAN)
+    assert (
+        sp.main(["timing_rpt_parser.py", "--report", str(rep), "--out", str(out)]) == 0
+    )
+    assert json.loads(out.read_text())["verdict"] == "pass"
+
+
+# ── Task 2: reproducibility-header derivations ───────────────────────────────
+
+
+def test_parse_tool_from_primetime_version():
+    assert sp.parse_tool("Version: M-2016.12-SP1\n") == "PrimeTime M-2016.12-SP1"
+    assert sp.parse_tool("no version here") == "PrimeTime unknown"
+
+
+def test_read_lib_db_from_config_tcl(tmp_path):
+    (tmp_path / "config.tcl").write_text(
+        "set TOP    tpu_top\nset LIB_DB /home/eda/Foundry/TSMC.90/slow.db\n"
+    )
+    assert sp.read_lib_db(tmp_path) == "/home/eda/Foundry/TSMC.90/slow.db"
+    assert sp.read_lib_db(tmp_path / "nope") is None
+
+
+def test_parse_clock_port_first_sdc(tmp_path):
+    # The STA reads the SYNTHESIS SDC; lay out the workdir as runs/<N>/ under the module tree.
+    wd = tmp_path / "asic" / "tpu_top" / "Design" / "timing-analysis" / "runs" / "3"
+    wd.mkdir(parents=True)
+    sdc = tmp_path / "asic" / "tpu_top" / "Design" / "synthesis" / "out"
+    sdc.mkdir(parents=True)
+    (sdc / "tpu_top_syn.sdc").write_text(
+        "create_clock [get_ports i_clk]  -period 10  -waveform {0 5}\n"
+    )
+    assert sp.parse_clock(wd, top="tpu_top") == {"name": "i_clk", "period_ns": 10.0}
+    assert sp.parse_clock(wd / "nope", top="tpu_top") is None
+
+
+# ── Task 3: artifacts[] enumeration ──────────────────────────────────────────
+
+
+def test_enumerate_artifacts_present_only_no_self(tmp_path):
+    for rel in ["run_sta.tcl", "config.tcl", "timing-report.txt", "timing-actual.json"]:
+        (tmp_path / rel).write_text("x")
+    (tmp_path / "result.json").write_text("{}")  # must NOT self-list
+    paths = [a["path"] for a in sp.enumerate_artifacts(tmp_path)]
+    assert paths == [
+        "run_sta.tcl",
+        "config.tcl",
+        "timing-report.txt",
+        "timing-actual.json",
+    ]
+    assert "result.json" not in paths
+    assert all((tmp_path / p).is_file() for p in paths)  # only present files
+
+
+# ── Task 4: golden test against the real tpu_top run ─────────────────────────
+
+
+def test_golden_lean_against_real_tpu_top(tmp_path):
+    import shutil
+
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-tpu_top"
+    # Fixture is rooted at Design/ (no `asic` path component — it would be .gitignored).
+    # Copy under a module-root wrapper so parse_clock's parents[3] resolves the synthesis SDC.
+    shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
+    wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
+    assert sp.build_result(wd, module="tpu_top", top="tpu_top") == 0
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    # contract fields — exact to the real run
+    assert env["status"] == "pass"
+    assert ss["timing"]["setup"]["worst_slack_ns"] == pytest.approx(0.7252)
+    assert ss["timing"]["setup"]["met"] is True
+    assert (
+        ss["timing"]["setup"]["worst_path"]
+        == "systolic_reg/delay21_reg_0_ -> mac_10/o_result_reg_31_"
+    )
+    assert ss["timing"]["hold"]["worst_slack_ns"] == pytest.approx(0.2341)
+    assert ss["timing"]["hold"]["met"] is True
+    assert ss["timing"]["coverage"] == {
+        "unconstrained_max_delay_endpoints": 1142,
+        "register_pins_no_clock": 0,
+    }
+    assert ss["violations"] == []
+    # reproducibility header — grounded in the real sources
+    assert ss["tool"] == "PrimeTime M-2016.12-SP1"
+    assert ss["lib_db"] == "/home/eda/Foundry/TSMC.90/slow.db"
+    assert ss["clock"] == {"name": "i_clk", "period_ns": 10.0}
+    assert ss["top_module"] == "tpu_top"
+    # lean: dropped field ABSENT
+    assert "notes" not in ss
+    # artifacts present + no self-listing; produced_at normalized
+    paths = [a["path"] for a in env["artifacts"]]
+    assert paths == [
+        "run_sta.tcl",
+        "config.tcl",
+        "timing-report.txt",
+        "timing-actual.json",
+    ]
+    assert "result.json" not in paths
+    assert env["produced_at"].endswith("Z")
+
+
+def test_golden_is_schema_valid(tmp_path):
+    import shutil
+
+    from jsonschema import Draft202012Validator
+    from referencing import Registry, Resource
+
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-tpu_top"
+    shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
+    wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
+    sp.build_result(wd, module="tpu_top", top="tpu_top")
+    env = json.loads((wd / "result.json").read_text())
+    env_schema = json.loads(
+        (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()
+    )
+    stage_schema = json.loads(
+        (REPO_ROOT / "skills/timing-analysis/references/result.schema.json").read_text()
+    )
+    registry = Registry().with_resource(
+        "https://veripower.local/schemas/envelope.schema.json",
+        Resource.from_contents(env_schema),
+    )
+    Draft202012Validator(stage_schema, registry=registry).validate(
+        env
+    )  # raises on invalid

@@ -1,0 +1,134 @@
+Warning: Some timing arcs have been disabled for breaking timing loops or because of constant propagation. Use the 'report_disable_timing' command to get the list of these disabled timing arcs. (PTE-003)
+****************************************
+Report : timing
+	-path_type full
+	-delay_type max
+	-max_paths 1
+	-sort_by slack
+Design : tpu_top
+Version: M-2016.12-SP1
+Date   : Wed Jun 17 20:18:02 2026
+****************************************
+
+
+  Startpoint: systolic_reg/delay21_reg_0_
+               (rising edge-triggered flip-flop clocked by i_clk)
+  Endpoint: mac_10/o_result_reg_31_
+               (rising edge-triggered flip-flop clocked by i_clk)
+  Path Group: i_clk
+  Path Type: max
+
+  Point                                                   Incr       Path
+  ------------------------------------------------------------------------------
+  clock i_clk (rise edge)                               0.0000     0.0000
+  clock network delay (ideal)                           0.0000     0.0000
+  systolic_reg/delay21_reg_0_/CK (DFFRQX2)              0.0000     0.0000 r
+  systolic_reg/delay21_reg_0_/Q (DFFRQX2)               0.2616     0.2616 f
+  mac_10/mult_39/U95/Y (INVX2)                          0.2071     0.4687 r
+  mac_10/mult_39/U662/Y (NOR2X1)                        0.1007     0.5693 f
+  mac_10/mult_39/U33/Y (INVX2)                          0.0397     0.6090 r
+  mac_10/mult_39/U64/Y (XNOR2X1)                        0.0974     0.7064 r
+  mac_10/mult_39/S1_2_0/CO (ADDFX1)                     0.1601     0.8665 r
+  mac_10/mult_39/S1_3_0/CO (ADDFX1)                     0.2687     1.1352 r
+  mac_10/mult_39/S1_4_0/CO (ADDFX1)                     0.2696     1.4048 r
+  mac_10/mult_39/S1_5_0/CO (ADDFX1)                     0.2697     1.6745 r
+  mac_10/mult_39/S1_6_0/CO (ADDFX1)                     0.2697     1.9442 r
+  mac_10/mult_39/S1_7_0/CO (ADDFX1)                     0.2697     2.2139 r
+  mac_10/mult_39/S1_8_0/CO (ADDFX1)                     0.2697     2.4836 r
+  mac_10/mult_39/S1_9_0/CO (ADDFX1)                     0.2697     2.7533 r
+  mac_10/mult_39/S1_10_0/CO (ADDFX1)                    0.2697     3.0229 r
+  mac_10/mult_39/S1_11_0/CO (ADDFX1)                    0.2697     3.2926 r
+  mac_10/mult_39/S1_12_0/CO (ADDFX1)                    0.2697     3.5623 r
+  mac_10/mult_39/S1_13_0/CO (ADDFX1)                    0.2697     3.8320 r
+  mac_10/mult_39/S1_14_0/CO (ADDFX1)                    0.2697     4.1017 r
+  mac_10/mult_39/S1_15_0/CO (ADDFX1)                    0.2697     4.3714 r
+  mac_10/mult_39/S1_16_0/CO (ADDFX1)                    0.2697     4.6411 r
+  mac_10/mult_39/S1_17_0/CO (ADDFX1)                    0.2697     4.9108 r
+  mac_10/mult_39/S1_18_0/CO (ADDFX1)                    0.2697     5.1805 r
+  mac_10/mult_39/S1_19_0/CO (ADDFX1)                    0.2697     5.4502 r
+  mac_10/mult_39/S1_20_0/CO (ADDFX1)                    0.2697     5.7199 r
+  mac_10/mult_39/S1_21_0/CO (ADDFX1)                    0.2697     5.9896 r
+  mac_10/mult_39/S1_22_0/CO (ADDFX1)                    0.2697     6.2593 r
+  mac_10/mult_39/S1_23_0/CO (ADDFX1)                    0.2697     6.5290 r
+  mac_10/mult_39/S1_24_0/CO (ADDFX1)                    0.2697     6.7987 r
+  mac_10/mult_39/S1_25_0/CO (ADDFX1)                    0.2697     7.0684 r
+  mac_10/mult_39/S1_26_0/CO (ADDFX1)                    0.2697     7.3380 r
+  mac_10/mult_39/S1_27_0/CO (ADDFX1)                    0.2697     7.6077 r
+  mac_10/mult_39/S1_28_0/CO (ADDFX1)                    0.2697     7.8774 r
+  mac_10/mult_39/S1_29_0/CO (ADDFX1)                    0.2697     8.1471 r
+  mac_10/mult_39/S1_30_0/CO (ADDFX1)                    0.2667     8.4138 r
+  mac_10/mult_39/S4_0/Y (XOR3XL)                        0.2755     8.6893 f
+  mac_10/add_39/U1_31/Y (XOR3XL)                        0.2363     8.9256 r
+  mac_10/o_result_reg_31_/D (DFFRQX2)                   0.0000     8.9256 r
+  data arrival time                                                8.9256
+
+  clock i_clk (rise edge)                              10.0000    10.0000
+  clock network delay (ideal)                           0.0000    10.0000
+  clock reconvergence pessimism                         0.0000    10.0000
+  clock uncertainty                                    -0.2000     9.8000
+  mac_10/o_result_reg_31_/CK (DFFRQX2)                             9.8000 r
+  library setup time                                   -0.1492     9.6508
+  data required time                                               9.6508
+  ------------------------------------------------------------------------------
+  data required time                                               9.6508
+  data arrival time                                               -8.9256
+  ------------------------------------------------------------------------------
+  slack (MET)                                                      0.7252
+
+
+****************************************
+Report : timing
+	-path_type full
+	-delay_type min
+	-max_paths 1
+	-sort_by slack
+Design : tpu_top
+Version: M-2016.12-SP1
+Date   : Wed Jun 17 20:18:02 2026
+****************************************
+
+
+  Startpoint: systolic_reg/delay20_reg_0_
+               (rising edge-triggered flip-flop clocked by i_clk)
+  Endpoint: systolic_reg/delay21_reg_0_
+               (rising edge-triggered flip-flop clocked by i_clk)
+  Path Group: i_clk
+  Path Type: min
+
+  Point                                                   Incr       Path
+  ------------------------------------------------------------------------------
+  clock i_clk (rise edge)                               0.0000     0.0000
+  clock network delay (ideal)                           0.0000     0.0000
+  systolic_reg/delay20_reg_0_/CK (DFFRQX2)              0.0000     0.0000 r
+  systolic_reg/delay20_reg_0_/Q (DFFRQX2)               0.2492     0.2492 f
+  systolic_reg/delay21_reg_0_/D (DFFRQX2)               0.0000     0.2492 f
+  data arrival time                                                0.2492
+
+  clock i_clk (rise edge)                               0.0000     0.0000
+  clock network delay (ideal)                           0.0000     0.0000
+  clock reconvergence pessimism                         0.0000     0.0000
+  systolic_reg/delay21_reg_0_/CK (DFFRQX2)                         0.0000 r
+  library hold time                                     0.0151     0.0151
+  data required time                                               0.0151
+  ------------------------------------------------------------------------------
+  data required time                                               0.0151
+  data arrival time                                               -0.2492
+  ------------------------------------------------------------------------------
+  slack (MET)                                                      0.2341
+
+
+Information: Checking 'no_input_delay'.
+Information: Checking 'no_driving_cell'.
+Information: Checking 'unconstrained_endpoints'.
+Warning: There are 1142 endpoints which are not constrained for maximum delay.
+
+Information: Checking 'unexpandable_clocks'.
+Information: Checking 'latch_fanout'.
+Information: Checking 'no_clock'.
+Information: Checking 'partial_input_delay'.
+Information: Checking 'generic'.
+Information: Checking 'loops'.
+Information: Checking 'generated_clocks'.
+Information: Checking 'pulse_clock_non_pulse_clock_merge'.
+Information: Checking 'pll_configuration'.
+0
