@@ -284,16 +284,33 @@ the exact defect — act on that, not on the script source), route a
 wave-1 rework sub-Task and re-run; if the defect cannot be resolved that way, write
 `result.json` `status=fail` + `fail_reason="constraint derivation: <table> defect"`.
 
-### Step 10: Finalize result.json (main thread)
+### Step 10: Finalize result.json (main thread, mandatory)
 
-Set `status` from the main-thread coverage-gate verdict + the design.md gate verdict + the Step-7 `spec_gate` verdict (`status=pass` requires `spec_gate.gate==clear` OR every `flagged` finding is in `spec_gate.waived[]`; `spec_gate` was written in Step 7).
-`artifacts[]` lists `design.md`, `manifest.json`, `coverage.json`, `spec-review.json`, the N `<child>.md`,
-`constraints/<TOP>.sdc`, `constraints/<TOP>.sgdc` — **NOT `brainstorm.md`** (it lives at
-the module root, outside the run workdir; listing it makes `promote()` fail to find the
-file). When `status=pass`, `stage_specific.top_module` ← `manifest.module` (the SINGLE
-`<TOP>` source that `derive_constraints` also uses, so the constraint filenames and
-`top_module` cannot diverge); `ppa_targets` ← D6 brainstorm output (`[]` when no PPA, never
-omitted). When `status=fail`, only `stage_specific.fail_reason` is required.
+Run `derive_constraints.py finalize`; do not hand-assemble the envelope. Relay the human-gate
+outcome from Step 8 as the three γ-floor args — `--status` (the user's approve/reject), `--waived`
+(the `spec_gate.waived[]` array the operator recorded, `[]` if none), `--ppa-targets` (the D6
+brainstorm PPA output, `[]` when no PPA):
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/derive_constraints.py finalize \
+  --workdir {workdir} --module {module} --status <pass|fail> \
+  --ppa-targets '<ppa_targets JSON from D6>' --waived '<spec_gate.waived[] JSON>'
+```
+
+`finalize` re-runs the constraint derivation (so `<TOP>` ← `manifest.module` and the constraint
+files cannot diverge), re-derives the Step-7 `spec_gate` verdict in-process from `spec-review.json`
+and merges your `--waived` classification, **enforces the approve precondition** (a `--status pass`
+is honored only when `spec_gate.gate==clear` OR every `flagged` finding is in `waived` — otherwise it
+writes `status=fail`), passes `ppa_targets` through (the one field no script derives — the
+orchestrator reads it to drive synthesis/power-analysis PPA gates), enumerates `artifacts[]`
+(design.md / manifest.json / coverage.json / spec-review.json / the N `<child>.md` /
+`constraints/<TOP>.{sdc,sgdc}` — **never `brainstorm.md`**), and writes the complete `result.json`.
+Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception
+(BLOCKED), not a `status=fail`.
+
+`status=pass` still requires the design.md review-loop approval (Step 8) AND `spec_gate.gate==clear`
+(or every `flagged` waived) — finalize is run with `--status pass` only after those gates clear, and
+re-checks the precondition itself.
 
 ## Self-checks (where the deterministic work runs)
 
@@ -328,9 +345,10 @@ omitted). When `status=fail`, only `stage_specific.fail_reason` is required.
   §1.4.1 Clock-Domain ⊆ §1.6 [R-F], feature→§5 coverage [R-C]).
 - **Post-gate self-check:** `derive_constraints.py` exit 0 (deterministic generation +
   self-check; there is no separate constraint verifier).
-- **Finalize:** `<TOP>` (= `manifest.module`) matches `constraints/<TOP>.{sdc,sgdc}` stems
-  and `result.json.stage_specific.top_module`; `artifacts[]` ≥ 5+N entries and each path
-  exists on disk.
+- **Finalize:** `result.json` was written by `derive_constraints.py finalize` (it owns
+  status / top_module / ppa_targets / spec_gate / artifacts[]; `<TOP>` = `manifest.module`
+  matches the `constraints/<TOP>.{sdc,sgdc}` stems). The agent supplies only the γ-floor args
+  `--status` / `--waived` / `--ppa-targets` (the human-gate outcome).
 - **Human:** the design.md review-loop is approved (now including port roles, reset
   polarity, clock relationships); engineering soundness — the semantic "not contradictory"
   judgment the token check cannot catch.

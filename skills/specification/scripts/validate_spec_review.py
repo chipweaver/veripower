@@ -35,6 +35,34 @@ _GATING_LENSES = {"faithfulness", "conformance"}
 _GATING_SEVERITIES = {"critical", "important"}
 
 
+def gate_verdict(doc: dict) -> dict:
+    """Pure lens x severity reduction over doc['findings'] (no schema gate, no I/O).
+    The caller guarantees doc is a validated spec-review (main() runs the schema +
+    consistency gate first; finalize reads the already-on-disk, already-gated artifact)."""
+    findings = doc.get("findings", [])
+    gating = [
+        f
+        for f in findings
+        if f.get("lens") in _GATING_LENSES and f.get("severity") in _GATING_SEVERITIES
+    ]
+    flagged = [
+        {"child": f.get("child"), "lens": f.get("lens"), "severity": f.get("severity")}
+        for f in sorted(gating, key=lambda f: (f.get("child", ""), f.get("lens", "")))
+    ]
+    must_ack = [
+        {"child": f.get("child"), "severity": f.get("severity")}
+        for f in sorted(
+            (f for f in findings if f.get("lens") == "soundness"),
+            key=lambda f: (f.get("child", ""), f.get("severity", "")),
+        )
+    ]
+    return {
+        "gate": "trip" if gating else "clear",
+        "flagged": flagged,
+        "must_ack": must_ack,
+    }
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("usage: validate_spec_review.py <spec-review.json>", file=sys.stderr)
@@ -76,31 +104,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    gating = [
-        f
-        for f in findings
-        if f.get("lens") in _GATING_LENSES and f.get("severity") in _GATING_SEVERITIES
-    ]
-    flagged = [
-        {"child": f.get("child"), "lens": f.get("lens"), "severity": f.get("severity")}
-        for f in sorted(gating, key=lambda f: (f.get("child", ""), f.get("lens", "")))
-    ]
-    must_ack = [
-        {"child": f.get("child"), "severity": f.get("severity")}
-        for f in sorted(
-            (f for f in findings if f.get("lens") == "soundness"),
-            key=lambda f: (f.get("child", ""), f.get("severity", "")),
-        )
-    ]
-    print(
-        json.dumps(
-            {
-                "gate": "trip" if gating else "clear",
-                "flagged": flagged,
-                "must_ack": must_ack,
-            }
-        )
-    )
+    print(json.dumps(gate_verdict(doc)))
     return 0
 
 

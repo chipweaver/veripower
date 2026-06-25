@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -162,3 +163,53 @@ def test_conformance_minor_does_not_trip(tmp_path):
     r = _run(tmp_path, _doc([_finding("conformance", "minor")]))
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout)["gate"] == "clear"
+
+
+# ── direct in-process unit tests for the extracted pure gate_verdict() ──
+sys.path.insert(0, str(ROOT / "skills" / "specification" / "scripts"))
+import validate_spec_review as vsr  # noqa: E402
+
+
+def test_gate_verdict_clear_on_empty():
+    assert vsr.gate_verdict({"findings": []}) == {
+        "gate": "clear",
+        "flagged": [],
+        "must_ack": [],
+    }
+
+
+def test_gate_verdict_faithfulness_critical_trips():
+    doc = {
+        "findings": [
+            {
+                "child": "c",
+                "lens": "faithfulness",
+                "severity": "critical",
+                "location": "x",
+                "summary": "y",
+            }
+        ]
+    }
+    g = vsr.gate_verdict(doc)
+    assert g["gate"] == "trip"
+    assert g["flagged"] == [
+        {"child": "c", "lens": "faithfulness", "severity": "critical"}
+    ]
+    assert g["must_ack"] == []
+
+
+def test_gate_verdict_soundness_is_must_ack_not_flagged():
+    doc = {
+        "findings": [
+            {
+                "child": "c",
+                "lens": "soundness",
+                "severity": "critical",
+                "location": "x",
+                "summary": "y",
+            }
+        ]
+    }
+    g = vsr.gate_verdict(doc)
+    assert g["gate"] == "clear" and g["flagged"] == []
+    assert g["must_ack"] == [{"child": "c", "severity": "critical"}]

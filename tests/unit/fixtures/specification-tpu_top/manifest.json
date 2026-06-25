@@ -1,0 +1,44 @@
+{
+  "module": "tpu_top",
+  "children": [
+    {
+      "name": "mac",
+      "doc": "mac.md",
+      "rtl_modules": ["mac"],
+      "brainstorm_anchor": "lines 44-57",
+      "role": "Multiply-accumulate cell: registers o_result <= (i_data*i_weight)+i_pre_result and o_data_next <= i_data; instantiated 4x as mac_00/mac_01/mac_10/mac_11."
+    },
+    {
+      "name": "systolic_reg",
+      "doc": "systolic_reg.md",
+      "rtl_modules": ["systolic_reg"],
+      "brainstorm_anchor": "lines 59-64",
+      "role": "Systolic skew aligner: out1 = in1 delayed 1 cycle (delay10); out2 = in2 delayed 2 cycles (delay20 -> delay21)."
+    },
+    {
+      "name": "fifo",
+      "doc": "fifo.md",
+      "rtl_modules": ["fifo"],
+      "brainstorm_anchor": "lines 66-80",
+      "role": "8-entry 32-bit pointer-based single-clock FIFO with combinational read; instantiated 3x as fifo_00/fifo_01/fifo_result."
+    },
+    {
+      "name": "tpu_top",
+      "doc": "tpu_top.md",
+      "rtl_modules": ["tpu_top"],
+      "brainstorm_anchor": "lines 82-160",
+      "role": "Top integration: instantiates the 4 MACs, systolic_reg and 3 FIFOs; holds inline the APB-style register file (weight load + result read-back), the start/counter control FSM, result routing mux, and done generation."
+    }
+  ],
+  "shared_subsections": [
+    "tpu_top Brainstorm",
+    "Overview",
+    "Functions & Features",
+    "Clocks & Reset",
+    "Architecture Candidates",
+    "Timing Scenarios",
+    "PPA Targets",
+    "Verification Inputs Readiness",
+    "Document Control"
+  ]
+}

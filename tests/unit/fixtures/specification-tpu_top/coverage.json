@@ -1,0 +1,30 @@
+{
+  "status": "pass",
+  "brainstorm_coverage": {
+    "gaps": [],
+    "orphans": []
+  },
+  "frontmatter_subset": {
+    "ports_violations": [],
+    "clocks_violations": [],
+    "features_violations": [],
+    "missing_keys": []
+  },
+  "token_survival": {
+    "missing_tokens": []
+  },
+  "self_containment": {
+    "by_reference_jumps": [],
+    "cross_child_links": []
+  },
+  "structure": {
+    "presence_violations": [],
+    "column_violations": [],
+    "period_violations": [],
+    "clock_domain_violations": [],
+    "manifest_violations": [],
+    "feature_coverage_gaps": [],
+    "hint_column_violations": [],
+    "purity_violations": []
+  }
+}
