@@ -31,6 +31,7 @@ loud (exit 3) rather than emitting an unreadable number as a silent pass.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import re
 import sys
@@ -148,7 +149,140 @@ def run(reports_dir, out_path, area_target, slack_target) -> int:
     return 0
 
 
+# ── finalize: assemble the lean result.json (v4 stage-CLI-tool) ──────────────
+STAGE = "synthesis"
+_FAIL_REASON = {
+    "missing": "synthesis report missing",
+    "unparseable": "synthesis report unparseable",
+}
+
+
+def _now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _envelope(module, *, status, stage_specific, artifacts) -> dict:
+    return {
+        "schema_version": 1,
+        "stage": STAGE,
+        "module": module,
+        "produced_at": _now_iso(),
+        "status": status,
+        "artifacts": artifacts,
+        "stage_specific": stage_specific,
+    }
+
+
+def _write_result(workdir: Path, env: dict) -> None:
+    (workdir / "result.json").write_text(json.dumps(env, indent=2) + "\n")
+    sys.stdout.write(
+        f"[synthesis_rpt_parser] Written: {workdir / 'result.json'} (status={env['status']})\n"
+    )
+
+
+def build_result(workdir, module, top, area_target, slack_target) -> int:
+    """Assemble the lean synthesis result.json. Reuses run() for the PPA gate
+    (in-process), then derives the header + artifacts + writes the envelope.
+    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED)."""
+    workdir = Path(workdir)
+    reports = workdir / "reports"
+    sidecar = workdir / "ppa-actual.json"
+
+    rc = run(reports, sidecar, area_target, slack_target)  # reuse the gate verbatim
+    if rc != 0:
+        token = (
+            "missing" if rc == 1 else "unparseable"
+        )  # run(): 1=missing, 3=unparseable
+        ss = {
+            "top_module": top,
+            "fail_reason": _FAIL_REASON[token],
+            "failure_kind": "tooling",
+        }
+        _write_result(
+            workdir,
+            _envelope(
+                module,
+                status="fail",
+                stage_specific=ss,
+                artifacts=enumerate_artifacts(workdir, top),
+            ),
+        )
+        return 0
+
+    ppa = json.loads(sidecar.read_text())  # the tool's own artifact (in-process)
+    status = "pass" if ppa["verdict"] == "pass" else "fail"
+    area_text = (reports / "area.rpt").read_text(errors="replace")
+    ss = {
+        "top_module": top,
+        "tool": parse_tool(area_text),
+        "lib_db": read_lib_db(workdir),
+        "clock": parse_clock(workdir),
+        "ppa_targets": [
+            d
+            for d, t in (("area_um2", area_target), ("timing_slack_ns", slack_target))
+            if t is not None
+        ],
+        "ppa_actual": ppa["ppa_actual"],
+        "violations": ppa["violations"],
+    }
+    if status == "fail":
+        ss["failure_kind"] = "ppa"
+        ss["fail_reason"] = "PPA target(s) not met"
+    _write_result(
+        workdir,
+        _envelope(
+            module,
+            status=status,
+            stage_specific=ss,
+            artifacts=enumerate_artifacts(workdir, top),
+        ),
+    )
+    return 0
+
+
+# --- derivations (Task 2) + artifacts (Task 3): stubs so Task 1 imports/runs ---
+def parse_tool(area_text: str):
+    return None
+
+
+def read_lib_db(workdir):
+    return None
+
+
+def parse_clock(workdir):
+    return None
+
+
+def enumerate_artifacts(workdir, top):
+    return []
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) > 1 and argv[1] == "finalize":
+        ap = argparse.ArgumentParser(
+            prog="synthesis_rpt_parser.py finalize",
+            description="Assemble the lean synthesis result.json from the workdir.",
+        )
+        ap.add_argument("--workdir", required=True, type=Path)
+        ap.add_argument("--module", required=True)
+        ap.add_argument("--top", default=None, help="top module; defaults to --module")
+        ap.add_argument("--area-target", type=float, default=None)
+        ap.add_argument("--slack-target", type=float, default=None)
+        try:
+            a = ap.parse_args(argv[2:])
+        except SystemExit as exc:
+            if exc.code not in (0, None):
+                print("[synthesis_rpt_parser] ERROR: usage", file=sys.stderr)
+                return 2
+            return 0
+        try:
+            return build_result(
+                a.workdir, a.module, a.top or a.module, a.area_target, a.slack_target
+            )
+        except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
+            print(f"[synthesis_rpt_parser] FAIL=internal {exc}", file=sys.stderr)
+            return 2
+    # ── legacy parse CLI (UNCHANGED) ─────────────────────────────────────────
     ap = argparse.ArgumentParser(
         prog="synthesis_rpt_parser.py",
         description="Extract DC PPA scalars (area, worst setup slack) and judge the gate.",

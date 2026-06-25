@@ -235,3 +235,71 @@ def test_run_wns_cross_check_contradiction_exit3(tmp_path):
     reports, out = _stage(tmp_path, qor=QOR_CONTRADICT)
     assert sp.run(reports, out, None, None) == 3
     assert not out.exists()
+
+
+# ── finalize / build_result (v4 stage-CLI-tool) ───────────────────────────────
+def _workdir(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR):
+    reports = tmp_path / "reports"
+    reports.mkdir(parents=True)
+    (reports / "area.rpt").write_text(area)
+    (reports / "qor.rpt").write_text(qor)
+    return tmp_path
+
+
+def test_build_result_pass_lean_shape(tmp_path):
+    wd = _workdir(tmp_path)
+    assert (
+        sp.build_result(
+            wd, module="tpu_top", top="tpu_top", area_target=None, slack_target=None
+        )
+        == 0
+    )
+    env = json.loads((wd / "result.json").read_text())
+    assert (env["schema_version"], env["stage"], env["module"]) == (
+        1,
+        "synthesis",
+        "tpu_top",
+    )
+    assert env["status"] == "pass" and env["produced_at"].endswith("Z")
+    ss = env["stage_specific"]
+    slack = [a for a in ss["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]
+    assert slack["value"] == pytest.approx(0.95)  # parser regression: min across groups
+    assert ss["violations"] == [] and ss["ppa_targets"] == []
+    assert (
+        "notes" not in ss and "power_report" not in ss
+    )  # lean shape: dropped fields absent
+    assert "rtl_filelist" not in ss and "timing_exceptions" not in ss
+
+
+def test_build_result_tooling_fail_on_unparseable(tmp_path):
+    wd = _workdir(tmp_path, area=AREA_NO_TOTAL)  # parser run() returns 3
+    assert (
+        sp.build_result(
+            wd, module="tpu_top", top="tpu_top", area_target=None, slack_target=None
+        )
+        == 0
+    )
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert (
+        ss["failure_kind"] == "tooling"
+        and ss["fail_reason"] == "synthesis report unparseable"
+    )
+
+
+def test_finalize_cli_does_not_break_legacy_parse_cli(tmp_path):
+    # the legacy bare-flag invocation still parses (no subcommand) — back-compat guard
+    reports = _workdir(tmp_path) / "reports"
+    out = tmp_path / "ppa-actual.json"
+    assert (
+        sp.main(
+            [
+                "synthesis_rpt_parser.py",
+                "--reports-dir",
+                str(reports),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(out.read_text())["verdict"] == "pass"
