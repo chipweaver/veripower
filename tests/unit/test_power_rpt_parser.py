@@ -421,6 +421,36 @@ def test_build_result_tooling_fail_on_invariant(tmp_path):
     assert isinstance(ss["fail_reason"], str) and ss["fail_reason"]
 
 
+def test_build_result_ppa_miss(tmp_path):
+    # the failure_kind=ppa branch of build_result: a scenario over target ->
+    # status=fail + violations + ppa_actual (the schema's ppa-fail if/then).
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN,
+        sizes={"S1": 2000, "S2": 4000},
+        flats={
+            "S1": _flat_rpt(0.42, 0.05, 0.02, 0.35),
+            "S2": _flat_rpt(1.85, 0.62, 0.95, 0.28),
+        },
+    )
+    targets = _json.dumps([{"dim": "power_mw", "target": 1.2, "scenario_id": "S2"}])
+    assert (
+        p.build_result(wd, module="tpu_top", plan_path=str(plan), targets=targets) == 0
+    )
+    ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["failure_kind"] == "ppa"
+    assert ss["violations"] == [
+        {
+            "dim": "power_mw",
+            "target": 1.2,
+            "actual": pytest.approx(1.85),
+            "scenario_id": "S2",
+        }
+    ]
+    assert ss["ppa_actual"]  # required alongside violations on a ppa-fail
+    assert isinstance(ss["fail_reason"], str) and ss["fail_reason"]
+
+
 def test_finalize_cli_does_not_break_legacy_parse_cli(tmp_path):
     # the legacy bare-flag invocation still parses + judges (no subcommand) — back-compat guard
     wd, plan = _make_workdir(
