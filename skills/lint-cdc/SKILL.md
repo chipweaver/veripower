@@ -115,9 +115,33 @@ The script re-derives the counts — you do not count by hand.
 
 Write each reviewed waiver to `scripts/waiver.tcl`; each entry carries `-rules` and `-comment "<reason>. Owner: <owner> Date: <yyyy-mm-dd>"`. `waiver.tcl` is sourced automatically by `run.tcl` (when `SPYGLASS_STAGE=lint` or `all`). Re-run `make lint` to verify the waivers take effect.
 
-### Step 7: Write `{workdir}/result.json`
+### Step 7: Write `{workdir}/result.json` (mandatory)
 
-(schema: `references/result.schema.json` + envelope). The gate reads the final `lint-violations.json` and `cdc-violations.json`: `status=pass` iff both `make` runs exited 0 **and** `counts.error == 0` in both; otherwise `status=fail`. Populate `violations[]` directly from the error-severity entries of the two `*-violations.json` (`id` / `rule` / `severity` from the parser; add a `reason`). Only `severity=error` items enter `violations[]`. **Artifacts** — every path listed in `artifacts[]` lands at the canonical `Design/lint-cdc/` path (pass and fail alike); a listed path that is not on disk fails to land there, so list only files that exist. On the **pass path**: `scripts/constraints.sgdc` (the warm-start anchor, promoted to canonical `Design/lint-cdc/scripts/constraints.sgdc`), both `*-report.txt`, and both `*-violations.json`. On any **early-fail path** (Steps 1/3/4/5): list only what was actually produced — typically just `scripts/constraints.sgdc` plus whichever report exists — **never** a `*-violations.json` the parser did not emit (write-fresh-or-nothing unlinks it on exit 3).
+Run the result combiner; do not hand-assemble the envelope, recount, or copy the header by hand.
+The combiner takes no agent input — every field is script-derived:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/lint_cdc_result_builder.py \
+  --workdir {workdir} --module <module> [--top <TOP>]
+```
+
+The combiner reads the two `*-violations.json` for the gate (`status=pass` iff both exist — both
+`make` reached `collect_report.py` cleanly — AND `counts.error == 0` in both), copies
+`lint_counts` / `cdc_counts` from them, derives the slim header (`top_module` / `tool` from the
+report), reshapes the error-severity rows into `violations[]` (deriving each `reason` from the
+parser's tool `message`), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 =
+result.json written (status pass or fail). A non-zero combiner exit is a program exception (BLOCKED),
+not a `status=fail`.
+
+The Step 4/5 `FAIL=` early-fail handling is unchanged: on a non-zero `make` the agent still acts on
+`collect_report.py`'s `FAIL=` token and writes `status=fail` + the matching `fail_reason` directly
+(the parser unlinked the `*-violations.json`, so the combiner's gate would also fail on the missing
+file — but the agent's `FAIL=` mapping carries the precise tool-level reason, so write that envelope
+in Steps 4/5 rather than deferring to the combiner). The combiner owns the **clean-path** assembly and
+the **error-severity gate** (both reports present, `counts.error > 0`).
+
+Every field in result.json is script-derived — the per-error `reason` comes from the parser's tool
+`message`, so lint-cdc supplies no agent input (100% script-owned, like every other stage).
 
 ## Decision Rules
 
@@ -140,11 +164,9 @@ Write each reviewed waiver to `scripts/waiver.tcl`; each entry carries `-rules` 
 
 ## Completion Gate
 
-- [ ] `{workdir}/result.json` has been written and passes schema validation.
-- [ ] Every artifact path is listed in `result.json.artifacts[]`.
+- [ ] result.json was written by `lint_cdc_result_builder.py` (it owns status / lint_counts / cdc_counts / violations / the reproducibility header / artifacts[]; the per-error reason is derived from the tool message — no agent input).
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept `blocked`).
-- [ ] Both `make` runs exited 0; `lint-report.txt` / `cdc-report.txt` and `lint-violations.json` / `cdc-violations.json` all exist.
 - [ ] `sync_cell` / `reset_synchronizer` in `scripts/constraints.sgdc` cover every custom synchronizer in the RTL.
 - [ ] `set_case_analysis` has cleared the test-control-signal false positives; `quasi_static` has cleared the quasi-static cross-domain false positives.
 - [ ] Every `severity=error` item has been waived or written into `violations[]`.

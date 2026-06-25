@@ -1,0 +1,143 @@
+{
+  "kind": "cdc",
+  "source": "/home/haocheng/ai-try-ai/asic/tpu_top/Design/lint-cdc/runs/3/spyglass_work/spyglass_lint/tpu_top/cdc/cdc_verify_struct/spyglass_reports/moresimple.rpt",
+  "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 14
+  },
+  "totals": {
+    "generated": 14,
+    "waived": 0,
+    "reported": 14,
+    "overlimit": 0
+  },
+  "violations": [
+    {
+      "id": "checkCMD_ignore01:N.A.:0",
+      "native_id": "0",
+      "rule": "checkCMD_ignore01",
+      "severity": "info",
+      "file": "N.A.",
+      "line": 0,
+      "message": "Option 'enableSV' ignored as another option(s) 'enableSV09' have been specified"
+    },
+    {
+      "id": "DetectTopDesignUnits:../../../rtl-design/tpu_top.v:13",
+      "native_id": "2",
+      "rule": "DetectTopDesignUnits",
+      "severity": "info",
+      "file": "../../../rtl-design/tpu_top.v",
+      "line": 13,
+      "message": "Module tpu_top is a top level design unit"
+    },
+    {
+      "id": "ElabSummary:./spyglass_work/spyglass_lint/tpu_top/cdc/cdc_verify_struct/spyglass_reports/SpyGlass/elab_summary.rpt:0",
+      "native_id": "1",
+      "rule": "ElabSummary",
+      "severity": "info",
+      "file": "./spyglass_work/spyglass_lint/tpu_top/cdc/cdc_verify_struct/spyglass_reports/SpyGlass/elab_summary.rpt",
+      "line": 0,
+      "message": "Please refer file './spyglass_work/spyglass_lint/tpu_top/cdc/cdc_verify_struct/spyglass_reports/SpyGlass/elab_summary.rpt' for elab summary report"
+    },
+    {
+      "id": "Ac_crossing01:../../../rtl-design/tpu_top.v:13",
+      "native_id": "5",
+      "rule": "Ac_crossing01",
+      "severity": "info",
+      "file": "../../../rtl-design/tpu_top.v",
+      "line": 13,
+      "message": "CrossingMatrix spreadsheet generated for design 'tpu_top'"
+    },
+    {
+      "id": "Ar_sync01:../../../rtl-design/fifo.v:66",
+      "native_id": "9",
+      "rule": "Ar_sync01",
+      "severity": "info",
+      "file": "../../../rtl-design/fifo.v",
+      "line": 66,
+      "message": "Reset signal 'tpu_top.i_rstn' for 'clear' pin of flop 'tpu_top.fifo_00.mem[7][0]', clocked by 'tpu_top.i_clk', is synchronized by method: Reset constrained through abstract_port constraint (Name:i_rstn)"
+    },
+    {
+      "id": "Ar_syncdeassert01:../../../rtl-design/fifo.v:66",
+      "native_id": "A",
+      "rule": "Ar_syncdeassert01",
+      "severity": "info",
+      "file": "../../../rtl-design/fifo.v",
+      "line": 66,
+      "message": "Reset signal 'tpu_top.i_rstn' for 'clear' pin of flop 'tpu_top.fifo_00.mem[7][0]', synchronously de-asserts relative to clock signal 'tpu_top.i_clk'"
+    },
+    {
+      "id": "Clock_info02:N.A.:0",
+      "native_id": "7",
+      "rule": "Clock_info02",
+      "severity": "info",
+      "file": "N.A.",
+      "line": 0,
+      "message": "Clock Tree generated"
+    },
+    {
+      "id": "Clock_info15:N.A.:0",
+      "native_id": "24",
+      "rule": "Clock_info15",
+      "severity": "info",
+      "file": "N.A.",
+      "line": 0,
+      "message": "Port-Clock information generated for PortClockMatrix report"
+    },
+    {
+      "id": "Propagate_Clocks:../../../rtl-design/tpu_top.v:19",
+      "native_id": "3",
+      "rule": "Propagate_Clocks",
+      "severity": "info",
+      "file": "../../../rtl-design/tpu_top.v",
+      "line": 19,
+      "message": "For tpu_top, clock(s) 'tpu_top.i_clk' of domain 'i_clk' propagated"
+    },
+    {
+      "id": "Propagate_Resets:../../../rtl-design/tpu_top.v:20",
+      "native_id": "6",
+      "rule": "Propagate_Resets",
+      "severity": "info",
+      "file": "../../../rtl-design/tpu_top.v",
+      "line": 20,
+      "message": "For tpu_top, reset 'tpu_top.i_rstn' propagated"
+    },
+    {
+      "id": "Reset_info02:N.A.:0",
+      "native_id": "8",
+      "rule": "Reset_info02",
+      "severity": "info",
+      "file": "N.A.",
+      "line": 0,
+      "message": "Reset Tree generated"
+    },
+    {
+      "id": "Setup_port01:../../../rtl-design/tpu_top.v:13",
+      "native_id": "23",
+      "rule": "Setup_port01",
+      "severity": "info",
+      "file": "../../../rtl-design/tpu_top.v",
+      "line": 13,
+      "message": "Port coverage for top design unit 'tpu_top' is: '0' (0.00 %) port(s) not fully constrained"
+    },
+    {
+      "id": "Setup_port01:./spyglass_work/spyglass_lint/tpu_top/cdc/cdc_verify_struct/spyglass_reports/clock-reset/tpu_top_input_abstract.sgdc:0",
+      "native_id": "25",
+      "rule": "Setup_port01",
+      "severity": "info",
+      "file": "./spyglass_work/spyglass_lint/tpu_top/cdc/cdc_verify_struct/spyglass_reports/clock-reset/tpu_top_input_abstract.sgdc",
+      "line": 0,
+      "message": "Abstracted sgdc file for input ports of block 'tpu_top' is generated"
+    },
+    {
+      "id": "Setup_quasi_static01:./spyglass_work/spyglass_lint/tpu_top/cdc/cdc_verify_struct/spyglass_reports/clock-reset/auto_quasi_static.sgdc:25",
+      "native_id": "4",
+      "rule": "Setup_quasi_static01",
+      "severity": "info",
+      "file": "./spyglass_work/spyglass_lint/tpu_top/cdc/cdc_verify_struct/spyglass_reports/clock-reset/auto_quasi_static.sgdc",
+      "line": 25,
+      "message": "For design 'tpu_top', '0' quasi_static constraint(s) inferred"
+    }
+  ]
+}
