@@ -2,7 +2,7 @@
 #!VERSION 3.0
 # ==============================================================================
 # spyglass_lint.prj — SpyGlass project file.
-# After deploy, bootstrap_lint_cdc.sh substitutes MY_TOP with the actual top
+# After deploy, the lint-cdc bootstrap verb substitutes MY_TOP with the actual top
 # module name. All paths are relative to the runs/<N>/ deploy directory
 # (the cwd from which SpyGlass is invoked).
 # ==============================================================================

@@ -2,10 +2,10 @@
 # ==============================================================================
 # env.sh — lint-cdc stage environment variables.
 # Sourced by the Makefile and scripts/ entries. Do not edit MY_TOP placeholder
-# post-deploy — bootstrap_lint_cdc.sh substitutes it.
+# post-deploy — the lint-cdc bootstrap verb substitutes it.
 # ==============================================================================
 
-# Top module name, substituted by bootstrap_lint_cdc.sh.
+# Top module name, substituted by the lint-cdc bootstrap verb.
 export TOP="${TOP:-MY_TOP}"
 
 # SpyGlass goal subset selector (lint | cdc | all). The Makefile sets this per

@@ -8,7 +8,7 @@ lives in `${CLAUDE_SKILL_DIR}/references/makefile-bootstrap.md`.
 ## Deployment
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_lint_cdc.sh \
+python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap \
      --module <module-dir-name> --workdir <abs-path> [--top <top-module>]
 ```
 
@@ -46,7 +46,7 @@ manually or merge.
 
 ## Placeholder substitution
 
-During deployment, `bootstrap_lint_cdc.sh` substitutes `MY_TOP` with the
+During deployment, the lint-cdc bootstrap verb substitutes `MY_TOP` with the
 actual top-module name in: `env.sh` / `scripts/spyglass_lint.prj` /
 `scripts/filelist.txt` / `scripts/constraints.sgdc` / `scripts/waiver.tcl`.
 When the warm SGDC (`Design/lint-cdc/scripts/constraints.sgdc`) or the cold

@@ -3,7 +3,7 @@
 # Workdir:    asic/<module>/Design/lint-cdc/runs/<N>/
 # RTL path:   ../../../rtl-design/ (relative to this directory:
 #             runs/<N>/ → lint-cdc/ → Design/ → rtl-design/)
-# Top module: bootstrap_lint_cdc.sh substitutes MY_TOP at deploy time.
+# Top module: the lint-cdc bootstrap verb substitutes MY_TOP at deploy time.
 # Targets:
 #   make lint         lint/lint_rtl goal only → lint-report.txt
 #   make cdc          CDC three-stage goal only → cdc-report.txt

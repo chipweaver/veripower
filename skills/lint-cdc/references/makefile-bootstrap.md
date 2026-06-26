@@ -5,7 +5,7 @@ Source of truth: `${CLAUDE_SKILL_DIR}/templates/`.
 ## Bootstrap
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_lint_cdc.sh \
+python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap \
      --module <module-dir-name> --workdir <abs-path> [--top <top-module>]
 ```
 
@@ -17,7 +17,7 @@ bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_lint_cdc.sh \
 
 ## SGDC source selection
 
-`bootstrap_lint_cdc.sh` resolves the SGDC seed in warm → cold → template priority order:
+The lint-cdc bootstrap verb resolves the SGDC seed in warm → cold → template priority order:
 
 > The SKILL invocation flow's Step 1 prerequisite check already fail-closes on "neither warm nor cold available" (see `SKILL.md` Step 1 and the Input Artifacts table); the "neither" row in the table below applies only to ad-hoc invocations (e.g., manual template testing).
 

@@ -80,7 +80,7 @@ Steps 2–7 are mechanically identical across all three branches; the branch sel
 Run:
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_lint_cdc.sh --module {module} --workdir {workdir} [--top <TOP>]
+python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
 ```
 
 The script deploys the templates to `{workdir}`, substitutes the `MY_TOP` placeholder, and fills `scripts/constraints.sgdc` from the SGDC seed (warm → cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `orchestrator-context.md` does NOT count as "deployed"). When `--top` is omitted, infer it from `Design/rtl-design/README.md` or `filelist.txt` (inference failure aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files this stage edits are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.
@@ -121,7 +121,7 @@ Run the result combiner; do not hand-assemble the envelope, recount, or copy the
 The combiner takes no agent input — every field is script-derived:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/lint_cdc_result_builder.py \
+python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py finalize \
   --workdir {workdir} --module <module> [--top <TOP>]
 ```
 
@@ -164,7 +164,7 @@ Every field in result.json is script-derived — the per-error `reason` comes fr
 
 ## Completion Gate
 
-- [ ] result.json was written by `lint_cdc_result_builder.py` (it owns status / lint_counts / cdc_counts / violations / the reproducibility header / artifacts[]; the per-error reason is derived from the tool message — no agent input).
+- [ ] result.json was written by the `lintcdc` CLI's `finalize` verb (it owns status / lint_counts / cdc_counts / violations / the reproducibility header / artifacts[]; the per-error reason is derived from the tool message — no agent input).
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept `blocked`).
 - [ ] `sync_cell` / `reset_synchronizer` in `scripts/constraints.sgdc` cover every custom synchronizer in the RTL.
