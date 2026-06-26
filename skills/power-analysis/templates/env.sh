@@ -2,10 +2,10 @@
 # ==============================================================================
 # env.sh — power-analysis stage environment variables.
 # Sourced by the Makefile and scripts/ entries. Do not edit MY_TOP / MY_MODULE
-# placeholders post-deploy — bootstrap_power_analysis.sh substitutes them.
+# placeholders post-deploy — the power bootstrap verb substitutes them.
 # ==============================================================================
 
-# Top module and module-directory names, substituted by bootstrap_power_analysis.sh.
+# Top module and module-directory names, substituted by the power bootstrap verb.
 # MODULE is used to resolve simulation TB class names ({MODULE}_tb_pkg /
 # {MODULE}_base_test / {MODULE}_<seq>_seq, etc.). MODULE and TOP are usually
 # identical but the contract allows them to diverge.

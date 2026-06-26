@@ -18,7 +18,7 @@ Cross-stage contract enforced here:
 
 Either condition violated → script fails closed (exit 1).
 
-Called by ``bootstrap_power_analysis.sh`` on first deploy and by
+Called by the power bootstrap verb on first deploy and by
 ``make refresh-tests`` on every gls-compile.
 """
 

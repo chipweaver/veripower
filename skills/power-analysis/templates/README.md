@@ -26,7 +26,7 @@ When unset, sourcing `env.sh` errors out (`:?` pattern).
 
 ## External reference inputs
 
-`bootstrap_power_analysis.sh` deploys templates and the initial power tests in one shot, computes a relative path based on workdir depth, and then `sed`-substitutes the `MY_SYN_OUT` / `MY_SIM_DIR` / `MY_PLAN_DIR` placeholders inside `env.sh` — these three relative paths are bound to the environment variables that `env.sh` exports, every Makefile target references files via those environment variables, and the workspace can be moved (e.g., to `runs/<N>/`) without any hand-edited path. Plan / scenario changes are auto-re-rendered by `make refresh-tests` (already wired as a `gls-compile` prerequisite); no re-bootstrap is needed.
+The power bootstrap verb deploys templates and the initial power tests in one shot, computes a relative path based on workdir depth, and then substitutes the `MY_SYN_OUT` / `MY_SIM_DIR` / `MY_PLAN_DIR` placeholders inside `env.sh` — these three relative paths are bound to the environment variables that `env.sh` exports, every Makefile target references files via those environment variables, and the workspace can be moved (e.g., to `runs/<N>/`) without any hand-edited path. Plan / scenario changes are auto-re-rendered by `make refresh-tests` (already wired as a `gls-compile` prerequisite); no re-bootstrap is needed.
 
 - `${NETLIST}` / `${SDC_FILE}` / `${SDF_FILE}` — the synthesis trio (`<TOP>_syn.{v,sdc,sdf}`).
 - `${TB_FILELIST}` — UVM TB infrastructure raw filelist; `make tb-shim` rewrites it into `${TB_FILELIST_ABS}` (absolute-pathized) for VCS to consume across workdirs.

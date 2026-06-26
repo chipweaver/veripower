@@ -92,7 +92,7 @@ Confirm `Verification/simulation/result.json.status=pass` AND `Design/timing-ana
 ### Step 2: Bootstrap (first-run only)
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_power_analysis.sh --module {module} --workdir {workdir} [--top <TOP>]
+python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
 ```
 
 Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a `Makefile` is already deployed (incremental updates go through `make refresh-tests`).
@@ -117,10 +117,10 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 - **`make` exited 0** → run the parser's finalize subcommand; do not run the parser separately, fold `power-actual.json` by hand, or hand-assemble the envelope:
 
   ```bash
-  python3 ${CLAUDE_SKILL_DIR}/scripts/power_rpt_parser.py finalize \
+  python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
     --workdir {workdir} --module <module> \
-    --plan Verification/simulation-plan/scaffold-specification.json \
-    --targets '<ppa_targets JSON from prompt>'
+    --scaffold Verification/simulation-plan/scaffold-specification.json \
+    --ppa-targets '<ppa_targets JSON from prompt>'
   ```
 
   `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against `--targets`), writes `power-actual.json`, folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
@@ -146,7 +146,7 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 
 - [ ] `{workdir}/result.json` has been written and passes schema validation (`references/result.schema.json`).
 - [ ] No Iron Rule or Red Flag was triggered.
-- [ ] result.json was written by `power_rpt_parser.py finalize` (it owns status / the 7 stage_specific fields / artifacts / failure_kind).
+- [ ] result.json was written by the `power` CLI's `finalize` verb (it owns status / the 7 stage_specific fields / artifacts / failure_kind).
 - [ ] Every `saif_artifacts[].saif_path` file exists and `size > 0`.
 - [ ] Every `reports_ptpx/<id>/{power_hier.rpt, power_flat.rpt, switching_activity.rpt, ptpx.log}` is present.
 - [ ] `gls-compile-log.txt` and `gls-run-log.txt` are on disk.
@@ -163,8 +163,8 @@ As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `
 - `templates/scripts/run_gls_power.sh` — per-scenario `simv` dispatch (dedup via hardlink; make-internal).
 - `templates/scripts/ptpx.tcl` — PT-PX averaged main script (`read_saif` + 0% annotation hard gate; make-internal).
 - [`templates/scaffold/power_test.sv.tmpl`](templates/scaffold/power_test.sv.tmpl) — UVM test template (placeholders `MODULE` / `AGENT_NAME` / `SEQUENCE_REF` / `TOP` / `SCENARIO_ID` / `SCENARIO_DESC` / `DURATION_CYCLES`; contains `$set_gate_level_monitoring + $toggle_*`).
-- `scripts/bootstrap_power_analysis.sh` — bootstrap script (invocation contract: Step 2 + `--help`).
+- `scripts/power/__main__.py bootstrap` — bootstrap verb (invocation contract: Step 2 + `--help`).
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
-- `scripts/power_rpt_parser.py` — PT-PX report parser + PPA verdict script (assembles `power-actual.json`; exit code is the pass/fail truth — mirrors `synthesis_rpt_parser.py`; invocation contract: Step 3 + `--help`).
+- `scripts/power/__main__.py finalize` — PT-PX report parser + PPA verdict verb (assembles `power-actual.json` then result.json; exit code is the pass/fail truth — mirrors the `synthesis` CLI's `finalize`; invocation contract: Step 3 + `--help`).
 - [`${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/references/power-scenarios-template.md`](../simulation-plan/references/power-scenarios-template.md) — `power_scenarios` field semantics.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.
