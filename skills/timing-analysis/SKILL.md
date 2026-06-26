@@ -5,7 +5,7 @@ description: Use when running static timing analysis on synthesis netlist, analy
 
 # Static Timing Analysis
 
-Your sole responsibility: run independent PrimeTime STA on the post-synthesis netlist, classify setup / hold path-level violations, and self-judge the `timing_setup` / `timing_hold` dimensions via `timing_rpt_parser.py` — never by eye.
+Your sole responsibility: run independent PrimeTime STA on the post-synthesis netlist, classify setup / hold path-level violations, and self-judge the `timing_setup` / `timing_hold` dimensions via the `timing` CLI's `finalize` verb — never by eye.
 
 ## When to Use
 
@@ -63,7 +63,7 @@ Confirm `Design/synthesis/result.json` exists and `status=pass`, and `Design/syn
 ### Step 2: Bootstrap
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_timing_analysis.sh --module {module} --workdir {workdir}
+python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py bootstrap --module {module} --workdir {workdir}
 ```
 
 Deploys `run_sta.tcl` + `config.tcl`, resolves `<TOP>`, verifies the netlist/SDC, and aborts if `{workdir}` is already deployed.
@@ -83,7 +83,7 @@ The TCL uses absolute paths (set by bootstrap) and its `redirect` writes `{workd
 Run the parser's finalize subcommand; do not run the parser separately, fold `timing-actual.json` by hand, or hand-assemble the envelope:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/timing_rpt_parser.py finalize \
+python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
   --workdir {workdir} --module <module> --top <top_module>
 ```
 
@@ -113,7 +113,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/timing_rpt_parser.py finalize \
 - [ ] `{workdir}/result.json` written and passes schema validation.
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] `result.json.status` written (`pass` or `fail`; the envelope does not accept `blocked`); on `fail`, `stage_specific.{fail_reason, failure_kind}` required.
-- [ ] result.json was written by timing_rpt_parser.py finalize (it owns status / timing / violations / artifacts / failure_kind / the reproducibility header).
+- [ ] result.json was written by the `timing` CLI's `finalize` verb (it owns status / timing / violations / artifacts / failure_kind / the reproducibility header).
 - [ ] `{workdir}/run_sta.tcl`, `{workdir}/config.tcl`, and `{workdir}/timing-report.txt` exist on disk.
 
 ## Return Contract

@@ -1,6 +1,6 @@
 # PrimeTime STA — independent timing verification of the post-synthesis netlist.
 # Invoked from the workdir: cd <workdir> && pt_shell -f run_sta.tcl
-# MODULE_ROOT / WORKDIR are ABSOLUTE paths, substituted by bootstrap_timing_analysis.sh.
+# MODULE_ROOT / WORKDIR are ABSOLUTE paths, substituted by the timing bootstrap verb.
 set MODULE_ROOT MY_MODULE_ROOT
 set WORKDIR     MY_WORKDIR
 source $WORKDIR/config.tcl                  ;# sets TOP and LIB_DB
