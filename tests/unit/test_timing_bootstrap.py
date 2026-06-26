@@ -1,5 +1,5 @@
 # tests/unit/test_timing_bootstrap.py
-"""timing bootstrap — Python port of the retired bootstrap_timing_analysis.sh.
+"""timing bootstrap — deploy-into-workdir behavior.
 
 Two layers: in-process unit tests of infer_top (BP1), and subprocess "mirror"
 tests of full deploy behavior (BP2-BP10). The mirror copies skills/timing-analysis
@@ -154,7 +154,7 @@ def test_fail_closed_when_synthesis_not_pass(tmp_path):
 
 
 def test_fail_closed_when_synthesis_result_missing(tmp_path):
-    # The .sh guards a missing result.json (line 75) but had NO test — §5.3 mandate.
+    # Covers the missing-synthesis-result.json fail-closed guard (§5.3 mandate).
     m, workdir, main = _make_tree(tmp_path, with_result=False)
     r = _run(m, workdir, main)
     assert r.returncode == 1

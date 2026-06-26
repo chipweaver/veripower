@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """synthesis bootstrap — deploy the synthesis templates into a run workdir.
 
-Python port of the retired bootstrap_synthesis.sh (campaign design §3.3): a
-behavior-preserving rewrite, NOT a line-for-line translation. shutil.copytree +
-str.replace replace `cp -a` + `sed -i` (no sed-delimiter hazard on the
-'..'-containing RTL relpath; each step is unit-testable). os.path.relpath
-replaces the script's own `python3 -c` relpath escape.
+Behavior-preserving deploy built from focused, unit-testable steps (campaign design
+§3.3): shutil.copytree + str.replace do the `cp -a` + `sed -i` work (str.replace has
+no sed-delimiter hazard on the '..'-containing RTL relpath); os.path.relpath computes
+the RTL relpath inline.
 
 Deploys templates/ into the caller-provided workdir
 (asic/<module>/Design/synthesis/runs/<N>/), substitutes the MY_TOP / MY_RTL_DIR
@@ -45,15 +44,13 @@ def _err(msg: str) -> None:
 def infer_top_from_readme(rtl_dir: Path) -> str | None:
     """First non-table line naming a top module -> first identifier after ':'/'：'.
 
-    Mirrors the retired shell grep: case-insensitive 'top' / 'top module' preceded
-    by start / '*' / '#' / whitespace, excluding markdown table rows (head -1 of the
-    matches); the capture charset allows a leading digit but the identifier
-    validation then rejects it (parity with the shell on the colon form). A ':' or
-    '：' is REQUIRED here — unlike the shell's sed, which on a colon-less line falls
-    back to the whole line and can accept a bare 'top'. That colon-less fallback is
-    intentionally NOT reproduced: the producer always emits the cross-stage contract
-    form `**Top module**: <top>` (locked by test_build_readme.py), so the quirk has
-    no real input, and requiring the colon matches the actual contract.
+    Matches a top-module line: case-insensitive 'top' / 'top module' preceded by
+    start / '*' / '#' / whitespace, excluding markdown table rows (first match wins);
+    the capture charset allows a leading digit but the identifier validation then
+    rejects it. A ':' or '：' is REQUIRED — a colon-less line is not matched. The
+    producer always emits the cross-stage contract form `**Top module**: <top>`
+    (locked by test_build_readme.py), so requiring the colon matches the actual
+    contract and the colon-less case has no real input.
     """
     f = rtl_dir / "README.md"
     if not f.is_file():
@@ -77,9 +74,8 @@ def infer_top_from_readme(rtl_dir: Path) -> str | None:
 def infer_top_from_filelist(rtl_dir: Path) -> str | None:
     """First true RTL path entry's basename (.v/.sv/.vh stripped) -> top, when an
     identifier. Skips comments (#), blanks, and +/- directives (the inference skip
-    set is {#, blank, +/-} — NO '//' skip, matching the shell). Extensions are
-    stripped sequentially (a name ending '.sv.v' loses both), matching the shell's
-    chained `${base%.v}` / `${base%.sv}` / `${base%.vh}`.
+    set is {#, blank, +/-} — NO '//' skip). Extensions are stripped sequentially (a
+    name ending '.sv.v' loses both).
     """
     f = rtl_dir / "filelist.txt"
     if not f.is_file():

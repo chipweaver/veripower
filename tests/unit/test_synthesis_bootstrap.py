@@ -1,5 +1,5 @@
 # tests/unit/test_synthesis_bootstrap.py
-"""synthesis bootstrap — Python port of the retired bootstrap_synthesis.sh.
+"""synthesis bootstrap — deploy-into-workdir behavior.
 
 Two layers: in-process unit tests of the inference helpers (BP1/BP2 — the
 byte-stable README-grep coupling locked from the other side by
@@ -55,7 +55,7 @@ def test_infer_top_from_filelist_skips_directives_and_comments(tmp_path):
 
 
 def test_infer_top_from_filelist_sequential_ext_strip(tmp_path):
-    # chained .v/.sv/.vh strip (no break, mirrors the shell's `${base%...}` chain):
+    # chained .v/.sv/.vh strip, no break (a name ending '.sv.v' loses both):
     # foo.sv.v -> (strip .v) foo.sv -> (strip .sv) foo
     (tmp_path / "filelist.txt").write_text("foo.sv.v\n")
     assert bootstrap.infer_top_from_filelist(tmp_path) == "foo"

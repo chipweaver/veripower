@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """timing bootstrap — deploy the timing-analysis templates into a run workdir.
 
-Python port of the retired bootstrap_timing_analysis.sh (campaign design §3.3): a
-behavior-preserving rewrite, NOT a line-for-line translation. shutil.copytree +
-str.replace replace `cp -a` + `sed -i` (no sed-delimiter hazard on '/'-containing
-paths; each step is unit-testable). json.loads replaces the script's own
-`python3 -c 'json.load(...)'` escape that read the synthesis result.json status.
-Far simpler than synthesis's bootstrap: no filelist, no rtl_load generation, no
-relpath — timing substitutes only absolute paths.
+Behavior-preserving deploy built from focused, unit-testable steps (campaign design
+§3.3): shutil.copytree + str.replace do the `cp -a` + `sed -i` work (str.replace has
+no sed-delimiter hazard on '/'-containing paths); json.loads reads the synthesis
+result.json status inline. Far simpler than synthesis's bootstrap: no filelist, no
+rtl_load generation, no relpath — timing substitutes only absolute paths.
 
 Deploys templates/ into the caller-provided workdir
 (asic/<module>/Design/timing-analysis/runs/<N>/), verifies the synthesis
@@ -47,7 +45,7 @@ def _err(msg: str) -> None:
 def infer_top(syn_dir: Path) -> str | None:
     """Top inferred from the single Design/synthesis/out/<TOP>_syn.v (suffix
     '_syn.v' stripped). Returns the top when EXACTLY one matches; None on 0 or >1
-    (mirrors the shell's nullglob + count check — the caller then fails closed)."""
+    (a glob + count check — the caller then fails closed)."""
     cands = sorted((syn_dir / "out").glob("*_syn.v"))
     if len(cands) != 1:
         return None
@@ -55,8 +53,8 @@ def infer_top(syn_dir: Path) -> str | None:
 
 
 def _read_status(syn_result: Path) -> str:
-    """The synthesis result.json status (the shell's `python3 -c json.load` escape).
-    Any read/parse failure -> '' -> the caller fails closed (non-pass)."""
+    """The synthesis result.json status (read via json.loads). Any read/parse
+    failure -> '' -> the caller fails closed (non-pass)."""
     try:
         return json.loads(syn_result.read_text()).get("status", "")
     except (OSError, json.JSONDecodeError):
@@ -74,7 +72,7 @@ def run(module: str, workdir, top: str | None = None) -> int:
         return 1
 
     # Resolve workdir to absolute against the REPO ROOT (not cwd). type=Path already
-    # dropped any trailing slash (the shell's ${WORKDIR%/}).
+    # dropped any trailing slash.
     workdir = Path(workdir)
     if not workdir.is_absolute():
         workdir = _REPO_ROOT / workdir
@@ -116,10 +114,10 @@ def run(module: str, workdir, top: str | None = None) -> int:
     _sub(workdir / "run_sta.tcl", "MY_MODULE_ROOT", str(module_root_abs))
     _sub(workdir / "run_sta.tcl", "MY_WORKDIR", str(workdir))
 
-    # `... or X` (NOT `.get(k, X)`) mirrors the shell's `${LIB_DB:-X}`: fall back on
-    # unset OR empty. An exported-but-empty LIB_DB must keep the placeholder, else
-    # config.tcl gets `set LIB_DB ` (empty value) and result.read_lib_db's `\S+`
-    # regex no longer matches. (Same idiom the ref#2 synthesis port uses.)
+    # `... or X` (NOT `.get(k, X)`) falls back on unset OR empty. An
+    # exported-but-empty LIB_DB must keep the placeholder, else config.tcl gets
+    # `set LIB_DB ` (empty value) and result.read_lib_db's `\S+` regex no longer
+    # matches. (Same idiom the ref#2 synthesis port uses.)
     lib_db_value = os.environ.get("LIB_DB") or "FILL_IN_LIB_DB_PATH"
     _sub(workdir / "config.tcl", "MY_TOP", top)
     _sub(workdir / "config.tcl", "FILL_IN_LIB_DB_PATH", lib_db_value)
