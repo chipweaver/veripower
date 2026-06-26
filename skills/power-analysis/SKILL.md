@@ -123,7 +123,7 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
     --ppa-targets '<ppa_targets JSON from prompt>'
   ```
 
-  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against `--targets`), writes `power-actual.json`, folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against `--ppa-targets`), writes `power-actual.json`, folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
   `failure_kind` semantics (set by finalize): `tooling` (gate exit 1 — `failures[].{phase, category, error_summary}` carry the data failure), `ppa` (a `power_mw` miss — `violations[]` filled). `infra` (external reference / license missing) is written by the Step-1 pre-check before finalize runs; the `make`-non-zero VCS-compile triage above also writes its `failures[]`/`failure_kind` on the main thread (the gate never runs there).
 
