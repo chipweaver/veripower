@@ -133,7 +133,7 @@ line: `STATUS: DONE` + paths, or `STATUS: BLOCKED <reason>`.
 Run:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/derive_child_ports.py {workdir}
+python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py derive-ports --workdir {workdir}
 ```
 
 Its small JSON output (`{child: [wire,...]}`) is each child's inter-module
@@ -155,7 +155,7 @@ oversize-cluster advisory flag computed from manifest metadata only (`rtl_module
 `brainstorm_anchor` line-span as a size proxy) — this is a sub-Task context-budget hint,
 NOT a partition criterion (the partition is interface-graph, "no line-count floor / size
 class"; do not let it re-seed size-class thinking). Never auto-split. Confirm, or take
-merge feedback → re-dispatch wave 1 with the new grouping and re-run `derive_child_ports.py`.
+merge feedback → re-dispatch wave 1 with the new grouping and re-run `spec derive-ports`.
 
 ### Step 5: Wave 2 — child sub-designs (Level-1 sub-Task ×N)
 
@@ -171,7 +171,7 @@ have reported.
 Run:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/check_coverage.py {workdir} --brainstorm asic/{module}/brainstorm.md
+python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py check-coverage --workdir {workdir} --brainstorm asic/{module}/brainstorm.md
 ```
 
 It reads brainstorm/children/design in-process
@@ -223,7 +223,7 @@ schema requires `child` per finding):
 Run:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/validate_spec_review.py {workdir}/spec-review.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py validate-review --review {workdir}/spec-review.json
 ```
 
 Non-zero exit → re-assemble the JSON and re-run (a main-thread fix, NOT a re-dispatch). On exit 0 it prints
@@ -273,7 +273,7 @@ Path-handoff: give the user the `design.md` (+ per-child) paths + the `coverage.
 After the design.md gate passes, run:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/derive_constraints.py {workdir}
+python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py derive-constraints --workdir {workdir}
 ```
 
 It generates the complete `constraints/<TOP>.{sdc,sgdc}` purely from the approved §1.6 +
@@ -286,13 +286,13 @@ wave-1 rework sub-Task and re-run; if the defect cannot be resolved that way, wr
 
 ### Step 10: Finalize result.json (main thread, mandatory)
 
-Run `derive_constraints.py finalize`; do not hand-assemble the envelope. Relay the human-gate
+Run `spec finalize`; do not hand-assemble the envelope. Relay the human-gate
 outcome from Step 8 as the three γ-floor args — `--status` (the user's approve/reject), `--waived`
 (the `spec_gate.waived[]` array the operator recorded, `[]` if none), `--ppa-targets` (the D6
 brainstorm PPA output, `[]` when no PPA):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/derive_constraints.py finalize \
+python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
   --workdir {workdir} --module {module} --status <pass|fail> \
   --ppa-targets '<ppa_targets JSON from D6>' --waived '<spec_gate.waived[] JSON>'
 ```
@@ -340,19 +340,19 @@ re-checks the precondition itself.
 
 ## Completion Gate
 
-- **Pre-gate self-check:** `check_coverage.py` exit 0 (coverage / token-survival /
+- **Pre-gate self-check:** `spec check-coverage` exit 0 (coverage / token-survival /
   frontmatter-subset / self_containment / structure — incl. §1.6 freq↔period [R-B],
   §1.4.1 Clock-Domain ⊆ §1.6 [R-F], feature→§5 coverage [R-C]).
-- **Post-gate self-check:** `derive_constraints.py` exit 0 (deterministic generation +
+- **Post-gate self-check:** `spec derive-constraints` exit 0 (deterministic generation +
   self-check; there is no separate constraint verifier).
-- **Finalize:** `result.json` was written by `derive_constraints.py finalize` (it owns
+- **Finalize:** `result.json` was written by `spec finalize` (it owns
   status / top_module / ppa_targets / spec_gate / artifacts[]; `<TOP>` = `manifest.module`
   matches the `constraints/<TOP>.{sdc,sgdc}` stems). The agent supplies only the γ-floor args
   `--status` / `--waived` / `--ppa-targets` (the human-gate outcome).
 - **Human:** the design.md review-loop is approved (now including port roles, reset
   polarity, clock relationships); engineering soundness — the semantic "not contradictory"
   judgment the token check cannot catch.
-- **Semantic gate (Step 7):** `validate_spec_review.py` reports `spec_gate.gate==clear` (or
+- **Semantic gate (Step 7):** `spec validate-review` reports `spec_gate.gate==clear` (or
   every `flagged` is in `spec_gate.waived[]`, or the whole wave was `unavailable` and acknowledged);
   `stage_specific.spec_gate` written; `spec-review.json` in `artifacts[]`.
 - No Iron Rule or Red Flag was triggered.
