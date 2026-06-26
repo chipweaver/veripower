@@ -2,9 +2,9 @@
 # IPD synthesis — Design Compiler synthesis.
 # Workdir:      synthesis stage per-run workdir
 #               (asic/<module>/Design/synthesis/runs/<N>/)
-# RTL paths:    computed by bootstrap_synthesis.sh based on workdir depth and
+# RTL paths:    computed by synthesis bootstrap based on workdir depth and
 #               written into scripts/rtl_load.tcl + dc_run.tcl
-# Top module:   bootstrap_synthesis.sh substitutes MY_TOP at deploy time.
+# Top module:   synthesis bootstrap substitutes MY_TOP at deploy time.
 # Targets:
 #   make synthesis  run dc_shell synthesis; log → run.log
 #   make clean      remove intermediate artifacts and reports

@@ -51,7 +51,7 @@ When `{rework_trigger}` is injected, read additional context from the same direc
 | Path (relative to `{workdir}`) | Schema / Format | Use |
 |---|---|---|
 | `result.json` | `references/result.schema.json` + envelope.schema.json | This stage's status contract (`stage_specific.ppa_actual[]` + `violations[]` on failure; netlist / SDC / SDF paths go in envelope `artifacts[]`). |
-| `ppa-actual.json` | JSON (`verdict` + `ppa_actual[]` + `violations[]`) | Structured PPA record from `synthesis_rpt_parser.py` (Step 7 folds it into `result.json`). List it in `artifacts[]` when it exists on disk (the parser writes it only on exit 0). |
+| `ppa-actual.json` | JSON (`verdict` + `ppa_actual[]` + `violations[]`) | Structured PPA record from `synthesis finalize` (Step 7 folds it into `result.json`). List it in `artifacts[]` when it exists on disk (the parser writes it only on exit 0). |
 | `out/<TOP>_syn.v` | Verilog | Synthesized gate-level netlist. |
 | `out/<TOP>_syn.sdc` | SDC | Post-synthesis SDC. |
 | `out/<TOP>_syn.sdf` | SDF v3.0 | SDF back-annotation file (includes state-dependent leakage data). |
@@ -77,7 +77,7 @@ When `{orchestrator_context_path}` is injected, Read that sibling file first as 
 ### Step 2: Bootstrap (first-run only)
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_synthesis.sh --module {module} --workdir {workdir} [--top <TOP>]
+python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
 ```
 
 Deploys the templates into `{workdir}`, generates `scripts/rtl_load.tcl` + `scripts/config.tcl`, and seeds `constraints.sdc`; aborts when `{workdir}` is already deployed. Mechanics — placeholder substitution, SDC source-of-truth, `+incdir+` handling, `LIB_DB`, `--top` inference — are documented once in `references/makefile-bootstrap.md`.
@@ -109,7 +109,7 @@ Extract the violated paths from `reports/timing_setup.rpt`, keeping each path's 
 Run the parser's finalize subcommand; do not hand-assemble the envelope or extract/compare by hand. Read `ppa_targets` from the prompt context (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis_rpt_parser.py finalize \
+python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
   --workdir {workdir} --module <module> --top <top_module> \
   [--area-target <v>] [--slack-target <v>]
 ```
@@ -127,7 +127,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis_rpt_parser.py finalize \
 
 | Excuse | Reality |
 |---|---|
-| "Synthesis ran and the netlist is there — mark pass" when `synthesis_rpt_parser.py` exited non-zero | A non-zero parser exit is authoritative: read its `FAIL=` token and write `status=fail` + `failure_kind="tooling"`. Artifact presence is not a met gate — the parser owns extraction and the area/slack comparison. |
+| "Synthesis ran and the netlist is there — mark pass" when `synthesis finalize` exited non-zero | A non-zero parser exit is authoritative: read its `FAIL=` token and write `status=fail` + `failure_kind="tooling"`. Artifact presence is not a met gate — the parser owns extraction and the area/slack comparison. |
 
 ## Pitfalls
 
@@ -141,7 +141,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis_rpt_parser.py finalize \
 - [ ] `{workdir}/result.json` has been written and passes schema validation.
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept blocked); on `fail`, `stage_specific.{fail_reason, failure_kind}` are required.
-- [ ] result.json was written by `synthesis_rpt_parser.py finalize` (it owns status / ppa_actual / artifacts / failure_kind / the reproducibility header).
+- [ ] result.json was written by `synthesis finalize` (it owns status / ppa_actual / artifacts / failure_kind / the reproducibility header).
 - [ ] `scripts/rtl_load.tcl` matches `Design/rtl-design/filelist.txt`.
 - [ ] `create_generated_clock` covers every generated clock in the RTL (or the SDC remarks in `Design/rtl-design/README.md` confirm there are none).
 - [ ] `set_false_path` / `set_multicycle_path` cover the exception paths annotated in the RTL `README.md`.

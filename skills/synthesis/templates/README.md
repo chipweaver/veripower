@@ -6,7 +6,7 @@ For the stage SOP and artifact definitions, see `${CLAUDE_SKILL_DIR}/SKILL.md`; 
 ## Deployment
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_synthesis.sh \
+python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap \
      --module <module-dir-name> --workdir <abs-path> [--top <top-module>]
 ```
 
@@ -62,10 +62,10 @@ make clean        # Cleans intermediate artifacts and report files
 | `reports/power.rpt` | Synthesis-stage power estimate (the power-analysis stage judges power_mw; this stage only scans it once). |
 | `reports/check_design.rpt` | `check_design` output. |
 | `run.log` | DC run log. |
-| `ppa-actual.json` | Structured PPA record (`verdict` + `ppa_actual[]` + `violations[]`) from `synthesis_rpt_parser.py`. |
+| `ppa-actual.json` | Structured PPA record (`verdict` + `ppa_actual[]` + `violations[]`) from `synthesis finalize`. |
 
 ## Placeholder substitution
 
-Handled at deploy time by `bootstrap_synthesis.sh`; the substitution table,
+Handled at deploy time by `synthesis bootstrap`; the substitution table,
 SDC source-of-truth rule, and `+incdir+` handling are documented once in
 [`../references/makefile-bootstrap.md`](../references/makefile-bootstrap.md).

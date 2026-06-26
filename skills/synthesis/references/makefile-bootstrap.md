@@ -5,7 +5,7 @@ Source of truth: `${CLAUDE_SKILL_DIR}/templates/`.
 ## Bootstrap
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_synthesis.sh \
+python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap \
      --module <module-dir-name> --workdir <abs-path> [--top <top-module>]
 ```
 
@@ -21,7 +21,7 @@ bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_synthesis.sh \
 
 ## SDC source-of-truth decision
 
-`bootstrap_synthesis.sh` looks up the source of truth `Design/specification/constraints/<TOP>.sdc` at deploy time:
+`synthesis bootstrap` looks up the source of truth `Design/specification/constraints/<TOP>.sdc` at deploy time:
 
 | Source of truth present | Behaviour |
 |---|---|
@@ -61,30 +61,22 @@ Re-bootstrap is not required after modifying `LIB_DB`.
 | `reports/check_design.rpt` | `check_design` output. |
 | `run.log` | DC run log. |
 
-## PPA report parser (`synthesis_rpt_parser.py`)
+## PPA self-check + result.json (`synthesis finalize`)
 
-Step 7's PPA self-check runs the skill-level parser (not deployed into the workdir,
-not wired into `make` — the gate needs the runtime `ppa_targets` provided in the
-prompt context, not known at `make` time):
+Step 7's PPA self-check and the lean `result.json` are produced by the `finalize`
+verb (it reuses the report parser **in-process** — there is no standalone parse CLI):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis_rpt_parser.py \
-        --reports-dir <workdir>/reports --out <workdir>/ppa-actual.json \
+python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
+        --workdir <workdir> --module <module> --top <top_module> \
         [--area-target <v>] [--slack-target <v>]
 ```
 
 It extracts `area_um2` (`area.rpt` "Total cell area") and `timing_slack_ns` (the
 **min** `Critical Path Slack` across all `qor.rpt` clock-group blocks — never the
-first listed), cross-checks the worst slack against the design `WNS` / violating-path
-summary, judges the gate (`area_um2 <= --area-target`; `timing_slack_ns >=
---slack-target`; each optional), and writes `ppa-actual.json`
-(`verdict` + `ppa_actual[]` + `violations[]`) only on exit 0.
-
-| Exit | stderr token | Meaning |
-|---|---|---|
-| 0 | — | extracted + judged (incl. a legitimate `verdict="fail"` PPA miss) |
-| 1 | `FAIL=missing` | a required report (`area.rpt` / `qor.rpt`) absent |
-| 3 | `FAIL=unparseable` | an anchor absent, or the WNS summary contradicts the per-group slack |
-| 2 | `ERROR: usage` | bad args (program exception) |
-
-How each exit folds into `result.json` (`status`, `failure_kind`, `fail_reason`) is owned by SKILL.md Step 7.
+first listed), cross-checks the worst slack against the design `WNS` /
+violating-path summary, judges the gate (`area_um2 <= --area-target`;
+`timing_slack_ns >= --slack-target`; each optional), and writes the lean
+`result.json`. Command exit is **0 = result.json written** (status pass or fail)
+/ **2 = BLOCKED** (program exception). How a missing/unparseable report folds into
+`result.json` (`status` / `failure_kind` / `fail_reason`) is owned by SKILL.md Step 7.
