@@ -1,5 +1,5 @@
-# tests/unit/test_aggregate_signoff.py
-"""Tests for skills/frontend-signoff/scripts/aggregate_signoff.py.
+# tests/unit/test_signoff_result.py
+"""Tests for the frontend-signoff stage CLI (signoff/result.py).
 
 frontend-signoff is a pure aggregator: it reads the 6 upstream canonical
 result.json envelopes + fixed evidence paths (JSON/filesystem only, no markdown
@@ -14,11 +14,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "skills/frontend-signoff/scripts/aggregate_signoff.py"
+MAIN = ROOT / "skills/frontend-signoff/scripts/signoff/__main__.py"
 sys.path.insert(0, str(ROOT / "skills/frontend-signoff/scripts"))
-import aggregate_signoff as ag  # noqa: E402
+from signoff import result as ag  # noqa: E402
 
-# ── the 6 upstream canonical envelopes (stage, relative path under asic_root) ──
 _UPSTREAM = {
     "power-analysis": "Verification/power-analysis/result.json",
     "timing-analysis": "Design/timing-analysis/result.json",
@@ -35,7 +34,6 @@ def _write_json(path: Path, obj: dict) -> None:
 
 
 def _passing_tree(tmp_path: Path) -> Path:
-    """Build a fully-passing asic/<M>/ tree; return asic_root."""
     asic_root = tmp_path / "asic" / "M"
     for stage, rel in _UPSTREAM.items():
         _write_json(asic_root / rel, {"status": "pass", "stage_specific": {}})
@@ -78,7 +76,6 @@ def test_derive_asic_root_from_workdir():
     assert ag.derive_asic_root(workdir) == Path("/x/asic/M")
 
 
-# ── evidence resolution (concrete paths + reachability) ──────────────────────
 _EVIDENCE = [
     "Design/specification/design.md",
     "Design/lint-cdc/lint-report.txt",
@@ -95,7 +92,6 @@ def _touch(path: Path) -> None:
 
 
 def _evidence_tree(asic_root: Path, *, power_dirs=("run0",)) -> None:
-    """Create all fixed evidence files + power_hier.rpt under each given ptpx dir."""
     for rel in _EVIDENCE:
         _touch(asic_root / rel)
     for d in power_dirs:
@@ -114,7 +110,6 @@ def test_resolve_evidence_all_reachable(tmp_path):
     assert failures == []
     paths = {r["path"] for r in records}
     assert "Design/synthesis/reports/qor.rpt" in paths
-    # the globbed power report is resolved to its CONCRETE path, on_disk True
     pwr = next(r for r in records if "power_hier.rpt" in r["path"])
     assert pwr["on_disk"] is True
     assert pwr["path"] == "Verification/power-analysis/reports_ptpx/run0/power_hier.rpt"
@@ -130,19 +125,18 @@ def test_resolve_evidence_one_missing(tmp_path):
 
 def test_resolve_evidence_power_glob_zero(tmp_path):
     asic_root = _passing_tree(tmp_path)
-    _evidence_tree(asic_root, power_dirs=())  # no power_hier.rpt
+    _evidence_tree(asic_root, power_dirs=())
     _, failures = ag.resolve_evidence(asic_root)
     assert any("power_hier.rpt" in f and "unreachable" in f for f in failures)
 
 
 def test_resolve_evidence_power_glob_conflict(tmp_path):
     asic_root = _passing_tree(tmp_path)
-    _evidence_tree(asic_root, power_dirs=("run0", "run1"))  # two matches
+    _evidence_tree(asic_root, power_dirs=("run0", "run1"))
     _, failures = ag.resolve_evidence(asic_root)
     assert any("power_hier.rpt" in f and "conflict" in f for f in failures)
 
 
-# ── traceability inputs (existence/readability only — NOT parsed) ─────────────
 def _spec_inputs(asic_root: Path, *, children=("c0",)) -> None:
     spec = asic_root / "Design/specification"
     _touch(spec / "design.md")
@@ -177,7 +171,6 @@ def test_check_traceability_inputs_child_missing(tmp_path):
     assert any("c1.md" in f for f in failures)
 
 
-# ── headline PPA (best-effort, non-gating) ───────────────────────────────────
 def test_extract_ppa_pulls_values(tmp_path):
     by_stage = {
         "synthesis": {
@@ -204,7 +197,7 @@ def test_extract_ppa_pulls_values(tmp_path):
     ppa = ag.extract_ppa(by_stage)
     assert ppa["area_um2"] == 65018.2
     assert ppa["setup_wns_ns"] == 0.95
-    assert ppa["power_mw"] == 14.1  # worst-case (max) across scenarios
+    assert ppa["power_mw"] == 14.1
     assert ppa["vcs_version"] == "U-2023.03"
 
 
@@ -216,7 +209,6 @@ def test_extract_ppa_tolerates_absence(tmp_path):
     assert ppa["power_mw"] is None and ppa["vcs_version"] is None
 
 
-# ── rendering + envelope assembly ────────────────────────────────────────────
 _EVIDENCE_RECORDS = [
     {"path": "Design/synthesis/reports/qor.rpt", "on_disk": True},
     {"path": "Design/timing-analysis/timing-report.txt", "on_disk": True},
@@ -260,7 +252,6 @@ def test_render_checklist_lists_evidence_paths():
         status="pass",
         failures=[],
     )
-    # checklist.md carries the auditable evidence-path list
     assert "qor.rpt" in md
     assert "reports_ptpx/run0/power_hier.rpt" in md
 
@@ -268,12 +259,11 @@ def test_render_checklist_lists_evidence_paths():
 def test_render_traceability_skeleton_has_agent_placeholders():
     md = ag.render_traceability_skeleton("M", ag.extract_ppa({}), _EVIDENCE_RECORDS)
     assert "Feature" in md and "evidence" in md.lower()
-    assert "agent" in md.lower()  # explicit hand-off marker for the matrix/summary
+    assert "agent" in md.lower()
 
 
 def test_render_traceability_has_report_index():
     md = ag.render_traceability_skeleton("M", ag.extract_ppa({}), _EVIDENCE_RECORDS)
-    # traceability skeleton = report index (which reports on disk + paths)
     assert "Report index" in md
     assert "timing-report.txt" in md
 
@@ -306,7 +296,6 @@ def test_build_envelope_fail_has_reason():
     assert env["stage_specific"]["fail_reason"] == "x: not pass"
 
 
-# ── end-to-end via subprocess (real exit codes) + envelope schema validity ───
 from jsonschema import Draft202012Validator  # noqa: E402
 from referencing import Registry, Resource  # noqa: E402
 
@@ -327,7 +316,6 @@ def _validate_envelope(obj: dict) -> None:
 
 
 def _full_tree(tmp_path: Path, children=("c0",)) -> Path:
-    """Build a complete passing tree; return the frontend-signoff run workdir."""
     asic_root = _passing_tree(tmp_path)
     _evidence_tree(asic_root)
     _spec_inputs(asic_root, children=children)
@@ -338,7 +326,15 @@ def _full_tree(tmp_path: Path, children=("c0",)) -> Path:
 
 def _run(workdir: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(SCRIPT), "--workdir", str(workdir), "--module", "M"],
+        [
+            sys.executable,
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(workdir),
+            "--module",
+            "M",
+        ],
         capture_output=True,
         text=True,
     )
@@ -352,7 +348,6 @@ def test_e2e_all_pass(tmp_path):
     assert rj["status"] == "pass"
     assert (workdir / "checklist.md").is_file()
     assert (workdir / "traceability.md").is_file()
-    # the produced docs carry the auditable evidence/report paths
     assert "qor.rpt" in (workdir / "checklist.md").read_text()
     assert "Report index" in (workdir / "traceability.md").read_text()
     paths = {a["path"] for a in rj["artifacts"]}
@@ -411,10 +406,7 @@ def test_e2e_spec_pass_but_manifest_missing(tmp_path):
 
 
 def test_e2e_blocked_when_cannot_operate(tmp_path):
-    # workdir does not exist at parents[2] depth -> derive_asic_root points nowhere
-    # writable; the doc/result writes raise -> exit != 0, no valid result.json.
     workdir = tmp_path / "asic" / "M" / "frontend-signoff" / "runs" / "1"
-    # deliberately do NOT create workdir -> write_text raises
     cp = _run(workdir)
     assert cp.returncode != 0
     assert not (workdir / "result.json").exists()
