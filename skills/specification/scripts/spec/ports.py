@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""derive_child_ports.py — deterministic cut-edge port derivation.
+"""derive-ports — deterministic cut-edge port derivation.
 
 Given a run workdir with manifest.json (children[].rtl_modules) and design.md
 (§1.4.2 Inter-module Interconnects wire table), compute each child's inter-module
@@ -10,10 +10,10 @@ correct-by-construction (specification's main thread injects this into each wave
 child prompt; children never hand-guess inter-module ports).
 
 Top-level IO ports (§1.4.1) are NOT derived here: §1.4.1 has no owner-module column,
-so those stay child-authored and are backstopped by check_coverage.py's frontmatter
+so those stay child-authored and are backstopped by check-coverage's frontmatter
 ports ⊆ §1.4.1∪§1.4.2 subset check.
 
-Usage:  python3 derive_child_ports.py <workdir>
+Usage:  python3 scripts/spec/__main__.py derive-ports --workdir <workdir>
 Output: JSON {<child_name>: [<wire>, ...], ...} on stdout (sorted, de-duped).
 """
 
@@ -37,7 +37,7 @@ def _row_endpoints(row: dict) -> set:
     return producers | consumers
 
 
-def derive_child_ports(workdir: Path) -> dict:
+def derive_ports(workdir: Path) -> dict:
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
     design_text = (workdir / "design.md").read_text(encoding="utf-8")
     rows = parse_markdown_table(extract_section(design_text, _SEC_142))
@@ -51,7 +51,7 @@ def derive_child_ports(workdir: Path) -> dict:
         rtl_modules = child.get("rtl_modules")
         if not rtl_modules:
             sys.exit(
-                f"derive_child_ports: child {child.get('name')!r} has no rtl_modules[] — "
+                f"derive-ports: child {child.get('name')!r} has no rtl_modules[] — "
                 f"required to derive cut-edge ports. manifest.children[].rtl_modules is a "
                 f"hard requirement (specification Completion Gate)."
             )

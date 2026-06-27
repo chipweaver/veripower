@@ -135,7 +135,7 @@ Cross-check, row by row, against the "Minimum Field Completeness Gate Table" at 
 
 ## Subsection IDs and Stable Anchors
 
-The objective coverage gate (`check_coverage.py`) and the manifest's per-child `brainstorm_anchor` line ranges trace at **brainstorm subsection granularity**, so brainstorm.md must carry stable, reusable names:
+The objective coverage gate (`check-coverage`) and the manifest's per-child `brainstorm_anchor` line ranges trace at **brainstorm subsection granularity**, so brainstorm.md must carry stable, reusable names:
 
 - Each row of the D1 feature table carries a stable `ID` (recommended `F-NN`) — design.md §1.3 reuses it directly, and the child frontmatter `features ⊆ §1.3` subset check keys on it.
 - D2a top-level interface groups + D2b inter-module wire names, D4 candidates, D5 scenario table all use reusable named anchors (e.g., `cfg_bus` / `Candidate B` / `SC-001`).

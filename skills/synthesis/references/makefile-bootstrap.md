@@ -13,7 +13,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap \
 - Replaces the `MY_TOP` placeholder in: `env.sh`, `constraints.sdc` (when no source of truth is present).
 - Replaces the `MY_RTL_DIR` placeholder in `scripts/dc_run.tcl` with the RTL path relative to workdir (computed from workdir depth).
 - Generates `scripts/rtl_load.tcl` from `Design/rtl-design/filelist.txt` (each entry wrapped as `analyze -format sverilog -define SYNTHESIS [list <RTL_REL_DIR>/<entry>]`).
-- Expands each `+incdir+<dir>` entry in `filelist.txt` (emitted by rtl-design's `build_filelist.py`) onto `search_path` in `scripts/rtl_load.tcl`, rebased `${RTL_REL_DIR}/<dir>`. `+define+` / `-f` directives are skipped (`-define SYNTHESIS` is passed per `analyze`; nested `-f` is out of scope).
+- Expands each `+incdir+<dir>` entry in `filelist.txt` (emitted by rtl-design's `assemble` verb) onto `search_path` in `scripts/rtl_load.tcl`, rebased `${RTL_REL_DIR}/<dir>`. `+define+` / `-f` directives are skipped (`-define SYNTHESIS` is passed per `analyze`; nested `-f` is out of scope).
 - Generates `scripts/config.tcl` injecting `::env(TOP)` + `::env(LIB_DB)` (LIB_DB starts as the `FILL_IN_LIB_DB_PATH` placeholder).
 - The script aborts when the target directory is already deployed (detected by an existing `Makefile`).
 - When `--top` is omitted, it is inferred from `Design/rtl-design/README.md` / `filelist.txt`.

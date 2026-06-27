@@ -61,7 +61,7 @@ def check_annotation_reality(workdir, ledger) -> list:
     """Child-reported RTL-true annotation names must exist in that child's RTL.
     sgdc.sync_cell / reset_synchronizer are module names ('-name must match the netlist').
     sdc.create_generated_clock[].module is the child-authored clock-gen module (RTL-true,
-    same reporting child — derive_constraints only emits a deferred `#` placeholder, so the
+    same reporting child — the derive-constraints verb only emits a deferred `#` placeholder, so the
     child annotation is the SOLE source and synthesis has no backstop). text is comment-stripped
     upstream by _child_text. .pin is NOT checked (pin presence is too fragile)."""
     v = []
@@ -96,7 +96,7 @@ def check_annotation_reality(workdir, ledger) -> list:
     return v
 
 
-# ---- minimal design.md §1.4.2 parse (mirrors check_coverage.py canonical-column contract) ----
+# ---- minimal design.md §1.4.2 parse (mirrors check-coverage canonical-column contract) ----
 
 
 def _extract_section(text: str, heading_regex: str) -> str:

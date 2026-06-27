@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "simulation-plan" / "scripts"))
 from simplan import result as vs  # noqa: E402
 
-# GOOD : copy VERBATIM from tests/unit/test_validate_scaffold.py:13–57 (the post-materialize
+# GOOD : copy VERBATIM from the pre-consolidation validate-scaffold test (the post-materialize
 # canonical scaffold). Reproduced here so the file is self-contained.
 GOOD = {
     "module": "m",

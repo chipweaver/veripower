@@ -96,7 +96,7 @@ Enforced by `pre-commit` (`ruff` + `shellcheck` + `shfmt`); run `pre-commit run 
 - Naming: `snake_case` functions/vars, `UPPER_SNAKE` constants, `_private` prefix. No `camelCase`.
 - Formatting: `ruff format` (88 cols); imports sorted by ruff `I`. f-strings (not `%`/`.format`, except dict-unpack `"{x}".format(**d)`). `pathlib.Path` over `os.path`.
 - A script that is directly runnable (`if __name__ == "__main__"`) starts with `#!/usr/bin/env python3`; import-only library modules do not.
-- Exit via `sys.exit(...)` — never `raise SystemExit(...)`. Pass an int code, or a `"<script>: message"` string for fail-fast (Python prints it to stderr and exits 1; see the `_fail()` helper in `derive_constraints.py`). Use `print(..., file=sys.stderr)` for diagnostics that aren't the exit message itself. Exit codes: 0 ok, 1 runtime failure, 2 usage.
+- Exit via `sys.exit(...)` — never `raise SystemExit(...)`. Pass an int code, or a `"<script>: message"` string for fail-fast (Python prints it to stderr and exits 1; see the `_fail()` helper in `spec/constraints.py`). Use `print(..., file=sys.stderr)` for diagnostics that aren't the exit message itself. Exit codes: 0 ok, 1 runtime failure, 2 usage.
 - New scripts are fully type-annotated. (Legacy partial annotations are not retrofitted.)
 - JSON I/O: `json.dumps(..., ensure_ascii=False)`; `indent=2` for files written to disk; compact (no indent) only for single-line stdout payloads consumed by a caller.
 
@@ -107,12 +107,12 @@ Enforced by `pre-commit` (`ruff` + `shellcheck` + `shfmt`); run `pre-commit run 
 
 **EDA templates** — three placeholder conventions:
 - `MY_*` — substituted by the bootstrap shell via `sed` (default for shell/TCL/SDC templates).
-- `{{VAR}}` — substituted by Python at scaffold-build time (`derive_scaffold.py` for the simulation scaffold, `emit_power_tests.py` for the power scaffold).
+- `{{VAR}}` — substituted by Python at scaffold-build time (the simulation `render-scaffold` verb for the simulation scaffold, `emit_power_tests.py` for the power scaffold).
 - `FILL_IN_*` — a sentinel for a value the human must supply (e.g. `FILL_IN_LIB_DB_PATH`); the bootstrap substitutes it only when it can resolve a value, and the tool script fail-closes if the sentinel survives.
 
 **Cross-module SSoT identity** — import shared SSoT modules the bare way (`from topology import X`), never via the package path (`framework.scripts.topology`); the latter creates a second module object and breaks `state.X is topology.X` identity (the M3 dup-module bug class, guarded by `tests/unit/test_topology.py`). Do not add re-exports for test convenience; tests read framework constants from their real home module.
 
-**File naming** — `verb_noun.py` for action scripts (`derive_*`, `build_*`, `validate_*`, `check_*`); domain-noun for libraries (`topology.py`, `artifacts.py`, `ledger_io.py`); `<domain>_rpt_parser.py` for report parsers; kebab-case skill directories; `bootstrap_<stage>.sh`.
+**File naming** — each stage's Tier-1 scripts live in one package `skills/<stage>/scripts/<pkg>/` (`<pkg>` = the short stage tool name, no hyphens, e.g. `lint-cdc`→`lintcdc`): a thin `__main__.py` argparse entry dispatches verb subcommands to focused `<verb>.py` / `_<lib>.py` modules (no god-file). Verbs follow the shared vocabulary (`bootstrap` / `finalize` / `derive-*` / `materialize-*` / `render-*` / `check-*` / `validate-review`). Framework libraries keep domain-noun names (`topology.py`, `artifacts.py`); kebab-case skill directories.
 
 ## Further reading
 

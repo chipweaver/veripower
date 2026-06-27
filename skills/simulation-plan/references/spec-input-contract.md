@@ -63,7 +63,7 @@ wires are not part of the DUT transaction class).
 - `Direction = output` (DUT view) → monitor samples.
 - `Width` → transaction class field width definition.
 
-**Note:** §1.4.1 also carries `ResetPolarity` / `ResetKind`; these are consumed by constraint generation (`derive_constraints.py`), **not** by `simulation-plan`.
+**Note:** §1.4.1 also carries `ResetPolarity` / `ResetKind`; these are consumed by constraint generation (the `derive-constraints` verb), **not** by `simulation-plan`.
 
 ### §1.4.2 Inter-module Interconnects table (cross-child wires — aware-only)
 

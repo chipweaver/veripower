@@ -3,7 +3,7 @@
 
 Two layers: in-process unit tests of the inference helpers (BP1/BP2 — the
 byte-stable README-grep coupling locked from the other side by
-test_build_readme.py), and subprocess "mirror" tests of full deploy behavior
+test_rtl_assemble.py), and subprocess "mirror" tests of full deploy behavior
 (BP3-BP11) that copy skills/synthesis into a tmp tree and run the real CLI.
 """
 
@@ -20,7 +20,7 @@ from synthesis import bootstrap  # noqa: E402
 
 # ── BP1/BP2: inference helpers (in-process, precise) ──────────────────────────
 def test_infer_top_from_readme_top_module_line(tmp_path):
-    # The byte-stable line rtl-design emits + synth greps (test_build_readme.py).
+    # The byte-stable line rtl-design emits + synth greps (test_rtl_assemble.py).
     (tmp_path / "README.md").write_text("**Top module**: my_top\n\nbody\n")
     assert bootstrap.infer_top_from_readme(tmp_path) == "my_top"
 

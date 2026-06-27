@@ -1,6 +1,6 @@
 # SGDC — generated-output reference
 
-`constraints/<TOP>.sgdc` is **generated** by `derive_constraints.py` from `design.md` §1.6 +
+`constraints/<TOP>.sgdc` is **generated** by the `derive-constraints` verb from `design.md` §1.6 +
 §1.4.1. Do **not** hand-edit; change the design tables and re-run derive.
 
 **Emitted (spec-time):**

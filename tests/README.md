@@ -46,7 +46,7 @@ This is the most error-prone call. Decide by **how many artifacts the assertion 
 
 ### 2. A test that *calls code* AND asserts a cross-artifact property → `unit/`
 
-If the test **executes** framework code (runs `derive_constraints.py`, calls `compute_purity`),
+If the test **executes** framework code (runs the spec `derive-constraints` verb, calls `compute_purity`),
 it is `unit/` — even when it also asserts a cross-artifact result. You are testing the code's
 behavior. `contracts/` is reserved for checks that run **no** code (pure read-and-compare of
 declarations). When a check could be written either way, prefer testing the **shipped producer**

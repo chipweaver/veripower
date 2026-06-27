@@ -310,7 +310,7 @@ def test_coverage_fully_covered_passes(tmp_path):
     assert proc.returncode == 0
 
 
-# ── in-process: _obs_name oracle (§8 — byte-identical to derive_scaffold) + schema path ──
+# ── in-process: _obs_name oracle (§8 — byte-identical to simulation render-scaffold) + schema path ──
 import sys  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "skills" / "simulation-plan" / "scripts"))
@@ -319,7 +319,7 @@ from simplan import scaffold as sc_mod  # noqa: E402
 
 def test_obs_name_oracle():
     # Hand-written expected (NOT the expression re-typed): the canonical '<module>_<agent>_txn'
-    # strip must match simulation's derive_scaffold consume-side strip EXACTLY (spec §8).
+    # strip must match simulation's render-scaffold consume-side strip EXACTLY (spec §8).
     assert sc_mod._obs_name("m_obs_txn", "m") == "obs"
     assert sc_mod._obs_name("obs", "m") == "obs"
     assert sc_mod._obs_name("m_wb_slave_agent_txn", "m") == "wb_slave_agent"

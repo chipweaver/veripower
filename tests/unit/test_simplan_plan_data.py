@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/simulation-plan/scripts/simplan/__main__.py"
 
-# ── DESIGN_MD / CHILD_MD : copy VERBATIM from tests/unit/test_derive_plan_data.py
+# ── DESIGN_MD / CHILD_MD : copy VERBATIM from the pre-consolidation derive-plan-data test
 #    (lines 11–43). Reproduced here so the new file is self-contained. ──
 DESIGN_MD = """# m Design Document (design.md)
 

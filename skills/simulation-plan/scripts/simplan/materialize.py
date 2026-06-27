@@ -15,7 +15,7 @@ interface_groups, names an unknown group, has a duplicate group, a width is non-
 an interface row has an empty Role, there is no primary-relationship clock, there is no
 reset-role interface, or a testpoint's covers[] names a check_id absent from plan-data.
 
-Pairs with: simulation's derive_scaffold.py consumes the materialized interface.signals /
+Pairs with: simulation's render-scaffold verb consumes the materialized interface.signals /
 transaction.fields via its _agent_io() helper.
 """
 

@@ -1,7 +1,7 @@
 # Spec semantic review sub-Task contract (gating)
 
 The specification main thread dispatches a Level-1 per-child review wave **on every finalize that
-reaches a clean coverage gate** (Step 7), AFTER `check_coverage.py` is green and BEFORE the
+reaches a clean coverage gate** (Step 7), AFTER `check-coverage` is green and BEFORE the
 design.md approval gate. This review is **gating** (T2): `faithfulness` AND `conformance` findings at
 `severity ∈ {critical, important}` BLOCK the stage from `status=pass` until resolved; `soundness`
 findings are advisory **must-acknowledge** (surfaced to the user, never block). The main thread
@@ -61,7 +61,7 @@ Read the `<child>.md` against its `brainstorm_anchor` intent and against `design
   `faithfulness`. (Encoding presence/adequacy is NOT in this mechanical set — there is no
   deterministic encoding gate; it is the `conformance` lens above.)
 - RTL correctness (no RTL exists yet); lint / CDC / timing / area / power (downstream stages);
-  structural coverage (the `check_coverage.py` gate already covers it).
+  structural coverage (the `check-coverage` gate already covers it).
 
 ### Output
 End with `STATUS: DONE` + a single JSON line, or `STATUS: BLOCKED <reason>`:

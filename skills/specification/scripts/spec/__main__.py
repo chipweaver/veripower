@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def _cmd_derive_ports(a: argparse.Namespace) -> int:
     from spec import ports
 
-    print(json.dumps(ports.derive_child_ports(a.workdir), ensure_ascii=False, indent=2))
+    print(json.dumps(ports.derive_ports(a.workdir), ensure_ascii=False, indent=2))
     return 0
 
 

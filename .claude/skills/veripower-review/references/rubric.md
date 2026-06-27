@@ -68,7 +68,7 @@ Each entry:
 - **severity:** must-fix
 - **applies-to:** scripts, py-core
 - **ssot:** —
-- **provenance:** in-repo evidence — every `bootstrap_*.sh` carries `set -euo pipefail` and exits on missing inputs; `derive_constraints.py` `_fail()` / `derive_scaffold.py` raise on malformed/empty required fields. (ARCHITECTURE §5.6 "Validation doctrine" governs the `result.json`/event + advisory-artifact layer, NOT this script-input layer — so orphan.)
+- **provenance:** in-repo evidence — every stage `bootstrap` verb fail-closes on missing/empty inputs; the spec `derive-constraints` verb's `_fail()` / simulation's `render-scaffold` raise on malformed/empty required fields. (ARCHITECTURE §5.6 "Validation doctrine" governs the `result.json`/event + advisory-artifact layer, NOT this script-input layer — so orphan.)
 
 ### C1-07 — orchestrator-stage-isolation
 - **check:** The orchestration audit boundary holds — a Task-dispatched stage sub-Task never calls `Task()` itself (Level-2 dispatch forbidden), and the Orchestrator never does a full-file Read of a Task-dispatched stage's SKILL.md (those six stages load their own skill inside the subagent).
@@ -107,11 +107,11 @@ Each entry:
 
 ### C1-12 — scripted-verdict-gate
 - **check:** A stage whose pass/fail (or PPA-threshold) verdict is a *mechanical* function of tool-report numbers/markers computes that verdict in a deterministic parser script (with a `tests/unit/` test) and folds the script's output into `result.json`; SKILL.md *runs* the parser and never instructs the LLM to read the report and judge the gate by eye. Genuine-judgment verdicts (failure clustering, semantic intent review) are carved out.
-- **signal:** SKILL.md prose telling the LLM to "inspect the report and decide if timing/area/power is met" or to classify on a displayed slack number, with no parser owning the verdict; a gate criterion (`slack≥0`, `error-count==0`, `power≤budget`, worst-of-N-groups) expressed only as LLM instructions; a gate config that bakes in blanket waivers masking real violations; a new gate script with no `tests/unit/test_*_parser.py`.
+- **signal:** SKILL.md prose telling the LLM to "inspect the report and decide if timing/area/power is met" or to classify on a displayed slack number, with no parser owning the verdict; a gate criterion (`slack≥0`, `error-count==0`, `power≤budget`, worst-of-N-groups) expressed only as LLM instructions; a gate config that bakes in blanket waivers masking real violations; a new gate verdict with no `tests/unit/test_*_result.py`.
 - **severity:** should-fix
 - **applies-to:** scripts, skill-md
 - **ssot:** —
-- **provenance:** in-repo pattern — `synthesis_rpt_parser.py` / `timing_rpt_parser.py` / `power_rpt_parser.py` / lint-cdc `collect_report.py`, each owning its stage verdict with a unit test. Complements C1-10 at the stage-verdict layer; no Tier-A doc owns it → orphan.
+- **provenance:** in-repo pattern — the synthesis / timing / power-analysis `finalize` verbs / lint-cdc `collect_report.py`, each owning its stage verdict with a unit test. Complements C1-10 at the stage-verdict layer; no Tier-A doc owns it → orphan.
 
 ### C1-13 — command-action-name-parity
 - **check:** A control-plane operation carries one root across its `state.py` command and the decider's action (`dispatch`/`DISPATCH`, `reap`/`REAP`, `rework`/`REWORK`); events stay named for what they record (`dispatch`, `outcome`, `cascade`). A coined term (glossary / ARCHITECTURE prose) is never defined 1:1 as a single command of a different name — a term equals its code identifier, or carries its own action/event anchor.

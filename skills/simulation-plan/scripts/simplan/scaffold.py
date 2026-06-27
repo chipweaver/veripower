@@ -16,7 +16,7 @@ Three layers (each runs only if the prior passed):
      covers[] entry resolves to a real check_id. Applied by run() after layers 1-2.
 
 Exits 0 with "check-scaffold: OK ..." on a clean scaffold; otherwise exits non-zero with a
-readable, fix-oriented message to stderr. Pairs with simulation derive_scaffold.py's thin
+readable, fix-oriented message to stderr. Pairs with simulation render-scaffold's thin
 consumer-side backstops (defense-in-depth for scaffolds that bypass this gate).
 """
 
@@ -36,7 +36,7 @@ _DEFAULT_SCHEMA = (
 def _format_validation_errors(errors) -> str:
     """Format up to 3 jsonschema errors as 'schema violation at $.path: msg (validator=...)'.
     Copied (~12 lines) from framework/scripts/state.py:_format_validation_errors per the
-    project's 'small enough to duplicate' convention (derive_scaffold.py:26) — avoids a
+    project's 'small enough to duplicate' convention — avoids a
     skills/ -> framework/ cross-package import with no other consumer."""
     head = errors[:3]
     tail = len(errors) - len(head)
@@ -54,7 +54,7 @@ def _format_validation_errors(errors) -> str:
 
 
 def _obs_name(value: str, module: str) -> str:
-    """Strip the canonical txn wrapper to recover the agent name. Mirrors derive_scaffold's
+    """Strip the canonical txn wrapper to recover the agent name. Mirrors simulation render-scaffold's
     consume-side strip EXACTLY (same global .replace) so the gate accepts/rejects precisely
     what the consumer resolves. Known, accepted limitation (mirrored on both sides): an agent
     name that itself contains the module prefix or '_txn' is mangled — such names are

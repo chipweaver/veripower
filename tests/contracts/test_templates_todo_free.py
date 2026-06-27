@@ -11,8 +11,8 @@ INFRA = ROOT / "skills/simulation/templates/infra"
 SCAFFOLD = ROOT / "skills/simulation/templates/scaffold"
 
 # A "TODO" is allowed only as a fill marker: TODO( ... ) or the literal start-seq marker.
-# (The start-seq branch is inert for *templates* — that marker is emitted by derive_scaffold
-# into generated files; the branch is kept so this regex matches Task 3's validate_sim_exit scanner.)
+# (The start-seq branch is inert for *templates* — that marker is emitted by the render-scaffold verb
+# into generated files; the branch is kept so this regex matches the sim check-materialization scanner.)
 _MARKER = re.compile(r"TODO\(|TODO: Start sequences here\.")
 
 

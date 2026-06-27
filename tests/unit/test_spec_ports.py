@@ -1,4 +1,4 @@
-"""Tests for derive_child_ports.py — cut-edge port derivation from §1.4.2."""
+"""Tests for derive-ports — cut-edge port derivation from §1.4.2."""
 
 import json
 import subprocess

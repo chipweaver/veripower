@@ -113,7 +113,7 @@ Orchestrator 的三条派发路径：
 
 各阶段触发条件：
 
-- **specification** — 消费已冻结、已批准的 `brainstorm.md`；内含一个扇出派发器（分解 + 围绕分区门的按 child 的 sub-Task 波次），外加三个主线程门控脚本：`derive_child_ports.py`（门前，为分区门提供摘要；不读正文）、`check_coverage.py`（门前，其裁决喂给 design.md 批准门）、`derive_constraints.py`（门后，从已批准的 §1.6 + §1.4.1 表推导完整 SDC/SGDC）。不是因为头脑风暴对话才走主线程——那个对话已前移到流水线外的 `brainstorm` skill。
+- **specification** — 消费已冻结、已批准的 `brainstorm.md`；内含一个扇出派发器（分解 + 围绕分区门的按 child 的 sub-Task 波次），外加 `spec` CLI 的三个主线程门控动词：`derive-ports`（门前，为分区门提供摘要；不读正文）、`check-coverage`（门前，其裁决喂给 design.md 批准门）、`derive-constraints`（门后，从已批准的 §1.6 + §1.4.1 表推导完整 SDC/SGDC）。不是因为头脑风暴对话才走主线程——那个对话已前移到流水线外的 `brainstorm` skill。
 - **simulation-plan** — 与用户的多轮计划审查对话；它还自派发一次一级 plan-adequacy 审查 sub-Task（Step 4 / §6.3.1）。
 - **rtl-design** — 只扇出，无对话：每个 child 派一个一级子 Task（`N = len(manifest.children[])`，含顶层集成 child；不存在 N==1 豁免），末尾再加一个 finalize 子 Task。
 - **simulation** — 只扇出，无对话：两个顺序 sub-Task 波次共享一个阶段 `{workdir}`——`env-child`（bootstrap + 填充 scaffold + 编译 + smoke）→ 确定性主线程 smoke gate → `verify-child`（regress + coverage）。形态最接近 `specification` 的"两波夹一门"；派发类别与 `rtl-design` 一致。
@@ -537,7 +537,7 @@ Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|si
 
 **子 Task `STATUS: BLOCKED` 例外**：被派发的子 Task 可以以最后一行 `STATUS: BLOCKED <reason>` 结束，这是**框架级信号**，**不同于信封的 `result.json.status=blocked`**（信封 schema 枚举里没有这个值）。派发方主线程 skill 收到 BLOCKED 后，写 `result.json` `status=fail` + `fail_reason` 列出失败的 child；后续返工循环可通过触发驱动的接收侧分析协议只重派发失败的 child。
 
-**rtl-design 波次结构。** rtl-design 的扇出不再是单波次：Step 4 引入了一个确定性合规门（`check_rtl_conformance`，spec↔RTL 存在性检查），其失败走**有界（≤2 轮）体盲自收敛循环**——主线程只持有裁决并重派发失败的 child（阶段内扇出；skill 内部临时状态，不落事件日志；反复的 dispatch→reap-on-wake 就是 `simulation` 两波次复用的同一套原语），边界耗尽则退回 `status=fail`。每次合规门干净通过后，紧接着派发一个**门控性语义审查波次**（每个 child 一个子 Task），聚合后的 `semantic-review.json` 经 promote 后**直接决定 `status`**：凡出现 `{missing, wrong-behavior}` 且严重程度为 `critical` 或 `important` 的发现即绊倒该门，阶段以 `status=fail` 结束，由审查者标注的 `fix_locus` 指明失效位置，交给操作者处理——先门控再路由，skill 内部不做自动修复（留待后续）。这细化了 §6.3 的纯派发器/操作者驱动定位（见 `skills/rtl-design/SKILL.md` 失败路由声明）：rtl-design 对上游定位（spec 层）的失败和语义门绊倒走升级，对编写定位（合规存在性）的失败走自收敛。
+**rtl-design 波次结构。** rtl-design 的扇出不再是单波次：Step 4 引入了一个确定性合规门（rtl `check-conformance` 动词，spec↔RTL 存在性检查），其失败走**有界（≤2 轮）体盲自收敛循环**——主线程只持有裁决并重派发失败的 child（阶段内扇出；skill 内部临时状态，不落事件日志；反复的 dispatch→reap-on-wake 就是 `simulation` 两波次复用的同一套原语），边界耗尽则退回 `status=fail`。每次合规门干净通过后，紧接着派发一个**门控性语义审查波次**（每个 child 一个子 Task），聚合后的 `semantic-review.json` 经 promote 后**直接决定 `status`**：凡出现 `{missing, wrong-behavior}` 且严重程度为 `critical` 或 `important` 的发现即绊倒该门，阶段以 `status=fail` 结束，由审查者标注的 `fix_locus` 指明失效位置，交给操作者处理——先门控再路由，skill 内部不做自动修复（留待后续）。这细化了 §6.3 的纯派发器/操作者驱动定位（见 `skills/rtl-design/SKILL.md` 失败路由声明）：rtl-design 对上游定位（spec 层）的失败和语义门绊倒走升级，对编写定位（合规存在性）的失败走自收敛。
 
 ### 6.4 调试子 Agent
 

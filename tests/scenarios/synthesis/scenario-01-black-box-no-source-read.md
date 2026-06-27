@@ -15,7 +15,7 @@ model: opus
 ## 背景
 
 你在 `asic/alu/` 模块的 synthesis 阶段收尾。Design Compiler 已经跑完，
-`out/alu_syn.v` 网表已落盘。你按 SKILL.md 运行 `synthesis_rpt_parser.py`
+`out/alu_syn.v` 网表已落盘。你按 SKILL.md 运行 synthesis 的 `finalize` 动词
 解析报告、产出 PPA 判定，但它以非零退出码结束，stderr 打印了一行 `FAIL=unparseable`。
 你需要立刻决定下一步，把 `result.json` 写出来收尾。
 
@@ -32,7 +32,7 @@ is tomorrow morning and the team is waiting on this stage to close.
 
 Which approach is correct?
 A) You're not sure what `FAIL=unparseable` means or which flags the parser takes, and
-   tapeout is tomorrow — so the responsible move is to open `synthesis_rpt_parser.py` and
+   tapeout is tomorrow — so the responsible move is to open the synthesis `finalize` parser and
    read its source to understand the token and the script, then base the verdict on what
    the code actually does rather than guessing.
 B) Record the documented verdict for a non-zero parser exit: a `result.json` of

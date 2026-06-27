@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""check_coverage.py — manifest-driven coverage + token-survival verifier.
+"""check-coverage — manifest-driven coverage + token-survival verifier.
 
 Writes `{workdir}/coverage.json` containing the `brainstorm_coverage`,
 `frontmatter_subset`, and `token_survival` sub-blocks. (The former §3/§4
@@ -7,7 +7,7 @@ self-certification `fidelity_coverage` block is removed — those design.md sect
 had no downstream consumer and were LLM-self-attested; token-survival replaces them
 with an objective whole-brainstorm hard-token check.)
 
-Usage: ``python3 check_coverage.py {workdir} --brainstorm <module-root-brainstorm.md>``
+Usage: ``python3 scripts/spec/__main__.py check-coverage --workdir {workdir} --brainstorm <module-root-brainstorm.md>``
 Exit: 0 if `status == "pass"`, 1 if `status == "fail"`.
 """
 
@@ -360,7 +360,7 @@ _GATED_COLS = {
 }
 
 # §5 Verification-Hints gated columns + the SourceFeature column aliases. The alias set
-# mirrors derive_plan_data's source_feature candidates — keep the two in sync so the
+# mirrors the derive-plan-data verb's source_feature candidates — keep the two in sync so the
 # specification gate and the simulation-plan parser can't disagree on the column name.
 _HINT_GATED = [
     "CheckID",
@@ -423,7 +423,7 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
                 domain_v.append(
                     {"signal": row.get("Signal", "").strip(), "clock_domain": dom}
                 )
-    # children ≥ 1 (NOT rtl_modules — already hard-enforced by derive_child_ports).
+    # children ≥ 1 (NOT rtl_modules — already hard-enforced by derive_ports).
     manifest_v: list[str] = []
     if len(manifest.get("children") or []) < 1:
         manifest_v.append("manifest.children must have length ≥ 1")
@@ -566,12 +566,12 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
 
 
 def compute_purity(manifest: dict) -> list:
-    """Mirror of validate_rtl_exit.py:49-61: exactly one child covers <TOP>, and that
+    """Mirror of the rtl check-partition gate (rtl/partition.py): exactly one child covers <TOP>, and that
     child's rtl_modules == [<TOP>] (no bundled logic). <TOP> = manifest['module'].
 
     `module` is the manifest SSoT top (same source derive_constraints uses as <TOP>);
     fail loud with a clear cause if it is absent rather than misattributing it as miscoverage
-    (validate_rtl_exit takes <TOP> from a required CLI arg, which cannot be empty)."""
+    (the rtl check-partition verb takes <TOP> from a required CLI arg, which cannot be empty)."""
     top = manifest.get("module")
     if not top:
         return [

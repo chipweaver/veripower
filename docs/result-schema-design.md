@@ -18,7 +18,7 @@
 ## 1. Background — what `result.json` is
 
 Every stage produces exactly one `result.json` at `asic/<module>/<area>/<stage>/result.json`
-(canonical) and `asic/<module>/<area>/<stage>/runs/<N>/result.json` (per-run). State.py
+(canonical) and `asic/<module>/<area>/<stage>/runs/<N>/result.json` (per-run). state.py
 validates each `result.json` against `<skill>/references/result.schema.json`, which composes
 the cross-stage `framework/references/schemas/envelope.schema.json` via JSON-Schema `$ref`.
 
@@ -146,7 +146,7 @@ A "no" to any of them is grounds for deprecation.
 ```json
 "interfaces": [{"group": "APB", "signals": [{"name": "psel", "dir": "input", "width": 1}, ...]}]
 ```
-- Real consumer: none. `derive_plan_data.py` parses `design.md` §1.4 directly via
+- Real consumer: none. The simplan `derive-plan-data` verb parses `design.md` §1.4 directly via
   `load_interfaces(design_text)` — never reads `stage_specific.interfaces`.
 - Need at envelope-read time: no, every consumer reads design.md anyway.
 - Small: no, full interface tables can be hundreds of bytes per group.

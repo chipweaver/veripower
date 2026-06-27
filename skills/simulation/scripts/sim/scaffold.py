@@ -106,7 +106,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
     for agent in agents:
         aname = agent["name"]
         mode = agent.get("mode", "active")
-        # Canonical agent shape (materialized by simulation-plan's materialize_scaffold.py
+        # Canonical agent shape (materialized by simulation-plan's materialize-scaffold verb
         # from plan-data.json.interfaces[] grouped by interface_group). _agent_io fails
         # loud on an empty interface (root cause A) — no silent degenerate scaffold.
         signals, fields = _agent_io(agent)

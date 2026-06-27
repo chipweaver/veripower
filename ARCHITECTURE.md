@@ -113,7 +113,7 @@ The three dispatch paths from the Orchestrator:
 
 The per-stage trigger:
 
-- **specification** — consumes a frozen, approved `brainstorm.md`; a fan-out dispatcher (decompose + per-child sub-Task waves around a partition gate) plus three main-thread gate scripts: `derive_child_ports.py` (pre-gate, feeds the partition-gate summary; no body read), `check_coverage.py` (pre-gate, verdict feeds the design.md approval gate), `derive_constraints.py` (post-gate, derives the complete SDC/SGDC from the approved §1.6 + §1.4.1 tables). NOT main-thread for brainstorm dialogue — that moved to the pre-pipeline `brainstorm` skill.
+- **specification** — consumes a frozen, approved `brainstorm.md`; a fan-out dispatcher (decompose + per-child sub-Task waves around a partition gate) plus three main-thread gate verbs of the `spec` CLI: `derive-ports` (pre-gate, feeds the partition-gate summary; no body read), `check-coverage` (pre-gate, verdict feeds the design.md approval gate), `derive-constraints` (post-gate, derives the complete SDC/SGDC from the approved §1.6 + §1.4.1 tables). NOT main-thread for brainstorm dialogue — that moved to the pre-pipeline `brainstorm` skill.
 - **simulation-plan** — multi-turn plan-review dialogue with the user; it also self-dispatches a single Level-1 plan-adequacy review sub-Task (Step 4 / §6.3.1).
 - **rtl-design** — fan-out only, no dialogue: one Level-1 sub-Task per child (`N = len(manifest.children[])`, including the top-integration child; no N==1 exemption), then a finalize sub-Task.
 - **simulation** — fan-out only, no dialogue: two sequential sub-Task waves sharing one stage `{workdir}` — an `env-child` (bootstrap + fill scaffold + compile + smoke) → a deterministic main-thread smoke gate → a `verify-child` (regress + coverage). Shape closest to `specification`'s two-wave-around-a-gate; dispatch class identical to `rtl-design`'s.
@@ -538,7 +538,7 @@ Fan-out main-thread skills (`specification`, `rtl-design`, `simulation` — and 
 **Sub-Task `STATUS: BLOCKED` carve-out**: a dispatched sub-Task may end with last-line `STATUS: BLOCKED <reason>` as a **harness-level signal**. This is **distinct from envelope `result.json.status=blocked`** which the envelope schema enum forbids. The dispatching main-thread skill handles BLOCKED by writing `result.json` `status=fail` + `fail_reason` listing failed children; subsequent rework cycles can re-dispatch only failed children via the trigger-driven receiver-side analysis protocol.
 
 **rtl-design wave structure.** rtl-design's fan-out is no longer a single wave: Step 4 adds a
-deterministic conformance gate (`check_rtl_conformance`, spec↔RTL presence) whose failures run a
+deterministic conformance gate (the rtl `check-conformance` verb, spec↔RTL presence) whose failures run a
 **bounded (≤2 rounds) body-blind self-converge loop** — the main thread holds only the verdict and
 re-dispatches the failing children (intra-stage fan-out; skill-internal scratch, never event-logged;
 the repeated dispatch→reap-on-wake is the same primitive `simulation`'s two waves use), falling back to

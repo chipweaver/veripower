@@ -1,6 +1,6 @@
 # SDC — generated-output reference
 
-`constraints/<TOP>.sdc` is **generated** by `derive_constraints.py` as a pure function of
+`constraints/<TOP>.sdc` is **generated** by the `derive-constraints` verb as a pure function of
 `design.md` §1.6 (clocks/relationships) + §1.4.1 (port roles/domains). Do **not** hand-author
 or hand-edit it; change the design tables and re-run derive. This file documents what derive
 emits so reviewers know what to expect.

@@ -49,7 +49,7 @@ def infer_top_from_readme(rtl_dir: Path) -> str | None:
     the capture charset allows a leading digit but the identifier validation then
     rejects it. A ':' or '：' is REQUIRED — a colon-less line is not matched. The
     producer always emits the cross-stage contract form `**Top module**: <top>`
-    (locked by test_build_readme.py), so requiring the colon matches the actual
+    (locked by test_rtl_assemble.py), so requiring the colon matches the actual
     contract and the colon-less case has no real input.
     """
     f = rtl_dir / "README.md"

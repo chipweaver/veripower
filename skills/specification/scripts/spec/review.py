@@ -13,7 +13,7 @@ Encoding the child consumes/produces) findings at critical/important BLOCK (gate
 a reference frame (brainstorm.md / the §1.4.x Encoding row). soundness (micro-arch realizability +
 any other observed cross-interface inconsistency, no reference frame) is advisory must-acknowledge
 and never blocks; unavailable never blocks. There is no deterministic encoding gate -- encoding
-adequacy is a judgment, owned by this LLM lens, not check_coverage.py.
+adequacy is a judgment, owned by this LLM lens, not check-coverage.
 
 Exit: 0 valid (stdout: {"gate","flagged","must_ack"}) / 1 invalid (stderr message).
 """
