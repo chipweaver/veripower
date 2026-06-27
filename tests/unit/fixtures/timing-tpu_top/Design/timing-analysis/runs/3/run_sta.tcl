@@ -1,6 +1,7 @@
 # PrimeTime STA — independent timing verification of the post-synthesis netlist.
-# Invoked from the tree root (dir containing asic/): pt_shell -f asic/tpu_top/Design/timing-analysis/runs/3/run_sta.tcl
-# tpu_top / asic/tpu_top/Design/timing-analysis/runs/3 are substituted by the timing bootstrap verb.
+# MODULE_ROOT / WORKDIR are shown tree-root-relative for a stable, portable fixture; the
+# live timing bootstrap verb substitutes ABSOLUTE paths and runs from the workdir
+# (cd <workdir> && pt_shell -f run_sta.tcl).
 set MODULE_ROOT asic/tpu_top
 set WORKDIR     asic/tpu_top/Design/timing-analysis/runs/3
 source $WORKDIR/config.tcl                  ;# sets TOP and LIB_DB
