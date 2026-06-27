@@ -2,7 +2,7 @@
 
 The rtl-design main thread dispatches one Level-1 `Task(run_in_background=True)` per child
 in `manifest.children[]` **on every finalize that reaches a clean gate** (not first-run only),
-AFTER the conformance gate (`check_rtl_conformance`) is green. This review is **gating**: findings
+AFTER the conformance gate (`check-conformance`) is green. This review is **gating**: findings
 in `category ∈ {missing, wrong-behavior}` at `severity ∈ {critical, important}` trip a gate that
 fails the stage out (`status=fail`) to the operator. `over-engineering` and `minor` findings
 remain advisory (never gate). Findings are aggregated into `semantic-review.json`. A dispatched
@@ -38,7 +38,7 @@ so the operator knows where to fix, and routes future automation):
 
 **Out of scope (do NOT report):** synthesizability / timing / area / power (downstream stages);
 lint / CDC rule violations (lint-cdc); pure syntax (the child self-lints); spec↔RTL *presence*
-mismatches (the deterministic `check_rtl_conformance` gate already covers these).
+mismatches (the deterministic `check-conformance` gate already covers these).
 
 ## Output
 

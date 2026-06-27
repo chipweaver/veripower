@@ -60,7 +60,7 @@ may hold multiple modules). End the response with `STATUS: DONE` + a single JSON
   the §1.4.1 / §1.4.2 / §1.6 you read. Synthesis has no independent backstop for the SDC categories, so an
   omission there is silently lost downstream — do not omit.
   Note: the `sync_cell` / `reset_synchronizer` (and `sdc.create_generated_clock`'s `module`) names you report are checked for **reality** by the
-  stage's `check_rtl_conformance` gate — a reported name that is not an actual module in your RTL is a
+  stage's `check-conformance` gate — a reported name that is not an actual module in your RTL is a
   conformance violation (you will be re-dispatched to fix it), not a silently accepted annotation.
 - Which child reports what: a **leaf** child reports its internal synchronizers / generated clocks;
   the **top-integration** child reports cross-domain `quasi_static` + test-control `set_case_analysis`
