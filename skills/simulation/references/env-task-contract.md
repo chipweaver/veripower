@@ -31,7 +31,7 @@ tool (no Level-2 dispatch).
 1. **Bootstrap + scaffold**:
 
    ```bash
-   bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap_simulation.sh --module {module} --workdir {workdir} [--top <TOP>] --plan scaffold-specification.json
+   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>] --scaffold scaffold-specification.json
    ```
 
    Deploys infrastructure + scaffold to `{workdir}`, including functional sequence placeholders. All
@@ -40,12 +40,12 @@ tool (no Level-2 dispatch).
    in every `TODO(` across driver / monitor / checker / RM / functional seq / top. References are
    selected per the branch handed in above; any prior canonical TB is read-only reference — never
    copied — and all writes happen only in `{workdir}`.
-   **Trust the rendered tree (U4):** derive_scaffold renders an atomic, complete, self-describing
+   **Trust the rendered tree (U4):** the bootstrap verb (with `--scaffold`) renders an atomic, complete, self-describing
    stub tree. Learn structure and fill-conventions from the **rendered stubs and their TODO/header
    comments** (e.g. each stub's `// TODO(...)` states its config_db key, sequencer type, and intent),
-   not by reverse-engineering `derive_scaffold.py`. Reading the renderer source is a documented
+   not by reverse-engineering the renderer (sim/scaffold.py). Reading the renderer source is a documented
    **fallback only** — when a stub comment is missing, self-contradictory, or conflicts with the
-   observed structure. Do not whole-read `derive_scaffold.py` as a first resort.
+   observed structure. Do not whole-read `sim/scaffold.py` as a first resort.
    **Reading discipline (U5):** do not whole-read `scaffold-specification.json` (it is large and the
    first read gets truncated by the token cap, forcing a costly re-read). Instead: take **structural
    facts** (interface signals, txn fields) from the **rendered stubs** (they are already materialized);
@@ -66,7 +66,7 @@ tool (no Level-2 dispatch).
 4. **Env-exit completeness self-gate (thin-D1)**: before reporting `STATUS: DONE`, run
 
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/scripts/validate_sim_exit.py --workdir {workdir} --scaffold scaffold-specification.json --thin-only
+   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py check-materialization --workdir {workdir} --scaffold scaffold-specification.json
    ```
 
    This is a **presence** gate: it fails (non-zero) if any required scaffold SV file is missing
@@ -115,7 +115,7 @@ smoke gate still decides smoke pass/fail.
 
 | Mistake | Fix |
 |---|---|
-| Bootstrap aborts: existing `Makefile` detected | `bootstrap_simulation.sh` refuses to overwrite a deployed workdir. The orchestrator hands a fresh empty `runs/<N>/` for every run (including rework), so this should not occur; if it does, the workdir was not fresh — stop and report it. |
+| Bootstrap aborts: existing `Makefile` detected | The bootstrap verb refuses to overwrite a deployed workdir. The orchestrator hands a fresh empty `runs/<N>/` for every run (including rework), so this should not occur; if it does, the workdir was not fresh — stop and report it. |
 | Reporting a mismatch with `$fatal` | MUST use `` `uvm_error `` (see `uvm-rules.md`); `$fatal` bypasses the UVM report server, so the regression runner misses the count and the scoreboard terminates early. |
 
 ## Output

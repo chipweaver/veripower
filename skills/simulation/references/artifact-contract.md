@@ -46,15 +46,15 @@ share it).
 | Artifact | Path (relative to `{workdir}`) | Description |
 |------|------|------|
 | `regression-log.txt` | same | `make regress` **appends** the full-regress `RESULT` lines to the env-written log. |
-| `structural-coverage.json` | same | Urg-derived structural coverage (`aggregate` dims `line`/`cond`/`fsm`/`toggle` + `per_module`); this is the gate source read by `validate_sim_exit.py`. |
-| `coverage-summary.txt` | same | Human-readable coverage summary (no longer the gate source; the gate source is `structural-coverage.json` + `validate_sim_exit`). |
+| `structural-coverage.json` | same | Urg-derived structural coverage (`aggregate` dims `line`/`cond`/`fsm`/`toggle` + `per_module`); this is the gate source read by `sim finalize`. |
+| `coverage-summary.txt` | same | Human-readable coverage summary (no longer the gate source; the gate source is `structural-coverage.json` + `sim finalize`). |
 | `case-results-summary.md` | same | Review summary. |
 
 ### orchestrator (finalize)
 
 | Artifact | Path (relative to `{workdir}`) | Description |
 |------|------|------|
-| `result.json` | `result.json` | Stage envelope. Assembled by the orchestrator from the verify child's verdict + the smoke-gate result + `validate_sim_exit.py`'s stdout verdict. |
+| `result.json` | `result.json` | Stage envelope. Assembled by the orchestrator from the verify child's verdict + the smoke-gate result + `sim finalize`'s stdout verdict. |
 
 > Note: `tests/testlist.json` is the one artifact written by env (initial materialization) and
 > appended by verify (stimulus iterate) — its final form spans both phases.

@@ -40,7 +40,7 @@ read -ra VCS_COV_ARGS <<<"$VCS_COV"
 }
 
 [[ -f "$TESTLIST_JSON" ]] || {
-	echo "run_vcs_regression: missing $TESTLIST_JSON; run bootstrap_simulation.sh --plan <scaffold-specification.json> first to generate the scaffold (which writes this file)" >&2
+	echo "run_vcs_regression: missing $TESTLIST_JSON; run sim bootstrap --scaffold <scaffold-specification.json> first to generate the scaffold (which writes this file)" >&2
 	exit 1
 }
 

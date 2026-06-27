@@ -70,7 +70,7 @@ finalize. The env / verify phase split of the workdir artifacts is in
 |---|---|---|---|
 | `result.json` | `references/result.schema.json` + envelope | orchestrator | This stage's status contract (`failure_phase` / `coverage_gaps`, etc.). |
 | `Makefile` / `env.sh` / `filelist.f` / `rtl_filelist.f` / `tb/uvm/` / `scripts/` / `tests/testlist.json` | per `artifact-contract.md` | env-build | TB infra + materialized UVM (bound by Rule A). |
-| `regression-log.txt` / `structural-coverage.json` / `coverage-summary.txt` / `case-results-summary.md` | per `artifact-contract.md` | verify | Regression log + machine-readable structural coverage (gate source for `validate_sim_exit`) + summaries. |
+| `regression-log.txt` / `structural-coverage.json` / `coverage-summary.txt` / `case-results-summary.md` | per `artifact-contract.md` | verify | Regression log + machine-readable structural coverage (gate source for `sim finalize`) + summaries. |
 | `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest handed to the verify phase (intra-stage handoff; not promoted). |
 | `conformance-review.json` | per `references/conformance-review.schema.json` | conformance gate (main thread) | Per-testpoint check-adequacy findings (gate source for Step 4); promoted advisory artifact. |
 
@@ -100,7 +100,7 @@ Completion Gate.
 Read `Verification/simulation-plan/result.json` (MUST be `status=pass`) and
 `Design/rtl-design/result.json` (MUST be `status=pass`), and assert the plan artifacts
 (`verification-plan.md` + `scaffold-specification.json`) exist. If any is missing or not `pass`, run
-`validate_sim_exit.py finalize --workdir {workdir} --module <module> --phase prerequisite
+`sim finalize --workdir {workdir} --module <module> --phase prerequisite
 --fail-reason "external reference missing: <path>"` and return without dispatching. The
 main thread does not read the scaffold-spec / verification-plan body — only the envelopes + path
 existence.
@@ -108,23 +108,22 @@ existence.
 Select the branch (which references the env-build sub-Task consults when filling TODOs):
 
 - **Trigger-driven rework** (`{rework_trigger}` injected): the orchestrator pre-gates the trigger's
-  readability before dispatching — if the trigger path is unreadable, run `validate_sim_exit.py
-  finalize --workdir {workdir} --module <module> --phase prerequisite --fail-reason
+  readability before dispatching — if the trigger path is unreadable, run `sim finalize
+  --workdir {workdir} --module <module> --phase prerequisite --fail-reason
   "rework_trigger not readable"` and return without dispatching;
   otherwise pass the trigger path (+ any `{orchestrator_context_path}`) into the env-build sub-Task.
 - **Incremental-update branch** (no trigger; canonical `Verification/simulation/result.json` exists):
   the env-build sub-Task diffs the external references against the canonical baseline.
 - **First-run branch** (no trigger; no canonical): the env-build sub-Task uses the plan only.
 
-**Fresh empty workdir on rework.** `bootstrap_simulation.sh` aborts if a `Makefile` already exists in
+**Fresh empty workdir on rework.** The bootstrap verb aborts if a `Makefile` already exists in
 the workdir, so a re-run needs a fresh, empty workdir. The caller provides a fresh `{workdir}` per run,
 which is exactly that — the orchestrator dispatches the env-build sub-Task into this fresh
 `{workdir}`; it never reuses a workdir that already holds a deployed infra.
 
-**Internal scripts.** Bootstrap internally runs `scripts/build_rtl_filelist.py` and (with `--plan`)
-`scripts/derive_scaffold.py`; the deployed `infra/scripts/` (`run_vcs_regression.sh` /
+**Internal scripts.** The `bootstrap` verb performs the rtl_filelist rewrite + scaffold render in-process (the former three-script pipeline collapsed into one verb); the standalone re-render entry is `sim render-scaffold`. The deployed `infra/scripts/` (`run_vcs_regression.sh` /
 `parse_coverage.py` / `write_summary.py`) are make-internal. The interfaces are
-`bootstrap_simulation.sh` and the `make` targets (`simv` / `smoke` / `regress` / `coverage` /
+the `bootstrap` verb and the `make` targets (`simv` / `smoke` / `regress` / `coverage` /
 `summary`) — none of these internal scripts is invoked or read directly.
 
 ### Step 2: Wave 1 — dispatch env-build
@@ -135,13 +134,13 @@ Dispatch one `Task(run_in_background=True)` — the env-build child — whose pr
 context paths). The main thread never reads the TB it produces.
 
 The env-build child self-gates its `STATUS: DONE` on a presence-only thin-D1 check
-(`validate_sim_exit.py --thin-only`: no surviving TODO, all required scaffold files present) so a
+(`sim check-materialization`: no surviving TODO, all required scaffold files present) so a
 hollow TB never reaches the Wave-3 verify run; semantic TB↔plan conformance is out of scope for this
 presence-only check (it is the conformance gate's job).
 
 After dispatching, end the turn and wait for the harness wake.
 On wake-up, reap the env-build child's harness `STATUS:` last line + its JSON line. If
-`STATUS: BLOCKED <reason>`, run `validate_sim_exit.py finalize --workdir {workdir} --module <module>
+`STATUS: BLOCKED <reason>`, run `sim finalize --workdir {workdir} --module <module>
 --phase env-blocked --failure-phase <compile|smoke|prerequisite> --fail-reason "<reason>"`
 (`--failure-phase` per the reason — `compile` / `smoke` for a Rule A semantic block, `prerequisite`
 for an incomplete `inlined_check_hints[]` block; pass `--verify-verdict <reaped env JSON>` when it
@@ -152,15 +151,15 @@ carries `compile_rounds`) and return; do not dispatch the downstream waves.
 Gate on the smoke result emitted by the smoke run's own tooling in `{workdir}`, NOT on the
 env-build child's self-reported `STATUS:` prose. This is cheap and deterministic — the main thread
 reads a small status file, does NOT re-run heavy EDA, and does NOT read the TB body. Do NOT use
-`validate_sim_exit.py` here — its coverage gate hard-fails pre-regress (no `structural-coverage.json`
+the `sim` exit gate here — its coverage gate hard-fails pre-regress (no `structural-coverage.json`
 exists yet).
 
 - **Compile failed (no smoke status):** `make simv` produced no `simv`, so `make smoke` ran no test
-  and `regression-log.txt` carries no `RESULT` line. Run `validate_sim_exit.py finalize --phase smoke
+  and `regression-log.txt` carries no `RESULT` line. Run `sim finalize --phase smoke
   --failure-phase compile --fail-reason "<…>"` (pass `--verify-verdict <reaped, carries compile_rounds>`);
   skip the downstream waves.
 - **Smoke ran but failed:** `regression-log.txt`'s `RESULT <test> <PASS|FAIL|MANUAL_REVIEW>` lines (or
-  the per-test `logs/<test>.status` files) contain any non-`PASS`. Run `validate_sim_exit.py finalize
+  the per-test `logs/<test>.status` files) contain any non-`PASS`. Run `sim finalize
   --phase smoke --failure-phase smoke --fail-reason "<…>"` (pass `--verify-verdict <reaped, carries
   failing_cases>`); skip the downstream waves.
 - **Smoke passed:** every `RESULT` line is `PASS` → proceed to Step 4 (conformance gate).
@@ -177,7 +176,7 @@ On wake-up, reap the reviewer's `STATUS:` last line + its JSON line, assemble
 `{workdir}/conformance-review.json` (schema `references/conformance-review.schema.json`), and run:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/validate_conformance_review.py {workdir}/conformance-review.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py validate-review --review {workdir}/conformance-review.json
 ```
 
 Non-zero exit → re-assemble the JSON and re-run (this is a main-thread fix, NOT a re-dispatch).
@@ -185,7 +184,7 @@ On exit 0 it prints a one-line gate verdict `{"gate": "trip"|"clear", "flagged":
 "dominant_category": ...}` — the mechanical category × severity reduction (per the reviewer
 contract's "Severity & gating"), computed by the script, not judged by eye. Apply it:
 
-- **`gate=trip`:** run `validate_sim_exit.py finalize --workdir {workdir} --module <module> --phase
+- **`gate=trip`:** run `sim finalize --workdir {workdir} --module <module> --phase
   conformance --fail-reason "<built from flagged + dominant_category>" --conformance-review
   {workdir}/conformance-review.json` (finalize re-derives the gating `conformance_findings` subset
   in-process via `compute_gate`, carried to triage as `failure_signal`, and enumerates
@@ -216,12 +215,12 @@ On wake-up, reap the verify child's `STATUS:` last line + its JSON line (the `st
 then branch on its verdict and write `status=fail` via finalize, **skipping Step 6/7** (do NOT call
 `--phase final`) — exactly as a smoke- or conformance-gate fail skips the downstream waves:
 
-- a `make regress` case failed → `validate_sim_exit.py finalize --phase regress --failure-phase regress
+- a `make regress` case failed → `sim finalize --phase regress --failure-phase regress
   --fail-reason "<…>" --verify-verdict <reaped, carries failing_cases>`;
-- Rule-B uncovered bins (`failure_phase=coverage` from the verify child) → `validate_sim_exit.py
-  finalize --phase regress --failure-phase coverage --fail-reason "<…>" --verify-verdict <reaped,
+- Rule-B uncovered bins (`failure_phase=coverage` from the verify child) → `sim finalize
+  --phase regress --failure-phase coverage --fail-reason "<…>" --verify-verdict <reaped,
   carries coverage_gaps + gaps_not_in_testpoints ∨ gaps_in_testpoints>`;
-- `STATUS: BLOCKED <reason>` → `validate_sim_exit.py finalize --phase verify-blocked --fail-reason
+- `STATUS: BLOCKED <reason>` → `sim finalize --phase verify-blocked --fail-reason
   "verify child BLOCKED: <reason>"`.
 
 Only a **clean** verify verdict (no `failure_phase`, not BLOCKED) proceeds to Step 6/7.
@@ -234,7 +233,7 @@ compile/coverage gate, the assembled `conformance-review.json`, and the reaped v
 (carrying `stimulus_iterations`):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/validate_sim_exit.py finalize \
+python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize \
   --workdir {workdir} --module <module> --phase final \
   --scaffold Verification/simulation-plan/scaffold-specification.json \
   --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml \
@@ -266,11 +265,11 @@ The `failure_phase` value table below documents which step decides each phase; f
 | failure_phase | First-failing phase | Companion fields (besides `fail_reason`) | Decided in |
 |---|---|---|---|
 | `prerequisite` | Step 1 reference missing / not pass, or `{rework_trigger}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | orchestrator |
-| `compile` | `make simv` failed (no smoke status); or `validate_sim_exit` thin-D1 file missing / `TODO(` residue | `compile_rounds` | smoke gate (Step 3) / finalize (Step 6) |
+| `compile` | `make simv` failed (no smoke status); or `sim finalize` thin-D1 file missing / `TODO(` residue | `compile_rounds` | smoke gate (Step 3) / finalize (Step 6) |
 | `smoke` | `make smoke` ran but a `RESULT` line is not `PASS` | `failing_cases` | smoke gate (Step 3) |
 | `conformance` | Conformance gate (Step 4): a finding `category ∈ {missing,wrong-behavior,fake-green,intent-defect}` at `critical`/`important` | `conformance_findings` | conformance gate (Step 4) |
 | `regress` | Any case fails in `make regress` | `failing_cases` | verify child |
-| `coverage` | Rule-B uncovered bins, or `validate_sim_exit` coverage gate (dim below threshold / not extractable) | `coverage_gaps` + `gaps_not_in_testpoints` or `gaps_in_testpoints` (Rule B); `coverage_extractable` + `dims` (validate_sim_exit) | verify child / finalize (Step 6) |
+| `coverage` | Rule-B uncovered bins, or `sim finalize` coverage gate (dim below threshold / not extractable) | `coverage_gaps` + `gaps_not_in_testpoints` or `gaps_in_testpoints` (Rule B); `coverage_extractable` + `dims` (sim finalize) | verify child / finalize (Step 6) |
 
 ## Decision Rules
 
@@ -293,7 +292,7 @@ sub-Task.
 
 | Excuse | Reality |
 |---|---|
-| "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `validate_sim_exit` exited non-zero) | The orchestrator records the most-failing verdict, never a more-optimistic one. `status=pass` is written only when the smoke gate, the conformance gate, the verify verdict, and `validate_sim_exit` all agree (Step 7); it MUST NOT override a `gate=trip` to pass (Step 4). |
+| "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `sim finalize` exited non-zero) | The orchestrator records the most-failing verdict, never a more-optimistic one. `status=pass` is written only when the smoke gate, the conformance gate, the verify verdict, and `sim finalize` all agree (Step 7); it MUST NOT override a `gate=trip` to pass (Step 4). |
 | "The env-build child's `STATUS:` line says smoke passed — that's my smoke gate" | The smoke gate reads the smoke run's own tooling (`regression-log.txt` `RESULT` lines / per-test `logs/<test>.status`), never the child's self-reported prose (Step 3). |
 | "A case is failing — I'll open the TB to see why" | The main thread NEVER reads the TB body or re-runs heavy EDA; it consumes envelopes / status files / paths only and routes the failure out for the caller to decide (Iron Rule). |
 
@@ -306,7 +305,7 @@ sub-Task.
       on a smoke pass.
 - [ ] On a smoke pass, the conformance reviewer (Step 4) was dispatched and reaped; `conformance-review.json` was written + schema-validated; the verify wave was dispatched only when the gate did not trip (or a review-unavailable fall-through).
 - [ ] On a smoke pass, the verify sub-Task was dispatched and reaped.
-- [ ] `result.json` was written by `validate_sim_exit.py finalize` (it reuses `thin_d1`/`coverage_gate`
+- [ ] `result.json` was written by `sim finalize` (it reuses `thin_d1`/`coverage_gate`
       for the exit-code gate and owns status / failure_phase / the pass-summary / artifacts[]; every
       exit path calls it via `--phase`).
 

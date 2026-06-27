@@ -37,7 +37,7 @@ there.
    - Iterate budget exhausted with stimulus-layer gaps remaining → route out: `failure_phase=coverage`
      + `gaps_in_testpoints`.
 3. **Summary**: `make summary` produces `coverage-summary.txt` + `case-results-summary.md`. (The full exit self-check —
-   `validate_sim_exit.py`, thin-D1 + D5/D6 — runs at orchestrator finalize, not here.)
+   `sim finalize`, thin-D1 + D5/D6 — runs at orchestrator finalize, not here.)
 
 ## Authority
 
