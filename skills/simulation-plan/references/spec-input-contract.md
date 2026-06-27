@@ -176,7 +176,7 @@ Section anchors in `design.md` are English canonical (Surface 1):
 - §1.7 Submodule Index → pointer to `manifest.json`
 
 Per-child Verification Hints (9-column table) live in `<child>.md §5`;
-`derive_plan_data.py --workdir` reads `manifest.json` + each `<child>.md`
+`simplan derive-plan-data --workdir` reads `manifest.json` + each `<child>.md`
 and tags each hint with a `child` field.
 
 ---

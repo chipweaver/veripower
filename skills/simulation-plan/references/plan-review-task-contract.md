@@ -1,7 +1,7 @@
 # Plan adequacy review sub-Task contract (gating)
 
 The simulation-plan main thread self-dispatches ONE Level-1 `Task(run_in_background=True)` — a
-fresh plan-adequacy reviewer — as Step 4, AFTER `validate_scaffold.py` (structural +
+fresh plan-adequacy reviewer — as Step 4, AFTER `simplan check-scaffold` (structural +
 coverage-matrix) passes and BEFORE the Step-5 user review loop. This review is **gating** (T2):
 `coverage` findings at `severity ∈ {critical, important}` BLOCK `status=pass` until resolved;
 `adequacy` findings are advisory **must-acknowledge** (surfaced to the user, never block). The
@@ -31,7 +31,7 @@ lenses:
 ## Out of scope (do NOT report)
 - TB materialization / RTL correctness (downstream `simulation` conformance-review judges TB
   checks vs testpoints; you judge testpoints vs spec); structural coverage-matrix completeness
-  (the `validate_scaffold.py` gate already covers it); lint / timing / power; over-engineering.
+  (the `simplan check-scaffold` gate already covers it); lint / timing / power; over-engineering.
 
 ## Severity & gating
 - `critical` — a spec behavior unverified / a check that verifies nothing, downstream won't catch

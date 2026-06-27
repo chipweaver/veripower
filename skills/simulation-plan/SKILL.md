@@ -48,10 +48,10 @@ Boundary of this skill:
 
 | Path | Schema / Format | Required | Use |
 |---|---|---|---|
-| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | required (first-run) | `specification` envelope (`stage_specific.top_module` is used for the Top field in plan §1 Scope; structured data such as interfaces / clock domains / resets is read from `design.md` (module-level §1.1–1.6, §1.4.1 Top-Level IO, §1.6 Clocks and Frequencies) + per-child `<child>.md §5 Verification Hints` (via `derive_plan_data.py --workdir`). Not duplicated into `stage_specific`; `ppa_targets` is not consumed by this skill). |
+| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | required (first-run) | `specification` envelope (`stage_specific.top_module` is used for the Top field in plan §1 Scope; structured data such as interfaces / clock domains / resets is read from `design.md` (module-level §1.1–1.6, §1.4.1 Top-Level IO, §1.6 Clocks and Frequencies) + per-child `<child>.md §5 Verification Hints` (via `the simplan derive-plan-data verb --workdir`). Not duplicated into `stage_specific`; `ppa_targets` is not consumed by this skill). |
 | `Design/specification/design.md` | Custom markdown | required (first-run) | Module-level design (overview §1.1-1.6, §1.4.1 Top-Level IO table, §1.4.2 Inter-module Interconnects, §1.5 Interface Timing Scenarios, §1.6 Clocks and Frequencies). Per-submodule content lives in each `<child>.md` (see `Design/specification/<child>.md`). |
-| `Design/specification/manifest.json` | Custom JSON (specification child registry) | required | Lists child names; drives per-child `<child>.md §5` consumption by `derive_plan_data.py`. |
-| `Design/specification/<child>.md × N` | Custom markdown | required | Per-child design body; only `§5 Verification Hints` is consumed (by `derive_plan_data.py`), tagging `check_hints[]` with `child`. |
+| `Design/specification/manifest.json` | Custom JSON (specification child registry) | required | Lists child names; drives per-child `<child>.md §5` consumption by `the simplan derive-plan-data verb`. |
+| `Design/specification/<child>.md × N` | Custom markdown | required | Per-child design body; only `§5 Verification Hints` is consumed (by `the simplan derive-plan-data verb`), tagging `check_hints[]` with `child`. |
 
 When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file (e.g., `failure_phase` / `failing_cases` / `coverage_gaps` / `gaps_not_in_testpoints` / `power_sim_failures` / corresponding log and summary files). The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
 
@@ -62,7 +62,7 @@ When `{rework_trigger}` is injected, read additional context from the same direc
 | `result.json` | `references/result.schema.json` + envelope | This stage's status contract. |
 | `verification-plan.md` | Custom markdown (section outline below); after the review loop carries frontmatter `Status: approved` | Human-readable review anchor (overview + test strategy + testpoints table + power-scenarios materialization + revision summary). |
 | `scaffold-specification.json` | Custom JSON (field convention below); written after the Plan Gate | Machine-read contract (drives TB-materialization bootstrap + scaffold generation). |
-| `plan-data.json` | Custom JSON (derived by `derive_plan_data.py`) | Intermediate cache; **not** placed in `result.json.artifacts[]`. Derived by derive_plan_data.py on every branch (cheap, deterministic, idempotent). |
+| `plan-data.json` | Custom JSON (derived by `simplan derive-plan-data`) | Intermediate cache; **not** placed in `result.json.artifacts[]`. Derived by `simplan derive-plan-data` on every branch (cheap, deterministic, idempotent). |
 
 ### `verification-plan.md` section outline
 
@@ -94,13 +94,13 @@ LLM-authored (judgment): `module`, `top`, `agents[]` `{name, mode, interface_gro
 `sequences[]`, `tests[]`, `rm`, `scoreboard`, `testpoints[]` `{id, bins, intent, covers}`,
 `power_scenarios[]`, and `skipped_checks[]` `{check_id, reason}`.
 
-Script-injected by `materialize_scaffold.py` (do NOT hand-author): each agent's
+Script-injected by `simplan materialize-scaffold` (do NOT hand-author): each agent's
 `interface.signals` (all group signals) + `transaction.fields` (clk/rst excluded), `primary_clock`, `reset`, and each
 `testpoints[].inlined_check_hints[]` (materialized from `covers[]` + plan-data,
 `implementation_detail = verbatim-if-present-else-summary`).
 
 Full structural shape: [`references/scaffold-specification.schema.json`](references/scaffold-specification.schema.json);
-`validate_scaffold.py` fails loud with fix-oriented messages.
+`simplan check-scaffold` fails loud with fix-oriented messages.
 
 Authoring judgment the schema/validator cannot express:
 - `agents[].mode` — `active` for driver/master/driving agents; `passive` for monitor/slave/observer.
@@ -137,7 +137,7 @@ Branch scope: **first-run** fully generates both artifacts; **trigger-driven rew
 - Derive plan-data (run on every branch):
 
   ```bash
-  python3 ${CLAUDE_SKILL_DIR}/scripts/derive_plan_data.py --workdir <spec-workdir>
+  python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workdir <spec-workdir>
   ```
 
   Writes `{workdir}/plan-data.json`; reads `manifest.json` + `design.md` + each `<child>.md §5`; cheap, deterministic, idempotent.
@@ -145,7 +145,7 @@ Branch scope: **first-run** fully generates both artifacts; **trigger-driven rew
 - **Materialize (deterministic):**
 
   ```bash
-  python3 ${CLAUDE_SKILL_DIR}/scripts/materialize_scaffold.py --plan-data {workdir}/plan-data.json --scaffold {workdir}/scaffold-specification.json
+  python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py materialize-scaffold --plan-data {workdir}/plan-data.json --scaffold {workdir}/scaffold-specification.json
   ```
 
   Fills agent `interface.signals` (all group signals; clk/rst kept) + `transaction.fields` (clk/rst excluded via §1.4.1 Role), `primary_clock` (§1.6 Relationship=primary), `reset` (§1.4.1 Role=reset), and `inlined_check_hints[]` (from `covers[]`). On non-zero exit, read stderr for the exact cause (unknown/empty/duplicate `interface_group`, empty Role, no primary clock / reset, unknown `covers[]` check_id, non-numeric width), fix the scaffold or design.md §1.4.1/§1.6, and re-run.
@@ -153,7 +153,7 @@ Branch scope: **first-run** fully generates both artifacts; **trigger-driven rew
 - **Validate (gate):**
 
   ```bash
-  python3 ${CLAUDE_SKILL_DIR}/scripts/validate_scaffold.py --scaffold {workdir}/scaffold-specification.json --plan-data {workdir}/plan-data.json
+  python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py check-scaffold --scaffold {workdir}/scaffold-specification.json --plan-data {workdir}/plan-data.json
   ```
 
   Structural + semantic + coverage-matrix (every check_id covered-or-skipped; every `covers[]` resolves). Fix and re-run on non-zero exit. Runs on every branch.
@@ -161,7 +161,7 @@ Branch scope: **first-run** fully generates both artifacts; **trigger-driven rew
 
 ### Step 4: Plan-adequacy review (self-dispatched Level-1 reviewer) — gating
 
-Runs after `validate_scaffold.py` is green (Step 3) and before the Step-5 user review loop, on
+Runs after `simplan check-scaffold` is green (Step 3) and before the Step-5 user review loop, on
 every branch. Dispatch ONE Level-1 reviewer per `references/plan-review-task-contract.md` (paths
 only — the main thread reads no body): it judges testpoints vs spec (lens `coverage`) and
 check-strategy soundness (lens `adequacy`).
@@ -181,7 +181,7 @@ Dispatch → reap on wake. Aggregate into `{workdir}/plan-review.json` (schema
 Run:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/validate_plan_review.py {workdir}/plan-review.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py validate-review --review {workdir}/plan-review.json
 ```
 
 Non-zero exit → re-assemble the JSON and re-run (main-thread fix, NOT re-dispatch). On exit 0 it prints
@@ -224,14 +224,14 @@ The verdict feeds Step 5 (**T2** — block into the user loop; this stage never 
 Run the host tool's finalize subcommand; do not hand-assemble the envelope or hand-count anything. Pass the human-gate state from Step 5 (the γ-floor inputs the gate produced — nothing else is needed):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/validate_scaffold.py finalize \
+python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
   --workdir {workdir} --module {module} \
   [--waived '<json array of {tp_id,lens,location,classification,reason}>'] \
   [--status fail]            # only on user reject \
   [--revision '<one-line revision narrative>']   # trigger-driven rework only
 ```
 
-finalize re-derives `status` from the Step-4 plan-adequacy gate (it calls `validate_plan_review`'s verdict on the on-disk `plan-review.json` and copies `{gate, flagged, must_ack}` into `stage_specific.plan_adequacy_gate`; `--waived` is merged in as `plan_adequacy_gate.waived[]`), derives the summary counts as array-length reads of the promoted artifacts (`testpoint_count`/`power_scenario_count` + `scaffold_summary.{agent_count,sequence_count,test_count}` from `scaffold-specification.json`; `feature_count` = distinct `F-NN` in `verification-plan.md`), enumerates `artifacts[]` (plan + scaffold + plan-review), and writes the complete `result.json`. `status=pass` iff `gate==clear` OR every `flagged` is waived; `--status fail` (user reject) writes `fail_reason="user rejected plan"` and wins. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+finalize re-derives `status` from the Step-4 plan-adequacy gate (it calls `simplan validate-review`'s verdict on the on-disk `plan-review.json` and copies `{gate, flagged, must_ack}` into `stage_specific.plan_adequacy_gate`; `--waived` is merged in as `plan_adequacy_gate.waived[]`), derives the summary counts as array-length reads of the promoted artifacts (`testpoint_count`/`power_scenario_count` + `scaffold_summary.{agent_count,sequence_count,test_count}` from `scaffold-specification.json`; `feature_count` = distinct `F-NN` in `verification-plan.md`), enumerates `artifacts[]` (plan + scaffold + plan-review), and writes the complete `result.json`. `status=pass` iff `gate==clear` OR every `flagged` is waived; `--status fail` (user reject) writes `fail_reason="user rejected plan"` and wins. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
 The plan's canonical revision history lives in `verification-plan.md` §5; `--revision` carries the one-line machine-readable copy. The plan's structured data (`agents` / `sequences` / `tests` / `testpoints` / `power_scenarios`) lives in `scaffold-specification.json` and is not duplicated into `stage_specific`.
 
@@ -254,7 +254,7 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 
 | Excuse | Reality |
 |---|---|
-| "Most check_hints are covered — close enough to pass" | `validate_scaffold.py --plan-data` enforces the matrix: every `check_hints[]` check_id must be in some `testpoints[].covers[]` or in `skipped_checks[]`. It is not a self-judgment you can rationalize past. |
+| "Most check_hints are covered — close enough to pass" | `simplan check-scaffold` enforces the matrix: every `check_hints[]` check_id must be in some `testpoints[].covers[]` or in `skipped_checks[]`. It is not a self-judgment you can rationalize past. |
 | "This rework is trigger-driven, the feedback is automatic — skip the review loop" | All paths run the plan review loop; do not skip user approval because feedback came from a trigger. |
 
 ## Pitfalls
@@ -266,19 +266,19 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 
 ## Completion Gate
 
-- [ ] result.json was written by validate_scaffold.py finalize (it owns status / the derived counts / plan_adequacy_gate / artifacts[]; you supply only the γ-floor --waived/--status/--revision from Step 5).
-- [ ] `validate_scaffold.py --plan-data` passes — structural schema + semantic cross-refs; authoritative gate, runs on every branch.
+- [ ] result.json was written by `simplan finalize` (it owns status / the derived counts / plan_adequacy_gate / artifacts[]; you supply only the γ-floor --waived/--status/--revision from Step 5).
+- [ ] `simplan check-scaffold` passes — structural schema + semantic cross-refs; authoritative gate, runs on every branch.
 - [ ] When `status=fail`, `stage_specific.fail_reason` records the missing item / user-rejection reason.
 - [ ] `artifacts[]` has at least 2 entries (`verification-plan.md` + `scaffold-specification.json`); both files exist inside `{workdir}`.
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] **The user has approved the review loop** (dialogue form — `status=pass` only after approval; `verification-plan.md` carries frontmatter `Status: approved`).
 - [ ] `verification-plan.md` contains §1–§4 (first-run must include §1 / §2 / §3 / §4; trigger-driven revision / incremental update adds §5 when a real diff is present).
-- [ ] Every `agents[]` entry declares a non-empty `interface_groups` array, and `materialize_scaffold.py` ran successfully (each agent now carries a non-empty `interface.signals`). `materialize_scaffold.py` + `validate_scaffold.py --plan-data` fail loud here on an empty/underivable interface; sim-plan's own gate is authoritative — the scaffold contract is fully validated here.
-- [ ] `scaffold-specification.json` contains the two single-object fields `primary_clock` (`dut_port_name` + `period_ns`) and `reset` (`dut_port_name`) (required; populated by materialize_scaffold.py — a non-zero materialize exit in Step 3 is the fail path).
+- [ ] Every `agents[]` entry declares a non-empty `interface_groups` array, and `simplan materialize-scaffold` ran successfully (each agent now carries a non-empty `interface.signals`). `simplan materialize-scaffold` + `simplan check-scaffold` fail loud here on an empty/underivable interface; sim-plan's own gate is authoritative — the scaffold contract is fully validated here.
+- [ ] `scaffold-specification.json` contains the two single-object fields `primary_clock` (`dut_port_name` + `period_ns`) and `reset` (`dut_port_name`) (required; populated by `simplan materialize-scaffold` — a non-zero materialize exit in Step 3 is the fail path).
 - [ ] The number of entries in `verification-plan.md` §3 testpoints table matches the length of `scaffold-specification.json.testpoints[]`.
 - [ ] The number of entries in `verification-plan.md` §4 power scenarios matches the length of `scaffold-specification.json.power_scenarios[]`.
-- [ ] `validate_scaffold.py --plan-data` coverage-matrix layer passes: every `check_hints[]` check_id is in some `testpoints[].covers[]` or in `skipped_checks[]`, and every `covers[]` resolves.
-- [ ] **Plan-adequacy gate (Step 4):** `validate_plan_review.py` reports `plan_adequacy_gate.gate==clear` (or every `flagged` is in `plan_adequacy_gate.waived[]`, or the wave was `unavailable` and acknowledged); `stage_specific.plan_adequacy_gate` written; `plan-review.json` in `artifacts[]`. `status=pass` requires that AND user approval.
+- [ ] `simplan check-scaffold` coverage-matrix layer passes: every `check_hints[]` check_id is in some `testpoints[].covers[]` or in `skipped_checks[]`, and every `covers[]` resolves.
+- [ ] **Plan-adequacy gate (Step 4):** `simplan validate-review` reports `plan_adequacy_gate.gate==clear` (or every `flagged` is in `plan_adequacy_gate.waived[]`, or the wave was `unavailable` and acknowledged); `stage_specific.plan_adequacy_gate` written; `plan-review.json` in `artifacts[]`. `status=pass` requires that AND user approval.
 
 ## Return Contract
 

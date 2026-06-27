@@ -91,8 +91,8 @@ def test_obs_name_strips_canonical_txn():
     deliberately NOT asserted here."""
     import importlib.util
 
-    vs_path = ROOT / "skills/simulation-plan/scripts/validate_scaffold.py"
-    spec = importlib.util.spec_from_file_location("validate_scaffold", vs_path)
+    vs_path = ROOT / "skills/simulation-plan/scripts/simplan/scaffold.py"
+    spec = importlib.util.spec_from_file_location("simplan_scaffold", vs_path)
     vs = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(vs)
     assert vs._obs_name("m_obs_txn", "m") == "obs"

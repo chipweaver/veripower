@@ -131,7 +131,7 @@ def _agent_io(agent: dict) -> tuple[list[dict], list[dict]]:
     if not signals:
         sys.exit(
             f"scaffold: agent {aname!r} has no interface.signals. Rerun simulation-plan's "
-            f"materialize step (materialize_scaffold.py): agents declare interface_groups and "
+            f"materialize step (simplan materialize-scaffold): agents declare interface_groups and "
             f"the materializer fills signals from plan-data.json.interfaces[] "
             f"(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
         )
@@ -147,7 +147,7 @@ def _check_str_or_omitted(value, field: str, module: str) -> None:
     if value not in (None, "") and not isinstance(value, str):
         sys.exit(
             f"scaffold: {field} must be a single '{module}_<agent>_txn' string (or omitted), "
-            f"got {type(value).__name__} {value!r}. Re-run simulation-plan (validate_scaffold "
+            f"got {type(value).__name__} {value!r}. Re-run simulation-plan (simplan check-scaffold "
             f"gate). See skills/simulation-plan/SKILL.md scaffold-spec contract."
         )
 
@@ -159,7 +159,7 @@ def _check_list_or_omitted(value, field: str) -> None:
         sys.exit(
             f"scaffold: {field} must be a list (or omitted), got {type(value).__name__} "
             f"{value!r}. A bare string silently iterates character-by-character. Re-run "
-            f"simulation-plan (validate_scaffold gate)."
+            f"simulation-plan (simplan check-scaffold gate)."
         )
 
 
@@ -191,7 +191,7 @@ def validate_ports(agents: list[dict], clk_port_name: str, rst_port_name: str) -
                     f"scaffold: signal '{sig}' duplicated across agents "
                     f"(first declared in '{first_owner[sig]}', conflict in '{aname}'). "
                     f"Adjust the agents' interface_groups in scaffold-specification.json so "
-                    f"the groups do not overlap, then re-run materialize_scaffold.py "
+                    f"the groups do not overlap, then re-run simplan materialize-scaffold "
                     f"(an agent's signals must be unique within the scaffold)."
                 )
             seen_signals.add(sig)
