@@ -5,7 +5,7 @@ description: Use when all design stages are complete and the module needs its fi
 
 # Frontend Sign-off
 
-Your sole responsibility: aggregate every upstream `result.json` envelope and evidence path into a sign-off, then compose the human-facing traceability matrix. The pass/fail gate and the `result.json` envelope are owned by `aggregate_signoff.py` — never decided by eye, never hand-written.
+Your sole responsibility: aggregate every upstream `result.json` envelope and evidence path into a sign-off, then compose the human-facing traceability matrix. The pass/fail gate and the `result.json` envelope are owned by the `signoff finalize` verb — never decided by eye, never hand-written.
 
 ## When to Use
 
@@ -14,7 +14,7 @@ Your sole responsibility: aggregate every upstream `result.json` envelope and ev
 
 ## Iron Rule
 
-- The gate and the `result.json` envelope are owned by `aggregate_signoff.py`. Run it; never re-decide its verdict by eye and never hand-author the JSON.
+- The gate and the `result.json` envelope are owned by the `signoff finalize` verb. Run it; never re-decide its verdict by eye and never hand-author the JSON.
 - Sign-off MUST stand on a fully-passing chain: the script writes `status=fail` (with `fail_reason` listing the failing items) if any upstream envelope is missing / unparseable / not `pass`, any evidence path is unreachable, or specification passed yet its traceability inputs are unreadable.
 - `stage_specific` is intentionally an empty object — sign-off content lives in `checklist.md` / `traceability.md`, not in named envelope fields.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
@@ -55,7 +55,7 @@ Single linear flow (read-only aggregator — every run does identical work, no b
 (mandatory; it owns the gate + envelope):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/aggregate_signoff.py --workdir {workdir} --module {module}
+python3 ${CLAUDE_SKILL_DIR}/scripts/signoff/__main__.py finalize --workdir {workdir} --module {module}
 ```
 
 ### Step 2: On exit 0
@@ -76,18 +76,18 @@ the script could not produce a verdict. Emit `STATUS: BLOCKED <one-line reason>`
 
 | Excuse | Reality |
 |---|---|
-| "Everything's basically done — sign it off" | You do not decide. `aggregate_signoff.py` owns the gate: any upstream not `pass`, any evidence unreachable → it writes `status=fail`. The aggregator does not get to call a stage "close enough" — and neither do you. |
+| "Everything's basically done — sign it off" | You do not decide. `signoff finalize` owns the gate: any upstream not `pass`, any evidence unreachable → it writes `status=fail`. The aggregator does not get to call a stage "close enough" — and neither do you. |
 
 ## Completion Gate
 
-- [ ] `aggregate_signoff.py` was run; its exit code drove the STATUS branch.
+- [ ] `signoff finalize` was run; its exit code drove the STATUS branch.
 - [ ] On exit 0: `{workdir}/result.json`, `checklist.md`, and `traceability.md` are on disk.
 - [ ] On `status=pass`: the feature→evidence matrix and executive summary have been composed into `traceability.md`.
 - [ ] No Iron Rule or Red Flag was triggered (no hand-authored envelope, no by-eye verdict).
 
 ## Return Contract
 
-As the last line, emit `STATUS: DONE` (when `aggregate_signoff.py` wrote `result.json`, i.e. exit 0) or `STATUS: BLOCKED <one-line reason>` (when a non-zero exit / program exception prevented the write). The harness uses this signal to fire the Task-completion notification; the caller then decides based on `result.json`.
+As the last line, emit `STATUS: DONE` (when `signoff finalize` wrote `result.json`, i.e. exit 0) or `STATUS: BLOCKED <one-line reason>` (when a non-zero exit / program exception prevented the write). The harness uses this signal to fire the Task-completion notification; the caller then decides based on `result.json`.
 
 ## Bundled References
 

@@ -604,7 +604,7 @@ def test_golden_real_reports_lean_pass(tmp_path):
 
 def test_golden_is_schema_valid(tmp_path):
     # Canonical pattern: validate the in-memory dict against {envelope schema + this
-    # stage's result.schema} via Registry (mirrors test_aggregate_signoff.py:316 pattern).
+    # stage's result.schema} via Registry (mirrors test_signoff_result.py pattern).
     import shutil
 
     from jsonschema import Draft202012Validator
