@@ -97,7 +97,7 @@ Write the structured-prose analysis, then on a line by itself the literal prefix
 Before emitting, validate the routing block:
 
 ```bash
-echo "<json>" | python3 ${CLAUDE_SKILL_DIR}/scripts/validate_analysis.py --schema ${CLAUDE_SKILL_DIR}/references/analysis.schema.json --json-stdin
+echo "<json>" | python3 ${CLAUDE_SKILL_DIR}/scripts/simtriage/__main__.py validate-analysis --json-stdin
 ```
 
 On non-zero exit, read stderr, fix, and re-run — the authoritative gate for the routing contract.
@@ -152,7 +152,7 @@ Root-cause selection lives in [`references/fail-analysis-patterns.md`](reference
 ## Completion Gate
 
 - [ ] The message body has the prose analysis, then a final block starting with the literal prefix `ANALYSIS:` immediately followed by a valid JSON object.
-- [ ] `validate_analysis.py` exits 0 on the emitted routing block (authoritative schema gate).
+- [ ] `simtriage validate-analysis` exits 0 on the emitted routing block (authoritative schema gate).
 - [ ] `analysis_state` is set (`complete` or `skipped`).
 - [ ] When `complete`: every fail case is analyzed and reflected in the prose (`## Root cause`, and `## Findings` when >1 case); `root_cause` is set per the attribution rule.
 - [ ] When `skipped`: `skipped_reason` carries a specific reason.
@@ -167,4 +167,4 @@ The message body is the structured-prose analysis followed by a final block that
 
 - [`references/fail-analysis-patterns.md`](references/fail-analysis-patterns.md) — Symptom/scope → `root_cause`, fault-type / `root_cause_direction` classification, regression-level table, clustering guide, confidence rules, and the root-cause attribution + tiebreak rule.
 - [`references/analysis.schema.json`](references/analysis.schema.json) — ANALYSIS routing-block schema (the sole home for the routing fields + `root_cause` enum).
-- `scripts/validate_analysis.py` — routing-block self-gate (invocation contract: Step 5 + `--help`; run before emitting).
+- `scripts/simtriage/` (the `validate-analysis` verb) — routing-block self-gate (invocation contract: Step 5 + `--help`; run before emitting).

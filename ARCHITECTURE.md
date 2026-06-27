@@ -451,7 +451,7 @@ VeriPower produces two kinds of structured outputs that go through different val
 
 **Verdict outputs** (routing inputs to the deterministic core) — `result.json` (stage outcomes), event payloads (event-log entries): validated by `state.py` at write time (`cmd_reap` schema-validates `result.json`; `append_event` validates every event). These are the values that determine routing; incorrect values corrupt the state machine. Validation is mandatory, centralized, and rejects-and-fails the run on error.
 
-**Descriptive/advisory artifact outputs** (advisory content for downstream context) — the simulation-triage `ANALYSIS` block, the simulation-plan verification scaffold: these inform routing but are NOT themselves `state.py` inputs. They are validated by producer self-gates (`skills/simulation-triage/scripts/validate_analysis.py`, `skills/simulation-plan/scripts/validate_scaffold.py`). The producer fixes-and-retries on failure before emitting. The Orchestrator consumes the validated payload; `state.py` does not see it.
+**Descriptive/advisory artifact outputs** (advisory content for downstream context) — the simulation-triage `ANALYSIS` block, the simulation-plan verification scaffold: these inform routing but are NOT themselves `state.py` inputs. They are validated by producer self-gates (`skills/simulation-triage/scripts/simtriage/__main__.py`, `skills/simulation-plan/scripts/simplan/__main__.py`). The producer fixes-and-retries on failure before emitting. The Orchestrator consumes the validated payload; `state.py` does not see it.
 
 Neither naive unification works: centralizing ANALYSIS validation in `state.py` would add routing logic to a pure-state tool; deferring `result.json` validation to the producer would let a bad `result.json` corrupt `task.json`. The three validation loci are therefore:
 
@@ -558,7 +558,7 @@ semantic-gate trips, but self-converges authoring-locus (conformance presence) o
 - **Output:** a two-tier ANALYSIS — a routing block (`root_cause`/`analysis_state`, schema-validated) plus a prose analysis section (clustering is a reasoning method that produces the `## Findings` narrative and a single `root_cause`, not a serialized sorted-candidates array).
 - **Side effects:** none. Does NOT edit `task.json`, write `result.json`, or touch RTL / tests / simulation infrastructure.
 
-`simulation-triage` self-validates its ANALYSIS via `scripts/validate_analysis.py` (the producer self-gate — see §5.6 validation doctrine) before emitting. The Orchestrator extracts `root_cause` from the validated ANALYSIS, passes it to `route.py` inside `orchestrate.py decide` to select the `target_stage` (see §5.4), and the decider returns a `REWORK` action which the Orchestrator executes via `state.py rework`.
+`simulation-triage` self-validates its ANALYSIS via `scripts/simtriage/__main__.py` (the `validate-analysis` producer self-gate — see §5.6 validation doctrine) before emitting. The Orchestrator extracts `root_cause` from the validated ANALYSIS, passes it to `route.py` inside `orchestrate.py decide` to select the `target_stage` (see §5.4), and the decider returns a `REWORK` action which the Orchestrator executes via `state.py rework`.
 
 ### 6.5 `orchestrator_context` injection field
 

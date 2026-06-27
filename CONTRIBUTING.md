@@ -29,7 +29,7 @@ Rules:
 Which validation regime a new structured output needs depends on its class — [ARCHITECTURE.md §5.6](ARCHITECTURE.md#56-validation-doctrine) owns the taxonomy. The contributor obligation per class:
 
 - **Verdict output** (`result.json`, event payloads): do not add a field without a schema update **and** a `test_state.py` coverage test. `state.py` validates these at write time, so an unschema'd field corrupts the deterministic core.
-- **Descriptive/advisory artifact** (e.g., triage ANALYSIS, verification scaffold): ship a `scripts/validate_*.py` producer self-gate (pattern: `skills/simulation-triage/scripts/validate_analysis.py`, `skills/simulation-plan/scripts/validate_scaffold.py`); the skill fixes-and-retries before emitting. Do **not** add a `state.py` command for advisory validation — `state.py` never sees the artifact.
+- **Descriptive/advisory artifact** (e.g., triage ANALYSIS, verification scaffold): ship a `scripts/validate_*.py` producer self-gate (pattern: `skills/simulation-triage/scripts/simtriage/__main__.py`, `skills/simulation-plan/scripts/simplan/__main__.py`); the skill fixes-and-retries before emitting. Do **not** add a `state.py` command for advisory validation — `state.py` never sees the artifact.
 
 ## Testing
 

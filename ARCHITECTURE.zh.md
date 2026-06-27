@@ -451,7 +451,7 @@ VeriPower 产出两类结构化输出，各走各的验证通道：
 
 **裁决输出**（喂给确定性核心做路由决策的值）——`result.json`（阶段结果）、事件负载（事件日志条目）：由 `state.py` 在写入时校验（`cmd_reap` 对 `result.json` 做 schema 校验；`append_event` 对每个事件做校验）。这些值直接决定路由走向；错了会污染状态机。校验是强制的、集中的，不通过则拒绝并让 run 失败。
 
-**描述性/咨询性产物输出**（给下游参考的上下文）——simulation-triage 的 `ANALYSIS` 块、simulation-plan 的验证 scaffold：这些会影响路由但不是 `state.py` 的直接输入。它们由生产者自检门校验（`skills/simulation-triage/scripts/validate_analysis.py`、`skills/simulation-plan/scripts/validate_scaffold.py`）。生产者校验失败则修了重来，通过才发出。Orchestrator 消费的是已校验过的负载；`state.py` 不碰。
+**描述性/咨询性产物输出**（给下游参考的上下文）——simulation-triage 的 `ANALYSIS` 块、simulation-plan 的验证 scaffold：这些会影响路由但不是 `state.py` 的直接输入。它们由生产者自检门校验（`skills/simulation-triage/scripts/simtriage/__main__.py`、`skills/simulation-plan/scripts/simplan/__main__.py`）。生产者校验失败则修了重来，通过才发出。Orchestrator 消费的是已校验过的负载；`state.py` 不碰。
 
 两种做法不能简单统一：把 ANALYSIS 校验塞进 `state.py` 等于给纯状态工具加路由逻辑；把 `result.json` 校验推给生产者等于让脏数据污染 `task.json`。因此有三个校验点：
 
@@ -547,7 +547,7 @@ Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|si
 - **输出：** 两层 ANALYSIS——路由块（`root_cause`/`analysis_state`，schema 校验）加散文分析（聚类是产生 `## Findings` 叙述和单个 `root_cause` 的推理方法，不是序列化的排序候选数组）。
 - **副作用：** 无。不碰 `task.json`，不写 `result.json`，不改 RTL / 测试 / 仿真基础设施。
 
-`simulation-triage` 在发出前通过 `scripts/validate_analysis.py` 自检其 ANALYSIS（生产者自检门——见 §5.6 验证体系）。Orchestrator 从已校验的 ANALYSIS 中提取 `root_cause`，在 `orchestrate.py decide` 内传给 `route.py` 选定 `target_stage`（见 §5.4），decider 返回 `REWORK` 动作，Orchestrator 经 `state.py rework` 执行。
+`simulation-triage` 在发出前通过 `scripts/simtriage/__main__.py`（`validate-analysis` 动词）自检其 ANALYSIS（生产者自检门——见 §5.6 验证体系）。Orchestrator 从已校验的 ANALYSIS 中提取 `root_cause`，在 `orchestrate.py decide` 内传给 `route.py` 选定 `target_stage`（见 §5.4），decider 返回 `REWORK` 动作，Orchestrator 经 `state.py rework` 执行。
 
 ### 6.5 `orchestrator_context` 注入字段
 
