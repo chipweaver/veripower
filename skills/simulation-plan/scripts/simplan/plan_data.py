@@ -1,0 +1,369 @@
+"""Extract the derived verification universe from a spec workdir into plan-data.json.
+
+The derive-plan-data verb reads a spec workdir (manifest.json + design.md + per-child
+<child>.md) and emits plan-data.json containing features, interfaces, scenarios,
+check_hints, clocks, and cross_module_wires. The simulation-plan agent consumes this to
+draft verification-plan.md and scaffold-specification.json; the materialize-scaffold verb
+then reads plan-data.json to fill the agent signal lists.
+
+Markdown parsing lives in the stage-private simplan._md seam; this module owns the
+header-candidate maps + the per-section loaders.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+from simplan._md import (
+    default_if_blank,
+    extract_section,
+    map_headers,
+    parse_all_markdown_tables,
+    parse_first_markdown_table,
+    read_text,
+    write_text,
+)
+
+# ---------------------------------------------------------------------------
+# Header candidate mappings.
+#
+# design.md is produced from skills/specification/references/design-template.md,
+# whose H3 headings and table column headers are English. The script matches
+# normalized (lowercased, space-stripped, paren-stripped, backtick-stripped)
+# header text against these candidate sets.
+# ---------------------------------------------------------------------------
+
+FEATURE_HEADER_CANDIDATES = {
+    "feature_id": {"id", "featureid"},
+    "feature_name": {"feature", "featurename", "name"},
+    "description": {"description", "desc", "notes"},
+    "mode_interface": {"mode/interface", "interface", "mode"},
+    "priority": {"priority"},
+    "happy_path": {"happypath", "happy_path", "happy"},
+    "corner_cases": {"cornercases", "corner_cases", "corner"},
+    "negative_cases": {"negativecases", "negative_cases", "negative"},
+    "coverage_intent": {"coverageintent", "coverage_intent", "coverage"},
+}
+
+CLOCK_HEADER_CANDIDATES = {
+    "clock_name": {"clockname", "clock"},
+    "description": {"description"},
+    "frequency": {"nominalfrequency", "frequency"},
+    "period_ns": {"sdcperiod", "periodns", "period"},
+    "relationship": {"relationship"},
+}
+
+INTERFACE_HEADER_CANDIDATES = {
+    "signal_name": {"signalname", "signal", "port", "portname"},
+    "direction": {"direction", "dir"},
+    "width": {"width", "bits"},
+    "clock_domain": {"clockdomain", "clock_domain"},
+    "interface_group": {"interfacegroup", "interface_group", "group"},
+    "protocol": {"protocol"},
+    "role": {"role"},
+}
+
+SCENARIO_HEADER_CANDIDATES = {
+    "scenario_id": {"scenarioid", "scenario_id", "sceneid"},
+    "interface_mode": {"interface/mode", "interface"},
+    "stimulus": {"trigger/stimulus", "stimulus", "trigger"},
+    "expected": {"expectedresult", "expected", "result"},
+    "timing_constraint": {"timingconstraint", "timing_constraint"},
+    "exception": {"exceptions/negativecases", "exception", "negative"},
+}
+
+CHECK_HINT_HEADER_CANDIDATES = {
+    "check_id": {"checkid", "check_id"},
+    "source_feature": {"sourcefeature", "source_feature", "sourceid", "featureid"},
+    "implementation_detail": {
+        "implementationdetail",
+        "implementation_detail",
+        "detail",
+        "implementation",
+    },
+    "implementation_detail_verbatim": {
+        "implementationdetailverbatim",
+        "implementation_detail_verbatim",
+        "verbatim",
+    },
+    "observable": {"observable"},
+    "reference_rule": {"referencerule", "reference_rule", "rule"},
+    "latency": {"latency", "cycles"},
+    "reset_behavior": {"resetbehavior", "reset_behavior", "reset"},
+}
+
+
+# ---------------------------------------------------------------------------
+# Spec parsers
+# ---------------------------------------------------------------------------
+
+
+def load_features(design_text: str) -> list[dict]:
+    """English canonical anchor — §1.3 Feature Table."""
+    section = extract_section(design_text, r"(^|.*)§?\s*1\.3.*Feature\s+Table")
+    if not section:
+        raise ValueError('design.md "§1.3 Feature Table" section not found.')
+    headers, rows = parse_first_markdown_table(section)
+    mapping = map_headers(headers, FEATURE_HEADER_CANDIDATES)
+    required = {"feature_id", "feature_name", "description"}
+    missing = required - mapping.keys()
+    if missing:
+        raise ValueError(
+            f"design.md §1.3 features table is missing required columns: {', '.join(sorted(missing))}"
+        )
+
+    features: list[dict] = []
+    for row in rows:
+        feature_id = row[mapping["feature_id"]].strip()
+        feature_name = row[mapping["feature_name"]].strip()
+        description = row[mapping["description"]].strip()
+        if not feature_id or not feature_name:
+            continue
+        features.append(
+            {
+                "feature_id": feature_id,
+                "feature_name": feature_name,
+                "description": description,
+                "mode_interface": default_if_blank(
+                    row.get(mapping.get("mode_interface", ""), ""), "unspecified"
+                ),
+                "priority": default_if_blank(
+                    row.get(mapping.get("priority", ""), ""), ""
+                ),
+                "happy_path": default_if_blank(
+                    row.get(mapping.get("happy_path", ""), ""),
+                    f"Verify {feature_name}'s main-path behavior conforms to spec.",
+                ),
+                "corner_cases": default_if_blank(
+                    row.get(mapping.get("corner_cases", ""), ""),
+                    "",
+                ),
+                "negative_cases": default_if_blank(
+                    row.get(mapping.get("negative_cases", ""), ""),
+                    "",
+                ),
+                "coverage_intent": default_if_blank(
+                    row.get(mapping.get("coverage_intent", ""), ""),
+                    "feature traceability",
+                ),
+            }
+        )
+    if not features:
+        raise ValueError("design.md §1.3 features table is empty.")
+    return features
+
+
+def load_clock_table(design_text: str) -> list[dict]:
+    """English canonical anchor — §1.6 Clocks and Frequencies."""
+    section = extract_section(design_text, r"(^|.*)§?\s*1\.6.*Clocks?\s+and\s+Freq")
+    if not section:
+        return []
+    try:
+        headers, rows = parse_first_markdown_table(section)
+    except ValueError:
+        return []
+    mapping = map_headers(headers, CLOCK_HEADER_CANDIDATES)
+    result: list[dict] = []
+    for row in rows:
+        result.append(
+            {
+                "clock_name": row.get(mapping.get("clock_name", ""), ""),
+                "description": row.get(mapping.get("description", ""), ""),
+                "frequency": row.get(mapping.get("frequency", ""), ""),
+                "period_ns": row.get(mapping.get("period_ns", ""), ""),
+                "relationship": row.get(mapping.get("relationship", ""), ""),
+            }
+        )
+    return result
+
+
+def load_interfaces(design_text: str) -> list[dict]:
+    """Extract §1.4.1 Top-Level IO."""
+    section = extract_section(design_text, r"(^|.*)§?\s*1\.4\.1.*Top.Level\s+IO")
+    if not section:
+        return []
+    tables = parse_all_markdown_tables(section)
+    if not tables:
+        return []
+
+    best: tuple[list[str], list[dict], dict] | None = None
+    for headers, rows in tables:
+        mapping = map_headers(headers, INTERFACE_HEADER_CANDIDATES)
+        if "signal_name" in mapping or "direction" in mapping:
+            best = (headers, rows, mapping)
+            break
+    if best is None:
+        headers, rows = tables[0]
+        mapping = map_headers(headers, INTERFACE_HEADER_CANDIDATES)
+        best = (headers, rows, mapping)
+
+    _, rows, mapping = best
+    result: list[dict] = []
+    for row in rows:
+        signal = row.get(mapping.get("signal_name", ""), "").strip()
+        if not signal:
+            continue
+        result.append(
+            {
+                "signal_name": signal,
+                "direction": row.get(mapping.get("direction", ""), "").strip(),
+                "width": row.get(mapping.get("width", ""), "").strip() or "1",
+                "clock_domain": row.get(mapping.get("clock_domain", ""), "").strip(),
+                "interface_group": row.get(
+                    mapping.get("interface_group", ""), ""
+                ).strip(),
+                "protocol": row.get(mapping.get("protocol", ""), "").strip(),
+                "role": row.get(mapping.get("role", ""), "").strip(),
+            }
+        )
+    return result
+
+
+def load_scenarios(design_text: str) -> list[dict]:
+    """English canonical anchor — §1.5 Interface Timing Scenarios."""
+    section = extract_section(
+        design_text, r"(^|.*)§?\s*1\.5.*Interface\s+Timing\s+Scenarios?"
+    )
+    if not section:
+        return []
+    tables = parse_all_markdown_tables(section)
+    if not tables:
+        return []
+
+    result: list[dict] = []
+    for headers, rows in tables:
+        mapping = map_headers(headers, SCENARIO_HEADER_CANDIDATES)
+        if "scenario_id" not in mapping and "stimulus" not in mapping:
+            continue
+        for row in rows:
+            scenario_id = row.get(mapping.get("scenario_id", ""), "").strip()
+            if not scenario_id:
+                continue
+            result.append(
+                {
+                    "scenario_id": scenario_id,
+                    "interface_mode": row.get(
+                        mapping.get("interface_mode", ""), ""
+                    ).strip(),
+                    "stimulus": row.get(mapping.get("stimulus", ""), "").strip(),
+                    "expected": row.get(mapping.get("expected", ""), "").strip(),
+                    "timing_constraint": row.get(
+                        mapping.get("timing_constraint", ""), ""
+                    ).strip(),
+                    "exception": row.get(mapping.get("exception", ""), "").strip(),
+                }
+            )
+    return result
+
+
+def load_cross_module_wires(design_text: str) -> list[dict]:
+    """Extract §1.4.2 Inter-module Interconnects table.
+
+    Returns list of raw row dicts ({Wire, Producer, Consumer, Protocol,
+    Timing Constraint, Notes} per design-template header names). Empty list
+    when the section is missing or N=1 module has no inter-module wires.
+    """
+    section = extract_section(
+        design_text, r"(^|.*)§?\s*1\.4\.2.*Inter.module\s+Interconnects?"
+    )
+    if not section:
+        return []
+    try:
+        _, rows = parse_first_markdown_table(section)
+    except ValueError:
+        return []
+    return rows
+
+
+def load_check_hints(workdir: Path) -> list[dict]:
+    """Iterate manifest.children, read each <child>.md §5 Verification Hints,
+    tag each hint with the `child` field. manifest.json is a required input
+    (the specification skill always emits it); a missing one fails loud.
+    """
+    manifest = json.loads((Path(workdir) / "manifest.json").read_text(encoding="utf-8"))
+    hints: list[dict] = []
+    for child in manifest["children"]:
+        sub_text = (Path(workdir) / child["doc"]).read_text(encoding="utf-8")
+        section = extract_section(sub_text, r"(^|.*)§?\s*5\.?\s*Verification\s+Hints?")
+        if not section:
+            continue
+        try:
+            _, rows = parse_first_markdown_table(section)
+        except ValueError:
+            continue
+        for row in rows:
+            h = _normalize_check_hint_row(row)
+            if h is None:
+                continue
+            h["child"] = child["name"]
+            hints.append(h)
+    return hints
+
+
+def _normalize_check_hint_row(row: dict) -> dict | None:
+    """Map a raw markdown-row dict (header keys) to the canonical check_hint dict."""
+    headers = list(row.keys())
+    mapping = map_headers(headers, CHECK_HINT_HEADER_CANDIDATES)
+    if "check_id" not in mapping and "source_feature" not in mapping:
+        return None
+    check_id = row.get(mapping.get("check_id", ""), "").strip()
+    if not check_id:
+        return None
+    return {
+        "check_id": check_id,
+        "source_feature": row.get(mapping.get("source_feature", ""), "").strip(),
+        "implementation_detail": row.get(
+            mapping.get("implementation_detail", ""), ""
+        ).strip(),
+        "implementation_detail_verbatim": row.get(
+            mapping.get("implementation_detail_verbatim", ""), ""
+        ).strip(),
+        "observable": row.get(mapping.get("observable", ""), "").strip(),
+        "reference_rule": row.get(mapping.get("reference_rule", ""), "").strip(),
+        "latency": row.get(mapping.get("latency", ""), "").strip(),
+        "reset_behavior": row.get(mapping.get("reset_behavior", ""), "").strip(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Verb entry
+# ---------------------------------------------------------------------------
+
+
+def run(workdir, output=None) -> int:
+    """derive-plan-data: spec workdir -> plan-data.json. Fail-loud non-zero on a
+    missing design.md (sys.exit) or a missing/empty §1.3 table (raised ValueError);
+    never writes a thin/partial plan-data.json on a structural defect."""
+    workdir = Path(workdir).resolve()
+    design = workdir / "design.md"
+    if not design.is_file():
+        sys.exit(f"derive-plan-data: missing design.md: {design}")
+    design_text = read_text(design)
+    check_hints = load_check_hints(workdir)
+    output_path = Path(output).resolve() if output else workdir / "plan-data.json"
+
+    features = load_features(design_text)
+    clocks = load_clock_table(design_text)
+    interfaces = load_interfaces(design_text)
+    scenarios = load_scenarios(design_text)
+    cross_module_wires = load_cross_module_wires(design_text)
+
+    plan_data = {
+        "features": features,
+        "interfaces": interfaces,
+        "scenarios": scenarios,
+        "check_hints": check_hints,
+        "clocks": clocks,
+        "cross_module_wires": cross_module_wires,
+    }
+
+    write_text(output_path, json.dumps(plan_data, indent=2, ensure_ascii=False))
+    print(f"derive-plan-data: wrote {output_path}")
+    print(
+        f"  features={len(features)}, interfaces={len(interfaces)}, "
+        f"scenarios={len(scenarios)}, check_hints={len(check_hints)}, "
+        f"clocks={len(clocks)}, cross_module_wires={len(cross_module_wires)}"
+    )
+    return 0
