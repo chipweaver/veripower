@@ -84,7 +84,7 @@ def infer_top_from_filelist(rtl_dir: Path) -> str | None:
         line = raw.replace("\r", "")
         if re.match(r"^\s*#", line) or not line.strip() or re.match(r"^\s*[+\-]", line):
             continue
-        base = os.path.basename(line.strip())
+        base = os.path.basename(line)
         for ext in (".v", ".sv", ".vh"):
             if base.endswith(ext):
                 base = base[: -len(ext)]

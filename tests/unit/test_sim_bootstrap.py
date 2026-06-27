@@ -39,6 +39,14 @@ def test_top_from_filelist_rejects_directive(tmp_path):
     assert bootstrap.infer_top_from_filelist(tmp_path) is None
 
 
+def test_top_from_filelist_rejects_padded_bare_name(tmp_path):
+    # A whitespace-padded bare filename (no path separator) must NOT infer a top:
+    # basename keeps the leading spaces, so the identifier check rejects it — byte-for-byte
+    # the shell/lint-cdc behavior (no .strip() before basename).
+    (tmp_path / "filelist.txt").write_text("  top.v\n")
+    assert bootstrap.infer_top_from_filelist(tmp_path) is None
+
+
 # ── full deploy "mirror" tests (subprocess; isolated repo root) ───────────────
 def _mirror(
     tmp_path, *, readme="**Top module**: dut\n", filelist="rtl/dut.v\n+incdir+inc\n"
