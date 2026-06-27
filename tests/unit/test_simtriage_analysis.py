@@ -3,33 +3,31 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPT = (
-    Path(__file__).resolve().parents[2]
-    / "skills"
-    / "simulation-triage"
-    / "scripts"
-    / "validate_analysis.py"
-)
-SCHEMA = (
-    Path(__file__).resolve().parents[2]
-    / "skills"
-    / "simulation-triage"
-    / "references"
-    / "analysis.schema.json"
-)
+ROOT = Path(__file__).resolve().parents[2]
+MAIN = ROOT / "skills/simulation-triage/scripts/simtriage/__main__.py"
+SCHEMA = ROOT / "skills/simulation-triage/references/analysis.schema.json"
 
 
-def _run(payload: dict):
+def _run(payload: dict, *, schema=None):
+    argv = [sys.executable, str(MAIN), "validate-analysis", "--json-stdin"]
+    if schema is not None:
+        argv += ["--schema", str(schema)]
     return subprocess.run(
-        [sys.executable, str(SCRIPT), "--schema", str(SCHEMA), "--json-stdin"],
-        input=json.dumps(payload),
-        capture_output=True,
-        text=True,
+        argv, input=json.dumps(payload), capture_output=True, text=True
     )
 
 
+def test_default_schema_used_when_flag_omitted():
+    r = _run({"analysis_state": "complete", "root_cause": "rtl-design"})
+    assert r.returncode == 0, r.stderr
+
+
+def test_explicit_schema_override_still_accepted():
+    r = _run({"analysis_state": "complete", "root_cause": "rtl-design"}, schema=SCHEMA)
+    assert r.returncode == 0, r.stderr
+
+
 def test_minimal_complete_only_root_cause_exits_zero():
-    """Thin routing layer: complete needs only root_cause (+ analysis_state), no longer groups/recommendations/root_cause_summary."""
     r = _run({"analysis_state": "complete", "root_cause": "rtl-design"})
     assert r.returncode == 0, r.stderr
 
@@ -57,9 +55,7 @@ def test_complete_without_root_cause_exits_nonzero():
 
 
 def test_skipped_without_reason_exits_nonzero():
-    r = _run(
-        {"analysis_state": "skipped"}
-    )  # skipped requires skipped_reason (allOf if/then)
+    r = _run({"analysis_state": "skipped"})
     assert r.returncode != 0
     assert "skipped_reason" in r.stderr
 
@@ -70,7 +66,6 @@ def test_root_cause_outside_enum_exits_nonzero():
 
 
 def test_advisory_keys_rejected_by_additional_properties_false():
-    """additionalProperties:false — advisory content lives in prose, not stuffed into the routing JSON."""
     payload = {
         "analysis_state": "complete",
         "root_cause": "rtl-design",
@@ -86,3 +81,25 @@ def test_advisory_keys_rejected_by_additional_properties_false():
     r = _run(payload)
     assert r.returncode != 0
     assert "groups" in r.stderr or "additional" in r.stderr.lower()
+
+
+def test_json_file_input(tmp_path):
+    p = tmp_path / "a.json"
+    p.write_text(json.dumps({"analysis_state": "complete", "root_cause": "rtl-design"}))
+    r = subprocess.run(
+        [sys.executable, str(MAIN), "validate-analysis", "--json-file", str(p)],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+
+
+def test_invalid_json_exits_nonzero():
+    r = subprocess.run(
+        [sys.executable, str(MAIN), "validate-analysis", "--json-stdin"],
+        input="{not json",
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode != 0
+    assert "not valid JSON" in r.stderr
