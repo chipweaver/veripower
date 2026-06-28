@@ -141,8 +141,7 @@ On wake-up, reap the env-build child's harness `STATUS:` last line + its JSON li
 `STATUS: BLOCKED <reason>`, run `sim finalize --workdir {workdir} --module <module>
 --phase env-blocked --failure-phase <compile|smoke|prerequisite> --fail-reason "<reason>"`
 (`--failure-phase` per the reason — `compile` / `smoke` for a Rule A semantic block, `prerequisite`
-for an incomplete `inlined_check_hints[]` block; pass `--verify-verdict <reaped env JSON>` when it
-carries `compile_rounds`) and return; do not dispatch the downstream waves.
+for an incomplete `inlined_check_hints[]` block) and return; do not dispatch the downstream waves.
 
 ### Step 3: Smoke gate (deterministic; main thread)
 
@@ -154,8 +153,7 @@ exists yet).
 
 - **Compile failed (no smoke status):** `make simv` produced no `simv`, so `make smoke` ran no test
   and `regression-log.txt` carries no `RESULT` line. Run `sim finalize --phase smoke
-  --failure-phase compile --fail-reason "<…>"` (pass `--verify-verdict <reaped, carries compile_rounds>`);
-  skip the downstream waves.
+  --failure-phase compile --fail-reason "<…>"`; skip the downstream waves.
 - **Smoke ran but failed:** `regression-log.txt`'s `RESULT <test> <PASS|FAIL|MANUAL_REVIEW>` lines (or
   the per-test `logs/<test>.status` files) contain any non-`PASS`. Run `sim finalize
   --phase smoke --failure-phase smoke --fail-reason "<…>"` (pass `--verify-verdict <reaped, carries
@@ -262,7 +260,7 @@ The `failure_phase` value table below documents which step decides each phase; f
 | failure_phase | First-failing phase | Companion fields (besides `fail_reason`) | Decided in |
 |---|---|---|---|
 | `prerequisite` | Step 1 reference missing / not pass, or `{rework_trigger}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | main thread |
-| `compile` | `make simv` failed (no smoke status); or `sim finalize` thin-D1 file missing / `TODO(` residue | `compile_rounds` | smoke gate (Step 3) / finalize (Step 6) |
+| `compile` | `make simv` failed (no smoke status); or `sim finalize` thin-D1 file missing / `TODO(` residue | — | smoke gate (Step 3) / finalize (Step 6) |
 | `smoke` | `make smoke` ran but a `RESULT` line is not `PASS` | `failing_cases` | smoke gate (Step 3) |
 | `conformance` | Conformance gate (Step 4): a finding `category ∈ {missing,wrong-behavior,fake-green,intent-defect}` at `critical`/`important` | `conformance_findings` | conformance gate (Step 4) |
 | `regress` | Any case fails in `make regress` | `failing_cases` | verify child |

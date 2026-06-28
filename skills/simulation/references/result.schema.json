@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation/result.schema.json",
   "title": "simulation result.json contract (schema_version 1)",
-  "description": "Complete contract for asic/<module>/Verification/simulation/result.json. On status=fail, stage_specific.{failure_phase, fail_reason} are required (if/then below); fail_reason is the one-line failure narrative, and failure_phase identifies which sub-step (prerequisite/compile/smoke/regress/coverage/conformance) tripped. Both are absent on pass. Only routing-relevant fields are enumerated below; informational fields (compile_rounds, total_cases, coverage_summary, etc.) live free under additionalProperties.",
+  "description": "Complete contract for asic/<module>/Verification/simulation/result.json. On status=fail, stage_specific.{failure_phase, fail_reason} are required (if/then below); fail_reason is the one-line failure narrative, and failure_phase identifies which sub-step (prerequisite/compile/smoke/regress/coverage/conformance) tripped. Both are absent on pass. Only routing-relevant fields are enumerated below; informational fields (total_cases, coverage_summary, etc.) live free under additionalProperties.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {

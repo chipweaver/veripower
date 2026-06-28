@@ -235,8 +235,6 @@ def _early_exit_ss(
     )
     ss = {"failure_phase": fp, "fail_reason": fail_reason or ""}
     # companions keyed off the RESOLVED failure_phase, not the call-site:
-    if fp == "compile" and verify.get("compile_rounds") is not None:
-        ss["compile_rounds"] = verify["compile_rounds"]
     if fp in ("smoke", "regress") and "failing_cases" in verify:
         ss["failing_cases"] = verify["failing_cases"]
     if fp == "coverage":  # Rule-B verify route-out

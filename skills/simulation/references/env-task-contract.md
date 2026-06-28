@@ -55,8 +55,7 @@ the UVM scaffold, compile, and run the smoke suite.
    the cross-array join is over small arrays. (`verify-handoff.json` is your *output*, not an
    input — it does not exist at fill time.)
 3. **Compile + smoke**: `make simv` → `make smoke`. The two steps **share** one
-   `defaults.yaml.scaffold_repair_max_rounds` repair budget (compile + smoke do not each get N rounds;
-   the combined count is recorded so the orchestrator can populate `stage_specific.compile_rounds`).
+   `defaults.yaml.scaffold_repair_max_rounds` repair budget (compile + smoke do not each get N rounds).
    On a scaffold/wiring error within budget, error-driven repair is allowed (Rule A repairable list);
    on a semantic / expected-behavior error, do **not** retry — end with `STATUS: BLOCKED <one-line
    reason naming compile|smoke + the semantic locus>` so the orchestrator records
