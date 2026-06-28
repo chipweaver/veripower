@@ -10,13 +10,21 @@ Review a target — a change (Mode 1) or current code (Mode 2) — for real qual
 VeriPower's own design principles. **Advisory and read-only:** produce findings + a report; never
 modify code, state, or git.
 
+**Falsify, don't endorse.** Treat the change as a hypothesis to break, not a conclusion to confirm —
+the current state, the convention it follows, and your own first read are all hypotheses. This
+adversarial stance is your recall now that there is no multi-pass: a single honest pass that *tries
+to find what is wrong* beats three passes that look for reasons it is fine. For anything you judge,
+ask two questions: **is it correct? and even if correct, is it the best form?** — and apply both to
+the change *and* to the convention it follows. Verify a claim at its source; do not inherit it, and
+do not let local success stand in for global correctness.
+
 Your job is **judgment, not conformance-matching.** The principles in §3 are lenses that sharpen what
 you look for — not a checklist to tick, and "departs from a past convention" is not a finding when the
 departure is genuinely better (say so, at most as a `consider`). The mechanical invariants — schema
 validity, state write-order, eligibility recheck, artifact-path containment, determinism strata — are
-already enforced in code/test/schema and fail loud at runtime; do not re-audit them here. Spend your
-attention on what code cannot catch: real bugs, bad abstractions, omissions, and the durable
-principles below.
+already enforced in code/test/schema and fail loud at runtime; do not re-audit those code-caught
+invariants here (the few that have no runtime backstop are lenses in §3). Spend your attention on
+what code cannot catch: real bugs, bad abstractions, omissions, and the durable principles below.
 
 **Cover the whole target, not a sample.** Apply §3 and §4 to *every* changed file and hunk (Mode 1)
 or *every* file in the set (Mode 2). A review that inspects a few hunks and stops is a spot-check, not
@@ -43,8 +51,8 @@ whole-repo default):
 For each file in the target, add its known counterparts to the review set so cross-file and
 *omission* defects are reachable (not structurally invisible):
 - a `result.json` ↔ its `result.schema.json` (and vice versa);
-- a producer script ↔ its consumers (a `derive_*.py` / `*.sh` and the `bootstrap_*.sh` or
-  SKILL.md that invokes it);
+- a producer ↔ its consumers (the script or stage-package verb that emits an artifact ↔ whatever
+  reads it downstream);
 - a renamed or removed symbol ↔ its citers (`grep -rn <symbol> "${CLAUDE_PROJECT_DIR}"`);
 - an English source doc ↔ its committed `.zh.md` mirror, so a stale / contradicting translation is
   reachable.
@@ -69,73 +77,60 @@ finding — see §4). Apply the lenses a surface warrants.
   regex-normalization on producer filelist or path-handoff entries.
 - **Fail loud** — Does a producer/consumer validate its REQUIRED inputs and abort with a clear error,
   or fall through to a degraded/wrong artifact? *Shape:* a silent `.get(k, "")` / `or []` default on
-  a required field; a `bootstrap_*.sh` without `set -euo pipefail`.
+  a required field then continuing; a shell producer without `set -euo pipefail`.
 - **Single canonical home** — Is each rule/datum stated once with one owner, or duplicated across
   sites that will drift? *Shape:* the same rule copied into two docs; a value re-stated inline
-  instead of referenced.
-- **Skill authoring (F1–F6)** — for a SKILL.md / skill change: does each field and step do its one
-  job, in process form (what to *do* — action + condition + output — not what to understand), in the
-  right structural form for what the skill does, in imperative voice? *Shape:* a rule duplicated
-  across cognitive sections (a drift anchor); knowledge-prose where an actionable step belongs;
-  third-person self-narration where "you" belongs; `should` / `consider` hedging where a rule means
-  `must` / `never`.
+  instead of referenced; a cross-referencing doc or rule that will drift from what it points at.
+- **Skill authoring (F1–F6)** — In a SKILL.md change, does each field and step do its one job, in
+  process form (action + condition + output, not knowledge) and imperative voice? *Shape:* a rule
+  duplicated across cognitive sections (a drift anchor); knowledge-prose where an actionable step
+  belongs; third-person self-narration where "you" belongs; `should` / `consider` hedging where a
+  rule means `must` / `never`.
+- **Same-change guard** — Does a change that adds a structured thing ship its guard in the same
+  change? *Shape:* a new `result.json` / event field with no validation test; a new advisory artifact
+  with no validator its producer runs before emitting; a new DAG stage missing from a `topology.py`
+  map, its scenario tests, or the orchestrator update.
+- **Invariant residue (no runtime backstop)** — Does the change hold the two invariants code cannot
+  sandbox — stage isolation and scripted verdict gates? *Shape:* a `Task()` inside a Task-dispatched
+  stage's sub-Task, or the dispatcher full-file-Reading such a stage's SKILL.md to inline it; a
+  mechanical pass/fail verdict the SKILL.md tells the model to eyeball from a slack / error number
+  instead of a unit-tested parser computing it.
+- **Claims backed** — Is every factual claim the change makes (commit message, comment, doc) backed
+  by ground truth? *Shape:* a "shared" / "all consumers" claim with no real citer; a cited
+  file:line / symbol / anchor that does not resolve; a count the diff contradicts; a "done / tests
+  pass" claim with no command output or test; a "saves N%" optimization with no baseline.
 
-## 4. Function Y — real quality
+## 4. Quality on the merits
 
-This is the main work: judge the change on its merits, **not** by whether some doc named the issue.
+This is the main work: judge the change on its merits — is it correct, well-designed, complete —
+**not** by whether some doc named the issue.
 
 - Is it correct? Is there a real bug, an unhandled edge, a race, a wrong result? Read the actual
   logic — not just the shape.
 - Does this abstraction deserve to exist? Does the change solve the real problem, or the wrong one?
 - What's missing? An omission — a producer updated with its consumer left behind, a claim with no
-  backing, a counterpart left stale (this is why §2 pulls them in).
+  backing, a counterpart left stale (this is why §2 pulls them in), a blind spot the lenses don't name.
 - **Is the convention itself best-in-class?** A change can faithfully conform to a convention that is
-  itself wrong — minimal? single canonical home? process over knowledge? form follows function? the
-  right form for its failure mode? Flag a convention that has stopped earning its place, not only a
-  change that breaks one. This is the dimension a conformance check structurally cannot see.
+  itself wrong. Evidence is input, not a mandate: a rule, a repeated pattern, or a count does not
+  make the thing right. Ask the second question — minimal? single canonical home? process over
+  knowledge? form follows function? the right form for its failure mode? — and flag a convention that
+  has stopped earning its place, not only a change that breaks one. This is the dimension a
+  conformance check structurally cannot see.
 
-## 5. Change-discipline + invariant residue
-
-Code/test/schema enforce the mechanical invariants at runtime; a small residue cannot be enforced
-there and lives with you. Check these when the change touches their surface.
-
-**Invariant residue (no runtime sandbox catches these):**
-- **Stage isolation** — a Task-dispatched stage sub-Task never calls `Task()` itself, and the
-  dispatcher never full-file-Reads a Task-dispatched stage's SKILL.md to inline its work; a stage
-  moved across the main-thread / Task-dispatched line updates that boundary.
-- **Scripted verdict gate** — a pass/fail (or threshold) verdict that is a mechanical function of
-  tool-report numbers is computed in a deterministic parser script with a `tests/unit/` test, and
-  SKILL.md *runs* the parser; SKILL.md never tells the model to read the report and judge the gate by
-  eye. (Genuine-judgment verdicts — failure clustering, semantic intent — are carved out.)
-
-**Change-obligations (a change that adds the thing must add its guard, in the same change):**
-- a new routing-verdict field (in `result.json` / an event payload) ships with the schema update AND
-  a `tests/unit/test_state.py` coverage test;
-- a new descriptive/advisory artifact ships a `scripts/validate_*.py` self-gate the skill runs before
-  emitting it;
-- a new DAG stage updates all four `topology.py` maps, adds `tests/scenarios/<stage>/`, and updates
-  the orchestrator skill if it changes scheduling semantics;
-- an English source doc changed in the diff has its committed `.zh.md` mirror updated in the same
-  change (a stale or contradicting translation is a defect — pull the mirror in via §2 and diff it).
-
-**Epistemic discipline (judge the change's own claims):**
-- every factual claim (commit message, comment, doc) is grep-backed — a "shared" / "all consumers"
-  claim has an actual citer, a cited file:line / symbol / anchor resolves, a stated count matches the
-  diff;
-- a "done / fixed / tests pass / verified" claim carries evidence (the command + its output, a
-  failing-then-passing test), not an assertion from intent;
-- a claimed optimization isolates its mechanism from confounds — baseline stated, metric measures
-  this change, the mechanism shown to actually engage.
-
-## 6. Write findings
+## 5. Write findings
 
 Emit one finding per issue, ordered must-fix → should-fix → consider:
 
 `[<severity>] <file:line> — <evidence> — <concrete fix>`
 
-A quality tradeoff with no clear right answer is at most `consider`, never must-fix. End with a
-one-line verdict that **names the files you covered**, so an incomplete pass is visible. Write
-findings + verdict as markdown to
+- Separate responsibility: mark each finding **objective** (a clear defect), **judgment** (a call the
+  author could reasonably differ on), or **owner-decision** (surface it with a recommendation; do not
+  decide it silently). A quality tradeoff with no clear right answer is at most `consider`.
+- Prefer the minimal sufficient fix: solve by deleting, collapsing, or standardizing in place before
+  adding any new file, rule, field, or layer — do not cure bloat with more structure.
+
+End with a one-line verdict that **names the files you covered**, so an incomplete pass is visible.
+Write findings + verdict as markdown to
 `${CLAUDE_PROJECT_DIR}/docs/superpowers/reviews/<YYYY-MM-DD>-<target-slug>.md` (`mkdir -p` first;
 `<target-slug>` = `worktree` / `HEAD` / `staged` / a short commit-or-branch slug / the Mode-2 path
 with `/`→`-`). This area is gitignored — the report is not committed.
@@ -143,8 +138,9 @@ with `/`→`-`). This area is gitignored — the report is not committed.
 ## Boundaries
 
 - Read-only: never edit code; never touch `task.json` / `events.jsonl` / git state.
-- Advisory: findings inform; they block nothing.
+- Advisory: findings inform; they block nothing. This is judgment-heavy review — keep it on-demand,
+  never wired in as a standing pass/fail gate.
 - One pass, but a complete one: cover every changed surface, not a sample. Run no multi-pass recall
-  machinery — depth comes from reading the actual logic once, thoroughly, not from re-running the
-  review.
+  machinery — depth comes from the falsify stance and reading the actual logic once, thoroughly, not
+  from re-running the review.
 - Never read `~/.claude` memory — it is not a repo-authoritative source.
