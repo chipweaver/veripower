@@ -15,7 +15,7 @@ this file to decide where a new test goes.
 | **`scenarios/`** | Does the **agent** decide right under pressure? | tools-off LLM pressure tests, rebuilt RED-first and run via a **clean-isolation `claude -p` subprocess** (`scenarios/scenario-run.sh`); closed-form self-report a verdict tag, `open` ones human/meta-test judged (see `scenarios/README.md`) | n/a — LLM |
 
 **Not a test →** single-artifact **prose / authoring / structure quality** is *not* asserted by
-any script here. It is reviewed by the **`veripower-review`** skill (its rubric, class C2). If
+any script here. It is reviewed by the **`veripower-review`** skill. If
 your check is "the wording / sections / style of one document are right," it does not belong in
 `tests/` at all.
 

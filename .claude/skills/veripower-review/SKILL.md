@@ -4,24 +4,23 @@ description: Use when reviewing your own VeriPower change (a commit or working-t
 disable-model-invocation: true
 ---
 
-# VeriPower Conformance Review
+# VeriPower Quality Review
 
-Review a target — a change (Mode 1) or current code (Mode 2) — against VeriPower's own
-design discipline. **Advisory and read-only:** produce findings + a report; never
+Review a target — a change (Mode 1) or current code (Mode 2) — for real quality, read through
+VeriPower's own design principles. **Advisory and read-only:** produce findings + a report; never
 modify code, state, or git.
 
-## Knowledge tiers
+Your job is **judgment, not conformance-matching.** The principles in §3 are lenses that sharpen what
+you look for — not a checklist to tick, and "departs from a past convention" is not a finding when the
+departure is genuinely better (say so, at most as a `consider`). The mechanical invariants — schema
+validity, state write-order, eligibility recheck, artifact-path containment, determinism strata — are
+already enforced in code/test/schema and fail loud at runtime; do not re-audit them here. Spend your
+attention on what code cannot catch: real bugs, bad abstractions, omissions, and the durable
+principles below.
 
-- **Tier A (live, authoritative — the review's scope)** — read fresh from the repo at review
-  time: `${CLAUDE_PROJECT_DIR}/ARCHITECTURE.md`, `${CLAUDE_PROJECT_DIR}/CLAUDE.md`,
-  `${CLAUDE_PROJECT_DIR}/CONTRIBUTING.md`, `${CLAUDE_PROJECT_DIR}/README.md`,
-  `${CLAUDE_PROJECT_DIR}/docs/*-design.md`. A change is judged against the **design intent in
-  Tier A** — that intent, not the rubric, is the scope of the review.
-- **Tier B (the rubric, a field guide)** — `${CLAUDE_SKILL_DIR}/references/rubric.md`: a guide to
-  what known violations *look like* in the wild. Its job is **specificity** — it sharpens the
-  reading so a violation is recognized on sight. It is **not** the boundary of the review (coverage
-  comes from the Tier-A worklist in §3) and **not** a checklist to run: an un-distilled rule with no
-  entry is still in scope, caught by reading Tier A directly.
+**Cover the whole target, not a sample.** Apply §3 and §4 to *every* changed file and hunk (Mode 1)
+or *every* file in the set (Mode 2). A review that inspects a few hunks and stops is a spot-check, not
+a review — completeness is the bar for the one pass you run.
 
 ## 1. Resolve the target
 
@@ -38,110 +37,114 @@ modify code, state, or git.
 whole-repo default):
 - File set = the tracked files under the named path
   (`git -C "${CLAUDE_PROJECT_DIR}" ls-files -- <path>`).
-- A repo-wide or `skills/`-wide target is allowed but large → use the fan-out in §5.
 
 ## 2. Pull in counterparts
 
 For each file in the target, add its known counterparts to the review set so cross-file and
-*omission* violations are reachable (not structurally invisible):
+*omission* defects are reachable (not structurally invisible):
 - a `result.json` ↔ its `result.schema.json` (and vice versa);
 - a producer script ↔ its consumers (a `derive_*.py` / `*.sh` and the `bootstrap_*.sh` or
   SKILL.md that invokes it);
 - a renamed or removed symbol ↔ its citers (`grep -rn <symbol> "${CLAUDE_PROJECT_DIR}"`);
-- an English source doc ↔ its committed `.zh.md` mirror (`ARCHITECTURE.md` ↔ `ARCHITECTURE.zh.md`,
-  `GETTING-STARTED.md` ↔ `GETTING-STARTED.zh.md`), so a stale / contradicting translation is reachable.
+- an English source doc ↔ its committed `.zh.md` mirror, so a stale / contradicting translation is
+  reachable.
 
-## 3. Build the worklist — surfaces × governing sections
+## 3. Judgment lenses
 
-Produce an **explicit worklist** before judging — it is the enumeration that makes recall honest:
-the walk follows a written-down list, not free associations, so a skipped item is visible.
+Read the change through these lenses — each is a question plus the shape its violation takes in the
+wild. They sharpen recognition; they do not bound the review (a real defect no lens names is still a
+finding — see §4). Apply the lenses a surface warrants.
 
-1. **Surfaces.** The §1 file set + the §2 counterparts. (Mode 1: get the names with
-   `git -C "${CLAUDE_PROJECT_DIR}" diff --name-only <target>`; §1's full diff content is for §4.)
-2. **Tag each path:**
-   - `*/SKILL.md` → `skill-md`
-   - `*/references/*` → `references`
-   - `*/scripts/*` or any `*.py` under `skills/` → `scripts`
-   - `framework/scripts/*.py` → `py-core`
-   - `*.md` under `docs/` or the repo root → `docs`
-   - any `*result*.json` or `*.schema.json` → `result-schema`
-   - `*.sdc` / `*.sgdc` → `constraints`
-   - every path → also `any`
-3. **Governing sections — two discovery modes.** List Tier A
-   (`ls "${CLAUDE_PROJECT_DIR}"/docs/*-design.md` + the four root docs). A doc enters the worklist
-   only for the tags it governs; pull in only its governing sections — not the whole doc.
-   - **Scoped design docs** (`docs/*-design.md`) — read each doc's **first section** (under its first
-     `##` heading; it declares scope — heading wording varies). A doc governs a touched surface when
-     that scope covers the surface's tag; then collect the sections that bear on the surface
-     (`grep -nE '^#{2,4} ' <doc>` to enumerate them). A design doc that scopes itself to pipeline
-     stage skills under `skills/<name>/` does **not** govern the field / `### Step N:` /
-     `## N.`-vs-field-title **structure** of a `.claude/skills/` meta-tooling target (e.g. this
-     skill) — for those, only language-posture (C2-08) and content hygiene (C2-04) apply to runtime
-     content.
-   - **Topic-addressed references** (`ARCHITECTURE.md`, `CONTRIBUTING.md`, `CLAUDE.md`, `README.md`)
-     — no single scope statement; governance is per §-topic, mapped by a heading scan
-     (`grep -nE '^#{2,4} ' <doc>`). `ARCHITECTURE.md` governs `py-core` / `result-schema` / skill
-     dispatch (system model, determinism strata, state model, orchestration loop, subagent/failure/
-     dispatch contracts, resume/promote) — so a `skill-md`-only change does **not** pull it in.
-     `CONTRIBUTING.md` governs change-obligations across `skill-md` / `py-core` / `result-schema`;
-     `CLAUDE.md` and `README.md` govern `any` at the project level.
-4. The worklist is the set of `(surface, governing section)` pairs from step 3. For each pair, note
-   the Tier-B field-guide entries whose `applies-to` matches the surface and whose `ssot` points into
-   that section — those are the violation shapes to keep in mind while reading it in §4.
+- **Simplicity / no speculation** — Does every changed line trace to the task, or is there an
+  abstraction, flag, config, or defensive branch nobody asked for? *Shape:* a new abstraction for
+  single use, error-handling for impossible states, unrelated adjacent "improvements."
+- **No backward-compat** — Does a fix carry a backward-compat clause or keep a now-dead path "just in
+  case"? *Shape:* `(when present)` guards on a now-unconditional contract; defensive legacy
+  fallbacks; a dead branch kept rather than deleted with its tests/docs.
+- **Audit, don't grandfather** — When overhauling a registry/config, is each existing entry
+  re-justified against current evidence? *Shape:* entries kept with no current consumer; "leave it,
+  it predates us."
+- **No silent transformation** — Does a consumer compose producer data (paths, filelist entries, IDs)
+  verbatim, or silently strip/normalize/transform it? *Shape:* `basename` / path-stripping /
+  regex-normalization on producer filelist or path-handoff entries.
+- **Fail loud** — Does a producer/consumer validate its REQUIRED inputs and abort with a clear error,
+  or fall through to a degraded/wrong artifact? *Shape:* a silent `.get(k, "")` / `or []` default on
+  a required field; a `bootstrap_*.sh` without `set -euo pipefail`.
+- **Single canonical home** — Is each rule/datum stated once with one owner, or duplicated across
+  sites that will drift? *Shape:* the same rule copied into two docs; a value re-stated inline
+  instead of referenced.
+- **Skill authoring (F1–F6)** — for a SKILL.md / skill change: does each field and step do its one
+  job, in process form (what to *do* — action + condition + output — not what to understand), in the
+  right structural form for what the skill does, in imperative voice? *Shape:* a rule duplicated
+  across cognitive sections (a drift anchor); knowledge-prose where an actionable step belongs;
+  third-person self-narration where "you" belongs; `should` / `consider` hedging where a rule means
+  `must` / `never`.
 
-## 4. Walk the worklist — read source, sharpened by the field guide
+## 4. Function Y — real quality
 
-Walk **every** worklist pair and record a one-line verdict for each — `violate` / `clean` / `n/a` —
-so a skipped pair is never silent. For each pair, read the governing section's actual intent and the
-change, and judge whether the change violates that intent. Consult the Tier-B field guide for the
-shapes a violation takes (so a known form is caught on sight), but read for the **full intent**,
-not only the distilled shapes: a violation with no field-guide entry is a real finding *and* a
-field-guide gap — record both. Enumerate within a pair too: treat every instance as a candidate,
-never stop at the first. When a rubric `ssot`'s cited anchor does not resolve, emit a `consider`
-(`stale ssot: <id> cites <anchor>`) and recover the rule by scanning the file's headings
-(`grep -nE '^#{1,4} |^\*\*' <file>`); read the relocated section.
+This is the main work: judge the change on its merits, **not** by whether some doc named the issue.
 
-Emit one finding per violation:
+- Is it correct? Is there a real bug, an unhandled edge, a race, a wrong result? Read the actual
+  logic — not just the shape.
+- Does this abstraction deserve to exist? Does the change solve the real problem, or the wrong one?
+- What's missing? An omission — a producer updated with its consumer left behind, a claim with no
+  backing, a counterpart left stale (this is why §2 pulls them in).
+- **Is the convention itself best-in-class?** A change can faithfully conform to a convention that is
+  itself wrong — minimal? single canonical home? process over knowledge? form follows function? the
+  right form for its failure mode? Flag a convention that has stopped earning its place, not only a
+  change that breaks one. This is the dimension a conformance check structurally cannot see.
 
-`[<severity>] <id-or-"gap"> — <file:line> — <evidence> — <concrete fix>`
+## 5. Change-discipline + invariant residue
 
-Order must-fix → should-fix → consider; end with a one-line verdict, then a **coverage ledger**: the
-worklist pairs walked (each with its verdict), any surface or claim **not** covered, every
-field-guide gap (a real finding with no entry — feeds the rubric per
-`convention-review-methodology.md` Phase 1), and **the passes run and whether they converged** (per
-§5 — a single un-converged pass is a visible shortcut, like a skipped pair). The ledger keeps recall
-honest: a clean verdict means "clean against the worklist I walked, at the diligence the ledger
-records," and the ledger is that record.
+Code/test/schema enforce the mechanical invariants at runtime; a small residue cannot be enforced
+there and lives with you. Check these when the change touches their surface.
 
-Write findings + verdict + ledger as markdown to
-`${CLAUDE_PROJECT_DIR}/docs/superpowers/reviews/<YYYY-MM-DD>-<target-slug>.md` (`mkdir -p` first).
-`<target-slug>` is `worktree` / `HEAD` / `staged` / a short commit-or-branch slug / the Mode-2 path
-with `/`→`-`. This area is gitignored — the report is not committed.
+**Invariant residue (no runtime sandbox catches these):**
+- **Stage isolation** — a Task-dispatched stage sub-Task never calls `Task()` itself, and the
+  dispatcher never full-file-Reads a Task-dispatched stage's SKILL.md to inline its work; a stage
+  moved across the main-thread / Task-dispatched line updates that boundary.
+- **Scripted verdict gate** — a pass/fail (or threshold) verdict that is a mechanical function of
+  tool-report numbers is computed in a deterministic parser script with a `tests/unit/` test, and
+  SKILL.md *runs* the parser; SKILL.md never tells the model to read the report and judge the gate by
+  eye. (Genuine-judgment verdicts — failure clustering, semantic intent — are carved out.)
 
-## 5. Multi-pass — union, refute, converge
+**Change-obligations (a change that adds the thing must add its guard, in the same change):**
+- a new routing-verdict field (in `result.json` / an event payload) ships with the schema update AND
+  a `tests/unit/test_state.py` coverage test;
+- a new descriptive/advisory artifact ships a `scripts/validate_*.py` self-gate the skill runs before
+  emitting it;
+- a new DAG stage updates all four `topology.py` maps, adds `tests/scenarios/<stage>/`, and updates
+  the orchestrator skill if it changes scheduling semantics;
+- an English source doc changed in the diff has its committed `.zh.md` mirror updated in the same
+  change (a stale or contradicting translation is a defect — pull the mirror in via §2 and diff it).
 
-A single pass finds a real but *random subset*: two independent passes of this skill on one diff
-return overlapping-but-different findings, and their union is larger than either. Recall comes from
-**multiple independent passes unioned**, not from one careful pass — so multi-pass is the primary
-mode, not a high-stakes add-on.
+**Epistemic discipline (judge the change's own claims):**
+- every factual claim (commit message, comment, doc) is grep-backed — a "shared" / "all consumers"
+  claim has an actual citer, a cited file:line / symbol / anchor resolves, a stated count matches the
+  diff;
+- a "done / fixed / tests pass / verified" claim carries evidence (the command + its output, a
+  failing-then-passing test), not an assertion from intent;
+- a claimed optimization isolates its mechanism from confounds — baseline stated, metric measures
+  this change, the mechanism shown to actually engage.
 
-- **Independent passes.** Run the §3–§4 walk at least twice as *independent* passes. The second pass
-  is a Task subagent (fresh context = real independence) prompted to assume the change is
-  non-conforming and to find what the first pass missed; a larger target warrants more. **Union**
-  their findings — disjoint findings are breadth, not error.
-- **Refute.** Sweep the union with a pass prompted to **refute** each finding; drop the ones that do
-  not survive (kills false positives — `convention-review-methodology.md §2`: independent refutation
-  catches more). For a high-blast-radius change (touches `py-core`, a `*.schema.json`, the
-  orchestration boundary, or a Tier-A design doc), run the refute pass as its own independent subagent.
-- **Converge.** If a pass adds new findings or leaves worklist pairs unwalked, run another. "Clean"
-  means the passes **converged** (a pass added nothing new), not that one pass finished.
-- **Size fan-out (Mode 2, large target).** Repo-wide or `skills/`-wide → also dispatch one Task
-  subagent per subsystem; each runs §1–§4 on its slice; merge, then union + refute as above.
+## 6. Write findings
+
+Emit one finding per issue, ordered must-fix → should-fix → consider:
+
+`[<severity>] <file:line> — <evidence> — <concrete fix>`
+
+A quality tradeoff with no clear right answer is at most `consider`, never must-fix. End with a
+one-line verdict that **names the files you covered**, so an incomplete pass is visible. Write
+findings + verdict as markdown to
+`${CLAUDE_PROJECT_DIR}/docs/superpowers/reviews/<YYYY-MM-DD>-<target-slug>.md` (`mkdir -p` first;
+`<target-slug>` = `worktree` / `HEAD` / `staged` / a short commit-or-branch slug / the Mode-2 path
+with `/`→`-`). This area is gitignored — the report is not committed.
 
 ## Boundaries
 
 - Read-only: never edit code; never touch `task.json` / `events.jsonl` / git state.
 - Advisory: findings inform; they block nothing.
-- The rubric is a field guide, not the boundary — Tier A is the scope (§3 worklist). A clean walk
-  that left a worklist pair unread is not a clean review; the ledger says so.
-- Never read `~/.claude` memory — it is not a repo-authoritative source; Tier A is.
+- One pass, but a complete one: cover every changed surface, not a sample. Run no multi-pass recall
+  machinery — depth comes from reading the actual logic once, thoroughly, not from re-running the
+  review.
+- Never read `~/.claude` memory — it is not a repo-authoritative source.
