@@ -92,7 +92,7 @@ Read the SGDC section of `Design/rtl-design/README.md`'s constraint-annotation n
 
 runs SpyGlass lint and `collect_report.py`, which emits `lint-report.txt` (human) and `lint-violations.json` (structured: `counts` + `violations[]`, each with `severity` / `rule` / `file:line` / `message`). Read `lint-violations.json` and triage every `severity=error` entry:
 
-- Test-control-signal false positives (`scan_en` / `test_mode` / `bypass`, etc.) → append `set_case_analysis <value> <port>` to `scripts/constraints.sgdc` and re-run `make lint` until they clear.
+- Test-control-signal false positives — a violation on a signal held to a constant in functional/mission mode (`scan_en` / `test_mode` / `bypass` tied inactive), so the structural flag exists only in the test configuration → append `set_case_analysis <value> <port>` to `scripts/constraints.sgdc` (pin the functional value) and re-run `make lint` until they clear.
 - Real lint violations → leave for the waiver pass in Step 6.
 
 The script re-derives `counts` and `violations[]` on every run — you do not count by hand.
