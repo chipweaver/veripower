@@ -1119,6 +1119,24 @@ class TestCmdComplete:
         t = state.read_task("m")
         assert t["stages"]["lint-cdc"]["status"] == "not_started"
 
+    @pytest.mark.parametrize(
+        "bad_path",
+        ["../escape.txt", "/abs/escape.txt", "sub/../../escape.txt", ".."],
+    )
+    def test_reap_traversal_path_is_invalid_not_promote_failed(
+        self, tmp_path, monkeypatch, bad_path
+    ):
+        """End-to-end left-shift: a result.json whose artifacts[] path escapes the
+        run dir (`..` traversal or absolute) is rejected at validate_result
+        (action=invalid), NOT at promote. Same shape as the self-listing guard."""
+        self._setup_in_progress(tmp_path, monkeypatch, "lint-cdc")
+        write_run_result("m", "lint-cdc", 1, artifacts=[{"path": bad_path}])
+        result = state.cmd_reap("m", "lint-cdc", run=1, outcome="pass")
+        assert result["action"] == "invalid"
+        # State untouched — validation rejected before any promote.
+        t = state.read_task("m")
+        assert t["stages"]["lint-cdc"]["status"] == "not_started"
+
     def test_reap_stale_dispatch_return_has_result_status(self, tmp_path, monkeypatch):
         """Every cmd_reap return carries result_status mirroring the event log
         (an ancillary work item). stale_dispatch → result_status='discarded'."""

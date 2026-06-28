@@ -19,7 +19,14 @@
         "type": "object",
         "required": ["path"],
         "properties": {
-          "path": {"type": "string", "not": {"const": "result.json"}}
+          "path": {
+            "type": "string",
+            "allOf": [
+              {"not": {"const": "result.json"}},
+              {"not": {"pattern": "(^|/)\\.\\.(/|$)"}},
+              {"not": {"pattern": "^/"}}
+            ]
+          }
         }
       }
     },
