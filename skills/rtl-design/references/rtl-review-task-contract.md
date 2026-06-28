@@ -5,8 +5,7 @@ in `manifest.children[]` **on every finalize that reaches a clean gate** (not fi
 AFTER the conformance gate (`check-conformance`) is green. This review is **gating**: findings
 in `category ∈ {missing, wrong-behavior}` at `severity ∈ {critical, important}` trip a gate that
 fails the stage out (`status=fail`) to the operator. `over-engineering` and `minor` findings
-remain advisory (never gate). Findings are aggregated into `semantic-review.json`. A dispatched
-sub-Task MUST NOT call the Task tool.
+remain advisory (never gate). Findings are aggregated into `semantic-review.json`. Do not call the Task tool.
 
 ## Inputs handed to the child (paths only — the main thread does not read these bodies)
 

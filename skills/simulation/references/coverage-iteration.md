@@ -20,7 +20,7 @@ Provided "all uncovered bins are inside scaffold testpoints" holds, run at most 
 
 ## Fail-trigger conditions
 
-The verify child does not write `result.json`; it **routes out** by returning its `STATUS` last line plus a JSON line carrying the failure fields in `stage_specific` (the orchestrator maps these into the `status=fail` envelope with `failure_phase=coverage`).
+You do not write `result.json`; you **route out** by returning your `STATUS` last line plus a JSON line carrying the failure fields in `stage_specific` (the orchestrator maps these into the `status=fail` envelope with `failure_phase=coverage`).
 
 - **Any uncovered bin is not inside `scaffold-specification.json.testpoints[].bins[]`** → route out with `failure_phase=coverage` + `coverage_gaps` + `gaps_not_in_testpoints` (intent gap).
 - **`defaults.yaml.stimulus_iterate_max_rounds` rounds exhausted with stimulus-layer gaps still present** → route out with `failure_phase=coverage` + `coverage_gaps` + `gaps_in_testpoints` (whether the cause is RTL unreachability vs. an insufficient stimulus plan is for the caller to decide).

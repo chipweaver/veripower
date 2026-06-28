@@ -3,8 +3,7 @@
 The simulation main thread dispatches one Level-1 `Task(run_in_background=True)` — the
 conformance reviewer — as Wave 2 (Step 4) AFTER the deterministic smoke gate passes
 and BEFORE the verify wave. This review is **gating**: findings above the threshold in
-`SKILL.md` Step 4 set the stage `status=fail` (`failure_phase=conformance`). A dispatched
-sub-Task MUST NOT call the Task tool (no Level-2 dispatch) and MUST NOT call `state.py`.
+`SKILL.md` Step 4 set the stage `status=fail` (`failure_phase=conformance`). Do not call the Task tool (no Level-2 dispatch) and do not call `state.py`.
 
 Mechanism = a hybrid of rtl-design's deterministic conformance gate and its advisory
 semantic review: an LLM intent reviewer whose output is used as a gate.

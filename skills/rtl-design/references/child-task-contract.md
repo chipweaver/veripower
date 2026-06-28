@@ -2,12 +2,12 @@
 
 The rtl-design main thread dispatches one Level-1 `Task(run_in_background=True)` per child in
 `manifest.children[]` (including the top-integration child). Every child gets the identical contract
-below. A dispatched sub-Task MUST NOT call the Task tool (no Level-2 dispatch).
+below. Do not call the Task tool (no Level-2 dispatch).
 
 ## Inputs handed to the child (paths only — the main thread does not read these bodies)
 
 - Child unit name + its `manifest.children[<self>].rtl_modules[]` list.
-- `{workdir}/<child>.md` (full per-child sub-design — the child is its sole consumer; self-contained:
+- `{workdir}/<child>.md` (full per-child sub-design — you are its sole consumer; self-contained:
   `frontmatter.ports` = injected §1.4.2 cut-edges, `frontmatter.clocks` ⊆ §1.6; the top-integration
   child's §3.1 instantiation map = §1.4.2 restatement).
 - `references/coding-rules.md` path + `constraints/<TOP>.{sdc,sgdc}` paths.
@@ -31,7 +31,7 @@ below. A dispatched sub-Task MUST NOT call the Task tool (no Level-2 dispatch).
 
 ## Output
 
-Write the child's `rtl_modules[]` into one or more `.v`/`.sv` files of the child's choosing (one file
+Write your `rtl_modules[]` into one or more `.v`/`.sv` files of your choosing (one file
 may hold multiple modules). End the response with `STATUS: DONE` + a single JSON line, or
 `STATUS: BLOCKED <reason>` (e.g. `<child>.md §2 Interface incomplete`).
 
@@ -50,7 +50,7 @@ may hold multiple modules). End the response with `STATUS: DONE` + a single JSON
 
 ## Annotation rules (read carefully — these feed lint-cdc + synthesis)
 
-- Report **only structures this child authored**, using the child's **real RTL names** (the module
+- Report **only structures you authored**, using your **real RTL names** (the module
   name you actually wrote, not a design.md placeholder). This is the whole point — `sync_cell -name`
   must match the netlist.
 - **Completeness is contract-bound, not best-effort.** Report **every** annotation your owned

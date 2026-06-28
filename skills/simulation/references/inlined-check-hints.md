@@ -3,8 +3,8 @@
 `scaffold-specification.json.testpoints[].inlined_check_hints[]` is the field where the
 simulation-plan stage inlines the precise check semantics from `plan-data.json.check_hints[]`
 directly into the testpoint (see the field description in `simulation-plan/SKILL.md`). When
-materializing the TB / writing the refmodel and scoreboard, the env-build sub-Task MUST follow the
-rules below and is **not allowed** to silently downgrade to shadow-register mode or
+materializing the TB / writing the refmodel and scoreboard, you MUST follow the
+rules below and are **not allowed** to silently downgrade to shadow-register mode or
 mismatch-as-uvm_info mode:
 
 - For each testpoint with a **non-empty** `testpoint.inlined_check_hints[]`, the refmodel /
@@ -34,14 +34,14 @@ mismatch-as-uvm_info mode:
 
 When `testpoint.inlined_check_hints[]` is **empty** (testpoints created by the LLM during the
 sim-plan stage — not derived from `plan-data.json.check_hints[]` but added as scenario-necessary
-supplements, e.g., `TP-IRQ` / `TP-RESET` / `TP-CARDET`), the env-build sub-Task may freely choose a
+supplements, e.g., `TP-IRQ` / `TP-RESET` / `TP-CARDET`), you may freely choose a
 functional-model mode (shadow register / RM abstraction, etc.); a cycle-accurate refmodel is not
 required — this branch covers scenario-class testpoints with no spec formula available at plan time.
 
 **Boundary case fallback (`covers[]` non-empty but `inlined_check_hints[]` empty / missing
 `implementation_detail`)**: treat as an upstream simulation-plan contract violation (the sim-plan
-stage's coverage-matrix self-check should have caught this case) → the env-build sub-Task does NOT
-try to fill in the inline content on its own (to avoid silently downgrading by treating a contract
-gap as the "free functional choice" branch); instead, it ends with `STATUS: BLOCKED scaffold-specification.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`, so the
+stage's coverage-matrix self-check should have caught this case) → do NOT
+try to fill in the inline content on your own (to avoid silently downgrading by treating a contract
+gap as the "free functional choice" branch); instead, end with `STATUS: BLOCKED scaffold-specification.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`, so the
 orchestrator maps it to `status=fail` + `failure_phase="prerequisite"` and rework goes back to
 simulation-plan to fill in the fields.

@@ -4,7 +4,7 @@
 
 ## Repairable (scaffold / wiring)
 
-When `make simv` / `make smoke` fails, `simulation` may repair the files below within a **combined** round count of `defaults.yaml.scaffold_repair_max_rounds` (compile + smoke **share** the same counter — it is not N rounds each; the `result.json.stage_specific.compile_rounds` field records this combined count, covering scaffold repair rounds occurring in either phase):
+When `make simv` / `make smoke` fails, you may repair the files below within a **combined** round count of `defaults.yaml.scaffold_repair_max_rounds` (compile + smoke **share** the same counter — it is not N rounds each; the `result.json.stage_specific.compile_rounds` field records this combined count, covering scaffold repair rounds occurring in either phase):
 
 - `tb/uvm/<module>/agent/<a>_agent.sv` — factory registration, sub-component instantiation, sequencer / driver / monitor connections.
 - `tb/uvm/<module>/env/<m>_env.sv` — agent instantiation, analysis port connections, sequencer configuration.

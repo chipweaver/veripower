@@ -27,7 +27,7 @@ The lint-cdc bootstrap verb resolves the SGDC seed in warm → cold → template
 | cold | `Design/specification/constraints/<TOP>.sgdc` | No warm available, but the specification stage has persisted a seed. | Copy to `scripts/constraints.sgdc`; do **not** substitute `MY_TOP`. This round must re-iterate the depth annotations. |
 | template | `templates/scripts/constraints.sgdc` | Neither warm nor cold available (ad-hoc invocation / template testing). | Use the template with `MY_TOP` substituted; clock / reset constraints must be added by hand. |
 
-`Design/specification/constraints/<TOP>.sgdc` is always the seed source of truth (specification persists it once, then it is frozen); this stage **does not** write back to that source of truth. The SGDC with depth annotations is listed in `result.json.artifacts[]` and lands at this stage's own canonical (`Design/lint-cdc/scripts/constraints.sgdc`), which serves as the next run's warm-start anchor.
+`Design/specification/constraints/<TOP>.sgdc` is always the seed source of truth (specification persists it once, then it is frozen); you **do not** write back to that source of truth. The SGDC with depth annotations is listed in `result.json.artifacts[]` and lands at this stage's own canonical (`Design/lint-cdc/scripts/constraints.sgdc`), which serves as the next run's warm-start anchor.
 
 After deployment, the script also cross-checks the first clock `-period` in the spec source-of-truth `<TOP>.sgdc` against `<TOP>.sdc`; on mismatch it prints a `WARNING` only and does not abort — consistency issues are a `specification` rework.
 

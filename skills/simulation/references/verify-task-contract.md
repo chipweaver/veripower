@@ -1,7 +1,7 @@
 # verify sub-Task contract (wave 3)
 
 The simulation main thread dispatches the **verify** child as the third sequential wave, only after
-the smoke gate passes and the conformance gate clears. Its job: full regression, coverage iteration (Rule B), and the
+the smoke gate passes and the conformance gate clears. Your job: full regression, coverage iteration (Rule B), and the
 review summary.
 
 ## Inputs handed to the child (paths only — the main thread does not read these bodies)
@@ -17,7 +17,7 @@ review summary.
 
 Use `{workdir}/verify-handoff.json` for check-intent (per-testpoint `asserts` + `seqs→bins`) rather
 than re-reading the whole TB: it maps each uncovered coverage bin back to the sequence whose stimulus
-to iterate (Rule B coverage-bin adjudication). On a regress failure the verify child only routes out
+to iterate (Rule B coverage-bin adjudication). On a regress failure you only route out
 with `failing_cases` (no repair, no per-case check-mapping needed), so the handoff is not relied on
 there.
 
@@ -58,10 +58,10 @@ instead.
 
 ## Prohibitions
 
-- **No Level-2 dispatch:** this sub-Task MUST NOT call the Task tool.
-- **No `state.py`:** the parent session owns state transitions.
+- **No Level-2 dispatch:** do not call the Task tool.
+- **No `state.py`:** do not call `state.py` — the parent session owns state transitions.
 - Stay inside `{workdir}`: all writes confined to the write-domain above. Do not modify the plan or
-  RTL (RTL-class issues belong to the RTL editing stage; this stage does not exceed its authority),
+  RTL (RTL-class issues belong to the RTL editing stage; do not exceed your authority),
   and do not re-author the env child's scaffold / checker / RM.
 
 ## Red Flag

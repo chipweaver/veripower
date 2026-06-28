@@ -1,12 +1,12 @@
 # env-build sub-Task contract (wave 1)
 
 The simulation main thread dispatches **one** Level-1 `Task(run_in_background=True)` — the
-env-build child — as the first of three sequential waves. Its job: bootstrap the stage workdir, fill
+env-build child — as the first of three sequential waves. Your job: bootstrap the stage workdir, fill
 the UVM scaffold, compile, and run the smoke suite.
 
 ## Inputs handed to the child (paths only — the main thread does not read these bodies)
 
-- `{workdir}` — the shared simulation stage workdir (the env-build child is the first writer; the
+- `{workdir}` — the shared simulation stage workdir (you are the first writer; the
   verify child runs in the same directory in wave 3).
 - `{module}` — module name.
 - scaffold-specification path: `Verification/simulation-plan/scaffold-specification.json` — the TB
@@ -19,8 +19,8 @@ the UVM scaffold, compile, and run the smoke suite.
 - (rework only) `{rework_trigger}` — the failed stage's canonical `result.json` path; read its
   `stage_specific` (field names per that stage's result schema) to narrow this round's rewrite scope.
   The orchestrator has already pre-gated this path's readability (an unreadable trigger fails fast as
-  `failure_phase="prerequisite"` before this child is dispatched), so the child receives the path for
-  CONTENT only — it does not re-classify readability.
+  `failure_phase="prerequisite"` before you are dispatched), so you receive the path for
+  CONTENT only — do not re-classify readability.
   If `{orchestrator_context_path}` is also injected, read that sibling fix-scope hint first; it takes
   priority over the trigger content. On the **first-run** branch (the workdir is freshly bootstrapped
   with no prior canonical TB), the only reference is the plan.
@@ -52,7 +52,7 @@ the UVM scaffold, compile, and run the smoke suite.
    `check_hints` block at once); and read the small top-level arrays
    (`sequences[].agent` / `tests[].seqs` / `rm` / `scoreboard`) for the testpoint→component mapping.
    `testpoints[]` itself carries only `id/bins/covers/inlined_check_hints` — never agent/seq/rm — so
-   the cross-array join is over small arrays. (`verify-handoff.json` is this child's *output*, not an
+   the cross-array join is over small arrays. (`verify-handoff.json` is your *output*, not an
    input — it does not exist at fill time.)
 3. **Compile + smoke**: `make simv` → `make smoke`. The two steps **share** one
    `defaults.yaml.scaffold_repair_max_rounds` repair budget (compile + smoke do not each get N rounds;
@@ -74,7 +74,7 @@ the UVM scaffold, compile, and run the smoke suite.
    once it exits 0. If the budget is exhausted and it still fails, end with
    `STATUS: BLOCKED compile <residual TODO/file locus>` (the existing compile mapping; this gate is
    exit-code truth, not narration). It does **not** write `result.json` — the orchestrator's finalize
-   run remains the authoritative verdict; this is the env child's self-gate so a hollow TB never
+   run remains the authoritative verdict; this is your self-gate so a hollow TB never
    reaches the wave-3 verify run. (Note: `make smoke` runs earlier in wave 1, *before* this gate —
    the savings are that no regress/coverage wave runs on a hollow TB, not that smoke is skipped.)
    **Limitation (by design):** thin-D1 is presence-only and intentionally does **not** resist marker
@@ -82,8 +82,8 @@ the UVM scaffold, compile, and run the smoke suite.
    conformance-review gate's job, not this gate.
 
 The smoke result is judged by the orchestrator's **deterministic gate** (the smoke run's own
-`regression-log.txt` `RESULT` lines / per-test `.status` files in `{workdir}`), **not** by this
-child's self-reported `STATUS:` prose. Report `STATUS: DONE` once `make simv` + `make smoke` have run
+`regression-log.txt` `RESULT` lines / per-test `.status` files in `{workdir}`), **not** by your
+self-reported `STATUS:` prose. Report `STATUS: DONE` once `make simv` + `make smoke` have run
 to completion, the env-exit thin-D1 self-gate (Work step 4) exits 0, and the handoff is written; the
 smoke gate still decides smoke pass/fail.
 
@@ -104,11 +104,11 @@ smoke gate still decides smoke pass/fail.
 
 ## Prohibitions
 
-- **No Level-2 dispatch:** this sub-Task MUST NOT call the Task tool.
-- **No `state.py`:** the parent session owns state transitions.
+- **No Level-2 dispatch:** do not call the Task tool.
+- **No `state.py`:** do not call `state.py` — the parent session owns state transitions.
 - Stay inside `{workdir}`: all writes confined to `{workdir}` (reading the upstream plan + any prior
   canonical TB as read-only reference is allowed). Do not modify the plan or RTL — RTL-class issues
-  belong to the RTL editing stage; this stage does not exceed its authority.
+  belong to the RTL editing stage; do not exceed your authority.
 
 ## Pitfalls
 
@@ -151,7 +151,7 @@ smoke gate still decides smoke pass/fail.
 
 ## `verify-handoff.json` schema
 
-A small digest with **one entry per testpoint** the env child materialized a check for. It carries the
+A small digest with **one entry per testpoint** you materialized a check for. It carries the
 check-intent forward so the verify child can target coverage bins and read failures without
 re-reading the full TB body. Shape:
 
@@ -169,9 +169,9 @@ re-reading the full TB body. Shape:
 ```
 
 - `tp_id` — the testpoint id, matching `scaffold-specification.json.testpoints[].id`.
-- `asserts` — one line stating what the materialized check verifies (the env child's check-intent in
+- `asserts` — one line stating what the materialized check verifies (your check-intent in
   plain prose, e.g. `wb_ack_o follows wb_cyc_i & wb_stb_i, compared every clk edge`).
-- `seqs` — for each sequence the env child wired toward this testpoint, `<seq-name>→<bins>` naming the
+- `seqs` — for each sequence you wired toward this testpoint, `<seq-name>→<bins>` naming the
   `testpoints[].bins[]` it is meant to hit. The verify child uses this for Rule B coverage-bin
   adjudication: mapping an uncovered bin back to the sequence whose stimulus to iterate.
 

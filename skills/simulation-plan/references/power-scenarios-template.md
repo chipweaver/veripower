@@ -1,6 +1,6 @@
 # Standard 9-Power-Scenarios Template
 
-`simulation-plan` loads this template under **first-run** and **incremental-update** (specification field change) modes, materializes it per the module, and writes the result into the `verification-plan.md` power section and `scaffold-specification.json.power_scenarios`.
+Load this template under **first-run** and **incremental-update** (specification field change) modes, materialize it per the module, and write the result into the `verification-plan.md` power section and `scaffold-specification.json.power_scenarios`.
 
 ## Standard 9-scenarios table
 
@@ -43,17 +43,17 @@ The two copies must correspond one-to-one — same number of entries, matching r
 
 ## RTL-equivalent scenario deduplication
 
-Some scenarios produce identical RTL-layer stimulus and differ only in corner — a typical example is S1 (SS/125C, clock=off) and S7 (FF/125C, clock=off), both reduce on RTL to "clock=off + no traffic." This template requires `simulation-plan` to **keep independent IDs and `corner_intent`** but **reuse the same `sequence_ref`**. Consumers group by `sequence_ref` at execution time, run each group only once, but produce a SAIF per ID (via hardlinks); later tools annotate by `corner_intent`.
+Some scenarios produce identical RTL-layer stimulus and differ only in corner — a typical example is S1 (SS/125C, clock=off) and S7 (FF/125C, clock=off), both reduce on RTL to "clock=off + no traffic." This template requires you to **keep independent IDs and `corner_intent`** but **reuse the same `sequence_ref`**. Consumers group by `sequence_ref` at execution time, run each group only once, but produce a SAIF per ID (via hardlinks); later tools annotate by `corner_intent`.
 
 ## Role of corner annotation
 
 Corner (SS / TT / FF + temperature) **does not affect RTL simulation behavior** — RTL simulation is corner-agnostic. Corner is plan-layer annotation metadata, consumed by power-analysis tools (e.g., PrimeTime PX). At the RTL stage, its only role is:
 - Telling the consumer "which corner this SAIF should be interpreted under."
-- Guiding `simulation-plan` on which scenarios need independent stimulus vs. which are corner variants only.
+- Guiding you on which scenarios need independent stimulus vs. which are corner variants only.
 
 ## Handling missing scenarios
 
-When the specification mentions a low-power feature (e.g., retention mode) that the standard 9-scenarios template does not cover, `simulation-plan` should append supplementary scenarios (named S8, S9, …) at the end of `verification-plan.md` §4 and sync them into `scaffold-specification.json.power_scenarios`.
+When the specification mentions a low-power feature (e.g., retention mode) that the standard 9-scenarios template does not cover, you should append supplementary scenarios (named S8, S9, …) at the end of `verification-plan.md` §4 and sync them into `scaffold-specification.json.power_scenarios`.
 
 ## `sequence_ref` naming rules and `sequences[]` sync (cross-stage contract)
 

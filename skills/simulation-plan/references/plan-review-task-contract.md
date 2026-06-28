@@ -5,8 +5,7 @@ fresh plan-adequacy reviewer — as Step 4, AFTER `simplan check-scaffold` (stru
 coverage-matrix) passes and BEFORE the Step-5 user review loop. This review is **gating** (T2):
 `coverage` findings at `severity ∈ {critical, important}` BLOCK `status=pass` until resolved;
 `adequacy` findings are advisory **must-acknowledge** (surfaced to the user, never block). The
-main thread does NOT auto-fix the plan. A dispatched sub-Task MUST NOT call the Task tool and
-MUST NOT call `state.py`.
+main thread does NOT auto-fix the plan. Do not call the Task tool and do not call `state.py`.
 
 ## Inputs (paths only — the main thread reads no body)
 - `Design/specification/design.md` (§1 behavior, §1.3 Feature Table, §1.4 IO/interconnects, §1.5

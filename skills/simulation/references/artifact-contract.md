@@ -1,6 +1,6 @@
 # `simulation` stage artifact contract
 
-The simulation stage runs as a thin orchestrator over three sequential sub-Tasks
+You run as a thin orchestrator over three sequential sub-Tasks
 (`env-task-contract.md` → smoke gate → `conformance-review-task-contract.md` (Step 4) →
 `verify-task-contract.md`); all share one stage `{workdir}`.
 The artifacts below are split by which phase **owns** (writes) them. `result.json` is assembled by

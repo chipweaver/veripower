@@ -8,7 +8,7 @@ This document describes how the `simulation-plan` / `simulation` stages derive t
 - Structured fields must live in fixed sections (§1.3 / §1.4.1 / §1.4.2 / §1.5 / per-child `<child>.md §5` verification-hint tables); they must not be scattered across free-form prose.
 - The minimum compatible input is the three columns `ID` / `Feature` / `Description` in §1.3. The more complete the fields, the higher the quality of automated derivation.
 - Per-child `<child>.md` submodule sections carry implementation-related constraints, especially register side effects, exceptions, concurrency, back-pressure, reset, and state-machine boundaries.
-- **Before `specification` is set to `pass`, the fields must be sufficient to support automated derivation of transactions / agents / seqs / checkers / rule-based RMs.** When fields are missing, `simulation-plan` writes `result.json` with `status=fail` and `stage_specific.fail_reason` describing the gap; the caller decides next steps from there, instead of pressing on.
+- **Before `specification` is set to `pass`, the fields must be sufficient to support automated derivation of transactions / agents / seqs / checkers / rule-based RMs.** When fields are missing, write `result.json` with `status=fail` and `stage_specific.fail_reason` describing the gap; the caller decides next steps from there, instead of pressing on.
 
 ---
 
@@ -63,7 +63,7 @@ wires are not part of the DUT transaction class).
 - `Direction = output` (DUT view) → monitor samples.
 - `Width` → transaction class field width definition.
 
-**Note:** §1.4.1 also carries `ResetPolarity` / `ResetKind`; these are consumed by constraint generation (the `derive-constraints` verb), **not** by `simulation-plan`.
+**Note:** §1.4.1 also carries `ResetPolarity` / `ResetKind`; these are consumed by constraint generation (the `derive-constraints` verb), **not** by you.
 
 ### §1.4.2 Inter-module Interconnects table (cross-child wires — aware-only)
 
@@ -183,8 +183,8 @@ and tags each hint with a `child` field.
 
 ## Derivation rules
 
-- The `simulation-plan` stage derives `verification-plan.md` (human-readable review anchor, with testpoints and power-scenario sections) and `scaffold-specification.json` (machine-read contract, with `agents` / `sequences` / `tests` / `testpoints[]` / `power_scenarios[]`) from the fields above.
-- When §1.3 contains only the three columns `ID` / `Feature` / `Description`, the derivation script falls back to a minimum testpoint set; it **cannot** generate transactions / agents / seqs / checkers / RMs automatically. When the §1.4.1 Top-Level IO table and the §1.5 timing-scenarios table are missing, `simulation-plan` exits with `result.json status=fail` + `stage_specific.fail_reason`; do not "stretch" to generate.
+- Derive `verification-plan.md` (human-readable review anchor, with testpoints and power-scenario sections) and `scaffold-specification.json` (machine-read contract, with `agents` / `sequences` / `tests` / `testpoints[]` / `power_scenarios[]`) from the fields above.
+- When §1.3 contains only the three columns `ID` / `Feature` / `Description`, the derivation script falls back to a minimum testpoint set; it **cannot** generate transactions / agents / seqs / checkers / RMs automatically. When the §1.4.1 Top-Level IO table and the §1.5 timing-scenarios table are missing, exit with `result.json status=fail` + `stage_specific.fail_reason`; do not "stretch" to generate.
 - Non-target capabilities (e.g., "does not support" / "does not include") should still appear in the §1.3 feature table so negative tests and result summaries can be derived from them.
 - **Without structured verification inputs, do not enter automated environment generation.** The spec is inadequate and must be completed (more inputs gathered) before planning proceeds.
 

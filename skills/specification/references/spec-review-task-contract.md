@@ -5,8 +5,7 @@ reaches a clean coverage gate** (Step 7), AFTER `check-coverage` is green and BE
 design.md approval gate. This review is **gating** (T2): `faithfulness` AND `conformance` findings at
 `severity ∈ {critical, important}` BLOCK the stage from `status=pass` until resolved; `soundness`
 findings are advisory **must-acknowledge** (surfaced to the user, never block). The main thread
-does NOT auto-fix design.md — a blocking finding is resolved by user-directed rework. A dispatched
-sub-Task MUST NOT call the Task tool.
+does NOT auto-fix design.md — a blocking finding is resolved by user-directed rework. Do not call the Task tool.
 
 ## Per-child reviewer (one per `manifest.children[]`)
 

@@ -198,7 +198,7 @@ For every module (N≥1) the parent `design.md` keeps only this §1.7 index; eac
 
 ## Minimum Field Completeness Gate Table
 
-Before `design.md` is approved, the **gated** checks below must pass `check-coverage:structure`; **recommended** columns degrade downstream quality if absent (`derive-plan-data` defaults them, so a missing column yields an empty/weaker derivation, not a crash). Failing any gated check disqualifies this skill from marking pass.
+Before `design.md` is approved, the **gated** checks below must pass `check-coverage:structure`; **recommended** columns degrade downstream quality if absent (`derive-plan-data` defaults them, so a missing column yields an empty/weaker derivation, not a crash). Failing any gated check disqualifies you from marking pass.
 
 | Check | Field location | Impact of missing |
 |--------|----------|----------|
@@ -220,7 +220,7 @@ Before `design.md` is approved, the **gated** checks below must pass `check-cove
 | `<child>.md §5` Verification-Hints table has the **gated** columns CheckID / SourceFeature / ImplementationDetail / Observable / ReferenceRule (Latency / ResetBehavior recommended; ImplementationDetailVerbatim is guarded by token-survival, BrainstormAnchor is traceability) | per-child `<child>.md §5` (see `child-design-template.md`) | Cannot generate rule-based RM / scoreboard; **enforced by `check-coverage` structure + R-C feature-coverage**. |
 | `design.md` self-containment (no `see brainstorm` / `refer to brainstorm` / `see spec D` / cross-child links) | Whole document + each `<child>.md` | See the self-containment principle stated once above; **enforced by `check-coverage:self_containment`**. |
 
-> Derivation rules, UVM field mapping, and a complete derivation-chain example are owned by `veripower:simulation-plan`. This skill does not need to read them; it only needs to ensure every check in this table lands in the table columns.
+> Derivation rules, UVM field mapping, and a complete derivation-chain example are owned by `veripower:simulation-plan`. You do not need to read them; you only need to ensure every check in this table lands in the table columns.
 
 ## Document Control
 

@@ -1,6 +1,6 @@
 # IC Spec Brainstorm Checklist
 
-The brainstorm dialogue is driven by the following dimensions: **one question at a time, multiple-choice preferred.** Which specific questions to ask, and which dimensions to skip, are decided by the LLM based on the known context. **D0 must be asked first** (do not enter D1 until intent is clarified); **D4 must present 2–3 candidate proposals for comparison.**
+The brainstorm dialogue is driven by the following dimensions: **one question at a time, multiple-choice preferred.** Decide which specific questions to ask, and which dimensions to skip, based on the known context. **D0 must be asked first** (do not enter D1 until intent is clarified); **D4 must present 2–3 candidate proposals for comparison.**
 
 ## brainstorm.md Section Layout
 
@@ -53,7 +53,7 @@ Open-ended Q&A; may span 2–3 rounds. Do not enter D1 until intent is clarified
 - Hard constraints from upstream and downstream modules (interface specifications, protocol versions, SoC layout).
 - Project phase (greenfield / replacement / backward-compatible / exploratory prototype).
 
-Closure signal: the LLM restates the module's intent accurately in 1–2 sentences and the user confirms. Record under `Overview` in brainstorm.md.
+Closure signal: you restate the module's intent accurately in 1–2 sentences and the user confirms. Record under `Overview` in brainstorm.md.
 
 ## D1. Functions and Features
 
