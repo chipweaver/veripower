@@ -197,6 +197,25 @@ class TestPromoteAtomic:
         # Single link — canonical result.json IS the run's result.json (same inode).
         assert canonical_rj.stat().st_ino == (run_dir / "result.json").stat().st_ino
 
+    @pytest.mark.parametrize(
+        "bad_path", ["../escape.txt", "/etc/escape.txt", "sub/../../escape.txt", ".."]
+    )
+    def test_promote_rejects_traversal_path(self, tmp_path, monkeypatch, bad_path):
+        """Defense-in-depth: promote() itself rejects an artifacts[] path that
+        escapes runs/<N>/ (lexically), even though validate_result also rejects it
+        upstream. Mirrors the self-listing primitive guard at artifacts.py:119-121."""
+        run_dir = self._setup_run(tmp_path, monkeypatch, "lint-cdc", 1)
+        rj = run_dir / "result.json"
+        data = json.loads(rj.read_text())
+        data["artifacts"] = [{"path": bad_path}]
+        rj.write_text(json.dumps(data))
+        with pytest.raises(ValueError, match="escapes run dir"):
+            artifacts.promote("foo", "lint-cdc", 1)
+        # tmp cleaned up by the except-handler; canonical untouched
+        assert not (
+            state._result_path("foo", "lint-cdc").parent / ".promote-tmp"
+        ).exists()
+
     def test_promote_symlink_does_not_traverse(self, tmp_path, monkeypatch):
         """_cp_al must not follow dir-symlinks during
         recursive copy (would cause traversal outside runs/<N>/).

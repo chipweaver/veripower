@@ -20,6 +20,17 @@ from pathlib import Path
 from topology import _result_path
 
 
+def _is_safe_rel(rel: str) -> bool:
+    """True iff `rel` is a containment-safe relative path: not absolute and not
+    escaping its base after normalization. Lexical only — does NOT resolve()
+    (so a legitimate symlink artifact is unaffected; symlink-traversal is handled
+    separately by _cp_al's follow_symlinks=False)."""
+    if os.path.isabs(rel):
+        return False
+    norm = os.path.normpath(rel)
+    return not (norm == ".." or norm.startswith(".." + os.sep))
+
+
 def _cp_al(src: Path, dst: Path) -> None:
     """Tree hardlink (cp -al equivalent). Recreates dir structure with hardlinks.
 
@@ -119,6 +130,11 @@ def promote(module: str, stage: str, run_n: int) -> None:
             # The envelope schema rejects self-listing, but keep the primitive safe.
             if art["path"] == "result.json":
                 continue
+            # Same two-layer pattern as self-listing: the envelope schema rejects
+            # `..`/absolute paths at validate_result, but keep the primitive safe
+            # so a bypassed-validation producer can never hardlink outside runs/<N>/.
+            if not _is_safe_rel(art["path"]):
+                raise ValueError(f"artifact path escapes run dir: {art['path']}")
             src = run_dir / art["path"]
             if not src.exists():
                 raise FileNotFoundError(f"artifact missing: {src}")
