@@ -201,8 +201,7 @@ also carries `owner_child`). These are child-authoring defects (fix-locus = the 
   `BLOCKED` → stop with `status=fail` + `fail_reason` carrying the BLOCKED reason verbatim (an
   upstream-locus signal, routed like 4.2's blocked-child precedence — NOT authoring-convergence).
 - **manifest name is authoritative**: a child MUST author its `manifest.children[].rtl_modules[]` name
-  verbatim (renaming is itself a violation `check #1` catches); this precludes a `top_instantiation`
-  re-dispatch oscillating between topc and a sibling that keeps renaming.
+  verbatim (renaming is itself a violation `check #1` catches).
 - Re-run `assemble` **WITH `--seeded`** (CRITICAL — without it the
   round's subset-only `fresh_reports.json` evicts every already-passing child via `merge_filter`'s
   roster∩fresh), then `check-conformance`.
@@ -250,18 +249,8 @@ verdict:
   `fail_reason` (a gate trip stops the stage out, exactly as the 4.2/4.3 gate fails do) —
   `"semantic gate: spec-rooted intent defect — <child>"` when `loci.spec` is non-empty, else
   `"semantic gate: rtl-local intent defect — <child>"` (the first `flagged[]` child; if more than one is
-  flagged, ` (+N more)` is appended). **No further dispatch; this skill does not
-  self-loop on a semantic defect** — it is operator-driven (a `spec`-locus defect is a `design.md`
-  contradiction not fixable from this child's RTL; in-skill self-heal of the `rtl`-locus case is
-  deferred). The `loci` partition is informational: it tells the operator whether the fix lands in the
-  child RTL (`rtl`) or `design.md` (`spec`).
-- **Review unavailable** (the WHOLE wave is unusable: no `semantic-review.json` can be assembled at all
-  — dispatch failure before any child reports, or an unrecoverable validate loop; individual child
-  `BLOCKED`/malformed events are already handled by the aggregation bullets above, which keep the
-  surviving children's findings) → do NOT gate; write the minimal `semantic-review.json` with a single
-  `unavailable` finding (so the absence of a real review is a first-class artifact, not invisible — the
-  validator reports `gate=clear` for it, so finalize writes `stage_specific.semantic_gate` = `clear`),
-  note it in the completion summary, and proceed to 4.5.
+  flagged, ` (+N more)` is appended).
+- **Review unavailable** (the whole wave is unusable — no `semantic-review.json` assemblable at all, e.g. total dispatch failure; per-child `BLOCKED`/malformed is already handled by the aggregation above) → do NOT gate; write the minimal `semantic-review.json` with one `unavailable` finding (validator reports `gate=clear`), note it in the completion summary, and proceed to 4.5.
 - **Verdict integrity:** the main thread MUST NOT override a `gate=trip` to pass.
 
 **4.5 Build `result.json`** (`{workdir}/result.json`; schema `references/result.schema.json` + envelope):
@@ -292,11 +281,7 @@ critical <category> finding — recommend operator review before downstream`.
 rtl-design failures route by fix-locus. **(1) Upstream / architecture / intent** (the `assemble`/`check-partition` exit-gate
 topology, `<child>.md §2` incomplete, PPA, `build_*` unexpected error, or any semantic-gate trip) → `status=fail` + a locus-tagged
 `fail_reason`; **no internal loop, operator-driven** (the main thread stays a pure dispatcher and does not
-self-loop). The semantic trip's `fail_reason` names where the fix lands via `fix_locus`: `spec` = a
-`design.md` contradiction the child cannot self-fix (left for operator-driven correction); `rtl` = the
-child's own RTL (the stage fails out so the operator fixes the child; in-skill self-heal of this case is
-a deferred follow-up, reusing the Step-4.3 mechanic). The stage emits one `status=fail` result and does
-not self-loop on a semantic defect. **(2) Child-authoring presence defect**
+self-loop). **(2) Child-authoring presence defect**
 (`check-conformance` spec↔RTL presence violations, or a mid-loop child `BLOCKED`) → fix-locus is the
 child itself, so it runs the **bounded body-blind self-converge loop** (Step 4.3: hold the verdict,
 re-dispatch the failing children, re-run the scripts, ≤2 rounds); exhausting the bound (or a mid-loop
