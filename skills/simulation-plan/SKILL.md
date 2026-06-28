@@ -18,17 +18,14 @@ Your sole responsibility: from `specification`, generate or evolve two artifacts
 Boundary of this skill:
 
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
-- **Dispatch is limited to a single Level-1 plan-adequacy review sub-Task.** No other fan-out; the dispatched sub-Task MUST NOT call the Task tool (Level-2 forbidden — the audit boundary).
 - **Do not read RTL source, do not invoke EDA tools, and do not write `tb/uvm/` / `Makefile` / `vcd/`.** These belong to the TB-materialization stage.
-- **Do not decide what happens after you complete.** Return control to the caller.
-- **Do not start before `specification/result.json` has `status=pass`.** Confirm precondition before entry.
-- **Do not write `result.json.status=blocked`.** The envelope does not accept this value; any failure must be `status=fail` + `fail_reason`.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Fan-out Dispatch Contract
 
 - **One Level-1 review sub-Task only:** dispatches the Step-4 plan-adequacy reviewer via
-  `Task(run_in_background=True)`, reaps it, and folds the result into `plan-review.json`.
+  `Task(run_in_background=True)`, reaps it, and folds the result into `plan-review.json`. The
+  dispatched sub-Task MUST NOT call the Task tool (Level-2 forbidden — the audit boundary).
 - **Dispatch-and-wait:** after dispatching, end the turn; reap on the harness wake; aggregate the
   reviewer's report and proceed only after it reports (DONE or BLOCKED).
 - **No `state.py`:** this skill does not call `state.py`.
@@ -117,7 +114,7 @@ Authoring judgment the schema/validator cannot express:
 
 ### Step 1: Read inputs and select routing branch
 
-Read `Design/specification/result.json` + `design.md` + `manifest.json`; if any required input missing, write `result.json` with `status=fail` + `stage_specific.fail_reason="external reference missing: <path>"`, then exit. Select among four branches in this order:
+Read `Design/specification/result.json` + `design.md` + `manifest.json`; if any required input missing, write `result.json` with `status=fail` + `stage_specific.fail_reason="external reference missing: <path>"`, then exit; if `Design/specification/result.json` is present but `status≠pass`, write `status=fail` + `stage_specific.fail_reason="external reference not pass: Design/specification/result.json"`, then exit. Select among four branches in this order:
 
 - **Trigger-driven rework** (`{rework_trigger}` injected): read the attribution structure and the context for this round's revision from the trigger file (field names come from the triggering stage's own `result.schema.json`); Read the canonical baseline (`Verification/simulation-plan/verification-plan.md` + `scaffold-specification.json`; when `{workdir}` already holds an updated version, prefer the `{workdir}` copy) as the revision baseline; amend per the violation-type targeting table in Decision Rules. If the trigger is unreadable → write `status=fail` + `fail_reason="rework_trigger not readable"`. A trigger-driven rework that amends the plan invalidates any prior `plan_adequacy_gate=clear`; Step 4 re-runs before the Step-5 user loop (the Step-5 approve precondition enforces this).
 - **Session-resume branch** (no trigger + `{workdir}/verification-plan.md` present + `{workdir}/result.json` absent): use the residual `{workdir}` artifacts as the baseline; depending on how complete the residue is, return to Step 3 or Step 5 to continue (preserve already-written sections verbatim; only fill in the missing parts). **Before continuing, if `stage_specific.plan_adequacy_gate` is not `clear`-or-all-`waived` (absent / `trip` / written by a wave predating the latest plan edit), route to Step 4 first — not straight to Step 4.**
@@ -185,9 +182,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py validate-review --review
 ```
 
 Non-zero exit → re-assemble the JSON and re-run (main-thread fix, NOT re-dispatch). On exit 0 it prints
-`{"gate":"trip"|"clear","flagged":[{tp_id,lens,severity}…],"must_ack":[{tp_id,severity}…]}` (the
-script-owned `lens × severity` reduction: coverage at critical/important blocks; adequacy is
-advisory must-acknowledge; unavailable never blocks). Write `stage_specific.plan_adequacy_gate`
+`{"gate":"trip"|"clear","flagged":[{tp_id,lens,severity}…],"must_ack":[{tp_id,severity}…]}`. Write `stage_specific.plan_adequacy_gate`
 = that parsed verdict object verbatim, and list `plan-review.json` in `artifacts[]` (so it
 promotes to canonical — see the resume-guard below).
 
@@ -196,8 +191,8 @@ The verdict feeds Step 5 (**T2** — block into the user loop; this stage never 
 - **`gate=trip`** → each `flagged` (coverage) item MUST be either resolved (user directs the
   revision; re-run Step 3 + this step) or **human-waived**: the operator records `{tp_id, lens,
   location, classification ∈ {false-positive, accepted-risk}, reason}` into
-  `plan_adequacy_gate.waived[]`. **The `reason` is human-authored — the main thread PROMPTS the
-  operator at Step 5 and blocks until provided, never auto-writes it. No counter, no cross-round
+  `plan_adequacy_gate.waived[]`. **The `reason` is human-authored — you PROMPT the
+  operator at Step 5 and block until provided, never auto-write it. No counter, no cross-round
   matching, no auto-downgrade.** For a **critical-severity coverage** waiver, surface: "no
   downstream stage re-checks testpoint-vs-spec (sim conformance judges TB-vs-testpoint) — terminal
   accept." `status=pass` requires `gate==clear` **OR** every `flagged` finding is in
@@ -213,7 +208,7 @@ The verdict feeds Step 5 (**T2** — block into the user loop; this stage never 
 
 ### Step 5: User review loop
 
-- Present `verification-plan.md` to the user, together with the `plan-review.json` verdict — `plan_adequacy_gate.flagged` blocking items + `plan_adequacy_gate.must_ack` advisory items (deduped to NEW/CHANGED) + any `review unavailable` ack item (point to `plan-review.json` for summaries). A **`gate=trip` is a hard block**: each `flagged` item must be either resolved (Step 4 re-runs to `clear`) or **human-waived** (operator records `plan_adequacy_gate.waived[]` with a human-authored `classification`+`reason` the main thread prompts for; critical-coverage waiver shows the "no downstream re-check — terminal accept" warning) before `approve`. **Do not accept `approve` unless `gate==clear` OR every `flagged` is in `waived[]`.**
+- Present `verification-plan.md` to the user, together with the `plan-review.json` verdict — `plan_adequacy_gate.flagged` blocking items + `plan_adequacy_gate.must_ack` advisory items (deduped to NEW/CHANGED) + any `review unavailable` ack item (point to `plan-review.json` for summaries). A **`gate=trip` is a hard block**: each `flagged` item must be either resolved (Step 4 re-runs to `clear`) or **human-waived** (operator records `plan_adequacy_gate.waived[]` with a human-authored `classification`+`reason` you prompt for; critical-coverage waiver shows the "no downstream re-check — terminal accept" warning) before `approve`. **Do not accept `approve` unless `gate==clear` OR every `flagged` is in `waived[]`.**
 - Ask: approve / request changes / reject.
 - approve → **[hard precondition]** the main thread MUST NOT accept `approve` unless `plan_adequacy_gate.gate==clear` OR every `flagged` is in `waived[]`; re-run Step 4 first if not. → proceed to Step 5.
 - request changes → **first clear any prior `plan_adequacy_gate=clear`** (invalidate-on-rework — a stale `clear` must not survive a plan edit), then revise the artifacts incrementally per user feedback (return to Step 3), then re-run Step 4, then come back to this step and re-present.
@@ -282,7 +277,7 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 
 ## Return Contract
 
-Control returns directly to the caller; the caller decides based on `result.json`.
+**Do not decide what happens after you complete** — control returns directly to the caller; the caller decides based on `result.json`.
 
 ### Session-resume semantics
 
