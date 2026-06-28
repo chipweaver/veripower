@@ -19,7 +19,6 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 
 - Do not modify any file under `Design/rtl-design/` or `Design/specification/` — these are read-only external references for synthesis.
 - Timing exceptions MUST be supplemented iteratively after RTL becomes visible; they cannot be pre-written at the specification stage (contract violation — RTL port names cannot be known in advance).
-- Do not start synthesis when `Design/lint-cdc/result.json.status≠pass` — write `status=fail` + `fail_reason="external reference not pass: Design/lint-cdc/result.json"` and exit.
 - Do not claim synthesis is complete when the DC license is missing — without a license, write `status=fail` + `fail_reason="DC license missing"`.
 - Do not claim synthesis is complete when the netlist (`out/<TOP>_syn.v`) does not exist — the netlist must land on disk.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
@@ -116,7 +115,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
 
 `finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`), derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
-`failure_kind` semantics (set by finalize): `infra` (DC never ran — external ref / license / trigger; the main thread writes this on the pre-checks of Steps 1–5 before finalize runs), `tooling` (report missing/unparseable — parser exit 1/3), `ppa` (area/timing target missed; `violations[]` filled).
+`failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); the main thread writes `failure_kind=infra` on the pre-checks of Steps 1–5 (DC never ran — external ref / license / trigger) before finalize runs.
 
 ## Decision Rules
 
