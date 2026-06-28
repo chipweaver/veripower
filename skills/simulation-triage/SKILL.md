@@ -62,7 +62,7 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 - **Complete classification** (`analysis_state: "complete"`): per `failure_phase`, take cases from one of three input shapes:
   - `regress` / `smoke` → cases = `failing_cases[]` (both run UVM test cases; `failing_cases[]` carries `error_message` / `log_snippet` per failing case; consume the inline content from the prompt, do not read disk).
   - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail as a single synthetic case and describe it directly in the `## Root cause` prose — a single synthetic case emits **no** `## Findings`.
-  - `coverage` → no `failing_cases[]` (regress already passed; only coverage is below target). cases = each gap bin in `coverage_gaps[]` (split by `gaps_in_testpoints` / `gaps_not_in_testpoints`); each gap bin is one case and becomes one `## Findings` bullet (a lone gap bin is a single case — describe it in `## Root cause` and omit `## Findings`, as in the degenerate path above).
+  - `coverage` → no `failing_cases[]` (regress already passed; only coverage is below target). cases = each gap bin in `coverage_gaps[]` (split by `gaps_in_testpoints` / `gaps_not_in_testpoints`); each gap bin is one case and becomes one `## Findings` bullet (a lone gap bin is a single case — as in the degenerate path above).
   - `conformance` → no `failing_cases[]` and no log tail (compile + smoke both passed). cases = each gating finding in `conformance_findings[]` (consume the inline content from the prompt); each finding is one case. Its `category` is the reasoning key for Step 2 — there is no log to anchor on.
 
 ### Step 2: Per-case root-cause analysis
@@ -138,7 +138,7 @@ Root-cause selection lives in [`references/fail-analysis-patterns.md`](reference
 
 | Excuse | Reality |
 |---|---|
-| "I can't fully analyze this — I'll just return `STATUS: BLOCKED`" | Forbidden as a skill decision. Incomplete inputs / no fail case → `analysis_state: "skipped"` + `skipped_reason`. The envelope emits BLOCKED only on a program exception via the harness. |
+| "I can't fully analyze this — I'll just return `STATUS: BLOCKED`" | Forbidden as a skill decision. Incomplete inputs / no fail case → `analysis_state: "skipped"` + `skipped_reason`. |
 | "While I'm in here I'll just fix the bug I found" | Analyze only — do not patch. Writing files collapses the analysis/repair separation that makes the caller's routing valid. |
 
 ## Pitfalls
