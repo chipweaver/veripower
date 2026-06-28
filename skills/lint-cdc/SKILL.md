@@ -19,7 +19,6 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 
 - Do not modify the read-only external references — `Design/rtl-design/filelist.txt`, `Design/specification/design.md`, or `Design/specification/constraints/<TOP>.{sdc,sgdc}`. SGDC depth annotations belong to this stage's own canonical (`Design/lint-cdc/scripts/constraints.sgdc`); iterate only there, never write back to the spec source of truth.
 - `{workdir}/scripts/constraints.sgdc` MUST be listed in `result.json.artifacts[]` — it then lands at the canonical path and the next bootstrap warm-starts from it; without that entry the file is not promoted and depth annotations must re-converge from scratch.
-- Do not start when `Design/rtl-design/result.json.status≠pass` — write `status=fail` with `fail_reason="external reference not pass: Design/rtl-design/result.json"` and exit.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -57,7 +56,7 @@ When `{rework_trigger}` is injected, read additional context from the same direc
 | `cdc-report.txt` | SpyGlass text report | CDC summary report (a missing file is treated as fail — `collect_report.py` exits 1 when the source report is not found). |
 | `lint-violations.json` | JSON (`counts` + `violations[]`) | Structured lint findings from `collect_report.py`; Step 7 reads `counts.error` for the gate and `violations[]` for `result.json`. Listed in `artifacts[]` on the pass path → promoted to canonical, exactly like `lint-report.txt`. |
 | `cdc-violations.json` | JSON (`counts` + `violations[]`) | As above, for CDC. |
-| `scripts/constraints.sgdc` | SGDC | Working copy of the SGDC (the iteration site for depth annotations). When `status=pass`, list it in `result.json.artifacts[]`; it maps to the canonical `Design/lint-cdc/scripts/constraints.sgdc` and serves as the warm-start anchor for the next run. |
+| `scripts/constraints.sgdc` | SGDC | Working copy of the SGDC (the iteration site for depth annotations). When `status=pass`, list it in `result.json.artifacts[]` (the Iron Rule covers promotion + warm-start). |
 
 ## Workflow
 
@@ -98,7 +97,7 @@ runs SpyGlass lint and `collect_report.py`, which emits `lint-report.txt` (human
 
 The script re-derives `counts` and `violations[]` on every run — you do not count by hand.
 
-- **A non-zero `make` is authoritative — never infer success from `lint-violations.json` presence.** On a non-zero `make`, read `collect_report.py`'s stderr token and write `status=fail` with the matching `fail_reason`, then exit: `FAIL=missing` → `"lint report missing, not real sign-off"`; `FAIL=unparseable` → `"lint report unparseable"`; `FAIL=count_mismatch` → `"lint report parse incomplete (rows≠reported)"`. A non-zero `make` with **no** `FAIL=` token means SpyGlass itself did not complete (tool/license/crash, before `collect_report.py` ran) → `fail_reason="lint report missing, not real sign-off"`.
+- **A non-zero `make` is authoritative — never infer success from the `*-violations.json` presence.** This `FAIL=` protocol covers both `make lint` (this step) and `make cdc` (Step 5); the report label is `lint` for `make lint`, `CDC` for `make cdc`. On a non-zero `make`, read `collect_report.py`'s stderr token and write `status=fail` with the matching `fail_reason`, then exit: `FAIL=missing` → `"<label> report missing, not real sign-off"`; `FAIL=unparseable` → `"<label> report unparseable"`; `FAIL=count_mismatch` → `"<label> report parse incomplete (rows≠reported)"`. A non-zero `make` with **no** `FAIL=` token means SpyGlass itself did not complete (tool/license/crash, before `collect_report.py` ran) → `fail_reason="<label> report missing, not real sign-off"`.
 
 ### Step 5: `make cdc`
 
@@ -109,7 +108,7 @@ runs SpyGlass CDC and `collect_report.py`, emitting `cdc-report.txt` + `cdc-viol
 
 The script re-derives the counts — you do not count by hand.
 
-- **A non-zero `make` is authoritative — never infer success from `cdc-violations.json` presence.** On a non-zero `make`, read `collect_report.py`'s stderr token and write `status=fail` with the matching `fail_reason`, then exit: `FAIL=missing` → `"CDC report missing, not real sign-off"`; `FAIL=unparseable` → `"CDC report unparseable"`; `FAIL=count_mismatch` → `"CDC report parse incomplete (rows≠reported)"`. A non-zero `make` with **no** `FAIL=` token means SpyGlass itself did not complete (tool/license/crash, before `collect_report.py` ran) → `fail_reason="CDC report missing, not real sign-off"`.
+- **A non-zero `make cdc`** follows the same `FAIL=` protocol as Step 4 (report label `CDC`): read `collect_report.py`'s stderr token and write `status=fail` + the matching `fail_reason`, then exit.
 
 ### Step 6: Waivers
 
@@ -170,7 +169,7 @@ Every field in result.json is script-derived — the per-error `reason` comes fr
 - [ ] `sync_cell` / `reset_synchronizer` in `scripts/constraints.sgdc` cover every custom synchronizer in the RTL.
 - [ ] `set_case_analysis` has cleared the test-control-signal false positives; `quasi_static` has cleared the quasi-static cross-domain false positives.
 - [ ] Every `severity=error` item has been waived or written into `violations[]`.
-- [ ] `scripts/constraints.sgdc` is listed in `result.json.artifacts[]` (on the `status=pass` path — promoted to `Design/lint-cdc/scripts/constraints.sgdc` as the warm-start anchor).
+- [ ] `scripts/constraints.sgdc` is listed in `result.json.artifacts[]` (on the `status=pass` path; the Iron Rule covers promotion + warm-start).
 
 ## Return Contract
 
