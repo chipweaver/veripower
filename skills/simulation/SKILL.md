@@ -31,8 +31,6 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
   external reference for simulation). Shared by both sub-Tasks — see each contract's Prohibitions.
 - Do not modify RTL (RTL-class issues belong to the RTL editing stage; this stage does not exceed its
   authority). Shared by both sub-Tasks.
-- Do not start if `Verification/simulation-plan/result.json` is not `status=pass` — the orchestrator
-  confirms this prerequisite in Step 1 before any dispatch.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -55,20 +53,20 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
 | `Verification/simulation-plan/verification-plan.md` | Custom markdown | required (first-run) | Verification plan — the env-build sub-Task's input; the main thread passes the path and does not read the body. |
 | `Verification/simulation-plan/scaffold-specification.json` | Custom JSON | required (first-run) | TB scaffold contract — the sub-Tasks' input; the main thread asserts the file exists but does not read its body. |
 
-When `{rework_trigger}` is injected, the orchestrator passes its path (and any
+When `{rework_trigger}` is injected, you pass its path (and any
 `{orchestrator_context_path}`) to the env-build sub-Task, which reads the failed stage's
 `stage_specific` to drive this round's rewrite scope.
 
 ## Output Artifacts
 
-`result.json` is the only artifact the orchestrator writes; every other artifact is produced by a
-sub-Task in the shared `{workdir}` and is listed in `result.json.artifacts[]` by the orchestrator at
+`result.json` is the only artifact the main thread writes; every other artifact is produced by a
+sub-Task in the shared `{workdir}` and is listed in `result.json.artifacts[]` by the main thread at
 finalize. The env / verify phase split of the workdir artifacts is in
 [`references/artifact-contract.md`](references/artifact-contract.md).
 
 | Path (relative to `{workdir}`) | Schema / Format | Owner | Use |
 |---|---|---|---|
-| `result.json` | `references/result.schema.json` + envelope | orchestrator | This stage's status contract (`failure_phase` / `coverage_gaps`, etc.). |
+| `result.json` | `references/result.schema.json` + envelope | main thread | This stage's status contract (`failure_phase` / `coverage_gaps`, etc.). |
 | `Makefile` / `env.sh` / `filelist.f` / `rtl_filelist.f` / `tb/uvm/` / `scripts/` / `tests/testlist.json` | per `artifact-contract.md` | env-build | TB infra + materialized UVM (bound by Rule A). |
 | `regression-log.txt` / `structural-coverage.json` / `coverage-summary.txt` / `case-results-summary.md` | per `artifact-contract.md` | verify | Regression log + machine-readable structural coverage (gate source for `sim finalize`) + summaries. |
 | `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest handed to the verify phase (intra-stage handoff; not promoted). |
@@ -77,7 +75,7 @@ finalize. The env / verify phase split of the workdir artifacts is in
 > Every promoted path MUST appear in `result.json.artifacts[]`, otherwise it will not be promoted to
 > canonical (external read-only consumption of canonical `filelist.f` / `tb/uvm/`, etc. will fail).
 
-## Workflow (thin orchestrator; three sequential waves + smoke gate + scripted finalize)
+## Workflow (thin dispatcher; three sequential waves + smoke gate + scripted finalize)
 
 ### Fan-out Dispatch Contract
 
@@ -107,7 +105,7 @@ existence.
 
 Select the branch (which references the env-build sub-Task consults when filling TODOs):
 
-- **Trigger-driven rework** (`{rework_trigger}` injected): the orchestrator pre-gates the trigger's
+- **Trigger-driven rework** (`{rework_trigger}` injected): you pre-gate the trigger's
   readability before dispatching — if the trigger path is unreadable, run `sim finalize
   --workdir {workdir} --module <module> --phase prerequisite --fail-reason
   "rework_trigger not readable"` and return without dispatching;
@@ -118,8 +116,8 @@ Select the branch (which references the env-build sub-Task consults when filling
 
 **Fresh empty workdir on rework.** The bootstrap verb aborts if a `Makefile` already exists in
 the workdir, so a re-run needs a fresh, empty workdir. The caller provides a fresh `{workdir}` per run,
-which is exactly that — the orchestrator dispatches the env-build sub-Task into this fresh
-`{workdir}`; it never reuses a workdir that already holds a deployed infra.
+which is exactly that — you dispatch the env-build sub-Task into this fresh
+`{workdir}`; you never reuse a workdir that already holds a deployed infra.
 
 **Internal scripts.** The `bootstrap` verb performs the rtl_filelist rewrite + scaffold render in-process (the former three-script pipeline collapsed into one verb); the standalone re-render entry is `sim render-scaffold`. The deployed `infra/scripts/` (`run_vcs_regression.sh` /
 `parse_coverage.py` / `write_summary.py`) are make-internal. The interfaces are
@@ -131,7 +129,7 @@ the `bootstrap` verb and the `make` targets (`simv` / `smoke` / `regress` / `cov
 Dispatch one `Task(run_in_background=True)` — the env-build child — whose prompt points to
 [`references/env-task-contract.md`](references/env-task-contract.md) and hands over paths only
 (`{workdir}`, `{module}`, scaffold-spec path, verification-plan path, and on rework the trigger /
-context paths). The main thread never reads the TB it produces.
+context paths).
 
 The env-build child self-gates its `STATUS: DONE` on a presence-only thin-D1 check
 (`sim check-materialization`: no surviving TODO, all required scaffold files present) so a
@@ -150,7 +148,7 @@ carries `compile_rounds`) and return; do not dispatch the downstream waves.
 
 Gate on the smoke result emitted by the smoke run's own tooling in `{workdir}`, NOT on the
 env-build child's self-reported `STATUS:` prose. This is cheap and deterministic — the main thread
-reads a small status file, does NOT re-run heavy EDA, and does NOT read the TB body. Do NOT use
+reads a small status file and does NOT re-run heavy EDA. Do NOT use
 the `sim` exit gate here — its coverage gate hard-fails pre-regress (no `structural-coverage.json`
 exists yet).
 
@@ -170,7 +168,7 @@ On a smoke pass, dispatch one `Task(run_in_background=True)` — the conformance
 whose prompt points to [`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md)
 and hands over paths only: the `{workdir}` (filled `tb/uvm/**`), the scaffold-spec path
 (`testpoints[].inlined_check_hints[]`), the `verification-plan.md` path (§3 intent source),
-the DUT RTL filelist, and `{module}`. The main thread never reads the TB body. After dispatching, end the turn and wait for the harness wake.
+the DUT RTL filelist, and `{module}`. After dispatching, end the turn and wait for the harness wake.
 
 On wake-up, reap the reviewer's `STATUS:` last line + its JSON line, assemble
 `{workdir}/conformance-review.json` (schema `references/conformance-review.schema.json`), and run:
@@ -188,8 +186,7 @@ contract's "Severity & gating"), computed by the script, not judged by eye. Appl
   conformance --fail-reason "<built from flagged + dominant_category>" --conformance-review
   {workdir}/conformance-review.json` (finalize re-derives the gating `conformance_findings` subset
   in-process via `compute_gate`, carried to triage as `failure_signal`, and enumerates
-  `conformance-review.json` in `artifacts[]`); **skip Step 5** (do not dispatch the verify wave), exactly
-  as a smoke-gate fail skips the downstream waves.
+  `conformance-review.json` in `artifacts[]`); **skip Step 5** (do not dispatch the verify wave).
 - **`gate=clear`:** proceed to Step 5. Advisory findings (`unverifiable-arch` any severity, `minor`,
   `unavailable`) never trip the gate — record them in `conformance-review.json` and surface a
   `⚠ <tp> <category>` line in the completion summary.
@@ -198,7 +195,7 @@ contract's "Severity & gating"), computed by the script, not judged by eye. Appl
   `{... "findings":[{"tp_id":"-","severity":"minor","category":"unavailable","location":"-","summary":"review (wave) failed: <reason>"}]}`
   (so the absence of a real review is a first-class artifact, not invisible; the validator reports
   `gate=clear` for it), note it in the completion summary, and proceed to Step 5.
-- **Verdict integrity:** the main thread MUST NOT override a `gate=trip` to pass.
+- **Verdict integrity:** you MUST NOT override a `gate=trip` to pass.
 
 This stage runs **no in-skill fix-loop** — a conformance trip exits to the existing
 `failure_phase=conformance` → simulation-triage → route path. (Self-heal is deferred.)
@@ -213,7 +210,7 @@ scaffold-spec testpoints path, and `{module}`.
 After dispatching, end the turn and wait for the harness wake.
 On wake-up, reap the verify child's `STATUS:` last line + its JSON line (the `stage_specific` fields),
 then branch on its verdict and write `status=fail` via finalize, **skipping Step 6/7** (do NOT call
-`--phase final`) — exactly as a smoke- or conformance-gate fail skips the downstream waves:
+`--phase final`):
 
 - a `make regress` case failed → `sim finalize --phase regress --failure-phase regress
   --fail-reason "<…>" --verify-verdict <reaped, carries failing_cases>`;
@@ -250,13 +247,13 @@ copied verbatim from the finding `summary`, `stimulus_iterations` from the reape
 enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status
 pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
-**Verdict integrity (anti-gaming):** the orchestrator MUST NOT override any gate's fail to pass.
+**Verdict integrity (anti-gaming):** you MUST NOT override any gate's fail to pass.
 `status=pass` is written by finalize only on `--phase final` when `thin_d1`/`coverage_gate` are clean
 and no upstream gate — smoke, conformance, **or the Step-5 verify wave** (`regress` / Rule-B `coverage` /
 `verify-blocked`) — routed out (each of those wrote its own `status=fail` via its own `--phase` call and
 skipped the downstream waves; so a regression/coverage/blocked failure can never reach the
 compile/coverage-only `--phase final` and be mis-written as pass). This mirrors rtl-design's child-status
-precedence: the orchestrator records the most-failing verdict, never a more-optimistic one.
+precedence: you record the most-failing verdict, never a more-optimistic one.
 
 The `failure_phase` value table below documents which step decides each phase; finalize owns the
 `compile`/`coverage` finalize rows and writes the rest via `--phase`. `failure_phase` is required when
@@ -264,7 +261,7 @@ The `failure_phase` value table below documents which step decides each phase; f
 
 | failure_phase | First-failing phase | Companion fields (besides `fail_reason`) | Decided in |
 |---|---|---|---|
-| `prerequisite` | Step 1 reference missing / not pass, or `{rework_trigger}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | orchestrator |
+| `prerequisite` | Step 1 reference missing / not pass, or `{rework_trigger}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | main thread |
 | `compile` | `make simv` failed (no smoke status); or `sim finalize` thin-D1 file missing / `TODO(` residue | `compile_rounds` | smoke gate (Step 3) / finalize (Step 6) |
 | `smoke` | `make smoke` ran but a `RESULT` line is not `PASS` | `failing_cases` | smoke gate (Step 3) |
 | `conformance` | Conformance gate (Step 4): a finding `category ∈ {missing,wrong-behavior,fake-green,intent-defect}` at `critical`/`important` | `conformance_findings` | conformance gate (Step 4) |
@@ -292,11 +289,11 @@ sub-Task.
 
 | Excuse | Reality |
 |---|---|
-| "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `sim finalize` exited non-zero) | The orchestrator records the most-failing verdict, never a more-optimistic one. `status=pass` is written only when the smoke gate, the conformance gate, the verify verdict, and `sim finalize` all agree (Step 7); it MUST NOT override a `gate=trip` to pass (Step 4). |
+| "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `sim finalize` exited non-zero) | You record the most-failing verdict, never a more-optimistic one. `status=pass` is written only when the smoke gate, the conformance gate, the verify verdict, and `sim finalize` all agree (Step 7); you MUST NOT override a `gate=trip` to pass (Step 4). |
 | "The env-build child's `STATUS:` line says smoke passed — that's my smoke gate" | The smoke gate reads the smoke run's own tooling (`regression-log.txt` `RESULT` lines / per-test `logs/<test>.status`), never the child's self-reported prose (Step 3). |
 | "A case is failing — I'll open the TB to see why" | The main thread NEVER reads the TB body or re-runs heavy EDA; it consumes envelopes / status files / paths only and routes the failure out for the caller to decide (Iron Rule). |
 
-## Completion Gate (orchestrator)
+## Completion Gate (main thread)
 
 - [ ] No Iron Rule was triggered.
 - [ ] The env-build sub-Task was dispatched and reaped (DONE or BLOCKED).
