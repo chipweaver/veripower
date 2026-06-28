@@ -215,11 +215,11 @@ Each entry:
 - **ssot:** CONTRIBUTING.md → "Adding or modifying a stage skill" (items 3–5)
 
 ### C2-14 — skill-voice
-- **check:** A SKILL.md uses imperative voice for rules / steps / gates with no hedging (`must` / `never`, not `should` / `consider`); a skill with a dispatch boundary (the fan-out / orchestrator skills) names the dispatching self by role-noun ("the main thread" / "the orchestrator") and a dispatched agent by role ("the sub-Task" / "the child"), not second-person "you" (which is the voice of a single-actor skill).
-- **signal:** `should` / `consider` hedging where a rule or gate means `must` / `never`; a fan-out or orchestrator skill referring to the dispatching self as "you" / "your" instead of a role-noun.
+- **check:** A SKILL.md uses imperative voice for rules / steps / gates with no hedging (`must` / `never`, not `should` / `consider`); a skill with a dispatch boundary (the fan-out / orchestrator skills) names the dispatching self by role-noun ("the main thread" / "the orchestrator") and a dispatched agent by role ("the sub-Task" / "the child"), not second-person "you" (which is the voice of a single-actor skill). The same voice governs `references/*.md`, attributed by **reader-actor**: a task-contract addresses its dispatched child / sub-Task, a template its producing stage, a coding-rules file its stage agent — each as "you"; naming that reader in third person is a miss.
+- **signal:** `should` / `consider` hedging where a rule or gate means `must` / `never`; a fan-out or orchestrator skill referring to the dispatching self as "you" / "your" instead of a role-noun; a `references/*.md` file naming its own reader-actor in third person — e.g. a task-contract heading or body saying "the child" / "the LLM" where the file's body addresses that same actor as "you".
 - **severity:** should-fix
-- **applies-to:** skill-md
-- **ssot:** docs/skill-field-contract-design.md → "### 3.6 F6 — Voice" (imperative + no-hedging; role-noun at a dispatch boundary)
+- **applies-to:** skill-md, references
+- **ssot:** docs/skill-field-contract-design.md → "### 3.6 F6 — Voice" (imperative + no-hedging; role-noun at a dispatch boundary; + the §3.6 references reader-based extension and §1 references-scope note)
 
 ### C2-15 — design-docs-self-standing
 - **check:** A Tier-A doc (`docs/*-design.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `README.md`) states VeriPower's conventions on their own terms, with no coupling to anything outside the repo: no rule grounded in "aligns with <external project>" / "<external project> does X" instead of on its own merits, and no path or file belonging to another repo. The in-repo `docs/superpowers/` working directory is a local path, not external coupling. (The runtime-content counterpart is C2-04.)

@@ -16,7 +16,7 @@ Your sole responsibility: derive a frozen design source of truth from an approve
 
 ## Iron Rule
 
-Boundary of this skill:
+Your boundary:
 
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
 - **Do not write files outside `{workdir}` and do not read or write other modules' artifacts.** Reading reference material outside `{workdir}` (e.g., plugin-internal templates) is allowed.

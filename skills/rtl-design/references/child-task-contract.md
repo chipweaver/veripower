@@ -4,7 +4,7 @@ The rtl-design main thread dispatches one Level-1 `Task(run_in_background=True)`
 `manifest.children[]` (including the top-integration child). Every child gets the identical contract
 below. Do not call the Task tool (no Level-2 dispatch).
 
-## Inputs handed to the child (paths only — the main thread does not read these bodies)
+## Inputs (paths only — the main thread does not read these bodies)
 
 - Child unit name + its `manifest.children[<self>].rtl_modules[]` list.
 - `{workdir}/<child>.md` (full per-child sub-design — you are its sole consumer; self-contained:

@@ -7,7 +7,7 @@ in `category ∈ {missing, wrong-behavior}` at `severity ∈ {critical, importan
 fails the stage out (`status=fail`) to the operator. `over-engineering` and `minor` findings
 remain advisory (never gate). Findings are aggregated into `semantic-review.json`. Do not call the Task tool.
 
-## Inputs handed to the child (paths only — the main thread does not read these bodies)
+## Inputs (paths only — the main thread does not read these bodies)
 
 - Child unit name + its `manifest.children[<self>].rtl_modules[]` list.
 - The child's authored RTL `files[]` (from the ledger) — read these.

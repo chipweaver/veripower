@@ -15,7 +15,7 @@ Your sole responsibility: from `specification`, generate or evolve two artifacts
 
 ## Iron Rule
 
-Boundary of this skill:
+Your boundary:
 
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
 - **Do not read RTL source, do not invoke EDA tools, and do not write `tb/uvm/` / `Makefile` / `vcd/`.** These belong to the TB-materialization stage.
@@ -87,7 +87,7 @@ Trigger context + revision highlights.
 
 ### `scaffold-specification.json` fields
 
-LLM-authored (judgment): `module`, `top`, `agents[]` `{name, mode, interface_groups}`,
+You author (judgment): `module`, `top`, `agents[]` `{name, mode, interface_groups}`,
 `sequences[]`, `tests[]`, `rm`, `scoreboard`, `testpoints[]` `{id, bins, intent, covers}`,
 `power_scenarios[]`, and `skipped_checks[]` `{check_id, reason}`.
 
@@ -102,9 +102,9 @@ Full structural shape: [`references/scaffold-specification.schema.json`](referen
 Authoring judgment the schema/validator cannot express:
 - `agents[].mode` — `active` for driver/master/driving agents; `passive` for monitor/slave/observer.
 - `rm.inports` / `scoreboard.compare_txn` — name the agent txn(s) (`<module>_<agent>_txn`); the
-  validator checks they resolve, the LLM picks which agent is the RM input / the one observer.
+  validator checks they resolve; you pick which agent is the RM input / the one observer.
 - `testpoints[].covers[]` — cluster the `plan-data.json.check_hints[]` check_ids into testpoints
-  (one-to-one / one-to-many / many-to-one; LLM-invented scenario testpoints use `covers: []`).
+  (one-to-one / one-to-many / many-to-one; scenario testpoints you invent use `covers: []`).
 - `skipped_checks[]` — any `check_hints[]` check_id covered by no testpoint MUST be listed here with
   a `reason` (e.g. `"static lint gate, no runtime testpoint"`), else the coverage gate fails.
 - Every `power_scenarios[].sequence_ref` MUST appear in `sequences[].name` (see

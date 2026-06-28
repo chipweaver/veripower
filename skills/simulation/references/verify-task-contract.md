@@ -4,7 +4,7 @@ The simulation main thread dispatches the **verify** child as the third sequenti
 the smoke gate passes and the conformance gate clears. Your job: full regression, coverage iteration (Rule B), and the
 review summary.
 
-## Inputs handed to the child (paths only — the main thread does not read these bodies)
+## Inputs (paths only — the main thread does not read these bodies)
 
 - `{workdir}` — the **same** shared workdir the env-build child wrote in wave 1. It already holds the
   built TB (`tb/uvm/**`), the compiled `simv`, the env-phase artifacts, and

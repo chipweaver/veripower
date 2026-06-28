@@ -4,7 +4,7 @@ The simulation main thread dispatches **one** Level-1 `Task(run_in_background=Tr
 env-build child — as the first of three sequential waves. Your job: bootstrap the stage workdir, fill
 the UVM scaffold, compile, and run the smoke suite.
 
-## Inputs handed to the child (paths only — the main thread does not read these bodies)
+## Inputs (paths only — the main thread does not read these bodies)
 
 - `{workdir}` — the shared simulation stage workdir (you are the first writer; the
   verify child runs in the same directory in wave 3).

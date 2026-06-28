@@ -8,7 +8,7 @@ and BEFORE the verify wave. This review is **gating**: findings above the thresh
 Mechanism = a hybrid of rtl-design's deterministic conformance gate and its advisory
 semantic review: an LLM intent reviewer whose output is used as a gate.
 
-## Inputs handed to the child (paths only — the main thread does not read these bodies)
+## Inputs (paths only — the main thread does not read these bodies)
 
 - The whole materialized TB under `{workdir}/tb/uvm/**`: read BOTH the **check path**
   (checker / scoreboard / refmodel) AND the **drive/observe path** (driver / sequence /

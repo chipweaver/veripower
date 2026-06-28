@@ -6,6 +6,10 @@ This document defines the authoring contract for the body of every `skills/<name
 file in VeriPower: which fields are required, how each field must be written, and the
 formatting conventions that govern the whole body.
 
+**References scope.** Two of these conventions also govern the skill's `references/*.md` files: the
+§4.6 formatting conventions (stated there) and the §3.6 voice convention (via its reader-based
+extension, stated there). Every other rule in this document is SKILL.md-body-only.
+
 **Audience.** Skill authors writing or revising the body of `skills/<name>/SKILL.md`.
 
 **Companion documents.**
@@ -133,6 +137,15 @@ shape as the black-box bullet."
 
 Name a concept once and reuse the term verbatim
 (§3.5 F5); no synonyms for the same thing.
+
+**References.** This voice convention also governs `references/*.md` (as the §4.6 formatting
+conventions do). In a reference file the "you" is that file's **reader-actor**, attributed by reader:
+a `*-task-contract.md` addresses the dispatched **child / sub-Task** it governs; a template addresses
+the **producing stage** that fills it; a coding-rules / contract file addresses the **stage agent**
+reading its own rules. Third person stays reserved for the same non-reader actors as in SKILL.md —
+scripts, the dispatching self or a different sub-Task named by role, an upstream / downstream stage,
+and artifact content / provenance. A file that names its own reader-actor in third person (e.g. an
+`## Inputs handed to the child` heading whose body addresses that child as "you") is a miss.
 
 ## 4. The 13-field contract
 
