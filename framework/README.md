@@ -8,9 +8,7 @@ defined here, but no skill *owns* this layer.
 > **Why "framework" and not "shared"?** "Shared" implied "multi-consumer" — but
 > three of the four items below have `design-flow` as their primary caller, and
 > they belong here for a different reason: they're the **infrastructure** that
-> defines what every skill (and the orchestrator) plugs into. See the self-
-> containment policy in `docs/skill-self-containment-design.md` and its dispatcher
-> carve-out for the related principle.
+> defines what every skill (and the orchestrator) plugs into.
 
 ## Contents
 

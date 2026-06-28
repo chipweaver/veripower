@@ -24,17 +24,13 @@ The branch decision happens once, in Step 1. Subsequent steps describe a single 
 
 If Step 1 produces N branches, downstream steps MUST address how each branch threads through them, OR state *"Steps 2–N are identical across branches; they differ only in scope."* Linear downstream after a multi-branch Step 1 is a bug — the implementer cannot reconstruct what each branch does.
 
-**Bad:** Step 1 lists three branches. Step 2 says "Run `make synth`; record artifacts." Reader cannot tell which branches limit scope.
-
-**Good:** Step 1 lists three branches. Step 2 says "Run `make synth`. Trigger-driven: limit `--target=` to `trigger.violations[]`. Cascade: limit to diff scope. First-run: full generation."
-
 ### 3.4 P4 — Idempotency by design
 
 The disk is the source of truth for artifacts, not for progress. Do NOT track partial completion via custom disk markers. Trust `result.json` presence and the canonical-vs-`runs/` promotion owned by `framework/scripts/state.py`.
 
 ### 3.5 P5 — Fail-closed semantics
 
-If `{rework_trigger}` is injected but unreadable or malformed, write `result.json` with `status=fail` and `stage_specific.fail_reason="rework_trigger not readable: <path>"`. Do NOT silently fall back to first-run.
+If `{rework_trigger}` is injected but unreadable or malformed, write `result.json` with `status=fail` and a `fail_reason` identifying the unreadable path. Do NOT silently fall back to first-run.
 
 **Rationale:** Silent fallback masks caller-side bugs as completed first-runs.
 
@@ -47,7 +43,7 @@ If `{rework_trigger}` is injected but unreadable or malformed, write `result.jso
 | injected | present (typical) | explicit rework | scope limited to `trigger.violations[]`; non-listed files untouched |
 | injected | not present | rare; treat as explicit rework | scope limited to `trigger.violations[]`; full generation for non-listed files if absent |
 
-**Worked walk-through 1: standard worker (3-branch)** — lint-cdc archetype:
+**Worked walk-through: standard worker (3-branch)** — lint-cdc archetype:
 
 ```text
 Step 1: Read inputs.
@@ -67,13 +63,13 @@ Step 2: make <target>
 Step 3: write result.json (status/artifacts/metrics); STATUS: DONE
 ```
 
-**Worked walk-through 2: dialogue 4-branch (simulation-plan archetype)** — `simulation-plan` extends the three worker branches with a fourth, session-resume, giving: trigger-driven / session-resume / cascade rework (incremental update) / first-run. The session-resume branch — its trigger, its resume-from-last-gate mechanism, and why dialogue forms use it — is the §6.3 carve-out.
+`simulation-plan` extends the three worker branches with a fourth, session-resume, giving: trigger-driven / session-resume / cascade rework / first-run. That fourth branch — its trigger condition, resume-from-last-gate mechanism, and why dialogue stages use it — is the §6.3 carve-out.
 
-**Note:** §5 (Examples) is intentionally absent. The two walk-throughs above absorb that role within §4. Section numbers are preserved to match the template positions used across the design-doc set.
+**Note:** §5 (Examples) is intentionally absent. The walk-through above absorbs that role within §4. Section numbers are preserved to match the template positions used across the design-doc set.
 
 ## 6. Carve-out catalog
 
-Six skills deviate from the standard 3-branch worker pattern. Each must reference its carve-out in the Workflow rationale (see §7).
+Six skills deviate from the standard 3-branch worker pattern. Each must reference its carve-out in the Workflow rationale.
 
 ### 6.1 Never-trigger-target (power-analysis)
 
@@ -97,17 +93,7 @@ Six skills deviate from the standard 3-branch worker pattern. Each must referenc
 
 ### 6.6 Never-trigger-target / read-only re-verifier (timing-analysis)
 
-`timing-analysis` is never a rework-DAG fix target: `route.py` never returns it (on a `ppa` failure it routes *away* to rtl-design/specification; `_PPA_STAGES`), and the orchestrator attaches `{rework_trigger}` only on a `REWORK` action to its target. It runs only by forward `DISPATCH`, which carries no trigger — the same archetype as §6.1 (power-analysis), but simpler: it consumes no `{orchestrator_context_path}` hint either, because it is read-only w.r.t. `Design/synthesis/` and cannot fix anything. Step 1 is a single linear pre-flight check (synthesis `status=pass` + netlist/SDC present); no trigger / incremental / first-run fork. P5 (fail-closed on unreadable trigger) does not apply — no trigger is ever delivered. (`skills/timing-analysis/SKILL.md` Workflow rationale.)
-
-## 7. Compliance checklist
-
-- [ ] Step 1 uses only the two routing signals — no extra disk scans, no external state (P1)
-- [ ] All branches Step 1 produces are addressed in subsequent steps, or the scope-identity statement is explicit (P3)
-- [ ] No partial-completion markers written to disk (P4)
-- [ ] Trigger-unreadable case writes `status=fail` + `fail_reason` (P5)
-- [ ] If the skill falls in a §6 carve-out, the carve-out is referenced explicitly in the Workflow rationale
-- [ ] Idempotency: re-running Step 1 in the same state produces the same routing decision
-- [ ] No `mode` parameter exposed in skill inputs
+`timing-analysis` is never a rework-DAG fix target: `route.py` never returns it (on a `ppa` failure it routes away to rtl-design/specification; `_PPA_STAGES`), and the orchestrator attaches `{rework_trigger}` only on a `REWORK` action to its target. It runs only by forward `DISPATCH`, which carries no trigger — the same archetype as §6.1 (power-analysis), but simpler: it consumes no `{orchestrator_context_path}` hint either, because it is read-only w.r.t. `Design/synthesis/` and cannot fix anything. Step 1 is a single linear pre-flight check (synthesis `status=pass` + netlist/SDC present); no trigger / incremental / first-run fork. P5 (fail-closed on unreadable trigger) does not apply — no trigger is ever delivered. (`skills/timing-analysis/SKILL.md` Workflow rationale.)
 
 ## 8. Process for changing
 

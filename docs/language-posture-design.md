@@ -12,7 +12,7 @@ context at runtime; no SKILL.md references this file.
 
 **Companion documents.**
 
-- `skill-self-containment-design.md` — orchestration-vocabulary scrub;
+- `skill-structure-design.md` — orchestration-vocabulary scrub;
   a separate concern from language posture.
 
 ## 2. Background
@@ -33,30 +33,13 @@ harness loads into Claude's context window at runtime is **Surface 1**
 and is strict English. This is the highest-leverage content in the
 repo — every token directly affects model behavior.
 
-Examples of Surface 1:
+Exemplars: `skills/<name>/SKILL.md` (frontmatter + body);
+`skills/<name>/references/*.md` (when linked from SKILL.md).
 
-- `skills/<name>/SKILL.md` (frontmatter + body).
-- `skills/<name>/references/*.md` (when linked from SKILL.md).
-- `skills/<name>/scripts/*` (executed at runtime; stdout/stderr read by
-  Claude).
-- `skills/<name>/templates/*` (structural skeleton; field labels;
-  placeholders).
-- `skills/<name>/defaults.yaml`.
-- `framework/scripts/state.py` (executed; orchestration authority).
-- `framework/references/prompts/stage-subagent.md.tpl` (injected on
-  every subagent dispatch).
-- `framework/references/schemas/*.schema.json` (validation contract;
-  descriptions read on error).
-- The project root `CLAUDE.md` (loaded by Claude Code at session start).
-- `tests/unit/*.py` (assertion strings define the contract surface).
-- `tests/scenarios/<stage>/scenario-*.md` frontmatter keys (parsed by
-  the eval framework).
-
-**Note — matcher pattern data.** A Surface-1 script may carry Surface-2 literal tokens as
-*matcher pattern data* when its job is to detect user-language content — e.g. a coverage
-detector whose by-reference regex includes the Chinese forms of "see brainstorm" to catch a
-non-English by-reference jump in a Surface-2 `design.md`. Such tokens are matched data, not
-authored Surface-1 prose; the script's own Claude-facing output (stdout/stderr) stays English.
+**Note — matcher pattern data.** A Surface-1 script may carry Surface-2
+literal tokens as *matcher pattern data* when its job is to detect
+user-language content. Such tokens are matched data, not authored
+Surface-1 prose; the script's own Claude-facing output stays English.
 
 ## 4. Surface 2 — user-data interfaces (bilingual)
 
@@ -65,14 +48,8 @@ read/written by Claude as a data value inside an artifact or message
 body is **Surface 2** and follows user language. It is not parsed as
 fields by any matcher.
 
-Examples of Surface 2:
-
-- Live Claude↔user dialogue.
-- Runtime artifact prose: `brainstorm.md` body cells, `design.md` cell
-  content, `verification-plan.md` text.
-- `result.json.stage_specific.fail_reason` runtime values.
-- Simulated user-utterance text in
-  `tests/scenarios/<stage>/scenario-*.md` body and frontmatter values.
+Exemplar: live Claude↔user dialogue; runtime artifact prose in
+`brainstorm.md` body cells and `design.md` cell content.
 
 ## 5. The two-stage test
 
@@ -95,7 +72,7 @@ For any content, determine its tier with two questions:
 - No → Surface 2 (user language; free-prose content in a structural
   slot).
 
-## 6. Examples
+## 6. Anchor example
 
 **Bad — Surface 1 written in any language other than English.** A
 SKILL.md body with non-English H2 titles and non-English bullet content
@@ -111,52 +88,20 @@ English; the standardization flipped all such surfaces.
 - Not for: RTL implementation, verification, or synthesis.
 ```
 
-**Bad — forcing Surface 2 to English when the user works in another
-language.** A dialogue skill that prompts the user in English when the
-user has been writing in (say) Chinese creates friction and may confuse
-the user. Surface 2 is meant to follow the user, not impose a language.
-
-**Good — Surface 2 mirrors user language.** The dialogue skill's
-SKILL.md is English (Surface 1 — authoring content); at runtime Claude
-emits the prompt in whatever language the user has been writing in.
-This is emergent behavior: Claude's pretrained language-mirroring is
-sufficient; no explicit instruction in any SKILL.md is needed.
-
-**Bad — mandating one language for `fail_reason` runtime values.** The
-spec does not pin a language for `fail_reason` values. Forcing English
-when the surrounding dialogue is non-English makes the failure narrative
-read awkwardly. Forcing user-language when the failure is a
-cross-stage protocol observation makes it less greppable.
-
-**Good — `fail_reason` reflects runtime context.** The value emerges
-from the runtime narrative; if the dialogue is non-English, the value
-may be non-English. The SKILL.md examples illustrating `fail_reason`
-syntax stay English (Surface 1 — authoring content).
+At runtime Claude emits dialogue in whatever language the user has been
+writing in. This is emergent behavior from pretrained language-mirroring;
+no explicit "speak the user's language" instruction in any SKILL.md is
+needed.
 
 ## 7. Not a Surface — project documentation
 
-Project documentation — `docs/*.md`, `CONTRIBUTING.md`, root `README.md`,
-`ARCHITECTURE.md`, `framework/README.md`, `templates/<stage>/README.md`,
-and code comments throughout — is read by humans offline. It is English
-by general standardization policy for consistency and contributor
-friendliness, but it is not part of the LLM runtime contract and does
-not fall under the Bilingual Invariant.
+Project documentation is read by humans offline. It is English by general
+standardization policy but is not part of the LLM runtime contract and
+does not fall under the Bilingual Invariant.
 
 **Committed bilingual mirrors.** A few human-facing docs carry a committed
 `.zh.md` mirror for Chinese readers (currently `ARCHITECTURE.zh.md` and
-`GETTING-STARTED.zh.md`). A mirror is a translation of its English source, not
-an independent document: the English source is authoritative and the mirror is a
-**propagation target** that MUST be updated in the same change as that source,
-so the two never diverge on a load-bearing fact.
-
-## 8. Enforcement posture
-
-- **No SKILL.md cross-references this principle or any file in `docs/`.**
-  Skills are self-contained.
-- **Authors learn the rule from this doc** when writing or translating
-  skills; reviewers verify on PR.
-- **Claude relies on emergent language-mirroring** at runtime — no
-  explicit "speak the user's language" instruction in any SKILL.md.
-- **The forbidden-keyword grep** in `skill-self-containment-design.md §4`
-  is the only mechanical enforcement for skill content, and it catches
-  orchestration vocabulary, not language.
+`GETTING-STARTED.zh.md`). A mirror is a translation of its English source,
+not an independent document: the English source is authoritative and the
+mirror MUST be updated in the same change as that source, so the two never
+diverge on a load-bearing fact.

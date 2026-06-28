@@ -18,10 +18,9 @@ extension, stated there). Every other rule in this document is SKILL.md-body-onl
   full rules are out of scope for this document.
 - `skill-branch-routing-design.md` — governs Step 1 of the Workflow field in detail: the
   two-signal routing table, branch-coverage rule, and per-form carve-outs.
-- `skill-self-containment-design.md` — governs the orchestration-vocabulary prohibition that
-  constrains the content of every field in SKILL.md.
-- `skill-references-organization-design.md` — governs the Bundled References field rule:
-  externalization criteria and the suffix naming taxonomy.
+- `skill-structure-design.md` — governs the orchestration-vocabulary prohibition that constrains
+  the content of every field in SKILL.md, and the Bundled References field rule: externalization
+  criteria and the suffix naming taxonomy.
 - `result-schema-design.md` — covers `result.json` content (what fields belong inside it);
   no overlap with this document, which covers the SKILL.md prose that produces `result.json`.
 
@@ -34,10 +33,9 @@ returns control. A formal contract prevents drift across all 12 SKILL.md and giv
 stable audit surface — without it, each skill accumulates local idioms that erode cross-skill
 consistency and make automated compliance checks unreliable.
 
-The relationship to `result.json` is complementary and non-overlapping. SKILL.md describes
-how to produce the stage artifact; `result-schema-design.md` describes the artifact's content.
-An author writing a stage skill reads both: this document for the SKILL.md structure, and
-`result-schema-design.md` for what goes inside `result.json`.
+For the relationship between SKILL.md and `result.json`, see `result-schema-design.md`: SKILL.md
+describes how to produce the stage artifact; `result-schema-design.md` describes the artifact's
+content.
 
 ## 3. Foundation principles
 
@@ -46,7 +44,7 @@ An author writing a stage skill reads both: this document for the SKILL.md struc
 Cross-stage communication in VeriPower is `result.json` on disk plus the envelope schema —
 not free-form prose, not message-body text, not inferred state. The filesystem is what
 `state.py` validates, what downstream consumers read at envelope-read time, and what
-`promote()` hardlinks to the canonical path. This principle maps to review framework C1.
+`promote()` hardlinks to the canonical path.
 
 Implication: every Workflow field must drive toward producing a valid `result.json` on disk.
 Status decisions (`pass` or `fail`) must be filesystem-observable — recorded in
@@ -69,17 +67,15 @@ on a single axis — severity first, then temptation:
 - **Completion Gate** — the pre-return checklist.
 
 A rule is hard xor soft; among hard rules, tempting → Red Flags, else Iron Rule (tie → Red
-Flags). Duplicating a rule across sections creates drift anchors — forbidden. Maps to review
-framework C3 (cognitive-section separation) and B7 (non-redundancy).
+Flags). Duplicating a rule across sections creates drift anchors — forbidden.
 
 ### 3.3 F3 — Process over knowledge
 
 Workflow steps describe *how to do*, not *what to understand*. Each step must be actionable:
 it names a concrete action, specifies the condition under which it applies, and identifies the
-concrete output. This extends import #5 (process-over-knowledge from agent-skills) and review
-framework B6 (LLM-friendliness). LLM-friendliness sub-rules: use `if X then Y` decisions,
-action verbs, concrete file paths — avoid regional shorthand or implicit assumptions that
-require cultural context to interpret.
+concrete output. LLM-friendliness sub-rules: use `if X then Y` decisions, action verbs,
+concrete file paths — avoid regional shorthand or implicit assumptions that require cultural
+context to interpret.
 
 **Bad:** `Step 2: Understand the synthesis tool's output format.`
 
@@ -105,9 +101,6 @@ are the source of truth — read the already-translated bodies and references to
 the canonical English terms. There is no separate glossary doc; consistency is enforced
 by review.
 
-**Note:** `name` and `description` are frontmatter keys — they are not body fields. Their
-full rules live in `skill-frontmatter-design.md`.
-
 ### 3.6 F6 — Voice
 
 Address the executing agent directly and imperatively. For rules, steps, and gates, command —
@@ -131,12 +124,11 @@ the §4.3.4 black-box bullet **and** the §4.3.7 Fan-out Dispatch Contract bulle
 dispatch-and-wait, no `state.py`, `STATUS: BLOCKED` handling) **and** the load-bearing Load-mode
 dispatch anaphora ("It uses the Task tool…"); the T2 "never auto-fixes" routing fact; and references
 to a skill **as an artifact** in `description` / `When to Use` / cross-skill mentions
-("Use this skill when…"). These last carve-outs are not new: commit `191d022` already kept them in
-third person, and the field contract states the fan-out wording is standardized-inline "the same
-shape as the black-box bullet."
+("Use this skill when…"). These carve-outs reflect existing standardized-inline wording, and the
+field contract states the fan-out wording is standardized-inline "the same shape as the black-box
+bullet."
 
-Name a concept once and reuse the term verbatim
-(§3.5 F5); no synonyms for the same thing.
+Name a concept once and reuse the term verbatim (§3.5 F5); no synonyms for the same thing.
 
 **References.** This voice convention also governs `references/*.md` (as the §4.6 formatting
 conventions do). In a reference file the "you" is that file's **reader-actor**, attributed by reader:
@@ -151,7 +143,7 @@ and artifact content / provenance. A file that names its own reader-actor in thi
 
 ### 4.1 Field-set table
 
-13 fields total: 2 frontmatter keys + 11 body fields. MUST = 8, SHOULD = 5, OPTIONAL = 0.
+13 fields total: 2 frontmatter keys + 11 body fields. MUST = 8, SHOULD = 5.
 MUST fields must have content. SHOULD fields may be omitted only if the upgrade trigger does
 not apply — not to save space.
 
@@ -169,7 +161,7 @@ not apply — not to save space.
 | 10 | `Pitfalls` | SHOULD | — |
 | 11 | `Completion Gate` | MUST | — |
 | 12 | `Return Contract` | MUST | — |
-| 13 | `Bundled References` | SHOULD | Skill body contains an externalizeable self-contained unit per `skill-references-organization-design.md` criteria |
+| 13 | `Bundled References` | SHOULD | Skill body contains an externalizeable self-contained unit per `skill-structure-design.md` criteria |
 
 ### 4.2 Removal list
 
@@ -188,6 +180,8 @@ The following fields are forbidden — they MUST NOT appear in any SKILL.md:
 
 **Note:** The `allowed-tools` rejection is empirically grounded: `veripower:simulation` listed 14 Write tools while `veripower:rtl-design` and `veripower:synthesis` listed none, yet both wrote files freely — confirming the field is non-enforced.
 
+**Note:** For the orchestration-vocabulary prohibition (no DAG position, no stage names as upstream/downstream labels, no dispatcher implementation details in field content), see `skill-structure-design.md`. For cross-skill data access (via canonical paths, not inlined verbatim), see §4.3.5.
+
 ### 4.3 Per-field rules
 
 #### 4.3.1 `name`
@@ -204,19 +198,7 @@ characters) are in `skill-frontmatter-design.md`.
 
 Structure: 3–5 bullet trigger scenarios. Each bullet names a concrete situation in which an
 agent should invoke this skill. A terminal "Not for X" bullet mirrors the `description`
-field's "not for" clause, reinforcing it in the body. Soft length cap: ≤30 characters per
-bullet (SHOULD — longer bullets are not blocking but signal overloaded triggers; reviewer
-decides).
-
-**Good:**
-
-```markdown
-## When to Use
-
-- Write or revise the design.md spec; define interfaces or constraints (SDC / SGDC).
-- Update the spec from rework feedback.
-- Not for: RTL implementation, verification, or synthesis.
-```
+field's "not for" clause, reinforcing it in the body.
 
 #### 4.3.4 Iron Rule
 
@@ -277,24 +259,6 @@ two-signal routing model does not apply. Source of record:
 are supplied entirely as inline content in the dispatch prompt by the caller; no disk
 scan."*
 
-**Good (worker — external reference inputs table):**
-
-```markdown
-## Input Artifacts
-
-### Context variables
-
-| Variable | Purpose |
-|---|---|
-| `{workdir}` | Current run workspace root. |
-
-### External reference inputs
-
-| Path | Schema / Format | Required | Use |
-|---|---|---|---|
-| `Design/specification/result.json` | `result.schema.json` | required (first-run) | Read upstream PPA targets. |
-```
-
 #### 4.3.6 Output Artifacts
 
 `result.json` is always the first row of the output table — it is the stage's status contract.
@@ -314,16 +278,6 @@ after review sign-off).
 directly — downstream stages write them. The output table lists only `asic/{module}/task.json`
 and `events.jsonl` (maintained by `state.py`), with a note that this skill only triggers
 commands.
-
-**Good (worker):**
-
-```markdown
-## Output Artifacts
-
-| Path (relative to `{workdir}`) | Schema / Format | Use |
-|---|---|---|
-| `result.json` | `references/result.schema.json` + `envelope.schema.json` | This stage's status contract. |
-```
 
 #### 4.3.7 Workflow
 
@@ -350,11 +304,11 @@ The analyzer has **no** `{rework_trigger}` variable; its inputs (the failed-case
 inlined directly into the dispatch prompt (consistent with §4.3.5 and the §6.5 carve-out in
 `skill-branch-routing-design.md`). Standard worker three-branch logic does not apply.
 
-**Form delta — orchestrator:** Step 1 reads `task.json` dispatch state (the §6.1 dispatcher
-exemption in `skill-self-containment-design.md` applies; the orchestrator is the dispatcher
-and is exempt from the self-containment vocabulary prohibition). The orchestrator is also
-exempt from the Step-heading rule: its Workflow is not a linear `Step 1..N` sequence
-(setup-once + a repeating executor loop), so it uses descriptive H3 block headings
+**Form delta — orchestrator:** Step 1 reads `task.json` dispatch state (the dispatcher
+exemption in `skill-structure-design.md` applies; the orchestrator is the dispatcher and is
+exempt from the self-containment vocabulary prohibition). The orchestrator is also exempt from
+the Step-heading rule: its Workflow is not a linear `Step 1..N` sequence (setup-once + a
+repeating executor loop), so it uses descriptive H3 block headings
 (`### Setup (once per session)`, `### Executor loop (each turn)`) with no Step numbering.
 
 **Cross-cutting addendum — main-thread fan-out (not a form).** Skills loaded via `Skill()` that dispatch Level-1
@@ -364,30 +318,18 @@ no `state.py`, sub-Task `STATUS: BLOCKED` handling). Dispatch-and-wait is the
 main-thread orchestration lifecycle (the harness wake protocol), enforced at the framework / harness
 layer, not by this skill; they sit **outside** the Iron Rule / Red Flags /
 Pitfalls severity axis and **outside** the Completion Gate by design.
-These framework dispatch rules are carried **standardized-inline**, not via a link to this rubric
-(`skill-self-containment-design.md §6.1`): the three per-child-wave skills (`specification`,
-`rtl-design`, `simulation`) share one canonical wording (dispatch-and-wait lifecycle,
-`STATUS: BLOCKED`→`fail` mapping) matching this addendum, while `simulation-plan`
-carries a scoped variant for its single-review-dispatch shape (one review sub-Task;
-dispatch-and-wait; no `state.py`). Authors apply the wording, reviewers check it (the same shape as
-the §4.3.4 black-box bullet).
+These framework dispatch rules are carried **standardized-inline**, not via a link to a design doc:
+the three per-child-wave skills (`specification`, `rtl-design`, `simulation`) share one canonical
+wording (dispatch-and-wait lifecycle, `STATUS: BLOCKED`→`fail` mapping) matching this addendum,
+while `simulation-plan` carries a scoped variant for its single-review-dispatch shape (one review
+sub-Task; dispatch-and-wait; no `state.py`). Authors apply the wording, reviewers check it (the same
+shape as the §4.3.4 black-box bullet).
 
 #### 4.3.8 Decision Rules
 
 This field lists priority-conflict resolution rules only: situations where two valid choices
 exist and one must win. It is not branch routing (routing lives in Workflow) and it is not a
 boundary constraint (that lives in Iron Rule). Per F2, this is a distinct cognitive section.
-
-**Good:**
-
-```markdown
-## Decision Rules
-
-- When the spec and the architecture plan conflict, the spec wins. If the spec is unclear,
-  return to spec rework.
-- When warnings and errors appear in the same report, only errors trigger rework; warnings
-  are treated as pass.
-```
 
 #### 4.3.9 Red Flags
 
@@ -397,16 +339,6 @@ a single `Excuse → Reality` table — the Excuse column is the trigger-thought
 itself making; the Reality column is the rebuttal. Every row is **hard** by definition (a
 recoverable rationalization is a Pitfall, §4.3.10). Omit the section when the skill has none.
 Placed immediately before Pitfalls.
-
-**Good:**
-
-```markdown
-## Red Flags
-
-| Excuse | Reality |
-|---|---|
-| "Only one line changed; no need to re-run schema validation." | Schema validation is a pre-return mandatory gate; the number of lines changed is irrelevant. |
-```
 
 **Match the form to the failure.** A Red Flags table fits a *discipline* lapse — the agent knows
 the rule but rationalizes past it under pressure. A *wrong-shaped-output* failure (a bloated
@@ -420,16 +352,6 @@ shape failures: they enumerate what not to do without showing the shape to produ
 Structure: a single `Mistake → Fix` table of **recoverable** execution slips — non-rationalized
 mistakes the agent corrects in real time. Rows carry no inline severity marker: hard rules live
 in Iron Rule / Red Flags and are gate-checked there; Pitfalls holds only the soft set.
-
-**Good:**
-
-```markdown
-## Pitfalls
-
-| Mistake | Fix |
-|---|---|
-| Blindly retrying after compile failure | Analyze `compile.log` before each fix round; rule A triggers an immediate stop. |
-```
 
 #### 4.3.11 Completion Gate
 
@@ -461,10 +383,9 @@ values: `pass` and `fail`. Both are written to `result.json`; `fail` carries
 **Critical:** `STATUS: BLOCKED` is a harness-emitted signal on program exception — the skill
 itself never writes it as a logic decision. `pass` and `fail` live in `result.json.status`.
 A skill that chooses `STATUS: BLOCKED` to express a workflow decision (e.g., "upstream not
-ready") is a contract violation (review framework C7; see also the "BLOCKED uniform removal"
-architectural invariant). The envelope schema does not accept `blocked`; the harness emits
-`STATUS: BLOCKED` only when `result.json` was not written due to a crash or program
-exception.
+ready") is a contract violation (see also the "BLOCKED uniform removal" architectural invariant).
+The envelope schema does not accept `blocked`; the harness emits `STATUS: BLOCKED` only when
+`result.json` was not written due to a crash or program exception.
 
 **Standard worker / Task-subagent template:**
 
@@ -500,16 +421,7 @@ per-turn return contract). Replace with a "main-loop termination" section listin
 
 Structure: a link list pointing to externalized `references/*.md` or `references/*.json`
 files. For the externalization decision criteria (hard conditions, soft signals, carve-outs)
-and the suffix naming taxonomy, see `skill-references-organization-design.md`.
-
-**Good:**
-
-```markdown
-## Bundled References
-
-- [`references/coding-rules.md`](references/coding-rules.md) — RTL coding rules.
-- [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
-```
+and the suffix naming taxonomy, see `skill-structure-design.md`.
 
 ### 4.4 ASCII keyword layers
 
@@ -556,10 +468,7 @@ These conventions apply to every SKILL.md body and every `references/*.md` file:
 - H1 title content: a concise Title Case **concept name** for what the skill is — one coherent
   concept. The skill's functional identity lives in the frontmatter `name:`/`description:`; the
   H1 is human-facing prose that no tooling, test, or dispatch reads. Do not echo the `name:`
-  slug back in parentheses, and do not enumerate the skill's internal steps or outputs (scope
-  belongs in the body and `description`). Promote the true identity into the head noun rather
-  than burying it in a vague label or parenthetical; a descriptive parenthetical that adds
-  information is acceptable, a slug echo is not.
+  slug back in parentheses, and do not enumerate the skill's internal steps or outputs.
   Good: `# Power Analysis`, `# Static Timing Analysis`, `# Verification Planning`.
   Bad: `# Verification Planning (simulation-plan)` (slug echo), `# UVM Environment + Compile +
   Smoke + Regression + Coverage Iteration` (step enumeration), `# Frontend Sign-off Checklist`
@@ -571,16 +480,14 @@ These conventions apply to every SKILL.md body and every `references/*.md` file:
   field names. Inline single-word or short-phrase emphasis (`**not**`, `**only**`) is rare: prefer
   rewording over mid-sentence bold. Never XML tags (`<Bad>` / `<Good>`).
 - Every fenced code block carries a language tag: `markdown`, `bash`, `json`, `yaml`, etc.
-- A runnable script invocation — a full command line the operator executes as a step
-  (`python3 ${CLAUDE_SKILL_DIR}/scripts/…`, `bash …`, `echo … | python3 …`) — goes in its own
-  ` ```bash ` fenced block, not inline; the prose around it describes what the command does and
-  the non-zero-exit protocol. A skill names its **own** `scripts/` and `references/` via
-  `${CLAUDE_SKILL_DIR}/…`; the verbose `${CLAUDE_PLUGIN_ROOT}/skills/<self>/…` is reserved for
-  cross-skill and framework paths, plus artifacts deployed into a workdir (a deployed `templates/`
-  README is read where no skill is active, so `${CLAUDE_SKILL_DIR}` does not resolve there).
-- Diagrams: SKILL.md decision flowcharts use Graphviz `dot`; `references/` architecture / structure diagrams use Mermaid (` ```mermaid `, as in ARCHITECTURE.md).
-- Inline backticks for paths, filenames, command / script names and flags, schema field names, variable names:
-  `{workdir}`, `result.json`, `STATUS: DONE`.
+- A runnable script invocation goes in its own ` ```bash ` fenced block, not inline; the prose
+  around it describes what the command does and the non-zero-exit protocol. A skill names its
+  **own** `scripts/` and `references/` via `${CLAUDE_SKILL_DIR}/…`; the verbose
+  `${CLAUDE_PLUGIN_ROOT}/skills/<self>/…` is reserved for cross-skill and framework paths, plus
+  artifacts deployed into a workdir (a deployed `templates/` README is read where no skill is
+  active, so `${CLAUDE_SKILL_DIR}` does not resolve there).
+- Inline backticks for paths, filenames, command / script names and flags, schema field names,
+  variable names: `{workdir}`, `result.json`, `STATUS: DONE`.
 - In SKILL.md, top-level Workflow steps are `### Step N:` headings (§4.3.7), not a numbered
   list; numbered lists are for sub-steps within a step and other ordered sub-sequences. Bullets
   for unordered observations. Never mix both styles within a single section.
@@ -590,58 +497,18 @@ These conventions apply to every SKILL.md body and every `references/*.md` file:
 
 **Note:** these conventions apply to SKILL.md and `references/*.md` prose. They do not apply
 to schema descriptions, Python/Bash/TCL scripts, Makefile targets, or other non-prose
-surfaces — those have their own conventions documented elsewhere. Do not over-apply.
+surfaces — those have their own conventions documented elsewhere.
 
 **Note:** §5 (Examples) is intentionally absent. Per-field examples live inline with each
 `### 4.3.x` per-field rule rather than in a separate Examples section. Section numbers are
 preserved to match the template positions used across the design-doc set.
-
-## 6. What does NOT belong
-
-- **Forbidden fields** — see §4.2 for the full list with per-row rationale. Do not re-list
-  them in SKILL.md.
-- **`description` body content** — `description` is a frontmatter key; body prose elaborating
-  on when to use the skill belongs in When to Use (§4.3.3). See `skill-frontmatter-design.md`.
-- **Orchestration vocabulary in field content** — no DAG position, no stage names as upstream
-  or downstream labels, no dispatcher implementation details. See
-  `skill-self-containment-design.md` for the keyword scrub list, carve-outs, and bad/good
-  rewrite table.
-- **Cross-skill data inline** — data produced by another stage is accessed via canonical paths
-  (`Design/<stage>/result.json`) or via `{rework_trigger}`; it is never inlined or reproduced
-  verbatim inside this SKILL.md.
-
-## 7. Compliance checklist
-
-Use at review time. Every item should be verifiable by reading the SKILL.md file.
-
-- [ ] Are all 8 MUST fields present with non-empty content?
-- [ ] Are SHOULD fields included where their upgrade trigger applies (§4.1)?
-- [ ] Are no forbidden fields (§4.2) present?
-- [ ] Does every body field title use the canonical English form from §4.1?
-- [ ] Is Iron Rule scoped to hard + not-tempting rules only, per F2 operational definition (§4.3.4)?
-- [ ] Are hard + tempting rules in Red Flags (`Excuse → Reality`), recoverable slips in Pitfalls (`Mistake → Fix`), and is no rule duplicated across Iron Rule / Red Flags / Pitfalls?
-- [ ] For worker and dialogue forms, does Workflow Step 1 follow the three-branch shape per `skill-branch-routing-design.md`?
-- [ ] Does Return Contract use only the ASCII keyword set from §4.4 (`STATUS: DONE` /
-  `STATUS: BLOCKED`; `pass` / `fail` in `result.json.status`)?
-- [ ] Does the skill body avoid orchestration vocabulary per `skill-self-containment-design.md`?
-- [ ] Are all code fences language-tagged?
-- [ ] Is every runnable script invocation in its own ` ```bash ` block (not inline), and does a
-  skill name its own `scripts/`/`references/` via `${CLAUDE_SKILL_DIR}` (verbose
-  `${CLAUDE_PLUGIN_ROOT}/skills/<self>/` only for cross-skill / framework / workdir-deployed paths)?
-- [ ] Are SKILL.md H2 headings the canonical field titles (not `## 1.`-numbered), and are
-  Workflow steps `### Step N: <Title>` headings (orchestrator exempt — descriptive block
-  headings, no Step numbering)?
-- [ ] Are there no `---` separator rules between H2 sections?
-- [ ] If the skill is non-worker form, are the form deltas from §4.5 applied in §4.3.5,
-  §4.3.6, §4.3.7, §4.3.11, and §4.3.12?
-- [ ] Do cross-link anchors `#…` resolve to actual headings in target documents?
 
 ## 8. Process for changing
 
 **Changing a field tier (MUST ↔ SHOULD):** requires empirical evidence across all 12 SKILL.md
 that the trigger consistently applies or consistently does not apply. Speculative upgrades
 (e.g., "most skills will need this") are not sufficient. A tier change is a breaking change
-for compliance tooling — frontmatter changes are validated by `veripower-review` (C2-07); there is no deterministic frontmatter test to update.
+for compliance tooling — frontmatter changes are validated by veripower-review; there is no deterministic frontmatter test to update.
 
 **Adding a new field:** requires an audit-driven justification (a demonstrated gap in all 12
 SKILL.md files that cannot be served by an existing field), consensus on the field's cognitive
@@ -651,4 +518,4 @@ instead.
 
 **Coordination requirements:** if a field change affects `result.json` shape, coordinate with
 the relevant `result.schema.json` and bump `schema_version` per `result-schema-design.md §8`.
-If the change affects frontmatter fields, run `veripower-review` (C2-07) to validate — there is no deterministic frontmatter test.
+If the change affects frontmatter fields, run veripower-review to validate — there is no deterministic frontmatter test.
