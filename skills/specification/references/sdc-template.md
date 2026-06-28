@@ -12,7 +12,7 @@ emits so reviewers know what to expect.
   synchronous-related) clocks plus one `-group` per `Relationship=async` clock; emitted
   only when ≥2 non-generated clocks exist.
 - `set_clock_uncertainty -setup 0.2 [all_clocks]` + `-hold 0.0 [all_clocks]` — fixed
-  placeholders; the split form is deliberate (single-value widens pre-CTS hold → false
+  placeholders; the split form is deliberate (single-value widens pre-CTS hold into false
   hold-VIOLATED; pre-CTS hold = 0 is the convention).
 - `set_input_delay`/`set_output_delay` at `T×0.3` for each §1.4.1 `Role=data` port,
   `-clock <Clock Domain>`. Clock/reset ports get none.

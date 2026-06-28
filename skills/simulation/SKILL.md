@@ -177,7 +177,7 @@ On wake-up, reap the reviewer's `STATUS:` last line + its JSON line, assemble
 python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py validate-review --review {workdir}/conformance-review.json
 ```
 
-Non-zero exit → re-assemble the JSON and re-run (this is a main-thread fix, NOT a re-dispatch).
+On a non-zero exit, re-assemble the JSON and re-run (this is a main-thread fix, NOT a re-dispatch).
 On exit 0 it prints a one-line gate verdict `{"gate": "trip"|"clear", "flagged": [...],
 "dominant_category": ...}` — the mechanical category × severity reduction (per the reviewer
 contract's "Severity & gating"), computed by the script, not judged by eye. Apply it:

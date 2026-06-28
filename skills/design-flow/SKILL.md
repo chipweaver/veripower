@@ -66,7 +66,7 @@ You run on the main thread and read `{module}` (the sole external parameter) fro
   `fail_reason="requirements need revision: …"`, the user re-runs the brainstorm skill
   (new approved `brainstorm.md`), then runs `state.py invalidate-stage --stage
   specification --reason "<…>"`. That stales `specification` + cascades downstream; the
-  next eligibility scan re-dispatches `specification` with a fresh empty workdir →
+  next eligibility scan re-dispatches `specification` with a fresh empty workdir, which yields
   first-run re-derivation from the updated brainstorm. `invalidate-stage` records an
   `invalidate` event (not `rework_decision`), so it does not count toward convergence.
   Do not delete/edit the on-disk `design.md` (a main-thread write to a canonical artifact

@@ -87,7 +87,7 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 
 ### Step 1: Pre-check external references
 
-Confirm `Verification/simulation/result.json.status=pass` AND `Design/timing-analysis/result.json.status=pass` AND `Verification/simulation/filelist.f` / `scaffold-specification.json` (non-empty `power_scenarios[]`) / the synthesis trio (`<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. Any miss → write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing/not pass: <path>"` and exit. When `{orchestrator_context_path}` is injected, Read it first as a fix-scope hint.
+Confirm `Verification/simulation/result.json.status=pass` AND `Design/timing-analysis/result.json.status=pass` AND `Verification/simulation/filelist.f` / `scaffold-specification.json` (non-empty `power_scenarios[]`) / the synthesis trio (`<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing/not pass: <path>"` and exit. When `{orchestrator_context_path}` is injected, Read it first as a fix-scope hint.
 
 ### Step 2: Bootstrap (first-run only)
 

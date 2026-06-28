@@ -57,7 +57,7 @@ This is a single linear flow (no branch fork — see rationale below).
 
 ### Step 1: Pre-check external references
 
-Confirm `Design/synthesis/result.json` exists and `status=pass`, and `Design/synthesis/out/<TOP>_syn.{v,sdc}` are present. If `result.json` is missing or `status≠pass` → write `status=fail`, `failure_kind="infra"`, `fail_reason="external reference not pass: Design/synthesis/result.json"` and exit; if the netlist/SDC are missing → `failure_kind="infra"`, `fail_reason="external reference missing: <path>"` and exit.
+Confirm `Design/synthesis/result.json` exists and `status=pass`, and `Design/synthesis/out/<TOP>_syn.{v,sdc}` are present. If `result.json` is missing or `status≠pass`, write `status=fail`, `failure_kind="infra"`, `fail_reason="external reference not pass: Design/synthesis/result.json"` and exit; if the netlist/SDC are missing, write `failure_kind="infra"`, `fail_reason="external reference missing: <path>"` and exit.
 
 ### Step 2: Bootstrap
 

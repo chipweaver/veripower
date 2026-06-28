@@ -172,7 +172,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py assemble --workdir {workdir}
 ```
 
 `assemble` builds the ledger/filelist/README and runs the post exit-gate in one step. A **build error**
-(malformed reports/ledger) → non-zero exit with a stderr message and **no stdout verdict** → `status=fail`
+(malformed reports/ledger) yields a non-zero exit with a stderr message and **no stdout verdict**, so write `status=fail`
 (stderr as `fail_reason`), stop. Otherwise it prints the exit-gate verdict JSON on stdout; exit code = truth
 (topology + blocked-child); a fail verdict stops the stage — Step 4.5's `finalize` writes it into
 `result.json`. (`--seeded` only on incremental/rework, never first-run's initial build.)
@@ -183,7 +183,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py assemble --workdir {workdir}
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py check-conformance --workdir {workdir} --manifest <manifest> --top <top_module> --ledger {workdir}/.child_reports.json --design <design>
 ```
 
-Exit 0 → go to 4.4. Exit 1 = spec↔RTL presence violations (each names a `child`; `top_instantiation`
+On exit 0, go to 4.4. Exit 1 = spec↔RTL presence violations (each names a `child`; `top_instantiation`
 also carries `owner_child`). These are child-authoring defects (fix-locus = the child), so self-converge:
 
 - Re-dispatch set = `{v.child} ∪ {v.owner_child}` over all violations — the `owner_child` union lets a
@@ -197,7 +197,7 @@ also carries `owner_child`). These are child-authoring defects (fix-locus = the 
 - **Mid-loop `STATUS: BLOCKED`**: if a re-dispatched child returns `BLOCKED` in any round, do NOT let it
   fall through to the unconverged-authoring fail (`assemble`'s non-`done` filter would drop it and the
   stale failing entry survives via `--seeded`). After each round's reap, if any re-dispatched child is
-  `BLOCKED` → stop with `status=fail` + `fail_reason` carrying the BLOCKED reason verbatim (an
+  `BLOCKED`, stop with `status=fail` + `fail_reason` carrying the BLOCKED reason verbatim (an
   upstream-locus signal, routed like 4.2's blocked-child precedence — NOT authoring-convergence).
 - **manifest name is authoritative**: a child MUST author its `manifest.children[].rtl_modules[]` name
   verbatim (renaming is itself a violation `check #1` catches).
@@ -205,7 +205,7 @@ also carries `owner_child`). These are child-authoring defects (fix-locus = the 
   round's subset-only `fresh_reports.json` evicts every already-passing child via `merge_filter`'s
   roster∩fresh), then `check-conformance`.
 - **Bounded: at most 2 re-dispatch rounds** (presence defects typically converge in 1 round; 2 gives one
-  retry margin). Still failing after round 2 → `status=fail`, `fail_reason="rtl conformance unconverged
+  retry margin). Still failing after round 2, write `status=fail`, `fail_reason="rtl conformance unconverged
   after 2 rounds: <children+items>"`, stop. The loop is intra-stage fan-out — skill-internal scratch; the stage produces a single result at exit and the re-dispatches are not externally visible; no persistent "pending finalize" state.
 - On convergence, rebuild a full-roster `fresh_reports.json` (all children `status=done`) and re-run
   `assemble --seeded` over it + the converged ledger to refresh `artifacts[]`. Round-0 files a
@@ -217,7 +217,7 @@ retried incrementally — would otherwise never be semantically reviewed):
 
 Dispatch N `Task(run_in_background=True)`, one per `manifest.children[]`, per
 `references/rtl-review-task-contract.md` (paths only: child `files[]` + the child's per-child doc resolved
-via `manifest.children[].doc` + design.md §1.4 slice; the main thread reads no RTL). Dispatch → reap on wake.
+via `manifest.children[].doc` + design.md §1.4 slice; the main thread reads no RTL). Dispatch, then reap on wake.
 Aggregate into `{workdir}/semantic-review.json` (schema `references/semantic-review.schema.json`):
 - `STATUS: DONE` + valid finding JSON → fold its findings in (each carries reviewer-assigned
   `fix_locus ∈ {rtl, spec}`).
@@ -234,7 +234,7 @@ Run:
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py validate-review --review {workdir}/semantic-review.json
 ```
 
-Non-zero exit → re-assemble the JSON and re-run (this is a main-thread fix, NOT a re-dispatch). On
+On a non-zero exit, re-assemble the JSON and re-run (this is a main-thread fix, NOT a re-dispatch). On
 exit 0 it prints a one-line gate verdict `{"gate":"trip"|"clear","flagged":[{child,category,severity,
 fix_locus}…],"loci":{"rtl":[…],"spec":[…]}}` — the mechanical `category × severity` reduction
 partitioned by `fix_locus`, computed by the script, not judged by eye (the same reduction Step 4.5's
@@ -278,10 +278,10 @@ cleared gate when the critical finding is a non-gating category, e.g. `over-engi
 critical <category> finding — recommend operator review before downstream`.
 
 rtl-design failures route by fix-locus. **(1) Upstream / architecture / intent** (the `assemble`/`check-partition` exit-gate
-topology, `<child>.md §2` incomplete, PPA, `build_*` unexpected error, or any semantic-gate trip) → `status=fail` + a locus-tagged
+topology, `<child>.md §2` incomplete, PPA, `build_*` unexpected error, or any semantic-gate trip) yields `status=fail` + a locus-tagged
 `fail_reason`; **no internal loop, operator-driven** (the main thread stays a pure dispatcher and does not
 self-loop). **(2) Child-authoring presence defect**
-(`check-conformance` spec↔RTL presence violations, or a mid-loop child `BLOCKED`) → fix-locus is the
+(`check-conformance` spec↔RTL presence violations, or a mid-loop child `BLOCKED`) means fix-locus is the
 child itself, so it runs the **bounded body-blind self-converge loop** (Step 4.3: hold the verdict,
 re-dispatch the failing children, re-run the scripts, ≤2 rounds); exhausting the bound (or a mid-loop
 BLOCKED) falls back to (1)'s `status=fail`. The loop is intra-stage fan-out (skill-internal; re-dispatches
@@ -311,7 +311,7 @@ terminal fail.
 - [ ] **Exit gate:** the `assemble` exit-gate exited 0 (or its fail verdict was written); `finalize` wrote the envelope from it (it owns `status` / `artifacts[]`; this gate does not restate the formula).
 - [ ] `{workdir}/.child_reports.json`, `{workdir}/filelist.txt`, and `{workdir}/README.md` were generated by the scripts (ledger / filelist / README respectively).
 - [ ] **Conformance gate:** `check-conformance` exited 0 (or self-converged within 2 rounds); on unconverged / mid-loop BLOCKED the verdict was copied to `result.json` `status=fail`.
-- [ ] **Semantic gate (every clean-gate finalize):** the review wave ran, `semantic-review.json` was written + self-validated, the gate verdict was applied (clear → proceed; trip → `status=fail` + locus-tagged `fail_reason`, **no in-skill autofix**), and the `finalize` verb wrote `semantic_gate` + `semantic-review.json` into the envelope; BLOCKED/malformed reviewers recorded as "review unavailable" (not silently ok) → do NOT gate; a `gate=trip` was never overridden to pass.
+- [ ] **Semantic gate (every clean-gate finalize):** the review wave ran, `semantic-review.json` was written + self-validated, the gate verdict was applied (clear → proceed; trip → `status=fail` + locus-tagged `fail_reason`, **no in-skill autofix**), and the `finalize` verb wrote `semantic_gate` + `semantic-review.json` into the envelope; BLOCKED/malformed reviewers recorded as "review unavailable" (not silently ok), so do NOT gate; a `gate=trip` was never overridden to pass.
 
 ## Return Contract
 

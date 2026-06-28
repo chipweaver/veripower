@@ -116,7 +116,7 @@ Authoring judgment the schema/validator cannot express:
 
 Read `Design/specification/result.json` + `design.md` + `manifest.json`; if any required input missing, write `result.json` with `status=fail` + `stage_specific.fail_reason="external reference missing: <path>"`, then exit; if `Design/specification/result.json` is present but `status≠pass`, write `status=fail` + `stage_specific.fail_reason="external reference not pass: Design/specification/result.json"`, then exit. Select among four branches in this order:
 
-- **Trigger-driven rework** (`{rework_trigger}` injected): read the attribution structure and the context for this round's revision from the trigger file (field names come from the triggering stage's own `result.schema.json`); Read the canonical baseline (`Verification/simulation-plan/verification-plan.md` + `scaffold-specification.json`; when `{workdir}` already holds an updated version, prefer the `{workdir}` copy) as the revision baseline; amend per the violation-type targeting table in Decision Rules. If the trigger is unreadable → write `status=fail` + `fail_reason="rework_trigger not readable"`. A trigger-driven rework that amends the plan invalidates any prior `plan_adequacy_gate=clear`; Step 4 re-runs before the Step-5 user loop (the Step-5 approve precondition enforces this).
+- **Trigger-driven rework** (`{rework_trigger}` injected): read the attribution structure and the context for this round's revision from the trigger file (field names come from the triggering stage's own `result.schema.json`); Read the canonical baseline (`Verification/simulation-plan/verification-plan.md` + `scaffold-specification.json`; when `{workdir}` already holds an updated version, prefer the `{workdir}` copy) as the revision baseline; amend per the violation-type targeting table in Decision Rules. If the trigger is unreadable, write `status=fail` + `fail_reason="rework_trigger not readable"`. A trigger-driven rework that amends the plan invalidates any prior `plan_adequacy_gate=clear`; Step 4 re-runs before the Step-5 user loop (the Step-5 approve precondition enforces this).
 - **Session-resume branch** (no trigger + `{workdir}/verification-plan.md` present + `{workdir}/result.json` absent): use the residual `{workdir}` artifacts as the baseline; depending on how complete the residue is, return to Step 3 or Step 5 to continue (preserve already-written sections verbatim; only fill in the missing parts). **Before continuing, if `stage_specific.plan_adequacy_gate` is not `clear`-or-all-`waived` (absent / `trip` / written by a wave predating the latest plan edit), route to Step 4 first — not straight to Step 4.**
 - **Incremental-update branch** (no trigger + `{workdir}` empty + canonical `Verification/simulation-plan/verification-plan.md` present): Read the canonical existing artifacts as the baseline; diff `Design/specification/result.json` against that baseline; amend only the affected sections incrementally. **Sections not affected by the diff — together with their testpoint IDs / sequence names / `power_scenarios.sequence_ref` — are preserved verbatim** (keep ID / naming as stable anchors so coverage data / scaffold / SAIF caches do not drift on ID changes). An incremental update that amends the plan likewise invalidates any prior `plan_adequacy_gate=clear`; Step 4 re-runs before the Step-5 user loop (the Step-5 approve precondition enforces this).
 - **First-run branch** (no trigger + `{workdir}` empty + canonical absent): full generation of plan + scaffold.
@@ -125,7 +125,7 @@ When `{orchestrator_context_path}` is injected, Read that sibling file first as 
 
 ### Step 2: Minimum field completeness self-check
 
-Per `references/spec-input-contract.md`, validate the required columns of `design.md` §1.3 Feature Table / §1.4.1 Top-Level IO / §1.4.2 Inter-module Interconnects / §1.5 Interface Timing Scenarios; per-child `<child>.md §5 Verification Hints` (9-column required). On any miss → write `result.json` (`status=fail`, `stage_specific.fail_reason` = one-line missing-field summary) and exit.
+Per `references/spec-input-contract.md`, validate the required columns of `design.md` §1.3 Feature Table / §1.4.1 Top-Level IO / §1.4.2 Inter-module Interconnects / §1.5 Interface Timing Scenarios; per-child `<child>.md §5 Verification Hints` (9-column required). On any miss, write `result.json` (`status=fail`, `stage_specific.fail_reason` = one-line missing-field summary) and exit.
 
 ### Step 3: Generate / update artifacts
 
@@ -167,7 +167,7 @@ check-strategy soundness (lens `adequacy`).
 > does **NOT** route out: it blocks `status=pass` **in place** and surfaces findings into the
 > Step-5 user review-loop (T2). This is a block-in-place gate, never a fail-out verdict.
 
-Dispatch → reap on wake. Aggregate into `{workdir}/plan-review.json` (schema
+Dispatch, then reap on wake. Aggregate into `{workdir}/plan-review.json` (schema
 `references/plan-review.schema.json`):
 - `STATUS: DONE` + valid finding JSON → fold its findings in.
 - `STATUS: BLOCKED` OR malformed JSON → record one `{tp_id:"plan", lens:"unavailable",
@@ -181,7 +181,7 @@ Run:
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py validate-review --review {workdir}/plan-review.json
 ```
 
-Non-zero exit → re-assemble the JSON and re-run (main-thread fix, NOT re-dispatch). On exit 0 it prints
+On a non-zero exit, re-assemble the JSON and re-run (main-thread fix, NOT re-dispatch). On exit 0 it prints
 `{"gate":"trip"|"clear","flagged":[{tp_id,lens,severity}…],"must_ack":[{tp_id,severity}…]}`. Write `stage_specific.plan_adequacy_gate`
 = that parsed verdict object verbatim, and list `plan-review.json` in `artifacts[]` (so it
 promotes to canonical — see the resume-guard below).
@@ -210,7 +210,7 @@ The verdict feeds Step 5 (**T2** — block into the user loop; this stage never 
 
 - Present `verification-plan.md` to the user, together with the `plan-review.json` verdict — `plan_adequacy_gate.flagged` blocking items + `plan_adequacy_gate.must_ack` advisory items (deduped to NEW/CHANGED) + any `review unavailable` ack item (point to `plan-review.json` for summaries). A **`gate=trip` is a hard block**: each `flagged` item must be either resolved (Step 4 re-runs to `clear`) or **human-waived** (operator records `plan_adequacy_gate.waived[]` with a human-authored `classification`+`reason` you prompt for; critical-coverage waiver shows the "no downstream re-check — terminal accept" warning) before `approve`. **Do not accept `approve` unless `gate==clear` OR every `flagged` is in `waived[]`.**
 - Ask: approve / request changes / reject.
-- approve → **[hard precondition]** the main thread MUST NOT accept `approve` unless `plan_adequacy_gate.gate==clear` OR every `flagged` is in `waived[]`; re-run Step 4 first if not. → proceed to Step 5.
+- approve → **[hard precondition]** the main thread MUST NOT accept `approve` unless `plan_adequacy_gate.gate==clear` OR every `flagged` is in `waived[]`; re-run Step 4 first if not, then proceed to Step 5.
 - request changes → **first clear any prior `plan_adequacy_gate=clear`** (invalidate-on-rework — a stale `clear` must not survive a plan edit), then revise the artifacts incrementally per user feedback (return to Step 3), then re-run Step 4, then come back to this step and re-present.
 - reject → write `result.json` (`status=fail`, `stage_specific.fail_reason="user rejected plan"`) and exit.
 

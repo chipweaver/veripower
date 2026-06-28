@@ -1,6 +1,6 @@
 # Rule A: scaffold vs. semantics repair boundary
 
-> **Decision standard:** "Does this code edit change the expected behavior described by the plan? If yes → no retry; end with `STATUS: BLOCKED <compile|smoke + locus>` (the orchestrator maps it to the `status=fail` envelope)."
+> **Decision standard:** "Does this code edit change the expected behavior described by the plan? If yes, no retry; end with `STATUS: BLOCKED <compile|smoke + locus>` (the orchestrator maps it to the `status=fail` envelope)."
 
 ## Repairable (scaffold / wiring)
 
@@ -28,4 +28,4 @@ When `make simv` / `make smoke` fails, you may repair the files below within a *
 2. Check whether the change at that location lands in the "repairable" list:
    - Yes → repair one round, re-run `make simv` / `make smoke`.
    - No → end the response with `STATUS: BLOCKED <compile|smoke> <semantic locus>` (the orchestrator maps it to the `status=fail` envelope with `failure_phase: <compile|smoke>` + `fail_reason`).
-3. If compile + smoke combined have reached `defaults.yaml.scaffold_repair_max_rounds` rounds and still do not pass → end with `STATUS: BLOCKED <compile|smoke> <locus>` (use the first phase that did not pass; the orchestrator records `failure_phase: <compile|smoke>`).
+3. If compile + smoke combined have reached `defaults.yaml.scaffold_repair_max_rounds` rounds and still do not pass, end with `STATUS: BLOCKED <compile|smoke> <locus>` (use the first phase that did not pass; the orchestrator records `failure_phase: <compile|smoke>`).

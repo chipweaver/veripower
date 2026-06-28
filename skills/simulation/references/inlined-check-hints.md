@@ -40,7 +40,7 @@ required — this branch covers scenario-class testpoints with no spec formula a
 
 **Boundary case fallback (`covers[]` non-empty but `inlined_check_hints[]` empty / missing
 `implementation_detail`)**: treat as an upstream simulation-plan contract violation (the sim-plan
-stage's coverage-matrix self-check should have caught this case) → do NOT
+stage's coverage-matrix self-check should have caught this case), do NOT
 try to fill in the inline content on your own (to avoid silently downgrading by treating a contract
 gap as the "free functional choice" branch); instead, end with `STATUS: BLOCKED scaffold-specification.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`, so the
 orchestrator maps it to `status=fail` + `failure_phase="prerequisite"` and rework goes back to

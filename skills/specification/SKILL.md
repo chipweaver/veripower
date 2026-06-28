@@ -87,11 +87,11 @@ pre-pipeline `brainstorm` skill; `design-flow`'s entry gate already verified
   Then the main thread re-runs `check-coverage` (and, on pass, `derive-constraints`),
   exactly as in the first-run flow.
   If the violations express a requirements contradiction that cannot be fixed
-  without changing brainstorm.md (e.g., PPA unreachable, interface contradiction) →
+  without changing brainstorm.md (e.g., PPA unreachable, interface contradiction),
   write `result.json` `status=fail` + `stage_specific.fail_reason="requirements need
   revision: <D-dim>"` (this routes to ESCALATE; recovery is out-of-band, outside this
   skill). If the trigger file is
-  unreadable → `status=fail` + `fail_reason="rework_trigger not readable: <path>"`.
+  unreadable, write `status=fail` + `fail_reason="rework_trigger not readable: <path>"`.
 - **Session-resume** (no trigger + this run's `{workdir}` already holds partial wave
   products — `manifest.json` / `design.md`): continue from the last incomplete wave;
   do not rewrite products already on disk; gates re-ask idempotently. **Before continuing
@@ -151,7 +151,7 @@ oversize-cluster advisory flag computed from manifest metadata only (`rtl_module
 `brainstorm_anchor` line-span as a size proxy) — this is a sub-Task context-budget hint,
 NOT a partition criterion (the partition is interface-graph, "no line-count floor / size
 class"; do not let it re-seed size-class thinking). Never auto-split. Confirm, or take
-merge feedback → re-dispatch wave 1 with the new grouping and re-run `spec derive-ports`.
+merge feedback, then re-dispatch wave 1 with the new grouping and re-run `spec derive-ports`.
 
 ### Step 5: Wave 2 — child sub-designs (Level-1 sub-Task ×N)
 
@@ -206,7 +206,7 @@ referenced, stay advisory soundness (deferred — design §6); only **name-resol
 > does **NOT** route out of the stage: it blocks `status=pass` **in place** and surfaces findings
 > into the design.md human review-loop (T2). This is a block-in-place gate, never a fail-out verdict.
 
-Dispatch → reap on wake. Aggregate into `{workdir}/spec-review.json` (schema
+Dispatch, then reap on wake. Aggregate into `{workdir}/spec-review.json` (schema
 `references/spec-review.schema.json`), **stamping each folded finding with its reporting `child`**
 (the reviewer carries `child` only at the top level; the main thread tags each finding — the
 schema requires `child` per finding):
@@ -222,7 +222,7 @@ Run:
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py validate-review --review {workdir}/spec-review.json
 ```
 
-Non-zero exit → re-assemble the JSON and re-run (a main-thread fix, NOT a re-dispatch). On exit 0 it prints
+On a non-zero exit, re-assemble the JSON and re-run (a main-thread fix, NOT a re-dispatch). On exit 0 it prints
 `{"gate":"trip"|"clear","flagged":[{child,lens,severity}…],"must_ack":[{child,severity}…]}` — the
 mechanical `lens × severity` reduction, computed by the script, not by
 eye. Write
@@ -246,7 +246,7 @@ The verdict feeds Step 8 (**T2** — block into the human gate; this stage never
     downstream stage re-checks spec-vs-brainstorm — this is a terminal accept."
   - **partition-rooted** (defect rooted in the child partition, not a design.md body —
     `manifest.json` is read-only after the partition gate): the design.md-only rework cannot clear
-    it; take the Step-8 reject → `requirements need revision` / fresh run path.
+    it; take the Step-8 reject to the `requirements need revision` / fresh run path.
   **The main thread MUST NOT mark `status=pass` while any `flagged` finding is neither cleared nor
   in `waived[]`.**
 - **Review unavailable** (the whole wave is unusable) → write a minimal `spec-review.json` with a
@@ -259,7 +259,7 @@ The verdict feeds Step 8 (**T2** — block into the human gate; this stage never
 
 ### Step 8: design.md gate (main thread)
 
-Path-handoff: give the user the `design.md` (+ per-child) paths + the `coverage.json` verdict + the `spec-review.json` verdict (`spec_gate.flagged` blocking items + `spec_gate.must_ack` advisory items, deduped to NEW/CHANGED + any `review unavailable` ack item — point to `spec-review.json` for the one-line summaries; **do not echo any body**). A **`spec_gate.gate=trip` is a hard block**: its `flagged` items must each be either resolved (Step 7 re-runs to `clear`) or **human-waived** (operator records `spec_gate.waived[]` with a human-authored `classification`+`reason` the main thread prompts for; critical-faithfulness waiver shows the "no downstream re-check — terminal accept" warning) before approval. `must_ack` (and any `unavailable`) items are surfaced and acknowledged by the user's approval. Iterate; reject → route a rework sub-Task (body stays off the main thread; this rework **first clears `spec_gate=clear`** — invalidate-on-rework), then re-run Step 6 + Step 7.
+Path-handoff: give the user the `design.md` (+ per-child) paths + the `coverage.json` verdict + the `spec-review.json` verdict (`spec_gate.flagged` blocking items + `spec_gate.must_ack` advisory items, deduped to NEW/CHANGED + any `review unavailable` ack item — point to `spec-review.json` for the one-line summaries; **do not echo any body**). A **`spec_gate.gate=trip` is a hard block**: its `flagged` items must each be either resolved (Step 7 re-runs to `clear`) or **human-waived** (operator records `spec_gate.waived[]` with a human-authored `classification`+`reason` the main thread prompts for; critical-faithfulness waiver shows the "no downstream re-check — terminal accept" warning) before approval. `must_ack` (and any `unavailable`) items are surfaced and acknowledged by the user's approval. Iterate; on reject, route a rework sub-Task (body stays off the main thread; this rework **first clears `spec_gate=clear`** — invalidate-on-rework), then re-run Step 6 + Step 7.
 
 **Approve precondition:** the main thread MUST NOT accept the user's approval unless `spec_gate.gate==clear` OR every `flagged` finding is in `spec_gate.waived[]`; if not, re-run Step 7 first. (The Step-8 reject→rework edge already clears `spec_gate=clear` per the paragraph above, so a post-clear body edit cannot leave a stale `clear`.)
 

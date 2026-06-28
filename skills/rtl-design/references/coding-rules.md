@@ -98,7 +98,7 @@ end
 - Read/write addresses must not overflow; no simultaneous read/write conflict on the same address without explicit arbitration
 - Data read out over multiple consecutive cycles must be registered first
 - Encapsulate RAM models in a single file; ASIC RAM, FPGA RAM, and behavioral model in the same file, differentiated by macros (e.g., `` `ifdef SYNTHESIS ``)
-- Size guidelines (TSMC 65nm reference): dual-port RAM >= 1024 bits or single-port RAM >= 16x32 bits → use standard-cell RAM; smaller → register file. Avoid fragmented small RAMs; merge into larger blocks. Prefer single-port RAM for area/power
+- Size guidelines (TSMC 65nm reference): dual-port RAM >= 1024 bits or single-port RAM >= 16x32 bits, use standard-cell RAM; smaller, use a register file. Avoid fragmented small RAMs; merge into larger blocks. Prefer single-port RAM for area/power
 
 ### Data Path
 
