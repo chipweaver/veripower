@@ -42,9 +42,9 @@ No fixed external inputs. Revision mode additionally reads the existing
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `asic/{module}/brainstorm.md` | Custom markdown; frontmatter `Status: draft\|approved`; descriptive ATX sections per the checklist's Section Layout | The pipeline's frozen input (`design.md` is derived from it downstream). |
+| `asic/{module}/brainstorm.md` | Custom markdown; frontmatter `Status: draft\|approved`; descriptive ATX sections per the checklist's Section Layout | The pipeline's frozen input. |
 
-`brainstorm.md` lives at the **module root**, NOT under any stage workdir — it is the framework's input, not a stage's product. There
+`brainstorm.md` lives at the **module root**, NOT under any stage workdir. There
 is **no** `version` frontmatter field (re-derivation after a revision is given naturally
 by the fresh run's empty workdir).
 
@@ -93,7 +93,7 @@ whole doc, so a changed dimension contradicting an untouched one is caught).
 
 | Excuse | Reality |
 |---|---|
-| "The requirements changed — I'll just edit the in-flight `design.md` (or approved brainstorm) to absorb it" | Absorb a requirements change by re-invoking in revision mode + re-approving — never by editing an in-flight artifact (Iron Rule: `brainstorm.md` is immutable once approved). |
+| "The requirements changed — I'll just edit the approved brainstorm to absorb it" | Absorb a requirements change by re-invoking in revision mode + re-approving — never by editing an in-flight artifact (Iron Rule: `brainstorm.md` is immutable once approved). |
 
 ## Completion Gate
 
@@ -102,12 +102,11 @@ whole doc, so a changed dimension contradicting an untouched one is caught).
   candidates; feature IDs / interface-group names / scenario IDs are stable named
   anchors per the checklist's "Subsection IDs" section).
 - The brainstorm body was **not** echoed into the conversation (path-handoff only).
-- No `result.json` written; no pipeline-state command issued.
+- No `result.json` / pipeline-state command issued (Iron Rule — pre-pipeline).
 
 ## Return Contract
 
-Control returns to the user. This skill produces only `asic/{module}/brainstorm.md`;
-it writes no `result.json` and updates no state files. After approval, the user starts
+Control returns to the user. This skill produces only `asic/{module}/brainstorm.md` (no `result.json`, no state files — per the Iron Rule). After approval, the user starts
 the pipeline for `{module}`; its entry gate verifies the approved brainstorm before the
 first stage consumes it.
 
