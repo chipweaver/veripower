@@ -115,6 +115,26 @@ def test_derive_missing_features_table_fails_loud(tmp_path):
     proc = _run(tmp_path, check=False)
     assert proc.returncode != 0
     assert "1.3" in proc.stderr or "Feature Table" in proc.stderr
+    # S6: clean fail-loud, not a raw traceback (matches the missing-design.md line)
+    assert (
+        proc.stderr.startswith("derive-plan-data:") and "Traceback" not in proc.stderr
+    )
+    assert not (tmp_path / "plan-data.json").exists()
+
+
+def test_derive_invalid_utf8_design_fails_loud(tmp_path):
+    # C4: a decode error in a hand-authored spec must fail loud, not be papered over
+    # with errors="ignore" (silently dropping bytes — e.g. an ID digit). The plan is
+    # otherwise valid; only the stray 0xFF byte distinguishes drop-vs-fail.
+    (tmp_path / "manifest.json").write_text(json.dumps({"module": "m", "children": []}))
+    (tmp_path / "design.md").write_bytes(
+        DESIGN_MD.encode("utf-8") + b"\n<!-- \xff -->\n"
+    )
+    proc = _run(tmp_path, check=False)
+    assert proc.returncode != 0
+    assert (
+        proc.stderr.startswith("derive-plan-data:") and "Traceback" not in proc.stderr
+    )
     assert not (tmp_path / "plan-data.json").exists()
 
 
@@ -125,6 +145,10 @@ def test_derive_missing_manifest_fails_loud(tmp_path):
     proc = _run(tmp_path, check=False)
     assert proc.returncode != 0
     assert "manifest.json" in proc.stderr
+    # S6: clean fail-loud, not a raw traceback (matches the missing-design.md line)
+    assert (
+        proc.stderr.startswith("derive-plan-data:") and "Traceback" not in proc.stderr
+    )
     assert not (tmp_path / "plan-data.json").exists()
 
 

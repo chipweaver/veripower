@@ -340,15 +340,22 @@ def run(workdir, output=None) -> int:
     design = workdir / "design.md"
     if not design.is_file():
         sys.exit(f"derive-plan-data: missing design.md: {design}")
-    design_text = read_text(design)
-    check_hints = load_check_hints(workdir)
     output_path = Path(output).resolve() if output else workdir / "plan-data.json"
 
-    features = load_features(design_text)
-    clocks = load_clock_table(design_text)
-    interfaces = load_interfaces(design_text)
-    scenarios = load_scenarios(design_text)
-    cross_module_wires = load_cross_module_wires(design_text)
+    # read_text + the load_* helpers raise on a structural defect (decode error in the
+    # hand-authored spec, missing §1.3 / columns, missing/malformed manifest.json);
+    # convert them to the same clean fail-loud exit the missing-design.md case uses,
+    # rather than a raw traceback.
+    try:
+        design_text = read_text(design)
+        check_hints = load_check_hints(workdir)
+        features = load_features(design_text)
+        clocks = load_clock_table(design_text)
+        interfaces = load_interfaces(design_text)
+        scenarios = load_scenarios(design_text)
+        cross_module_wires = load_cross_module_wires(design_text)
+    except (ValueError, KeyError, OSError, json.JSONDecodeError) as e:
+        sys.exit(f"derive-plan-data: {e}")
 
     plan_data = {
         "features": features,

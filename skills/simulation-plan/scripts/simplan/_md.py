@@ -14,10 +14,9 @@ from pathlib import Path
 
 
 def read_text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        return path.read_text(encoding="utf-8", errors="ignore")
+    # A hand-authored spec is the input here; a decode error must fail loud (the verb's
+    # run() maps it to a clean exit), never be papered over by dropping bytes.
+    return path.read_text(encoding="utf-8")
 
 
 def write_text(path: Path, content: str) -> None:

@@ -33,8 +33,9 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 
 def count_features(plan_md: str) -> int:
-    """feature_count = distinct F-NN testpoint-feature IDs in verification-plan.md (§3 table
-    feature column). The \\b boundary + \\d+ excludes a bare 'F-' and the 'Frame-01' substring."""
+    """feature_count = distinct F-NN feature IDs referenced anywhere in verification-plan.md
+    (an informational whole-document scan, not a §3-only count — on a rework an F-NN cited only
+    in a §5 revision note still counts). The \\b boundary + \\d+ excludes a bare 'F-' and 'Frame-01'."""
     return len(set(re.findall(r"\bF-\d+\b", plan_md)))
 
 
