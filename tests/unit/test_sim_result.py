@@ -73,6 +73,62 @@ def test_final_pass_writes_result(tmp_path):
     assert "result.json" not in [a["path"] for a in env["artifacts"]]
 
 
+def test_verify_handoff_not_promoted(tmp_path):
+    # M2: verify-handoff.json is an intra-stage handoff; finalize must not list it
+    # in artifacts[] even when present on disk (artifact-contract.md:104-105).
+    wd = _final_workdir(tmp_path)
+    (wd / "verify-handoff.json").write_text("{}\n")
+    (wd / "conformance-review.json").write_text('{"findings": []}\n')
+    proc = _finalize(
+        wd,
+        "--phase",
+        "final",
+        "--scaffold",
+        str(wd / "scaffold-specification.json"),
+        "--thresholds",
+        str(DEFAULTS),
+    )
+    assert proc.returncode == 0, proc.stderr
+    paths = [
+        a["path"] for a in json.loads((wd / "result.json").read_text())["artifacts"]
+    ]
+    assert "verify-handoff.json" not in paths
+    assert "conformance-review.json" in paths  # a sibling handoff IS promoted
+
+
+def test_final_pass_missing_summary_is_blocked(tmp_path):
+    # S4: a missing coverage-summary.txt on the pass path is a broken pipeline step;
+    # finalize must fail loud (exit 2 BLOCKED), not write null counts.
+    wd = _final_workdir(tmp_path)
+    (wd / "coverage-summary.txt").unlink()
+    proc = _finalize(
+        wd,
+        "--phase",
+        "final",
+        "--scaffold",
+        str(wd / "scaffold-specification.json"),
+        "--thresholds",
+        str(DEFAULTS),
+    )
+    assert proc.returncode == 2, proc.stdout
+    assert not (wd / "result.json").exists()
+
+
+def test_conformance_phase_requires_review_file(tmp_path):
+    # S5: --phase conformance is only reached on a gate=trip, where the main thread
+    # has assembled conformance-review.json; an absent file is a caller contract
+    # violation that must fail loud (exit 2), not silently write empty findings.
+    proc = _finalize(
+        tmp_path,
+        "--phase",
+        "conformance",
+        "--fail-reason",
+        "tp X missing check",
+    )
+    assert proc.returncode == 2, proc.stdout
+    assert not (tmp_path / "result.json").exists()
+
+
 def test_final_thin_fail_is_compile(tmp_path):
     wd = _final_workdir(tmp_path)
     (wd / "tb/uvm/agent/m_drv_driver.sv").write_text("// TODO(driver)\n")  # residue

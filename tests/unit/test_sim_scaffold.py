@@ -100,6 +100,22 @@ def test_obs_name_strip_wires_rm_and_scoreboard(tmp_path):
     assert "m_drv_agent.ap.connect(m_rm.ai_drv)" in env  # inport -> rm
 
 
+def test_driver_monitor_vif_key_matches_tb_top_set(tmp_path):
+    # M1 regression: tb_top registers each agent's vif under "<agent>_vif"; the
+    # driver/monitor must `get` under the same key or build_phase uvm_fatals.
+    r, out = _render_via_cli(tmp_path)
+    assert r.returncode == 0, r.stderr
+    tb_top = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
+    assert '"drv_vif"' in tb_top  # set side, per scaffold.py
+    for agent in ("drv", "obs"):
+        for kind in ("driver", "monitor"):
+            sv = (out / f"tb/uvm/agent/m_{agent}_{kind}.sv").read_text()
+            assert f'"{agent}_vif"' in sv, (
+                f"{agent} {kind} get key must match tb_top set"
+            )
+            assert '"vif"' not in sv, f"{agent} {kind} must not use the bare 'vif' key"
+
+
 def test_missing_primary_clock_exits(tmp_path):
     spec = {**SPEC}
     del spec["primary_clock"]

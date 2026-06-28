@@ -209,7 +209,7 @@ scaffold-spec testpoints path, and `{module}`.
 
 After dispatching, end the turn and wait for the harness wake.
 On wake-up, reap the verify child's `STATUS:` last line + its JSON line (the `stage_specific` fields),
-then branch on its verdict and write `status=fail` via finalize, **skipping Step 6/7** (do NOT call
+then branch on its verdict and write `status=fail` via finalize, **skipping Step 6** (do NOT call
 `--phase final`):
 
 - a `make regress` case failed → `sim finalize --phase regress --failure-phase regress
@@ -220,7 +220,7 @@ then branch on its verdict and write `status=fail` via finalize, **skipping Step
 - `STATUS: BLOCKED <reason>` → `sim finalize --phase verify-blocked --fail-reason
   "verify child BLOCKED: <reason>"`.
 
-Only a **clean** verify verdict (no `failure_phase`, not BLOCKED) proceeds to Step 6/7.
+Only a **clean** verify verdict (no `failure_phase`, not BLOCKED) proceeds to Step 6.
 
 ### Step 6: Finalize + write `{workdir}/result.json` (script)
 
@@ -289,7 +289,7 @@ sub-Task.
 
 | Excuse | Reality |
 |---|---|
-| "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `sim finalize` exited non-zero) | You record the most-failing verdict, never a more-optimistic one. `status=pass` is written only when the smoke gate, the conformance gate, the verify verdict, and `sim finalize` all agree (Step 7); you MUST NOT override a `gate=trip` to pass (Step 4). |
+| "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `sim finalize` exited non-zero) | You record the most-failing verdict, never a more-optimistic one. `status=pass` is written only when the smoke gate, the conformance gate, the verify verdict, and `sim finalize` all agree (Step 6); you MUST NOT override a `gate=trip` to pass (Step 4). |
 | "The env-build child's `STATUS:` line says smoke passed — that's my smoke gate" | The smoke gate reads the smoke run's own tooling (`regression-log.txt` `RESULT` lines / per-test `logs/<test>.status`), never the child's self-reported prose (Step 3). |
 | "A case is failing — I'll open the TB to see why" | The main thread NEVER reads the TB body or re-runs heavy EDA; it consumes envelopes / status files / paths only and routes the failure out for the caller to decide (Iron Rule). |
 

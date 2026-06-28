@@ -11,7 +11,7 @@ class {{MODULE}}_{{AGENT_NAME}}_driver extends uvm_driver #({{MODULE}}_{{AGENT_N
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
-    if (!uvm_config_db#(virtual {{MODULE}}_{{AGENT_NAME}}_if)::get(this, "", "vif", vif))
+    if (!uvm_config_db#(virtual {{MODULE}}_{{AGENT_NAME}}_if)::get(this, "", "{{AGENT_NAME}}_vif", vif))
       `uvm_fatal(get_type_name(), "Virtual interface not found in config_db")
   endfunction
 

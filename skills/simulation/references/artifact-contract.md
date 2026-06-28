@@ -87,13 +87,13 @@ share it).
     {"path": "case-results-summary.md",  "kind": "summary"}
   ],
   "stage_specific": {
-    "compile_rounds": 1,
-    "smoke_pass_count": 5,
-    "total_cases": 20, "pass_count": 20, "fail_count": 0,
+    "total_cases": 20, "passed": 20, "failed": 0,
     "stimulus_iterations": 0,
     "coverage_summary": {
       "line": 92, "cond": 71, "fsm": 64, "toggle": 88
-    }
+    },
+    "conformance_gate": "clear",
+    "conformance_advisory": []
   }
 }
 ```

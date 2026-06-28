@@ -138,7 +138,11 @@ _KV = re.compile(r"^(\w+):\s*(\S+)\s*$", re.M)
 
 def read_case_counts(workdir: Path) -> dict:
     f = Path(workdir) / "coverage-summary.txt"
-    kv = dict(_KV.findall(f.read_text(encoding="utf-8"))) if f.is_file() else {}
+    # Reached only on the pass path, where `make summary` must have run; an absent
+    # summary is a broken pipeline step, not a benign absence -> fail loud (BLOCKED).
+    if not f.is_file():
+        raise FileNotFoundError(f"coverage-summary.txt missing on the pass path: {f}")
+    kv = dict(_KV.findall(f.read_text(encoding="utf-8")))
 
     def n(k):
         try:
@@ -205,7 +209,6 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
         "tests/testlist.json",
         "regression-log.txt",
         "logs",
-        "verify-handoff.json",
         "conformance-review.json",
         "structural-coverage.json",
         "coverage-summary.txt",
@@ -243,6 +246,13 @@ def _early_exit_ss(
     if phase == "conformance":
         # the gating subset, re-derived in-process from the on-disk conformance-review.json
         # (reaped state, not orchestrator narration — single-homed via compute_gate).
+        # --phase conformance is only reached on a gate=trip, where the main thread has
+        # assembled conformance-review.json; an absent file is a caller contract violation.
+        if not conformance_review or not Path(conformance_review).is_file():
+            raise RuntimeError(
+                "finalize --phase conformance requires an assembled conformance-review.json "
+                f"(got: {conformance_review!r})"
+            )
         findings = _findings(conformance_review) or []
         flagged = set(compute_gate({"findings": findings})["flagged"])
         ss["conformance_findings"] = [f for f in findings if f.get("tp_id") in flagged]
