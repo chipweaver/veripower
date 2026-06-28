@@ -18,10 +18,9 @@ Your sole responsibility: run independent PrimeTime STA on the post-synthesis ne
 
 - Do not modify any file under `Design/synthesis/`. Synthesis products (netlist / SDC) are read-only external references.
 - An independent STA tool (PrimeTime) MUST be used, not the synthesis tool's built-in timing engine (contract violation — the in-synthesis engine uses estimated delays and cannot meet signoff accuracy).
-- When no PT license is available, write `status=fail` + `failure_kind="infra"` + `fail_reason="PT license missing"`; do not claim STA is complete.
-- If synthesis products (netlist / SDC) do not exist, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"`; do not bypass.
+- When no PT license is available, write `status=fail` + `fail_reason="PT license missing"`; do not claim STA is complete.
+- If synthesis products (netlist / SDC) do not exist, write `status=fail` + `fail_reason="external reference missing: <path>"`; do not bypass.
 - `timing-report.txt` MUST be written to disk; claiming STA complete without it is not allowed.
-- Classify on the report's `(VIOLATED)` / `(MET)` marker — never on the displayed slack number (a sub-rounding violation prints `0.00`). The parser owns this; do not hand-classify.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -89,7 +88,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
 
 `finalize` reuses the parser's timing gate (classifies each direction on the report's `(MET)`/`(VIOLATED)` marker — never the displayed number — and judges pass = setup MET and hold MET), writes `timing-actual.json`, derives the reproducibility header (tool from the report `Version:` line / lib_db from `config.tcl` / clock from the synthesis SDC), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
-`failure_kind` semantics (set by finalize): `infra` (PT never ran — external ref / license missing; the main thread writes this in the Step-1 pre-check before finalize runs), `tooling` (report missing/unparseable — parser exit 1/3), `ppa` (setup/hold not met; `timing{}` + `violations[]` carry the numbers).
+`failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); the main thread writes `failure_kind=infra` in the Step-1 pre-check (PT never ran — external ref / license missing) before finalize runs.
 
 **Workflow rationale — single linear flow.** This stage is a read-only re-verifier — it cannot modify the synthesis netlist/SDC or apply any fix, so every run does identical work and there is no first-run / incremental / re-run fork to branch on. Step 1 is a linear pre-flight check, not a branch; each run uses a fresh `{workdir}` (Step 2 aborts if one is already deployed). This stage therefore carries no branch fork and receives no `{rework_trigger}`.
 
