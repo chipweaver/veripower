@@ -29,7 +29,7 @@ Your sole responsibility: aggregate every upstream `result.json` envelope and ev
 
 The script derives the module root (`asic/{module}/`) from `{workdir}` and reads every upstream canonical envelope + evidence path itself; you do not pass them.
 
-### Read by the agent for the traceability matrix (the script does NOT parse these)
+### Read by you for the traceability matrix (the script does NOT parse these)
 
 | Path | Use |
 |---|---|

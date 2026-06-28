@@ -5,7 +5,7 @@ description: Use when generating or evolving the verification plan, scaffold spe
 
 # Verification Planning
 
-Your sole responsibility: from `specification`, generate or evolve two artifacts — `verification-plan.md` (human-readable review anchor, with a testpoints section and a power-scenarios section) and `scaffold-specification.json` (machine-read contract, with `agents` / `sequences` / `tests` / `testpoints[]` / `power_scenarios[]`). **Does not read RTL source; does not invoke EDA tools.**
+Your sole responsibility: from `specification`, generate or evolve two artifacts — `verification-plan.md` (human-readable review anchor, with a testpoints section and a power-scenarios section) and `scaffold-specification.json` (machine-read contract, with `agents` / `sequences` / `tests` / `testpoints[]` / `power_scenarios[]`). **Do not read RTL source; do not invoke EDA tools.**
 
 ## When to Use
 

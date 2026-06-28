@@ -53,9 +53,9 @@ No fixed external inputs. When `{rework_trigger}` is provided, read it once at i
 
 ## Workflow
 
-`specification` is loaded on the main thread but is a thin Level-0 dispatcher: it
-dispatches two waves of Level-1 sub-Tasks (decompose + per-child); coverage and constraints
-are deterministic main-thread scripts, gates twice on path-handoff, and finalizes
+You are loaded on the main thread as a thin Level-0 dispatcher: you
+dispatch two waves of Level-1 sub-Tasks (decompose + per-child); coverage and constraints
+are deterministic main-thread scripts, you gate twice on path-handoff, and finalize
 `result.json`. The main thread holds no document body — `brainstorm.md`, `design.md`,
 and every `<child>.md` are read/written only inside sub-Task contexts.
 
@@ -342,7 +342,7 @@ re-checks the precondition itself.
   self-check; there is no separate constraint verifier).
 - **Finalize:** `result.json` was written by `spec finalize` (it owns
   status / top_module / ppa_targets / spec_gate / artifacts[]; `<TOP>` = `manifest.module`
-  matches the `constraints/<TOP>.{sdc,sgdc}` stems). The agent supplies only the γ-floor args
+  matches the `constraints/<TOP>.{sdc,sgdc}` stems). You supply only the γ-floor args
   `--status` / `--waived` / `--ppa-targets` (the human-gate outcome).
 - **Human:** the design.md review-loop is approved (now including port roles, reset
   polarity, clock relationships); engineering soundness — the semantic "not contradictory"

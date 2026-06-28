@@ -5,7 +5,7 @@ description: Use when a simulation run fails and root-cause analysis is needed b
 
 # Simulation Triage
 
-Per-case root-cause analysis → cluster grouping → return the triage result. **Read-only** — does not modify any file, does not modify any external state.
+Per-case root-cause analysis → cluster grouping → return the triage result. **Read-only** — modify no files, modify no external state.
 
 The result has two tiers:
 - **Routing block** — a small JSON object (the final `ANALYSIS:` block); the hard, schema-validated contract, carrying only `root_cause` + `analysis_state`.

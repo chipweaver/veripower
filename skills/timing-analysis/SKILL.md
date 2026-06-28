@@ -88,7 +88,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
 
 `finalize` reuses the parser's timing gate (classifies each direction on the report's `(MET)`/`(VIOLATED)` marker — never the displayed number — and judges pass = setup MET and hold MET), writes `timing-actual.json`, derives the reproducibility header (tool from the report `Version:` line / lib_db from `config.tcl` / clock from the synthesis SDC), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
-`failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); the main thread writes `failure_kind=infra` in the Step-1 pre-check (PT never ran — external ref / license missing) before finalize runs.
+`failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); you write `failure_kind=infra` in the Step-1 pre-check (PT never ran — external ref / license missing) before finalize runs.
 
 **Workflow rationale — single linear flow.** You are a read-only re-verifier — you cannot modify the synthesis netlist/SDC or apply any fix, so every run does identical work and there is no first-run / incremental / re-run fork to branch on. Step 1 is a linear pre-flight check, not a branch; each run uses a fresh `{workdir}` (Step 2 aborts if one is already deployed). You therefore carry no branch fork and receive no `{rework_trigger}`.
 

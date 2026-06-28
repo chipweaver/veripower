@@ -132,15 +132,15 @@ parser's tool `message`), enumerates `artifacts[]`, and writes the complete `res
 result.json written (status pass or fail). A non-zero combiner exit is a program exception (BLOCKED),
 not a `status=fail`.
 
-The Step 4/5 `FAIL=` early-fail handling is unchanged: on a non-zero `make` the agent still acts on
-`collect_report.py`'s `FAIL=` token and writes `status=fail` + the matching `fail_reason` directly
+The Step 4/5 `FAIL=` early-fail handling is unchanged: on a non-zero `make` you still act on
+`collect_report.py`'s `FAIL=` token and write `status=fail` + the matching `fail_reason` directly
 (the parser unlinked the `*-violations.json`, so the combiner's gate would also fail on the missing
-file — but the agent's `FAIL=` mapping carries the precise tool-level reason, so write that envelope
+file — but your `FAIL=` mapping carries the precise tool-level reason, so write that envelope
 in Steps 4/5 rather than deferring to the combiner). The combiner owns the **clean-path** assembly and
 the **error-severity gate** (both reports present, `counts.error > 0`).
 
 Every field in result.json is script-derived — the per-error `reason` comes from the parser's tool
-`message`, so lint-cdc supplies no agent input (100% script-owned, like every other stage).
+`message`, so you supply no input (100% script-owned, like every other stage).
 
 ## Decision Rules
 

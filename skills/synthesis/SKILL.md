@@ -115,7 +115,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
 
 `finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`), derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
-`failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); the main thread writes `failure_kind=infra` on the pre-checks of Steps 1–5 (DC never ran — external ref / license / trigger) before finalize runs.
+`failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); you write `failure_kind=infra` on the pre-checks of Steps 1–5 (DC never ran — external ref / license / trigger) before finalize runs.
 
 ## Decision Rules
 

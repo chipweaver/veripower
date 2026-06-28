@@ -32,7 +32,7 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{orchestrator_context_path}` | Optional. Caller-injected fix-scope hint file path. This stage NEVER receives `{rework_trigger}` injection (this stage is not itself a valid fix target); only `{orchestrator_context_path}` may be injected (carrying a reasoning hint for either first-run or rework). |
+| `{orchestrator_context_path}` | Optional. Caller-injected fix-scope hint file path. You NEVER receive `{rework_trigger}` injection (this stage is not itself a valid fix target); only `{orchestrator_context_path}` may be injected (carrying a reasoning hint for either first-run or rework). |
 
 ### External reference inputs
 
@@ -125,7 +125,7 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 
   `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against `--ppa-targets`), writes `power-actual.json`, folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
-  `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); `infra` (external reference / license missing) is written by the Step-1 pre-check before finalize runs, and the `make`-non-zero VCS-compile triage above also writes its `failures[]`/`failure_kind` on the main thread (the gate never runs there).
+  `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); `infra` (external reference / license missing) is written by the Step-1 pre-check before finalize runs, and on the `make`-non-zero VCS-compile triage above you also write the `failures[]`/`failure_kind` directly (the gate never runs there).
 
 ### Step 4: (removed — finalize owns result.json; see the `make`-exited-0 branch above)
 
