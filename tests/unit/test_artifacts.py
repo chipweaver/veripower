@@ -203,7 +203,7 @@ class TestPromoteAtomic:
     def test_promote_rejects_traversal_path(self, tmp_path, monkeypatch, bad_path):
         """Defense-in-depth: promote() itself rejects an artifacts[] path that
         escapes runs/<N>/ (lexically), even though validate_result also rejects it
-        upstream. Mirrors the self-listing primitive guard at artifacts.py:119-121."""
+        upstream. Mirrors the self-listing primitive guard in promote()."""
         run_dir = self._setup_run(tmp_path, monkeypatch, "lint-cdc", 1)
         rj = run_dir / "result.json"
         data = json.loads(rj.read_text())
