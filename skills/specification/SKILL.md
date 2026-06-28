@@ -20,11 +20,9 @@ Boundary of this skill:
 
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
 - **Do not write files outside `{workdir}` and do not read or write other modules' artifacts.** Reading reference material outside `{workdir}` (e.g., plugin-internal templates) is allowed.
-- **Do not decide what happens after you complete.** Return control to the caller.
 - **No brainstorm here.** This skill consumes a frozen `asic/{module}/brainstorm.md` (produced by the pre-pipeline `brainstorm` skill). It runs two path-handoff gates (partition gate + design.md gate) but holds no document body and drives no D0–D7 dialogue.
 - **Deriving design.md requires an approved `brainstorm.md`.** `asic/{module}/brainstorm.md` must read `Status: approved` (design-flow's entry gate verifies it). A missing/draft brainstorm means the user must run `Skill(veripower:brainstorm)` first.
 - **Constraint correctness** (periods consistent, IO delays / `abstract_port`s present) is generated and self-checked by `derive-constraints` — not a human rule.
-- **`result.json.status` must be `pass` or `fail` — never `blocked`.** The envelope `status` enum accepts only `{pass, fail}`; any failure must be `status=fail` + `fail_reason`.
 - **`design.md` must not contain by-reference jumps.** `design.md` is the unique source of truth; downstream stages do not read `brainstorm.md`. Any `see brainstorm`, `see spec D`, `refer to brainstorm`, etc. = information loss. The referenced passage must be inlined verbatim.
 - **`manifest.json` is read-only after the partition gate.** Changes to N require a fresh specification run (or re-dispatching wave 1 with new grouping before the partition gate is reconfirmed).
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
@@ -75,8 +73,7 @@ Completion Gate.
   all dispatched sub-Tasks have reported — never against a partial set.
 - **No `state.py`:** this skill does not call `state.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>`
-  is a harness-level signal, distinct from the `result.json.status` enum (`pass`/`fail`
-  only); the main thread maps it to `status=fail` + `fail_reason` listing failed children and
+  is a harness-level signal, distinct from the `result.json.status` enum; the main thread maps it to `status=fail` + `fail_reason` listing failed children and
   defers per-child re-dispatch to trigger-driven rework.
 
 ### Step 1: Routing branch + brainstorm precondition (main thread)
@@ -228,8 +225,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py validate-review --review {w
 
 Non-zero exit → re-assemble the JSON and re-run (a main-thread fix, NOT a re-dispatch). On exit 0 it prints
 `{"gate":"trip"|"clear","flagged":[{child,lens,severity}…],"must_ack":[{child,severity}…]}` — the
-mechanical `lens × severity` reduction (faithfulness AND conformance at critical/important block;
-soundness is advisory must-acknowledge; unavailable never blocks), computed by the script, not by
+mechanical `lens × severity` reduction, computed by the script, not by
 eye. Write
 `stage_specific.spec_gate` = that parsed verdict object verbatim, and list `spec-review.json` in
 `artifacts[]` (so it promotes to canonical — see Session-resume below).
@@ -245,8 +241,8 @@ The verdict feeds Step 8 (**T2** — block into the human gate; this stage never
     re-run Step 6 (coverage) + this step; or
   - **waives it (human waiver)** → records `{child, lens, location, classification ∈
     {false-positive, accepted-risk}, reason}` into `spec_gate.waived[]`. **The `reason` is
-    human-authored: the main thread PROMPTS the operator at the gate and blocks until provided — it
-    does NOT auto-write it.** A waived finding no longer blocks. **No round counter, no cross-round
+    human-authored: you PROMPT the operator at the gate and block until provided — you
+    do NOT auto-write it.** A waived finding no longer blocks. **No round counter, no cross-round
     matching, no auto-downgrade.** For a **critical-severity faithfulness** waiver, surface: "no
     downstream stage re-checks spec-vs-brainstorm — this is a terminal accept."
   - **partition-rooted** (defect rooted in the child partition, not a design.md body —
@@ -352,15 +348,14 @@ re-checks the precondition itself.
 - **Human:** the design.md review-loop is approved (now including port roles, reset
   polarity, clock relationships); engineering soundness — the semantic "not contradictory"
   judgment the token check cannot catch.
-- **Semantic gate (Step 7):** `spec validate-review` reports `spec_gate.gate==clear` (or
-  every `flagged` is in `spec_gate.waived[]`, or the whole wave was `unavailable` and acknowledged);
+- **Semantic gate (Step 7):** the Step-7 `spec_gate` verdict cleared per the Step-8 approve precondition;
   `stage_specific.spec_gate` written; `spec-review.json` in `artifacts[]`.
 - No Iron Rule or Red Flag was triggered.
 - `result.json` written; its verdict is schema-validated externally, not by this skill.
 
 ## Return Contract
 
-Control returns directly to the caller; the caller decides based on `result.json`.
+**Do not decide what happens after you complete** — control returns directly to the caller; the caller decides based on `result.json`.
 
 ### Session-resume semantics
 
