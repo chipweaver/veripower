@@ -41,6 +41,11 @@ def _validate_record(name: str, rec) -> None:
         raise LedgerError(
             f"child {name!r}: 'annotations' needs 'sgdc' and 'sdc' blocks"
         )
+    for block in ("sgdc", "sdc"):
+        if not isinstance(ann[block], dict):
+            raise LedgerError(
+                f"child {name!r}: 'annotations.{block}' must be an object"
+            )
 
 
 def load_ledger(path) -> dict:

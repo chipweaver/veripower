@@ -44,6 +44,18 @@ def test_load_ledger_raises_on_missing_key_F8(tmp_path):
         load_ledger(p)
 
 
+def test_load_ledger_raises_on_null_annotation_block(tmp_path):
+    # M4: {"sgdc": null, "sdc": null} is key-present but null-valued; it passes a
+    # key-only check yet crashes _agg downstream (None.get(...)). The validator must
+    # reject it loudly (LedgerError) rather than let a raw AttributeError escape.
+    p = tmp_path / "bad.json"
+    p.write_text(
+        '{"a": {"files": ["a.sv"], "annotations": {"sgdc": null, "sdc": null}}}'
+    )
+    with pytest.raises(LedgerError, match="sgdc"):
+        load_ledger(p)
+
+
 def test_load_ledger_raises_on_malformed_json_F8(tmp_path):
     p = tmp_path / "bad.json"
     p.write_text("{not json")

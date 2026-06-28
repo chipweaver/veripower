@@ -207,7 +207,9 @@ also carries `owner_child`). These are child-authoring defects (fix-locus = the 
 - **Bounded: at most 2 re-dispatch rounds** (presence defects typically converge in 1 round; 2 gives one
   retry margin). Still failing after round 2, write `status=fail`, `fail_reason="rtl conformance unconverged
   after 2 rounds: <children+items>"`, stop. The loop is intra-stage fan-out — skill-internal scratch; the stage produces a single result at exit and the re-dispatches are not externally visible; no persistent "pending finalize" state.
-- On convergence, rebuild a full-roster `fresh_reports.json` (all children `status=done`) and re-run
+- On convergence, rebuild a full-roster `fresh_reports.json` (all children `status=done`,
+  reconstructing each already-passing child's `files`/`annotations` entry from the current
+  `.child_reports.json` ledger — a `done` child without them fails `assemble` loud) and re-run
   `assemble --seeded` over it + the converged ledger to refresh `artifacts[]`. Round-0 files a
   re-dispatched child later superseded remain in the run's scratch workdir only — not in the ledger, so never promoted.
 

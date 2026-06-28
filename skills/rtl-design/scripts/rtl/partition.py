@@ -47,7 +47,7 @@ def post_verdict(manifest: Path, top: str, fresh: Path, ledger: Path):
     enumeration from the ledger. Returns (verdict_dict, rc). The single copy assemble's run()
     and result's build_result both reuse — no behavior change, only factored out."""
     status, reason = coverage_verdict(manifest, top)
-    if not (fresh and ledger):
+    if not (fresh.exists() and ledger.exists()):
         return (
             {
                 "status": "fail",

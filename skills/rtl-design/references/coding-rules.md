@@ -20,7 +20,7 @@ Applies to: `**/*.sv` / `**/*.v` / `**/*.svh` / `**/*.vh`
 - Single responsibility per module/interface; avoid deep nesting, break complex combinational logic into named intermediate signals
 - Separate sequential and combinational logic clearly; avoid mixing unrelated logic in the same `always`/`always_ff` block
 - Header files (`*.svh`/`*.vh`): centralize macros and parameters; avoid circular includes
-- Cross-clock domain synchronizers, tri-state drivers, and other special structures should be encapsulated as separate modules/files
+- Cross-clock domain synchronizers, tri-state drivers, and other special structures must be encapsulated as separate modules/files
 
 ## Coding Constraints
 
@@ -93,7 +93,7 @@ end
 
 ### RAM Coding
 
-- RAM input control signals, read/write addresses, and output data should be registered — avoid direct combinational drive
+- RAM input control signals, read/write addresses, and output data must be registered — avoid direct combinational drive
 - Read latency is one cycle; if additional latching exists on inputs/outputs, document the delay in comments
 - Read/write addresses must not overflow; no simultaneous read/write conflict on the same address without explicit arbitration
 - Data read out over multiple consecutive cycles must be registered first
