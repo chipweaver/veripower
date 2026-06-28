@@ -127,8 +127,6 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 
   `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); `infra` (external reference / license missing) is written by the Step-1 pre-check before finalize runs, and on the `make`-non-zero VCS-compile triage above you also write the `failures[]`/`failure_kind` directly (the gate never runs there).
 
-### Step 4: (removed — finalize owns result.json; see the `make`-exited-0 branch above)
-
 ## Red Flags
 
 | Excuse | Reality |

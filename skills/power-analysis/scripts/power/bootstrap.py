@@ -109,28 +109,30 @@ def run(module: str, workdir, top: str | None = None) -> int:
             _err("cannot infer --top; pass explicitly")
             return 1
 
-    # cp -R templates/. dest  (copy template CONTENTS into the workdir). NOTE: this
-    # runs BEFORE the netlist/TB/scaffold pre-flight below (BP5 order): a missing
-    # upstream ref leaves the templates partially deployed, then exits 1; a re-run
-    # then trips the Makefile guard above. Do not hoist the pre-flight above the
-    # copytree.
-    shutil.copytree(_TEMPLATE_DIR, dest, dirs_exist_ok=True)
-
     syn_out_dir = _REPO_ROOT / "asic" / module / "Design" / "synthesis" / "out"
     sim_dir = _REPO_ROOT / "asic" / module / "Verification" / "simulation"
     plan_dir = _REPO_ROOT / "asic" / module / "Verification" / "simulation-plan"
 
     # Pre-flight: upstream stages must have produced their canonical artifacts before
-    # power-analysis bootstrap can succeed (fail-fast with an actionable message
-    # rather than reporting "Deployed" and letting `make` fail opaquely).
+    # we deploy anything. Run it BEFORE copytree so a missing upstream ref fails fast
+    # without leaving a partial deploy — a deployed Makefile would otherwise trip the
+    # idempotency guard on the user's retry ("already deployed"). Matches the other
+    # three stage bootstraps (check before copy).
     syn_netlist = syn_out_dir / f"{top}_syn.v"
     sim_filelist = sim_dir / "filelist.f"
+    plan_path = plan_dir / "scaffold-specification.json"
     if not syn_netlist.is_file():
         _err(f"synthesis netlist not found: {syn_netlist}")
         return 1
     if not sim_filelist.is_file():
         _err(f"simulation TB filelist not found: {sim_filelist}")
         return 1
+    if not plan_path.is_file():
+        _err(f"simulation-plan not found: {plan_path}")
+        return 1
+
+    # cp -R templates/. dest  (copy template CONTENTS into the workdir).
+    shutil.copytree(_TEMPLATE_DIR, dest, dirs_exist_ok=True)
 
     # env.sh relpaths: relpath(target, workdir) so the env vars stay correct
     # regardless of workdir depth (canonical Verification/power-analysis/ vs runs/<N>/).
@@ -144,11 +146,6 @@ def run(module: str, workdir, top: str | None = None) -> int:
             "MY_PLAN_DIR": os.path.relpath(plan_dir, dest),
         },
     )
-
-    plan_path = plan_dir / "scaffold-specification.json"
-    if not plan_path.is_file():
-        _err(f"simulation-plan not found: {plan_path}")
-        return 1
 
     # Render the initial power tests via the DEPLOYED emit_power_tests.py (Tier-2).
     # It enforces the sim-plan->power cross-stage contract (power_scenarios[].sequence_ref

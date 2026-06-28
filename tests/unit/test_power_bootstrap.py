@@ -200,11 +200,13 @@ def test_already_deployed_guard(tmp_path):
 
 def test_fail_closed_when_netlist_missing(tmp_path):
     # --top given so we get past inference; missing netlist -> exit 1.
-    # (NB: copytree runs before this check, so the workdir is NOT clean — don't assert it.)
+    # The pre-flight runs BEFORE copytree, so a missing upstream ref leaves no
+    # partial deploy (no Makefile) — the user's retry is clean, not "already deployed".
     m, workdir, main = _make_tree(tmp_path, with_netlist=False)
     r = _run(m, workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
     assert "netlist not found" in r.stderr
+    assert not (workdir / "Makefile").exists()
 
 
 def test_fail_closed_when_sim_filelist_missing(tmp_path):
@@ -212,6 +214,7 @@ def test_fail_closed_when_sim_filelist_missing(tmp_path):
     r = _run(m, workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
     assert "TB filelist not found" in r.stderr
+    assert not (workdir / "Makefile").exists()
 
 
 def test_fail_closed_when_scaffold_missing(tmp_path):
@@ -219,6 +222,21 @@ def test_fail_closed_when_scaffold_missing(tmp_path):
     r = _run(m, workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
     assert "simulation-plan not found" in r.stderr
+    assert not (workdir / "Makefile").exists()
+
+
+def test_retry_after_fixing_upstream_succeeds(tmp_path):
+    # The should-fix scenario: bootstrap with a missing netlist fails cleanly; the
+    # user then produces the netlist and re-runs the SAME workdir — it must deploy,
+    # not trip the "already deployed" guard from a leftover partial copytree.
+    m, workdir, main = _make_tree(tmp_path, with_netlist=False)
+    assert _run(m, workdir, main, extra=["--top", "dut"]).returncode == 1
+    (tmp_path / "asic" / m / "Design" / "synthesis" / "out" / "dut_syn.v").write_text(
+        "// netlist\n"
+    )
+    r2 = _run(m, workdir, main, extra=["--top", "dut"])
+    assert r2.returncode == 0, r2.stderr
+    assert (workdir / "Makefile").is_file()
 
 
 def test_missing_template_dir_fail_closed(tmp_path):

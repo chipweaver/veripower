@@ -186,7 +186,7 @@ def read_top(workdir: Path):
 def enumerate_artifacts(workdir: Path) -> list[dict]:
     workdir = Path(workdir)
     candidates = [
-        "scripts/constraints.sgdc",  # Iron Rule: the warm-start anchor, must be listed on pass
+        "scripts/constraints.sgdc",  # Iron Rule warm-start anchor: MUST be in artifacts[] on pass (promotion is pass-gated by the promote machinery, so a fail-path listing here is inert, not a leak)
         "lint-report.txt",
         "cdc-report.txt",
         "lint-violations.json",
