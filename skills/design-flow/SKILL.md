@@ -104,13 +104,13 @@ loop:
 
 `decide` always exits 0 and prints exactly one JSON object; `action` selects the shape.
 
-Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notification>` (values from its `<output-file>` / stage binding), and **re-pass the same `--wake` on every re-query within the turn**. Pass `--analysis -` and pipe the triage ANALYSIS JSON when this turn was triggered by a `simulation-triage` return.
+Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notification>` (values from its `<output-file>` / stage binding), and **re-pass the same `--wake` on every re-query within the turn**. Pass `--analysis -` and pipe the triage ANALYSIS JSON when this turn was triggered by a `simulation-triage` return — locate the `ANALYSIS:` prefix in the response body, extract the JSON object that immediately follows it, and pipe **only that JSON object** (piping the whole body — structured prose + `STATUS: DONE` — makes `orchestrate.py` raise `JSONDecodeError`).
 
 `execute(action)`:
 
 | action | effect (LLM-only) |
 |---|---|
-| `REAP` | `state.py reap --stage <s> --run <n> --subagent-output-file <f?>` (no `--outcome`). If the stage was cascade-staled during execution, pass `--outcome blocked --reason "stage cascade-staled during execution; result not authoritative against current prereq snapshot"` to override derive mode. See promote_failed protocol (§Decision Rules) for `action=promote_failed` handling. |
+| `REAP` | `state.py reap --stage <s> --run <n> --subagent-output-file <f?>` (no `--outcome`). Derive mode settles a cascade-staled run on its own (→ `discarded`, `reason_code=stage_staled_during_run`) — do **not** pass `--outcome blocked`: the Orchestrator has no reliable pre-reap cascade-stale signal, and the override only relabels the same non-promotion as `blocked` (semantically wrong — the run is stale, not blocked). See promote_failed protocol (§Decision Rules) for `action=promote_failed` handling. |
 | `DISPATCH` kind=main-thread | `state.py dispatch --module {module} --stage <s> [--orchestrator-context <file\|->]` → `Skill(veripower:<skill>)` → `state.py reap --stage <s> --run <r>` |
 | `DISPATCH` kind=task | `state.py dispatch --module {module} --stage <s> [--orchestrator-context <file\|->]` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered + ppa_targets>)` |
 | `DISPATCH_TRIAGE` | `state.py log --event '{"type":"debug_dispatch","module":"{module}"}'` → `Task(… Skill(veripower:simulation-triage) …)`. The next loop iteration sees the triage pending and returns `YIELD` (which ends the turn). |
@@ -128,7 +128,7 @@ Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notificatio
 When the `REAP` execute step receives `cmd_reap` returning `action=promote_failed reason=<...>`, the **only legal sequence** is:
 
 1. `state.py reap --stage X --run N` (no `--outcome`; cmd_reap derives the outcome from `result.json`) returns `action=promote_failed` → **single retry with the same args and same command** (do not touch disk, do not modify result.json, do not modify artifacts).
-2. Still returns `action=promote_failed` → `state.py log --module {module} --event '{"type":"escalation","reason_code":"promote_failed_persistent","reason":"<resp2.reason verbatim>"}'` + ESCALATE to upstream (user / higher-level agent), forwarding the reason verbatim.
+2. Still returns `action=promote_failed` → **stop**: do not retry again and do not inline-log here. The run stays in-flight carrying two `promote_failed` outcome events, so the next `decide` returns `ESCALATE` (pf ≥ 2); its `execute(ESCALATE)` step logs the single `escalation` event (`reason_code=promote_failed_persistent`, `reason` = decide's reason verbatim) and forwards to the user. `execute(ESCALATE)` is the sole home for escalation logging — emitting `state.py log` here too would double-write the event.
 3. **Forbidden:** retrying > 1 time with the same args; any Write/Edit under `runs/N/` (see Red Flags "promote failed — I'll just Edit `runs/N/result.json`…") — either of these is an isolation violation (a main-thread write under `runs/N/`).
 
 **Anti-example (an empirically violated case):** main thread sees promote_failed → `ls .promote-tmp/` → Edit `runs/N/result.json` to drop some artifact entry (bypassing the promote check) → retry → another promote_failed → another Edit → … → finally complete pass. That path is an isolation violation (the main thread must never write stage artifacts); and the artifacts list Edit collateral-damaged (e.g., scripts/ / logs/) pollutes downstream reuse paths. **The only legal response** is a single retry followed by ESCALATE; never Edit.
@@ -165,9 +165,11 @@ Orchestrator-form specialization: each turn returns a control-flow flag, not a d
   state.py log --module {module} --event \
     '{"type":"escalation","reason_code":"<code>","reason":"<text>"}'
   ```
-  The closed set of `reason_code` values you actually produce today:
+  The two `reason_code` values the Orchestrator names directly:
   - `must_escalate` — `cmd_convergence.guideline == "must_escalate"` (total rework count ≥ 3).
   - `promote_failed_persistent` — REAP step is still promote_failed after the single retry.
+
+  Every other escalation is decider-sourced: `orchestrate.py decide` returns `action=ESCALATE` with a `reason` drawn from `route.py`'s rule / `reason_hint` (e.g. `triage_skipped`, `tooling_no_route`, `terminal_frontend_signoff`, `unrouted*`); log that string as the `reason_code` and `reason`.
 
   Then forward the subagent body verbatim, attach the `state.py status` snapshot, and give 2–3 concrete next-step suggestions.
 
