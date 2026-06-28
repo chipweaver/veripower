@@ -51,10 +51,6 @@ This skill is loaded on the main thread and reads `{module}` (the sole external 
 - `t = state.py status --module {module}`.
 - Crash-recovery reap helper — for every `<run>` in `t.stages[<S>].in_flight[]`:
   - `state.py reap --module {module} --stage <S> --run <run>` (no `--outcome`). cmd_reap reads that run's own `result.json` and resolves the outcome itself — `status` ∈ {pass, fail} → pass/fail; status missing/illegal → blocked (malformed status); file missing or JSON unparseable → blocked (stage crashed or produced no result.json); present-but-schema-invalid → invalid. The Orchestrator never reads `result.json` (no full-file read by Orchestrator). cmd_reap derives the run-specific path via `state._result_path()` (which indexes `topology._RESULT_DIR`); if that mapping drifts, only topology.py changes.
-- Canonical `result.json` paths (read by the decider for failure routing + ppa-target extraction) follow `topology._RESULT_DIR`:
-  - `specification` / `rtl-design` / `lint-cdc` / `synthesis` / `timing-analysis` → `asic/{module}/Design/<S>/result.json`.
-  - `simulation-plan` / `simulation` / `power-analysis` → `asic/{module}/Verification/<S>/result.json`.
-  - `frontend-signoff` → `asic/{module}/frontend-signoff/result.json` (top-level, no area prefix).
 - **Brainstorm entry gate (pre-dispatch assertion).** Before entering the executor
   loop, `grep` the frontmatter of `asic/{module}/brainstorm.md` (frontmatter only — do
   NOT load the body). If the file is missing or `Status` ≠ `approved`, reply to the user
@@ -106,10 +102,9 @@ loop:
   if a.action in {YIELD, DONE, ESCALATE}: end turn
 ```
 
-`decide` always exits 0 and prints exactly one JSON object; `action` selects the shape (complete enumeration):
-`DISPATCH {stage, kind: main-thread|task, ppa_targets[]}` (`ppa_targets` always present; non-empty only for synthesis / power-analysis) · `REAP {stage, run}` · `REWORK {failed_stage, target_stage, reason_hint}` · `YIELD {in_flight: [[stage, run], …]}` (triage-pending variant: `in_flight: []` + `waiting_on: "simulation-triage"`) · `DISPATCH_TRIAGE {}` · `ESCALATE {reason: <text>}` · `DONE {}`.
+`decide` always exits 0 and prints exactly one JSON object; `action` selects the shape.
 
-Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notification>` (values from its `<output-file>` / stage binding), and **re-pass the same `--wake` on every re-query within the turn**. Once the named run is reaped it leaves `in_flight`, so a stale `--wake` is a safe no-op (the decider's step-1 guard checks membership) — re-passing prevents a step-0 `promote_failed` retry on another stage from preempting the wake and orphaning the completed run (which would `YIELD` with that run still `in_flight` and no new notification → stall). Pass `--analysis -` and pipe the triage ANALYSIS JSON when this turn was triggered by a `simulation-triage` return.
+Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notification>` (values from its `<output-file>` / stage binding), and **re-pass the same `--wake` on every re-query within the turn**. Pass `--analysis -` and pipe the triage ANALYSIS JSON when this turn was triggered by a `simulation-triage` return.
 
 `execute(action)`:
 
@@ -124,12 +119,9 @@ Pass `--wake <stage>:<run>` when this turn was triggered by a `<task-notificatio
 | `YIELD` | reply the `in_flight` list to the user. (A triage-pending YIELD carries `waiting_on: "simulation-triage"` with empty `in_flight` — say a triage subagent is running.) |
 | `DONE` | reply a completion summary; session ends |
 
-> `execute(DISPATCH_TRIAGE)` writes the `debug_dispatch` marker itself (state.py does not auto-emit it) — the decider reads that marker to avoid re-dispatching triage on a later turn. This is the L4 guard, now structural: after the ANALYSIS wake reworks `simulation`, it is `fail/stale`, so it is no longer selected for failure handling at all. Same-turn optimization only: if a context compaction discards the pending ANALYSIS, re-triage is correct recovery (triage is read-only/idempotent).
+> `execute(DISPATCH_TRIAGE)` writes the `debug_dispatch` marker itself (state.py does not auto-emit it).
 
 ## Decision Rules
-
-- **Priority conflict:** when `frontend-signoff = pass/clean`, **DONE is mandatory** — no subsequent dispatch occurs.
-- **Multiple fails:** handled one-at-a-time — each executor-loop pass handles exactly one fail/clean stage (the first by FORWARD_PRIORITY). When the rework `target_stage` is a common ancestor of the other fail/clean stages, cascade turns the latter to fail/stale together and they vanish the next pass; when it is not a common ancestor (e.g., both lint-cdc and simulation are failing on independent two-chain branches), the remaining fail/clean stages are processed one by one in subsequent turns. Each pass moves only one; do not assume a single pass clears everything.
 
 ### promote_failed protocol (single-retry cap)
 
@@ -157,18 +149,18 @@ When the `REAP` execute step receives `cmd_reap` returning `action=promote_faile
 
 | Mistake | Fix |
 |---|---|
-| Orchestrator main thread sees an Edit-before-Read ("File has not been read yet") error | This is a second-order symptom of "inlining stage work into the main thread" — this skill only Reads `result.json` / `task.json` for routing decisions and never produces a substantive Edit. If the tool has already rejected it, stop that Edit chain immediately and move the stage work back into a Task dispatch. |
+| Orchestrator main thread sees an Edit-before-Read ("File has not been read yet") error | Stop that Edit chain immediately and move the stage work back into a Task dispatch. |
 | DISPATCH task fills `subagent_type="veripower:<stage>"` | A stage skill is not an agent type; you must use `general-purpose`. |
 | REAP omits `--subagent-output-file <output_file>` when calling `state.py reap` on the async dispatch path | `<output_file>` is taken from the `<task-notification>`'s `<output-file>` tag value; without this flag the trace is not mirrored to `{workdir}/.subagent_traces/`, and downstream analysis (e.g., the external eval harness's fact extraction) is blind for that stage. Note: this flag is best-effort optional in state.py — neither a missing flag nor an invalid path raises — self-audit all three reap call sites (staled-blocked / pass-or-fail / promote_failed retry) carry this flag. Exception: all four main-thread skills (specification / simulation-plan / rtl-design / simulation) complete via the `kind=main-thread` path (`state.py reap --stage --run`, no `--subagent-output-file`) and emit no stage-level async transcript — exempt by forward. (rtl-design and simulation do dispatch async *intra-stage* sub-Tasks, but those child traces are not mirrored at the stage level and are not carried by this flag.) |
 | `cmd_reap`'s returned `r.action == "promote_failed"` is not handled | `r.action ∈ {completed, discarded, blocked, invalid, promote_failed}`; of these, `promote_failed` is the only value the Orchestrator must inline-handle at REAP time (single retry, then ESCALATE if still failing — see §Decision Rules promote_failed protocol). The other four mean state.py has already settled the state, and the next executor loop re-query is enough. |
 
 ## Main-Loop Termination Conditions
 
-Orchestrator-form specialization: this skill does not write `result.json`; each turn returns a control-flow flag, not a data contract.
+Orchestrator-form specialization: each turn returns a control-flow flag, not a data contract.
 
 - **Terminate (DONE):** `frontend-signoff = pass/clean` → end of the executor loop, reply to the user with a summary, session ends.
 - **Yield turn (YIELD):** all in-flight stages dispatched, no new eligible stages → yield the turn and wait for a notification to wake back up.
-- **Escalate (ESCALATE):** `cmd_convergence.must_escalate` or unrecoverable blocked → first log the escalation event, then reply to the user:
+- **Escalate (ESCALATE):** first log the escalation event, then reply to the user:
   ```bash
   state.py log --module {module} --event \
     '{"type":"escalation","reason_code":"<code>","reason":"<text>"}'
