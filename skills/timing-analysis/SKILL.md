@@ -90,7 +90,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
 
 `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); the main thread writes `failure_kind=infra` in the Step-1 pre-check (PT never ran — external ref / license missing) before finalize runs.
 
-**Workflow rationale — single linear flow.** This stage is a read-only re-verifier — it cannot modify the synthesis netlist/SDC or apply any fix, so every run does identical work and there is no first-run / incremental / re-run fork to branch on. Step 1 is a linear pre-flight check, not a branch; each run uses a fresh `{workdir}` (Step 2 aborts if one is already deployed). This stage therefore carries no branch fork and receives no `{rework_trigger}`.
+**Workflow rationale — single linear flow.** You are a read-only re-verifier — you cannot modify the synthesis netlist/SDC or apply any fix, so every run does identical work and there is no first-run / incremental / re-run fork to branch on. Step 1 is a linear pre-flight check, not a branch; each run uses a fresh `{workdir}` (Step 2 aborts if one is already deployed). You therefore carry no branch fork and receive no `{rework_trigger}`.
 
 ## Red Flags
 

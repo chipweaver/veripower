@@ -114,7 +114,24 @@ for a dispatched agent. The fan-out stage skills name both sides by role only wh
 main-thread vs. sub-Task split is load-bearing — a step where each side acts and the
 distinction drives the instruction — because naming each side reads clearer there. Elsewhere,
 where a single actor is meant and no such ambiguity exists, address it directly with the
-second-person "you", as a single-actor skill does. Name a concept once and reuse the term verbatim
+second-person "you", as a single-actor skill does.
+
+This applies to the skill's own **identity, responsibility, scope, and boundary** statements too —
+including the **H1 opener** and **Iron Rule**: write them second-person / imperative ("Your sole
+responsibility: …", "Write no `result.json`", "Never run EDA tools"), **never** as third-person
+self-narration ("This skill is…", "This skill does not…", "It runs…"). Third person is reserved for
+actors that are **not** the executing agent: script/tool actors ("`state.py` writes…"); a dispatched
+sub-Task or the dispatching self named by role **where the split is load-bearing**; the downstream
+pipeline; the **standardized framework-dispatch wording** carried inline by the field contract —
+the §4.3.4 black-box bullet **and** the §4.3.7 Fan-out Dispatch Contract bullets (no Level-2,
+dispatch-and-wait, no `state.py`, `STATUS: BLOCKED` handling) **and** the load-bearing Load-mode
+dispatch anaphora ("It uses the Task tool…"); the T2 "never auto-fixes" routing fact; and references
+to a skill **as an artifact** in `description` / `When to Use` / cross-skill mentions
+("Use this skill when…"). These last carve-outs are not new: commit `191d022` already kept them in
+third person, and the field contract states the fan-out wording is standardized-inline "the same
+shape as the black-box bullet."
+
+Name a concept once and reuse the term verbatim
 (§3.5 F5); no synonyms for the same thing.
 
 ## 4. The 13-field contract

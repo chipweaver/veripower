@@ -5,7 +5,7 @@ description: Use when progressing IC design through stages, checking module stat
 
 # Design Flow Orchestrator
 
-This skill is the **orchestrator** — each turn it calls the deterministic decider `orchestrate.py decide` (which computes the single next action: forward dispatch / rework routing / convergence judgment / escalation / yield / done) and **executes** that action — dispatching stage subagents through the Task tool and managing state through `state.py`. The routing decisions live in the decider, not this skill; `state.py` is a pure state tool with no routing logic.
+You are the **orchestrator** — each turn you call the deterministic decider `orchestrate.py decide` (which computes the single next action: forward dispatch / rework routing / convergence judgment / escalation / yield / done) and **execute** that action — dispatching stage subagents through the Task tool and managing state through `state.py`. The routing decisions live in the decider, not this skill; `state.py` is a pure state tool with no routing logic.
 
 ## When to Use
 
@@ -15,21 +15,21 @@ This skill is the **orchestrator** — each turn it calls the deterministic deci
 
 ## Iron Rule
 
-- This skill **does not** run EDA tools (make / vcs / dc_shell / pt_shell / spyglass) — that is the stage subagent's job.
-- This skill **does not** directly modify `task.json` / `events.jsonl` — all changes go through `state.py` commands (any bypass is a contract violation — schema validation gets skipped).
+- Do not run EDA tools (make / vcs / dc_shell / pt_shell / spyglass) yourself — that is the stage subagent's job.
+- Do not directly modify `task.json` / `events.jsonl` — all changes go through `state.py` commands (any bypass is a contract violation — schema validation gets skipped).
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 
 ### Context variables
 
-This skill is loaded on the main thread and reads `{module}` (the sole external parameter) from the user's message. Downstream-stage variables (`{workdir}` / `{module}` / `{rework_trigger}` / `{orchestrator_context_path}`) are populated by this skill at dispatch time for the stage subagent — they are not this skill's own inputs. `mode` is computed internally by state.py, written to `events.jsonl`, and returned via `cmd_dispatch` for Orchestrator audit; it is not injected into the stage-subagent template (the subagent distinguishes modes by whether `rework_trigger` is present plus whether canonical artifacts already exist on disk, following the trigger-existence principle).
+You run on the main thread and read `{module}` (the sole external parameter) from the user's message. Downstream-stage variables (`{workdir}` / `{module}` / `{rework_trigger}` / `{orchestrator_context_path}`) are populated by you at dispatch time for the stage subagent — they are not your own inputs. `mode` is computed internally by state.py, written to `events.jsonl`, and returned via `cmd_dispatch` for Orchestrator audit; it is not injected into the stage-subagent template (the subagent distinguishes modes by whether `rework_trigger` is present plus whether canonical artifacts already exist on disk, following the trigger-existence principle).
 
 ### Source-of-truth files read / managed
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `asic/{module}/task.json` | JSON | Module state snapshot (state.py maintains it; this skill read-only via the status command). |
+| `asic/{module}/task.json` | JSON | Module state snapshot (state.py maintains it; you read it only via the status command). |
 | `asic/{module}/events.jsonl` | append-only event log | Event audit log (state.py maintains it). |
 | Each stage's `{workdir}/result.json` | Each stage's `result.schema.json` | Dispatched stage result (read-only, used for routing decisions). |
 | `specification` `result.json.stage_specific.ppa_targets` | specification schema | PPA targets — injected into the prompt when dispatching synthesis / power-analysis. |
@@ -41,7 +41,7 @@ This skill is loaded on the main thread and reads `{module}` (the sole external 
 | `asic/{module}/task.json` | JSON | State snapshot (state.py maintains it). |
 | `asic/{module}/events.jsonl` | append-only event log | Event audit (state.py maintains it). |
 
-> This skill does not Write files directly; artifacts are written by the downstream stage being dispatched, and the state files are updated by `state.py` commands.
+> Do not Write files directly; artifacts are written by the downstream stage being dispatched, and the state files are updated by `state.py` commands.
 
 ## Workflow
 
@@ -60,7 +60,7 @@ This skill is loaded on the main thread and reads `{module}` (the sole external 
   user-input gate, not a pipeline-failure escalation. Falling into the executor loop would
   dispatch `specification` first by FORWARD_PRIORITY against a missing brainstorm).
   `brainstorm.md` is authored directly by the brainstorm skill at
-  `asic/{module}/brainstorm.md`; this skill only grep-verifies it — there is no `init
+  `asic/{module}/brainstorm.md`; you only grep-verify it — there is no `init
   --brainstorm <path>` file copy.
 - **Brainstorm-level rework recovery.** When `specification` escalated with
   `fail_reason="requirements need revision: …"`, the user re-runs the brainstorm skill
@@ -165,7 +165,7 @@ Orchestrator-form specialization: each turn returns a control-flow flag, not a d
   state.py log --module {module} --event \
     '{"type":"escalation","reason_code":"<code>","reason":"<text>"}'
   ```
-  The closed set of `reason_code` values this skill actually produces today:
+  The closed set of `reason_code` values you actually produce today:
   - `must_escalate` — `cmd_convergence.guideline == "must_escalate"` (total rework count ≥ 3).
   - `promote_failed_persistent` — REAP step is still promote_failed after the single retry.
 

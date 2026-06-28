@@ -5,7 +5,7 @@ description: Use when writing or reviewing design specification (design.md), def
 
 # Requirements and Specification Freeze
 
-Your sole responsibility: derive a frozen design source of truth from an approved `asic/{module}/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `coverage.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). It is a thin Level-0 dispatcher (two sub-agent waves + two path-handoff gates); the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
+Your sole responsibility: derive a frozen design source of truth from an approved `asic/{module}/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `coverage.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). You are a thin Level-0 dispatcher (two sub-agent waves + two path-handoff gates); the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
 
 ## When to Use
 
@@ -20,7 +20,7 @@ Boundary of this skill:
 
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
 - **Do not write files outside `{workdir}` and do not read or write other modules' artifacts.** Reading reference material outside `{workdir}` (e.g., plugin-internal templates) is allowed.
-- **No brainstorm here.** This skill consumes a frozen `asic/{module}/brainstorm.md` (produced by the pre-pipeline `brainstorm` skill). It runs two path-handoff gates (partition gate + design.md gate) but holds no document body and drives no D0–D7 dialogue.
+- **No brainstorm here.** Consume a frozen `asic/{module}/brainstorm.md` (produced by the pre-pipeline `brainstorm` skill). Run two path-handoff gates (partition gate + design.md gate) but hold no document body and drive no D0–D7 dialogue.
 - **Deriving design.md requires an approved `brainstorm.md`.** `asic/{module}/brainstorm.md` must read `Status: approved` (design-flow's entry gate verifies it). A missing/draft brainstorm means the user must run `Skill(veripower:brainstorm)` first.
 - **Constraint correctness** (periods consistent, IO delays / `abstract_port`s present) is generated and self-checked by `derive-constraints` — not a human rule.
 - **`design.md` must not contain by-reference jumps.** `design.md` is the unique source of truth; downstream stages do not read `brainstorm.md`. Any `see brainstorm`, `see spec D`, `refer to brainstorm`, etc. = information loss. The referenced passage must be inlined verbatim.
@@ -77,7 +77,7 @@ Completion Gate.
 
 ### Step 1: Routing branch + brainstorm precondition (main thread)
 
-This skill consumes a frozen `asic/{module}/brainstorm.md` (produced by the
+Consume a frozen `asic/{module}/brainstorm.md` (produced by the
 pre-pipeline `brainstorm` skill; `design-flow`'s entry gate already verified
 `Status: approved`). **Do not brainstorm here.** Select the branch:
 
@@ -316,7 +316,7 @@ re-checks the precondition itself.
 
 ## Decision Rules
 
-- When specification conflicts with the architecture plan, the `Status=approved` content of `brainstorm.md` takes precedence; if unclear, escalate as a requirements-revision `fail` (`fail_reason="requirements need revision: …"`) — this skill does not brainstorm; recovery is out-of-band, outside this skill.
+- When specification conflicts with the architecture plan, the `Status=approved` content of `brainstorm.md` takes precedence; if unclear, escalate as a requirements-revision `fail` (`fail_reason="requirements need revision: …"`) — you do not brainstorm; recovery is out-of-band, outside this skill.
 - Overview (§1.1–1.6) vs submodule (§1.7+) conflict-resolution order is owned by `design-template.md` — see it. (§1.6 ↔ constraint consistency is by-construction: `derive-constraints` generates both files from §1.6.)
 
 ## Red Flags
@@ -350,7 +350,7 @@ re-checks the precondition itself.
 - **Semantic gate (Step 7):** the Step-7 `spec_gate` verdict cleared per the Step-8 approve precondition;
   `stage_specific.spec_gate` written; `spec-review.json` in `artifacts[]`.
 - No Iron Rule or Red Flag was triggered.
-- `result.json` written; its verdict is schema-validated externally, not by this skill.
+- `result.json` written; its verdict is schema-validated externally, not by you.
 
 ## Return Contract
 
@@ -358,7 +358,7 @@ re-checks the precondition itself.
 
 ### Session-resume semantics
 
-This skill's sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, the Workflow's routing branch runs again (session-resume continues from the last incomplete wave; first-run if the workdir is empty). The two path-handoff gates (partition gate + design.md gate) always re-ask idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before this skill runs; this skill never approves or re-approves it.
+Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, the Workflow's routing branch runs again (session-resume continues from the last incomplete wave; first-run if the workdir is empty). The two path-handoff gates (partition gate + design.md gate) always re-ask idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before you run; you never approve or re-approve it.
 
 **Semantic-gate resume-guard:** the Step-7 verdict lives in `{workdir}` scratch + the promoted canonical `spec-review.json`; it is not itself a completion marker. The guard is enforced in Step 1's session-resume branch and at Step 8's approve precondition (above), so a mid-wave compaction (or a stale `clear` predating a later design.md edit) cannot yield an unreviewed/unre-reviewed pass.
 

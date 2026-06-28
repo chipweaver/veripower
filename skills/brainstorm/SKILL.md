@@ -5,8 +5,8 @@ description: Use when brainstorming a new module's requirements and architecture
 
 # Pre-Pipeline Requirements Brainstorm
 
-This skill owns the interactive D0–D7 brainstorm dialogue and produces a frozen
-`asic/{module}/brainstorm.md`. It runs **in its own session, before** the design
+Own the interactive D0–D7 brainstorm dialogue and produce a frozen
+`asic/{module}/brainstorm.md`. Run **in your own session, before** the design
 pipeline: the brainstorm conversation never enters the pipeline's context. The pipeline
 starts only after `brainstorm.md` reaches `Status: approved`, and reads that file solely
 inside its sub-agent contexts (it is the pipeline's input, not a pipeline stage).
@@ -19,10 +19,10 @@ inside its sub-agent contexts (it is the pipeline's input, not a pipeline stage)
 
 ## Iron Rule
 
-- This skill is **pre-pipeline**: it writes exactly one artifact, `asic/{module}/brainstorm.md`
-  (creating `asic/{module}/` if absent, before the module enters the pipeline). It writes
-  **no** `result.json` and is **not** a pipeline stage — it runs before any pipeline state exists.
-- **Do not author design.md / RTL / constraints / any downstream artifact.** This skill's
+- You are **pre-pipeline**: write exactly one artifact, `asic/{module}/brainstorm.md`
+  (creating `asic/{module}/` if absent, before the module enters the pipeline). Write
+  **no** `result.json`, and you are **not** a pipeline stage — you run before any pipeline state exists.
+- **Do not author design.md / RTL / constraints / any downstream artifact.** Your
   output is the brainstorm only; `design.md` is derived from it downstream.
 - `brainstorm.md` is **immutable once approved** for the duration of a run. A requirements
   change is handled by re-invoking this skill in revision mode and re-approving — never
@@ -106,7 +106,7 @@ whole doc, so a changed dimension contradicting an untouched one is caught).
 
 ## Return Contract
 
-Control returns to the user. This skill produces only `asic/{module}/brainstorm.md` (no `result.json`, no state files — per the Iron Rule). After approval, the user starts
+Control returns to the user. Produce only `asic/{module}/brainstorm.md` (no `result.json`, no state files — per the Iron Rule). After approval, the user starts
 the pipeline for `{module}`; its entry gate verifies the approved brainstorm before the
 first stage consumes it.
 

@@ -29,7 +29,7 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
 
 - Do not modify `verification-plan.md` / `scaffold-specification.json` (the plan is a read-only
   external reference for simulation). Shared by both sub-Tasks — see each contract's Prohibitions.
-- Do not modify RTL (RTL-class issues belong to the RTL editing stage; this stage does not exceed its
+- Do not modify RTL (RTL-class issues belong to the RTL editing stage; do not exceed your
   authority). Shared by both sub-Tasks.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
@@ -197,7 +197,7 @@ contract's "Severity & gating"), computed by the script, not judged by eye. Appl
   `gate=clear` for it), note it in the completion summary, and proceed to Step 5.
 - **Verdict integrity:** you MUST NOT override a `gate=trip` to pass.
 
-This stage runs **no in-skill fix-loop** — a conformance trip exits to the existing
+Run **no in-skill fix-loop** — a conformance trip exits to the existing
 `failure_phase=conformance` → simulation-triage → route path. (Self-heal is deferred.)
 
 ### Step 5: Wave 3 — dispatch verify

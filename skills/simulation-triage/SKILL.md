@@ -161,7 +161,7 @@ Root-cause selection lives in [`references/fail-analysis-patterns.md`](reference
 
 ## Return Contract
 
-The message body is the structured-prose analysis followed by a final block that starts with the literal prefix `ANALYSIS:` on a line by itself, immediately followed by a valid routing JSON object (schema: `references/analysis.schema.json`). The last line emits `STATUS: DONE`. `STATUS: BLOCKED <reason>` is reserved for the harness fallback when a program exception prevented emitting the result; the skill never chooses it.
+The message body is the structured-prose analysis followed by a final block that starts with the literal prefix `ANALYSIS:` on a line by itself, immediately followed by a valid routing JSON object (schema: `references/analysis.schema.json`). The last line emits `STATUS: DONE`. `STATUS: BLOCKED <reason>` is reserved for the harness fallback when a program exception prevented emitting the result; you never choose it.
 
 ## Bundled References
 

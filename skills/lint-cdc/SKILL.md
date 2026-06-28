@@ -40,7 +40,7 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 | `Design/rtl-design/filelist.txt` | text | required (first-run) | RTL file list. |
 | `Design/rtl-design/README.md` | Custom markdown | required (first-run) | Constraint-annotation note (SGDC section: `sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`). |
 | `Design/specification/design.md` | markdown | required | spec main file; §1.4.1 Top-Level IO + §1.6 Clocks and Frequencies (authoritative period). |
-| `Design/specification/manifest.json` | JSON | required | Enumerate `children`; lint-cdc reads each `<child>.md` body for SGDC annotation context (cross-domain signals / reset behavior / synchronizer hints). |
+| `Design/specification/manifest.json` | JSON | required | Enumerate `children`; read each `<child>.md` body for SGDC annotation context (cross-domain signals / reset behavior / synchronizer hints). |
 | `Design/specification/<child>.md` × N | markdown | required | Per-child body provides the SGDC annotation context. |
 | `Design/specification/constraints/<TOP>.sgdc` | SGDC | required (cold-bootstrap) | SGDC seed source of truth; on first deployment bootstrap copies it to `{workdir}/scripts/constraints.sgdc`. The warm-bootstrap path (when `Design/lint-cdc/scripts/constraints.sgdc` already exists) does not read the spec seed; see `makefile-bootstrap.md`. |
 | `Design/lint-cdc/scripts/constraints.sgdc` | SGDC | required (warm-bootstrap) | The SGDC with depth annotations persisted by the previous lint-cdc run. When present, bootstrap copies it to the working copy first, avoiding a full re-iteration of the depth annotations. |
@@ -82,7 +82,7 @@ Run:
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
 ```
 
-The script deploys the templates to `{workdir}`, substitutes the `MY_TOP` placeholder, and fills `scripts/constraints.sgdc` from the SGDC seed (warm → cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `orchestrator-context.md` does NOT count as "deployed"). When `--top` is omitted, infer it from `Design/rtl-design/README.md` or `filelist.txt` (inference failure aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files this stage edits are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.
+The script deploys the templates to `{workdir}`, substitutes the `MY_TOP` placeholder, and fills `scripts/constraints.sgdc` from the SGDC seed (warm → cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `orchestrator-context.md` does NOT count as "deployed"). When `--top` is omitted, infer it from `Design/rtl-design/README.md` or `filelist.txt` (inference failure aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files you edit are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.
 
 ### Step 3: Add RTL custom-synchronizer annotations
 
