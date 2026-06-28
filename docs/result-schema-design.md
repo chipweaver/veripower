@@ -103,6 +103,8 @@ The failure-**detail** payload (`violations[]`, `failures[]` beyond `.category`,
 `failing_cases[]` / `coverage_gaps[]`) is a separate concern: consumed by the rework target to
 scope its fix list, not by the router to choose one.
 
+**Note:** §§4–7 (test-question checklist, worked examples, the "what does not belong" list, compliance checklist) are intentionally absent — folded into §3 or now enforced by the schema and its tests. Section numbers are preserved to match the design-doc template positions.
+
 ## 8. Process for changing a schema
 
 **`schema_version` tracks the cross-stage envelope contract, not per-stage `stage_specific`.**

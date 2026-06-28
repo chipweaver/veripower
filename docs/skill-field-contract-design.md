@@ -508,7 +508,7 @@ preserved to match the template positions used across the design-doc set.
 **Changing a field tier (MUST ↔ SHOULD):** requires empirical evidence across all 12 SKILL.md
 that the trigger consistently applies or consistently does not apply. Speculative upgrades
 (e.g., "most skills will need this") are not sufficient. A tier change is a breaking change
-for compliance tooling — frontmatter changes are validated by veripower-review; there is no deterministic frontmatter test to update.
+for compliance tooling, validated by veripower-review — there is no deterministic test to update.
 
 **Adding a new field:** requires an audit-driven justification (a demonstrated gap in all 12
 SKILL.md files that cannot be served by an existing field), consensus on the field's cognitive

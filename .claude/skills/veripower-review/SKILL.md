@@ -81,7 +81,7 @@ finding — see §4). Apply the lenses a surface warrants.
 - **Single canonical home** — Is each rule/datum stated once with one owner, or duplicated across
   sites that will drift? *Shape:* the same rule copied into two docs; a value re-stated inline
   instead of referenced; a cross-referencing doc or rule that will drift from what it points at.
-- **Skill authoring (F1–F6)** — In a SKILL.md change, does each field and step do its one job, in
+- **Skill authoring** — In a SKILL.md change, does each field and step do its one job, in
   process form (action + condition + output, not knowledge) and imperative voice? *Shape:* a rule
   duplicated across cognitive sections (a drift anchor); knowledge-prose where an actionable step
   belongs; third-person self-narration where "you" belongs; `should` / `consider` hedging where a
@@ -138,7 +138,7 @@ with `/`→`-`). This area is gitignored — the report is not committed.
 ## Boundaries
 
 - Read-only: never edit code; never touch `task.json` / `events.jsonl` / git state.
-- Advisory: findings inform; they block nothing. This is judgment-heavy review — keep it on-demand,
+- Advisory: findings inform; they block nothing. Keep this judgment-heavy review on-demand,
   never wired in as a standing pass/fail gate.
 - One pass, but a complete one: cover every changed surface, not a sample. Run no multi-pass recall
   machinery — depth comes from the falsify stance and reading the actual logic once, thoroughly, not

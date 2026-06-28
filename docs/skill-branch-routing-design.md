@@ -73,23 +73,23 @@ Six skills deviate from the standard 3-branch worker pattern. Each must referenc
 
 ### 6.1 Never-trigger-target (power-analysis)
 
-`power-analysis` is never a rework-DAG fix target; callers never inject `{rework_trigger}`. Fix-scope context arrives via `{orchestrator_context_path}` (read-only hint). Step 1 has no trigger-driven branch — first-run and cascade rework only. (`skills/power-analysis/SKILL.md` line 34, line 83)
+`power-analysis` is never a rework-DAG fix target; callers never inject `{rework_trigger}`. Fix-scope context arrives via `{orchestrator_context_path}` (read-only hint). Step 1 has no trigger-driven branch — first-run and cascade rework only. (`skills/power-analysis/SKILL.md` Workflow rationale.)
 
 ### 6.2 Terminal stage (frontend-signoff)
 
-`frontend-signoff` has no rework path. All predecessors must be `pass`; any non-pass aborts with `status=fail`. Step 1 is linear — a pre-flight check, not a branch. (`skills/frontend-signoff/SKILL.md` line 17)
+`frontend-signoff` has no rework path. All predecessors must be `pass`; any non-pass aborts with `status=fail`. Step 1 is linear — a pre-flight check, not a branch. (`skills/frontend-signoff/SKILL.md` Workflow rationale.)
 
 ### 6.3 Dialogue 4-branch (simulation-plan)
 
-`simulation-plan` adds session-resume as a fourth branch: `{workdir}/verification-plan.md` present but `result.json` absent signals a paused multi-turn review; the stage resumes from the last gate rather than re-deriving incrementally. (`skills/simulation-plan/SKILL.md` line 34, line 107)
+`simulation-plan` adds session-resume as a fourth branch: `{workdir}/verification-plan.md` present but `result.json` absent signals a paused multi-turn review; the stage resumes from the last gate rather than re-deriving incrementally. (`skills/simulation-plan/SKILL.md` Workflow rationale.)
 
 ### 6.4 Session-resume replaces incremental (specification)
 
-`specification` uses session-resume on the disk-prev-artifact-present branch instead of incremental update. No external reference diff exists to anchor re-derivation; the only meaningful action is to continue the dialogue from its last gate. (`skills/specification/SKILL.md` line 35)
+`specification` uses session-resume on the disk-prev-artifact-present branch instead of incremental update. No external reference diff exists to anchor re-derivation; the only meaningful action is to continue the dialogue from its last gate. (`skills/specification/SKILL.md` Workflow rationale.)
 
 ### 6.5 Analyzer exception (simulation-triage)
 
-`simulation-triage` receives all inputs as inline content in the dispatch prompt. It has no `{workdir}`, no `{rework_trigger}`, no disk-prev-artifact concept. The two-signal model does not apply. (`skills/simulation-triage/SKILL.md` line 30)
+`simulation-triage` receives all inputs as inline content in the dispatch prompt. It has no `{workdir}`, no `{rework_trigger}`, no disk-prev-artifact concept. The two-signal model does not apply. (`skills/simulation-triage/SKILL.md` Workflow rationale.)
 
 ### 6.6 Never-trigger-target / read-only re-verifier (timing-analysis)
 

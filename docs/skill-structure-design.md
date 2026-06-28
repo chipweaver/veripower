@@ -1,8 +1,6 @@
 # skill-structure-design.md — skill containment + references organization
 
----
-
-## Section A — Self-containment
+## 1. Self-containment
 
 ### Background
 
@@ -45,9 +43,7 @@ fan-out dispatcher.
 The exempt set is closed: `design-flow` + the four fan-out dispatchers above. A new
 dispatcher must be explicitly named here before the exemption applies to it.
 
----
-
-## Section B — References organization
+## 2. References organization
 
 ### Background
 
