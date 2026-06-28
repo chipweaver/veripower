@@ -251,13 +251,13 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 |---|---|
 | "Most check_hints are covered — close enough to pass" | `simplan check-scaffold` enforces the matrix: every `check_hints[]` check_id must be in some `testpoints[].covers[]` or in `skipped_checks[]`. It is not a self-judgment you can rationalize past. |
 | "This rework is trigger-driven, the feedback is automatic — skip the review loop" | All paths run the plan review loop; do not skip user approval because feedback came from a trigger. |
+| "I already know which power scenarios this module needs — I'll author them directly instead of loading the 9-scenarios template" | The standard set in `references/power-scenarios-template.md` is the required coverage basis — load it first, then materialize. `simplan check-scaffold` only checks `sequence_ref` resolution and the check-hints matrix; it does **not** verify a scenario came from the standard set, so an invented or dropped scenario passes the gate. No machine backstop — the template is the discipline. |
 
 ## Pitfalls
 
 | Mistake | Fix |
 |---|---|
 | Content drift between `verification-plan.md` and `scaffold-specification.json` | The two must correspond one-to-one; changing one requires syncing the other. |
-| Skipping the 9-scenarios template and inventing power scenarios | Always load the template first, then materialize; missing scenarios are appended as S8 / S9. |
 
 ## Completion Gate
 
