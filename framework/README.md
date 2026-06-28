@@ -55,6 +55,18 @@ by anyone**: humans manually driving a pipeline, tests, CI, future automated
 runners. Not a private library imported by one skill — a project CLI that
 implements the protocol the framework defines.
 
+### `scripts/route.py` — deterministic rework-target router
+
+The sole home of the failure→target maps: a pure, stateless evaluator that maps a
+stage failure to a rework target (or to `ESCALATE` / `NEED_INPUT`). Composed
+unchanged inside `orchestrate.py` — an import-only internal, never invoked directly.
+
+### `scripts/artifacts.py` — artifact-lifecycle internals
+
+The promote + trace-mirroring helpers imported by `state.py` (canonical-view
+rebuild, hardlink promote, async-transcript mirroring). An import-only internal —
+`state.py` is its only caller; never invoked directly.
+
 ## Ownership model
 
 | Item | Producer | Primary consumer | Available to |
@@ -63,6 +75,10 @@ implements the protocol the framework defines.
 | `events/*.schema.json` | `state.py` | `state.py` + auditors | All consumers of `events.jsonl` |
 | `stage-subagent.md.tpl` | n/a (template) | `design-flow` (renderer) | Designers studying the protocol |
 | `state.py` | n/a (binary) | `design-flow` | tests / manual operators |
+| `topology.py` | n/a (constants) | `state.py` + `orchestrate.py` (import) | tests / anyone importing the DAG |
+| `orchestrate.py` | n/a (binary) | `design-flow` (decider) | tests / manual operators / CI |
+| `route.py` | n/a (pure fn) | `orchestrate.py` (import) | internal / tests |
+| `artifacts.py` | n/a (internal) | `state.py` (import) | internal only |
 
 ## What does NOT belong here
 

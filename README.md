@@ -116,7 +116,7 @@ Full mechanics: [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-state-model).
 
 **For agent-system builders.** Classic event sourcing applied to agent orchestration — mature in distributed systems, rare in agent design. The forgery-resistance pattern (only some event types are agent-writable) is a useful primitive for any agent system that needs to be auditable.
 
-Full mechanics: [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-state-model) (event types) and [Appendix A](ARCHITECTURE.md#appendix-a-replay-algorithm) (replay algorithm).
+Full mechanics: [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-state-model) (event types and the replay/projection contract).
 
 ## Swappable execution layer
 

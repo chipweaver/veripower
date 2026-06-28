@@ -8,7 +8,7 @@ A stage skill's job is to "write `result.json` correctly." DAG routing and state
 
 Checklist for a new stage skill:
 
-1. `skills/<stage-skill>/SKILL.md` — skill description + instructions. Frontmatter carries only `name` and `description` — no `allowed-tools`; subagent behavior is bound by the dispatch-time prose forbidden-actions list, not tool gating (see [ARCHITECTURE.md §6](ARCHITECTURE.md#6-subagent-contracts)).
+1. `skills/<stage-skill>/SKILL.md` — skill description + instructions. It must be **self-sufficient** — carry every mechanism, gate sequence, and threshold inline, since the plugin end-user has the `SKILL.md` but not veripower's `CLAUDE.md` (the full rule is the §Scope note under [Bulletproofing a skill](#bulletproofing-a-skill-red-green-refactor)). Frontmatter carries only `name` and `description` — no `allowed-tools`; subagent behavior is bound by the dispatch-time prose forbidden-actions list, not tool gating (see [ARCHITECTURE.md §6](ARCHITECTURE.md#6-subagent-contracts)).
 2. If needed, `skills/<stage-skill>/references/` — tool manuals, checklists, prompt fragments.
 3. If the stage is a new DAG node (not a replacement), update `framework/scripts/topology.py`'s `FORWARD_PRIORITY`, `PREREQ_OF`, `SKILL_OF`, and `_RESULT_DIR` mappings (`topology.py` is the SSoT for all four — see the Cross-module SSoT identity note under Coding Conventions). Add unit tests (code-behavior); put any new cross-artifact sync/invariant check in `tests/contracts/`.
 4. Add scenario tests under `tests/scenarios/<stage>/` — bulletproof them RED-first via the subagent ritual (see **Bulletproofing a skill**).
