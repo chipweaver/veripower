@@ -79,12 +79,12 @@ finalize. The env / verify phase split of the workdir artifacts is in
 
 ### Fan-out Dispatch Contract
 
-Framework-mechanism rules (the subagent-side prohibitions echo `stage-subagent.md.tpl`; dispatch-and-wait below is the main-thread lifecycle); enforced at the
+Framework-mechanism rules (dispatch-and-wait below is the main-thread lifecycle); enforced at the
 framework / harness layer (the wake protocol; writes confined to `runs/N/`, promoted on reap), not by this skill's
 Completion Gate.
 
-- **No Level 2 dispatch:** this skill may dispatch Level-1 sub-Tasks (env-build, conformance reviewer,
-  then verify), but a dispatched sub-Task MUST NOT call the Task tool (audit boundary).
+- **No Level 2 dispatch:** this skill dispatches only Level-1 sub-Tasks (env-build, conformance reviewer,
+  then verify) — the audit boundary.
 - **Dispatch-and-wait:** after dispatching a wave's sub-Task, send a brief status and end the turn;
   the harness wakes the main thread per completion (the wake is to the harness, not back to the
   caller). Reap the sub-Task on its wake before the downstream gate/wave.

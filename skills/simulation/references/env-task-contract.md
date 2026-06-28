@@ -2,8 +2,7 @@
 
 The simulation main thread dispatches **one** Level-1 `Task(run_in_background=True)` — the
 env-build child — as the first of three sequential waves. Its job: bootstrap the stage workdir, fill
-the UVM scaffold, compile, and run the smoke suite. A dispatched sub-Task MUST NOT call the Task
-tool (no Level-2 dispatch).
+the UVM scaffold, compile, and run the smoke suite.
 
 ## Inputs handed to the child (paths only — the main thread does not read these bodies)
 
@@ -103,7 +102,7 @@ smoke gate still decides smoke pass/fail.
     non-empty `inlined_check_hints[]` MUST generate cycle-accurate checks; downgrading to
     register-value comparison is not allowed.
 
-## Prohibitions (fan-out contract echo)
+## Prohibitions
 
 - **No Level-2 dispatch:** this sub-Task MUST NOT call the Task tool.
 - **No `state.py`:** the parent session owns state transitions.

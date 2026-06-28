@@ -61,13 +61,12 @@ and every `<child>.md` are read/written only inside sub-Task contexts.
 
 ### Fan-out Dispatch Contract
 
-Framework-mechanism rules (the subagent-side prohibitions echo `stage-subagent.md.tpl`; dispatch-and-wait below is the main-thread lifecycle); enforced at the
+Framework-mechanism rules (dispatch-and-wait below is the main-thread lifecycle); enforced at the
 framework / harness layer (the wake protocol; writes confined to `runs/N/`, promoted on reap), not by this skill's
 Completion Gate.
 
-- **No Level 2 dispatch:** this skill may dispatch Level-1 sub-Tasks for the two Workflow
-  waves (decompose / per-child sub-designs), but a dispatched sub-Task MUST NOT
-  call the Task tool (audit boundary).
+- **No Level 2 dispatch:** this skill dispatches only Level-1 sub-Tasks for the two Workflow
+  waves (decompose / per-child sub-designs) — the audit boundary.
 - **Dispatch-and-wait:** after dispatching a wave's sub-Task(s), send a brief status and end the
   turn; the harness wakes the main thread per completion. Reap each, and finalize only after
   all dispatched sub-Tasks have reported — never against a partial set.

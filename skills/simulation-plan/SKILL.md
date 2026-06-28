@@ -24,8 +24,8 @@ Boundary of this skill:
 ## Fan-out Dispatch Contract
 
 - **One Level-1 review sub-Task only:** dispatches the Step-4 plan-adequacy reviewer via
-  `Task(run_in_background=True)`, reaps it, and folds the result into `plan-review.json`. The
-  dispatched sub-Task MUST NOT call the Task tool (Level-2 forbidden — the audit boundary).
+  `Task(run_in_background=True)`, reaps it, and folds the result into `plan-review.json`
+  (Level-2 forbidden — the audit boundary).
 - **Dispatch-and-wait:** after dispatching, end the turn; reap on the harness wake; aggregate the
   reviewer's report and proceed only after it reports (DONE or BLOCKED).
 - **No `state.py`:** this skill does not call `state.py`.

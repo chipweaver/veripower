@@ -2,7 +2,7 @@
 
 The simulation main thread dispatches the **verify** child as the third sequential wave, only after
 the smoke gate passes and the conformance gate clears. Its job: full regression, coverage iteration (Rule B), and the
-review summary. A dispatched sub-Task MUST NOT call the Task tool (no Level-2 dispatch).
+review summary.
 
 ## Inputs handed to the child (paths only — the main thread does not read these bodies)
 
@@ -56,7 +56,7 @@ are appended (do not change the semantics of existing testlist entries). The env
 **read-only reference** in this wave — do not edit it; a regress failure rooted there routes out
 instead.
 
-## Prohibitions (fan-out contract echo)
+## Prohibitions
 
 - **No Level-2 dispatch:** this sub-Task MUST NOT call the Task tool.
 - **No `state.py`:** the parent session owns state transitions.

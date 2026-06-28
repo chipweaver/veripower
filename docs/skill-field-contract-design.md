@@ -330,14 +330,14 @@ exempt from the Step-heading rule: its Workflow is not a linear `Step 1..N` sequ
 **Cross-cutting addendum — main-thread fan-out (not a form).** Skills loaded via `Skill()` that dispatch Level-1
 sub-Tasks (currently `specification`, `rtl-design`, `simulation`, and `simulation-plan`) include a numbered **Fan-out Dispatch
 Contract** sub-block under Workflow stating the framework dispatch rules (no Level 2, dispatch-and-wait,
-no `state.py`, sub-Task `STATUS: BLOCKED` handling). The subagent-side prohibitions echo `stage-subagent.md.tpl`; dispatch-and-wait is the
+no `state.py`, sub-Task `STATUS: BLOCKED` handling). Dispatch-and-wait is the
 main-thread orchestration lifecycle (the harness wake protocol), enforced at the framework / harness
 layer, not by this skill; they sit **outside** the Iron Rule / Red Flags /
 Pitfalls severity axis and **outside** the Completion Gate by design.
 These framework dispatch rules are carried **standardized-inline**, not via a link to this rubric
 (`skill-self-containment-design.md §6.1`): the three per-child-wave skills (`specification`,
-`rtl-design`, `simulation`) share one canonical wording (dispatch-and-wait lifecycle, subagent-side
-prohibitions, `STATUS: BLOCKED`→`fail` mapping) matching this addendum, while `simulation-plan`
+`rtl-design`, `simulation`) share one canonical wording (dispatch-and-wait lifecycle,
+`STATUS: BLOCKED`→`fail` mapping) matching this addendum, while `simulation-plan`
 carries a scoped variant for its single-review-dispatch shape (one review sub-Task;
 dispatch-and-wait; no `state.py`). Authors apply the wording, reviewers check it (the same shape as
 the §4.3.4 black-box bullet).

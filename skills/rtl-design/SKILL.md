@@ -63,12 +63,11 @@ When `{rework_trigger}` is injected, read additional context from the same direc
 
 ### Fan-out Dispatch Contract
 
-Framework-mechanism rules (the subagent-side prohibitions echo `stage-subagent.md.tpl`; dispatch-and-wait below is the main-thread lifecycle); enforced at the
+Framework-mechanism rules (dispatch-and-wait below is the main-thread lifecycle); enforced at the
 framework / harness layer (the wake protocol; writes confined to `runs/N/`, promoted on reap), not by this skill's
 Completion Gate.
 
-- **No Level 2 dispatch:** this skill may dispatch Level-1 per-child sub-Tasks, but a dispatched
-  sub-Task MUST NOT call the Task tool (audit boundary).
+- **No Level 2 dispatch:** this skill dispatches only Level-1 per-child sub-Tasks — the audit boundary.
 - **Dispatch-and-wait:** after dispatching the fan-out wave's sub-Tasks, send a brief status and
   end the turn; the harness wakes the main thread per completion (the wake is to the harness, not
   back to the caller). Reap each, and finalize only after all dispatched children have
