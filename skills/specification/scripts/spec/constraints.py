@@ -28,11 +28,17 @@ def _clocks(design: str) -> list[dict]:
             _fail(
                 f"clock {name!r}: non-numeric SDC Period {r.get('SDC Period (ns)')!r}"
             )
+        relationship = r.get("Relationship", "").strip().lower()
+        if relationship not in {"primary", "synchronous-related", "async"}:
+            _fail(
+                f"clock {name!r}: Relationship must be primary/synchronous-related/async "
+                f"(got {relationship!r})"
+            )
         clocks.append(
             {
                 "name": name,
                 "period": period,
-                "relationship": r.get("Relationship", "").strip().lower(),
+                "relationship": relationship,
                 "generated": r.get("Generated", "no").strip().lower()
                 in {"yes", "y", "true"},
             }
@@ -191,6 +197,11 @@ def _self_check(top: str, clocks: list[dict], ports: list[dict], sdc: str, sgdc:
         ):
             _fail(f"self-check: no abstract_port for data port {p['signal']!r}")
         if p["role"] == "reset":
+            if not p["domain"]:
+                _fail(
+                    f"reset {p['signal']!r}: Clock Domain must be non-empty "
+                    "(it feeds abstract_port -clock; a blank token is invalid SGDC)"
+                )
             if p["reset_polarity"] not in {"0", "1"}:
                 _fail(
                     f"reset {p['signal']!r}: ResetPolarity must be 0 or 1 (got {p['reset_polarity']!r})"

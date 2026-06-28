@@ -162,6 +162,32 @@ def test_fail_loud_reset_missing_kind(tmp_path):
     assert proc.returncode != 0 and "ResetKind" in proc.stderr
 
 
+def test_fail_loud_reset_empty_domain(tmp_path):
+    # S2: a reset port with a blank Clock Domain would emit `abstract_port ... -clock `
+    # (empty -clock token, invalid SGDC); the coverage gate skips empty domains, so
+    # derive-constraints must fail loud — mirroring how reset polarity/kind are enforced.
+    design = _design(
+        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
+        "| rst_n | input | 1 |  | reset | - | reset | 0 | async |\n"  # blank Clock Domain
+        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n",
+        "| clk | 100 | 10.0 | primary | no | primary clock |\n",
+    )
+    proc = _run(_wd(tmp_path, design), check=False)
+    assert proc.returncode != 0 and "Clock Domain" in proc.stderr
+
+
+def test_fail_loud_invalid_relationship(tmp_path):
+    # S3: an invalid/misspelled Relationship must fail loud, not silently fall into the
+    # synchronous group (which would drop a needed set_clock_groups -asynchronous).
+    design = _design(
+        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
+        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n",
+        "| clk | 100 | 10.0 | related | no | primary clock |\n",  # 'related' invalid
+    )
+    proc = _run(_wd(tmp_path, design), check=False)
+    assert proc.returncode != 0 and "Relationship" in proc.stderr
+
+
 def test_data_port_on_generated_clock_deferred(tmp_path):
     # A data port whose Clock Domain is a GENERATED clock is deferred to RTL
     # (create_generated_clock pin not yet known). generate_sdc/generate_sgdc skip it
