@@ -57,6 +57,16 @@ def _has_token(text: str, name: str) -> bool:
     )
 
 
+def _uses(text: str, mod: str) -> bool:
+    """`mod` is referenced beyond its own `module mod` declaration in `text` — an instantiation
+    proxy for the reachability check (orphan-safe: a module that is only *declared* in a child file,
+    never instantiated, does not count as used). Whole-word boundaries match `_has_token`."""
+    esc = re.escape(mod)
+    tokens = re.findall(r"(?<![A-Za-z0-9_])" + esc + r"(?![A-Za-z0-9_])", text)
+    decls = re.findall(r"(?m)^\s*module\s+" + esc + r"(?![A-Za-z0-9_])", text)
+    return len(tokens) > len(decls)
+
+
 def check_annotation_reality(workdir, ledger) -> list:
     """Child-reported RTL-true annotation names must exist in that child's RTL.
     sgdc.sync_cell / reset_synchronizer are module names ('-name must match the netlist').
@@ -146,8 +156,12 @@ def _interconnect_wires(design_text: str) -> list:
 
 
 def check_top_integration(workdir, manifest, top, ledger, design_text) -> list:
-    """In the top-integration child's RTL, every non-top rtl_module name and every §1.4.2
-    Wire name must appear as a token (presence proxy for instantiation / net use)."""
+    """Every non-top rtl_module must be INTEGRATED — reachable from the top module through the
+    instantiation hierarchy (presence proxy), not merely instantiated by the top file directly.
+    This accepts legitimate hierarchical designs (a shared primitive nested inside a functional
+    unit that the top instantiates: top -> unit -> primitive) while still catching truly-orphaned
+    or renamed modules. Every §1.4.2 Wire name must still appear as a token in the top-integration
+    child's RTL (the top owns the interconnect)."""
     v = []
     topc = next(
         (c for c in manifest["children"] if top in c.get("rtl_modules", [])), None
@@ -157,17 +171,37 @@ def check_top_integration(workdir, manifest, top, ledger, design_text) -> list:
     rec = ledger.get(topc["name"])
     if rec is None:
         return v
-    text = _child_text(workdir, rec)
-    non_top = {
-        m for c in manifest["children"] for m in c.get("rtl_modules", []) if m != top
-    }
     owner_of = {
         m: c["name"] for c in manifest["children"] for m in c.get("rtl_modules", [])
     }
-    for mod in sorted(non_top):
-        if not _has_token(text, mod):
-            # child = topc (top owns instantiation); owner_child = the sibling that authored mod,
-            # so the C-loop re-dispatch set can include the real fix locus when a sibling renamed it.
+    all_mods = set(owner_of)
+    # Per-child comment-stripped RTL; a reachable module "uses" every module-name token present in
+    # its OWNER child's RTL. Reachability BFS from `top` over this use-graph integrates nested
+    # submodules (top -> functional unit -> primitive) without requiring flat top-level
+    # instantiation. A module unreachable from `top` is genuinely orphaned (or renamed → its
+    # manifest name appears nowhere), which is the real defect this check exists to catch.
+    child_text = {}
+    for c in manifest["children"]:
+        crec = ledger.get(c["name"])
+        child_text[c["name"]] = _child_text(workdir, crec) if crec else ""
+    text = child_text[
+        topc["name"]
+    ]  # top-integration child RTL (for the §1.4.2 wire check)
+    reachable, frontier = set(), [top]
+    while frontier:
+        mod = frontier.pop()
+        if mod in reachable:
+            continue
+        reachable.add(mod)
+        ctext = child_text.get(owner_of.get(mod), "")
+        for cand in all_mods:
+            if cand not in reachable and _uses(ctext, cand):
+                frontier.append(cand)
+    for mod in sorted(all_mods):
+        if mod != top and mod not in reachable:
+            # child = topc (integration is the top-integration child's responsibility); owner_child
+            # = the sibling that authored mod, so the C-loop re-dispatch set can reach the real fix
+            # locus (e.g. when a sibling renamed it so its manifest name resolves nowhere).
             v.append(
                 {
                     "child": topc["name"],

@@ -328,6 +328,44 @@ def test_top_integration_missing_instance_and_wire_fails(tmp_path):
     assert inst["owner_child"] == "leaf"
 
 
+def test_top_integration_reachability_is_child_grained(tmp_path):
+    # PRESENCE-PROXY CEILING (documented): reachability is computed at OWNER-CHILD
+    # granularity, not per-module. A child that authors both a reachable module and an
+    # orphan module leaks the orphan's instantiations onto the use-graph — so a module
+    # instantiated ONLY by the orphan is still seen as reachable. We pin this: modB (the
+    # orphan itself) IS flagged; modZ (reachable only via the orphan) is NOT. A truly
+    # dangling modZ is caught downstream by lint-cdc / synthesis elaboration.
+    _setup(
+        tmp_path,
+        [
+            {"name": "topc", "rtl_modules": ["top"]},
+            {"name": "c1", "rtl_modules": ["modA", "modB"]},
+            {"name": "c2", "rtl_modules": ["modZ"]},
+        ],
+        {
+            "topc": {"files": ["top.sv"], "annotations": _ANN},
+            "c1": {"files": ["c1.sv"], "annotations": _ANN},
+            "c2": {"files": ["c2.sv"], "annotations": _ANN},
+        },
+        {
+            "top.sv": "module top; modA a(); endmodule\n",
+            "c1.sv": "module modA; endmodule\nmodule modB; modZ z(); endmodule\n",
+            "c2.sv": "module modZ; endmodule\n",
+        },
+    )
+    r = _run(tmp_path)
+    assert r.returncode == 1
+    orphans = {
+        x["missing_module"]
+        for x in json.loads(r.stdout)["violations"]
+        if x["kind"] == "top_instantiation"
+    }
+    assert "modB" in orphans  # the orphan module is flagged
+    assert (
+        "modZ" not in orphans
+    )  # child-grained ceiling: instantiated only by the orphan
+
+
 def test_single_child_is_top_no_violations(tmp_path):
     _setup(
         tmp_path,
