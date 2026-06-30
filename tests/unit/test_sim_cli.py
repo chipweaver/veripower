@@ -12,6 +12,7 @@ _VERBS = (
     "validate-review",
     "finalize",
     "classify-delta",
+    "freeze",
 )
 
 
