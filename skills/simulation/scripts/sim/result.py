@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from sim._gate import _load_thresholds, coverage_gate, thin_d1
+from sim.classify import plan_digest
 from sim.review import compute_gate
 
 STAGE = "simulation"
@@ -80,6 +81,7 @@ def build_result(
     verify_verdict=None,
     fail_reason=None,
     observed_phase=None,
+    plan=None,
 ) -> int:
     """Assemble the lean simulation result.json for the given exit phase.
     final -> re-derive compile/coverage from on-disk artifacts (pure thin_d1/coverage_gate),
@@ -92,10 +94,22 @@ def build_result(
     artifacts = enumerate_artifacts(workdir)
     verify = json.loads(Path(verify_verdict).read_text()) if verify_verdict else {}
 
+    # Compute plan_digest only for freeze-eligible phases (pass path and regress/coverage
+    # fail paths carry a complete TB that the classifier may reuse). verify-blocked is
+    # deliberately excluded — it maps failure_phase=regress but must NOT get a digest so
+    # the next run rebuilds the TB from scratch (spec §4 adversarial P2).
+    digest = (
+        plan_digest(scaffold, plan)
+        if (scaffold and plan and phase in ("final", "regress"))
+        else None
+    )
+
     if phase != "final":
         ss = _early_exit_ss(
             phase, fail_reason, verify, observed_phase, conformance_review
         )
+        if digest:
+            ss["plan_digest"] = digest
         _write_result(
             workdir,
             _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
@@ -110,6 +124,8 @@ def build_result(
             "coverage_extractable": gate["coverage_extractable"],
             "dims": gate["dims"],
         }
+        if digest:
+            ss["plan_digest"] = digest
         _write_result(
             workdir,
             _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
@@ -125,6 +141,8 @@ def build_result(
         "conformance_gate": conformance_gate_label(conformance_review),
         "conformance_advisory": conformance_advisory(conformance_review),
     }
+    if digest:
+        ss["plan_digest"] = digest
     _write_result(
         workdir,
         _envelope(module, status="pass", stage_specific=ss, artifacts=artifacts),
@@ -209,6 +227,7 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
         "tests/testlist.json",
         "regression-log.txt",
         "logs",
+        "verify-handoff.json",
         "conformance-review.json",
         "structural-coverage.json",
         "coverage-summary.txt",
@@ -268,6 +287,7 @@ def finalize(
     verify_verdict=None,
     fail_reason=None,
     observed_phase=None,
+    plan=None,
 ) -> int:
     """Assemble the lean simulation result.json. exit 0 = result.json written (pass or fail);
     exit 2 = BLOCKED (any internal raise) — never conflated with status=fail. (Owns the policy
@@ -284,6 +304,7 @@ def finalize(
             verify_verdict=verify_verdict,
             fail_reason=fail_reason,
             observed_phase=observed_phase,
+            plan=plan,
         )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[sim finalize] FAIL=internal {exc}", file=sys.stderr)

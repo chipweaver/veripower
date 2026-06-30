@@ -73,9 +73,9 @@ def test_final_pass_writes_result(tmp_path):
     assert "result.json" not in [a["path"] for a in env["artifacts"]]
 
 
-def test_verify_handoff_not_promoted(tmp_path):
-    # M2: verify-handoff.json is an intra-stage handoff; finalize must not list it
-    # in artifacts[] even when present on disk (artifact-contract.md:104-105).
+def test_verify_handoff_promoted(tmp_path):
+    # TB-freeze §7 decision A: verify-handoff.json is promoted to artifacts[] so the
+    # freeze classifier can locate it via the canonical result's artifact list.
     wd = _final_workdir(tmp_path)
     (wd / "verify-handoff.json").write_text("{}\n")
     (wd / "conformance-review.json").write_text('{"findings": []}\n')
@@ -92,8 +92,8 @@ def test_verify_handoff_not_promoted(tmp_path):
     paths = [
         a["path"] for a in json.loads((wd / "result.json").read_text())["artifacts"]
     ]
-    assert "verify-handoff.json" not in paths
-    assert "conformance-review.json" in paths  # a sibling handoff IS promoted
+    assert "verify-handoff.json" in paths
+    assert "conformance-review.json" in paths  # a sibling handoff IS also promoted
 
 
 def test_final_pass_missing_summary_is_blocked(tmp_path):
@@ -208,3 +208,63 @@ def test_finalize_blocked_exit_2(tmp_path):
         str(DEFAULTS),
     )
     assert proc.returncode == 2
+
+
+def test_final_pass_writes_plan_digest(tmp_path):
+    import sys
+
+    sys.path.insert(0, str(ROOT / "skills/simulation/scripts"))
+    from sim import classify
+
+    wd = _final_workdir(tmp_path)
+    plan = wd / "verification-plan.md"
+    plan.write_text("# plan\n")
+    proc = _finalize(
+        wd,
+        "--phase",
+        "final",
+        "--scaffold",
+        str(wd / "scaffold-specification.json"),
+        "--thresholds",
+        str(DEFAULTS),
+        "--plan",
+        str(plan),
+    )
+    assert proc.returncode == 0, proc.stderr
+    env = json.loads((wd / "result.json").read_text())
+    assert env["stage_specific"]["plan_digest"] == classify.plan_digest(
+        wd / "scaffold-specification.json", plan
+    )
+
+
+def test_regress_fail_writes_plan_digest(tmp_path):
+    import sys
+
+    sys.path.insert(0, str(ROOT / "skills/simulation/scripts"))
+    from sim import classify
+
+    wd = tmp_path
+    (wd / "scaffold-specification.json").write_text(json.dumps(SCAFFOLD))
+    plan = wd / "verification-plan.md"
+    plan.write_text("# plan\n")
+    proc = _finalize(
+        wd,
+        "--phase",
+        "regress",
+        "--failure-phase",
+        "regress",
+        "--fail-reason",
+        "case X failed",
+        "--scaffold",
+        str(wd / "scaffold-specification.json"),
+        "--plan",
+        str(plan),
+    )
+    assert proc.returncode == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert (
+        env["status"] == "fail" and env["stage_specific"]["failure_phase"] == "regress"
+    )
+    assert env["stage_specific"]["plan_digest"] == classify.plan_digest(
+        wd / "scaffold-specification.json", plan
+    )
