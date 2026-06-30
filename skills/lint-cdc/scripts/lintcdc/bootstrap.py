@@ -11,13 +11,14 @@ README/filelist, seeds scripts/constraints.sgdc (warm -> cold -> template priori
 substitutes the MY_TOP placeholder, syncs scripts/filelist.txt from the rtl-design
 filelist (RTL paths rebased to ../../../rtl-design/...), chmods the deployed shell
 scripts executable, and runs a WARN-only SGDC<->SDC clock-period smoke check.
-Fail-closed on a missing template dir, an un-inferrable top, an already-deployed
-workdir, or an empty rtl-design filelist.
+Fail-closed on a missing template dir, a missing design tree (rtl-design dir absent
+under the CWD), an un-inferrable top, an already-deployed workdir, or an empty
+rtl-design filelist.
 
 Exit codes (returned as int; __main__ does sys.exit):
   0  deployed
-  1  fail-closed guard (missing template dir / cannot infer top / already deployed
-     / rtl-design filelist has no usable RTL entries)
+  1  fail-closed guard (missing template dir / missing design tree / cannot infer top
+     / already deployed / rtl-design filelist has no usable RTL entries)
   (2 = usage is owned by argparse in __main__.py)
 """
 
@@ -30,11 +31,12 @@ import sys
 from pathlib import Path
 
 # This file: skills/lint-cdc/scripts/lintcdc/bootstrap.py
-#   parents[2] = skills/lint-cdc   (-> templates/)
-#   parents[4] = repo root         (-> asic/<module>/...)
+#   parents[2] = skills/lint-cdc   (-> templates/, ships with the skill)
+# The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
+# lives — matching state.py and the stage-subagent contract ("workdir is relative to
+# the working tree root containing asic/").
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
-_REPO_ROOT = _HERE.parents[4]
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SGDC_CLK = re.compile(r"^\s*clock\s")
@@ -175,13 +177,22 @@ def run(module: str, workdir, top: str | None = None) -> int:
         _err(f"missing template directory: {_TEMPLATE_DIR}")
         return 1
 
-    # Resolve workdir to absolute against the REPO ROOT (not cwd) + drop trailing slash.
+    # The design tree is the CWD (state.py + stage-subagent contract). Resolve a
+    # relative workdir against it + drop trailing slash.
+    tree_root = Path.cwd()
     dest = Path(workdir)
     if not dest.is_absolute():
-        dest = _REPO_ROOT / dest
+        dest = tree_root / dest
     dest = Path(str(dest).rstrip("/"))
 
-    rtl_dir = _REPO_ROOT / "asic" / module / "Design" / "rtl-design"
+    rtl_dir = tree_root / "asic" / module / "Design" / "rtl-design"
+    if not rtl_dir.is_dir():
+        _err(f"design tree not found: {rtl_dir}")
+        _err(
+            "  Run from the working tree root (the directory containing asic/); "
+            "upstream rtl-design must exist."
+        )
+        return 1
 
     # Infer TOP (README first, then filelist) BEFORE mkdir/guard (shell order).
     if not top:
@@ -210,7 +221,7 @@ def run(module: str, workdir, top: str | None = None) -> int:
     # concrete top -> copied verbatim, NOT MY_TOP-substituted. The template branch keeps
     # the copytree'd template constraints.sgdc and DOES substitute it.
     warm = (
-        _REPO_ROOT
+        tree_root
         / "asic"
         / module
         / "Design"
@@ -219,7 +230,7 @@ def run(module: str, workdir, top: str | None = None) -> int:
         / "constraints.sgdc"
     )
     cold = (
-        _REPO_ROOT
+        tree_root
         / "asic"
         / module
         / "Design"
@@ -262,7 +273,7 @@ def run(module: str, workdir, top: str | None = None) -> int:
     if rc != 0:
         return rc
 
-    spec_con = _REPO_ROOT / "asic" / module / "Design" / "specification" / "constraints"
+    spec_con = tree_root / "asic" / module / "Design" / "specification" / "constraints"
     _check_period(spec_con / f"{top}.sgdc", spec_con / f"{top}.sdc")
 
     print(f"[lintcdc bootstrap] deployed {dest}")

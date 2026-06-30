@@ -4,10 +4,11 @@
 Two layers: in-process unit tests of the inference helpers (BP1/BP2 — the
 byte-stable README-grep coupling locked from the other side by
 test_rtl_assemble.py), and subprocess "mirror" tests of full deploy behavior
-(BP3-BP11) that copy skills/synthesis into a tmp tree and run the real CLI.
+(BP3-BP11) that run the real shipped skill with cwd set to a tmp design-tree
+root. The bootstrap anchors the design tree on the CWD (matching state.py and
+the stage-subagent contract), independent of where the skill code lives.
 """
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -72,9 +73,10 @@ def test_infer_top_from_filelist_does_not_skip_double_slash(tmp_path):
 
 # ── BP3-BP11: full deploy (subprocess mirror) ─────────────────────────────────
 def _mirror(tmp_path):
-    """Copy skills/synthesis into tmp; return (skill_dst, rtl_dir, workdir)."""
-    skill_dst = tmp_path / "skills" / "synthesis"
-    shutil.copytree(REPO_ROOT / "skills" / "synthesis", skill_dst)
+    """Build the upstream asic/M/... refs under a tmp design-tree root; return
+    (skill_dir, rtl_dir, workdir). skill_dir is the real shipped skill — deploy
+    tests run it with cwd=tmp_path, so the bootstrap anchors the tree on the CWD."""
+    skill_dst = REPO_ROOT / "skills" / "synthesis"
     rtl = tmp_path / "asic" / "M" / "Design" / "rtl-design"
     rtl.mkdir(parents=True)
     workdir = tmp_path / "asic" / "M" / "Design" / "synthesis" / "runs" / "1"
@@ -82,6 +84,10 @@ def _mirror(tmp_path):
 
 
 def _run(skill_dst, workdir, *extra):
+    # The bootstrap anchors the design tree on the CWD; the tree root is the prefix
+    # of the (absolute) workdir up to the 'asic/' component.
+    parts = Path(workdir).parts
+    cwd = Path(*parts[: parts.index("asic")])
     return subprocess.run(
         [
             "python3",
@@ -93,6 +99,7 @@ def _run(skill_dst, workdir, *extra):
             str(workdir),
             *extra,
         ],
+        cwd=str(cwd),
         capture_output=True,
         text=True,
     )
@@ -127,6 +134,8 @@ def test_happy_path_substitutes_my_top(tmp_path):
     (rtl / "filelist.txt").write_text("top.v\n")
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
+    # No spec SDC -> template branch; the placeholder must be announced (not silent).
+    assert "PLACEHOLDER constraints.sdc" in proc.stdout
     env_sh = (workdir / "env.sh").read_text()
     assert "MY_TOP" not in env_sh and "top" in env_sh
     cfg = (workdir / "scripts" / "config.tcl").read_text()
@@ -157,6 +166,7 @@ def test_sdc_source_of_truth_copied(tmp_path):
     assert proc.returncode == 0, proc.stderr
     con = (workdir / "constraints.sdc").read_text()
     assert "SENTINEL" in con and "MY_TOP" not in con
+    assert "PLACEHOLDER" not in proc.stdout  # spec-SDC branch must not warn
 
 
 def test_empty_filelist_fail_closed(tmp_path):
@@ -207,9 +217,8 @@ def test_rtl_load_skips_double_slash_comment(tmp_path):
 
 
 def test_relative_workdir_with_trailing_slash(tmp_path):
-    # BP12: a relative --workdir resolves against the repo root (not cwd), and a
-    # trailing slash is stripped before relpath math. (The mirror's repo root is
-    # tmp_path, so the relative path lands at the same absolute workdir.)
+    # BP12: a relative --workdir resolves against the CWD (the design-tree root), and
+    # a trailing slash is stripped before relpath math.
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "filelist.txt").write_text("top.v\n")
     proc = subprocess.run(
@@ -224,6 +233,7 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
             "--top",
             "top",
         ],
+        cwd=str(tmp_path),
         capture_output=True,
         text=True,
     )

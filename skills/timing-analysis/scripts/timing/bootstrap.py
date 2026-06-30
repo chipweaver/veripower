@@ -31,11 +31,12 @@ import sys
 from pathlib import Path
 
 # This file: skills/timing-analysis/scripts/timing/bootstrap.py
-#   parents[2] = skills/timing-analysis   (-> templates/)
-#   parents[4] = repo root                (-> asic/<module>/...)
+#   parents[2] = skills/timing-analysis   (-> templates/, ships with the skill)
+# The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
+# lives — matching state.py and the stage-subagent contract ("workdir is relative to
+# the working tree root containing asic/").
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
-_REPO_ROOT = _HERE.parents[4]
 
 
 def _err(msg: str) -> None:
@@ -71,13 +72,14 @@ def run(module: str, workdir, top: str | None = None) -> int:
         _err(f"missing {_TEMPLATE_DIR}")
         return 1
 
-    # Resolve workdir to absolute against the REPO ROOT (not cwd). type=Path already
-    # dropped any trailing slash.
+    # The design tree is the CWD (state.py + stage-subagent contract). Resolve a
+    # relative workdir against it. type=Path already dropped any trailing slash.
+    tree_root = Path.cwd()
     workdir = Path(workdir)
     if not workdir.is_absolute():
-        workdir = _REPO_ROOT / workdir
-    module_root_abs = _REPO_ROOT / "asic" / module
-    syn_dir = _REPO_ROOT / "asic" / module / "Design" / "synthesis"
+        workdir = tree_root / workdir
+    module_root_abs = tree_root / "asic" / module
+    syn_dir = tree_root / "asic" / module / "Design" / "synthesis"
 
     # Prerequisite: synthesis result.json present and status=pass (fail-closed).
     syn_result = syn_dir / "result.json"

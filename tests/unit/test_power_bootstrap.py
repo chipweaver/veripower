@@ -3,10 +3,11 @@
 
 Two layers: in-process unit tests of infer_top_from_filelist (BP1), and subprocess
 "mirror" tests of full deploy behavior (BP2-BP11 + the §8 cross-stage contract CS1).
-The mirror copies skills/power-analysis into a tmp tree so the package's _REPO_ROOT
-(= _HERE.parents[4]) resolves to tmp_path, then builds the upstream asic/<module>/...
-references under it. The bootstrap shells out to the DEPLOYED emit_power_tests.py
-(Tier-2) to render the initial power tests; a §8 violation there propagates as exit 1.
+The mirror runs the real shipped skill with cwd set to a tmp design-tree root and builds
+the upstream asic/<module>/... references under it. The bootstrap anchors the design tree
+on the CWD (matching state.py and the stage-subagent contract), independent of where the
+skill code lives. The bootstrap shells out to the DEPLOYED emit_power_tests.py (Tier-2)
+to render the initial power tests; a §8 violation there propagates as exit 1.
 """
 
 import json
@@ -16,6 +17,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+_MAIN = REPO_ROOT / "skills" / "power-analysis" / "scripts" / "power" / "__main__.py"
 sys.path.insert(0, str(REPO_ROOT / "skills" / "power-analysis" / "scripts"))
 from power import bootstrap  # noqa: E402
 
@@ -66,13 +68,9 @@ def _make_tree(
     with_scaffold=True,
     scaffold=None,
 ):
-    """Mirror skills/power-analysis into tmp + build the upstream asic/<module>/...
-    references. Returns (module, workdir, main). The copied package's
-    _HERE.parents[4] resolves _REPO_ROOT to tmp_path."""
-    shutil.copytree(
-        REPO_ROOT / "skills" / "power-analysis",
-        tmp_path / "skills" / "power-analysis",
-    )
+    """Build the upstream asic/<module>/... references under a tmp design-tree root.
+    Returns (module, workdir, main). Deploy tests run `main` (the real shipped skill)
+    with cwd=tmp_path, so the bootstrap anchors the design tree on the CWD."""
     m = "M"
     base = tmp_path / "asic" / m
     rtl = base / "Design" / "rtl-design"
@@ -94,11 +92,15 @@ def _make_tree(
             json.dumps(_VALID_SCAFFOLD if scaffold is None else scaffold)
         )
     workdir = base / "Verification" / "power-analysis" / "runs" / "1"
-    main = tmp_path / "skills" / "power-analysis" / "scripts" / "power" / "__main__.py"
-    return m, workdir, main
+    return m, workdir, _MAIN
 
 
-def _run(module, workdir, main, extra=None):
+def _run(module, workdir, main, extra=None, cwd=None):
+    if cwd is None:
+        # The bootstrap anchors the design tree on the CWD; the tree root is the
+        # prefix of the (absolute) workdir up to the 'asic/' component.
+        parts = Path(workdir).parts
+        cwd = Path(*parts[: parts.index("asic")])
     cmd = [
         "python3",
         str(main),
@@ -110,7 +112,7 @@ def _run(module, workdir, main, extra=None):
     ]
     if extra:
         cmd += extra
-    return subprocess.run(cmd, capture_output=True, text=True)
+    return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True)
 
 
 def test_deploys_and_substitutes(tmp_path):
@@ -240,8 +242,13 @@ def test_retry_after_fixing_upstream_succeeds(tmp_path):
 
 
 def test_missing_template_dir_fail_closed(tmp_path):
-    m, workdir, main = _make_tree(tmp_path)
-    shutil.rmtree(tmp_path / "skills" / "power-analysis" / "templates")
+    # Run a skill COPY whose templates/ has been removed -> fail-closed before any
+    # mutation. The design tree itself is valid under the CWD.
+    m, workdir, _ = _make_tree(tmp_path)
+    skill_copy = tmp_path / "skills" / "power-analysis"
+    shutil.copytree(REPO_ROOT / "skills" / "power-analysis", skill_copy)
+    shutil.rmtree(skill_copy / "templates")
+    main = skill_copy / "scripts" / "power" / "__main__.py"
     r = _run(m, workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
     assert "missing" in r.stderr
@@ -249,9 +256,8 @@ def test_missing_template_dir_fail_closed(tmp_path):
 
 
 def test_relative_workdir_with_trailing_slash(tmp_path):
-    # BP4: a relative --workdir resolves against the repo root (not cwd), and the
-    # trailing slash is dropped (type=Path) before deploy. (The mirror's repo root is
-    # tmp_path, so the relative path lands at the same absolute workdir.)
+    # BP4: a relative --workdir resolves against the CWD (the design-tree root), and the
+    # trailing slash is dropped (type=Path) before deploy.
     m, workdir, main = _make_tree(tmp_path)
     proc = subprocess.run(
         [
@@ -265,6 +271,7 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
             "--top",
             "dut",
         ],
+        cwd=str(tmp_path),
         capture_output=True,
         text=True,
     )

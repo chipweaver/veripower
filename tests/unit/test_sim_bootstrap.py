@@ -2,18 +2,20 @@
 """sim bootstrap verb — deploy-into-workdir behavior.
 
 Two layers: in-process unit tests of the TOP-inference helpers (B1 — byte-for-byte the
-lintcdc helpers), and subprocess "mirror" tests of full deploy behavior that copy
-skills/simulation into a tmp tree so the package's _REPO_ROOT (= _HERE.parents[4])
-resolves to tmp_path, then build the upstream asic/<module>/Design/... references under it.
+lintcdc helpers), and subprocess "mirror" tests of full deploy behavior that run the real
+shipped skill with cwd set to a tmp design-tree root and build the upstream
+asic/<module>/Design/... references under it. The bootstrap anchors the design tree on the
+CWD (matching state.py and the stage-subagent contract), independent of where the skill
+code lives.
 """
 
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+_MAIN = REPO_ROOT / "skills" / "simulation" / "scripts" / "sim" / "__main__.py"
 sys.path.insert(0, str(REPO_ROOT / "skills" / "simulation" / "scripts"))
 from sim import bootstrap  # noqa: E402
 
@@ -51,10 +53,9 @@ def test_top_from_filelist_rejects_padded_bare_name(tmp_path):
 def _mirror(
     tmp_path, *, readme="**Top module**: dut\n", filelist="rtl/dut.v\n+incdir+inc\n"
 ):
-    """Copy skills/simulation into tmp_path so the package's parents[4] == tmp_path, and
-    seed the upstream rtl-design references. Returns (skill_main, workdir, module)."""
-    skill_dst = tmp_path / "skills" / "simulation"
-    shutil.copytree(REPO_ROOT / "skills" / "simulation", skill_dst)
+    """Seed the upstream rtl-design references under a tmp design-tree root. Returns
+    (main, workdir, module); deploy tests run `main` (the real shipped skill) with
+    cwd=tmp_path, so the bootstrap anchors the design tree on the CWD."""
     module = "tpu_top"
     rtl = tmp_path / "asic" / module / "Design" / "rtl-design"
     rtl.mkdir(parents=True)
@@ -62,10 +63,14 @@ def _mirror(
     (rtl / "filelist.txt").write_text(filelist)
     (tmp_path / "asic" / module / "Design" / "specification").mkdir(parents=True)
     workdir = tmp_path / "asic" / module / "Verification" / "simulation" / "runs" / "1"
-    return skill_dst / "scripts" / "sim" / "__main__.py", workdir, module
+    return _MAIN, workdir, module
 
 
 def _run(main, module, workdir, *extra):
+    # The bootstrap anchors the design tree on the CWD; the tree root is the prefix of
+    # the (absolute) workdir up to the 'asic/' component.
+    parts = Path(workdir).parts
+    cwd = Path(*parts[: parts.index("asic")])
     return subprocess.run(
         [
             "python3",
@@ -77,6 +82,7 @@ def _run(main, module, workdir, *extra):
             str(workdir),
             *extra,
         ],
+        cwd=str(cwd),
         capture_output=True,
         text=True,
     )

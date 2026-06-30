@@ -6,10 +6,10 @@ Source of truth: `${CLAUDE_SKILL_DIR}/templates/`.
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap \
-     --module <module-dir-name> --workdir <abs-path> [--top <top-module>]
+     --module <module-dir-name> --workdir <workdir> [--top <top-module>]
 ```
 
-- Deploys into the directory given by `--workdir` (typically `asic/<module>/Design/synthesis/runs/<N>/`, supplied by the caller).
+- Deploys into the directory given by `--workdir` (typically `asic/<module>/Design/synthesis/runs/<N>/`, supplied by the caller). A relative `--workdir` resolves against the working tree root (the CWD, i.e. the directory containing `asic/`).
 - Replaces the `MY_TOP` placeholder in: `env.sh`, `constraints.sdc` (when no source of truth is present).
 - Replaces the `MY_RTL_DIR` placeholder in `scripts/dc_run.tcl` with the RTL path relative to workdir (computed from workdir depth).
 - Generates `scripts/rtl_load.tcl` from `Design/rtl-design/filelist.txt` (each entry wrapped as `analyze -format sverilog -define SYNTHESIS [list <RTL_REL_DIR>/<entry>]`).

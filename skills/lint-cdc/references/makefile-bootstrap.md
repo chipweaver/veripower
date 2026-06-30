@@ -6,10 +6,10 @@ Source of truth: `${CLAUDE_SKILL_DIR}/templates/`.
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap \
-     --module <module-dir-name> --workdir <abs-path> [--top <top-module>]
+     --module <module-dir-name> --workdir <workdir> [--top <top-module>]
 ```
 
-- Deploys into the directory passed via `--workdir` (typically `asic/<module>/Design/lint-cdc/runs/<N>/`, caller-provided).
+- Deploys into the directory passed via `--workdir` (typically `asic/<module>/Design/lint-cdc/runs/<N>/`, caller-provided). A relative `--workdir` resolves against the working tree root (the CWD, i.e. the directory containing `asic/`).
 - Substitutes the `MY_TOP` placeholder in: `env.sh`, `scripts/spyglass_lint.prj`, `scripts/filelist.txt`, `scripts/constraints.sgdc`, `scripts/waiver.tcl`.
 - RTL paths in `scripts/filelist.txt` are written as `../../../rtl-design/...` (relative to the sourcelist file `scripts/filelist.txt`: scripts/ → runs/<N>/ → lint-cdc/ → Design/ → rtl-design/).
 - An existing `{workdir}/Makefile` is treated as "already deployed" and the script aborts; a caller-placed `orchestrator-context.md` inside the workdir does NOT count as "deployed".

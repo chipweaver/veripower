@@ -2,9 +2,10 @@
 """timing bootstrap — deploy-into-workdir behavior.
 
 Two layers: in-process unit tests of infer_top (BP1), and subprocess "mirror"
-tests of full deploy behavior (BP2-BP10). The mirror copies skills/timing-analysis
-into a tmp tree so the package's _REPO_ROOT (= _HERE.parents[4]) resolves to
-tmp_path, not the real repo — same trick the old shell test used.
+tests of full deploy behavior (BP2-BP10) that run the real shipped skill with cwd
+set to a tmp design-tree root and build the synthesis prereq tree under it. The
+bootstrap anchors the design tree on the CWD (matching state.py and the
+stage-subagent contract), independent of where the skill code lives.
 """
 
 import json
@@ -14,6 +15,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+_MAIN = REPO_ROOT / "skills" / "timing-analysis" / "scripts" / "timing" / "__main__.py"
 sys.path.insert(0, str(REPO_ROOT / "skills" / "timing-analysis" / "scripts"))
 from timing import bootstrap  # noqa: E402
 
@@ -49,15 +51,11 @@ def _make_tree(
     with_sdc=True,
     with_result=True,
 ):
-    """Mirror skills/timing-analysis into tmp + build a synthesis prereq tree.
+    """Build a synthesis prereq tree under a tmp design-tree root.
 
-    Returns (module, workdir, main). The copied package's _HERE.parents[4]
-    resolves _REPO_ROOT to tmp_path.
+    Returns (module, workdir, main). Deploy tests run `main` (the real shipped skill)
+    with cwd=tmp_path, so the bootstrap anchors the design tree on the CWD.
     """
-    shutil.copytree(
-        REPO_ROOT / "skills" / "timing-analysis",
-        tmp_path / "skills" / "timing-analysis",
-    )
     m = top
     syn = tmp_path / "asic" / m / "Design" / "synthesis"
     (syn / "out").mkdir(parents=True)
@@ -80,13 +78,15 @@ def _make_tree(
     if with_sdc:
         (syn / "out" / f"{top}_syn.sdc").write_text("# sdc\n")
     workdir = tmp_path / "asic" / m / "Design" / "timing-analysis" / "runs" / "1"
-    main = (
-        tmp_path / "skills" / "timing-analysis" / "scripts" / "timing" / "__main__.py"
-    )
-    return m, workdir, main
+    return m, workdir, _MAIN
 
 
-def _run(module, workdir, main, extra=None):
+def _run(module, workdir, main, extra=None, cwd=None):
+    if cwd is None:
+        # The bootstrap anchors the design tree on the CWD; the tree root is the
+        # prefix of the (absolute) workdir up to the 'asic/' component.
+        parts = Path(workdir).parts
+        cwd = Path(*parts[: parts.index("asic")])
     cmd = [
         "python3",
         str(main),
@@ -98,7 +98,7 @@ def _run(module, workdir, main, extra=None):
     ]
     if extra:
         cmd += extra
-    return subprocess.run(cmd, capture_output=True, text=True)
+    return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True)
 
 
 def test_deploys_and_substitutes(tmp_path):
@@ -207,8 +207,13 @@ def test_aborts_when_already_deployed(tmp_path):
 
 
 def test_missing_template_dir_fail_closed(tmp_path):
-    m, workdir, main = _make_tree(tmp_path)
-    shutil.rmtree(tmp_path / "skills" / "timing-analysis" / "templates")
+    # Run a skill COPY whose templates/ has been removed -> fail-closed before any
+    # mutation. The synthesis prereq tree itself is valid under the CWD.
+    m, workdir, _ = _make_tree(tmp_path)
+    skill_copy = tmp_path / "skills" / "timing-analysis"
+    shutil.copytree(REPO_ROOT / "skills" / "timing-analysis", skill_copy)
+    shutil.rmtree(skill_copy / "templates")
+    main = skill_copy / "scripts" / "timing" / "__main__.py"
     r = _run(m, workdir, main, extra=["--top", "sdc_controller"])
     assert r.returncode == 1
     assert "missing" in r.stderr
@@ -216,9 +221,8 @@ def test_missing_template_dir_fail_closed(tmp_path):
 
 
 def test_relative_workdir_with_trailing_slash(tmp_path):
-    # BP5: a relative --workdir resolves against the repo root (not cwd), and the
-    # trailing slash is dropped (type=Path) before deploy. (The mirror's repo root is
-    # tmp_path, so the relative path lands at the same absolute workdir.)
+    # BP5: a relative --workdir resolves against the CWD (the design-tree root), and
+    # the trailing slash is dropped (type=Path) before deploy.
     m, workdir, main = _make_tree(tmp_path)
     proc = subprocess.run(
         [
@@ -230,6 +234,7 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
             "--workdir",
             "asic/sdc_controller/Design/timing-analysis/runs/1/",  # relative + trailing slash
         ],
+        cwd=str(tmp_path),
         capture_output=True,
         text=True,
     )

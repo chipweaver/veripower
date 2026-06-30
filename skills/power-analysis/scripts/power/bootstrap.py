@@ -35,11 +35,12 @@ import sys
 from pathlib import Path
 
 # This file: skills/power-analysis/scripts/power/bootstrap.py
-#   parents[2] = skills/power-analysis   (-> templates/)
-#   parents[4] = repo root               (-> asic/<module>/...)
+#   parents[2] = skills/power-analysis   (-> templates/, ships with the skill)
+# The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
+# lives — matching state.py and the stage-subagent contract ("workdir is relative to
+# the working tree root containing asic/").
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
-_REPO_ROOT = _HERE.parents[4]
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -86,11 +87,12 @@ def run(module: str, workdir, top: str | None = None) -> int:
         _err(f"missing {_TEMPLATE_DIR}")
         return 1
 
-    # Resolve workdir to absolute against the REPO ROOT (not cwd). type=Path already
-    # dropped any trailing slash.
+    # The design tree is the CWD (state.py + stage-subagent contract). Resolve a
+    # relative workdir against it. type=Path already dropped any trailing slash.
+    tree_root = Path.cwd()
     workdir = Path(workdir)
     if not workdir.is_absolute():
-        workdir = _REPO_ROOT / workdir
+        workdir = tree_root / workdir
     dest = workdir
 
     dest.mkdir(parents=True, exist_ok=True)
@@ -103,15 +105,15 @@ def run(module: str, workdir, top: str | None = None) -> int:
     # Infer TOP from the rtl-design filelist when not given (fail-closed if unknown).
     if top is None:
         top = infer_top_from_filelist(
-            _REPO_ROOT / "asic" / module / "Design" / "rtl-design"
+            tree_root / "asic" / module / "Design" / "rtl-design"
         )
         if top is None:
             _err("cannot infer --top; pass explicitly")
             return 1
 
-    syn_out_dir = _REPO_ROOT / "asic" / module / "Design" / "synthesis" / "out"
-    sim_dir = _REPO_ROOT / "asic" / module / "Verification" / "simulation"
-    plan_dir = _REPO_ROOT / "asic" / module / "Verification" / "simulation-plan"
+    syn_out_dir = tree_root / "asic" / module / "Design" / "synthesis" / "out"
+    sim_dir = tree_root / "asic" / module / "Verification" / "simulation"
+    plan_dir = tree_root / "asic" / module / "Verification" / "simulation-plan"
 
     # Pre-flight: upstream stages must have produced their canonical artifacts before
     # we deploy anything. Run it BEFORE copytree so a missing upstream ref fails fast

@@ -28,11 +28,12 @@ import sys
 from pathlib import Path
 
 # This file: skills/synthesis/scripts/synthesis/bootstrap.py
-#   parents[2] = skills/synthesis   (-> templates/)
-#   parents[4] = repo root          (-> asic/<module>/...)
+#   parents[2] = skills/synthesis   (-> templates/, ships with the skill)
+# The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
+# lives — matching state.py and the stage-subagent contract ("workdir is relative to
+# the working tree root containing asic/").
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
-_REPO_ROOT = _HERE.parents[4]
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -178,12 +179,15 @@ def run(module: str, workdir, top: str | None = None) -> int:
         _err(f"missing template directory: {_TEMPLATE_DIR}")
         return 1
 
+    # The design tree is the CWD (state.py + stage-subagent contract). Resolve a
+    # relative workdir against it + drop trailing slash.
+    tree_root = Path.cwd()
     dest = Path(workdir)
     if not dest.is_absolute():
-        dest = _REPO_ROOT / dest
+        dest = tree_root / dest
     dest = Path(str(dest).rstrip("/"))  # consistent relpath math
 
-    rtl_dir = _REPO_ROOT / "asic" / module / "Design" / "rtl-design"
+    rtl_dir = tree_root / "asic" / module / "Design" / "rtl-design"
     rtl_rel_dir = os.path.relpath(
         rtl_dir, dest
     )  # may contain '..' — str.replace handles it
@@ -215,7 +219,7 @@ def run(module: str, workdir, top: str | None = None) -> int:
     # bound to this top — no MY_TOP sub). env.sh is substituted in both branches.
     env_sh = dest / "env.sh"
     user_sdc = (
-        _REPO_ROOT
+        tree_root
         / "asic"
         / module
         / "Design"
@@ -233,6 +237,10 @@ def run(module: str, workdir, top: str | None = None) -> int:
     else:
         _sub(env_sh, "MY_TOP", top)
         _sub(dest / "constraints.sdc", "MY_TOP", top)
+        print(
+            "[synthesis bootstrap] no spec SDC; deployed PLACEHOLDER constraints.sdc "
+            "(clk=10ns, ports clk/rst_n) — fill it per design.md §1.4 in Step 4."
+        )
 
     _sub(dest / "scripts" / "dc_run.tcl", "MY_RTL_DIR", rtl_rel_dir)
 
