@@ -79,6 +79,7 @@ share it).
     {"path": "rtl_filelist.f",           "kind": "filelist"},
     {"path": "tb/uvm/",                  "kind": "uvm_tb"},
     {"path": "conformance-review.json",  "kind": "conformance_review"},
+    {"path": "verify-handoff.json",      "kind": "verify_handoff"},
     {"path": "scripts/",                 "kind": "scripts"},
     {"path": "tests/testlist.json",      "kind": "testlist"},
     {"path": "regression-log.txt",       "kind": "regression_log"},
