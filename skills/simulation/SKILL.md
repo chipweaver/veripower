@@ -123,7 +123,7 @@ the classifier `reason` in the completion summary every run.
 
 **TRIGGER-AGNOSTIC:** `{rework_trigger}` does **not** force a branch — the verdict is decided
 solely by whether the plan + scaffold match the canonical baseline. A freeze verdict stands even
-when `{rework_trigger}` is injected. On the `rebuild` branch only, the trigger (+ any
+when `{rework_trigger}` is injected. On the `rebuild` branch only (not the freeze branch — the freeze branch does not consult the trigger; its branch selection is trigger-agnostic — see Step 1), the trigger (+ any
 `{orchestrator_context_path}`) is still passed to the env-build child to narrow the rewrite scope.
 
 Pre-gate `{rework_trigger}` readability before dispatching any wave: if the trigger path is
@@ -193,7 +193,7 @@ In both cases do not dispatch the downstream waves.
 ### Step 3: Smoke gate (deterministic; main thread)
 
 Gate on the smoke result emitted by the smoke run's own tooling in `{workdir}`, NOT on the
-env-build child's self-reported `STATUS:` prose. This is cheap and deterministic — the main thread
+Wave-1 child's (env-build or freeze-rebuild) self-reported `STATUS:` prose. This is cheap and deterministic — the main thread
 reads a small status file and does NOT re-run heavy EDA. Do NOT use
 the `sim` exit gate here — its coverage gate hard-fails pre-regress (no `structural-coverage.json`
 exists yet).
@@ -323,7 +323,7 @@ The `failure_phase` value table below documents which step decides each phase; f
 
 | failure_phase | First-failing phase | Companion fields (besides `fail_reason`) | Decided in |
 |---|---|---|---|
-| `prerequisite` | Step 1 reference missing / not pass, or `{rework_trigger}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | main thread |
+| `prerequisite` | Step 1 reference missing / not pass, or `{rework_trigger}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]`; or freeze-rebuild `STATUS: BLOCKED <reason>` (sim freeze setup failure) | — | main thread |
 | `compile` | `make simv` failed (no smoke status); or `sim finalize` thin-D1 file missing / `TODO(` residue | — | smoke gate (Step 3) / finalize (Step 6) |
 | `smoke` | `make smoke` ran but a `RESULT` line is not `PASS` | `failing_cases` | smoke gate (Step 3) |
 | `conformance` | Conformance gate (Step 4): a finding `category ∈ {missing,wrong-behavior,fake-green,intent-defect}` at `critical`/`important` | `conformance_findings` | conformance gate (Step 4) |
@@ -352,7 +352,7 @@ sub-Task.
 | Excuse | Reality |
 |---|---|
 | "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `sim finalize` exited non-zero) | You record the most-failing verdict, never a more-optimistic one. `status=pass` is written only when the smoke gate, the conformance gate, the verify verdict, and `sim finalize` all agree (Step 6); you MUST NOT override a `gate=trip` to pass (Step 4). |
-| "The env-build child's `STATUS:` line says smoke passed — that's my smoke gate" | The smoke gate reads the smoke run's own tooling (`regression-log.txt` `RESULT` lines / per-test `logs/<test>.status`), never the child's self-reported prose (Step 3). |
+| "The Wave-1 child's (env-build or freeze-rebuild) `STATUS:` line says smoke passed — that's my smoke gate" | The smoke gate reads the smoke run's own tooling (`regression-log.txt` `RESULT` lines / per-test `logs/<test>.status`), never the child's self-reported prose (Step 3). |
 | "A case is failing — I'll open the TB to see why" | The main thread NEVER reads the TB body or re-runs heavy EDA; it consumes envelopes / status files / paths only and routes the failure out for the caller to decide (Iron Rule). |
 | "I'll peek at the DUT RTL to write the refmodel for this signal" | The TB's golden model derives from the sim-plan docs only; a model read off the RTL mirrors it and verifies nothing (circular). Author from `implementation_detail` / §3 intent; if insufficient, BLOCK to simulation-plan (Iron Rule). |
 
