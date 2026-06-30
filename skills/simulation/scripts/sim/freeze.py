@@ -85,11 +85,6 @@ def run(module: str, workdir, canonical) -> int:
         if src.is_file():
             shutil.copy2(src, dest / f)
 
-    # Defensive: drop any per-run output dirs that might ride along (normally absent --
-    # logs/ and cov_test/ are top-level and not promoted).
-    for stale in ("logs", "cov_test"):
-        shutil.rmtree(dest / stale, ignore_errors=True)
-
     # Regenerate rtl_filelist.f against the current RTL (the one thing freeze refreshes).
     rtl_rel = os.path.relpath(rtl_dir, dest)
     rewrite_rtl_filelist(rtl_filelist, dest / "rtl_filelist.f", rtl_rel)
