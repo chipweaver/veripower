@@ -8,7 +8,7 @@ verbatim reuse keeps the checks AND the bin->seq handoff byte-identical across a
 an old-vs-new-RTL comparison varies only the DUT. CWD-anchored design tree (matching bootstrap / state.py).
 
 Exit codes: 0 materialized; 1 fail-closed guard (workdir already populated / missing canonical TB /
-missing RTL filelist / missing carry-forward conformance-review.json).
+missing RTL filelist / missing a required carry-forward (conformance-review.json / verify-handoff.json)).
 """
 
 from __future__ import annotations
