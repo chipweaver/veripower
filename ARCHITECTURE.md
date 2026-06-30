@@ -467,7 +467,7 @@ Every stage decides its own `result.json` `status` through a gate. The gate a st
 
 | Class | Stages | Gate mechanism |
 |---|---|---|
-| **authoring** | specification, simulation-plan, rtl-design, simulation | Mechanizable structure is checked by a deterministic script (`check_coverage.py`, `check_rtl_conformance.py`, `validate_scaffold.py`, `validate_sim_exit.py`); the residual — faithful/complete realization of upstream intent — is judged by an **LLM intent-realization review** emitting a promoted `*-review.json`, reduced to a verdict by `validate_*_review.py`. |
+| **authoring** | specification, simulation-plan, rtl-design, simulation | Mechanizable structure is checked by a deterministic script (`spec check-coverage`, `rtl check-conformance`, `simplan check-scaffold`, `sim check-materialization` + `sim finalize`); the residual — faithful/complete realization of upstream intent — is judged by an **LLM intent-realization review** emitting a promoted `*-review.json`, reduced to a verdict by `validate_*_review.py`. |
 | **computation** | lint-cdc, synthesis, timing-analysis, power-analysis | The EDA tool is the oracle — a **deterministic report parser** (`synthesis_rpt_parser.py` / `timing_rpt_parser.py` / `power_rpt_parser.py` / `collect_report.py`) owns the pass/fail verdict; never judged by eye. |
 | **aggregation** | frontend-signoff | A **deterministic aggregator** (`aggregate_signoff.py`) gates on upstream-envelope status + evidence reachability and authors the envelope (§6.2). |
 
