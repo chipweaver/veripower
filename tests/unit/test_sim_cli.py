@@ -11,6 +11,7 @@ _VERBS = (
     "check-materialization",
     "validate-review",
     "finalize",
+    "classify-delta",
 )
 
 
@@ -18,7 +19,7 @@ def _run(*argv):
     return subprocess.run(["python3", str(MAIN), *argv], capture_output=True, text=True)
 
 
-def test_cli_help_lists_all_five_verbs():
+def test_cli_help_lists_all_verbs():
     r = _run("--help")
     assert r.returncode == 0, r.stderr
     for v in _VERBS:
