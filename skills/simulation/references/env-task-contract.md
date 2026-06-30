@@ -100,6 +100,9 @@ smoke gate still decides smoke pass/fail.
   - "Use a functional/shadow-register model instead of the cycle-accurate refmodel" — a testpoint with
     non-empty `inlined_check_hints[]` MUST generate cycle-accurate checks; downgrading to
     register-value comparison is not allowed.
+  - "Let me open the DUT RTL to see what this signal does so my refmodel matches it" -- authoring the
+    golden model from the implementation is circular verification; derive it from the spec/plan
+    formula, not the RTL.
 
 ## Prohibitions
 
@@ -108,6 +111,13 @@ smoke gate still decides smoke pass/fail.
 - Stay inside `{workdir}`: all writes confined to `{workdir}` (reading the upstream plan + any prior
   canonical TB as read-only reference is allowed). Do not modify the plan or RTL — RTL-class issues
   belong to the RTL editing stage; do not exceed your authority.
+- **No RTL-source reads for authoring.** The behavioral reference for every refmodel / scoreboard /
+  checker is the sim-plan exit docs (`scaffold-specification.json` `inlined_check_hints[]` +
+  `verification-plan.md` §3) -- the DUT RTL is NOT in this child's input set and MUST NOT be opened to
+  understand a signal or derive an expected value. RTL participates only mechanically, through the
+  compile filelist. A golden model reverse-engineered from the DUT mirrors the implementation (bugs
+  included) and can never disagree -- circular verification. Reading RTL to author a check is a Rule A
+  semantic violation -> `STATUS: BLOCKED <compile|smoke> rtl-source-read: <locus>`, do not retry.
 
 ## Pitfalls
 
