@@ -7,6 +7,7 @@ Verbs (one stage = one tool; see skills/simulation/SKILL.md for usage):
   check-materialization thin-D1 presence gate (env-exit self-gate)            (stdout verdict; exit 0/1)
   validate-review       conformance-review.json schema + gate                 (stdout gate JSON; exit 0/1)
   finalize              assemble the lean result.json at the exit phase        (exit 0 written / 2 BLOCKED)
+  classify-delta        select the Wave-1 branch (first-run|freeze|rebuild)   (stdout verdict; exit 0)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the sim.*
 library. Library imports are deferred into each handler (NOT top-level) so --help
@@ -14,6 +15,8 @@ and verb dispatch run during incremental per-task TDD, before the sibling module
 exist. (Library modules themselves use top-level absolute imports; only this thin
 dispatcher defers.) NEVER `import _gate` bare inside this package — only `from sim import …`.
 """
+
+from __future__ import annotations
 
 import argparse
 import os
@@ -49,6 +52,12 @@ def _cmd_validate_review(a: argparse.Namespace) -> int:
     from sim import review
 
     return review.validate(a.review)
+
+
+def _cmd_classify_delta(a: argparse.Namespace) -> int:
+    from sim import classify
+
+    return classify.run(a.canonical_result, a.scaffold, a.plan)
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
@@ -113,6 +122,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("validate-review", help="conformance-review.json schema + gate")
     sp.add_argument("--review", required=True, type=Path)
     sp.set_defaults(func=_cmd_validate_review)
+
+    sp = sub.add_parser(
+        "classify-delta", help="select the Wave-1 branch: first-run|freeze|rebuild"
+    )
+    sp.add_argument("--scaffold", required=True, type=Path)
+    sp.add_argument("--plan", required=True, type=Path)
+    sp.add_argument(
+        "--canonical-result",
+        type=Path,
+        default=None,
+        help="canonical Verification/simulation/result.json (absent => first-run)",
+    )
+    sp.set_defaults(func=_cmd_classify_delta)
 
     sp = sub.add_parser(
         "finalize", help="assemble the lean result.json at the exit phase"

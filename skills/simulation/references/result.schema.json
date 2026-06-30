@@ -17,7 +17,8 @@
             "coverage_gaps": {"type": "array", "items": {"type": "string"}},
             "gaps_not_in_testpoints": {"type": "array", "items": {"type": "string"}},
             "gaps_in_testpoints": {"type": "array", "items": {"type": "string"}},
-            "conformance_findings": {"type": "array", "items": {"type": "object"}}
+            "conformance_findings": {"type": "array", "items": {"type": "object"}},
+            "plan_digest": {"type": "string", "description": "SHA256 hex over scaffold-specification.json bytes + a NUL separator + verification-plan.md bytes (the TB's only upstream inputs). Written by sim finalize on the pass (--phase final) and freeze-eligible fail (--phase regress) paths via the shared sim.classify.plan_digest(). The classify-delta verb compares it against the current plan to select the TB-freeze branch: equal digest + a TB-valid baseline (status=pass, or status=fail with failure_phase in {regress, coverage}) + a real (non-'unavailable') baseline conformance-review.json => freeze. Localized to the simulation stage; not a routing input."}
           },
           "additionalProperties": true
         }
