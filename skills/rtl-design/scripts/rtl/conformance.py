@@ -126,6 +126,21 @@ def _extract_section(text: str, heading_regex: str) -> str:
     return "\n".join(out)
 
 
+_PIPE = re.compile(r"(?<!\\)\|")
+
+
+def _split_row(line: str) -> list:
+    """Split a Markdown table row on UNescaped '|' (a literal pipe in a cell is
+    written '\\|'); unescape '\\|' -> '|' and trim each cell. Without honoring the
+    escape, a cell quoting a pipe over-splits and every column after it shifts right."""
+    parts = _PIPE.split(line.strip())
+    if parts and parts[0] == "":
+        parts = parts[1:]
+    if parts and parts[-1] == "":
+        parts = parts[:-1]
+    return [p.replace("\\|", "|").strip() for p in parts]
+
+
 def _table_rows(section_text: str) -> list:
     rows, header = [], None
     for line in section_text.splitlines():
@@ -133,7 +148,7 @@ def _table_rows(section_text: str) -> list:
             if header is not None:
                 break
             continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
+        cells = _split_row(line)
         if header is None:
             header = cells
             continue

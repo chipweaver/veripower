@@ -12,6 +12,21 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+_PIPE = re.compile(r"(?<!\\)\|")
+
+
+def _split_row(line: str) -> list[str]:
+    """Split a Markdown table row on UNescaped '|' (a literal pipe in a cell is
+    written '\\|'); unescape '\\|' -> '|' and trim each cell. Without honoring the
+    escape, a cell quoting a pipe (e.g. a §5 verbatim interface row) over-splits and
+    every column after it shifts right."""
+    parts = _PIPE.split(line.strip())
+    if parts and parts[0] == "":
+        parts = parts[1:]
+    if parts and parts[-1] == "":
+        parts = parts[:-1]
+    return [p.replace("\\|", "|").strip() for p in parts]
+
 
 def read_text(path: Path) -> str:
     # A hand-authored spec is the input here; a decode error must fail loud (the verb's
@@ -69,10 +84,10 @@ def parse_first_markdown_table(section: str) -> tuple[list[str], list[dict]]:
         raise ValueError("no Markdown table found.")
 
     table = blocks[0]
-    headers = [cell.strip() for cell in table[0].strip().strip("|").split("|")]
+    headers = _split_row(table[0])
     rows: list[dict] = []
     for line in table[2:]:
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        cells = _split_row(line)
         if len(cells) < len(headers):
             cells.extend([""] * (len(headers) - len(cells)))
         rows.append(dict(zip(headers, cells[: len(headers)])))
@@ -97,10 +112,10 @@ def parse_all_markdown_tables(section: str) -> list[tuple[list[str], list[dict]]
     results: list[tuple[list[str], list[dict]]] = []
     for table in blocks:
         try:
-            headers = [cell.strip() for cell in table[0].strip().strip("|").split("|")]
+            headers = _split_row(table[0])
             rows: list[dict] = []
             for line in table[2:]:
-                cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+                cells = _split_row(line)
                 if len(cells) < len(headers):
                     cells.extend([""] * (len(headers) - len(cells)))
                 rows.append(dict(zip(headers, cells[: len(headers)])))

@@ -90,6 +90,31 @@ def test_verbatim_extracted_risk_and_anchor_absent(tmp_path):
     assert "brainstorm_anchor" not in h
 
 
+def test_escaped_pipe_in_verbatim_cell_does_not_shift_columns(tmp_path):
+    # Reproduces the wrom.md §5 corruption: a §5 ImplementationDetailVerbatim cell
+    # legitimately quotes an interface-table row whose '|' separators are markdown-
+    # escaped as '\|'. The parser must split on UNescaped '|' only (and unescape the
+    # cell), else the verbatim cell over-splits and every column after it shifts right.
+    child = (
+        "# core\n\n## §5 Verification Hints (9 columns required)\n\n"
+        "| CheckID | SourceFeature | ImplementationDetail | ImplementationDetailVerbatim | BrainstormAnchor | Observable | ReferenceRule | Latency | ResetBehavior |\n"
+        "|---|---|---|---|---|---|---|---|---|\n"
+        "| CHK-P | F-00 | bank sel | `sel \\| in \\| 3 \\| bank select` | L99 | obs_sig | sel rule | comb | none |\n"
+    )
+    (tmp_path / "design.md").write_text(DESIGN_MD)
+    (tmp_path / "core.md").write_text(child)
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"module": "m", "children": [{"name": "core", "doc": "core.md"}]})
+    )
+    h = next(x for x in _plan_data(tmp_path)["check_hints"] if x["check_id"] == "CHK-P")
+    assert h["implementation_detail"] == "bank sel"
+    assert h["implementation_detail_verbatim"] == "`sel | in | 3 | bank select`"
+    assert h["observable"] == "obs_sig"
+    assert h["reference_rule"] == "sel rule"
+    assert h["latency"] == "comb"
+    assert h["reset_behavior"] == "none"
+
+
 def test_idempotent_no_authored_state(tmp_path):
     wd = _workdir(tmp_path)
     first = _plan_data(wd)

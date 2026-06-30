@@ -9,6 +9,20 @@ keep their own copies (skills stay decoupled; design §1 non-goals).
 
 import re
 
+_PIPE = re.compile(r"(?<!\\)\|")
+
+
+def _split_row(line: str) -> list[str]:
+    """Split a Markdown table row on UNescaped '|' (a literal pipe in a cell is
+    written '\\|'); unescape '\\|' -> '|' and trim each cell. Without honoring the
+    escape, a cell quoting a pipe over-splits and every column after it shifts right."""
+    parts = _PIPE.split(line.strip())
+    if parts and parts[0] == "":
+        parts = parts[1:]
+    if parts and parts[-1] == "":
+        parts = parts[:-1]
+    return [p.replace("\\|", "|").strip() for p in parts]
+
 
 def extract_section(text: str, heading_regex: str) -> str:
     """Return markdown content from matching heading until next same-or-shallower heading."""
@@ -40,7 +54,7 @@ def parse_markdown_table(section_text: str) -> list[dict]:
             if header is not None:
                 break
             continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
+        cells = _split_row(line)
         if header is None:
             header = cells
             continue

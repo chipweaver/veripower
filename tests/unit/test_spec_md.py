@@ -29,6 +29,14 @@ def test_parse_markdown_table_skips_divider_row():
     assert rows == [{"Clock Name": "clk", "SDC Period (ns)": "2.0"}]
 
 
+def test_parse_markdown_table_honors_escaped_pipe():
+    # A literal '|' inside a cell is markdown-escaped as '\|' and MUST NOT split the
+    # column; the parser must unescape it back to '|'. Without this, the escaped cell
+    # is over-split and every downstream column shifts right.
+    table = "| A | B | C |\n|---|---|---|\n| x | a \\| b \\| c | y |\n"
+    assert parse_markdown_table(table) == [{"A": "x", "B": "a | b | c", "C": "y"}]
+
+
 def test_cli_help_lists_all_five_verbs():
     r = subprocess.run(["python3", str(MAIN), "--help"], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
