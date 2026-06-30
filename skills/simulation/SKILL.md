@@ -74,7 +74,7 @@ finalize. The env / verify phase split of the workdir artifacts is in
 | `result.json` | `references/result.schema.json` + envelope | main thread | This stage's status contract (`failure_phase` / `coverage_gaps`, etc.). |
 | `Makefile` / `env.sh` / `filelist.f` / `rtl_filelist.f` / `tb/uvm/` / `scripts/` / `tests/testlist.json` | per `artifact-contract.md` | env-build | TB infra + materialized UVM (bound by Rule A). |
 | `regression-log.txt` / `structural-coverage.json` / `coverage-summary.txt` / `case-results-summary.md` | per `artifact-contract.md` | verify | Regression log + machine-readable structural coverage (gate source for `sim finalize`) + summaries. |
-| `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest handed to the verify phase (intra-stage handoff; not promoted). |
+| `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest handed to the verify phase (promoted; copied verbatim by the TB-freeze branch for deterministic reuse). |
 | `conformance-review.json` | per `references/conformance-review.schema.json` | conformance gate (main thread) | Per-testpoint check-adequacy findings (gate source for Step 4); promoted advisory artifact. |
 
 > Every promoted path MUST appear in `result.json.artifacts[]`, otherwise it will not be promoted to

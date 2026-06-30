@@ -23,7 +23,7 @@ from pathlib import Path
 TB_VALID_FAIL_PHASES = {"regress", "coverage"}
 
 
-def plan_digest(scaffold, plan) -> str:
+def plan_digest(scaffold: str | Path, plan: str | Path) -> str:
     h = hashlib.sha256()
     h.update(Path(scaffold).read_bytes())
     h.update(b"\0")  # separator: close the two-file byte-split boundary ambiguity
