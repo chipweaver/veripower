@@ -13,7 +13,7 @@ scoreboard check is authored from the testpoint's `implementation_detail` formul
 the DUT RTL. A golden model reverse-engineered from the DUT mirrors the implementation (bugs
 included) and can never disagree. If a hint's `implementation_detail` is insufficient to author the
 check without consulting the RTL, that is an upstream plan gap -> emit the boundary-case
-`STATUS: BLOCKED scaffold-specification.json testpoints[].inlined_check_hints[] incomplete: <TP-ID>`,
+`STATUS: BLOCKED scaffold-specification.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`,
 not a license to read the RTL.
 
 - For each testpoint with a **non-empty** `testpoint.inlined_check_hints[]`, the refmodel /

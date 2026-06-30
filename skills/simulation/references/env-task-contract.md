@@ -109,15 +109,16 @@ smoke gate still decides smoke pass/fail.
 - **No Level-2 dispatch:** do not call the Task tool.
 - **No `state.py`:** do not call `state.py` — the parent session owns state transitions.
 - Stay inside `{workdir}`: all writes confined to `{workdir}` (reading the upstream plan + any prior
-  canonical TB as read-only reference is allowed). Do not modify the plan or RTL — RTL-class issues
-  belong to the RTL editing stage; do not exceed your authority.
+  canonical TB as read-only reference is allowed). Do not modify the plan, and do not read or modify
+  the RTL source (see the no-RTL-source-read prohibition below; RTL enters only mechanically via the
+  compile filelist) — RTL-class issues belong to the RTL editing stage; do not exceed your authority.
 - **No RTL-source reads for authoring.** The behavioral reference for every refmodel / scoreboard /
   checker is the sim-plan exit docs (`scaffold-specification.json` `inlined_check_hints[]` +
   `verification-plan.md` §3) -- the DUT RTL is NOT in this child's input set and MUST NOT be opened to
   understand a signal or derive an expected value. RTL participates only mechanically, through the
   compile filelist. A golden model reverse-engineered from the DUT mirrors the implementation (bugs
   included) and can never disagree -- circular verification. Reading RTL to author a check is a Rule A
-  semantic violation -> `STATUS: BLOCKED <compile|smoke> rtl-source-read: <locus>`, do not retry.
+  semantic violation → `STATUS: BLOCKED <compile|smoke> rtl-source-read: <locus>`, do not retry.
 
 ## Pitfalls
 
