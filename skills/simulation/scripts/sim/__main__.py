@@ -79,6 +79,7 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         verify_verdict=a.verify_verdict,
         fail_reason=a.fail_reason,
         observed_phase=a.failure_phase,
+        plan=a.plan,
     )
 
 
@@ -185,6 +186,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "--fail-reason", default=None, help="one-line reason for an early-exit phase"
+    )
+    sp.add_argument(
+        "--plan",
+        type=Path,
+        default=None,
+        help="verification-plan.md (with --scaffold => writes plan_digest)",
     )
     sp.set_defaults(func=_cmd_finalize)
 
