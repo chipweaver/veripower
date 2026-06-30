@@ -123,8 +123,7 @@ the classifier `reason` in the completion summary every run.
 
 **TRIGGER-AGNOSTIC:** `{rework_trigger}` does **not** force a branch — the verdict is decided
 solely by whether the plan + scaffold match the canonical baseline. A freeze verdict stands even
-when `{rework_trigger}` is injected. On the `rebuild` branch only (not the freeze branch — the freeze branch does not consult the trigger; its branch selection is trigger-agnostic — see Step 1), the trigger (+ any
-`{orchestrator_context_path}`) is still passed to the env-build child to narrow the rewrite scope.
+when `{rework_trigger}` is injected. On the `rebuild` branch only, the trigger (+ any `{orchestrator_context_path}`) is still passed to the env-build child to narrow the rewrite scope.
 
 Pre-gate `{rework_trigger}` readability before dispatching any wave: if the trigger path is
 unreadable, run `sim finalize --workdir {workdir} --module <module> --phase prerequisite
