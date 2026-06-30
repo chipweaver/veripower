@@ -33,7 +33,7 @@ share it).
 | `tests/testlist.json` | same | Testcase list (the verify phase may **append** stimulus-iterate entries). |
 | `regression-log.txt` | same | `make smoke` writes the smoke-suite `RESULT` lines (the verify phase **appends** the full-regress `RESULT` lines). |
 | `logs/<test>.status` | same | Per-test `PASS`/`FAIL` status file written by each smoke `simv` run (the smoke gate reads these). |
-| `verify-handoff.json` | same | Per-testpoint check-intent digest handed to the verify phase (schema in `env-task-contract.md`). |
+| `verify-handoff.json` | same | Per-testpoint check-intent digest handed to the verify phase (schema in `env-task-contract.md`). Promoted artifact; the TB-freeze branch copies it verbatim for deterministic reuse. |
 
 ### conformance gate phase (wave 2, Step 4 — `conformance-review-task-contract.md`; main-thread aggregated)
 
@@ -101,8 +101,19 @@ share it).
 > `artifacts[]` per the envelope schema is an array of objects (`{path, kind}`), not a bare string
 > array. Every path above MUST appear in `result.json.artifacts[]`, otherwise it is not promoted to
 > canonical (external read-only consumption of canonical `filelist.f` / `tb/uvm/`, etc. would fail).
-> `verify-handoff.json` is an intra-stage handoff, not a promoted deliverable — the orchestrator does
-> not list it in `artifacts[]`.
+> `verify-handoff.json` IS promoted (it is in `sim finalize`'s `enumerate_artifacts` candidates): the
+> TB-freeze branch is a same-stage cross-run consumer that copies the frozen handoff for deterministic
+> reuse.
+
+## TB-freeze branch reuse (Wave 1 = freeze-rebuild)
+
+On `verdict=freeze` (the Step-1 classify-delta verb; see `freeze-task-contract.md`) the env-phase TB
+artifacts are NOT re-authored -- the `freeze` verb copies them verbatim from the prior canonical run,
+except `rtl_filelist.f` (regenerated against the current RTL). `conformance-review.json` (carried
+forward; the conformance gate is skipped, SKILL.md Step 4) and `verify-handoff.json` (the frozen
+bin->seq map, reused as-is) are both copied -- both are promoted, so both sit in canonical. Per-run
+outputs (`regression-log.txt` / `logs/` / `structural-coverage.json` / `coverage-summary.txt` /
+`case-results-summary.md`) are NOT copied. `plan_digest` is written by `sim finalize` (Task 2).
 
 ## Forbidden outputs
 

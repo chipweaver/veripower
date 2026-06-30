@@ -5,6 +5,14 @@ conformance reviewer — as Wave 2 (Step 4) AFTER the deterministic smoke gate p
 and BEFORE the verify wave. This review is **gating**: findings above the threshold in
 `SKILL.md` Step 4 set the stage `status=fail` (`failure_phase=conformance`). Do not call the Task tool (no Level-2 dispatch) and do not call `state.py`.
 
+**Not dispatched on a TB-freeze re-run.** When the Step-1 classify-delta verb returns `verdict=freeze`
+(the TB is copied byte-identical and the plan is unchanged), the main thread does NOT dispatch this
+reviewer -- it carries the prior (already-promoted) `conformance-review.json` forward and `sim finalize`
+re-lists it in `artifacts[]`. This review judges checks-vs-intent (explicitly NOT RTL correctness), so
+an unchanged TB + unchanged plan cannot change the verdict for that dimension. (A baseline whose review
+was 'unavailable' is excluded from freeze by the classifier -- P1-A -- so the carried review is always
+a real one.) See SKILL.md Step 4.
+
 Mechanism = a hybrid of rtl-design's deterministic conformance gate and its advisory
 semantic review: an LLM intent reviewer whose output is used as a gate.
 
