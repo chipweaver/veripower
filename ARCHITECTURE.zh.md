@@ -116,7 +116,7 @@ Orchestrator 的三条派发路径：
 - **specification** — 消费已冻结、已批准的 `brainstorm.md`；内含一个扇出派发器（分解 + 围绕分区门的按 child 的 sub-Task 波次），外加 `spec` CLI 的三个主线程门控动词：`derive-ports`（门前，为分区门提供摘要；不读正文）、`check-coverage`（门前，其裁决喂给 design.md 批准门）、`derive-constraints`（门后，从已批准的 §1.6 + §1.4.1 表推导完整 SDC/SGDC）。不是因为头脑风暴对话才走主线程——那个对话已前移到流水线外的 `brainstorm` skill。
 - **simulation-plan** — 与用户的多轮计划审查对话；它还自派发一次一级 plan-adequacy 审查 sub-Task（Step 4 / §6.3.1）。
 - **rtl-design** — 只扇出，无对话：每个 child 派一个一级子 Task（`N = len(manifest.children[])`，含顶层集成 child；不存在 N==1 豁免），末尾再加一个 finalize 子 Task。
-- **simulation** — 只扇出，无对话：Wave 1 派发 env-build child（首次 run / rebuild 路径）或 freeze-rebuild child（freeze 路径）；非 freeze run 再运行 smoke gate、LLM conformance review-gate（Step 4）和 verify child（Wave 2）。在增量重跑中，若计划不变且基线 TB 有效，simulation 可**冻结（freeze）**先前 run 的 TB——将其复制进新的 `runs/<N>/`（run 隔离 §7.2 保持：仍只写 `runs/<N>/`），并针对变更后的 RTL 重新编译，而非重新创作。分支由 `sim classify-delta` 动词确定性选择；freeze 物化由 `sim freeze` 动词执行。**非 freeze run 时，**形态最接近 `specification` 的"两波夹一门"；派发类别与 `rtl-design` 一致。
+- **simulation** — 只扇出，无对话：Wave 1 派发 env-build child（首次 run / patch 路径）或 freeze child（freeze 路径）；非 freeze run 再运行 smoke gate、LLM conformance review-gate（Step 4）和 verify child（Wave 2）。env-build child 有两条子分支：`first-run`（从零 bootstrap）和 `patch`（以 `sim copy-baseline --mode patch` 播种后再进行定点 delta 编辑）。在增量重跑中，若计划不变且基线 TB 有效，simulation 可**冻结（freeze）**先前 run 的 TB——将其复制进新的 `runs/<N>/`（run 隔离 §7.2 保持：仍只写 `runs/<N>/`），并针对变更后的 RTL 重新编译，而非重新创作。分支由 `sim classify-delta` 动词确定性选择；freeze 物化由 `sim copy-baseline --mode freeze` 动词执行。**非 freeze run 时，**形态最接近 `specification` 的"两波夹一门"；派发类别与 `rtl-design` 一致。
 
 对这四个阶段，Orchestrator 照样调 `state.py dispatch/reap/log`，照样读规范的 `result.json` 做失败路由（§5.4；reap 不读任何文件，见 §5.1）；差别仅在于它的工具历史里没有阶段级的 `Task()` 调用。
 
@@ -129,7 +129,7 @@ Orchestrator 的三条派发路径：
 | **角色** | **载体** | **职责** | **能力边界** |
 |---|---|---|---|
 | **Orchestrator Agent** | `design-flow` skill，主会话 | 前向派发、返工路由（执行 `route.py` 选出的目标）、收敛判断、升级、用户协作；同时作为 `specification` / `simulation-plan` / `rtl-design` / `simulation` 四个阶段的主线程执行器 | 系统中唯一有权调用 `state.py`、使用 Task 工具、与用户交互的角色 |
-| **主线程 skill** | `veripower:specification`、`veripower:simulation-plan`、`veripower:rtl-design` 或 `veripower:simulation`，由 Orchestrator 通过 `Skill()` 加载 | 在 Orchestrator 线程中自驱动工作：`specification` 跑两波 sub-Task（分解 + 按 child）加主线程脚本和两次路径交接门（D0–D7 对话已前移到流水线外的 `brainstorm` skill）；`simulation-plan` 跑多轮计划审查对话并自派发一次一级 plan-adequacy 审查 sub-Task；`rtl-design` 无对话但持有一级扇出派发权（§2.2）；`simulation` 同样无对话且持有一级扇出派发权——Wave 1 派发 env-build child（首次 run / rebuild）或 freeze-rebuild child（freeze）；非 freeze run 再运行 smoke gate、LLM conformance review-gate（Step 4）和 verify child（§2.2）。各自写入自己的产物和 `result.json`。 | `simulation-plan` 可跨轮次与用户交互；`specification` 额外在两次路径交接门处交互；`specification` / `rtl-design` / `simulation`（及 `simulation-plan`，限单次审查 sub-Task）可派发一级 sub-Task（§6.3.1）。其余边界与阶段子 Agent 相同（禁 `state.py`、禁路由）。契约靠 SKILL.md 中的条文纪律约束，不靠工具门控。 |
+| **主线程 skill** | `veripower:specification`、`veripower:simulation-plan`、`veripower:rtl-design` 或 `veripower:simulation`，由 Orchestrator 通过 `Skill()` 加载 | 在 Orchestrator 线程中自驱动工作：`specification` 跑两波 sub-Task（分解 + 按 child）加主线程脚本和两次路径交接门（D0–D7 对话已前移到流水线外的 `brainstorm` skill）；`simulation-plan` 跑多轮计划审查对话并自派发一次一级 plan-adequacy 审查 sub-Task；`rtl-design` 无对话但持有一级扇出派发权（§2.2）；`simulation` 同样无对话且持有一级扇出派发权——Wave 1 派发 env-build child（首次 run / patch）或 freeze child（freeze）；非 freeze run 再运行 smoke gate、LLM conformance review-gate（Step 4）和 verify child（§2.2）。各自写入自己的产物和 `result.json`。 | `simulation-plan` 可跨轮次与用户交互；`specification` 额外在两次路径交接门处交互；`specification` / `rtl-design` / `simulation`（及 `simulation-plan`，限单次审查 sub-Task）可派发一级 sub-Task（§6.3.1）。其余边界与阶段子 Agent 相同（禁 `state.py`、禁路由）。契约靠 SKILL.md 中的条文纪律约束，不靠工具门控。 |
 | **阶段子 Agent** | 五个以 Task 方式派发的阶段 skills（`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis` / `frontend-signoff`），通过 Task 工具派发 | 执行单个阶段：读上游 → 做工作 → 写 `result.json` → 返回 STATUS 行 | 不准调 `state.py`，不准做路由决策（完整 5 条清单见 §6.1） |
 | **调试子 Agent** | `simulation-triage` skill，通过 Task 工具派发 | 对仿真失败做只读根因分析；返回两层 ANALYSIS（路由 JSON 块——`root_cause`/`analysis_state`——加散文分析） | 不修改任何状态——绝不碰 `task.json`、`result.json`、RTL 或测试代码 |
 | **`state.py`** | Python CLI | 状态转换、前置校验、cascade-stale 传播、事件日志追加、上下文收集；尽力而为的异步子 Agent 转录镜像（`cmd_reap` 时的遥测副作用，见 §6.6） | 不含路由逻辑，不做判断 |
@@ -194,10 +194,10 @@ VeriPower 前端流水线共 9 个固定阶段，由 DAG 前置关系连接；�
 | **阶段组** | **所含阶段** | **主线程 vs Task** | **并发上限** |
 |---|---|---|---|
 | 1（串行） | specification → simulation-plan → rtl-design | 三者均走主线程；`rtl-design` 始终通过 `Task()` 派发 `N = len(manifest.children[])` 个一级子 Task（每个 child 一个，含顶层集成 child），末尾一个 finalize 子 Task | distinct in-flight ≤ 1 |
-| 2（双链并行） | `{lint-cdc → synthesis → timing-analysis}` ‖ `{simulation}` | 链 1 为 Task 子 Agent；`simulation` 是主线程 sub-orchestrator，自行派发阶段内子 Task（Wave 1：env-build child 或 freeze-rebuild child；非 freeze：smoke gate → conformance gate → verify child） | distinct in-flight ≤ 2 |
+| 2（双链并行） | `{lint-cdc → synthesis → timing-analysis}` ‖ `{simulation}` | 链 1 为 Task 子 Agent；`simulation` 是主线程 sub-orchestrator，自行派发阶段内子 Task（Wave 1：env-build child 或 freeze child；非 freeze：smoke gate → conformance gate → verify child） | distinct in-flight ≤ 2 |
 | 3（汇合） | power-analysis → frontend-signoff | 全为 Task 子 Agent | 1 |
 
-**扇出子 Task 是阶段内行为，对 state.py 不可见。** `specification`、`rtl-design` 或 `simulation` 派发一级子 Task 时（生产者的 per-child 工作；simulation 的 env-build child 或 freeze-rebuild child，以及非 freeze run 时的 verify child），这些子 Task 在主线程 skill 自身的执行窗口内运行；不写 `task.json`，不追加事件，不出现在 `state.py` 的 in-flight 记账里。因此它们**不计入** `distinct in-flight ≤ 2` 这个 DAG 拓扑属性——该属性仅适用于 `state.py` 跟踪的阶段级派发。派发权限例外详见 §6.3。
+**扇出子 Task 是阶段内行为，对 state.py 不可见。** `specification`、`rtl-design` 或 `simulation` 派发一级子 Task 时（生产者的 per-child 工作；simulation 的 env-build child 或 freeze child，以及非 freeze run 时的 verify child），这些子 Task 在主线程 skill 自身的执行窗口内运行；不写 `task.json`，不追加事件，不出现在 `state.py` 的 in-flight 记账里。因此它们**不计入** `distinct in-flight ≤ 2` 这个 DAG 拓扑属性——该属性仅适用于 `state.py` 跟踪的阶段级派发。派发权限例外详见 §6.3。
 
 **`distinct in-flight ≤ 2` 是拓扑性质，不是拍脑袋定的策略。** 阶段组 2 含两条链（`{lint-cdc → synthesis → timing-analysis}` 和 `{simulation}`）；每条链内部串行。最坏情况：`{lint-cdc, synthesis, timing-analysis}` 中任意一个在链 1 上 in-flight，同时 `simulation` 在链 2 上 in-flight——distinct *stages* = 2。`simulation` 在链 2 上只占一个阶段槽位，不论它内部有多少子 Task 在飞（那些对 state.py 透明，见上段），所以把它提升为 main-thread sub-orchestrator 不改变这个上限。阶段组 3 是单条串行链：power-analysis 要求 timing-analysis 和 simulation 都完成才 eligible；frontend-signoff 等 power-analysis 通过；distinct = 1。同阶段多 run 共享一个 distinct-stage 槽位（实践中只有 `simulation` 会出现）；物理 Task 数可能短暂超过 2，但 distinct-stage 数守 ≤ 2。
 
@@ -473,7 +473,7 @@ VeriPower 产出两类结构化输出，各走各的验证通道：
 
 **LLM 评审门契约**（四道创作类门：specification、simulation-plan、rtl-design 的语义门、simulation 的 conformance 门）。每道门产出一份 `*-review.json`，信封固定：`schema_version` / `stage` / `module` / 受评主体数组 / `verdict ∈ {ok, concerns}` / `has_critical` / `findings[]`，且 `findings[].severity ∈ {critical, important, minor}`。每条 finding 带一个维度分类器，划分为**一个或多个门控（gating）**维度与一个**咨询 must-acknowledge** 维度，外加 `unavailable` 哨兵；各阶段的门控/咨询维度 enum 以四份 `*-review.schema.json` 为准（其 SSoT）。整份评审无法运行时，阶段产出单条 `unavailable` finding（`gate=clear`），作 must-acknowledge 呈现，绝不静默放行。`validate_*_review.py` 脚本独占 `维度 × severity` 到 `gate ∈ {trip, clear}` 的归约，且绝不把 `gate=trip` 改判为 pass；specification、simulation-plan、rtl-design 把门裁决对象记入 `result.json` `stage_specific`（`spec_gate` / `plan_adequacy_gate` / `semantic_gate`），simulation 则记 `failure_phase` + 门控 findings。`*-review.json` promote 到 canonical。
 
-**（TB-freeze conformance 门跳过。）** 在 TB-freeze 重跑中，若 TB 逐字节一致且计划不变，simulation 的 conformance 门**跳过——沿用先前已 promote 的裁决**——因为未变更的检查 vs 意图判断不可能翻转。见 `skills/simulation/SKILL.md` Step 4。
+**（TB-freeze conformance 门跳过。）** 在 TB-freeze 重跑中，若 TB 逐字节一致且计划不变，simulation 的 conformance 门**跳过——沿用先前已 promote 的裁决**——因为未变更的检查 vs 意图判断不可能翻转。见 `skills/simulation/SKILL.md` Step 4。非 freeze run 走 copy-first `patch`（见 `docs/superpowers/specs/2026-07-02-sim-tb-incremental-patch-design.md`）。
 
 **两条轴决定一道门的门控强度与闭环方式。**
 
@@ -535,7 +535,7 @@ Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|si
 
 #### 6.3.1 扇出派发权限
 
-扇出型主线程 skill（`specification`、`rtl-design`、`simulation`——以及 `simulation-plan`，限单次审查 sub-Task）可通过 `Task(run_in_background=True)` 派发一级子 Task——生产者对每个 child 扇出一个子 Task，`simulation` 派发其 env-build child 或 freeze-rebuild child，以及非 freeze run 时的 verify child。子 Task 不准再派发 Task（禁止二级——审计边界，§2.2）。`simulation-plan` 自派发一次一级 plan-adequacy 审查 sub-Task（Step 4）——不是按 child 扇出；该 sub-Task 不准再派发（禁止二级）。其先前消费者脚本类“不准调 Task 工具”的铁律，已被这项 scoped 审查派发权取代。
+扇出型主线程 skill（`specification`、`rtl-design`、`simulation`——以及 `simulation-plan`，限单次审查 sub-Task）可通过 `Task(run_in_background=True)` 派发一级子 Task——生产者对每个 child 扇出一个子 Task，`simulation` 派发其 env-build child 或 freeze child，以及非 freeze run 时的 verify child。子 Task 不准再派发 Task（禁止二级——审计边界，§2.2）。`simulation-plan` 自派发一次一级 plan-adequacy 审查 sub-Task（Step 4）——不是按 child 扇出；该 sub-Task 不准再派发（禁止二级）。其先前消费者脚本类“不准调 Task 工具”的铁律，已被这项 scoped 审查派发权取代。
 
 **子 Task `STATUS: BLOCKED` 例外**：被派发的子 Task 可以以最后一行 `STATUS: BLOCKED <reason>` 结束，这是**框架级信号**，**不同于信封的 `result.json.status=blocked`**（信封 schema 枚举里没有这个值）。派发方主线程 skill 收到 BLOCKED 后，写 `result.json` `status=fail` + `fail_reason` 列出失败的 child；后续返工循环可通过触发驱动的接收侧分析协议只重派发失败的 child。
 
@@ -581,7 +581,7 @@ Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|si
 
 #### 6.6.2 扇出子 Task 追踪（非 DAG 阶段）
 
-由 `specification` / `rtl-design` / `simulation` 为阶段内工作派发的子 Task（生产者对每个 child 扇出一个子 Task；`simulation` 派发 env-build child 或 freeze-rebuild child，以及非 freeze run 时的 verify child）是异步 Task 子 Agent，在框架 `/tmp` 区域产生各自的 per-agent 转录。但这些转录是阶段内工人——不对应 DAG 阶段，所以落在阶段级追踪接口之外，不会被抽取为 per-stage 事实。
+由 `specification` / `rtl-design` / `simulation` 为阶段内工作派发的子 Task（生产者对每个 child 扇出一个子 Task；`simulation` 派发 env-build child 或 freeze child，以及非 freeze run 时的 verify child）是异步 Task 子 Agent，在框架 `/tmp` 区域产生各自的 per-agent 转录。但这些转录是阶段内工人——不对应 DAG 阶段，所以落在阶段级追踪接口之外，不会被抽取为 per-stage 事实。
 
 如果将来需要 per-sub-Task 可见性，需要一套超出阶段级方案的扩展命名约定（例如 `<workdir>/.subagent_traces/<parent_stage>-fanout-<child>-<agent_id>.output`）。子 Task 分析仍属未来工作。
 
