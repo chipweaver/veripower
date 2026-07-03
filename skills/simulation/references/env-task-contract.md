@@ -24,8 +24,19 @@ the UVM scaffold, compile, and run the smoke suite.
   If `{orchestrator_context_path}` is also injected, read that sibling fix-scope hint first; it takes
   priority over the trigger content. On the **first-run** branch (the workdir is freshly bootstrapped
   with no prior canonical TB), the only reference is the plan.
+- (patch branch only) `{canonical}` — the canonical `Verification/simulation/` directory from the
+  prior promoted run; read-only copy source for `copy-baseline --mode patch` (step 0 below).
+  The `first-run` branch never receives this path.
 
 ## Work
+
+0. **(patch branch only) Seed from the prior TB**: run
+   `python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py copy-baseline --module {module} --workdir {workdir} --canonical {canonical} --mode patch`,
+   then bring the seeded TB into agreement with the current plan
+   (`verification-plan.md` + `scaffold-specification.json`, paths in Inputs), changing only what
+   the plan requires. Checks / RM / scoreboard already matching the current plan are left
+   byte-identical to the seeded baseline. (`first-run` skips this step and starts from
+   `bootstrap` per step 1.)
 
 1. **Bootstrap + scaffold**:
 
@@ -37,8 +48,9 @@ the UVM scaffold, compile, and run the smoke suite.
    subsequent `make` targets run with `cd {workdir}`.
 2. **Fill scaffold TODOs** (bound by **Rule A**, see `repair-boundaries.md`): inside `{workdir}`, fill
    in every `TODO(` across driver / monitor / checker / RM / functional seq / top. References are
-   selected per the branch handed in above; any prior canonical TB is read-only reference — never
-   copied — and all writes happen only in `{workdir}`.
+   selected per the branch handed in above; any prior canonical TB is read-only reference — only
+   the patch branch copies it via `copy-baseline` (step 0 above); the first-run branch never copies
+   it — and all writes happen only in `{workdir}`.
    **Trust the rendered tree (U4):** the bootstrap verb (with `--scaffold`) renders an atomic, complete, self-describing
    stub tree. Learn structure and fill-conventions from the **rendered stubs and their TODO/header
    comments** (e.g. each stub's `// TODO(...)` states its config_db key, sequencer type, and intent),
@@ -103,6 +115,10 @@ smoke gate still decides smoke pass/fail.
   - "Let me open the DUT RTL to see what this signal does so my refmodel matches it" -- authoring the
     golden model from the implementation is circular verification; derive it from the spec/plan
     formula, not the RTL.
+  - "Rewrite from scratch a check / RM that the plan change did not modify" — the seeded baseline is
+    byte-identical for testpoints the plan delta did not touch; gratuitously re-authoring a
+    still-plan-matching check breaks the RTL-variable-isolation the copy-first seed exists to
+    preserve (Rule A semantic violation).
 
 ## Prohibitions
 

@@ -106,15 +106,19 @@ share it).
 > TB-freeze branch is a same-stage cross-run consumer that copies the frozen handoff for deterministic
 > reuse.
 
-## TB-freeze branch reuse (Wave 1 = freeze-rebuild)
+## TB-freeze branch reuse (Wave 1 = freeze)
 
 On `verdict=freeze` (the Step-1 classify-delta verb; see `freeze-task-contract.md`) the env-phase TB
-artifacts are NOT re-authored -- the `freeze` verb copies them verbatim from the prior canonical run,
+artifacts are NOT re-authored -- the `copy-baseline --mode freeze` verb copies them verbatim from the prior canonical run,
 except `rtl_filelist.f` (regenerated against the current RTL). `conformance-review.json` (carried
 forward; the conformance gate is skipped, SKILL.md Step 4) and `verify-handoff.json` (the frozen
 bin->seq map, reused as-is) are both copied -- both are promoted, so both sit in canonical. Per-run
 outputs (`regression-log.txt` / `logs/` / `structural-coverage.json` / `coverage-summary.txt` /
-`case-results-summary.md`) are NOT copied. `plan_digest` is written by `sim finalize` (Task 2).
+`case-results-summary.md`) are NOT copied. `plan_digest` is written by `sim finalize`.
+
+On `verdict=patch`, `copy-baseline --mode patch` copies only the TB code whitelist from canonical
+into `{workdir}` to seed the env-build child; it does NOT carry `conformance-review.json` or
+`verify-handoff.json` — those are regenerated this run by the authoring + full conformance review.
 
 ## Forbidden outputs
 
