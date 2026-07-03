@@ -130,11 +130,20 @@ def test_resolve_evidence_power_glob_zero(tmp_path):
     assert any("power_hier.rpt" in f and "unreachable" in f for f in failures)
 
 
-def test_resolve_evidence_power_glob_conflict(tmp_path):
+def test_resolve_evidence_power_glob_multi_scenario(tmp_path):
+    # Multiple power_hier.rpt matches are valid multi-scenario runs, not a conflict:
+    # each scenario dir is recorded as its own on_disk evidence, no failure.
     asic_root = _passing_tree(tmp_path)
     _evidence_tree(asic_root, power_dirs=("run0", "run1"))
-    _, failures = ag.resolve_evidence(asic_root)
-    assert any("power_hier.rpt" in f and "conflict" in f for f in failures)
+    records, failures = ag.resolve_evidence(asic_root)
+    assert not any("power_hier.rpt" in f for f in failures)
+    pwr = [r for r in records if "power_hier.rpt" in r["path"]]
+    assert len(pwr) == 2
+    assert all(r["on_disk"] is True for r in pwr)
+    assert {r["path"] for r in pwr} == {
+        "Verification/power-analysis/reports_ptpx/run0/power_hier.rpt",
+        "Verification/power-analysis/reports_ptpx/run1/power_hier.rpt",
+    }
 
 
 def _spec_inputs(asic_root: Path, *, children=("c0",)) -> None:
