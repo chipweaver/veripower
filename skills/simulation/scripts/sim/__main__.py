@@ -8,7 +8,7 @@ Verbs (one stage = one tool; see skills/simulation/SKILL.md for usage):
   validate-review       conformance-review.json schema + gate                 (stdout gate JSON; exit 0/1)
   finalize              assemble the lean result.json at the exit phase        (exit 0 written / 2 BLOCKED)
   classify-delta        select the Wave-1 branch (first-run|freeze|patch)    (stdout verdict; exit 0)
-  freeze                materialize a frozen TB (copy + rtl_filelist regen)   (exit 0 / 1)
+  copy-baseline         seed workdir from prior canonical TB (freeze|patch mode)  (exit 0 / 1)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the sim.*
 library. Library imports are deferred into each handler (NOT top-level) so --help
@@ -61,10 +61,10 @@ def _cmd_classify_delta(a: argparse.Namespace) -> int:
     return classify.run(a.canonical_result, a.scaffold, a.plan)
 
 
-def _cmd_freeze(a: argparse.Namespace) -> int:
+def _cmd_copy_baseline(a: argparse.Namespace) -> int:
     from sim import freeze
 
-    return freeze.run(a.module, a.workdir, a.canonical)
+    return freeze.run(a.module, a.workdir, a.canonical, mode=a.mode)
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
@@ -145,8 +145,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=_cmd_classify_delta)
 
     sp = sub.add_parser(
-        "freeze",
-        help="materialize a frozen TB (copy prior canonical TB + regen rtl_filelist)",
+        "copy-baseline",
+        help="seed a fresh workdir from the prior canonical TB (freeze: +judged artifacts; patch: TB code only)",
     )
     sp.add_argument("--module", required=True)
     sp.add_argument("--workdir", required=True, type=Path)
@@ -156,7 +156,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="canonical Verification/simulation dir",
     )
-    sp.set_defaults(func=_cmd_freeze)
+    sp.add_argument("--mode", choices=["freeze", "patch"], default="freeze")
+    sp.set_defaults(func=_cmd_copy_baseline)
 
     sp = sub.add_parser(
         "finalize", help="assemble the lean result.json at the exit phase"

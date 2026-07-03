@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
-"""sim freeze — materialize a frozen TB into a fresh run workdir.
+"""sim copy-baseline — seed a fresh run workdir from the prior canonical TB.
 
-The deterministic counterpart of `sim bootstrap` for the TB-freeze branch: copy the prior
-canonical TB verbatim (incl. the promoted conformance-review.json + verify-handoff.json), then
-regenerate only rtl_filelist.f against the current RTL. No scaffold render, no LLM fill -- that
-verbatim reuse keeps the checks AND the bin->seq handoff byte-identical across an RTL-only re-run, so
-an old-vs-new-RTL comparison varies only the DUT. CWD-anchored design tree (matching bootstrap / state.py).
+Serves two modes (selected by the --mode argument to the copy-baseline verb):
+
+  freeze mode (default): copy the prior canonical TB verbatim, including the promoted
+    conformance-review.json + verify-handoff.json, then regenerate rtl_filelist.f against the
+    current RTL. No scaffold render, no LLM fill -- that verbatim reuse keeps the checks AND the
+    bin->seq handoff byte-identical across an RTL-only re-run, so an old-vs-new-RTL comparison
+    varies only the DUT. Requires the judged artifacts to be present (P1-A carry-forward assertion).
+
+  patch mode: copy only the TB code (Makefile, env.sh, filelist.f, tb/uvm) and regenerate
+    rtl_filelist.f. Does NOT copy or require the judged artifacts (conformance-review.json /
+    verify-handoff.json): a smoke/compile-failed baseline has none, and the patch child
+    re-authors them anyway via a full conformance re-run.
+
+Both modes use CWD-anchored design tree (matching bootstrap / state.py).
 
 Exit codes: 0 materialized; 1 fail-closed guard (workdir already populated / missing canonical TB /
-missing RTL filelist / missing a required carry-forward (conformance-review.json / verify-handoff.json)).
+missing RTL filelist / missing a required carry-forward).
 """
 
 from __future__ import annotations
@@ -21,34 +30,40 @@ from pathlib import Path
 from sim._filelist import rewrite_rtl_filelist
 
 # dirs + files copied verbatim from canonical. NOT per-run outputs, NOT result.json, NOT runs/.
-# conformance-review.json + verify-handoff.json ARE copied (both promoted): the verify wave reuses
-# the frozen bin->seq handoff (deterministic; no LLM re-derivation) and the prior conformance verdict.
 _COPY_DIRS = ("tb", "scripts", "tests")
-_COPY_FILES = (
-    "Makefile",
-    "env.sh",
-    "filelist.f",
-    "conformance-review.json",
-    "verify-handoff.json",
-)
+# freeze mode carries the judged artifacts (verbatim reuse, conformance skipped downstream);
+# patch mode copies TB code only -- the patch child re-authors and full conformance re-runs.
+_COPY_FILES = {
+    "freeze": (
+        "Makefile",
+        "env.sh",
+        "filelist.f",
+        "conformance-review.json",
+        "verify-handoff.json",
+    ),
+    "patch": ("Makefile", "env.sh", "filelist.f"),
+}
 # must exist post-copy (carry-forward review + handoff asserted, not silently skipped: P1-A guarantees
 # a freeze-eligible baseline has a promoted real review, and both are promoted artifacts).
-_REQUIRE = (
-    "Makefile",
-    "env.sh",
-    "filelist.f",
-    "rtl_filelist.f",
-    "tb/uvm",
-    "conformance-review.json",
-    "verify-handoff.json",
-)
+_REQUIRE = {
+    "freeze": (
+        "Makefile",
+        "env.sh",
+        "filelist.f",
+        "rtl_filelist.f",
+        "tb/uvm",
+        "conformance-review.json",
+        "verify-handoff.json",
+    ),
+    "patch": ("Makefile", "env.sh", "filelist.f", "rtl_filelist.f", "tb/uvm"),
+}
 
 
 def _err(msg: str) -> None:
-    print(f"[sim freeze] {msg}", file=sys.stderr)
+    print(f"[sim copy-baseline] {msg}", file=sys.stderr)
 
 
-def run(module: str, workdir, canonical) -> int:
+def run(module: str, workdir, canonical, mode: str = "freeze") -> int:
     tree_root = Path.cwd()
     dest = Path(workdir)
     if not dest.is_absolute():
@@ -80,7 +95,7 @@ def run(module: str, workdir, canonical) -> int:
         src = canon / d
         if src.is_dir():
             shutil.copytree(src, dest / d, dirs_exist_ok=True)
-    for f in _COPY_FILES:
+    for f in _COPY_FILES[mode]:
         src = canon / f
         if src.is_file():
             shutil.copy2(src, dest / f)
@@ -90,12 +105,12 @@ def run(module: str, workdir, canonical) -> int:
     rewrite_rtl_filelist(rtl_filelist, dest / "rtl_filelist.f", rtl_rel)
 
     # Presence assertion (carry-forward conformance-review.json + the TB core).
-    for must in _REQUIRE:
+    for must in _REQUIRE[mode]:
         if not (dest / must).exists():
             _err(f"post-copy missing required entry: {must}")
             return 1
 
     print(
-        f"[sim freeze] done — {dest} (TB frozen from {canon}; rtl_filelist regenerated)"
+        f"[sim copy-baseline] done — {dest} (TB frozen from {canon}; rtl_filelist regenerated)"
     )
     return 0
