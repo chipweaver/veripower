@@ -40,18 +40,20 @@ def _tree(tmp_path):
     return module, canon, wd
 
 
-def _run(module, canon, wd, tree_root):
+def _run(module, canon, wd, tree_root, mode="freeze"):
     return subprocess.run(
         [
             "python3",
             str(MAIN),
-            "freeze",
+            "copy-baseline",
             "--module",
             module,
             "--workdir",
             str(wd),
             "--canonical",
             str(canon),
+            "--mode",
+            mode,
         ],
         cwd=str(tree_root),
         capture_output=True,
@@ -114,3 +116,25 @@ def test_fails_when_verify_handoff_missing(tmp_path):
     (Path(canon) / "verify-handoff.json").unlink()
     r = _run(module, canon, wd, tmp_path)
     assert r.returncode == 1 and "verify-handoff.json" in r.stderr
+
+
+def test_patch_mode_copies_tb_code_only(tmp_path):
+    module, canon, wd = _tree(tmp_path)
+    r = _run(module, canon, wd, tmp_path, mode="patch")
+    assert r.returncode == 0, r.stderr
+    for f in ("Makefile", "env.sh", "filelist.f"):
+        assert (wd / f).is_file(), f
+    assert (wd / "tb/uvm/agent/x.sv").is_file()
+    # 判决产物 NOT carried in patch mode (child re-authors / full conformance re-runs)
+    assert not (wd / "conformance-review.json").exists()
+    assert not (wd / "verify-handoff.json").exists()
+    rtlf = (wd / "rtl_filelist.f").read_text()
+    assert "STALE" not in rtlf and "Design/rtl-design/rtl/alu.v" in rtlf
+
+
+def test_patch_mode_succeeds_without_judged_artifacts(tmp_path):
+    # smoke-fail 基线：conformance-review.json / verify-handoff.json 都没产出 -> patch 仍成功
+    module, canon, wd = _tree(tmp_path)
+    (canon / "conformance-review.json").unlink()
+    (canon / "verify-handoff.json").unlink()
+    assert _run(module, canon, wd, tmp_path, mode="patch").returncode == 0
