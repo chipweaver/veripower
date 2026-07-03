@@ -1,4 +1,4 @@
-"""sim classify-delta — trigger-agnostic first-run/freeze/rebuild verdict (+ P1-A conformance-real)."""
+"""sim classify-delta — trigger-agnostic first-run/freeze/patch verdict (+ P1-A conformance-real)."""
 
 import json
 import subprocess
@@ -26,7 +26,10 @@ def _baseline(
     failure_phase=None,
     plan_digest="ABSENT",
     conformance="real",
+    tb=True,
 ):
+    if tb:
+        (tmp_path / "tb" / "uvm").mkdir(parents=True, exist_ok=True)
     ss = {}
     if failure_phase is not None:
         ss["failure_phase"] = failure_phase
@@ -88,10 +91,10 @@ def test_freeze_when_pass_and_digest_matches(tmp_path):
     assert classify.classify_delta(rj, s, p)["verdict"] == "freeze"
 
 
-def test_rebuild_when_digest_differs(tmp_path):
+def test_patch_when_digest_differs(tmp_path):
     s, p = _plan(tmp_path)
     rj = _baseline(tmp_path, status="pass", plan_digest="deadbeef")
-    assert classify.classify_delta(rj, s, p)["verdict"] == "rebuild"
+    assert classify.classify_delta(rj, s, p)["verdict"] == "patch"
 
 
 def test_freeze_on_regress_fail_baseline(tmp_path):
@@ -116,7 +119,7 @@ def test_freeze_on_coverage_fail_baseline(tmp_path):
     assert classify.classify_delta(rj, s, p)["verdict"] == "freeze"
 
 
-def test_rebuild_on_compile_fail_baseline(tmp_path):
+def test_patch_on_compile_fail_baseline(tmp_path):
     s, p = _plan(tmp_path)
     rj = _baseline(
         tmp_path,
@@ -124,10 +127,10 @@ def test_rebuild_on_compile_fail_baseline(tmp_path):
         failure_phase="compile",
         plan_digest=classify.plan_digest(s, p),
     )
-    assert classify.classify_delta(rj, s, p)["verdict"] == "rebuild"
+    assert classify.classify_delta(rj, s, p)["verdict"] == "patch"
 
 
-def test_rebuild_on_smoke_fail_baseline(tmp_path):
+def test_patch_on_smoke_fail_baseline(tmp_path):
     s, p = _plan(tmp_path)
     rj = _baseline(
         tmp_path,
@@ -135,28 +138,16 @@ def test_rebuild_on_smoke_fail_baseline(tmp_path):
         failure_phase="smoke",
         plan_digest=classify.plan_digest(s, p),
     )
-    assert classify.classify_delta(rj, s, p)["verdict"] == "rebuild"
+    assert classify.classify_delta(rj, s, p)["verdict"] == "patch"
 
 
-def test_rebuild_on_prerequisite_fail_baseline(tmp_path):
+def test_patch_when_legacy_no_plan_digest(tmp_path):
     s, p = _plan(tmp_path)
-    rj = _baseline(
-        tmp_path,
-        status="fail",
-        failure_phase="prerequisite",
-        plan_digest=classify.plan_digest(s, p),
-    )
-    assert classify.classify_delta(rj, s, p)["verdict"] == "rebuild"
+    rj = _baseline(tmp_path, status="pass")  # plan_digest absent, but TB present
+    assert classify.classify_delta(rj, s, p)["verdict"] == "patch"
 
 
-def test_rebuild_when_legacy_no_plan_digest(tmp_path):
-    s, p = _plan(tmp_path)
-    rj = _baseline(tmp_path, status="pass")  # plan_digest absent
-    assert classify.classify_delta(rj, s, p)["verdict"] == "rebuild"
-
-
-def test_rebuild_when_conformance_unavailable(tmp_path):
-    # P1-A: baseline whose conformance review never ran (unavailable stub) is NOT freeze-eligible.
+def test_patch_when_conformance_unavailable(tmp_path):
     s, p = _plan(tmp_path)
     rj = _baseline(
         tmp_path,
@@ -164,10 +155,10 @@ def test_rebuild_when_conformance_unavailable(tmp_path):
         plan_digest=classify.plan_digest(s, p),
         conformance="unavailable",
     )
-    assert classify.classify_delta(rj, s, p)["verdict"] == "rebuild"
+    assert classify.classify_delta(rj, s, p)["verdict"] == "patch"
 
 
-def test_rebuild_when_conformance_absent(tmp_path):
+def test_patch_when_conformance_absent(tmp_path):
     s, p = _plan(tmp_path)
     rj = _baseline(
         tmp_path,
@@ -175,7 +166,22 @@ def test_rebuild_when_conformance_absent(tmp_path):
         plan_digest=classify.plan_digest(s, p),
         conformance="absent",
     )
-    assert classify.classify_delta(rj, s, p)["verdict"] == "rebuild"
+    assert classify.classify_delta(rj, s, p)["verdict"] == "patch"
+
+
+def test_first_run_when_no_canonical_tb(tmp_path):
+    # prerequisite-fail 基线：result.json 有，但从未建 TB -> 无可拷 -> first-run
+    s, p = _plan(tmp_path)
+    rj = _baseline(tmp_path, status="fail", failure_phase="prerequisite", tb=False)
+    assert classify.classify_delta(rj, s, p)["verdict"] == "first-run"
+
+
+def test_first_run_when_canonical_unreadable(tmp_path):
+    s, p = _plan(tmp_path)
+    (tmp_path / "tb" / "uvm").mkdir(parents=True)
+    bad = tmp_path / "result.json"
+    bad.write_text("{ not json")
+    assert classify.classify_delta(bad, s, p)["verdict"] == "first-run"
 
 
 # ── subprocess verb wiring ──────────────────────────────────────────────────

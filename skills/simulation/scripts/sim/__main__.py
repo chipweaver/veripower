@@ -7,7 +7,7 @@ Verbs (one stage = one tool; see skills/simulation/SKILL.md for usage):
   check-materialization thin-D1 presence gate (env-exit self-gate)            (stdout verdict; exit 0/1)
   validate-review       conformance-review.json schema + gate                 (stdout gate JSON; exit 0/1)
   finalize              assemble the lean result.json at the exit phase        (exit 0 written / 2 BLOCKED)
-  classify-delta        select the Wave-1 branch (first-run|freeze|rebuild)   (stdout verdict; exit 0)
+  classify-delta        select the Wave-1 branch (first-run|freeze|patch)    (stdout verdict; exit 0)
   freeze                materialize a frozen TB (copy + rtl_filelist regen)   (exit 0 / 1)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the sim.*
@@ -132,7 +132,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=_cmd_validate_review)
 
     sp = sub.add_parser(
-        "classify-delta", help="select the Wave-1 branch: first-run|freeze|rebuild"
+        "classify-delta", help="select the Wave-1 branch: first-run|freeze|patch"
     )
     sp.add_argument("--scaffold", required=True, type=Path)
     sp.add_argument("--plan", required=True, type=Path)
