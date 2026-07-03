@@ -38,7 +38,7 @@ the UVM scaffold, compile, and run the smoke suite.
    byte-identical to the seeded baseline. (`first-run` skips this step and starts from
    `bootstrap` per step 1.)
 
-1. **Bootstrap + scaffold**:
+1. **(first-run only) Bootstrap + scaffold**:
 
    ```bash
    python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>] --scaffold scaffold-specification.json
@@ -46,11 +46,18 @@ the UVM scaffold, compile, and run the smoke suite.
 
    Deploys infrastructure + scaffold to `{workdir}`, including functional sequence placeholders. All
    subsequent `make` targets run with `cd {workdir}`.
-2. **Fill scaffold TODOs** (bound by **Rule A**, see `repair-boundaries.md`): inside `{workdir}`, fill
-   in every `TODO(` across driver / monitor / checker / RM / functional seq / top. References are
-   selected per the branch handed in above; any prior canonical TB is read-only reference — only
-   the patch branch copies it via `copy-baseline` (step 0 above); the first-run branch never copies
-   it — and all writes happen only in `{workdir}`.
+   **Patch branch: skip this step entirely.** The step-0 `copy-baseline --mode patch` seed already
+   provides the full scaffold (Makefile, env.sh, filelist.f, tb/uvm, scripts, tests,
+   rtl_filelist.f). Running `bootstrap` here would hit its abort-on-existing-Makefile guard and
+   fail — proceed directly to step 2.
+2. **Fill / reconcile scaffold** (bound by **Rule A**, see `repair-boundaries.md`): inside
+   `{workdir}`, fill or reconcile every `TODO(` across driver / monitor / checker / RM / functional
+   seq / top against the current plan (`verification-plan.md` + `scaffold-specification.json`).
+   - **First-run:** fill every rendered `TODO(` stub in the freshly bootstrapped tree.
+   - **Patch:** reconcile the seeded TB to the current plan — change only what the plan requires;
+     checks / RM / scoreboard already matching the current plan are left byte-identical to the seed.
+   All writes happen only in `{workdir}`; the prior canonical TB (patch branch) is read-only source,
+   consumed entirely by step 0.
    **Trust the rendered tree (U4):** the bootstrap verb (with `--scaffold`) renders an atomic, complete, self-describing
    stub tree. Learn structure and fill-conventions from the **rendered stubs and their TODO/header
    comments** (e.g. each stub's `// TODO(...)` states its config_db key, sequencer type, and intent),
