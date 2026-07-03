@@ -1,4 +1,4 @@
-# freeze-rebuild sub-Task contract (wave 1)
+# freeze sub-Task contract (wave 1)
 
 The simulation main thread dispatches **one** Level-1 `Task(run_in_background=True)` — the
 freeze child — when the Step-1 classifier returns `verdict=freeze`. Your job: copy the prior
@@ -20,12 +20,12 @@ run the smoke suite. You do **not** render a scaffold or fill any TODOs.
 1. **Freeze (copy + rtl_filelist regen)**:
 
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py freeze \
-       --module {module} --workdir {workdir} --canonical {canonical}
+   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py copy-baseline \
+       --module {module} --workdir {workdir} --canonical {canonical} --mode freeze
    ```
 
    Copies the TB whitelist from `{canonical}` into `{workdir}` and regenerates `rtl_filelist.f`
-   against the current RTL. On non-zero exit, act on the stderr `[sim freeze] <reason>` message
+   against the current RTL. On non-zero exit, act on the stderr `[sim copy-baseline] <reason>` message
    and end with `STATUS: BLOCKED <reason>` (no `compile` qualifier) — these guards (missing RTL
    filelist, canonical TB not found, workdir already populated) are prerequisite-class failures,
    not compile failures; the orchestrator classifies them as `failure_phase=prerequisite`.
@@ -56,7 +56,7 @@ completion and the self-gate exits 0.
 
 ## verify-handoff
 
-`sim freeze` copies the promoted `verify-handoff.json` from `{canonical}` into `{workdir}` and
+`sim copy-baseline` copies the promoted `verify-handoff.json` from `{canonical}` into `{workdir}` and
 asserts its presence before returning. On a freeze run it is always present — the Wave-3 verify
 child consumes the frozen copy as-is. You do **not** re-derive or rewrite `verify-handoff.json`.
 
@@ -77,21 +77,21 @@ child consumes the frozen copy as-is. You do **not** re-derive or rewrite `verif
 - `{workdir}` contains the frozen TB (copied from `{canonical}`) plus the regenerated
   `rtl_filelist.f`, compile artifacts, and `regression-log.txt` RESULT lines + per-test
   `logs/<test>.status` files from `make smoke`. `verify-handoff.json` is the frozen copy
-  (copied by `sim freeze`, not re-derived).
+  (copied by `sim copy-baseline`, not re-derived).
 - End the response with `STATUS: DONE` + a single JSON line listing the key files present:
 
   ```json
   {"frozen": true, "files": ["rtl_filelist.f", "tb/uvm/", "conformance-review.json", "verify-handoff.json", "regression-log.txt", "logs/"]}
   ```
 
-  `sim freeze` copies **both** `conformance-review.json` and `verify-handoff.json` verbatim from
+  `sim copy-baseline` copies **both** `conformance-review.json` and `verify-handoff.json` verbatim from
   `{canonical}` and asserts both are present before returning; they are frozen carry-forward
   artifacts, not re-derived.
 
   On failure, end with exactly one of the two reason-string forms below — the orchestrator parses
   this line to classify `failure_phase`:
 
-  - **`sim freeze` non-zero exit** (missing RTL filelist / canonical TB not found / workdir already
+  - **`sim copy-baseline` non-zero exit** (missing RTL filelist / canonical TB not found / workdir already
     populated): `STATUS: BLOCKED <reason>` (no `compile` qualifier). Drives
     `failure_phase=prerequisite`.
   - **`make simv` compile failure** (frozen TB no longer compiles against current RTL — interface
