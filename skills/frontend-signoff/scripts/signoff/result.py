@@ -87,9 +87,11 @@ def resolve_evidence(asic_root: Path) -> tuple[list[dict], list[str]]:
     Returns (records, failures). records = [{"path": <rel>, "on_disk": bool}] for
     the 6 fixed paths plus the power report (the runtime dir id is globbed to its
     concrete path). failures = one greppable reason per unreachable path; the power
-    glob is fail-loud — 0 matches is unreachable, >1 is a conflict (never silently
-    pick one). records carry the path list both checklist.md and traceability.md
-    render (the auditable "these reports are on disk, here are the paths").
+    glob is fail-loud on 0 matches (unreachable). Multiple matches are valid for
+    multi-scenario runs — each scenario dir produces its own power_hier.rpt, all
+    recorded as on_disk=True. records carry the path list both checklist.md and
+    traceability.md render (the auditable "these reports are on disk, here are the
+    paths").
     """
     records: list[dict] = []
     failures: list[str] = []
@@ -102,16 +104,9 @@ def resolve_evidence(asic_root: Path) -> tuple[list[dict], list[str]]:
     if not matches:
         records.append({"path": _POWER_GLOB, "on_disk": False})
         failures.append(f"evidence unreachable: {_POWER_GLOB} (0 matches)")
-    elif len(matches) > 1:
-        rels = ", ".join(str(m.relative_to(asic_root)) for m in matches)
-        records.append({"path": _POWER_GLOB, "on_disk": False})
-        failures.append(
-            f"evidence conflict: {_POWER_GLOB} ({len(matches)} matches: {rels})"
-        )
     else:
-        records.append(
-            {"path": str(matches[0].relative_to(asic_root)), "on_disk": True}
-        )
+        for m in matches:
+            records.append({"path": str(m.relative_to(asic_root)), "on_disk": True})
     return records, failures
 
 
