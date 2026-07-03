@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""sim classify-delta — select the Wave-1 branch: first-run | freeze | rebuild.
+"""sim classify-delta — select the Wave-1 branch: first-run | freeze | patch.
 
-Pure read + hash. Trigger-agnostic: the freeze/rebuild choice depends ONLY on the plan inputs
+Pure read + hash. Trigger-agnostic: the verdict depends ONLY on the plan inputs
 (verification-plan.md + scaffold-specification.json) and the baseline TB-validity, never on
 {rework_trigger} -- the TB's sole upstream truth is the sim-plan exit docs. A baseline that failed
 in {regress, coverage} still carries a complete, conformance-passed TB (the failure was
-RTL/stimulus), so it is freeze-eligible; {compile, smoke, conformance, prerequisite} failures mean
-the TB itself is hollow/wrong -> rebuild. P1-A: a baseline whose conformance review never really ran
-(an 'unavailable' stub) is also rebuild -- freeze must not lock in an unjudged TB.
+RTL/stimulus), so it is freeze-eligible. All other non-freeze cases yield patch: the prior TB is
+copied into the run workdir and edited in-place (delta-only), rather than rebuilt from blank.
+No canonical result / unreadable result / no materialized TB (e.g. prerequisite-fail baseline)
+yields first-run instead -- there is nothing to copy. P1-A: a baseline whose conformance review
+never really ran (an 'unavailable' stub) is also patch, not freeze -- freeze must not lock in
+an unjudged TB. Correctness is backstopped by the round's full conformance re-judge; freeze is
+the plan-bytes-unchanged + fully-judged zero-LLM fast path.
 
 plan_digest() is the single home for the digest algorithm; sim.result imports it so finalize writes
 the same value the classifier later compares against.
@@ -52,28 +56,31 @@ def classify_delta(canonical_result, scaffold, plan) -> dict:
     try:
         rj = json.loads(cr.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return {"verdict": "rebuild", "reason": "canonical result unreadable"}
+        return {"verdict": "first-run", "reason": "canonical result unreadable"}
+    if not (cr.parent / "tb" / "uvm").is_dir():
+        # no TB to copy (e.g. prerequisite-fail baseline never built one) -> scaffold fresh
+        return {"verdict": "first-run", "reason": "no canonical TB to copy"}
     ss = rj.get("stage_specific", {})
     status, recorded = rj.get("status"), ss.get("plan_digest")
     if recorded is None:
         return {
-            "verdict": "rebuild",
-            "reason": "baseline has no plan_digest (legacy TB)",
+            "verdict": "patch",
+            "reason": "baseline has no plan_digest (unjudged/legacy TB)",
         }
     if recorded != current:
-        return {"verdict": "rebuild", "reason": "plan changed since baseline"}
+        return {"verdict": "patch", "reason": "plan changed since baseline"}
     tb_valid = status == "pass" or (
         status == "fail" and ss.get("failure_phase") in TB_VALID_FAIL_PHASES
     )
     if not tb_valid:
         return {
-            "verdict": "rebuild",
-            "reason": f"baseline TB not reusable (status={status}, failure_phase={ss.get('failure_phase')})",
+            "verdict": "patch",
+            "reason": f"baseline TB not fully judged (status={status}, failure_phase={ss.get('failure_phase')})",
         }
     if not _conformance_real(cr):
         return {
-            "verdict": "rebuild",
-            "reason": "baseline conformance review unavailable/absent (P1-A)",
+            "verdict": "patch",
+            "reason": "baseline conformance unavailable/absent (P1-A)",
         }
     return {
         "verdict": "freeze",

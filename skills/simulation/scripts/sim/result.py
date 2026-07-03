@@ -96,8 +96,8 @@ def build_result(
 
     # Compute plan_digest only for freeze-eligible phases (pass path and regress/coverage
     # fail paths carry a complete TB that the classifier may reuse). verify-blocked is
-    # deliberately excluded — it maps failure_phase=regress but must NOT get a digest so
-    # the next run rebuilds the TB from scratch (spec §4 adversarial P2).
+    # deliberately excluded — it maps failure_phase=regress but must NOT get a digest
+    # so the next run classifies patch (copy-first) rather than freeze (spec §4: verify-blocked -> patch).
     digest = (
         plan_digest(scaffold, plan)
         if (scaffold and plan and phase in ("final", "regress"))
