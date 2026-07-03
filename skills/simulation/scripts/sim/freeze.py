@@ -86,7 +86,7 @@ def run(module: str, workdir, canonical, mode: str = "freeze") -> int:
     dest.mkdir(parents=True, exist_ok=True)
     if (dest / "Makefile").is_file():
         _err(
-            f"workdir already populated (detected {dest / 'Makefile'}); freeze needs a fresh workdir"
+            f"workdir already populated (detected {dest / 'Makefile'}); {mode} needs a fresh workdir"
         )
         return 1
 
@@ -110,7 +110,8 @@ def run(module: str, workdir, canonical, mode: str = "freeze") -> int:
             _err(f"post-copy missing required entry: {must}")
             return 1
 
+    tb_state = "frozen" if mode == "freeze" else "seeded"
     print(
-        f"[sim copy-baseline] done — {dest} (TB frozen from {canon}; rtl_filelist regenerated)"
+        f"[sim copy-baseline] done — {dest} (TB {tb_state} from {canon}; rtl_filelist regenerated)"
     )
     return 0
