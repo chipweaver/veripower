@@ -473,7 +473,7 @@ VeriPower 产出两类结构化输出，各走各的验证通道：
 
 **LLM 评审门契约**（四道创作类门：specification、simulation-plan、rtl-design 的语义门、simulation 的 conformance 门）。每道门产出一份 `*-review.json`，信封固定：`schema_version` / `stage` / `module` / 受评主体数组 / `verdict ∈ {ok, concerns}` / `has_critical` / `findings[]`，且 `findings[].severity ∈ {critical, important, minor}`。每条 finding 带一个维度分类器，划分为**一个或多个门控（gating）**维度与一个**咨询 must-acknowledge** 维度，外加 `unavailable` 哨兵；各阶段的门控/咨询维度 enum 以四份 `*-review.schema.json` 为准（其 SSoT）。整份评审无法运行时，阶段产出单条 `unavailable` finding（`gate=clear`），作 must-acknowledge 呈现，绝不静默放行。`validate_*_review.py` 脚本独占 `维度 × severity` 到 `gate ∈ {trip, clear}` 的归约，且绝不把 `gate=trip` 改判为 pass；specification、simulation-plan、rtl-design 把门裁决对象记入 `result.json` `stage_specific`（`spec_gate` / `plan_adequacy_gate` / `semantic_gate`），simulation 则记 `failure_phase` + 门控 findings。`*-review.json` promote 到 canonical。
 
-**（TB-freeze conformance 门跳过。）** 在 TB-freeze 重跑中，若 TB 逐字节一致且计划不变，simulation 的 conformance 门**跳过——沿用先前已 promote 的裁决**——因为未变更的检查 vs 意图判断不可能翻转。见 `skills/simulation/SKILL.md` Step 4。非 freeze run 走 copy-first `patch`（见 `docs/superpowers/specs/2026-07-02-sim-tb-incremental-patch-design.md`）。
+**（TB-freeze conformance 门跳过。）** 在 TB-freeze 重跑中，若 TB 逐字节一致且计划不变，simulation 的 conformance 门**跳过——沿用先前已 promote 的裁决**——因为未变更的检查 vs 意图判断不可能翻转。见 `skills/simulation/SKILL.md` Step 4。非 freeze run 走 copy-first `patch`。
 
 **两条轴决定一道门的门控强度与闭环方式。**
 
