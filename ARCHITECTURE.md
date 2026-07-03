@@ -32,7 +32,7 @@ Core coined terms, each defined once here and elaborated in the linked section. 
 | **cascade-stale** | BFS that sets every `pass`/`fail`/`in_progress` descendant of a just-passed or rework-targeted stage to `stale`. (§4.4) |
 | **status × freshness** | A stage's two independent attributes: `status ∈ {not_started, in_progress, pass, fail}`, `freshness ∈ {clean, stale}`. (§4.2) |
 | **in-flight / run** | `run` (= `current_run`) is the monotonically increasing dispatch number; `in_flight[]` lists runs not yet reaped. (§4.3) |
-| **determinism boundary** | The split everything hangs off: judgment in the Orchestrator, state in `state.py`, deterministic computation in sibling scripts (`route.py`, `orchestrate.py`, `convergence`). (§2.4) |
+| **determinism boundary** | The split everything hangs off: judgment in the Orchestrator, state in `state.py`, deterministic computation in sibling scripts (`route.py`, `orchestrate.py`). (§2.4) |
 
 ---
 
@@ -57,7 +57,7 @@ The Orchestrator agent decides; `state.py` and skills execute; disk persists.
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────┐
 │             Orchestrator Agent  ( veripower:design-flow )                          │
-│  main conversation; forward dispatch / rework routing / convergence /              │
+│  main conversation; forward dispatch / rework routing /                            │
 │  escalation / user collaboration                                                   │
 └──┬───────────────────────────┬────────────────────────────────┬────────────────────┘
    │ Bash                      │ Skill()                        │ Task()
@@ -72,7 +72,7 @@ The Orchestrator agent decides; `state.py` and skills execute; disk persists.
 │ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)      │
 │                    │  │   main thread)               │  │                          │
 │ state.py:          │  │                              │  │  Stage: executes stage   │
-│   state + 8 cmds   │  │  specification:              │  │    → writes result.json  │
+│   state + 7 cmds   │  │  specification:              │  │    → writes result.json  │
 │ orchestrate.py:    │  │    fan-out → design.md       │  │  Debug: read-only triage │
 │  decide → action   │  │    design.md / manifest.json │  │    → returns ANALYSIS    │
 │ route.py:          │  │    SDC / SGDC / result.json  │  │                          │
@@ -101,7 +101,7 @@ The Orchestrator agent decides; `state.py` and skills execute; disk persists.
 
 The three dispatch paths from the Orchestrator:
 
-- **Bash** → `state.py` CLI (8 commands: `init`, `status`, `dispatch`, `reap`, `rework`, `invalidate-stage`, `convergence`, `log`), `orchestrate.py decide` (returns one action per call; see §5), the `topology.py` DAG SSoT (`PREREQ_OF`, `eligible()`), and the `route.py` rework-router (pure target selection; composed inside `orchestrate.py`; see §5.4)
+- **Bash** → `state.py` CLI (7 commands: `init`, `status`, `dispatch`, `reap`, `rework`, `invalidate-stage`, `log`), `orchestrate.py decide` (returns one action per call; see §5), the `topology.py` DAG SSoT (`PREREQ_OF`, `eligible()`), and the `route.py` rework-router (pure target selection; composed inside `orchestrate.py`; see §5.4)
 - **Skill()** → main-thread skills (`specification`, `simulation-plan`, `rtl-design`, and `simulation`)
 - **Task()** → stage subagents and the debug subagent
 
@@ -128,16 +128,16 @@ For these four stages the Orchestrator still calls `state.py dispatch/reap/log` 
 
 | **Role** | **Carrier** | **Responsibilities** | **Capability boundaries** |
 |---|---|---|---|
-| **Orchestrator agent** | `design-flow` skill, main conversation | Forward dispatch, rework routing (acting on `route.py`'s target selection), convergence judgment, escalation, user collaboration; also acts as the main-thread executor for `specification` / `simulation-plan` / `rtl-design` / `simulation` stages | The only role that may call `state.py`, use the Task tool, and interact with the user |
+| **Orchestrator agent** | `design-flow` skill, main conversation | Forward dispatch, rework routing (acting on `route.py`'s target selection), escalation, user collaboration; also acts as the main-thread executor for `specification` / `simulation-plan` / `rtl-design` / `simulation` stages | The only role that may call `state.py`, use the Task tool, and interact with the user |
 | **Main-thread skill** | `veripower:specification`, `veripower:simulation-plan`, `veripower:rtl-design`, or `veripower:simulation`, loaded via Orchestrator's `Skill()` call | Self-driven work in the Orchestrator's thread: `specification` runs two sub-Task waves (decompose + per-child) plus main-thread scripts and two path-handoff gates (no D0–D7 dialogue — that moved to the pre-pipeline `brainstorm` skill); `simulation-plan` runs the multi-turn plan-review dialogue; `rtl-design` runs no dialogue but holds Level-1 fan-out dispatch authority (§2.2); `simulation` likewise runs no dialogue and holds Level-1 fan-out dispatch authority — Wave 1 dispatches either the env-build child (first-run/patch) or the freeze child (freeze); a non-freeze run then runs the smoke gate, the LLM conformance review-gate (Step 4), and the verify child (§2.2). Each writes its own artifacts + `result.json`. | `simulation-plan` may interact with the user across turns; `specification` additionally interacts at its two path-handoff gates; `specification` / `rtl-design` / `simulation` may dispatch Level-1 sub-Tasks; `simulation-plan` may dispatch a single Level-1 review sub-Task (§6.3.1). Other boundaries same as Stage subagent (no `state.py`, no routing). Contract held by SKILL.md prose discipline, not tool gating. |
 | **Stage subagent** | The five Task-dispatched stage skills (`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis` / `frontend-signoff`), dispatched via Task tool | Execute one stage: read upstream → do the work → write `result.json` → return STATUS line | Must NOT call `state.py` or make routing decisions (full 5-item list in §6.1) |
 | **Debug subagent** | `simulation-triage` skill, dispatched via Task tool | Read-only root-cause analysis on simulation failures; returns a two-tier ANALYSIS (a routing JSON block — `root_cause`/`analysis_state` — plus a prose analysis section) | Modifies no state — never edits `task.json`, `result.json`, RTL, or tests |
 | **`state.py`** | Python CLI | State transitions, prerequisite validation, cascade-stale propagation, event-log appends, context collection; best-effort async subagent transcript mirroring (telemetry side-effect on `cmd_reap`, see §6.6) | Contains no routing logic and makes no judgments |
-| **`route.py`** | Python CLI (sibling of `state.py`) | Pure deterministic rework-target selection — maps a failure's closed-enum fields to a target / `ESCALATE` / `NEED_INPUT` | Holds no state; inputs are CLI scalar flags (`--guideline`, `--by-target-rtl`, and on the simulation path `--root-cause`/`--analysis-state`) plus an optionally passed `result.json`. The Orchestrator reads its JSON output and acts on `decision`. Makes no state transitions. |
+| **`route.py`** | Python CLI (sibling of `state.py`) | Pure deterministic rework-target selection — maps a failure's closed-enum fields to a target / `ESCALATE` / `NEED_INPUT` | Holds no state; inputs are CLI scalar flags (on the simulation path `--root-cause`/`--analysis-state`) plus an optionally passed `result.json`. The Orchestrator reads its JSON output and acts on `decision`. Makes no state transitions. |
 
 ### 2.4 Core design principles
 
-- **Judgment in the Orchestrator, state in Python, deterministic computation in sibling scripts** — the *determinism boundary*. The Orchestrator makes the judgment calls (escalation, rework-context); `state.py` maintains the state facts; deterministic decision-support that is neither — convergence counting (`cmd_convergence`), rework-target selection (`route.py`), and the full control-loop decision (`orchestrate.py decide`) — lives in scripts the Orchestrator executes. No mixing across the three. The *enforceable* capability boundary (who may call `state.py` / `Task()` / the user) is the §2.3 role table.
+- **Judgment in the Orchestrator, state in Python, deterministic computation in sibling scripts** — the *determinism boundary*. The Orchestrator makes the judgment calls (escalation, rework-context); `state.py` maintains the state facts; deterministic decision-support that is neither — rework-target selection (`route.py`) and the full control-loop decision (`orchestrate.py decide`) — lives in scripts the Orchestrator executes. No mixing across the three. The *enforceable* capability boundary (who may call `state.py` / `Task()` / the user) is the §2.3 role table.
 - **Decision boundary = tool boundary.** Every Orchestrator decision is pushed down to `orchestrate.py decide`; the Orchestrator is a thin executor that does nothing between `state.py` calls except invoke the decider. Its verifiable loop form — *two consecutive `state.py` calls with no decider call between them is a bug* — lives in §5.5.
 - **Files are the database.** `task.json` is the snapshot, `events.jsonl` is the audit log, `result.json` files are stage outputs. No intermediate cache, no service-side store.
 - **Compaction-safe resume.** Because files are the database, a mid-session context compaction (or a process crash) is survivable: the Orchestrator and every subagent resume losslessly from disk alone, with no load-bearing information held only in the conversation. Durable truth is on disk — `task.json`, `events.jsonl`, `result.json` per stage. The Orchestrator holds **zero durable control state** between turns — every turn re-derives the next action from disk via `orchestrate.py decide`. The only conversation-resident state is the `orchestrator_context` hint authored at a `REWORK` and consumed at the target's `DISPATCH` within the same turn — **re-derivable, not durable** (and once passed to `cmd_dispatch` it is disk-backed as `orchestrator-context.md`); see §5.
@@ -212,7 +212,7 @@ Forward dispatch follows the priority order `specification → simulation-plan �
 Typical rework closures:
 
 - **simulation failure** → `simulation-triage` debug subagent → rework to `rtl-design` / `specification` / `simulation-plan`.
-- **PPA failure**: synthesis judges area/timing_slack; power-analysis judges power_mw; timing-analysis judges setup/hold. Any of these fails → the decider routes it (convergence-based, via `route.py`; see §5), returning `REWORK`/`ESCALATE` for the Orchestrator to execute. For power-analysis tooling failures (GLS errors, SAIF missing), the subagent writes `failures[].{phase, category, error_summary}`; `route.py` maps `category` to the upstream DAG target (see §5.4 and `framework/scripts/route.py`).
+- **PPA failure**: synthesis judges area/timing_slack; power-analysis judges power_mw; timing-analysis judges setup/hold. Any of these fails → the decider routes it (via `route.py`; see §5), returning `REWORK`/`ESCALATE` for the Orchestrator to execute. For power-analysis tooling failures (GLS errors, SAIF missing), the subagent writes `failures[].{phase, category, error_summary}`; `route.py` maps `category` to the upstream DAG target (see §5.4 and `framework/scripts/route.py`).
 
 ## 4. State model
 
@@ -370,7 +370,7 @@ The leaf actions encode what follows: `REWORK` and `DISPATCH` re-query `decide` 
 
 **Step 2: Terminate if done.** If `frontend-signoff` has `status=pass` and `freshness=clean` → return `DONE`.
 
-**Step 3: Handle first failure.** Scan stages by `FORWARD_PRIORITY`. Find the first stage with `status=fail` and `freshness=clean`. If any exists, route it through `route.py` (composing convergence + result inputs) and return the appropriate action (`REWORK`, `DISPATCH_TRIAGE`, or `ESCALATE`). Invariant: **one failure per decider (`decide`) call; several may resolve in one turn via the re-query loop** — when the rework target is a common ancestor of multiple `fail/clean` stages, cascade turns them `fail/stale` on the first REWORK, so subsequent re-queries see no further failures.
+**Step 3: Handle first failure.** Scan stages by `FORWARD_PRIORITY`. Find the first stage with `status=fail` and `freshness=clean`. If any exists, route it through `route.py` (from the failure's result inputs) and return the appropriate action (`REWORK`, `DISPATCH_TRIAGE`, or `ESCALATE`). Invariant: **one failure per decider (`decide`) call; several may resolve in one turn via the re-query loop** — when the rework target is a common ancestor of multiple `fail/clean` stages, cascade turns them `fail/stale` on the first REWORK, so subsequent re-queries see no further failures.
 
 **Step 4: Forward dispatch.** For each stage that is `eligible(stage)` by `FORWARD_PRIORITY` order, return `DISPATCH`. `eligible` requires: all DAG prerequisites are `pass/clean`; the stage itself is not `in_progress/clean`, `pass/clean`, or `fail/clean`. Invariant: distinct in-flight stages ≤ 2 emerges from DAG topology (see §3.2) — the Orchestrator writes no explicit cap.
 
@@ -396,14 +396,13 @@ All deterministic rework-target selection lives in `framework/scripts/route.py` 
 
 Control flow inside the decider (Step 3):
 
-1. `convergence(events, failed_stage)` (pure fn, in-process) supplies `guideline` and `by_target["rtl-design"]`.
-2. Call `route()` *early* with cheap inputs (on-disk `result.json` for the PPA / lint-cdc / simulation-plan classes; nothing extra for simulation / frontend-signoff), so a failure that will escalate never burns a triage dispatch.
-3. Act on `decision`:
-   - `ESCALATE` → return `ESCALATE` action (reason = `route.py`'s `reason_hint` or the canonical `fail_reason`, verbatim). Covers `must_escalate`, `failure_kind=infra`, terminal `frontend-signoff`, and `tooling` failures with no upstream target.
+1. Call `route()` *early* with cheap inputs (on-disk `result.json` for the PPA / lint-cdc / simulation-plan classes; nothing extra for simulation / frontend-signoff), so a failure that will escalate never burns a triage dispatch.
+2. Act on `decision`:
+   - `ESCALATE` → return `ESCALATE` action (reason = `route.py`'s `reason_hint` or the canonical `fail_reason`, verbatim). Covers `failure_kind=infra`, terminal `frontend-signoff`, and `tooling` failures with no upstream target.
    - `NEED_INPUT` (realistically only `simulation`, which needs the triage `root_cause`) → return `DISPATCH_TRIAGE`. The Orchestrator logs the `debug_dispatch` event, dispatches the `simulation-triage` debug subagent, and ends the turn (`YIELD`). Next turn, the Orchestrator passes `--analysis -` with the triage ANALYSIS JSON to the decider; `route()` is called with `--root-cause`/`--analysis-state`. A `skipped` analysis or a `simulation` root_cause yields `ESCALATE`; otherwise the root_cause maps to a `REWORK` target.
    - `<stage>` → return `REWORK` action. The Orchestrator calls `state.py rework --failed-stage <f> --target-stage <decision>` with a ≤200-char reason. For `simulation`, the Orchestrator also authors the per-dispatch `orchestrator_context` for the target — the one judgment step that stays LLM-side (§6.5).
 
-`route.py` consumes only closed-enum / integer inputs (`failed_stage`, `failure_kind`, `failures[0].category`, `root_cause`, `analysis_state`, `guideline`, `by_target`), all produced upstream by stage subagents, `simulation-triage`, or `state.py`. For the exact `category → target` map and rule identifiers, see `framework/scripts/route.py` and `tests/unit/test_route.py`.
+`route.py` consumes only closed-enum inputs (`failed_stage`, `failure_kind`, `failures[0].category`, `root_cause`, `analysis_state`), all produced upstream by stage subagents or `simulation-triage`. For the exact `category → target` map and rule identifiers, see `framework/scripts/route.py` and `tests/unit/test_route.py`.
 
 The `NEED_INPUT` path is the loop's only cross-turn handshake — a `simulation-triage` round-trip spanning two turns:
 
@@ -441,7 +440,6 @@ sequenceDiagram
 
 - `cmd_dispatch` is the single source of eligibility truth. The decider's `eligible()` predicate is informational only; `cmd_dispatch` re-checks state at write time and returns `ok:false` if eligibility shifted between the scan and the actual write.
 - `cmd_reap --run <N>` is mandatory for every dispatched run. Runs are addressable by number; the same stage may have multiple concurrent runs (the DAG legalizes this for `simulation` under cascade-stale — see §4.2).
-- `convergence(events, stage)` returns a two-valued guideline (`continue` / `must_escalate`); the decider's `route()` call decides whether to escalate. `state.py` issues no mandates.
 - The decider handles at most one `fail/clean` stage per call (Step 3). Several failures may resolve in one turn via the re-query loop; multiple independent failures accumulate across turns — this is intentional, not a limitation.
 - `state.py`'s argparse output is the **single authoritative source for the CLI surface** — flag signatures, return JSON shapes, outcome enums, error cases. No parallel reference document is maintained; run `python3 framework/scripts/state.py [<cmd>] --help` to consult it.
 

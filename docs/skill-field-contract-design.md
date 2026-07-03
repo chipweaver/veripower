@@ -240,7 +240,7 @@ skill reads. Only variables the skill actually uses are listed.
 | `{workdir}` | Current run workspace root (contains the run-number path segment `runs/<N>/`); injected by the dispatcher |
 | `{module}` | Module name; injected by the dispatcher |
 | `{rework_trigger}` | Optional: path to a trigger-context file injected by the caller; contains `stage_specific.violations[]` and related context for the current revision round; its presence is the primary branch-routing signal |
-| `{orchestrator_context_path}` | Optional: path to a fix-scope hint file (e.g., triage diagnosis, convergence hint); when present, narrows scope more precisely than `{rework_trigger}.violations[]` alone |
+| `{orchestrator_context_path}` | Optional: path to a fix-scope hint file (e.g., triage diagnosis); when present, narrows scope more precisely than `{rework_trigger}.violations[]` alone |
 
 For branch-routing semantics of these variables — how their presence/absence determines
 forward vs. rework vs. cascade-rework paths — see `skill-branch-routing-design.md`.

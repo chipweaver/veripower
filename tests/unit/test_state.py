@@ -1580,171 +1580,6 @@ class TestCmdRework:
         assert task["stages"]["simulation-plan"]["freshness"] == "stale"
 
 
-# ── convergence command ──
-
-
-class TestCmdConvergence:
-    def _setup(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        state.cmd_init("m")
-        ep = state._events_path("m")
-        ep.parent.mkdir(parents=True, exist_ok=True)
-
-    def test_convergence_zero_reworks(self, tmp_path, monkeypatch):
-        self._setup(tmp_path, monkeypatch)
-        result = state.cmd_convergence("m", "lint-cdc")
-        assert result["stage"] == "lint-cdc"
-        assert result["total_reworks"] == 0
-        assert result["by_target"] == {}
-        assert result["guideline"] == "continue"
-
-    def test_convergence_one_rework(self, tmp_path, monkeypatch):
-        self._setup(tmp_path, monkeypatch)
-        state.append_event(
-            "m",
-            {
-                "type": "rework_decision",
-                "failed_stage": "lint-cdc",
-                "target_stage": "rtl-design",
-                "reason": "W415a",
-                "run": 1,
-            },
-        )
-        result = state.cmd_convergence("m", "lint-cdc")
-        assert result["total_reworks"] == 1
-        assert result["by_target"]["rtl-design"] == 1
-        assert result["guideline"] == "continue"
-
-    def test_convergence_must_escalate(self, tmp_path, monkeypatch):
-        self._setup(tmp_path, monkeypatch)
-        state.append_event(
-            "m",
-            {
-                "type": "rework_decision",
-                "failed_stage": "lint-cdc",
-                "target_stage": "rtl-design",
-                "reason": "r1",
-                "run": 1,
-            },
-        )
-        state.append_event(
-            "m",
-            {
-                "type": "rework_decision",
-                "failed_stage": "lint-cdc",
-                "target_stage": "specification",
-                "reason": "r2",
-                "run": 1,
-            },
-        )
-        state.append_event(
-            "m",
-            {
-                "type": "rework_decision",
-                "failed_stage": "lint-cdc",
-                "target_stage": "rtl-design",
-                "reason": "r3",
-                "run": 1,
-            },
-        )
-        result = state.cmd_convergence("m", "lint-cdc")
-        assert result["total_reworks"] == 3
-        assert result["guideline"] == "must_escalate"
-
-    def test_convergence_resets_after_pass(self, tmp_path, monkeypatch):
-        """Only counts reworks after the most recent pass for this stage."""
-        self._setup(tmp_path, monkeypatch)
-        state.append_event(
-            "m",
-            {
-                "type": "rework_decision",
-                "failed_stage": "lint-cdc",
-                "target_stage": "rtl-design",
-                "reason": "old",
-                "run": 1,
-            },
-        )
-        state.append_event(
-            "m",
-            {
-                "type": "rework_decision",
-                "failed_stage": "lint-cdc",
-                "target_stage": "rtl-design",
-                "reason": "old2",
-                "run": 1,
-            },
-        )
-        # lint-cdc passed — resets counter
-        state.append_event(
-            "m",
-            {"type": "outcome", "stage": "lint-cdc", "run": 1, "result_status": "pass"},
-        )
-        # New failure cycle
-        state.append_event(
-            "m",
-            {
-                "type": "rework_decision",
-                "failed_stage": "lint-cdc",
-                "target_stage": "rtl-design",
-                "reason": "new",
-                "run": 1,
-            },
-        )
-        result = state.cmd_convergence("m", "lint-cdc")
-        assert result["total_reworks"] == 1
-        assert result["guideline"] == "continue"
-
-    def test_convergence_discarded_does_not_reset_cutoff(self, tmp_path, monkeypatch):
-        """B3 regression guard: discarded outcome (pass/stale) must NOT reset the rework counter."""
-        self._setup(tmp_path, monkeypatch)
-        # two reworks — pre-discard
-        state.append_event(
-            "m",
-            {
-                "type": "rework_decision",
-                "failed_stage": "lint-cdc",
-                "target_stage": "rtl-design",
-                "reason": "r1",
-                "run": 1,
-            },
-        )
-        state.append_event(
-            "m",
-            {
-                "type": "rework_decision",
-                "failed_stage": "lint-cdc",
-                "target_stage": "rtl-design",
-                "reason": "r2",
-                "run": 1,
-            },
-        )
-        # discarded outcome for lint-cdc — must not count as reset
-        state.append_event(
-            "m",
-            {
-                "type": "outcome",
-                "stage": "lint-cdc",
-                "run": 1,
-                "result_status": "discarded",
-                "reason": "prereq changed",
-                "archive": "",
-            },
-        )
-        # one more rework
-        state.append_event(
-            "m",
-            {
-                "type": "rework_decision",
-                "failed_stage": "lint-cdc",
-                "target_stage": "rtl-design",
-                "reason": "r3",
-                "run": 1,
-            },
-        )
-        result = state.cmd_convergence("m", "lint-cdc")
-        assert result["total_reworks"] == 3, "discarded outcome must not reset cutoff"
-
-
 # ── log command ──
 
 
@@ -1836,8 +1671,8 @@ class TestCmdLog:
             "m",
             {
                 "type": "escalation",
-                "reason_code": "convergence_must_escalate",
-                "reason": "convergence must_escalate",
+                "reason_code": "promote_failed_persistent",
+                "reason": "promote still failing after retry",
             },
         )
         assert result["ok"] is True
@@ -2081,10 +1916,6 @@ class TestFullLoop:
         write_run_result(m, "lint-cdc", run_lc1, status="fail")
         r = state.cmd_reap(m, "lint-cdc", run=run_lc1, outcome="fail")
         assert r["result_status"] == "fail"
-
-        # convergence check
-        r = state.cmd_convergence(m, "lint-cdc")
-        assert r["guideline"] == "continue"
 
         # rework: lint-cdc → rtl-design
         r = state.cmd_rework(m, "lint-cdc", "rtl-design", "W415a violation")
@@ -2582,64 +2413,11 @@ class TestEventSchemaValidation:
             "foo",
             {
                 "type": "escalation",
-                "reason_code": "convergence_must_escalate",
-                "reason": "tried 3 times",
+                "reason_code": "promote_failed_persistent",
+                "reason": "promote still failing after retry",
             },
         )
         assert ok["ok"] is True
-
-
-class TestCmdConvergenceDictByTarget:
-    def test_by_target_is_dict_keyed(self, tmp_path, monkeypatch):
-        """cmd_convergence.by_target should be dict[target_stage, count],
-        not list[{target, count}]. Matches the PPA hard rule which
-        uses conv.by_target.get("rtl-design", 0)."""
-        monkeypatch.chdir(tmp_path)
-        state.cmd_init("foo")
-        # manually inject 3 rework_decision events: 2 targeting rtl-design, 1 specification
-        for target in ["rtl-design", "rtl-design", "specification"]:
-            state.append_event(
-                "foo",
-                {
-                    "type": "rework_decision",
-                    "failed_stage": "power-analysis",
-                    "target_stage": target,
-                    "reason": f"PPA test target={target}",
-                    "run": 1,
-                },
-            )
-        result = state.cmd_convergence("foo", "power-analysis")
-        assert result["total_reworks"] == 3
-        assert result["by_target"] == {"rtl-design": 2, "specification": 1}
-        # last_reason should be gone
-        assert "last_reason" not in str(result["by_target"])
-
-    def test_by_target_get_works_for_missing_target(self, tmp_path, monkeypatch):
-        """PPA hard rule: if conv.by_target.get('rtl-design', 0) >= 2 then escalate."""
-        monkeypatch.chdir(tmp_path)
-        state.cmd_init("foo")
-        # never reworked
-        result = state.cmd_convergence("foo", "power-analysis")
-        assert result["by_target"].get("rtl-design", 0) == 0
-        assert result["total_reworks"] == 0
-
-    def test_guideline_must_escalate_at_3(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        state.cmd_init("foo")
-        for target in ["rtl-design", "rtl-design", "specification"]:
-            state.append_event(
-                "foo",
-                {
-                    "type": "rework_decision",
-                    "failed_stage": "power-analysis",
-                    "target_stage": target,
-                    "reason": f"r{target}",
-                    "run": 1,
-                },
-            )
-        result = state.cmd_convergence("foo", "power-analysis")
-        assert result["total_reworks"] == 3
-        assert result["guideline"] == "must_escalate"
 
 
 class TestEnvelopeSchema:
@@ -3626,13 +3404,6 @@ class TestCmdInvalidateStage:
         )
         assert not any(e["type"] == "rework_decision" for e in events)
 
-    def test_not_counted_by_convergence(self, tmp_path, monkeypatch):
-        self._init(tmp_path, monkeypatch)
-        self._set("specification", "fail")
-        state.cmd_invalidate_stage("m", "specification", "x")
-        conv = state.cmd_convergence("m", "specification")
-        assert conv["total_reworks"] == 0  # invalidate must not pollute the tally
-
     def test_rejects_not_started(self, tmp_path, monkeypatch):
         self._init(tmp_path, monkeypatch)
         r = state.cmd_invalidate_stage("m", "specification", "x")
@@ -3646,30 +3417,3 @@ class TestCmdInvalidateStage:
         self._set("specification", "fail")
         r = state.cmd_invalidate_stage("m", "specification", "   ")
         assert not r["ok"]
-
-
-def test_convergence_pure_fn_two_valued():
-    events = [
-        {
-            "type": "rework_decision",
-            "failed_stage": "synthesis",
-            "target_stage": "rtl-design",
-        },
-        {
-            "type": "rework_decision",
-            "failed_stage": "synthesis",
-            "target_stage": "rtl-design",
-        },
-    ]
-    r = state.convergence(events, "synthesis")
-    assert r["guideline"] == "continue"  # 2 reworks, not yet 3
-    assert r["by_target"]["rtl-design"] == 2
-    assert "guideline_rule" not in r  # dropped
-    events += [
-        {
-            "type": "rework_decision",
-            "failed_stage": "synthesis",
-            "target_stage": "rtl-design",
-        }
-    ]
-    assert state.convergence(events, "synthesis")["guideline"] == "must_escalate"  # >=3

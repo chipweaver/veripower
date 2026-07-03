@@ -5,7 +5,7 @@ description: Use when progressing IC design through stages, checking module stat
 
 # Design Flow Orchestrator
 
-You are the **orchestrator** — each turn you call the deterministic decider `orchestrate.py decide` (which computes the single next action: forward dispatch / rework routing / convergence judgment / escalation / yield / done) and **execute** that action — dispatching stage subagents through the Task tool and managing state through `state.py`. The routing decisions live in the decider, not this skill; `state.py` is a pure state tool with no routing logic.
+You are the **orchestrator** — each turn you call the deterministic decider `orchestrate.py decide` (which computes the single next action: forward dispatch / rework routing / escalation / yield / done) and **execute** that action — dispatching stage subagents through the Task tool and managing state through `state.py`. The routing decisions live in the decider, not this skill; `state.py` is a pure state tool with no routing logic.
 
 ## When to Use
 
@@ -68,7 +68,7 @@ You run on the main thread and read `{module}` (the sole external parameter) fro
   specification --reason "<…>"`. That stales `specification` + cascades downstream; the
   next eligibility scan re-dispatches `specification` with a fresh empty workdir, which yields
   first-run re-derivation from the updated brainstorm. `invalidate-stage` records an
-  `invalidate` event (not `rework_decision`), so it does not count toward convergence.
+  `invalidate` event (not `rework_decision`): a full re-derivation, not a routed rework.
   Do not delete/edit the on-disk `design.md` (a main-thread write to a canonical artifact
   breaks the orchestrator/subagent isolation) — the empty new-run workdir is the entire mechanism.
 
@@ -143,7 +143,7 @@ When the `REAP` execute step receives `cmd_reap` returning `action=promote_faile
 | "Let me Read the stage's SKILL.md so I understand what it does" | Reading the 5 Task-dispatched stages' SKILL.md invites inlining their work into the main thread; they run only inside a `Task(subagent_type="general-purpose", …)` that calls `Skill()` itself (see the literal tripwire above). Main-thread loading exception: `veripower:specification`, `veripower:simulation-plan`, `veripower:rtl-design`, and `veripower:simulation` are loaded via `Skill()` — their SKILL.md files are auto-loaded normally. The other 5 Task-dispatched stages do not get this exception. |
 | "This command hits the approval gate — I'll wrap it in `bash -c '…'` to get past it" | An approval trigger is a contract-violation signal, not an annoyance. Hand the whole command chain to a Task subagent; never rewrite around the gate. |
 | "I'll dump everything into `orchestrator_context` to be safe" | It carries only reasoned content that helps downstream do its work better — never a log/chat/dump slot, never info already in files the subagent reads. Single-dispatch lifetime. |
-| "Just escalate / re-warm the stage skill / tidy the subagent's wording" | Check convergence before escalating; never pre-run `Skill(stage)` after dispatch; forward subagent text **verbatim** on ESCALATE. |
+| "Just escalate / re-warm the stage skill / tidy the subagent's wording" | Never pre-run `Skill(stage)` after dispatch; forward subagent text **verbatim** on ESCALATE. |
 
 ## Pitfalls
 
@@ -165,8 +165,7 @@ Orchestrator-form specialization: each turn returns a control-flow flag, not a d
   state.py log --module {module} --event \
     '{"type":"escalation","reason_code":"<code>","reason":"<text>"}'
   ```
-  The two `reason_code` values the Orchestrator names directly:
-  - `must_escalate` — `cmd_convergence.guideline == "must_escalate"` (total rework count ≥ 3).
+  The one `reason_code` value the Orchestrator names directly:
   - `promote_failed_persistent` — REAP step is still promote_failed after the single retry.
 
   Every other escalation is decider-sourced: `orchestrate.py decide` returns `action=ESCALATE` with a `reason` drawn from `route.py`'s rule / `reason_hint` (e.g. `triage_skipped`, `tooling_no_route`, `terminal_frontend_signoff`, `unrouted*`); log that string as the `reason_code` and `reason`.
@@ -175,7 +174,7 @@ Orchestrator-form specialization: each turn returns a control-flow flag, not a d
 
 ## Bundled References
 
-- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/state.py` — State-management tool (8 commands). Invocation contract: this file + `--help` (which prints each command's return shape).
+- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/state.py` — State-management tool (7 commands). Invocation contract: this file + `--help` (which prints each command's return shape).
 - `${CLAUDE_PLUGIN_ROOT}/framework/scripts/orchestrate.py` — the control-loop decider (`orchestrate.py decide`). Invocation + output contract: §Executor loop above.
 - `${CLAUDE_PLUGIN_ROOT}/framework/scripts/topology.py`, `route.py`, `artifacts.py` — import-only internals of state.py / orchestrate.py (DAG SSoT, rework-target maps, artifact promote/mirror); never invoked or read at runtime.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/prompts/stage-subagent.md.tpl`](../../framework/references/prompts/stage-subagent.md.tpl) — Task dispatch template.

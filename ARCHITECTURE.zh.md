@@ -32,7 +32,7 @@
 | **cascade-stale**（级联失效） | BFS 遍历：当某个阶段通过或被指定为返工目标时，将其所有 `pass`/`fail`/`in_progress` 后继标记为 `stale`（§4.4）。 |
 | **status × freshness**（状态×新鲜度） | 每个阶段的两个独立属性：`status ∈ {not_started, in_progress, pass, fail}`，`freshness ∈ {clean, stale}`（§4.2）。 |
 | **in-flight / run**（在途 / run） | `run`（即 `current_run`）是单调递增的派发编号；`in_flight[]` 列出尚未收割的 run（§4.3）。 |
-| **determinism boundary**（确定性边界） | 系统赖以成立的划分：判断归 Orchestrator，状态归 `state.py`，确定性计算归同级脚本（`route.py`、`orchestrate.py`、`convergence`）（§2.4）。 |
+| **determinism boundary**（确定性边界） | 系统赖以成立的划分：判断归 Orchestrator，状态归 `state.py`，确定性计算归同级脚本（`route.py`、`orchestrate.py`）（§2.4）。 |
 
 ---
 
@@ -57,7 +57,7 @@ Orchestrator Agent 做决策；`state.py` 和 skills 负责执行；磁盘负责
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────┐
 │             Orchestrator Agent  ( veripower:design-flow )                          │
-│  main conversation; forward dispatch / rework routing / convergence /              │
+│  main conversation; forward dispatch / rework routing /                            │
 │  escalation / user collaboration                                                   │
 └──┬───────────────────────────┬────────────────────────────────┬────────────────────┘
    │ Bash                      │ Skill()                        │ Task()
@@ -72,7 +72,7 @@ Orchestrator Agent 做决策；`state.py` 和 skills 负责执行；磁盘负责
 │ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)      │
 │                    │  │   main thread)               │  │                          │
 │ state.py:          │  │                              │  │  Stage: executes stage   │
-│   state + 8 cmds   │  │  specification:              │  │    → writes result.json  │
+│   state + 7 cmds   │  │  specification:              │  │    → writes result.json  │
 │ orchestrate.py:    │  │    fan-out → design.md       │  │  Debug: read-only triage │
 │  decide → action   │  │    design.md / manifest.json │  │    → returns ANALYSIS    │
 │ route.py:          │  │    SDC / SGDC / result.json  │  │                          │
@@ -101,7 +101,7 @@ Orchestrator Agent 做决策；`state.py` 和 skills 负责执行；磁盘负责
 
 Orchestrator 的三条派发路径：
 
-- **Bash** → `state.py` CLI（8 条命令：`init`、`status`、`dispatch`、`reap`、`rework`、`invalidate-stage`、`convergence`、`log`）；`orchestrate.py decide`（每次调用返回一个动作，见 §5）；`topology.py`——DAG 的单一真相源（`PREREQ_OF`、`eligible()`）；`route.py`——返工路由器（纯目标选择，组合在 `orchestrate.py` 内部，见 §5.4）。
+- **Bash** → `state.py` CLI（7 条命令：`init`、`status`、`dispatch`、`reap`、`rework`、`invalidate-stage`、`log`）；`orchestrate.py decide`（每次调用返回一个动作，见 §5）；`topology.py`——DAG 的单一真相源（`PREREQ_OF`、`eligible()`）；`route.py`——返工路由器（纯目标选择，组合在 `orchestrate.py` 内部，见 §5.4）。
 - **Skill()** → 四个主线程 skills（`specification`、`simulation-plan`、`rtl-design`、`simulation`）。
 - **Task()** → 阶段子 Agent 和调试子 Agent。
 
@@ -128,16 +128,16 @@ Orchestrator 的三条派发路径：
 
 | **角色** | **载体** | **职责** | **能力边界** |
 |---|---|---|---|
-| **Orchestrator Agent** | `design-flow` skill，主会话 | 前向派发、返工路由（执行 `route.py` 选出的目标）、收敛判断、升级、用户协作；同时作为 `specification` / `simulation-plan` / `rtl-design` / `simulation` 四个阶段的主线程执行器 | 系统中唯一有权调用 `state.py`、使用 Task 工具、与用户交互的角色 |
+| **Orchestrator Agent** | `design-flow` skill，主会话 | 前向派发、返工路由（执行 `route.py` 选出的目标）、升级、用户协作；同时作为 `specification` / `simulation-plan` / `rtl-design` / `simulation` 四个阶段的主线程执行器 | 系统中唯一有权调用 `state.py`、使用 Task 工具、与用户交互的角色 |
 | **主线程 skill** | `veripower:specification`、`veripower:simulation-plan`、`veripower:rtl-design` 或 `veripower:simulation`，由 Orchestrator 通过 `Skill()` 加载 | 在 Orchestrator 线程中自驱动工作：`specification` 跑两波 sub-Task（分解 + 按 child）加主线程脚本和两次路径交接门（D0–D7 对话已前移到流水线外的 `brainstorm` skill）；`simulation-plan` 跑多轮计划审查对话并自派发一次一级 plan-adequacy 审查 sub-Task；`rtl-design` 无对话但持有一级扇出派发权（§2.2）；`simulation` 同样无对话且持有一级扇出派发权——Wave 1 派发 env-build child（首次 run / patch）或 freeze child（freeze）；非 freeze run 再运行 smoke gate、LLM conformance review-gate（Step 4）和 verify child（§2.2）。各自写入自己的产物和 `result.json`。 | `simulation-plan` 可跨轮次与用户交互；`specification` 额外在两次路径交接门处交互；`specification` / `rtl-design` / `simulation`（及 `simulation-plan`，限单次审查 sub-Task）可派发一级 sub-Task（§6.3.1）。其余边界与阶段子 Agent 相同（禁 `state.py`、禁路由）。契约靠 SKILL.md 中的条文纪律约束，不靠工具门控。 |
 | **阶段子 Agent** | 五个以 Task 方式派发的阶段 skills（`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis` / `frontend-signoff`），通过 Task 工具派发 | 执行单个阶段：读上游 → 做工作 → 写 `result.json` → 返回 STATUS 行 | 不准调 `state.py`，不准做路由决策（完整 5 条清单见 §6.1） |
 | **调试子 Agent** | `simulation-triage` skill，通过 Task 工具派发 | 对仿真失败做只读根因分析；返回两层 ANALYSIS（路由 JSON 块——`root_cause`/`analysis_state`——加散文分析） | 不修改任何状态——绝不碰 `task.json`、`result.json`、RTL 或测试代码 |
 | **`state.py`** | Python CLI | 状态转换、前置校验、cascade-stale 传播、事件日志追加、上下文收集；尽力而为的异步子 Agent 转录镜像（`cmd_reap` 时的遥测副作用，见 §6.6） | 不含路由逻辑，不做判断 |
-| **`route.py`** | Python CLI（`state.py` 的同级脚本） | 纯确定性返工目标选择——将失败的封闭枚举字段映射为目标 / `ESCALATE` / `NEED_INPUT` | 不持有状态；输入为 CLI 标量标志（`--guideline`、`--by-target-rtl`，仿真路径上还有 `--root-cause`/`--analysis-state`）外加可选传入的 `result.json`。Orchestrator 读取其 JSON 输出，按 `decision` 字段行动。不做状态转换。 |
+| **`route.py`** | Python CLI（`state.py` 的同级脚本） | 纯确定性返工目标选择——将失败的封闭枚举字段映射为目标 / `ESCALATE` / `NEED_INPUT` | 不持有状态；输入为 CLI 标量标志（仿真路径上有 `--root-cause`/`--analysis-state`）外加可选传入的 `result.json`。Orchestrator 读取其 JSON 输出，按 `decision` 字段行动。不做状态转换。 |
 
 ### 2.4 核心设计原则
 
-- **判断归 Orchestrator，状态归 Python，确定性计算归同级脚本**——即 *determinism boundary*。Orchestrator 做判断（升级、返工上下文）；`state.py` 维护状态事实；既非判断也非状态的确定性决策支持——收敛计数（`cmd_convergence`）、返工目标选择（`route.py`）、完整控制循环决策（`orchestrate.py decide`）——放在 Orchestrator 所执行的脚本中。三者各司其职，互不侵入。*可执行*的能力边界（谁能调 `state.py` / `Task()` / 用户）见 §2.3 角色表。
+- **判断归 Orchestrator，状态归 Python，确定性计算归同级脚本**——即 *determinism boundary*。Orchestrator 做判断（升级、返工上下文）；`state.py` 维护状态事实；既非判断也非状态的确定性决策支持——返工目标选择（`route.py`）、完整控制循环决策（`orchestrate.py decide`）——放在 Orchestrator 所执行的脚本中。三者各司其职，互不侵入。*可执行*的能力边界（谁能调 `state.py` / `Task()` / 用户）见 §2.3 角色表。
 - **决策边界 = 工具边界。** Orchestrator 的每个决策都下推到 `orchestrate.py decide`；Orchestrator 自身只是薄执行器，在两次 `state.py` 调用之间除了调 decider 什么也不做。可验证的循环形式——*两次连续 `state.py` 调用中间没有 decider 调用就是 bug*——见 §5.5。
 - **文件即数据库。** `task.json` 是快照，`events.jsonl` 是审计日志，`result.json` 文件是阶段产出。没有中间缓存，没有服务端存储。
 - **压缩安全可恢复。** 因为文件即数据库，会话中途的上下文压缩（或进程崩溃）是可存活的：Orchestrator 和每个子 Agent 都单凭磁盘就能无损恢复，不存在只活在对话里的关键信息。持久真相在磁盘上——`task.json`、`events.jsonl`、各阶段的 `result.json`。Orchestrator 在轮次间**不持有任何持久控制状态**——每个轮次都通过 `orchestrate.py decide` 从磁盘重新推导下一步。唯一例外是会话驻留的 `orchestrator_context` 提示：在 `REWORK` 时撰写，同一轮次内 `DISPATCH` 时消费——**可重推导，非持久**（且一旦传给 `cmd_dispatch` 即落盘为 `orchestrator-context.md`）；见 §5。
@@ -212,7 +212,7 @@ VeriPower 前端流水线共 9 个固定阶段，由 DAG 前置关系连接；�
 典型返工闭环：
 
 - **simulation 失败** → `simulation-triage` 调试子 Agent → 返工到 `rtl-design` / `specification` / `simulation-plan`。
-- **PPA 失败**：synthesis 判 area/timing_slack；power-analysis 判 power_mw；timing-analysis 判 setup/hold。任一不达标 → decider 走 `route.py` 路由（基于收敛；见 §5），返回 `REWORK`/`ESCALATE` 由 Orchestrator 执行。power-analysis 的工具故障（GLS 错误、SAIF 缺失）由子 Agent 写入 `failures[].{phase, category, error_summary}`；`route.py` 将 `category` 映射到上游 DAG 目标（见 §5.4 和 `framework/scripts/route.py`）。
+- **PPA 失败**：synthesis 判 area/timing_slack；power-analysis 判 power_mw；timing-analysis 判 setup/hold。任一不达标 → decider 走 `route.py` 路由（见 §5），返回 `REWORK`/`ESCALATE` 由 Orchestrator 执行。power-analysis 的工具故障（GLS 错误、SAIF 缺失）由子 Agent 写入 `failures[].{phase, category, error_summary}`；`route.py` 将 `category` 映射到上游 DAG 目标（见 §5.4 和 `framework/scripts/route.py`）。
 
 ## 4. 状态模型
 
@@ -370,7 +370,7 @@ flowchart TD
 
 **步骤 2：完工即止。** 若 `frontend-signoff` 的 `status=pass` 且 `freshness=clean` → 返回 `DONE`。
 
-**步骤 3：处理首个失败。** 按 `FORWARD_PRIORITY` 扫描。找到首个 `status=fail` 且 `freshness=clean` 的阶段。若存在，经 `route.py` 路由（组合收敛 + 结果输入），返回对应动作（`REWORK`、`DISPATCH_TRIAGE` 或 `ESCALATE`）。不变量：**一次 decider（`decide`）调用只处理一个失败；多个失败可在同一轮次通过重查询循环解决**——若返工目标是多个 `fail/clean` 阶段的公共祖先，首轮 REWORK 的级联就会将它们全部标为 `fail/stale`，后续重查询不会再看到失败。
+**步骤 3：处理首个失败。** 按 `FORWARD_PRIORITY` 扫描。找到首个 `status=fail` 且 `freshness=clean` 的阶段。若存在，经 `route.py` 路由（依据失败的结果输入），返回对应动作（`REWORK`、`DISPATCH_TRIAGE` 或 `ESCALATE`）。不变量：**一次 decider（`decide`）调用只处理一个失败；多个失败可在同一轮次通过重查询循环解决**——若返工目标是多个 `fail/clean` 阶段的公共祖先，首轮 REWORK 的级联就会将它们全部标为 `fail/stale`，后续重查询不会再看到失败。
 
 **步骤 4：前向派发。** 对每个按 `FORWARD_PRIORITY` 顺序 `eligible(stage)` 的阶段，返回 `DISPATCH`。`eligible` 条件：全部 DAG 前置为 `pass/clean`；阶段自身不是 `in_progress/clean`、`pass/clean` 或 `fail/clean`。不变量：distinct in-flight stages ≤ 2 是 DAG 拓扑的自然推论（见 §3.2）——Orchestrator 不写显式上限。
 
@@ -396,14 +396,13 @@ synthesis / power-analysis 的 `ppa_targets` 由 **decider 计算**（`_ppa_targ
 
 decider 内部控制流（步骤 3）：
 
-1. `convergence(events, failed_stage)`（纯函数，进程内）提供 `guideline` 和 `by_target["rtl-design"]`。
-2. 用轻量输入*提前*调 `route()`（PPA / lint-cdc / simulation-plan 类走磁盘上的 `result.json`；simulation / frontend-signoff 无额外输入），以确保注定升级的失败不浪费一次 triage 派发。
-3. 按 `decision` 行动：
-   - `ESCALATE` → 返回 `ESCALATE` 动作（reason = `route.py` 的 `reason_hint` 或规范的 `fail_reason`，原文照抄）。覆盖 `must_escalate`、`failure_kind=infra`、终态的 `frontend-signoff`、以及无上游目标的 `tooling` 失败。
+1. 用轻量输入*提前*调 `route()`（PPA / lint-cdc / simulation-plan 类走磁盘上的 `result.json`；simulation / frontend-signoff 无额外输入），以确保注定升级的失败不浪费一次 triage 派发。
+2. 按 `decision` 行动：
+   - `ESCALATE` → 返回 `ESCALATE` 动作（reason = `route.py` 的 `reason_hint` 或规范的 `fail_reason`，原文照抄）。覆盖 `failure_kind=infra`、终态的 `frontend-signoff`、以及无上游目标的 `tooling` 失败。
    - `NEED_INPUT`（实际上仅 `simulation`，需 triage 的 `root_cause`）→ 返回 `DISPATCH_TRIAGE`。Orchestrator 记 `debug_dispatch` 事件，派发 `simulation-triage` 调试子 Agent，结束轮次（`YIELD`）。下个轮次 Orchestrator 将 triage ANALYSIS JSON 以 `--analysis -` 传给 decider；`route()` 被调用时带 `--root-cause`/`--analysis-state`。`skipped` 分析或 `simulation` root_cause 走 `ESCALATE`；否则 root_cause 映射为 `REWORK` 目标。
    - `<stage>` → 返回 `REWORK` 动作。Orchestrator 调 `state.py rework --failed-stage <f> --target-stage <decision>` 并附 ≤200 字符原因。对 `simulation`，Orchestrator 还需为目标撰写 per-dispatch 的 `orchestrator_context`——留在 LLM 侧的唯一判断（§6.5）。
 
-`route.py` 只消费封闭枚举 / 整数输入（`failed_stage`、`failure_kind`、`failures[0].category`、`root_cause`、`analysis_state`、`guideline`、`by_target`），全部由上游的阶段子 Agent、`simulation-triage` 或 `state.py` 产出。确切的 `category → target` 映射和规则标识符见 `framework/scripts/route.py` 和 `tests/unit/test_route.py`。
+`route.py` 只消费封闭枚举输入（`failed_stage`、`failure_kind`、`failures[0].category`、`root_cause`、`analysis_state`），全部由上游的阶段子 Agent 或 `simulation-triage` 产出。确切的 `category → target` 映射和规则标识符见 `framework/scripts/route.py` 和 `tests/unit/test_route.py`。
 
 `NEED_INPUT` 路径是循环中唯一的跨轮次握手——`simulation-triage` 往返，恰好跨越两个轮次：
 
@@ -441,7 +440,6 @@ sequenceDiagram
 
 - `cmd_dispatch` 是 eligibility 的唯一真相源。decider 的 `eligible()` 谓词仅为信息性；`cmd_dispatch` 在写入时重检状态，若 eligibility 在扫描与写入之间漂移则返回 `ok:false`。
 - `cmd_reap --run <N>` 对每个已派发的 run 都是强制的。Run 以编号寻址；同一阶段允许有多个并发 run（DAG 在 cascade-stale 下为此提供了合法空间，仅 `simulation` 实际利用——见 §4.2）。
-- `convergence(events, stage)` 返回二值 guideline（`continue` / `must_escalate`）；是否升级由 decider 的 `route()` 调用决定，`state.py` 不下指令。
 - decider 每次调用至多处理一个 `fail/clean` 阶段（步骤 3）。多个失败可在同一轮次经重查询循环解决；多个独立失败跨轮次积累——这是有意设计，不是限制。
 - `state.py` 的 argparse 输出是 **CLI 接口的唯一权威来源**——标志签名、返回 JSON 形状、结果枚举、错误情形。不维护第二份参考文档；查阅方式是 `python3 framework/scripts/state.py [<cmd>] --help`。
 

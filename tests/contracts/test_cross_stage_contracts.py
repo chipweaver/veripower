@@ -7,7 +7,7 @@ boundaries:
    `ppa_actual[]` schema allows (via const or enum) must appear in
    `specification.ppa_targets[].dim` enum. specification authors the
    targets; downstream stages MEASURE against them. A stage that reports
-   a dim specification can't express has no target — convergence routing
+   a dim specification can't express has no target — rework routing
    loses signal silently.
 
 2. **result.json path consistency.** Every `(Design|Verification)/<stage>/

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """VeriPower orchestration — state tool.
 
-Single-file CLI. 8 commands: init, status, dispatch, reap, rework, invalidate-stage,
-convergence, log. No routing logic — all decisions belong to
+Single-file CLI. 7 commands: init, status, dispatch, reap, rework, invalidate-stage,
+log. No routing logic — all decisions belong to
 Orchestrator agent.
 """
 
@@ -870,8 +870,8 @@ def cmd_invalidate_stage(module: str, stage: str, reason: str) -> dict:
     branch and re-derives in full from the current module-root brainstorm.md — no
     version/hash compare needed.
 
-    Event type is `invalidate` (NOT rework_decision) so cmd_convergence's rework tally
-    is not polluted (convergence counts rework_decision + failed_stage).
+    Event type is `invalidate` (NOT rework_decision): it is a full re-derivation, not a
+    DAG-routed rework, so `_find_rework_trigger` won't resolve a rework_trigger from it.
     """
     err = _validate_reason(reason)
     if err:
@@ -926,38 +926,6 @@ def cmd_invalidate_stage(module: str, stage: str, reason: str) -> dict:
             f"the new run's empty workdir routes it to first-run re-derivation."
         ),
     }
-
-
-def convergence(events: list[dict], stage: str) -> dict:
-    """Pure: rework-loop depth for a failing stage. Two-valued guideline."""
-    cutoff_idx = 0
-    for i in range(len(events) - 1, -1, -1):
-        e = events[i]
-        if (
-            e.get("type") == "outcome"
-            and e.get("stage") == stage
-            and e.get("result_status") == "pass"
-        ):
-            cutoff_idx = i + 1
-            break
-    by_target: dict[str, int] = {}
-    total = 0
-    for e in events[cutoff_idx:]:
-        if e.get("type") == "rework_decision" and e.get("failed_stage") == stage:
-            t = e["target_stage"]
-            by_target[t] = by_target.get(t, 0) + 1
-            total += 1
-    guideline = "must_escalate" if total >= 3 else "continue"
-    return {
-        "stage": stage,
-        "total_reworks": total,
-        "by_target": by_target,
-        "guideline": guideline,
-    }
-
-
-def cmd_convergence(module: str, stage: str) -> dict:
-    return convergence(read_events(module), stage)
 
 
 # Orchestrator may write only these via cmd_log; state.py auto-emits the rest
@@ -1089,7 +1057,7 @@ def main() -> None:
     p_inval = sub.add_parser(
         "invalidate-stage",
         help="Mark a stage + its DAG-downstream stale (records an `invalidate` "
-        "event; does NOT count toward convergence). Returns {ok, stage, staled, hint}.",
+        "event; not a routed rework). Returns {ok, stage, staled, hint}.",
     )
     p_inval.add_argument("--module", required=True, help="Module name")
     p_inval.add_argument(
@@ -1100,19 +1068,6 @@ def main() -> None:
     )
     p_inval.add_argument(
         "--reason", required=True, help="Human-readable justification (non-empty)"
-    )
-
-    # convergence
-    p_conv = sub.add_parser(
-        "convergence",
-        help="Check rework loop depth for a failing stage. Returns {stage, total_reworks, by_target, guideline (continue|must_escalate)}.",
-    )
-    p_conv.add_argument("--module", required=True, help="Module name")
-    p_conv.add_argument(
-        "--stage",
-        required=True,
-        choices=FORWARD_PRIORITY,
-        help="The failing stage to measure rework depth for",
     )
 
     # log
@@ -1181,8 +1136,6 @@ def main() -> None:
             )
         elif args.command == "invalidate-stage":
             _output(cmd_invalidate_stage(args.module, args.stage, args.reason))
-        elif args.command == "convergence":
-            _output(cmd_convergence(args.module, args.stage))
         elif args.command == "log":
             try:
                 event = json.loads(args.event)

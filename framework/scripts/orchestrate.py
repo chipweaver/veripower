@@ -4,7 +4,7 @@
 `orchestrate.py decide` reads on-disk state and returns EXACTLY ONE next action
 for the design-flow Orchestrator to execute. Decision-support only: it reads
 state and decides; it never mutates (state.py owns mutations). Composes the
-pure deciders route() / eligible() / convergence(). Reproduces ARCHITECTURE.md
+pure deciders route() / eligible(). Reproduces ARCHITECTURE.md
 §5's loop as tested code. The LLM loops on `decide` until YIELD/DONE/ESCALATE.
 """
 
@@ -15,7 +15,7 @@ import json
 import sys
 
 from route import _inputs_from_result_json, route
-from state import convergence, read_events, read_task
+from state import read_events, read_task
 from topology import FORWARD_PRIORITY, _result_path, eligible
 
 MAIN_THREAD = {"specification", "simulation-plan", "rtl-design", "simulation"}
@@ -69,11 +69,7 @@ def _promote_failed_count(events: list, stage: str, run: int) -> int:
 def _handle_failure(
     module: str, failed: str, events: list, analysis: dict | None
 ) -> dict:
-    conv = convergence(events, failed)
-    kwargs = {
-        "guideline": conv["guideline"],
-        "by_target_rtl": conv["by_target"].get("rtl-design", 0),
-    }
+    kwargs: dict = {}
     if failed == "simulation":
         if analysis is None:
             if _triage_pending(events):
