@@ -94,14 +94,20 @@ Deploys the templates into `{workdir}`, generates `scripts/rtl_load.tcl` + `scri
 
 ### Step 5: First synthesis run
 
-`cd {workdir} && make synthesis`.
+`make synthesis` runs `dc_shell` and can outrun the foreground Bash timeout. Launch it as one
+detached background job (`run_in_background=True`) from `{workdir}` (the Makefile tees `run.log`),
+then end your turn and wait for the harness completion notification. On wake, read `run.log` once
+(tail + exit status) and proceed. Never foreground the run — the result never returns synchronously,
+which forces token-burning hand-rolled waiting; never poll with `sleep` / `pgrep` / `until … done`
+(nor background such a loop) nor re-read the growing `run.log` across turns; do not emit `STATUS`
+until `result.json` is written.
 
 ### Step 6: Iteratively supplement timing exceptions
 
 Extract the violated paths from `reports/timing_setup.rpt`, keeping each path's startpoint / endpoint / slack (the file/line/cause needed to classify it; e.g. `grep -B2 -A25 -i "violated" reports/timing_setup.rpt`, widening the window when a path needs deeper inspection).
 - Known multicycle paths → add `set_multicycle_path`.
 - Known static false paths → add `set_false_path`.
-- Re-run `make synthesis`; repeat until the remaining violations are real timing issues or have been excepted.
+- Re-run `make synthesis` (same detached-background protocol as Step 5); repeat until the remaining violations are real timing issues or have been excepted.
 
 ### Step 7: Build `{workdir}/result.json` (mandatory)
 
