@@ -2,7 +2,7 @@
 """simtriage — simulation-triage-stage CLI.
 
 Verbs (one stage = one tool; see skills/simulation-triage/SKILL.md for usage):
-  validate-analysis   schema-gate the ANALYSIS routing block   (exit 0 valid / 1 invalid; writes no files)
+  validate-analysis   schema-gate the analysis.json routing block   (exit 0 valid / 1 invalid; writes no files)
 
 simulation-triage is an N=1 producer self-gate: it writes no result.json and has no
 finalize / --workdir (canonical read-only + scratch-writable Iron Rule — the skill lands

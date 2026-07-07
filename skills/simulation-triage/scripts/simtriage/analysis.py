@@ -1,4 +1,4 @@
-"""Producer self-gate for the simulation-triage ANALYSIS routing block — the validate-analysis verb.
+"""Producer self-gate for the simulation-triage analysis.json routing block — the validate-analysis verb.
 
 Validates a JSON payload (--json-file or piped --json-stdin) against analysis.schema.json
 (Draft 2020-12). Exit 0 = valid; exit 1 = invalid (formatted error on stderr). Writes no

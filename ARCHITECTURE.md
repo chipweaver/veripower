@@ -300,7 +300,7 @@ When a stage transitions to `pass`, or is rework-targeted (set to `stale`), `sta
 | `cascade` | `state.py` (auto) | `reap` / `rework` trigger cascade | `source_stage`, `staled[]` |
 | `rework_decision` | `state.py` (auto) | `rework` command | `failed_stage`, `target_stage`, `reason`, `run` (failed_stage's current_run, mandatory) |
 | `invalidate` | `state.py` (auto) | `invalidate-stage` command | `stage`, `reason` |
-| `debug_dispatch` | Orchestrator (`log`) | dispatching `simulation-triage` | `module`, `failure_phase?` |
+| `debug_dispatch` | Orchestrator (`log`) | dispatching `simulation-triage` | `module`, `failure_phase?`, `sim_run?` |
 | `escalation` | Orchestrator (`log`) | Orchestrator gives up | `reason_code`, `reason` |
 
 `outcome.result_status` is a **6-value enum**. `pass` / `fail` / `blocked` are resolved at reap by `cmd_reap` from the run's `result.json` (or forced via an explicit `reap --outcome`); `invalid` (schema-failing `result.json`), `discarded` (runs superseded by rework or cascade-stale), and `promote_failed` (canonical hardlink merge fails) are always internally derived by `state.py`. The `discarded` sub-cases and their `reason_code` text format are a `state.py` implementation detail — the projection (§4.6) treats all four sub-cases identically. All events carry UTC ISO8601 timestamps.
@@ -344,7 +344,7 @@ Reap runs in two regimes:
 
 ### 5.2 Executor loop (per turn)
 
-The Orchestrator calls `orchestrate.py decide --module <M> [--wake <stage>:<run>] [--analysis -]` and executes exactly the one action it returns, looping until the action is `YIELD`, `DONE`, or `ESCALATE`. The decider encodes the following decision steps; the prose below remains the authoritative contract.
+The Orchestrator calls `orchestrate.py decide --module <M> [--wake <stage>:<run>] [--analysis <path>]` and executes exactly the one action it returns, looping until the action is `YIELD`, `DONE`, or `ESCALATE`. The decider encodes the following decision steps; the prose below remains the authoritative contract.
 
 ```mermaid
 flowchart TD

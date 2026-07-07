@@ -300,7 +300,7 @@ stateDiagram-v2
 | `cascade` | `state.py`（自动） | `reap` / `rework` 触发级联 | `source_stage`、`staled[]` |
 | `rework_decision` | `state.py`（自动） | `rework` 命令 | `failed_stage`、`target_stage`、`reason`、`run`（failed_stage 的 current_run，必填） |
 | `invalidate` | `state.py`（自动） | `invalidate-stage` 命令 | `stage`、`reason` |
-| `debug_dispatch` | Orchestrator（`log`） | 派发 `simulation-triage` | `module`、`failure_phase?` |
+| `debug_dispatch` | Orchestrator（`log`） | 派发 `simulation-triage` | `module`、`failure_phase?`、`sim_run?` |
 | `escalation` | Orchestrator（`log`） | Orchestrator 放弃 | `reason_code`、`reason` |
 
 `outcome.result_status` 是 **6 值枚举**。`pass` / `fail` / `blocked` 在 reap 时由 `cmd_reap` 从 run 的 `result.json` 解析（或通过显式 `reap --outcome` 强制指定）；`invalid`（schema 不合规的 `result.json`）、`discarded`（被返工或 cascade-stale 取代的 run）和 `promote_failed`（规范 hardlink 合并失败）始终由 `state.py` 内部推导。`discarded` 的子情形及其 `reason_code` 文本格式属于 `state.py` 实现细节——投影（§4.6）对四种子情形一视同仁。全部事件携带 UTC ISO8601 时间戳。
@@ -344,7 +344,7 @@ reap 在两种机制下运行：
 
 ### 5.2 执行器循环（per turn）
 
-Orchestrator 调用 `orchestrate.py decide --module <M> [--wake <stage>:<run>] [--analysis -]` 并恰好执行其返回的那一个动作，循环直到动作为 `YIELD`、`DONE` 或 `ESCALATE`。decider 编码了以下决策步骤；下方正文为权威契约。
+Orchestrator 调用 `orchestrate.py decide --module <M> [--wake <stage>:<run>] [--analysis <path>]` 并恰好执行其返回的那一个动作，循环直到动作为 `YIELD`、`DONE` 或 `ESCALATE`。decider 编码了以下决策步骤；下方正文为权威契约。
 
 ```mermaid
 flowchart TD
