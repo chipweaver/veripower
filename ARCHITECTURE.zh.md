@@ -140,7 +140,7 @@ Orchestrator 的三条派发路径：
 - **判断归 Orchestrator，状态归 Python，确定性计算归同级脚本**——即 *determinism boundary*。Orchestrator 做判断（升级、返工上下文）；`state.py` 维护状态事实；既非判断也非状态的确定性决策支持——返工目标选择（`route.py`）、完整控制循环决策（`orchestrate.py decide`）——放在 Orchestrator 所执行的脚本中。三者各司其职，互不侵入。*可执行*的能力边界（谁能调 `state.py` / `Task()` / 用户）见 §2.3 角色表。
 - **决策边界 = 工具边界。** Orchestrator 的每个决策都下推到 `orchestrate.py decide`；Orchestrator 自身只是薄执行器，在两次 `state.py` 调用之间除了调 decider 什么也不做。可验证的循环形式——*两次连续 `state.py` 调用中间没有 decider 调用就是 bug*——见 §5.5。
 - **文件即数据库。** `task.json` 是快照，`events.jsonl` 是审计日志，`result.json` 文件是阶段产出。没有中间缓存，没有服务端存储。
-- **压缩安全可恢复。** 因为文件即数据库，会话中途的上下文压缩（或进程崩溃）是可存活的：Orchestrator 和每个子 Agent 都单凭磁盘就能无损恢复，不存在只活在对话里的关键信息。持久真相在磁盘上——`task.json`、`events.jsonl`、各阶段的 `result.json`。Orchestrator 在轮次间**不持有任何持久控制状态**——每个轮次都通过 `orchestrate.py decide` 从磁盘重新推导下一步。唯一例外是会话驻留的 `orchestrator_context` 提示：在 `REWORK` 时撰写，同一轮次内 `DISPATCH` 时消费——**可重推导，非持久**（且一旦传给 `cmd_dispatch` 即落盘为 `orchestrator-context.md`）；见 §5。
+- **压缩安全可恢复。** 因为文件即数据库，会话中途的上下文压缩（或进程崩溃）是可存活的：Orchestrator 和每个子 Agent 都单凭磁盘就能无损恢复，不存在只活在对话里的关键信息。持久真相在磁盘上——`task.json`、`events.jsonl`、各阶段的 `result.json`。Orchestrator 在轮次间**不持有任何持久控制状态**——每个轮次都通过 `orchestrate.py decide` 从磁盘重新推导下一步。唯一例外是会话驻留的 `orchestrator_context` 提示：在 `REWORK` 时撰写（`simulation` rework 则为转发），同一轮次内 `DISPATCH` 时消费——**可重推导，非持久**（且一旦传给 `cmd_dispatch` 即落盘为 `orchestrator-context.md`）；见 §5。
 - **单向通信。** Orchestrator → prompt → 子 Agent → `result.json` + STATUS。子 Agent 不能回调 Orchestrator；子 Agent 之间不能通信。
 - **上下文隔离。** 子 Agent 收到的是全新 prompt；不继承父会话的任何历史。所有必要输入通过文件路径或 prompt 字段显式传递。
 
@@ -388,7 +388,7 @@ decider 返回*决策*；Orchestrator（执行器）发出它自己不能发出�
 
 synthesis / power-analysis 的 `ppa_targets` 由 **decider 计算**（`_ppa_targets`：读 `specification/result.json`，按 `dim` 过滤——synthesis 为 `{area_um2, timing_slack_ns}`，power-analysis 为 `{power_mw}`——实现于 `framework/scripts/orchestrate.py`），在 *`DISPATCH` 动作中*返回。因此 Orchestrator **不自己读 `result.json`**，守住了"Orchestrator 不读完整文件"的不变量。
 
-**`REWORK`。** Orchestrator 撰写 `orchestrator_context`（唯一判断——给目标的、有推理含量的提示，绝不是文件转储或目标已知信息的复述），然后 `state.py rework --failed-stage <f> --target-stage <t> --reason <≤200 字符>`。级联将目标 + 其 DAG 下游（含刚失败的阶段）标为 stale。下一个 `orchestrate.py decide` 返回 `DISPATCH <target>`，此时已撰写的上下文经 `--orchestrator-context` 管道传入。（`orchestrator_context` 是 per-dispatch 的，不延续到同阶段的后续派发。）
+**`REWORK`。** Orchestrator 撰写 `orchestrator_context`（唯一判断——给目标的、有推理含量的提示，绝不是文件转储或目标已知信息的复述——但 `simulation` rework 例外，直接转发 triage 落盘的 `analysis.json` 路径（见 §6.5）），然后 `state.py rework --failed-stage <f> --target-stage <t> --reason <≤200 字符>`。级联将目标 + 其 DAG 下游（含刚失败的阶段）标为 stale。下一个 `orchestrate.py decide` 返回 `DISPATCH <target>`，此时已撰写的上下文经 `--orchestrator-context` 管道传入。（`orchestrator_context` 是 per-dispatch 的，不延续到同阶段的后续派发。）
 
 ### 5.4 失败路由（decider 内部）
 
@@ -399,7 +399,7 @@ decider 内部控制流（步骤 3）：
 1. 用轻量输入*提前*调 `route()`（PPA / lint-cdc / simulation-plan 类走磁盘上的 `result.json`；simulation / frontend-signoff 无额外输入），以确保注定升级的失败不浪费一次 triage 派发。
 2. 按 `decision` 行动：
    - `ESCALATE` → 返回 `ESCALATE` 动作（reason = `route.py` 的 `reason_hint` 或规范的 `fail_reason`，原文照抄）。覆盖 `failure_kind=infra`、终态的 `frontend-signoff`、以及无上游目标的 `tooling` 失败。
-   - `NEED_INPUT`（实际上仅 `simulation`，需 triage 的 `root_cause`）→ 返回 `DISPATCH_TRIAGE`（该动作携带 `sim_run`，即失败 run 的编号）。Orchestrator 记 `debug_dispatch` 事件（带 `sim_run`），仅以 `{module, sim_run}` 派发 `simulation-triage` 调试子 Agent——triage 由此自读 canonical 输入及失败的 `runs/<N>/`（§6.4）——然后结束轮次（`YIELD`）。`simulation-triage` 自行落盘 `Verification/simulation-triage/analysis.json`（原子发布；§7.1）。下个轮次 Orchestrator 把 `--analysis <path>`（该落盘文件）传给 decider；`route()` 被调用时带 `--root-cause`/`--analysis-state`/`--confidence`。`skipped` 分析、不可路由/`simulation` 的 root_cause，或**任何低于 `high` 的 confidence**，都走 `ESCALATE`（分别对应 `triage_skipped` / `unrouted` / `triage_low_confidence`）；只有 `high` 置信度且可路由的 root_cause 才映射为 `REWORK` 目标——confidence 现在是 gating 字段，不是 advisory。
+   - `NEED_INPUT`（实际上仅 `simulation`，需 triage 的 `root_cause`）→ 返回 `DISPATCH_TRIAGE`（该动作携带 `sim_run`，即失败 run 的编号）。Orchestrator 记 `debug_dispatch` 事件（带 `sim_run`），仅以 `{module, sim_run}` 派发 `simulation-triage` 调试子 Agent——triage 由此自读 canonical 输入及失败的 `runs/<N>/`（§6.4）——然后结束轮次（`YIELD`）。`simulation-triage` 自行落盘 `Verification/simulation-triage/analysis.json`（原子发布；§7.1）。下个轮次 Orchestrator 把 `--analysis <path>`（该落盘文件）传给 decider；`route()` 被调用时带 `--root-cause`/`--analysis-state`/`--confidence`。`skipped` 分析、不可路由的 root_cause，或**任何低于 `high` 的 confidence**，都走 `ESCALATE`（分别对应 `triage_skipped` / `unrouted` / `triage_low_confidence`）；`simulation` 的 root_cause 同样映射为 `ESCALATE`，但走的是它自己的规则（`triage_root_cause:simulation->ESCALATE`），而非 `unrouted`；只有 `high` 置信度且可路由的 root_cause 才映射为 `REWORK` 目标——confidence 现在是 gating 字段，不是 advisory。
    - `<stage>` → 返回 `REWORK` 动作。Orchestrator 调 `state.py rework --failed-stage <f> --target-stage <decision>` 并附 ≤200 字符原因。对 `simulation`，Orchestrator 把 triage 落盘的 `analysis.json` 路径直接转发为目标的 per-dispatch `orchestrator_context`（§6.5）——这是对一份已校验产物的转发，不是 LLM 撰写。
 
 `route.py` 只消费封闭枚举输入（`failed_stage`、`failure_kind`、`failures[0].category`、`root_cause`、`analysis_state`、`confidence`），全部由上游的阶段子 Agent 或 `simulation-triage` 产出。确切的 `category → target` 映射和规则标识符见 `framework/scripts/route.py` 和 `tests/unit/test_route.py`。
@@ -457,7 +457,7 @@ VeriPower 产出两类结构化输出，各走各的验证通道：
 
 **描述性/咨询性产物输出**（给下游参考的上下文）——simulation-triage 的 `analysis.json` 路由块（现含 gating 的 `confidence` 字段，见 §5.4/§6.4）及其 advisory 层，以及 simulation-plan 的验证 scaffold：这些会影响路由但不是 `state.py` 的直接输入。`simulation-triage` 把 `analysis.json` 直接落盘到自己的 `Verification/simulation-triage/**`——transport 现在是 decider 经 `--analysis <path>` 读取的文件（§5.4/§7.1），不是 message-body 负载——但它是自写的，从不经 reap，也从不被 `cmd_reap` 做 schema 校验。这些产物改由生产者自检门校验（`skills/simulation-triage/scripts/simtriage/__main__.py`、`skills/simulation-plan/scripts/simplan/__main__.py`）：生产者校验失败则修了重来，通过才发出；Orchestrator 消费的是已校验过的负载，`state.py` 不碰。`confidence` 现在是 *gating* 字段（§5.4）并不代表它进了 `state.py` 校验层：它的正确性靠 schema 之外的两层机制保证——triage 自己的 L2 cycle-accurate 重现让 `high` 判定站得住脚，而置信度门把低于 `high` 的一律上浮给 operator，而不是盲信一个不牢靠的判定。
 
-两种做法不能简单统一：把 ANALYSIS 校验塞进 `state.py` 等于给纯状态工具加路由逻辑；把 `result.json` 校验推给生产者等于让脏数据污染 `task.json`。因此有三个校验点：
+两种做法不能简单统一：把 analysis.json 校验塞进 `state.py` 等于给纯状态工具加路由逻辑；把 `result.json` 校验推给生产者等于让脏数据污染 `task.json`。因此有三个校验点：
 
 | 校验点 | 校验对象 | 机制 |
 |---|---|---|
