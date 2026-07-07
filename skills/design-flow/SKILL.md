@@ -97,7 +97,7 @@ digraph {
 
 ```text
 loop:
-  a = orchestrate.py decide --module {module} [--wake <stage>:<run>] [--analysis -]
+  a = orchestrate.py decide --module {module} [--wake <stage>:<run>] [--analysis <path>]
   execute(a)
   if a.action in {YIELD, DONE, ESCALATE}: end turn
 ```
