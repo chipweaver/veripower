@@ -135,3 +135,9 @@ def test_advisory_unknown_key_rejected():
 def test_minimal_skipped_still_valid():
     r = _run({"analysis_state": "skipped", "skipped_reason": "no fail case"})
     assert r.returncode == 0, r.stderr
+
+
+def test_complete_without_confidence_exits_nonzero():
+    r = _run({"analysis_state": "complete", "root_cause": "rtl-design"})
+    assert r.returncode != 0
+    assert "confidence" in r.stderr

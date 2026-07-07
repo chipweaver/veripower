@@ -89,7 +89,7 @@ def route(
             target, f"fixed:{failed_stage}->{target}", reason_hint=fail_reason
         )
 
-    # 3. simulation — routed on triage ANALYSIS (in-message, supplied as args).
+    # 3. simulation — routed on triage ANALYSIS (landed analysis.json, supplied as args).
     if failed_stage == "simulation":
         if root_cause is None or analysis_state is None:
             return _decision(NEED_INPUT, "need_input:root_cause", need="root_cause")
@@ -153,12 +153,12 @@ def main() -> None:
     p.add_argument(
         "--root-cause",
         default=None,
-        help="simulation-triage ANALYSIS root_cause (simulation only)",
+        help="simulation-triage landed analysis.json root_cause (simulation only)",
     )
     p.add_argument(
         "--analysis-state",
         default=None,
-        help="simulation-triage ANALYSIS analysis_state (simulation only)",
+        help="simulation-triage landed analysis.json analysis_state (simulation only)",
     )
     p.add_argument(
         "--confidence",

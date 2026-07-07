@@ -194,7 +194,7 @@ def main() -> None:
         try:
             analysis = json.loads(Path(args.analysis).read_text())
         except (OSError, json.JSONDecodeError):
-            analysis = None  # missing/partial landed file → treat as no analysis (re-dispatch triage)
+            analysis = None  # missing/partial landed file → analysis=None; with a triage already dispatched this YIELDs to await the async triage notification (not a re-dispatch)
     else:
         analysis = None
     print(json.dumps(decide(args.module, wake=args.wake, analysis=analysis), indent=2))
