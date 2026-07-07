@@ -2,18 +2,46 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-triage/analysis.schema.json",
   "title": "simulation-triage ANALYSIS routing block",
-  "description": "The routing-tier JSON emitted as the final ANALYSIS: block by simulation-triage. analysis_state discriminates: 'complete' carries root_cause; 'skipped' carries skipped_reason. The advisory analysis (root-cause narrative, findings, fix hint) is prose ABOVE this block and is NOT validated here. Not written to disk; not enveloped. Only root_cause + analysis_state are the hard contract here; the prose above is advisory.",
+  "description": "The routing-tier JSON emitted as the final ANALYSIS: block by simulation-triage. analysis_state discriminates: 'complete' carries root_cause + confidence; 'skipped' carries skipped_reason. confidence is a hard, gating routing field (spec §3.7): high auto-routes, medium/low escalate to operator. advisory (level, fix_direction, findings[], repro) is a persisted, non-gating supplement — NOT read-only prose; it IS validated here. Not enveloped.",
   "type": "object",
   "required": ["analysis_state"],
   "properties": {
     "analysis_state": {"type": "string", "enum": ["complete", "skipped"]},
     "skipped_reason": {"type": "string", "minLength": 1},
-    "root_cause":     {"type": "string", "enum": ["rtl-design", "simulation-plan", "specification", "simulation"]}
+    "root_cause":     {"type": "string", "enum": ["rtl-design", "simulation-plan", "specification", "simulation"]},
+    "confidence":     {"type": "string", "enum": ["high", "medium", "low"]},
+    "advisory": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "level":         {"type": "string", "enum": ["L1", "L2"]},
+        "fix_direction": {"type": "string"},
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "properties": {
+              "fault_type": {"type": "string"},
+              "anchor":     {"type": "string"},
+              "cases":      {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "repro": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "tool":        {"type": "string"},
+            "artifacts":   {"type": "array", "items": {"type": "string"}},
+            "isolation":   {"type": "string"},
+            "adversarial": {"type": "string"}
+          }
+        }
+      }
+    }
   },
   "allOf": [
     {
       "if":   {"properties": {"analysis_state": {"const": "complete"}}, "required": ["analysis_state"]},
-      "then": {"required": ["root_cause"]}
+      "then": {"required": ["root_cause", "confidence"]}
     },
     {
       "if":   {"properties": {"analysis_state": {"const": "skipped"}}, "required": ["analysis_state"]},

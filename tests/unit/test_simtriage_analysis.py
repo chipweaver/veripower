@@ -18,17 +18,20 @@ def _run(payload: dict, *, schema=None):
 
 
 def test_default_schema_used_when_flag_omitted():
-    r = _run({"analysis_state": "complete", "root_cause": "rtl-design"})
+    r = _run({"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high"})
     assert r.returncode == 0, r.stderr
 
 
 def test_explicit_schema_override_still_accepted():
-    r = _run({"analysis_state": "complete", "root_cause": "rtl-design"}, schema=SCHEMA)
+    r = _run(
+        {"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high"},
+        schema=SCHEMA,
+    )
     assert r.returncode == 0, r.stderr
 
 
-def test_minimal_complete_only_root_cause_exits_zero():
-    r = _run({"analysis_state": "complete", "root_cause": "rtl-design"})
+def test_minimal_complete_root_cause_and_confidence_exits_zero():
+    r = _run({"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high"})
     assert r.returncode == 0, r.stderr
 
 
@@ -85,7 +88,9 @@ def test_advisory_keys_rejected_by_additional_properties_false():
 
 def test_json_file_input(tmp_path):
     p = tmp_path / "a.json"
-    p.write_text(json.dumps({"analysis_state": "complete", "root_cause": "rtl-design"}))
+    p.write_text(
+        json.dumps({"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high"})
+    )
     r = subprocess.run(
         [sys.executable, str(MAIN), "validate-analysis", "--json-file", str(p)],
         capture_output=True,
@@ -103,3 +108,30 @@ def test_invalid_json_exits_nonzero():
     )
     assert r.returncode != 0
     assert "not valid JSON" in r.stderr
+
+
+def test_complete_with_confidence_and_advisory_valid():
+    r = _run({
+        "analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high",
+        "advisory": {
+            "level": "L2",
+            "fix_direction": "fp_pkg.svh::fp32_add: magnitude-compare in opposite-sign branch",
+            "findings": [{"fault_type": "data_mismatch", "anchor": "fp_pkg.svh:264", "cases": ["T-E2E"]}],
+            "repro": {"tool": "verilator", "artifacts": ["runs/16/repro/tb_add.sv", "runs/16/repro/run.log"],
+                       "isolation": "eq-exp subtraction underflow", "adversarial": "blind+refute agree"},
+        },
+    })
+    assert r.returncode == 0, r.stderr
+
+def test_confidence_outside_enum_rejected():
+    r = _run({"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "very-high"})
+    assert r.returncode != 0
+
+def test_advisory_unknown_key_rejected():
+    r = _run({"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high",
+              "advisory": {"bogus": 1}})
+    assert r.returncode != 0
+
+def test_minimal_skipped_still_valid():
+    r = _run({"analysis_state": "skipped", "skipped_reason": "no fail case"})
+    assert r.returncode == 0, r.stderr
