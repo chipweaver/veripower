@@ -73,9 +73,9 @@ Orchestrator Agent 做决策；`state.py` 和 skills 负责执行；磁盘负责
 │                    │  │   main thread)               │  │                          │
 │ state.py:          │  │                              │  │  Stage: executes stage   │
 │   state + 7 cmds   │  │  specification:              │  │    → writes result.json  │
-│ orchestrate.py:    │  │    fan-out → design.md       │  │  Debug: read-only triage │
-│  decide → action   │  │    design.md / manifest.json │  │    → returns ANALYSIS    │
-│ route.py:          │  │    SDC / SGDC / result.json  │  │                          │
+│ orchestrate.py:    │  │    fan-out → design.md       │  │  Debug: canon. RO,       │
+│  decide → action   │  │    design.md / manifest.json │  │    scratch RW builder    │
+│ route.py:          │  │    SDC / SGDC / result.json  │  │    → analysis.json+repro │
 │   rework target    │  │  simulation-plan:            │  │  Must NOT call state.py  │
 │                    │  │    plan generation +         │  │  or make routing calls   │
 │                    │  │    review loop               │  │  (see §6.1 for full)     │
@@ -131,9 +131,9 @@ Orchestrator 的三条派发路径：
 | **Orchestrator Agent** | `design-flow` skill，主会话 | 前向派发、返工路由（执行 `route.py` 选出的目标）、升级、用户协作；同时作为 `specification` / `simulation-plan` / `rtl-design` / `simulation` 四个阶段的主线程执行器 | 系统中唯一有权调用 `state.py`、使用 Task 工具、与用户交互的角色 |
 | **主线程 skill** | `veripower:specification`、`veripower:simulation-plan`、`veripower:rtl-design` 或 `veripower:simulation`，由 Orchestrator 通过 `Skill()` 加载 | 在 Orchestrator 线程中自驱动工作：`specification` 跑两波 sub-Task（分解 + 按 child）加主线程脚本和两次路径交接门（D0–D7 对话已前移到流水线外的 `brainstorm` skill）；`simulation-plan` 跑多轮计划审查对话并自派发一次一级 plan-adequacy 审查 sub-Task；`rtl-design` 无对话但持有一级扇出派发权（§2.2）；`simulation` 同样无对话且持有一级扇出派发权——Wave 1 派发 env-build child（首次 run / patch）或 freeze child（freeze）；非 freeze run 再运行 smoke gate、LLM conformance review-gate（Step 4）和 verify child（§2.2）。各自写入自己的产物和 `result.json`。 | `simulation-plan` 可跨轮次与用户交互；`specification` 额外在两次路径交接门处交互；`specification` / `rtl-design` / `simulation`（及 `simulation-plan`，限单次审查 sub-Task）可派发一级 sub-Task（§6.3.1）。其余边界与阶段子 Agent 相同（禁 `state.py`、禁路由）。契约靠 SKILL.md 中的条文纪律约束，不靠工具门控。 |
 | **阶段子 Agent** | 五个以 Task 方式派发的阶段 skills（`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis` / `frontend-signoff`），通过 Task 工具派发 | 执行单个阶段：读上游 → 做工作 → 写 `result.json` → 返回 STATUS 行 | 不准调 `state.py`，不准做路由决策（完整 5 条清单见 §6.1） |
-| **调试子 Agent** | `simulation-triage` skill，通过 Task 工具派发 | 对仿真失败做只读根因分析；返回两层 ANALYSIS（路由 JSON 块——`root_cause`/`analysis_state`——加散文分析） | 不修改任何状态——绝不碰 `task.json`、`result.json`、RTL 或测试代码 |
+| **调试子 Agent** | `simulation-triage` skill，通过 Task 工具派发 | 权威的分级（L1 日志推理 → L2 cycle-accurate 重现）根因分析器；落盘 `analysis.json`（含 gating `confidence` + advisory），L2 触发时另持久化 `repro/`（§6.4） | canonical 只读、scratch 可写——只写自身 `Verification/simulation-triage/**`；绝不碰 `task.json` 或其它任何阶段的 `result.json`、RTL 或测试代码；非幂等（重复运行会重跑 L2） |
 | **`state.py`** | Python CLI | 状态转换、前置校验、cascade-stale 传播、事件日志追加、上下文收集；尽力而为的异步子 Agent 转录镜像（`cmd_reap` 时的遥测副作用，见 §6.6） | 不含路由逻辑，不做判断 |
-| **`route.py`** | Python CLI（`state.py` 的同级脚本） | 纯确定性返工目标选择——将失败的封闭枚举字段映射为目标 / `ESCALATE` / `NEED_INPUT` | 不持有状态；输入为 CLI 标量标志（仿真路径上有 `--root-cause`/`--analysis-state`）外加可选传入的 `result.json`。Orchestrator 读取其 JSON 输出，按 `decision` 字段行动。不做状态转换。 |
+| **`route.py`** | Python CLI（`state.py` 的同级脚本） | 纯确定性返工目标选择——将失败的封闭枚举字段映射为目标 / `ESCALATE` / `NEED_INPUT` | 不持有状态；输入为 CLI 标量标志（仿真路径上有 `--root-cause`/`--analysis-state`/`--confidence`）外加可选传入的 `result.json`。Orchestrator 读取其 JSON 输出，按 `decision` 字段行动。不做状态转换。 |
 
 ### 2.4 核心设计原则
 
@@ -331,7 +331,7 @@ stateDiagram-v2
 
 Orchestrator 的结构：一个初始化块 + 由 `orchestrate.py decide` 驱动的薄执行器循环。控制流遵循轮次纪律：每个用户消息或 task-notification 恰好触发一个轮次，以 `YIELD`、`DONE` 或 `ESCALATE` 结束。收到下个通知时 Claude Code 框架重新进入循环。
 
-持久状态在磁盘上（`task.json`、`events.jsonl`、各阶段的 `result.json`），因此循环是**压缩安全**的（§2.4）。这对循环的具体要求是：喂给子 Agent prompt 的每个字段都来自 `state.py` 的磁盘产物（*disk-sourced payload* 承诺；逐字段细节见 §5.3），会话历史信息只能通过 `cmd_dispatch` 时落盘的 `--orchestrator-context` 通道送达子 Agent。唯一的瞬态规划状态是只读的 `simulation-triage` `ANALYSIS` 以及由它拼出的派发上下文——在对话中持有，到下一次 `cmd_dispatch` 时注入，然后落盘为 `orchestrator-context.md`。二者均可重推导：若压缩在中途丢弃了它们，下个轮次 `orchestrate.py decide` 发现阶段仍为 `fail/clean`，重派发只读且幂等的 `simulation-triage`，然后重新拼出上下文。持久的返工结果（`rework_decision` 目标+原因，或升级原因）一经决定就在磁盘上，最坏情况不过是压缩导致多跑一次 triage——决策永远不会丢。子 Agent 在中途被压缩或崩溃同样是阶段粒度无损的：缺失或半写的 `result.json` 在 reap 时被捕获（§5.1），阶段从磁盘输入重跑。
+持久状态在磁盘上（`task.json`、`events.jsonl`、各阶段的 `result.json`），因此循环是**压缩安全**的（§2.4）。这对循环的具体要求是：喂给子 Agent prompt 的每个字段都来自 `state.py` 的磁盘产物（*disk-sourced payload* 承诺；逐字段细节见 §5.3），会话历史信息只能通过 `cmd_dispatch` 时落盘的 `--orchestrator-context` 通道送达子 Agent。唯一的瞬态规划状态是 `simulation-triage` 这次派发本身，以及它落盘后拼出的返工上下文——在对话中持有，到下一次 `cmd_dispatch` 时注入，然后落盘为 `orchestrator-context.md`。二者均可重推导：若压缩在中途丢弃了它们，下个轮次 `orchestrate.py decide` 发现阶段仍为 `fail/clean`，重派发 `simulation-triage`，然后重新拼出上下文——这次重派发会**从头重跑 L2**（triage 现是 builder，既非只读也非幂等；§6.4），不是免费重放；跨重派发的可重复性由 triage 自身对 `analysis.json` 的原子自写（写临时文件 + rename；§7.1）保证，而非靠 Orchestrator 侧记忆。持久的返工结果（`rework_decision` 目标+原因，或升级原因）一经决定就在磁盘上，最坏情况不过是压缩导致多跑一次 triage——决策永远不会丢。子 Agent 在中途被压缩或崩溃同样是阶段粒度无损的：缺失或半写的 `result.json` 在 reap 时被捕获（§5.1），阶段从磁盘输入重跑。
 
 ### 5.1 初始化与 reap
 
@@ -399,10 +399,10 @@ decider 内部控制流（步骤 3）：
 1. 用轻量输入*提前*调 `route()`（PPA / lint-cdc / simulation-plan 类走磁盘上的 `result.json`；simulation / frontend-signoff 无额外输入），以确保注定升级的失败不浪费一次 triage 派发。
 2. 按 `decision` 行动：
    - `ESCALATE` → 返回 `ESCALATE` 动作（reason = `route.py` 的 `reason_hint` 或规范的 `fail_reason`，原文照抄）。覆盖 `failure_kind=infra`、终态的 `frontend-signoff`、以及无上游目标的 `tooling` 失败。
-   - `NEED_INPUT`（实际上仅 `simulation`，需 triage 的 `root_cause`）→ 返回 `DISPATCH_TRIAGE`。Orchestrator 记 `debug_dispatch` 事件，派发 `simulation-triage` 调试子 Agent，结束轮次（`YIELD`）。下个轮次 Orchestrator 将 triage ANALYSIS JSON 以 `--analysis -` 传给 decider；`route()` 被调用时带 `--root-cause`/`--analysis-state`。`skipped` 分析或 `simulation` root_cause 走 `ESCALATE`；否则 root_cause 映射为 `REWORK` 目标。
-   - `<stage>` → 返回 `REWORK` 动作。Orchestrator 调 `state.py rework --failed-stage <f> --target-stage <decision>` 并附 ≤200 字符原因。对 `simulation`，Orchestrator 还需为目标撰写 per-dispatch 的 `orchestrator_context`——留在 LLM 侧的唯一判断（§6.5）。
+   - `NEED_INPUT`（实际上仅 `simulation`，需 triage 的 `root_cause`）→ 返回 `DISPATCH_TRIAGE`（该动作携带 `sim_run`，即失败 run 的编号）。Orchestrator 记 `debug_dispatch` 事件（带 `sim_run`），仅以 `{module, sim_run}` 派发 `simulation-triage` 调试子 Agent——triage 由此自读 canonical 输入及失败的 `runs/<N>/`（§6.4）——然后结束轮次（`YIELD`）。`simulation-triage` 自行落盘 `Verification/simulation-triage/analysis.json`（原子发布；§7.1）。下个轮次 Orchestrator 把 `--analysis <path>`（该落盘文件）传给 decider；`route()` 被调用时带 `--root-cause`/`--analysis-state`/`--confidence`。`skipped` 分析、不可路由/`simulation` 的 root_cause，或**任何低于 `high` 的 confidence**，都走 `ESCALATE`（分别对应 `triage_skipped` / `unrouted` / `triage_low_confidence`）；只有 `high` 置信度且可路由的 root_cause 才映射为 `REWORK` 目标——confidence 现在是 gating 字段，不是 advisory。
+   - `<stage>` → 返回 `REWORK` 动作。Orchestrator 调 `state.py rework --failed-stage <f> --target-stage <decision>` 并附 ≤200 字符原因。对 `simulation`，Orchestrator 把 triage 落盘的 `analysis.json` 路径直接转发为目标的 per-dispatch `orchestrator_context`（§6.5）——这是对一份已校验产物的转发，不是 LLM 撰写。
 
-`route.py` 只消费封闭枚举输入（`failed_stage`、`failure_kind`、`failures[0].category`、`root_cause`、`analysis_state`），全部由上游的阶段子 Agent 或 `simulation-triage` 产出。确切的 `category → target` 映射和规则标识符见 `framework/scripts/route.py` 和 `tests/unit/test_route.py`。
+`route.py` 只消费封闭枚举输入（`failed_stage`、`failure_kind`、`failures[0].category`、`root_cause`、`analysis_state`、`confidence`），全部由上游的阶段子 Agent 或 `simulation-triage` 产出。确切的 `category → target` 映射和规则标识符见 `framework/scripts/route.py` 和 `tests/unit/test_route.py`。
 
 `NEED_INPUT` 路径是循环中唯一的跨轮次握手——`simulation-triage` 往返，恰好跨越两个轮次：
 
@@ -418,20 +418,26 @@ sequenceDiagram
     O->>R: next
     R->>RT: route(simulation)
     RT-->>R: NEED_INPUT
-    R-->>O: DISPATCH_TRIAGE
-    O->>S: log debug_dispatch
-    O->>T: Task（只读 triage）
+    R-->>O: DISPATCH_TRIAGE (sim_run)
+    O->>S: log debug_dispatch (sim_run)
+    O->>T: Task ({module, sim_run})
+    Note over T: T 自读 canonical + 失败 runs/<N>/；L1，必要时升级 L2 重现
+    T-->>T: 落盘 Verification/simulation-triage/analysis.json（原子发布）
     Note over O: YIELD
     Note over O,S: 轮次 B — triage 通知到达
-    T-->>O: ANALYSIS (root_cause)
-    O->>R: next --analysis -
-    R->>RT: route(root_cause)
-    RT-->>R: target（或 ESCALATE）
-    R-->>O: REWORK target
-    Note over O: 撰写 orchestrator_context
-    O->>S: rework (simulation → target)
-    S-->>S: cascade-stale （目标 + 后代）
-    Note over O,S: 下个轮次 → DISPATCH target
+    O->>R: next --analysis <path>
+    R->>RT: route(root_cause, confidence)
+    alt confidence == high（root_cause 可路由）
+        RT-->>R: target
+        R-->>O: REWORK target
+        Note over O: 转发 analysis.json 路径作为 orchestrator_context（不手写）
+        O->>S: rework (simulation → target)
+        S-->>S: cascade-stale （目标 + 后代）
+        Note over O,S: 下个轮次 → DISPATCH target
+    else confidence != high，或 skipped，或 unrouted
+        RT-->>R: ESCALATE (triage_low_confidence / triage_skipped / unrouted)
+        R-->>O: ESCALATE
+    end
 ```
 
 ### 5.5 嵌入此循环的架构承诺
@@ -449,7 +455,7 @@ VeriPower 产出两类结构化输出，各走各的验证通道：
 
 **裁决输出**（喂给确定性核心做路由决策的值）——`result.json`（阶段结果）、事件负载（事件日志条目）：由 `state.py` 在写入时校验（`cmd_reap` 对 `result.json` 做 schema 校验；`append_event` 对每个事件做校验）。这些值直接决定路由走向；错了会污染状态机。校验是强制的、集中的，不通过则拒绝并让 run 失败。
 
-**描述性/咨询性产物输出**（给下游参考的上下文）——simulation-triage 的 `ANALYSIS` 块、simulation-plan 的验证 scaffold：这些会影响路由但不是 `state.py` 的直接输入。它们由生产者自检门校验（`skills/simulation-triage/scripts/simtriage/__main__.py`、`skills/simulation-plan/scripts/simplan/__main__.py`）。生产者校验失败则修了重来，通过才发出。Orchestrator 消费的是已校验过的负载；`state.py` 不碰。
+**描述性/咨询性产物输出**（给下游参考的上下文）——simulation-triage 的 `analysis.json` 路由块（现含 gating 的 `confidence` 字段，见 §5.4/§6.4）及其 advisory 层，以及 simulation-plan 的验证 scaffold：这些会影响路由但不是 `state.py` 的直接输入。`simulation-triage` 把 `analysis.json` 直接落盘到自己的 `Verification/simulation-triage/**`——transport 现在是 decider 经 `--analysis <path>` 读取的文件（§5.4/§7.1），不是 message-body 负载——但它是自写的，从不经 reap，也从不被 `cmd_reap` 做 schema 校验。这些产物改由生产者自检门校验（`skills/simulation-triage/scripts/simtriage/__main__.py`、`skills/simulation-plan/scripts/simplan/__main__.py`）：生产者校验失败则修了重来，通过才发出；Orchestrator 消费的是已校验过的负载，`state.py` 不碰。`confidence` 现在是 *gating* 字段（§5.4）并不代表它进了 `state.py` 校验层：它的正确性靠 schema 之外的两层机制保证——triage 自己的 L2 cycle-accurate 重现让 `high` 判定站得住脚，而置信度门把低于 `high` 的一律上浮给 operator，而不是盲信一个不牢靠的判定。
 
 两种做法不能简单统一：把 ANALYSIS 校验塞进 `state.py` 等于给纯状态工具加路由逻辑；把 `result.json` 校验推给生产者等于让脏数据污染 `task.json`。因此有三个校验点：
 
@@ -541,17 +547,23 @@ Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|si
 
 ### 6.4 调试子 Agent
 
-仅 `simulation-triage`——唯一的调试类子 Agent。
+仅 `simulation-triage`——唯一的调试类子 Agent，也是流水线中对仿真失败做**权威、分级根因分析**的角色（不再是只读 log 分类器）。
 
-- **输入：** 失败 simulation 的 `Verification/simulation/result.json`、UVM 日志和覆盖率数据——均为只读。
-- **输出：** 两层 ANALYSIS——路由块（`root_cause`/`analysis_state`，schema 校验）加散文分析（聚类是产生 `## Findings` 叙述和单个 `root_cause` 的推理方法，不是序列化的排序候选数组）。
-- **副作用：** 无。不碰 `task.json`，不写 `result.json`，不改 RTL / 测试 / 仿真基础设施。
+- **输入：** Orchestrator 只注入 `{module, sim_run}`——两个坐标，零字段内联组装。其余全部由 `simulation-triage` 自读：失败 simulation 的 `Verification/simulation/result.json` 及其完整 `runs/<sim_run>/`（UVM 日志、覆盖率 DB、KDB）、`Design/specification/*.md`、RTL 源码（经 filelist）、以及 `Verification/simulation-plan/**`（scaffold、verification-plan、refmodel/scoreboard）。
+- **方法——分级 L1 → L2，最便宜够用的一级达标即止：**
+  - **L1（默认、廉价、只读）：** 对失败证据（regression log / UVM_INFO / `failing_cases` / `coverage_gaps` / `conformance_findings`）加 spec 和 refmodel 推理，得出 `root_cause` 与 `confidence`。多数失败到此为止。
+  - **L2（仅当 L1 达不到高置信度才升级）：** 在 scratch 搭建 **cycle-accurate 重现**来表征/隔离故障——一份全新编写的 harness（绝非 canonical RTL 的副本），re-instantiate DUT 的叶子模块、经 SV 层次引用 tap 内部信号、驱动逐拍文本 dump（无波形文件）、对照与 UVM refmodel/scoreboard 语义一致的金标，必要时加隔离微 harness 把故障精确钉到某个函数或 cell。全程 canonical RTL 只作只读的 `` `include`` 素材——L2 绝不改它，这正是它不会与其它任何阶段的产物冲突的原因。迭代轮次受 `l2_repro_max_rounds` 预算约束。
+- **输出：** 自写（从不经 `cmd_reap`）`Verification/simulation-triage/analysis.json`（原子发布），以及针对本轮所分析的 run，`runs/<sim_run>/analysis.json`，加上——仅当触发 L2 时——`runs/<sim_run>/repro/`（harness、金标、run log、隔离 harness；持久化供审计，从不清理；见 §7.1）。`analysis.json` 的路由层携带 `analysis_state` / `root_cause` / gating 的 `confidence`；advisory 层携带 `level`（`L1`/`L2`）、repro-backed 的 `fix_direction`、`findings[]`，以及（仅 L2）`repro` 元数据。
+- **权威性——confidence-gated：** `confidence` 是 **gating** 路由字段，不是 advisory 散文。`high` 判定即为权威，直接驱动 `route.py` 选出 `REWORK` 目标；`medium`/`low`（含 L2 后仍存竞争假设的情形）则升级给操作者（`triage_low_confidence`，§5.4），不自动路由。
+- **副作用：** 只写自己的 `Verification/simulation-triage/**`（含 `runs/<N>/repro/`）；绝不碰 `task.json`，也不碰其它任何阶段的 `result.json`、RTL、TB、spec 或 plan。它**不是只读的**（L2 是 builder），也**不是幂等的**——重复派发会重跑 L2 而非回放缓存结果；跨重派发的可重复性来自原子自写，而非记忆化输出。它仍是**叶子**：无扇出、不派发子 Task——如有对抗性自检，也只在 triage 自己的单次会话内进行。
 
-`simulation-triage` 在发出前通过 `scripts/simtriage/__main__.py`（`validate-analysis` 动词）自检其 ANALYSIS（生产者自检门——见 §5.6 验证体系）。Orchestrator 从已校验的 ANALYSIS 中提取 `root_cause`，在 `orchestrate.py decide` 内传给 `route.py` 选定 `target_stage`（见 §5.4），decider 返回 `REWORK` 动作，Orchestrator 经 `state.py rework` 执行。
+`simulation-triage` 在落盘前通过 `scripts/simtriage/__main__.py`（`validate-analysis` 动词）自检 `analysis.json`（生产者自检门——见 §5.6 验证体系）。Orchestrator 读取落盘文件（`--analysis <path>`），把 `root_cause` / `analysis_state` / `confidence` 在 `orchestrate.py decide` 内传给 `route.py` 选定 `target_stage`（见 §5.4），decider 据 `confidence` 是否为 `high` 返回 `REWORK` 或 `ESCALATE` 动作，Orchestrator 经 `state.py rework` 或升级路径执行。
 
 ### 6.5 `orchestrator_context` 注入字段
 
 派发选项 `state.py dispatch --orchestrator-context FILE_OR_-` 将 Orchestrator 提供的自由格式 markdown 文件写入 `<workdir>/orchestrator-context.md`（per-dispatch 生命周期；永不 promote 到规范，永不出现在 `result.json.artifacts` 中）。当 `cmd_dispatch` 返回 `orchestrator_context_path` 时，子 Agent 的 prompt 模板中包含 `Orchestrator context: <path>`，子 Agent 按需读取该同级文件以获取额外修复范围提示。如此，Orchestrator 就把失败分析上下文传回了返工派发，而不污染规范契约。
+
+`simulation` 的返工是唯一一处内容为*转发*而非撰写的情形：既然 `simulation-triage` 已经落盘了一份经校验的 `analysis.json`（§6.4），Orchestrator 就把这个落盘路径直接当 `FILE` 传下去——`state.py` 把其字节原样拷进 `<workdir>/orchestrator-context.md`，中间没有 LLM 转写这一步。其余每个携带 `orchestrator_context` 的 REWORK 目标，仍由 Orchestrator 撰写自由格式 markdown（§5.3）；`simulation` 是唯一一个转发已校验、生产者自检门产物（§5.6）的情形。
 
 ### 6.6 异步子 Agent 转录镜像
 
@@ -614,6 +626,12 @@ asic/<module>/
 ├── Verification/
 │   ├── simulation-plan/           { result.json + runs/<N>/（verification-plan.md / scaffold-spec / ...） }
 │   ├── simulation/                { result.json + runs/<N>/（UVM TB / 回归） }
+│   ├── simulation-triage/         # 不是 DAG 阶段；由 simulation-triage 自写，从不经 cmd_reap
+│   │   ├── analysis.json          #   latest 指针（原子写临时文件+rename）；由 `decide --analysis <path>` 读取
+│   │   └── runs/<N>/              #   N = 被分析（失败）的 simulation run 号，借用而非另计数
+│   │       ├── analysis.json      #     本轮的路由 + advisory
+│   │       └── repro/             #     仅 L2 才有：tb_wrap.sv / sim_main.cpp / golden.* / run.log / 隔离 harness
+│   │                              #     （持久化供审计，从不清理）
 │   └── power-analysis/            { result.json + runs/<N>/（GLS simv / saif/<id>.saif /
 │                                    scaffold/power_tests/ / 平均功耗报告） }
 └── frontend-signoff/              { result.json + runs/<N>/（检查清单 / 可追溯性） }
