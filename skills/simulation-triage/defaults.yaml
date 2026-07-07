@@ -1,0 +1,3 @@
+# simulation-triage L2 (cycle-accurate repro) iteration budget (spec §3.3).
+# L2 is entered only when L1 cannot reach high confidence; capped to stay bounded.
+l2_repro_max_rounds: 2

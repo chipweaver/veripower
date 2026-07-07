@@ -1,25 +1,40 @@
 ---
 name: simulation-triage
-description: Use when a simulation run fails and root-cause analysis is needed before a rework decision; not for fixing code, modifying state, or running regression. Read-only.
+description: Use when a simulation run fails and root-cause analysis is needed before a rework decision; not for fixing code, modifying state, or running regression.
 ---
 
 # Simulation Triage
 
-Per-case root-cause analysis → cluster grouping → return the triage result. **Read-only** — modify no files, modify no external state.
+The pipeline's authoritative, graduated root-cause analyzer for a failed simulation run:
+reason over the failure evidence first (**L1**), and only when L1 can't reach high confidence,
+build a cycle-accurate reproduction in scratch to characterize the fault (**L2**) — then land
+the verdict. **Canonical read-only, scratch-writable**: free to read any canonical artifact;
+the only files you ever write live under your own `Verification/simulation-triage/**`.
 
-The result has two tiers:
-- **Routing block** — a small JSON object (the final `ANALYSIS:` block); the hard, schema-validated contract, carrying only `root_cause` + `analysis_state`.
-- **Analysis prose** — a structured-markdown section above it; advisory evidence the caller reads to author its rework hint, not schema-validated.
+The landed `analysis.json` has two tiers:
+- **Routing tier** — `analysis_state` + `root_cause` + the gating `confidence`; the hard,
+  schema-validated contract `route.py` consumes to pick a rework target or escalate.
+- **Advisory tier** (`advisory.{level, fix_direction, findings[], repro}`) — persisted evidence
+  forwarded to the rework target as `orchestrator_context`; informs the fix, does not gate routing.
 
 ## When to Use
 
-- A simulation failure result already exists and a read-only root-cause analysis is needed before any fix.
-- The caller wants a routing attribution (`root_cause`) plus analysis evidence to decide the subsequent repair target.
+- A simulation run just failed and an authoritative root-cause verdict is needed before any rework.
+- The caller wants a `root_cause` plus a gating `confidence` to decide whether to auto-route the
+  rework or escalate to the operator.
 
 ## Iron Rule
 
-- **read-only**: do not write files, do not modify any external state, do not perform fixes.
-- The final `ANALYSIS:` routing block MUST validate against `references/analysis.schema.json` (contract violation). `root_cause`'s legal values are enforced there — do not re-enumerate them here.
+- **Canonical read-only, scratch-writable**: read any canonical artifact freely (RTL, spec, TB
+  logs, plan) but never modify another stage's canonical output — RTL, TB, spec, plan, or any
+  other stage's `result.json`. The only files you write live under your own
+  `Verification/simulation-triage/**` (including `runs/<sim_run>/repro/` for L2).
+- L2's repro harness is new-written scratch, never a copy-and-edit of canonical RTL — canonical
+  RTL is `` `include``d read-only throughout, which is what keeps L2 from colliding with any
+  other stage's output.
+- Both the `runs/<sim_run>/analysis.json` you write and the top-level `analysis.json` you publish
+  MUST validate against `references/analysis.schema.json` (contract violation otherwise).
+  `root_cause`'s and `confidence`'s legal values are enforced there — do not re-enumerate them here.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -29,26 +44,33 @@ The result has two tiers:
 | Variable | Purpose |
 |---|---|
 | `{module}` | Module name. |
+| `<sim_run>` | The failed `simulation` run number (`Verification/simulation/runs/<sim_run>/`) — the Orchestrator injects it straight from the run it just reaped as `fail`. |
 
-You write no artifact and have no `{workdir}` concept. External reference inputs are provided entirely as inline content in the caller's dispatch prompt; nothing is read from disk.
+Nothing else is injected — no inline field assembly. You have no `cmd_dispatch`-issued
+`{workdir}`; compute your own working area as `Verification/simulation-triage/runs/<sim_run>/`.
+Everything besides `{module}` / `<sim_run>` is self-read from canonical disk.
 
-### External reference inputs (inline in dispatch prompt)
+### Self-read from canonical disk
 
-| Field | Source | Use |
-|---|---|---|
-| `failure_phase` | `Verification/simulation/result.json.stage_specific.failure_phase` | One of `prerequisite` / `compile` / `smoke` / `regress` / `coverage` / `conformance`. |
-| `failure_signal` | Phase-dependent | Log tail / `failing_cases` / `coverage_gaps` plus `gaps_not_in_testpoints` / (conformance) `conformance_findings[]`. |
-| `repair_attempts` | Scaffold repairs + stimulus-iterate summary from `Verification/simulation/result.json` | — |
-| `sim_plan_summary` | `Verification/simulation-plan/result.json.stage_specific` | — |
-| `rtl_summary` | `Design/rtl-design/result.json.stage_specific` | — |
+| Path | Use |
+|---|---|
+| `Verification/simulation/result.json` | Envelope: `stage_specific.failure_phase` / `fail_reason` / `failing_cases[]` / `coverage_gaps[]` + `gaps_not_in_testpoints` / `conformance_findings[]`. |
+| `Verification/simulation/runs/<sim_run>/` | The failed run's full working area — regression log, per-case UVM logs, coverage DB, KDB. No waveform files exist in this pipeline (the flow never enables waveform dump) — do not expect or go looking for one. |
+| `Design/specification/design.md` + `<child>.md` (via `manifest.json`) | Spec intent, to judge a spec-vague / RTL / plan discrepancy. |
+| RTL sources (via `Design/rtl-design/filelist.txt`) | The DUT under test — read for L1 tracing and, read-only via `` `include``, for L2's repro leaves. |
+| `Verification/simulation-plan/verification-plan.md` + `scaffold-specification.json` | The refmodel/scoreboard's behavioral intent (golden reference) and the testpoints list — for classifying coverage gaps and keeping an L2 golden model semantically consistent with the UVM refmodel. |
 
 ## Output Artifacts
 
-| Output | Format | Use |
+| Path | Format | Use |
 |---|---|---|
-| Message body: structured-prose analysis, then a final `ANALYSIS:` routing block | prose + JSON (schema: `references/analysis.schema.json`) | Root-cause analysis + routing attribution (no file output). |
+| `Verification/simulation-triage/runs/<sim_run>/analysis.json` | JSON (schema: `references/analysis.schema.json`) | This round's routing + advisory verdict. |
+| `Verification/simulation-triage/analysis.json` | JSON (same schema) | Latest pointer, atomically published from the `runs/<sim_run>/` copy above; `orchestrate.py decide --analysis <path>` reads this fixed path. |
+| `Verification/simulation-triage/runs/<sim_run>/repro/` | Mixed (harness SV/C++, golden model, run log, isolation harnesses) | **L2 only** — the cycle-accurate reproduction, persisted for audit (never cleaned up). |
 
-You **write no files**; the result is the Task return message body. The caller reads the prose to author its rework hint and extracts the trailing `ANALYSIS:` JSON.
+You write no artifact outside `Verification/simulation-triage/**`. This is not a DAG stage: no
+`cmd_reap`, no promote, no `result.json` — the two `analysis.json` files above are the entire
+output surface.
 
 ## Workflow
 
@@ -57,114 +79,124 @@ You **write no files**; the result is the Task return message body. The caller r
 Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 
 - **Skip classification** (any condition triggers `analysis_state: "skipped"` + `skipped_reason`; jump to Step 5):
-  - The prompt omits `failure_phase` or `failure_signal` → `skipped_reason: "input incomplete: <field>"`.
-  - The prompt shows no fail case (e.g., a mistakenly-dispatched scenario where regress / smoke is fully pass or coverage already 100%) → `skipped_reason: "no fail case to analyze"`.
+  - `Verification/simulation/result.json` is unreadable or omits `failure_phase` / the phase-appropriate failure signal → `skipped_reason: "input incomplete: <field>"`.
+  - The self-read inputs show no fail case (e.g., a mistakenly-dispatched scenario where regress / smoke is fully pass or coverage already 100%) → `skipped_reason: "no fail case to analyze"`.
 - **Complete classification** (`analysis_state: "complete"`): per `failure_phase`, take cases from one of three input shapes:
-  - `regress` / `smoke` → cases = `failing_cases[]` (both run UVM test cases; `failing_cases[]` carries `error_message` / `log_snippet` per failing case; consume the inline content from the prompt, do not read disk).
-  - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail as a single synthetic case and describe it directly in the `## Root cause` prose — a single synthetic case emits **no** `## Findings`.
-  - `coverage` → no `failing_cases[]` (regress already passed; only coverage is below target). cases = each gap bin in `coverage_gaps[]` (split by `gaps_in_testpoints` / `gaps_not_in_testpoints`); each gap bin is one case and becomes one `## Findings` bullet (a lone gap bin is a single case — as in the degenerate path above).
-  - `conformance` → no `failing_cases[]` and no log tail (compile + smoke both passed). cases = each gating finding in `conformance_findings[]` (consume the inline content from the prompt); each finding is one case. Its `category` is the reasoning key for Step 2 — there is no log to anchor on.
+  - `regress` / `smoke` → cases = `failing_cases[]` (both run UVM test cases; `failing_cases[]` carries `error_message` / `log_snippet` per failing case; cross-reference the full per-case log under `Verification/simulation/runs/<sim_run>/` when the envelope's snippet isn't enough).
+  - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail (from `runs/<sim_run>/`) as a single synthetic case and describe it directly as the landed `root_cause` — a single synthetic case emits **no** `advisory.findings[]`.
+  - `coverage` → no `failing_cases[]` (regress already passed; only coverage is below target). cases = each gap bin in `coverage_gaps[]` (split by `gaps_in_testpoints` / `gaps_not_in_testpoints`); each gap bin is one case and becomes one `advisory.findings[]` entry (a lone gap bin is a single case — as in the degenerate path above).
+  - `conformance` → no `failing_cases[]` and no log tail (compile + smoke both passed). cases = each gating finding in `conformance_findings[]`; each finding is one case. Its `category` is the reasoning key for Step 2 — there is no log to anchor on.
 
-### Step 2: Per-case root-cause analysis
+### Step 2: L1 — reason from logs, spec, refmodel, and coverage
 
-(**analyze only, do not fix**; inputs come entirely from the prompt, not from disk):
+(**analyze only, do not fix**; self-read inputs per the tables above):
 
 - Take evidence along the Step 1 branch path:
-  - Log-anchor path (`regress` / `compile` / `smoke` / `prerequisite`): locate the first occurrence of `UVM_ERROR` / `UVM_FATAL` / timeout from `failing_cases[i].error_message` / `log_snippet` or `fail_reason`.
-  - Coverage path (`coverage`): classify each gap bin by whether it falls inside the scaffold testpoints (`gaps_in_testpoints` is pre-split; cross-reference the testpoints list in `sim_plan_summary`).
+  - Log-anchor path (`regress` / `compile` / `smoke` / `prerequisite`): locate the first occurrence of `UVM_ERROR` / `UVM_FATAL` / timeout from `failing_cases[i].error_message` / `log_snippet` or `fail_reason` (falling back to the full log under `runs/<sim_run>/` when the envelope snippet is truncated).
+  - Coverage path (`coverage`): classify each gap bin by whether it falls inside the scaffold testpoints (`gaps_in_testpoints` is pre-split; cross-reference the testpoints list in `scaffold-specification.json`).
   - Conformance path (`conformance`): there is no UVM_ERROR / gap-bin to anchor. Map each finding's `category` to a `root_cause_direction` via the "Conformance category → `root_cause_direction`" table in `references/fail-analysis-patterns.md`, then cluster + land one top-level `root_cause` per the existing attribution + tiebreak rule.
 - Classify the fault type and `root_cause_direction` per the classification table in `references/fail-analysis-patterns.md` (including the coverage-gap row).
-- Compare the expected behavior in `rtl_summary` / `sim_plan_summary` against the observed evidence to trace the discrepancy (only when both carry enough context).
-- Note the offending file and line (anchor), a fix suggestion, and the regression level (per the regression-level table).
+- Compare the expected behavior in `verification-plan.md` / `design.md` against the observed evidence to trace the discrepancy (only when both carry enough context).
+- Cluster cases by root cause (per the clustering guide in `references/fail-analysis-patterns.md`): apply the clustering signals (same file / line, same anomalous signal, same TB component, same trigger condition); when same-origin cannot be established, leave each case on its own. A cluster's cases must share fault type and `root_cause_direction` (disagreement → separate clusters).
+- Attribute each cluster per the `root_cause_direction → stage` mapping in `references/fail-analysis-patterns.md`, then land the top-level `root_cause` by its max-case-coverage + tiebreak rule.
+- Land an initial `confidence` per the "Confidence (gating)" section in `references/fail-analysis-patterns.md`. Most failures resolve here — proceed straight to Step 4.
 
-### Step 3: Cluster by root cause
+### Step 3: L2 gate — cycle-accurate repro when L1 can't reach high confidence
 
-(per the clustering guide in `references/fail-analysis-patterns.md`):
+- **Trigger:** enter L2 only when Step 2 cannot land `confidence: "high"` — per the "L2-trigger judgment" in `references/fail-analysis-patterns.md` (competing hypotheses / cannot localize / locus in doubt). A single case with a clean log anchor and no plausible alternative explanation skips L2 entirely.
+- **Build the repro** under `Verification/simulation-triage/runs/<sim_run>/repro/`: pick a tool yourself (Verilator has worked well — fast, cycle-accurate, and hierarchical references make internal taps easy). Re-instantiate the DUT's leaf modules, tap internals via SV hierarchical references, drive a per-cycle **TEXT** dump (no waveform files exist in this pipeline — do not write or expect one), check against a golden model kept semantically consistent with the `Verification/simulation-plan` UVM refmodel/scoreboard (a small standalone golden is fine as long as its behavior matches; it need not embed UVM components), and add isolation micro-harnesses as needed to pin the fault to a specific function or cell. Canonical RTL is read-only `` `include`` material throughout — never copy-and-edit it.
+- **Budget:** ≤ `defaults.yaml:l2_repro_max_rounds` iteration rounds.
+- **Optional:** a single-session blind/adversarial self-check (reason the same evidence twice, once trying to confirm and once trying to refute) to harden the verdict before landing it — never spawn a sub-Task for this; triage stays a leaf.
+- Persist every repro artifact (harness, golden model, run log, isolation harnesses) — never clean up, even after landing the verdict.
 
-- Apply the clustering signals (same file / line, same anomalous signal, same TB component, same trigger condition); when same-origin cannot be established, leave each case on its own.
-- A cluster's cases must share fault type and `root_cause_direction` (disagreement → separate clusters). This clustering is a **reasoning method** for landing one correct `root_cause` and a calibrated confidence — it is written as prose `## Findings`, not as a serialized array.
+### Step 4: Land confidence and `root_cause`
 
-### Step 4: Land the top-level `root_cause` and confidence
+- **`confidence: "high"`** — either L1 alone gave a single, non-conflicting explanation anchored to clear evidence, or L2's isolation harness directly proved the fault. This is the only case that auto-routes.
+- **`confidence: "medium"` / `"low"`** — competing hypotheses remain, or the fault couldn't be localized/pinned down, even after L2. This escalates to the operator via `route.py`'s confidence gate (`triage_low_confidence`) — do not try to force a `high` verdict to avoid the escalation.
+- `root_cause` was already landed at the end of Step 2 (Step 3's L2 evidence may sharpen it, e.g. confirm which of two competing directions is real, but does not change the attribution rule itself).
 
-- Attribute each cluster per the `root_cause_direction → stage` mapping in the "Root-cause attribution" section of `references/fail-analysis-patterns.md`.
-- **Top-level `root_cause`** per that section's max-case-coverage + tiebreak rule (the tiebreak priority order is defined there — do not restate it here).
-- **confidence** (high/medium/low) per the "Confidence" section there — surfaced as a qualifier in the `## Root cause` prose, not as a separate field.
+### Step 5: Land the result
 
-### Step 5: Emit the result
+Write `Verification/simulation-triage/runs/<sim_run>/analysis.json`:
 
-Write the structured-prose analysis, then on a line by itself the literal prefix `ANALYSIS:` immediately followed by one routing JSON object (the final block). The caller locates the prefix and extracts the JSON.
+```jsonc
+{
+  "analysis_state": "complete",
+  "root_cause": "rtl-design",
+  "confidence": "high",
+  "advisory": {
+    "level": "L1",                 // or "L2" when Step 3 triggered
+    "fix_direction": "<repro-backed or log-anchored fix direction: file:line + what to change>",
+    "findings": [ { "fault_type": "…", "anchor": "file:line", "cases": ["…"] } ],
+    "repro": {                     // present only when Step 3 triggered
+      "tool": "verilator",
+      "artifacts": ["runs/<sim_run>/repro/tb_wrap.sv", "…/sim_main.cpp", "…/golden.py", "…/run.log"],
+      "isolation": "what the isolation harness proved",
+      "adversarial": "optional: single-session blind/adversarial self-check conclusion"
+    }
+  }
+}
+```
 
-Before emitting, validate the routing block:
+The `skipped` shape carries only `analysis_state: "skipped"` + `skipped_reason` (no `advisory`).
+
+Validate before publishing:
 
 ```bash
-echo "<json>" | python3 ${CLAUDE_SKILL_DIR}/scripts/simtriage/__main__.py validate-analysis --json-stdin
+python3 ${CLAUDE_SKILL_DIR}/scripts/simtriage/__main__.py validate-analysis \
+  --json-file asic/{module}/Verification/simulation-triage/runs/<sim_run>/analysis.json
 ```
 
 On non-zero exit, read stderr, fix, and re-run — the authoritative gate for the routing contract.
+Then atomically publish the top-level pointer (write-temp + rename, same directory):
 
-**Message-body shape (`complete`):**
-
-```text
-## Root cause
-<attributed stage + why + first UVM_ERROR/UVM_FATAL/timeout anchor (or gap-bin↔testpoint relationship); confidence qualifier, e.g. "(high: clear log anchor + recent S-box commit)">
-
-## Findings            (omit when there is a single case)
-- <fault type> in <direction>; anchor <file:line>; fix: <hint>; regression: <full|targeted|compile-only>; cases: <a, b>
-
-## Fix hint for rework target
-<the one actionable hint the target can't get by re-reading the failure itself>
-
-ANALYSIS:
-{ "analysis_state": "complete", "root_cause": "rtl-design" }
+```bash
+cp asic/{module}/Verification/simulation-triage/runs/<sim_run>/analysis.json \
+   asic/{module}/Verification/simulation-triage/analysis.json.tmp
+mv asic/{module}/Verification/simulation-triage/analysis.json.tmp \
+   asic/{module}/Verification/simulation-triage/analysis.json
 ```
 
-**Skipped shape** (input incomplete / no fail case — prose is a one-line reason; the routing block carries only the two skip fields):
-
-```text
-## Root cause
-Skipped: <reason>.
-
-ANALYSIS:
-{ "analysis_state": "skipped", "skipped_reason": "input incomplete: failure_phase | no fail case to analyze | ..." }
-```
-
-The routing block's required fields and the `complete` / `skipped` discrimination are defined solely in `references/analysis.schema.json` — do not restate them here.
+Emit `STATUS: DONE` as the last line. Nothing is returned in the message body — the landed files
+are the result.
 
 ## Decision Rules
 
-Root-cause selection lives in [`references/fail-analysis-patterns.md`](references/fail-analysis-patterns.md): the symptom/coverage rows, the fix-scope lens (simulation-plan vs simulation), the `root_cause_direction → stage` attribution, and the tiebreak. Land `root_cause` there.
+Root-cause selection lives in [`references/fail-analysis-patterns.md`](references/fail-analysis-patterns.md): the symptom/coverage rows, the fix-scope lens (simulation-plan vs simulation), the `root_cause_direction → stage` attribution, the tiebreak, the gating confidence definitions, and the L2-trigger judgment. Land `root_cause` and `confidence` there.
 
 ## Red Flags
 
 | Excuse | Reality |
 |---|---|
 | "I can't fully analyze this — I'll just return `STATUS: BLOCKED`" | Forbidden as a skill decision. Incomplete inputs / no fail case → `analysis_state: "skipped"` + `skipped_reason`. |
-| "While I'm in here I'll just fix the bug I found" | Analyze only — do not patch. Writing files collapses the analysis/repair separation that makes the caller's routing valid. |
+| "While I'm in here I'll just fix the bug in the RTL/TB I found" | Analyze and characterize only — writing scratch repro artifacts under your own `runs/<sim_run>/repro/` is expected (L2), but never patch canonical RTL/TB/spec/plan. That collapses the analysis/repair separation that makes the caller's routing valid. |
+| "L1 is inconclusive but building a repro is expensive — I'll just call it `high` anyway" | Confidence is a gating field; a forced `high` skips the operator net entirely. If Step 2 can't land `high`, either run L2 (Step 3) or land `medium`/`low` honestly. |
 
 ## Pitfalls
 
 | Mistake | Fix |
 |---|---|
 | Lumping every case into one cluster | Cluster strictly by the clustering signals; when same-origin cannot be established, each case stands alone. |
-| Fix hint too vague | Be specific: file, line, suggested change. |
-| Putting advisory content into the `ANALYSIS:` JSON | The routing block carries only its schema-defined fields — put analysis evidence in the prose above, not inside the JSON. |
+| `fix_direction` too vague | Be specific: file, line, suggested change — for an L2 verdict, ground it in what the isolation harness proved. |
+| Putting `level` / `fix_direction` / `findings` / `repro` at the top level of `analysis.json` | The schema is `additionalProperties: false` at the root — those keys must nest under `advisory`; a top-level placement fails `validate-analysis`. |
 
 ## Completion Gate
 
-- [ ] The message body has the prose analysis, then a final block starting with the literal prefix `ANALYSIS:` immediately followed by a valid JSON object.
-- [ ] `simtriage validate-analysis` exits 0 on the emitted routing block (authoritative schema gate).
+- [ ] `Verification/simulation-triage/runs/<sim_run>/analysis.json` is written and `simtriage validate-analysis` exits 0 against it (authoritative schema gate).
+- [ ] The same content is atomically published to the top-level `Verification/simulation-triage/analysis.json` pointer.
 - [ ] `analysis_state` is set (`complete` or `skipped`).
-- [ ] When `complete`: every fail case is analyzed and reflected in the prose (`## Root cause`, and `## Findings` when >1 case); `root_cause` is set per the attribution rule.
+- [ ] When `complete`: `root_cause` and `confidence` are both set; every fail case is reflected in `advisory.findings[]` (a single synthetic/degenerate case needs none).
+- [ ] When L2 triggered: `advisory.level == "L2"`, `advisory.repro` is populated, and `runs/<sim_run>/repro/` is persisted on disk (not cleaned up).
 - [ ] When `skipped`: `skipped_reason` carries a specific reason.
-- [ ] No Iron Rule or Red Flag was triggered.
-- [ ] **No files were written** (read-only self-check).
+- [ ] No Iron Rule or Red Flag was triggered — nothing outside `Verification/simulation-triage/**` was written.
 
 ## Return Contract
 
-The message body is the structured-prose analysis followed by a final block that starts with the literal prefix `ANALYSIS:` on a line by itself, immediately followed by a valid routing JSON object (schema: `references/analysis.schema.json`). The last line emits `STATUS: DONE`. `STATUS: BLOCKED <reason>` is reserved for the harness fallback when a program exception prevented emitting the result; you never choose it.
+The result is landed on disk, not the message body: `Verification/simulation-triage/runs/<sim_run>/analysis.json` plus the atomically-published top-level `Verification/simulation-triage/analysis.json` pointer (schema: `references/analysis.schema.json`). The last line emits `STATUS: DONE`. `STATUS: BLOCKED <reason>` is reserved for the harness fallback when a program exception prevented landing the result; you never choose it.
 
 ## Bundled References
 
-- [`references/fail-analysis-patterns.md`](references/fail-analysis-patterns.md) — Symptom/scope → `root_cause`, fault-type / `root_cause_direction` classification, regression-level table, clustering guide, confidence rules, and the root-cause attribution + tiebreak rule.
-- [`references/analysis.schema.json`](references/analysis.schema.json) — ANALYSIS routing-block schema (the sole home for the routing fields + `root_cause` enum).
-- `scripts/simtriage/` (the `validate-analysis` verb) — routing-block self-gate (invocation contract: Step 5 + `--help`; run before emitting).
+- [`references/fail-analysis-patterns.md`](references/fail-analysis-patterns.md) — Symptom/scope → `root_cause`, fault-type / `root_cause_direction` classification, regression-level table, clustering guide, the gating confidence definitions + the L2-trigger judgment, and the root-cause attribution + tiebreak rule.
+- [`references/analysis.schema.json`](references/analysis.schema.json) — `analysis.json` schema: routing tier (`analysis_state` / `root_cause` / `confidence`) + advisory tier (`level` / `fix_direction` / `findings[]` / `repro`).
+- `scripts/simtriage/` (the `validate-analysis` verb) — pre-publish self-gate (invocation contract: Step 5 + `--help`; run before publishing the top-level pointer).
+- `defaults.yaml` — `l2_repro_max_rounds`, the L2 iteration budget (Step 3).
