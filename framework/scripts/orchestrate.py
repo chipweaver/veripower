@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from route import _inputs_from_result_json, route
 from state import read_events, read_task
@@ -67,7 +68,11 @@ def _promote_failed_count(events: list, stage: str, run: int) -> int:
 
 
 def _handle_failure(
-    module: str, failed: str, events: list, analysis: dict | None
+    module: str,
+    failed: str,
+    events: list,
+    analysis: dict | None,
+    failed_run: int | None = None,
 ) -> dict:
     kwargs: dict = {}
     if failed == "simulation":
@@ -79,9 +84,10 @@ def _handle_failure(
                     "in_flight": [],
                     "waiting_on": "simulation-triage",
                 }
-            return {"action": "DISPATCH_TRIAGE"}
+            return {"action": "DISPATCH_TRIAGE", "sim_run": failed_run}
         kwargs["root_cause"] = analysis.get("root_cause")
         kwargs["analysis_state"] = analysis.get("analysis_state")
+        kwargs["confidence"] = analysis.get("confidence")
     else:
         rj = _result_path(module, failed)
         if rj.exists():
@@ -90,7 +96,7 @@ def _handle_failure(
     if r["decision"] == "ESCALATE":
         return {"action": "ESCALATE", "reason": r.get("reason_hint") or r["rule"]}
     if r["decision"] == "NEED_INPUT":
-        return {"action": "DISPATCH_TRIAGE"}
+        return {"action": "DISPATCH_TRIAGE", "sim_run": failed_run}
     return {
         "action": "REWORK",
         "failed_stage": failed,
@@ -138,7 +144,7 @@ def decide(module: str, wake: str | None = None, analysis: dict | None = None) -
     for s in FORWARD_PRIORITY:
         st = stages[s]
         if st["status"] == "fail" and st["freshness"] == "clean":
-            return _handle_failure(module, s, events, analysis)
+            return _handle_failure(module, s, events, analysis, st.get("current_run"))
 
     # 4. Forward dispatch: first eligible by priority.
     for s in FORWARD_PRIORITY:
@@ -176,13 +182,21 @@ def main() -> None:
     p.add_argument(
         "--analysis",
         default=None,
-        help="'-' to read a triage ANALYSIS payload from stdin",
+        help="'-' stdin, or path to the landed analysis.json",
     )
     args = ap.parse_args()
     if args.command != "decide":
         ap.print_help()
         sys.exit(1)
-    analysis = json.loads(sys.stdin.read()) if args.analysis == "-" else None
+    if args.analysis == "-":
+        analysis = json.loads(sys.stdin.read())
+    elif args.analysis:
+        try:
+            analysis = json.loads(Path(args.analysis).read_text())
+        except (OSError, json.JSONDecodeError):
+            analysis = None  # missing/partial landed file → treat as no analysis (re-dispatch triage)
+    else:
+        analysis = None
     print(json.dumps(decide(args.module, wake=args.wake, analysis=analysis), indent=2))
 
 

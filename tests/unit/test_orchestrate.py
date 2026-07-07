@@ -223,7 +223,9 @@ def test_simulation_fail_dispatches_triage_once(tmp_path, monkeypatch):
             }
         ],
     )
-    assert _next(tmp_path, monkeypatch)["action"] == "DISPATCH_TRIAGE"
+    a = _next(tmp_path, monkeypatch)
+    assert a["action"] == "DISPATCH_TRIAGE"
+    assert a["sim_run"] == 1
     # L4: once a debug_dispatch is logged, re-query does NOT re-dispatch triage.
     ev = [
         {"type": "outcome", "stage": "simulation", "run": 1, "result_status": "fail"},
@@ -254,9 +256,55 @@ def test_simulation_triage_analysis_routes(tmp_path, monkeypatch):
     a = _next(
         tmp_path,
         monkeypatch,
-        analysis={"analysis_state": "complete", "root_cause": "rtl-design"},
+        analysis={
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+        },
     )
     assert a["action"] == "REWORK" and a["target_stage"] == "rtl-design"
+
+
+def test_triage_high_confidence_routes(tmp_path, monkeypatch):
+    t = _blank()
+    for s in ["specification", "simulation-plan", "rtl-design"]:
+        _set(t, s, "pass", run=1)
+    _set(t, "simulation", "fail", run=1)
+    _write(
+        tmp_path,
+        t,
+        events=[
+            {"type": "outcome", "stage": "simulation", "run": 1, "result_status": "fail"},
+            {"type": "debug_dispatch", "module": "m"},
+        ],
+    )
+    a = _next(
+        tmp_path,
+        monkeypatch,
+        analysis={"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high"},
+    )
+    assert a["action"] == "REWORK" and a["target_stage"] == "rtl-design"
+
+
+def test_triage_low_confidence_escalates(tmp_path, monkeypatch):
+    t = _blank()
+    for s in ["specification", "simulation-plan", "rtl-design"]:
+        _set(t, s, "pass", run=1)
+    _set(t, "simulation", "fail", run=1)
+    _write(
+        tmp_path,
+        t,
+        events=[
+            {"type": "outcome", "stage": "simulation", "run": 1, "result_status": "fail"},
+            {"type": "debug_dispatch", "module": "m"},
+        ],
+    )
+    a = _next(
+        tmp_path,
+        monkeypatch,
+        analysis={"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "low"},
+    )
+    assert a["action"] == "ESCALATE"
 
 
 def test_promote_failed_single_retry_then_escalate(tmp_path, monkeypatch):
