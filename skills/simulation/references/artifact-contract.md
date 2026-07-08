@@ -49,6 +49,7 @@ share it).
 | `structural-coverage.json` | same | Urg-derived structural coverage (`aggregate` dims `line`/`cond`/`fsm`/`toggle` + `per_module`); this is the gate source read by `sim finalize`. |
 | `coverage-summary.txt` | same | Human-readable coverage summary (no longer the gate source; the gate source is `structural-coverage.json` + `sim finalize`). |
 | `case-results-summary.md` | same | Review summary. |
+| `<test_id>.fsdb` | run-dir root (NOT `logs/`) | Full-hierarchy FSDB waveform of a **failing** test's run (`-ucli` `$fsdbDumpvars`), for `simulation-triage` L1 waveform query. Per-run, large, **not promoted** (triage reads it via `sim_run`); gc-on-pass deletes it for passing tests, so only failing tests retain one. |
 
 ### orchestrator (finalize)
 
