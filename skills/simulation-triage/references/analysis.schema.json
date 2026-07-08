@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-triage/analysis.schema.json",
   "title": "simulation-triage analysis.json routing block",
-  "description": "The routing-tier JSON landed as analysis.json to disk by simulation-triage (self-written, not message-body-emitted): the routing tier (analysis_state/root_cause/confidence) is consumed by route.py's confidence gate, and the advisory tier is forwarded as context to the rework target. analysis_state discriminates: 'complete' carries root_cause + confidence; 'skipped' carries skipped_reason. confidence is a hard, gating routing field (spec §3.7): high auto-routes, medium/low escalate to operator. advisory (level, fix_direction, findings[], repro) is a persisted, non-gating supplement — NOT read-only prose; it IS validated here. Not enveloped.",
+  "description": "The routing-tier JSON landed as analysis.json to disk by simulation-triage (self-written, not message-body-emitted): the routing tier (analysis_state/root_cause/confidence) is consumed by route.py's confidence gate, and the advisory tier is forwarded as context to the rework target. analysis_state discriminates: 'complete' carries root_cause + confidence; 'skipped' carries skipped_reason. confidence is a hard, gating routing field (spec §3.7): high auto-routes, medium/low escalate to operator. advisory (level, fix_direction, findings[], L1 FSDB waveform observation + L2 controlled experiment) is a persisted, non-gating supplement — NOT read-only prose; it IS validated here. Not enveloped.",
   "type": "object",
   "required": ["analysis_state"],
   "properties": {
@@ -26,13 +26,22 @@
             }
           }
         },
-        "repro": {
+        "waveform": {
           "type": "object", "additionalProperties": false,
           "properties": {
-            "tool":        {"type": "string"},
-            "artifacts":   {"type": "array", "items": {"type": "string"}},
-            "isolation":   {"type": "string"},
-            "adversarial": {"type": "string"}
+            "commands":    {"type": "array", "items": {"type": "string"}},
+            "signals":     {"type": "array", "items": {"type": "string"}},
+            "observation": {"type": "string"}
+          }
+        },
+        "experiment": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "tool":       {"type": "string"},
+            "stimulus":   {"type": "string"},
+            "artifacts":  {"type": "array", "items": {"type": "string"}},
+            "golden":     {"type": "string"},
+            "conclusion": {"type": "string"}
           }
         }
       }

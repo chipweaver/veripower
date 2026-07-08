@@ -140,11 +140,15 @@ def test_complete_with_confidence_and_advisory_valid():
                         "cases": ["T-E2E"],
                     }
                 ],
-                "repro": {
+                "experiment": {
                     "tool": "verilator",
-                    "artifacts": ["runs/16/repro/tb_add.sv", "runs/16/repro/run.log"],
-                    "isolation": "eq-exp subtraction underflow",
-                    "adversarial": "blind+refute agree",
+                    "stimulus": "eq-exp subtraction underflow",
+                    "artifacts": [
+                        "runs/16/experiment/tb_add.sv",
+                        "runs/16/experiment/run.log",
+                    ],
+                    "golden": "golden_fa.py",
+                    "conclusion": "blind+refute agree",
                 },
             },
         }
@@ -184,3 +188,59 @@ def test_complete_without_confidence_exits_nonzero():
     r = _run({"analysis_state": "complete", "root_cause": "rtl-design"})
     assert r.returncode != 0
     assert "confidence" in r.stderr
+
+
+def test_advisory_waveform_valid():
+    r = _run(
+        {
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+            "advisory": {
+                "level": "L1",
+                "waveform": {
+                    "commands": [
+                        "fsdbreport T-SMOKE.fsdb -s /fa_tb_top/u_dut/scores_S -bt 40ns -et 80ns -of h"
+                    ],
+                    "signals": ["/fa_tb_top/u_dut/scores_S"],
+                    "observation": "scores_S frozen constant through MAX phase",
+                },
+            },
+        }
+    )
+    assert r.returncode == 0, r.stderr
+
+
+def test_advisory_experiment_valid():
+    r = _run(
+        {
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+            "advisory": {
+                "level": "L2",
+                "experiment": {
+                    "tool": "verilator",
+                    "stimulus": "hand-picked fp32_add operand pairs 2+(-3),4+(-5)",
+                    "artifacts": ["runs/16/experiment/tb_add.sv"],
+                    "golden": "golden_fa.py",
+                    "conclusion": "fp32_add eq-exp subtraction underflow confirmed",
+                },
+            },
+        }
+    )
+    assert r.returncode == 0, r.stderr
+
+
+def test_advisory_old_repro_key_rejected():
+    r = _run(
+        {
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+            "advisory": {"repro": {"tool": "verilator"}},
+        }
+    )
+    assert (
+        r.returncode != 0
+    )  # 'repro' renamed to 'experiment'; additionalProperties:false rejects it
