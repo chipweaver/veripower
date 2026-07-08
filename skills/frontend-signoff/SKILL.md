@@ -29,7 +29,10 @@ Your sole responsibility: aggregate every upstream `result.json` envelope and ev
 
 The script derives the module root (`asic/{module}/`) from `{workdir}` and reads every upstream canonical envelope + evidence path itself; you do not pass them.
 
-### Read by you for the traceability matrix (the script does NOT parse these)
+### Read by you for the traceability matrix
+
+The script only gate-checks these (existence, plus a JSON parse of `manifest.json`); it never
+reads the markdown bodies — composing the matrix from them is yours.
 
 | Path | Use |
 |---|---|
@@ -41,7 +44,7 @@ The script derives the module root (`asic/{module}/`) from `{workdir}` and reads
 
 | Path (relative to `{workdir}`) | Written by | Use |
 |---|---|---|
-| `result.json` | script | Status contract (`stage_specific` empty — sign-off content lives in `checklist.md`/`traceability.md`, not named envelope fields; `fail_reason` on fail). |
+| `result.json` | script | Status contract (`stage_specific` empty — content lives in the two docs; `fail_reason` on fail). |
 | `checklist.md` | script | Per-stage pass summary, evidence paths, headline PPA. |
 | `traceability.md` | script skeleton + agent | Report/tool-version index (script) + feature→evidence matrix + executive summary (agent). |
 

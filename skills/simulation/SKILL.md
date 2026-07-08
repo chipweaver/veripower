@@ -44,20 +44,22 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
 
 | Variable | Purpose |
 |---|---|
-| `{workdir}` | Current run workspace root (the shared workdir both sub-Tasks write into). |
+| `{workdir}` | Current run workspace root (shared by all sub-Tasks). |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. Caller-injected canonical `result.json` path of the failed stage (its `stage_specific` shape is defined by that stage's result schema). Its presence distinguishes the rework branch from the first-run and incremental-update branches. |
-| canonical `Verification/simulation/` directory | (patch branch) Prior promoted canonical TB directory; the main thread passes this path to the env-build child so it can run `copy-baseline --mode patch` to seed the workdir before plan-delta reconciliation. |
-| `{orchestrator_context_path}` | Optional. Caller-injected fix-scope hint file path. |
+| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema). It does NOT select the branch (Step 1 classifier is TRIGGER-AGNOSTIC); on `patch` it is passed to the env-build child to narrow the rewrite scope. |
+| `{orchestrator_context_path}` | Optional. Fix-scope hint file — passed through to the env-build child (patch branch). |
 
 ### External reference inputs
 
-| Path | Schema / Format | Required | Use |
-|---|---|---|---|
-| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | required (first-run) | envelope (upstream status confirmation; MUST be `status=pass`). |
-| `Verification/simulation-plan/result.json` | `skills/simulation-plan/references/result.schema.json` | required (first-run) | plan envelope (MUST be `status=pass`). |
-| `Verification/simulation-plan/verification-plan.md` | Custom markdown | required (first-run) | Verification plan — the env-build sub-Task's input; the main thread passes the path and does not read the body. |
-| `Verification/simulation-plan/scaffold-specification.json` | Custom JSON | required (first-run) | TB scaffold contract — the sub-Tasks' input; the main thread asserts the file exists but does not read its body. |
+| Path | Schema / Format | Use |
+|---|---|---|
+| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | Upstream gate: MUST be `status=pass` (Step 1). |
+| `Design/rtl-design/filelist.txt` | text | DUT RTL compile list — bootstrap rebases it into `rtl_filelist.f` (fails when missing); RTL enters only mechanically via this list (Iron Rule). |
+| `Design/rtl-design/README.md` | Custom markdown | `<TOP>` inference source for `sim bootstrap` (falls back to `filelist.txt`). |
+| `Verification/simulation-plan/result.json` | `skills/simulation-plan/references/result.schema.json` | Plan gate: MUST be `status=pass` (Step 1). |
+| `Verification/simulation-plan/verification-plan.md` | Custom markdown | env-build sub-Task input — passed by path; the main thread never reads the body. |
+| `Verification/simulation-plan/scaffold-specification.json` | Custom JSON | TB scaffold contract — sub-Task input; the main thread asserts existence only. |
+| canonical `Verification/simulation/` directory | promoted TB baseline | Patch/freeze branches only — passed to the Wave-1 child for `copy-baseline` seeding. |
 
 When `{rework_trigger}` is injected, you pass its path (and any
 `{orchestrator_context_path}`) to the env-build sub-Task, which reads the failed stage's
@@ -75,11 +77,13 @@ finalize. The env / verify phase split of the workdir artifacts is in
 | `result.json` | `references/result.schema.json` + envelope | main thread | This stage's status contract (`failure_phase` / `coverage_gaps`, etc.). |
 | `Makefile` / `env.sh` / `filelist.f` / `rtl_filelist.f` / `tb/uvm/` / `scripts/` / `tests/testlist.json` | per `artifact-contract.md` | env-build | TB infra + materialized UVM (bound by Rule A). |
 | `regression-log.txt` / `structural-coverage.json` / `coverage-summary.txt` / `case-results-summary.md` | per `artifact-contract.md` | verify | Regression log + machine-readable structural coverage (gate source for `sim finalize`) + summaries. |
-| `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest handed to the verify phase (promoted; copied verbatim by the TB-freeze branch for deterministic reuse). |
+| `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest for the verify phase; the freeze branch copies it verbatim. |
 | `conformance-review.json` | per `references/conformance-review.schema.json` | conformance gate (main thread) | Per-testpoint check-adequacy findings (gate source for Step 4); promoted advisory artifact. |
 
 > Every promoted path MUST appear in `result.json.artifacts[]`, otherwise it will not be promoted to
 > canonical (external read-only consumption of canonical `filelist.f` / `tb/uvm/`, etc. will fail).
+
+The promoted full set is enumerated by `sim finalize` (`enumerate_artifacts`) — this table is the contract surface; the per-phase inventory lives in `artifact-contract.md`.
 
 ## Workflow (thin dispatcher; three sequential waves + smoke gate + scripted finalize)
 

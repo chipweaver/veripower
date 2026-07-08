@@ -31,8 +31,9 @@ You run on the main thread and read `{module}` (the sole external parameter) fro
 |---|---|---|
 | `asic/{module}/task.json` | JSON | Module state snapshot (state.py maintains it; you read it only via the status command). |
 | `asic/{module}/events.jsonl` | append-only event log | Event audit log (state.py maintains it). |
-| Each stage's `{workdir}/result.json` | Each stage's `result.schema.json` | Dispatched stage result (read-only, used for routing decisions). |
-| `specification` `result.json.stage_specific.ppa_targets` | specification schema | PPA targets — injected into the prompt when dispatching synthesis / power-analysis. |
+| `asic/{module}/brainstorm.md` (frontmatter only) | Custom markdown frontmatter | Entry-gate check: grep `Status: approved` before entering the executor loop — never load the body. |
+
+You read no stage `result.json` yourself, for any purpose: routing inputs and `ppa_targets` are read in-process by `orchestrate.py decide` (returned inline in its action), and reap-time status is derived inside `cmd_reap`.
 
 ## Output Artifacts
 
@@ -40,8 +41,9 @@ You run on the main thread and read `{module}` (the sole external parameter) fro
 |---|---|---|
 | `asic/{module}/task.json` | JSON | State snapshot (state.py maintains it). |
 | `asic/{module}/events.jsonl` | append-only event log | Event audit (state.py maintains it). |
+| dispatched target's `{workdir}/orchestrator-context.md` | free-form markdown | Per-dispatch judgment channel — authored at REWORK (`simulation` rework: forwarded triage `analysis.json` verbatim); written by `state.py dispatch`, never promoted. |
 
-> Do not Write files directly; artifacts are written by the downstream stage being dispatched, and the state files are updated by `state.py` commands.
+> Do not Write files directly; artifacts are written by the downstream stage being dispatched, and the state files (plus the context file above) are written by `state.py` commands.
 
 ## Workflow
 

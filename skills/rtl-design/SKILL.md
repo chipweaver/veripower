@@ -32,32 +32,34 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. Caller-injected trigger-context file path; contains `stage_specific.violations[]` / `ppa_actual[]` and related context for this rework round. Its presence distinguishes the rework branch from the first-run and incremental-update branches. |
-| `{orchestrator_context_path}` | Optional. Caller-injected fix-scope hint file path. When present, narrows the modification scope more precisely than `{rework_trigger}.violations[]` alone. |
+| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); presence selects the rework branch. |
+| `{orchestrator_context_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content and the incremental diff. |
 
 ### External reference inputs
 
-| Path | Schema / Format | Required | Use |
-|---|---|---|---|
-| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | required (first-run) | envelope + ppa_targets |
-| `Design/specification/design.md` | Custom markdown | required (first-run) | Module-level design (overview §1.1–1.6, §1.4.1 Top-Level IO table, §1.4.2 Inter-module Interconnects). The main thread passes its path to the child sub-Tasks with the read-scope limited to the §1.4.1/§1.4.2/§1.6 tables (see `references/child-task-contract.md`); it does not read it. Per-submodule content lives in each `<child>.md`; iterate `manifest.children[]`. |
-| `Design/specification/manifest.json` | JSON (`{module, children:[{name, doc, rtl_modules, brainstorm_anchor, role}]}`) | required | Child unit roster (`children[].name`, `children[].doc`, `children[].rtl_modules[]`) — drives the fan-out roster `N = len(manifest.children[])` (every child, including the top-integration child). |
-| `Design/specification/<child>.md` × N | Custom markdown (frontmatter + §1–§5) | required | Per-child sub-design file. Frontmatter carries `ports` (§1.4.2 cut-edges, derived) / `clocks` (§1.6) / `features` / `file_path`; §2 Interface + §3 Internal Behavior carry unit-internal interface + microarchitecture for per-child RTL derivation. |
-| `Design/specification/constraints/<TOP>.{sdc,sgdc}` | SDC + SGDC | required (first-run) | Constraint source of truth (one pair). |
+| Path | Schema / Format | Use |
+|---|---|---|
+| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | envelope + ppa_targets |
+| `Design/specification/design.md` | Custom markdown | Module-level design. Passed by path to the child sub-Tasks, read-scope limited to the §1.4.1/§1.4.2/§1.6 tables (`references/child-task-contract.md`); the main thread does not read it. |
+| `Design/specification/manifest.json` | JSON (`{module, children:[{name, doc, rtl_modules, brainstorm_anchor, role}]}`) | Child roster — drives the fan-out `N = len(children[])` (every child, incl. the top-integration child). |
+| `Design/specification/<child>.md` × N | Custom markdown (frontmatter + §1–§5) | Per-child sub-design: frontmatter (`ports` / `clocks` / `features` / `file_path`) + §2 Interface / §3 Internal Behavior drive per-child RTL derivation. |
+| `Design/specification/constraints/<TOP>.{sdc,sgdc}` | SDC + SGDC | Paths handed to the child sub-Tasks as reference; annotation rules derive from the design.md tables — no read is mandated. |
 
-When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file: `stage_specific.violations[]` / `ppa_actual[]` are the primary inputs. When a PPA dimension is present (`ppa_actual` non-empty), also read the sibling `reports/` or `reports_*/` subdirectory (`timing_*.rpt` / `area.rpt` / `power_*.rpt`) to locate the bottleneck down to the RTL module. The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
+When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file: when the trigger carries `violations[]` / `ppa_actual[]`, they are the primary inputs (a trigger without them — e.g. coverage-rooted — falls back to Step 2's module-wide mapping). When a PPA dimension is present (`ppa_actual` non-empty), also read the sibling `reports/` or `reports_*/` subdirectory (`timing_*.rpt` / `area.rpt` / `power_*.rpt`) to locate the bottleneck down to the RTL module. The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
 
 ## Output Artifacts
 
 | Path (relative to `{workdir}`) | Schema / Format | Use |
 |---|---|---|
 | `result.json` | `references/result.schema.json` + envelope | This stage's status contract. |
-| `<top_module>.v` / `.sv` | Verilog-2001 / SystemVerilog | Top integration RTL — authored by the top-integration child sub-Task (the child whose `rtl_modules[]` contains `top_module`), never by the main thread. |
-| `*.v` / `*.sv` (per child) | Verilog-2001 / SystemVerilog | Each child writes its `rtl_modules[]` into one or more `.v`/`.sv` files of its own choosing — specification defines RTL modules, not file layout, so one file may hold multiple modules. The child's returned `files[]` is the authoritative file list. |
-| `filelist.txt` | text (`#` comments + `+incdir+` + file path list) | Compile / synthesis input list — generated by the **`assemble`** verb from the ledger. |
-| `README.md` | Custom markdown | The `**Top module**: <top_module>` line + the constraint-annotation note (SGDC + SDC sections) — generated by the **`assemble`** verb from the ledger + `--top`. |
-| `.child_reports.json` | JSON ledger (`{<child>: {files, incdirs?, annotations}}`) | The reaped-report ledger — generated by the **`assemble`** verb (merge fresh reports onto any seeded ledger, filter to the manifest roster, shape-validate, then render the filelist + README). |
-| `semantic-review.json` | `references/semantic-review.schema.json` | Per-child intent-review findings (every clean-gate finalize; gating — Step 4.4 semantic gate) — aggregated by the main thread from the review wave. |
+| `<top_module>.v` / `.sv` | Verilog-2001 / SystemVerilog | Top integration RTL — authored by the top-integration child sub-Task, never the main thread. |
+| `*.v` / `*.sv` (per child) | Verilog-2001 / SystemVerilog | Each child writes its `rtl_modules[]` into files of its own choosing (spec defines modules, not layout); the child's returned `files[]` is authoritative. |
+| `filelist.txt` | text (`#` comments + `+incdir+` + file path list) | Compile / synthesis input list — generated by `assemble` from the ledger. |
+| `README.md` | Custom markdown | `**Top module**: <top_module>` line + constraint-annotation note (SGDC + SDC) — generated by `assemble`. |
+| `.child_reports.json` | JSON ledger (`{<child>: {files, incdirs?, annotations}}`) | Reaped-report ledger — generated by `assemble`; the `seed` verb carries it forward into the next incremental/rework run. |
+| `semantic-review.json` | `references/semantic-review.schema.json` | Gating per-child intent review (Step 4.4), aggregated by the main thread on every clean-gate finalize. |
+
+The promoted full set is enumerated by `rtl finalize` — this table is the contract surface, not a mirror of it.
 
 ## Workflow (pure-orchestrator; one fan-out wave + scripted finalize)
 

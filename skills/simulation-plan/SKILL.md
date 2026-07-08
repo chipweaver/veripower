@@ -38,28 +38,31 @@ Your boundary:
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. Caller-injected trigger-context file path (carries the attribution structure and the context needed for this round's revision; exact field names come from the triggering stage's own `result.schema.json`). When absent, Workflow Step 1 selects among session-resume / incremental-update / first-run branches. |
-| `{orchestrator_context_path}` | Optional. Caller-injected fix-scope hint file path. When present, narrows the modification scope more precisely than the attribution fields inside `{rework_trigger}`. |
+| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (field names per that stage's schema); absent → Step 1 selects session-resume / incremental-update / first-run. |
+| `{orchestrator_context_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger's attribution fields. |
 
 ### External reference inputs
 
-| Path | Schema / Format | Required | Use |
-|---|---|---|---|
-| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | required (first-run) | `specification` envelope (`stage_specific.top_module` is used for the Top field in plan §1 Scope; structured data such as interfaces / clock domains / resets is read from `design.md` (module-level §1.1–1.6, §1.4.1 Top-Level IO, §1.6 Clocks and Frequencies) + per-child `<child>.md §5 Verification Hints` (via `the simplan derive-plan-data verb`). Not duplicated into `stage_specific`; you do not consume `ppa_targets`). |
-| `Design/specification/design.md` | Custom markdown | required (first-run) | Module-level design (overview §1.1-1.6, §1.4.1 Top-Level IO table, §1.4.2 Inter-module Interconnects, §1.5 Interface Timing Scenarios, §1.6 Clocks and Frequencies). Per-submodule content lives in each `<child>.md` (see `Design/specification/<child>.md`). |
-| `Design/specification/manifest.json` | Custom JSON (specification child registry) | required | Lists child names; drives per-child `<child>.md §5` consumption by `the simplan derive-plan-data verb`. |
-| `Design/specification/<child>.md × N` | Custom markdown | required | Per-child design body; only `§5 Verification Hints` is consumed (by `the simplan derive-plan-data verb`), tagging `check_hints[]` with `child`. |
+| Path | Schema / Format | Use |
+|---|---|---|
+| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | `specification` envelope — Step 1 gate (fail fast when missing or not `pass`); `stage_specific.top_module` fills the Top field in plan §1 Scope. You do not consume `ppa_targets`. |
+| `Design/specification/design.md` | Custom markdown | Module-level design (§1.1–1.6: features / IO / interconnects / timing scenarios / clocks). Per-submodule content lives in each `<child>.md`. |
+| `Design/specification/manifest.json` | Custom JSON (specification child registry) | Child roster — drives per-child `§5` consumption by `simplan derive-plan-data`. |
+| `Design/specification/<child>.md × N` | Custom markdown | Only `§5 Verification Hints` is consumed (via `simplan derive-plan-data`, tagging `check_hints[]` with `child`). |
 
-When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file (e.g., `failure_phase` / `failing_cases` / `coverage_gaps` / `gaps_not_in_testpoints` / `power_sim_failures` / corresponding log and summary files). The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
+When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file (e.g., `failure_phase` / `failing_cases` / `coverage_gaps` / `gaps_not_in_testpoints` / `failures[]` / corresponding log and summary files). The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
 
 ## Output Artifacts
 
 | Path (relative to `{workdir}`) | Schema / Format | Use |
 |---|---|---|
 | `result.json` | `references/result.schema.json` + envelope | This stage's status contract. |
-| `verification-plan.md` | Custom markdown (section outline below); after the review loop carries frontmatter `Status: approved` | Human-readable review anchor (overview + test strategy + testpoints table + power-scenarios materialization + revision summary). |
+| `verification-plan.md` | Custom markdown (section outline below); after the review loop carries frontmatter `Status: approved` | Human-readable review anchor — drives the Step-5 user loop. |
 | `scaffold-specification.json` | Custom JSON (field convention below); written after the Plan Gate | Machine-read contract (drives TB-materialization bootstrap + scaffold generation). |
-| `plan-data.json` | Custom JSON (derived by `simplan derive-plan-data`) | Intermediate cache; **not** placed in `result.json.artifacts[]`. Derived by `simplan derive-plan-data` on every branch (cheap, deterministic, idempotent). |
+| `plan-review.json` | `references/plan-review.schema.json` | Gating plan-adequacy review (Step 4 aggregate); promoted — the resume-guard re-reads the promoted copy. |
+| `plan-data.json` | Custom JSON (derived by `simplan derive-plan-data`) | Intermediate cache, re-derived on every branch; **not** placed in `result.json.artifacts[]`. |
+
+The promoted full set is enumerated by `simplan finalize` — this table is the contract surface, not a mirror of it.
 
 ### `verification-plan.md` section outline
 

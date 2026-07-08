@@ -32,23 +32,23 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{orchestrator_context_path}` | Optional. Caller-injected fix-scope hint file path. You NEVER receive `{rework_trigger}` injection (this stage is not itself a valid fix target); only `{orchestrator_context_path}` may be injected (carrying a reasoning hint for either first-run or rework). |
+| `{orchestrator_context_path}` | Optional on any dispatch. Fix-scope hint file; when present, Read it first. |
 
 ### External reference inputs
 
-| Path | Schema / Format | Required | Use |
-|---|---|---|---|
-| `Verification/simulation/result.json` | simulation envelope | required (first-run) | simulation envelope (`status=pass` gate). |
-| `Verification/simulation/filelist.f` | UVM filelist | required (first-run) | TB infrastructure compile list (read-only). |
-| `Verification/simulation/tb/uvm/**/*.sv` | UVM SystemVerilog | required (first-run) | TB infrastructure (`tb_top` / `env` / agents, etc.; referenced by `filelist.f` and read indirectly). |
-| `Verification/simulation-plan/scaffold-specification.json` | simulation-plan schema | required (first-run) | `power_scenarios[]` list (drives `emit_power_tests` + `run_gls_power`). |
-| `Design/synthesis/out/<TOP>_syn.v` | structural Verilog | required (first-run) | Synthesized netlist (VCS GLS compile + PT-PX `read_verilog`). |
-| `Design/synthesis/out/<TOP>_syn.sdc` | SDC | required (first-run) | PT-PX `read_sdc` (constraint propagation). |
-| `Design/synthesis/out/<TOP>_syn.sdf` | SDF v3.0 | required (first-run) | VCS SDF back-annotation delay + PT-PX `read_sdf` (state-dependent leakage). |
-| `Design/timing-analysis/result.json` | timing-analysis envelope | required (first-run) | timing-analysis envelope (`status=pass` gate). |
-| `LIB_V` (env) | std cell Verilog model path | required (first-run) | linked against the netlist at VCS compile time. |
-| `LIB_DB` (env) | std cell Liberty `.db`/`.lib` | required (first-run) | PT-PX activity→power mapping (MUST match what was used at synthesis). |
-| `UVM_HOME` (env) | UVM library path | required (first-run) | matches what TB infrastructure was built against. |
+| Path | Schema / Format | Use |
+|---|---|---|
+| `Verification/simulation/result.json` | simulation envelope | Upstream gate: MUST be `status=pass` (Step 1). |
+| `Verification/simulation/filelist.f` | UVM filelist | TB infrastructure compile list (read-only). |
+| `Verification/simulation/tb/uvm/**/*.sv` | UVM SystemVerilog | TB infrastructure, referenced by `filelist.f` (read indirectly). |
+| `Verification/simulation-plan/scaffold-specification.json` | simulation-plan schema | `power_scenarios[]` list (drives `emit_power_tests` + `run_gls_power`). |
+| `Design/synthesis/out/<TOP>_syn.v` | structural Verilog | Synthesized netlist (VCS GLS compile + PT-PX `read_verilog`). |
+| `Design/synthesis/out/<TOP>_syn.sdc` | SDC | PT-PX `read_sdc` (constraint propagation). |
+| `Design/synthesis/out/<TOP>_syn.sdf` | SDF v3.0 | VCS SDF back-annotation delay + PT-PX `read_sdf` (state-dependent leakage). |
+| `Design/timing-analysis/result.json` | timing-analysis envelope | Upstream gate: MUST be `status=pass` (Step 1). |
+| `LIB_V` (env) | std cell Verilog model path | linked against the netlist at VCS compile time. |
+| `LIB_DB` (env) | std cell Liberty `.db`/`.lib` | PT-PX activity→power mapping (MUST match what was used at synthesis). |
+| `UVM_HOME` (env) | UVM library path | matches what TB infrastructure was built against. |
 
 `ppa_targets` (entries on the `power_mw` dimension only) is injected by the caller in the prompt.
 
@@ -57,29 +57,14 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 | Path (relative to `{workdir}`) | Schema / Format | Use |
 |---|---|---|
 | `result.json` | `references/result.schema.json` + envelope.schema.json | This stage's status contract (includes `saif_artifacts[]` / `compile_info` / `failures[]` / `ppa_actual[]` / `violations[]` / `power_by_corner[]`). |
-| `env.sh` | shell | Environment variables. |
-| `Makefile` | make | `tb-shim` + `refresh-tests` + `gls-compile` + `gls-run` + `ptpx` + `all` entry point. |
-| `scripts/emit_power_tests.py` | python | Called by bootstrap + by `make refresh-tests`: renders power test classes from `power_scenarios[]`. |
-| `scripts/build_tb_filelist_abs.py` | python | Called by `make tb-shim`: rewrites `simulation/filelist.f` to an absolute-path version (drops `-f rtl_filelist.f` so GLS uses the netlist in place of RTL). |
-| `scripts/run_gls_power.sh` | shell | Per-scenario `simv` dispatch (dedup via `sequence_ref` hardlink). |
-| `scripts/extract_power_scenarios.py` | python | Internal to `run_gls_power.sh`: emits one `<id>\t<sequence_ref>` row per `power_scenarios[]` entry; never invoked directly. |
-| `scripts/check_sdf_annotated.sh` | shell | Internal to `make gls-compile`: gates on the SDF annotation summary in `gls-compile-log.txt` (0 annotated = fail); never invoked directly. |
-| `scripts/ptpx.tcl` | TCL | PT-PX averaged main script (single session loads the design + iterates all SAIFs in `SAIF_LIST`). |
-| `scaffold/power_test.sv.tmpl` | template | UVM test template (contains `$set_gate_level_monitoring + $toggle_*`; placeholders `{{MODULE}}` / `{{AGENT_NAME}}` / `{{SEQUENCE_REF}}` / `{{TOP}}`, etc. are substituted at render time). |
-| `scaffold/power_tests/power_<seq>_test.sv` | UVM SV | Auto-generated test class (`import {module}_tb_pkg`, `extends {module}_base_test`, calls the `{module}_<seq>_seq` already compiled by simulation). |
-| `scaffold/power_filelist.f` | filelist | Power-tests file list (VCS `-f` input). |
-| `tb_filelist_abs.f` | filelist | Absolute-path rewrite of the simulation TB filelist (VCS `-f` input; produced by `make tb-shim` before every `gls-compile`). |
-| `simv` | VCS binary | GLS compile output. |
-| `simv.daidir/` | VCS internal | VCS working directory. |
-| `saif/<id>.saif` | SAIF | Per-scenario gate-level SAIF (hardlinked to `_dedup/<seq>.saif`). |
-| `saif/_dedup/<sequence_ref>.saif` | SAIF | Dedup canonical. |
-| `reports_ptpx/<id>/power_hier.rpt` | PT text | Power hierarchy report. |
-| `reports_ptpx/<id>/power_flat.rpt` | PT text | Power flat report. |
-| `reports_ptpx/<id>/switching_activity.rpt` | PT text | Switching-activity report. |
-| `reports_ptpx/<id>/ptpx.log` | text | Per-SAIF PT-PX run log. |
-| `gls-compile-log.txt` | text | `vcs` compile log. |
-| `gls-run-log.txt` | text | Run-scenarios aggregate log. |
-| `ptpx.log` | text | Single `pt_shell` whole-session log (design loading + batch SAIF processing summary). |
+| `saif/<id>.saif` (+ `saif/_dedup/<sequence_ref>.saif`) | SAIF | Per-scenario gate-level SAIF (dedup-hardlinked); each path referenced by `result.json.saif_artifacts[]`. |
+| `reports_ptpx/<id>/` (`power_hier.rpt` / `power_flat.rpt` / `switching_activity.rpt` / `ptpx.log`) | PT text + log | Per-scenario PT-PX report set (`power_hier.rpt` is frontend-signoff evidence; read by rtl-design on a PPA rework); one `<id>/` per SAIF. |
+
+The promoted full set (the deployed `scripts/` + `scaffold/` infrastructure, `simv` + `simv.daidir/`,
+the `gls-compile-log.txt` / `gls-run-log.txt` / `ptpx.log` / `make.out` logs, and `power-actual.json`)
+is enumerated by `power finalize` — this table is the contract surface, not a mirror of it. The
+deployed infrastructure is `bootstrap`'s business (Step 2; per-file notes in Bundled References);
+you interact with it only through the `make` targets.
 
 ## Workflow
 

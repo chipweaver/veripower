@@ -31,32 +31,35 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. Caller-injected trigger-context file path; contains `stage_specific.violations[]` and related context needed for this rework round. Its presence distinguishes the rework branch from the first-run and incremental-update branches. |
-| `{orchestrator_context_path}` | Optional. Caller-injected fix-scope hint file path. When present, narrows the modification scope more precisely than `{rework_trigger}.violations[]` alone. |
+| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); presence selects the rework branch. |
+| `{orchestrator_context_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content. |
 
 ### External reference inputs
 
-| Path | Schema / Format | Required | Use |
-|---|---|---|---|
-| `Design/lint-cdc/result.json` | `skills/lint-cdc/references/result.schema.json` | required (first-run) | Confirm lint clean. |
-| `Design/rtl-design/filelist.txt` | text | required (first-run) | RTL file list. |
-| `Design/rtl-design/README.md` | Custom markdown | required (first-run) | Constraint-annotation note (SDC: generated clock / multicycle / false path). |
-| `Design/specification/constraints/<TOP>.sdc` | SDC | optional | SDC source of truth; when present, bootstrap copies it to the working `constraints.sdc` in preference to the template placeholder. |
+| Path | Schema / Format | Use |
+|---|---|---|
+| `Design/lint-cdc/result.json` | `skills/lint-cdc/references/result.schema.json` | Confirm lint clean (Step 1 pre-check). |
+| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | Incremental-update branch only — diffed for the incremental scope. |
+| `Design/rtl-design/filelist.txt` | text | RTL file list. |
+| `Design/rtl-design/README.md` | Custom markdown | Constraint-annotation note (SDC: generated clock / multicycle / false path). |
+| `Design/specification/constraints/<TOP>.sdc` | SDC | SDC source of truth (optional) — bootstrap seeds the working `constraints.sdc` from it, else the template placeholder. |
+| `LIB_DB` (env) | std cell Liberty `.db` path | Set before any run (Step 3) — `env.sh` / Makefile fail loudly when unset. |
 
-When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file: `stage_specific.violations[]` is the primary input (with fields such as `dim` / `target` / `actual`) and drives the SDC-exception scope for this round; the specific read scope is driven by the trigger's content and is not enumerated ahead of time. `ppa_targets` (area_um2 / timing_slack_ns dimensions) is injected by the caller in the prompt.
+When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file; field names come from the triggering stage's own `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. `ppa_targets` (area_um2 / timing_slack_ns dimensions) is injected by the caller in the prompt.
 
 ## Output Artifacts
 
 | Path (relative to `{workdir}`) | Schema / Format | Use |
 |---|---|---|
 | `result.json` | `references/result.schema.json` + envelope.schema.json | This stage's status contract (`stage_specific.ppa_actual[]` + `violations[]` on failure; netlist / SDC / SDF paths go in envelope `artifacts[]`). |
-| `ppa-actual.json` | JSON (`verdict` + `ppa_actual[]` + `violations[]`) | Structured PPA record from `synthesis finalize` (Step 7 folds it into `result.json`). List it in `artifacts[]` when it exists on disk (the parser writes it only on exit 0). |
-| `out/<TOP>_syn.v` | Verilog | Synthesized gate-level netlist. |
-| `out/<TOP>_syn.sdc` | SDC | Post-synthesis SDC. |
-| `out/<TOP>_syn.sdf` | SDF v3.0 | SDF back-annotation file (includes state-dependent leakage data). |
-| `reports/qor.rpt` / `area.rpt` / `timing_setup.rpt` / `timing_hold.rpt` / `power.rpt` / `check_design.rpt` | text reports | DC synthesis report set. |
-| `constraints.sdc` | SDC | Working constraints (the file where exceptions are iteratively added). |
-| `run.log` | text | DC run log. |
+| `out/<TOP>_syn.v` | Verilog | Synthesized gate-level netlist (consumed by timing-analysis + power-analysis). |
+| `out/<TOP>_syn.sdc` | SDC | Post-synthesis SDC (consumed by timing-analysis + power-analysis). |
+| `out/<TOP>_syn.sdf` | SDF v3.0 | SDF back-annotation file, includes state-dependent leakage data (consumed by power-analysis). |
+| `reports/qor.rpt` / `area.rpt` / `timing_setup.rpt` / `timing_hold.rpt` / `power.rpt` / `check_design.rpt` | text reports | DC synthesis report set (`qor.rpt` is frontend-signoff evidence; the set is read by rtl-design during a PPA rework). |
+| `constraints.sdc` | SDC | Timing-exception iteration site, edited by you (Steps 4/6). |
+| `scripts/config.tcl` | TCL | Edit to fill `LIB_DB` (Step 3 alternative to the env var). |
+
+The promoted full set (including `ppa-actual.json`, `run.log`, and the remaining deployed scripts) is enumerated by `synthesis finalize` — this table is the contract surface, not a mirror of it.
 
 ## Workflow
 

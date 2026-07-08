@@ -29,50 +29,45 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. Caller-injected trigger-context file path; contains `stage_specific.violations[]` and related context for this rework round. Its presence distinguishes the rework branch from the first-run and incremental-update branches. |
-| `{orchestrator_context_path}` | Optional. Caller-injected fix-scope hint file path. When present, narrows the modification scope more precisely than `{rework_trigger}.violations[]` alone. |
+| `{orchestrator_context_path}` | Optional. Fix-scope hint file; Read it first — priority over the incremental diff. |
 
 ### External reference inputs
 
-| Path | Schema / Format | Required | Use |
-|---|---|---|---|
-| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | required (first-run) | envelope (upstream status confirmation). |
-| `Design/rtl-design/filelist.txt` | text | required (first-run) | RTL file list. |
-| `Design/rtl-design/README.md` | Custom markdown | required (first-run) | Constraint-annotation note (SGDC section: `sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`). |
-| `Design/specification/design.md` | markdown | required | spec main file; §1.4.1 Top-Level IO + §1.6 Clocks and Frequencies (authoritative period). |
-| `Design/specification/manifest.json` | JSON | required | Enumerate `children`; read each `<child>.md` body for SGDC annotation context (cross-domain signals / reset behavior / synchronizer hints). |
-| `Design/specification/<child>.md` × N | markdown | required | Per-child body provides the SGDC annotation context. |
-| `Design/specification/constraints/<TOP>.sgdc` | SGDC | required (cold-bootstrap) | SGDC seed source of truth; on first deployment bootstrap copies it to `{workdir}/scripts/constraints.sgdc`. The warm-bootstrap path (when `Design/lint-cdc/scripts/constraints.sgdc` already exists) does not read the spec seed; see `makefile-bootstrap.md`. |
-| `Design/lint-cdc/scripts/constraints.sgdc` | SGDC | required (warm-bootstrap) | The SGDC with depth annotations persisted by the previous lint-cdc run. When present, bootstrap copies it to the working copy first, avoiding a full re-iteration of the depth annotations. |
-
-When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file: `stage_specific.violations[]` is the primary input; use its `id` / `rule` / `severity` fields to narrow the rework scope. The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
+| Path | Schema / Format | Use |
+|---|---|---|
+| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | envelope (upstream status confirmation; Step 1 pre-check). |
+| `Design/rtl-design/filelist.txt` | text | RTL file list. |
+| `Design/rtl-design/README.md` | Custom markdown | Constraint-annotation note (SGDC section: `sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`). |
+| `Design/specification/design.md` | markdown | Consulted only on a clock-period disagreement — §1.6 is the authoritative period (Decision Rules). |
+| `Design/specification/constraints/<TOP>.sgdc` | SGDC | Cold-bootstrap seed — copied to `{workdir}/scripts/constraints.sgdc` on first deployment; unused when the warm seed below exists (`makefile-bootstrap.md`). |
+| `Design/lint-cdc/scripts/constraints.sgdc` | SGDC | Warm-bootstrap seed (preferred) — the previous run's depth-annotated SGDC; seeding it spares a full annotation re-convergence. |
 
 ## Output Artifacts
 
 | Path (relative to `{workdir}`) | Schema / Format | Use |
 |---|---|---|
 | `result.json` | `references/result.schema.json` + `envelope.schema.json` | This stage's status contract (includes `violations[]`). |
-| `lint-report.txt` | SpyGlass text report | Lint summary report. |
-| `cdc-report.txt` | SpyGlass text report | CDC summary report (a missing file is treated as fail — `collect_report.py` exits 1 when the source report is not found). |
-| `lint-violations.json` | JSON (`counts` + `violations[]`) | Structured lint findings from `collect_report.py`; Step 7 reads `counts.error` for the gate and `violations[]` for `result.json`. Listed in `artifacts[]` on the pass path → promoted to canonical, exactly like `lint-report.txt`. |
-| `cdc-violations.json` | JSON (`counts` + `violations[]`) | As above, for CDC. |
-| `scripts/constraints.sgdc` | SGDC | Working copy of the SGDC (the iteration site for depth annotations). When `status=pass`, list it in `result.json.artifacts[]` (the Iron Rule covers promotion + warm-start). |
+| `lint-report.txt` | SpyGlass text report | Lint summary report (frontend-signoff evidence). |
+| `cdc-report.txt` | SpyGlass text report | CDC summary report (frontend-signoff evidence; missing = fail, `collect_report.py` exits 1). |
+| `scripts/constraints.sgdc` | SGDC | Depth-annotation iteration site, edited by you. On `status=pass` list it in `artifacts[]` — promotion enables the next run's warm-start (Iron Rule). |
+| `scripts/waiver.tcl` | TCL | Reviewed waivers, written by you (Step 6); promoted so waivers survive across runs. |
+
+The promoted full set (including the `*-violations.json` gate sources read in Steps 4/5/7) is enumerated by `lintcdc finalize` — this table is the contract surface, not a mirror of it.
 
 ## Workflow
 
 ### Step 1: Read inputs and select routing branch
 
-Based on whether `{rework_trigger}` is injected and whether the canonical path `Design/lint-cdc/result.json` already exists (a previous run has been promoted), choose one of three branches:
+Based on whether the canonical path `Design/lint-cdc/result.json` already exists (a previous run has been promoted), choose one of two branches:
 
-- **Trigger-driven rework** (`{rework_trigger}` injected): read the trigger's `stage_specific.violations[]` to produce this round's fix list. If the trigger file is unreadable, write `result.json` with `status=fail` and `stage_specific.fail_reason="rework_trigger not readable"`, then exit.
-- **Incremental-update branch** (no trigger; canonical path already has prior artifacts): read the `Design/rtl-design/result.json` diff to determine the incremental scope.
-- **First-run branch** (no trigger; canonical path has no prior artifacts): run the first-pass serial flow.
+- **Incremental-update branch** (canonical path already has prior artifacts): read the `Design/rtl-design/result.json` diff to determine the incremental scope.
+- **First-run branch** (canonical path has no prior artifacts): run the first-pass serial flow.
 
 Then pre-check the external references: `Design/rtl-design/result.json.status=pass` AND `filelist.txt` and `README.md` are present AND the SGDC seed is available (warm: `Design/lint-cdc/scripts/constraints.sgdc` exists → preferred; cold: `Design/specification/constraints/<TOP>.sgdc` exists → fallback; neither → missing). If any required file is missing, write `status=fail` with `fail_reason="external reference missing: <path>"` and exit; if `Design/rtl-design/result.json.status≠pass`, write `fail_reason="external reference not pass: Design/rtl-design/result.json"` and exit.
 
-When `{orchestrator_context_path}` is injected, Read that sibling file first as a fix-scope hint. It takes priority over both the trigger content (trigger-driven path) and the external-reference diff (incremental-update path) to further narrow the modification scope.
+When `{orchestrator_context_path}` is injected, Read that sibling file first as a fix-scope hint. It takes priority over the external-reference diff (incremental-update path) to further narrow the modification scope.
 
-Steps 2–7 are mechanically identical across all three branches; the branch selected here sets only the **fix scope** — trigger-driven narrows the Step 4/5 triage to the trigger's `violations[]`, incremental-update to the `Design/rtl-design/result.json` diff, first-run covers everything — and `{orchestrator_context_path}` narrows it further when injected.
+Steps 2–7 are mechanically identical across both branches; the branch selected here sets only the **fix scope** — incremental-update narrows the Step 4/5 triage to the `Design/rtl-design/result.json` diff, first-run covers everything — and `{orchestrator_context_path}` narrows it further when injected.
 
 ### Step 2: Bootstrap
 

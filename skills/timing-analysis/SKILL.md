@@ -36,20 +36,22 @@ Only `{workdir}` / `{module}` are delivered. (See the Workflow rationale.)
 
 ### External reference inputs
 
-| Path | Schema / Format | Required | Use |
-|---|---|---|---|
-| `Design/synthesis/result.json` | `skills/synthesis/references/result.schema.json` | required | Prerequisite `status=pass`. |
-| `Design/synthesis/out/<TOP>_syn.v` | Verilog gate-level netlist | required | STA input netlist. |
-| `Design/synthesis/out/<TOP>_syn.sdc` | SDC | required | Post-synthesis constraints. |
+| Path | Schema / Format | Use |
+|---|---|---|
+| `Design/synthesis/result.json` | `skills/synthesis/references/result.schema.json` | Prerequisite `status=pass` (Step 1 pre-check). |
+| `Design/synthesis/out/<TOP>_syn.v` | Verilog gate-level netlist | STA input netlist. |
+| `Design/synthesis/out/<TOP>_syn.sdc` | SDC | Post-synthesis constraints. |
+| `LIB_DB` (env) | std cell Liberty `.db` path (same `.db` as synthesis) | Set before the STA run (Step 3) — `run_sta.tcl` errors when unset (or edit `config.tcl`). |
 
 ## Output Artifacts
 
 | Path (relative to `{workdir}`) | Schema / Format | Use |
 |---|---|---|
 | `result.json` | `references/result.schema.json` + envelope.schema.json | Status contract (`stage_specific.timing{}` + `violations[]`). |
-| `run_sta.tcl` / `config.tcl` | Tcl | STA script + config (deployed by bootstrap). |
-| `timing-report.txt` | PrimeTime text report | setup / hold / check_timing output (the deliverable). |
-| `timing-actual.json` | JSON (`verdict` + `timing` + `violations`) | Parser output (Step 4 folds it into `result.json`). List in `artifacts[]` when present. |
+| `config.tcl` | Tcl | Edit to fill `LIB_DB` (Step 3 alternative to the env var). |
+| `timing-report.txt` | PrimeTime text report | setup / hold / check_timing output — the deliverable (frontend-signoff evidence). |
+
+The promoted full set (including `timing-actual.json` and the deployed `run_sta.tcl`) is enumerated by `timing finalize` — this table is the contract surface, not a mirror of it.
 
 ## Workflow
 
@@ -90,7 +92,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
 
 `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); you write `failure_kind=infra` in the Step-1 pre-check (PT never ran — external ref / license missing) before finalize runs.
 
-**Workflow rationale — single linear flow.** You are a read-only re-verifier — you cannot modify the synthesis netlist/SDC or apply any fix, so every run does identical work and there is no first-run / incremental / re-run fork to branch on. Step 1 is a linear pre-flight check, not a branch; each run uses a fresh `{workdir}` (Step 2 aborts if one is already deployed). You therefore carry no branch fork and receive no `{rework_trigger}`.
+**Workflow rationale — single linear flow.** You are a read-only re-verifier — you cannot modify the synthesis netlist/SDC or apply any fix, so every run does identical work and there is no first-run / incremental / re-run fork to branch on. Step 1 is a linear pre-flight check, not a branch; each run uses a fresh `{workdir}` (Step 2 aborts if one is already deployed). You therefore carry no branch fork.
 
 ## Red Flags
 
