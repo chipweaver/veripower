@@ -71,14 +71,20 @@ def test_simulation_root_cause(root_cause, target):
 
 def test_simulation_high_confidence_routes_to_target():
     r = route.route(
-        "simulation", root_cause="rtl-design", analysis_state="complete", confidence="high"
+        "simulation",
+        root_cause="rtl-design",
+        analysis_state="complete",
+        confidence="high",
     )
     assert r["decision"] == "rtl-design"
 
 
 def test_simulation_medium_confidence_escalates_to_operator():
     r = route.route(
-        "simulation", root_cause="rtl-design", analysis_state="complete", confidence="medium"
+        "simulation",
+        root_cause="rtl-design",
+        analysis_state="complete",
+        confidence="medium",
     )
     assert r["decision"] == ESCALATE and r["rule"] == "triage_low_confidence"
 

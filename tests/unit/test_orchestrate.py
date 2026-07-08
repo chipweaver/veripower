@@ -274,14 +274,23 @@ def test_triage_high_confidence_routes(tmp_path, monkeypatch):
         tmp_path,
         t,
         events=[
-            {"type": "outcome", "stage": "simulation", "run": 1, "result_status": "fail"},
+            {
+                "type": "outcome",
+                "stage": "simulation",
+                "run": 1,
+                "result_status": "fail",
+            },
             {"type": "debug_dispatch", "module": "m"},
         ],
     )
     a = _next(
         tmp_path,
         monkeypatch,
-        analysis={"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high"},
+        analysis={
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+        },
     )
     assert a["action"] == "REWORK" and a["target_stage"] == "rtl-design"
 
@@ -295,14 +304,23 @@ def test_triage_low_confidence_escalates(tmp_path, monkeypatch):
         tmp_path,
         t,
         events=[
-            {"type": "outcome", "stage": "simulation", "run": 1, "result_status": "fail"},
+            {
+                "type": "outcome",
+                "stage": "simulation",
+                "run": 1,
+                "result_status": "fail",
+            },
             {"type": "debug_dispatch", "module": "m"},
         ],
     )
     a = _next(
         tmp_path,
         monkeypatch,
-        analysis={"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "low"},
+        analysis={
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "low",
+        },
     )
     assert a["action"] == "ESCALATE"
 
