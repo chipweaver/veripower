@@ -91,10 +91,10 @@ def route(
 
     # 3. simulation — routed on triage ANALYSIS (landed analysis.json, supplied as args).
     if failed_stage == "simulation":
-        if root_cause is None or analysis_state is None:
-            return _decision(NEED_INPUT, "need_input:root_cause", need="root_cause")
         if analysis_state == "skipped":
             return _decision(ESCALATE, "triage_skipped")
+        if root_cause is None or analysis_state is None:
+            return _decision(NEED_INPUT, "need_input:root_cause", need="root_cause")
         # confidence-gated authority: only a high-confidence verdict auto-routes;
         # medium/low (or missing) surfaces to the operator (spec §3.4).
         if confidence != "high":

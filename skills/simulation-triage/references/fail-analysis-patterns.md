@@ -98,7 +98,7 @@ The Symptom table above is the observed-symptom lens; the same four buckets are 
 
 `confidence` is a **gating** routing field on the landed `analysis.json` (schema:
 `analysis.schema.json`; consumed by `route.py`'s confidence gate) — not an advisory qualifier.
-Only `high` auto-routes; `medium` / `low` escalate to the operator (`triage_low_confidence`)
+Only `high` auto-routes; `medium` / `low` escalate to the operator (see `route.py`)
 instead. Land it per this operable definition:
 
 - `high` — the verdict is authoritative. Reachable two ways:

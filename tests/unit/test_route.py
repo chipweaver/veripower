@@ -43,7 +43,6 @@ def test_simulation_needs_root_cause():
 def test_simulation_skipped_escalates():
     r = route.route(
         "simulation",
-        root_cause="rtl-design",
         analysis_state="skipped",
     )
     assert r["decision"] == ESCALATE
