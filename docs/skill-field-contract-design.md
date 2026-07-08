@@ -230,8 +230,18 @@ no scripts (e.g. `brainstorm`) omits it:
 
 #### 4.3.5 Input Artifacts
 
-The field lists the four canonical context variables and the external reference inputs the
-skill reads. Only variables the skill actually uses are listed.
+The field lists the context variables and the external reference inputs the skill reads.
+Only variables the skill actually uses are listed.
+
+**Inclusion rule.** A path — or a hard-prerequisite environment variable (e.g. `LIB_DB`) —
+earns a row iff the skill's execution domain actually reads it: the main thread, its
+dispatched sub-Tasks, or its own scripts. Reads internal to the framework (the decider,
+`state.py`) are not this skill's inputs. No consumption, no row.
+
+**No Required column.** Missing-input behavior is Workflow Step 1's job (the pre-check and
+its `fail_reason="external reference missing: <path>"` protocol) — the table does not mirror
+it. Fallback chains (warm/cold seeds) and conditional consumption are described in the Use
+column prose. External-reference table columns: Path / Schema or format / Use.
 
 **Canonical context variable table:**
 
@@ -239,8 +249,8 @@ skill reads. Only variables the skill actually uses are listed.
 |---|---|
 | `{workdir}` | Current run workspace root (contains the run-number path segment `runs/<N>/`); injected by the dispatcher |
 | `{module}` | Module name; injected by the dispatcher |
-| `{rework_trigger}` | Optional: path to a trigger-context file injected by the caller; contains `stage_specific.violations[]` and related context for the current revision round; its presence is the primary branch-routing signal |
-| `{orchestrator_context_path}` | Optional: path to a fix-scope hint file (e.g., triage diagnosis); when present, narrows scope more precisely than `{rework_trigger}.violations[]` alone |
+| `{rework_trigger}` | Optional: path to the failed stage's canonical `result.json`, injected on a rework dispatch; its `stage_specific` shape is defined by that stage's own `result.schema.json` — never re-enumerate the possible triggering stages (route.py owns the failure→target maps). Its presence is the primary branch-routing signal |
+| `{orchestrator_context_path}` | Optional on any dispatch: path to a per-dispatch file carrying either Orchestrator-authored reasoning (conversation-residual hints held in no on-disk artifact) or, for a `simulation` rework, the verbatim-forwarded triage `analysis.json` (a version-frozen copy). Read first as a fix-scope hint; never promoted |
 
 For branch-routing semantics of these variables — how their presence/absence determines
 forward vs. rework vs. cascade-rework paths — see `skill-branch-routing-design.md`.
@@ -251,13 +261,18 @@ SKILL.md files; mode routing is expressed entirely through the variables above. 
 require a matching injection point in `framework/references/prompts/stage-subagent.md.tpl`
 before they can appear in SKILL.md.
 
-**Form delta — analyzer:** Analyzer skills (e.g., `veripower:simulation-triage`) receive
-their inputs as inline content embedded in the dispatch prompt, not via `{workdir}` or
-`{rework_trigger}`. There is no disk scan. The `{rework_trigger}` × disk-prev-artifact
-two-signal routing model does not apply. Source of record:
-`skills/simulation-triage/SKILL.md` — *"No `{workdir}` concept; external reference inputs
-are supplied entirely as inline content in the dispatch prompt by the caller; no disk
-scan."*
+**No routing inferences.** The field describes this skill's own input surface and branch
+shape, nothing else. Never state why the router will or will not target this stage ("not a
+valid fix target"-style claims): route.py is the single home of the failure→target maps,
+such claims are derived restatements that go stale silently, and they carry zero operational
+value for the executing agent. A stage whose Workflow defines no rework branch simply lists
+no `{rework_trigger}` row.
+
+**Form delta — analyzer:** Analyzer skills (e.g., `veripower:simulation-triage`) receive only
+identifying coordinates — `{module}` plus the failed run number — with zero inline field
+assembly: no `{workdir}`, no `{rework_trigger}`. Everything else is self-read from canonical
+disk, so the field splits into a context-variable table and a "self-read from canonical disk"
+table. The `{rework_trigger}` × disk-prev-artifact two-signal routing model does not apply.
 
 #### 4.3.6 Output Artifacts
 
@@ -266,18 +281,36 @@ All paths are expressed relative to `{workdir}`; no `asic/<M>` or `runs/<N>` har
 Table columns: Path (relative to `{workdir}`) / Schema or format / Use. For what belongs
 inside `result.json`, see `result-schema-design.md`.
 
-**Form delta — analyzer:** The output table has one row only, rewritten as "ANALYSIS JSON in
-the final block of the message body" with schema `references/analysis.schema.json`; no file
-is written to disk.
+**Inclusion rule — minimal contract.** A row earns its place iff the file is (a) produced or
+edited by the agent's own hand, or (b) consumed by a downstream stage or a later run. The
+promoted full set is owned by the stage's `finalize` verb — its artifact enumeration is the
+single source of truth, and the table does not mirror it; close the table with one sentence
+deferring to it. Two corollaries:
+
+- A file the agent hand-edits whose value must survive across runs (an iterated constraint or
+  waiver file) MUST be listed, its Use noting the promotion — `promote()` deletes canonical
+  entries absent from the new `artifacts[]` view, so an unlisted survivor is one refactor away
+  from silent loss.
+- A scratch file kept out of `artifacts[]` may be listed only with an explicit "not in
+  `result.json.artifacts[]`" note.
+
+Deployed make-internal tooling (scripts, templates) is bootstrap's business, not an output
+row; at most one directory-level row where a whole directory is promoted.
+
+**Form delta — analyzer:** No `result.json` and no promote. The table lists the landed
+verdict file(s) the caller consumes (per-run `analysis.json` plus its atomically-published
+top-level pointer) and any persisted scratch area, all under the analyzer's own directory.
 
 **Form delta — dialogue:** The standard table gains 1–2 additional rows for approval-gated
 artifacts (e.g., `brainstorm.md` with frontmatter `Status: approved`, or `verification-plan.md`
 after review sign-off).
 
 **Form delta — orchestrator:** The orchestrator skill does not write business artifacts
-directly — downstream stages write them. The output table lists only `asic/{module}/task.json`
-and `events.jsonl` (maintained by `state.py`), with a note that this skill only triggers
-commands.
+directly — downstream stages write them. The output table lists `asic/{module}/task.json` and
+`events.jsonl` (maintained by `state.py`) plus the per-dispatch `orchestrator-context.md`
+(the one Orchestrator-authored — or, for a `simulation` rework, verbatim-forwarded — judgment
+file; written into the target's workdir by `cmd_dispatch`, never promoted), with a note that
+this skill only triggers commands.
 
 #### 4.3.7 Workflow
 
@@ -286,8 +319,9 @@ Structure: numbered step **headings** — each top-level step is an H3 heading `
 `### Step 2: Wave 1 — dispatch env-build`). Numbered markdown lists (`1.` `2.`) are used only
 for sub-steps inside a step and other ordered sub-sequences, never for the top-level steps.
 Step 1 is a read-inputs step; the worker form's three-branch decision is the default, but
-degenerate forms collapse to fewer branches (a stage that never receives `{rework_trigger}`
-has no rework branch; the analyzer reads inline input with no disk scan).
+degenerate forms collapse to fewer branches (a stage whose Workflow defines no rework branch
+lists no `{rework_trigger}` row; the analyzer self-reads its canonical inputs from the two
+injected coordinates).
 See `skill-branch-routing-design.md` for the complete two-signal table and the
 branch-coverage = step-coverage rule. Apply the F3 LLM-friendliness sub-rules (§3.3) throughout.
 
@@ -299,10 +333,10 @@ skip the brainstorm phase; if `design.md` already exists, enter the incremental-
 The `external-reference pre-check` and `status=fail` + `fail_reason` semantics apply the same
 as in worker form.
 
-**Form delta — analyzer:** Step 1 reads the inline prompt content — there is no disk scan.
-The analyzer has **no** `{rework_trigger}` variable; its inputs (the failed-case material) are
-inlined directly into the dispatch prompt (consistent with §4.3.5 and the §6.5 carve-out in
-`skill-branch-routing-design.md`). Standard worker three-branch logic does not apply.
+**Form delta — analyzer:** Step 1 self-reads the failed run's material from canonical disk,
+navigating from the two injected coordinates (`{module}` + the failed run number). The
+analyzer has **no** `{rework_trigger}` variable and no two-signal routing (consistent with
+§4.3.5). Standard worker three-branch logic does not apply.
 
 **Form delta — orchestrator:** Step 1 reads `task.json` dispatch state (the dispatcher
 exemption in `skill-structure-design.md` applies; the orchestrator is the dispatcher and is
@@ -370,7 +404,7 @@ Return Contract. Per F2, this is the *pre-pass* cognitive section. Standard item
 For non-worker forms, additional or replacement items apply (see §4.5 for the full form-by-field-delta catalog):
 
 - Dialogue: append a user-approval gate (the brainstorm or plan artifact must be in `Status: approved` state before completion).
-- Analyzer: replace item 1 with an ANALYSIS JSON validity check (the final block of the message body contains valid JSON per `references/analysis.schema.json`); replace item 2 with a no-files-written invariant (no disk writes, no `state.py` calls).
+- Analyzer: replace item 1 with a landed-verdict validity check (the landed `analysis.json` validates against `references/analysis.schema.json` and its top-level pointer is atomically published); replace item 2 with a writes-confined invariant (no writes outside the analyzer's own directory, no `state.py` calls).
 - Orchestrator: this field does not apply per-turn (no single-turn pre-return semantics); replace entirely with a "main-loop termination conditions" section listing three states: terminate / yield turn / escalate.
 
 #### 4.3.12 Return Contract
@@ -402,14 +436,15 @@ decides based on `result.json`.
 task-notification mechanism. Replace with: "Control returns directly to the caller; the
 caller decides based on `result.json`."
 
-**Form delta — analyzer:** The caller consumes the ANALYSIS JSON block in the message body,
-not `result.json`. Replace with:
+**Form delta — analyzer:** The caller consumes the landed verdict file(s), not `result.json`
+and not the message body. Replace with:
 
 ```markdown
 ## Return Contract
 
-Return a message whose final block contains valid ANALYSIS JSON (schema:
-`references/analysis.schema.json`). On the last line, emit `STATUS: DONE` or
+The result is landed on disk (the analyzer's own per-run `analysis.json` plus its
+atomically-published top-level pointer; schema: `references/analysis.schema.json`); nothing
+is returned in the message body. On the last line, emit `STATUS: DONE` or
 `STATUS: BLOCKED <one-line reason>` as the harness signal.
 ```
 
@@ -449,8 +484,8 @@ subsections cited.
 |---|---|---|---|---|---|
 | worker | Standard `{workdir}` / `{module}` / `{rework_trigger}` / `{orchestrator_context_path}` | `result.json` as first row; additional artifact rows | Three-branch: trigger-driven / cascade-rework / first-run | Standard four-item checklist | `STATUS: DONE` or `STATUS: BLOCKED` on exception |
 | dialogue | Same as worker | Append approval-gated artifact rows (e.g., `brainstorm.md` with `Status: approved`) | Step 1 adds disk-reentry detection for brainstorm/review state; same external-ref pre-check | Append user-approval gate item | Replace with direct control-return; no harness signal |
-| analyzer | Inputs are inline in dispatch prompt; no `{workdir}`, no disk scan | ANALYSIS JSON block in message body; no file write | Step 1 reads inline prompt content; no two-signal routing | Replace items 1–2: ANALYSIS JSON validity + no-files-written invariant | Return ANALYSIS JSON body + `STATUS: DONE` or `STATUS: BLOCKED` on exception |
-| orchestrator | Reads `task.json` dispatch state; dispatcher-exemption applies | Lists `task.json` + `events.jsonl` only; downstream stages write business artifacts | Setup + executor loop, not a Step 1..N sequence; Setup reads `task.json` dispatch state | Not applicable per-turn; replaced by main-loop termination conditions | Not applicable per-turn; replaced by main-loop termination section |
+| analyzer | Coordinates only (`{module}` + failed run number); everything else self-read from canonical disk | Landed verdict files under own directory (per-run `analysis.json` + top-level pointer); no `result.json`, no promote | Step 1 self-reads canonical inputs; no two-signal routing | Replace items 1–2: landed `analysis.json` validity + writes-confined-to-own-directory invariant | Result landed on disk, nothing in message body; `STATUS: DONE` or `STATUS: BLOCKED` on exception |
+| orchestrator | Reads `task.json` dispatch state; dispatcher-exemption applies | Lists `task.json` + `events.jsonl` + per-dispatch `orchestrator-context.md`; downstream stages write business artifacts | Setup + executor loop, not a Step 1..N sequence; Setup reads `task.json` dispatch state | Not applicable per-turn; replaced by main-loop termination conditions | Not applicable per-turn; replaced by main-loop termination section |
 
 **Note:** Branch-name definitions and full per-field rules live in §4.3.5, §4.3.7, §4.3.11, §4.3.12. The table above is the cross-form summary.
 

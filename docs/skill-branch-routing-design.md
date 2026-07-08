@@ -89,7 +89,7 @@ Six skills deviate from the standard 3-branch worker pattern. Each must referenc
 
 ### 6.5 Analyzer exception (simulation-triage)
 
-`simulation-triage` receives all inputs as inline content in the dispatch prompt. It has no `{workdir}`, no `{rework_trigger}`, no disk-prev-artifact concept. The two-signal model does not apply. (`skills/simulation-triage/SKILL.md` Workflow rationale.)
+`simulation-triage` receives only identifying coordinates in the dispatch prompt (`{module}` + the failed run number) and self-reads everything else from canonical disk. It has no `{workdir}`, no `{rework_trigger}`, no disk-prev-artifact concept. The two-signal model does not apply. (`skills/simulation-triage/SKILL.md` Input Artifacts.)
 
 ### 6.6 Never-trigger-target / read-only re-verifier (timing-analysis)
 
