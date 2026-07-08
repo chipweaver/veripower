@@ -70,6 +70,7 @@ def route(
     fail_reason: str | None = None,
     root_cause: str | None = None,
     analysis_state: str | None = None,
+    confidence: str | None = None,
 ) -> dict:
     """Return {decision, rule, [need], [reason_hint]}.
 
@@ -88,12 +89,16 @@ def route(
             target, f"fixed:{failed_stage}->{target}", reason_hint=fail_reason
         )
 
-    # 3. simulation — routed on triage ANALYSIS (in-message, supplied as args).
+    # 3. simulation — routed on triage ANALYSIS (landed analysis.json, supplied as args).
     if failed_stage == "simulation":
-        if root_cause is None or analysis_state is None:
-            return _decision(NEED_INPUT, "need_input:root_cause", need="root_cause")
         if analysis_state == "skipped":
             return _decision(ESCALATE, "triage_skipped")
+        if root_cause is None or analysis_state is None:
+            return _decision(NEED_INPUT, "need_input:root_cause", need="root_cause")
+        # confidence-gated authority: only a high-confidence verdict auto-routes;
+        # medium/low (or missing) surfaces to the operator (spec §3.4).
+        if confidence != "high":
+            return _decision(ESCALATE, "triage_low_confidence")
         if root_cause not in TRIAGE_ROOT_CAUSE:
             return _decision(ESCALATE, "unrouted:unknown_root_cause")
         target = TRIAGE_ROOT_CAUSE[root_cause]
@@ -148,18 +153,24 @@ def main() -> None:
     p.add_argument(
         "--root-cause",
         default=None,
-        help="simulation-triage ANALYSIS root_cause (simulation only)",
+        help="simulation-triage landed analysis.json root_cause (simulation only)",
     )
     p.add_argument(
         "--analysis-state",
         default=None,
-        help="simulation-triage ANALYSIS analysis_state (simulation only)",
+        help="simulation-triage landed analysis.json analysis_state (simulation only)",
+    )
+    p.add_argument(
+        "--confidence",
+        default=None,
+        help="triage ANALYSIS confidence (simulation only)",
     )
     args = p.parse_args()
 
     kwargs: dict = {
         "root_cause": args.root_cause,
         "analysis_state": args.analysis_state,
+        "confidence": args.confidence,
     }
     if args.result_json:
         kwargs.update(_inputs_from_result_json(args.result_json))

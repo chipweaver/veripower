@@ -16,7 +16,7 @@ Reasoning aid for landing the top-level `root_cause` (the routing field). These 
 
 ## `fault_type` and `root_cause_direction` detailed classification
 
-Reasoning aid for classifying each case; surfaced in the `## Findings` prose (free-text), not as validated fields.
+Reasoning aid for classifying each case; surfaced as free-text `fault_type` values inside `advisory.findings[]` (schema: `analysis.schema.json`) — not a separate enum of their own.
 
 | Fault category | `fault_type` | Typical symptom | `root_cause_direction` | How to trace |
 |---|---|---|---|---|
@@ -52,7 +52,7 @@ the other phases.
 | targeted | TB-side change; RTL untouched | Run only the affected case group | Sequence constraints, checker expected-value corrections. |
 | full | RTL logic change | Full regression | Functional bug, datapath, state machine. |
 
-Use this as the default classification. Deviate only with sufficient justification, and record the reason in ANALYSIS.
+Use this as the default classification. Deviate only with sufficient justification, and record the reason in the landed `analysis.json`'s `advisory.findings[]`.
 
 ## Clustering guide
 
@@ -94,10 +94,42 @@ specification               → stage: "specification"
 
 The Symptom table above is the observed-symptom lens; the same four buckets are also reachable by **where the fix lands**. The one disambiguation it adds (not already crisp above): a fix confined entirely to `tb/uvm/**` scaffold/glue, needing no `verification-plan.md` / `scaffold-specification.json` change → `simulation` (rare — simulation usually absorbs this in its own scaffold-repair budget and never escalates); a fix that changes the plan-prescribed behavior → `simulation-plan`. (rtl-design and specification are already covered by the Symptom rows — not repeated here.)
 
-## Confidence
+## Confidence (gating)
 
-Drives the confidence qualifier in the `## Root cause` prose (not a validated field).
+`confidence` is a **gating** routing field on the landed `analysis.json` (schema:
+`analysis.schema.json`; consumed by `route.py`'s confidence gate) — not an advisory qualifier.
+Only `high` auto-routes; `medium` / `low` escalate to the operator (see `route.py`)
+instead. Land it per this operable definition:
 
-- `high` — ≥2 cases with matching fault type plus a clear evidence anchor (log path: line / signal / `UVM_ERROR` text; coverage path: gap-bin-to-testpoints relationship is unambiguous).
-- `medium` — single-case inference or moderate evidence.
-- `low` — no clear anchor / multiple explanations coexist (e.g., `gaps_in_testpoints` could reflect either RTL unreachability or insufficient stimulus).
+- `high` — the verdict is authoritative. Reachable two ways:
+  - **L1 alone**: a single, non-conflicting explanation anchored to clear evidence (log path:
+    line / signal / `UVM_ERROR` text; coverage path: an unambiguous gap-bin-to-testpoints
+    relationship) — no competing hypothesis survives the reasoning in Step 2.
+  - **L2 isolation**: the cycle-accurate repro's isolation harness directly proves the fault —
+    pins it to a specific function/cell and reproduces the symptom against a refmodel-consistent
+    golden.
+- `medium` — a single-case inference or moderate evidence; plausible but not pinned down by
+  either an L1 anchor or an L2 isolation.
+- `low` — no clear anchor, or multiple explanations coexist (e.g., `gaps_in_testpoints` could
+  reflect either RTL unreachability or insufficient stimulus), even after L2.
+
+`medium` / `low` are not a failure of the analysis — they are the honest verdict when the
+evidence genuinely supports more than one explanation. Do not force `high` to avoid the
+escalation (see SKILL.md Red Flags).
+
+## L2-trigger judgment
+
+Escalate from L1 to L2 (SKILL.md Step 3) when Step 2's reasoning cannot land `confidence: "high"`
+for one of these reasons:
+
+- **Competing hypotheses** — two or more `root_cause_direction` candidates remain equally
+  plausible from the log/spec/refmodel evidence alone (e.g., could be a driver bug or an RTL bug).
+- **Cannot localize** — the evidence anchors to a symptom (a mismatch, a hang) but not to a
+  specific file/line/signal.
+- **Locus in doubt** — the case's `root_cause_direction` looks clear, but the assigned stage
+  doesn't follow from the coverage-gap / conformance-category default without direct confirmation
+  (e.g., a `data_mismatch` that could be either the DUT or the TB refmodel).
+
+When none of these apply — a single case with a clean log anchor and no plausible alternative
+explanation — land `confidence: "high"` from L1 alone and skip L2. L2 is the expensive tier; pay
+for it only when L1 genuinely can't decide.

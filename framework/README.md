@@ -48,7 +48,7 @@ The authoritative source for `PREREQ_OF` (the stage DAG), `FORWARD_PRIORITY`, `S
 
 ### `scripts/orchestrate.py` — the decider
 
-A standalone Python CLI that reads on-disk state and returns exactly one action per call (`orchestrate.py decide --module <M> [--wake <stage>:<run>] [--analysis -]`). The `design-flow` Orchestrator executes this action and loops until `YIELD`/`DONE`/`ESCALATE`. All deterministic control-loop logic lives here (composes `route.py` and `eligible()`); the Orchestrator is a thin executor.
+A standalone Python CLI that reads on-disk state and returns exactly one action per call (`orchestrate.py decide --module <M> [--wake <stage>:<run>] [--analysis <path>]`). The `design-flow` Orchestrator executes this action and loops until `YIELD`/`DONE`/`ESCALATE`. All deterministic control-loop logic lives here (composes `route.py` and `eligible()`); the Orchestrator is a thin executor.
 
 Primary caller is the `design-flow` Orchestrator loop, but the tool is **runnable
 by anyone**: humans manually driving a pipeline, tests, CI, future automated

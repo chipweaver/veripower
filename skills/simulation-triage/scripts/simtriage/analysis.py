@@ -1,9 +1,10 @@
-"""Producer self-gate for the simulation-triage ANALYSIS routing block — the validate-analysis verb.
+"""Producer self-gate for the simulation-triage analysis.json routing block — the validate-analysis verb.
 
 Validates a JSON payload (--json-file or piped --json-stdin) against analysis.schema.json
 (Draft 2020-12). Exit 0 = valid; exit 1 = invalid (formatted error on stderr). Writes no
-files — consistent with simulation-triage's read-only Iron Rule. The skill runs this before
-emitting the ANALYSIS block and fixes-and-reruns on failure (mirrors simplan validate-review).
+files itself — simulation-triage lands analysis.json under its own canonical read-only +
+scratch-writable Iron Rule (SKILL.md), and runs this validator as the pre-publish gate
+before that write, fixing and rerunning on failure (mirrors simplan validate-review).
 
 --schema is an optional override; the main path uses the packaged sibling
 references/analysis.schema.json.

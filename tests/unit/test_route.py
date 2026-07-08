@@ -43,7 +43,6 @@ def test_simulation_needs_root_cause():
 def test_simulation_skipped_escalates():
     r = route.route(
         "simulation",
-        root_cause="rtl-design",
         analysis_state="skipped",
     )
     assert r["decision"] == ESCALATE
@@ -64,9 +63,29 @@ def test_simulation_root_cause(root_cause, target):
         "simulation",
         root_cause=root_cause,
         analysis_state="complete",
+        confidence="high",
     )
     assert r["decision"] == target
     assert r["rule"] == f"triage_root_cause:{root_cause}->{target}"
+
+
+def test_simulation_high_confidence_routes_to_target():
+    r = route.route(
+        "simulation", root_cause="rtl-design", analysis_state="complete", confidence="high"
+    )
+    assert r["decision"] == "rtl-design"
+
+
+def test_simulation_medium_confidence_escalates_to_operator():
+    r = route.route(
+        "simulation", root_cause="rtl-design", analysis_state="complete", confidence="medium"
+    )
+    assert r["decision"] == ESCALATE and r["rule"] == "triage_low_confidence"
+
+
+def test_simulation_missing_confidence_escalates():
+    r = route.route("simulation", root_cause="rtl-design", analysis_state="complete")
+    assert r["decision"] == ESCALATE and r["rule"] == "triage_low_confidence"
 
 
 @pytest.mark.parametrize("stage", ["synthesis", "power-analysis", "timing-analysis"])
@@ -139,10 +158,12 @@ def test_unrouted_defensive_escalate(stage):
 
 def test_simulation_unknown_root_cause_escalates():
     # I-1: an unknown root_cause (e.g. schema drift) → named unrouted ESCALATE, not KeyError.
+    # confidence="high" clears the confidence gate so this reaches the root_cause check.
     r = route.route(
         "simulation",
         root_cause="nonsense",
         analysis_state="complete",
+        confidence="high",
     )
     assert r["decision"] == ESCALATE
     assert r["rule"] == "unrouted:unknown_root_cause"
