@@ -15,6 +15,7 @@ a deployment choice.
 | Required | Purpose | Sanity check |
 |---|---|---|
 | `dc_shell` / `pt_shell` / `vcs` / `spyglass` on `PATH` | Stage Makefiles and scripts invoke directly | `which dc_shell` |
+| `fsdbreport` / `fsdb2vcd` on `PATH` | simulation dumps FSDB (`vcs -debug_access+all -kdb -lca` + `-ucli` do-file `$fsdbDumpvars`); simulation-triage queries it (`fsdbreport`) | `which fsdbreport` |
 | `LM_LICENSE_FILE` and/or `SNPSLMD_LICENSE_FILE` | Synopsys license server checkout (tools read these at launch; VeriPower does not validate) | `lmstat -c "$LM_LICENSE_FILE"` |
 | `LIB_DB`, `LIB_V` | synthesis / power-analysis read std-cell libs | stage `env.sh` `:?` guard fires on miss |
 | `UVM_HOME` | simulation / power-analysis compile UVM DPI | same |
