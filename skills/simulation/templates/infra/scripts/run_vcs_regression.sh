@@ -87,21 +87,37 @@ run_selected_tests() {
 
 	while IFS='|' read -r test_id uvm_testname feature_id test_class; do
 		[[ -n "$test_id" ]] || continue
-		local test_seed log_path status_path cov_dir cov_name status
+		local test_seed log_path status_path cov_dir cov_name status fsdb_path simv_rc
 		test_seed="$SEED"
 		log_path="$RUN_LOG_DIR/${test_id}.log"
 		status_path="$RUN_LOG_DIR/${test_id}.status"
 		cov_dir="$ROOT/cov_test/cov_${uvm_testname}_${test_seed}"
 		cov_name="${uvm_testname}_${test_seed}"
-		# Pre-clean: missing status file after simv = FAIL (catches simv crash
-		# before report_phase runs).
-		rm -f "$status_path"
-		"./$SIMV" +UVM_TESTNAME="$uvm_testname" +IPD_TEST_ID="$test_id" \
+		# Full-hierarchy FSDB waveform of this test's run, at the run-dir root
+		# (NOT $RUN_LOG_DIR=logs/), where simulation-triage reads it via sim_run.
+		# Retained only for failing tests (gc-on-pass below).
+		fsdb_path="$ROOT/${test_id}.fsdb"
+		# Pre-clean status + any stale FSDB from a prior run in this dir: a
+		# missing status file after simv = FAIL (catches a simv crash before
+		# report_phase); dropping a stale FSDB keeps triage from misreading an
+		# earlier run's waveform as this failure's.
+		rm -f "$status_path" "$fsdb_path"
+		# IPD_FSDB_FILE makes dump.tcl (loaded via -ucli) write this run's FSDB;
+		# TB_TOP is already exported by env.sh. Capture the exit code with
+		# `|| simv_rc=$?` so a -ucli FATAL cannot abort this set -euo pipefail
+		# loop — the status file, not the exit code (which the eda-exec shim
+		# normalizes to 0 even on $fatal), is the authoritative pass/fail signal.
+		simv_rc=0
+		IPD_FSDB_FILE="$fsdb_path" \
+			"./$SIMV" +UVM_TESTNAME="$uvm_testname" +IPD_TEST_ID="$test_id" \
 			+IPD_STATUS_PATH="$status_path" \
 			"${VCS_COV_ARGS[@]}" -cm_dir "$cov_dir" -cm_name "$cov_name" \
-			-l "$log_path"
+			-ucli -do "$(dirname "${BASH_SOURCE[0]}")/dump.tcl" \
+			-l "$log_path" || simv_rc=$?
+		[ "$simv_rc" -eq 0 ] || echo "run_vcs_regression: $test_id simv exit $simv_rc (status file is authoritative)" >&2
 		if [ -f "$status_path" ] && [ "$(cat "$status_path")" = "PASS" ]; then
 			status="PASS"
+			rm -f "$fsdb_path" # gc-on-pass: keep an FSDB only for failing tests
 		else
 			# Check if this test_id has been designated for manual review.
 			if [[ -n "$MANUAL_REVIEW_IDS" ]] && echo " $MANUAL_REVIEW_IDS " | grep -qF " $test_id "; then

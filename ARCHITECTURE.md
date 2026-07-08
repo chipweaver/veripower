@@ -67,23 +67,23 @@ The Orchestrator agent decides; `state.py` and skills execute; disk persists.
    │                           │ veripower:simulation           │
    │                           │ (main-thread loaded)           │
    ▼                           ▼                                ▼
-┌────────────────────┐  ┌──────────────────────────────┐  ┌──────────────────────────┐
-│ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent  │
-│ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)      │
-│                    │  │   main thread)               │  │                          │
-│ state.py:          │  │                              │  │  Stage: executes stage   │
-│   state + 7 cmds   │  │  specification:              │  │    → writes result.json  │
-│ orchestrate.py:    │  │    fan-out → design.md       │  │  Debug: canon. RO,       │
-│  decide → action   │  │    design.md / manifest.json │  │    scratch RW builder    │
-│ route.py:          │  │    SDC / SGDC / result.json  │  │    → analysis.json+repro │
-│   rework target    │  │  simulation-plan:            │  │  Must NOT call state.py  │
-│                    │  │    plan generation +         │  │  or make routing calls   │
-│                    │  │    review loop               │  │  (see §6.1 for full)     │
-│                    │  │  rtl-design:                 │  │                          │
-│                    │  │    per-child RTL fan-out     │  │                          │
-│                    │  │  simulation:                 │  │                          │
-│                    │  │    env → smoke gate → verify │  │                          │
-└──────────┬─────────┘  └──────────────────────────────┘  └──────────────────────────┘
+┌────────────────────┐  ┌──────────────────────────────┐  ┌───────────────────────────────┐
+│ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent       │
+│ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)           │
+│                    │  │   main thread)               │  │                               │
+│ state.py:          │  │                              │  │  Stage: executes stage        │
+│   state + 7 cmds   │  │  specification:              │  │    → writes result.json       │
+│ orchestrate.py:    │  │    fan-out → design.md       │  │  Debug: canon. RO,            │
+│  decide → action   │  │    design.md / manifest.json │  │    scratch RW builder         │
+│ route.py:          │  │    SDC / SGDC / result.json  │  │    → analysis.json+experiment │
+│   rework target    │  │  simulation-plan:            │  │  Must NOT call state.py       │
+│                    │  │    plan generation +         │  │  or make routing calls        │
+│                    │  │    review loop               │  │  (see §6.1 for full)          │
+│                    │  │  rtl-design:                 │  │                               │
+│                    │  │    per-child RTL fan-out     │  │                               │
+│                    │  │  simulation:                 │  │                               │
+│                    │  │    env → smoke gate → verify │  │                               │
+└──────────┬─────────┘  └──────────────────────────────┘  └───────────────────────────────┘
            │ reads/writes
            ▼
 ┌────────────────────────────────────────────────────────────────────────────────────┐
@@ -131,7 +131,7 @@ For these four stages the Orchestrator still calls `state.py dispatch/reap/log` 
 | **Orchestrator agent** | `design-flow` skill, main conversation | Forward dispatch, rework routing (acting on `route.py`'s target selection), escalation, user collaboration; also acts as the main-thread executor for `specification` / `simulation-plan` / `rtl-design` / `simulation` stages | The only role that may call `state.py`, use the Task tool, and interact with the user |
 | **Main-thread skill** | `veripower:specification`, `veripower:simulation-plan`, `veripower:rtl-design`, or `veripower:simulation`, loaded via Orchestrator's `Skill()` call | Self-driven work in the Orchestrator's thread: `specification` runs two sub-Task waves (decompose + per-child) plus main-thread scripts and two path-handoff gates (no D0–D7 dialogue — that moved to the pre-pipeline `brainstorm` skill); `simulation-plan` runs the multi-turn plan-review dialogue; `rtl-design` runs no dialogue but holds Level-1 fan-out dispatch authority (§2.2); `simulation` likewise runs no dialogue and holds Level-1 fan-out dispatch authority — Wave 1 dispatches either the env-build child (first-run/patch) or the freeze child (freeze); a non-freeze run then runs the smoke gate, the LLM conformance review-gate (Step 4), and the verify child (§2.2). Each writes its own artifacts + `result.json`. | `simulation-plan` may interact with the user across turns; `specification` additionally interacts at its two path-handoff gates; `specification` / `rtl-design` / `simulation` may dispatch Level-1 sub-Tasks; `simulation-plan` may dispatch a single Level-1 review sub-Task (§6.3.1). Other boundaries same as Stage subagent (no `state.py`, no routing). Contract held by SKILL.md prose discipline, not tool gating. |
 | **Stage subagent** | The five Task-dispatched stage skills (`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis` / `frontend-signoff`), dispatched via Task tool | Execute one stage: read upstream → do the work → write `result.json` → return STATUS line | Must NOT call `state.py` or make routing decisions (full 5-item list in §6.1) |
-| **Debug subagent** | `simulation-triage` skill, dispatched via Task tool | Authoritative graduated (L1 log-reasoning → L2 cycle-accurate repro) root-cause analysis on simulation failures; lands `analysis.json` (gating `confidence` + advisory) and, when L2 triggers, a persisted `repro/` (§6.4) | Canonical read-only, scratch-writable — writes only under its own `Verification/simulation-triage/**`; never edits `task.json` or any other stage's `result.json`, RTL, or tests; NOT idempotent (a repeated run re-runs L2) |
+| **Debug subagent** | `simulation-triage` skill, dispatched via Task tool | Authoritative graduated (L1 log+code+FSDB-waveform reasoning → L2 controlled experiment) root-cause analysis on simulation failures; lands `analysis.json` (gating `confidence` + advisory) and, when L2 triggers, a persisted `experiment/` (§6.4) | Canonical read-only, scratch-writable — writes only under its own `Verification/simulation-triage/**`; never edits `task.json` or any other stage's `result.json`, RTL, or tests; NOT idempotent (a repeated run re-runs L2) |
 | **`state.py`** | Python CLI | State transitions, prerequisite validation, cascade-stale propagation, event-log appends, context collection; best-effort async subagent transcript mirroring (telemetry side-effect on `cmd_reap`, see §6.6) | Contains no routing logic and makes no judgments |
 | **`route.py`** | Python CLI (sibling of `state.py`) | Pure deterministic rework-target selection — maps a failure's closed-enum fields to a target / `ESCALATE` / `NEED_INPUT` | Holds no state; inputs are CLI scalar flags (on the simulation path `--root-cause`/`--analysis-state`/`--confidence`) plus an optionally passed `result.json`. The Orchestrator reads its JSON output and acts on `decision`. Makes no state transitions. |
 
@@ -421,7 +421,7 @@ sequenceDiagram
     R-->>O: DISPATCH_TRIAGE (sim_run)
     O->>S: log debug_dispatch (sim_run)
     O->>T: Task ({module, sim_run})
-    Note over T: T self-reads canonical + failed runs/<N>/; L1, escalating to L2 repro if needed
+    Note over T: T self-reads canonical + failed runs/<N>/ (incl. FSDB); L1, escalating to L2 controlled experiment if needed
     T-->>T: land Verification/simulation-triage/analysis.json (atomic publish)
     Note over O: YIELD
     Note over O,S: Turn B — triage notification arrives
@@ -455,7 +455,7 @@ VeriPower produces two kinds of structured outputs that go through different val
 
 **Verdict outputs** (routing inputs to the deterministic core) — `result.json` (stage outcomes), event payloads (event-log entries): validated by `state.py` at write time (`cmd_reap` schema-validates `result.json`; `append_event` validates every event). These are the values that determine routing; incorrect values corrupt the state machine. Validation is mandatory, centralized, and rejects-and-fails the run on error.
 
-**Descriptive/advisory artifact outputs** (advisory content for downstream context) — the simulation-triage `analysis.json` routing block (now including the gating `confidence` field, §5.4/§6.4) plus its advisory tier, and the simulation-plan verification scaffold: these inform routing but are NOT themselves `state.py` inputs. `simulation-triage` lands `analysis.json` straight to disk under its own `Verification/simulation-triage/**` — transport is a file the decider reads via `--analysis <path>` (§5.4/§7.1), not a message-body payload — but it is self-written, never reaped, and never schema-checked by `cmd_reap`. These outputs are instead validated by producer self-gates (`skills/simulation-triage/scripts/simtriage/__main__.py`, `skills/simulation-plan/scripts/simplan/__main__.py`); the producer fixes-and-retries on failure before emitting, and the Orchestrator consumes the validated payload while `state.py` never sees it. `confidence` being a *gating* field (§5.4) does not move it into the `state.py`-validated tier: its correctness rests on two mechanisms upstream of any schema, not on one — triage's own L2 cycle-accurate repro makes a `high` verdict trustworthy, and the confidence-gate escalates anything below `high` to the operator rather than trusting a shaky one.
+**Descriptive/advisory artifact outputs** (advisory content for downstream context) — the simulation-triage `analysis.json` routing block (now including the gating `confidence` field, §5.4/§6.4) plus its advisory tier, and the simulation-plan verification scaffold: these inform routing but are NOT themselves `state.py` inputs. `simulation-triage` lands `analysis.json` straight to disk under its own `Verification/simulation-triage/**` — transport is a file the decider reads via `--analysis <path>` (§5.4/§7.1), not a message-body payload — but it is self-written, never reaped, and never schema-checked by `cmd_reap`. These outputs are instead validated by producer self-gates (`skills/simulation-triage/scripts/simtriage/__main__.py`, `skills/simulation-plan/scripts/simplan/__main__.py`); the producer fixes-and-retries on failure before emitting, and the Orchestrator consumes the validated payload while `state.py` never sees it. `confidence` being a *gating* field (§5.4) does not move it into the `state.py`-validated tier: its correctness rests on two mechanisms upstream of any schema, not on one — L1 itself is now grounded in the failing run's own FSDB waveform rather than log/code conjecture alone, and when that still leaves an uncertain conjecture, L2's controlled experiment corroborates or overturns it before a `high` verdict is emitted; the confidence-gate then escalates anything below `high` to the operator rather than trusting a shaky one.
 
 Neither naive unification works: centralizing analysis.json validation in `state.py` would add routing logic to a pure-state tool; deferring `result.json` validation to the producer would let a bad `result.json` corrupt `task.json`. The three validation loci are therefore:
 
@@ -560,13 +560,13 @@ semantic-gate trips, but self-converges authoring-locus (conformance presence) o
 
 `simulation-triage` only — the sole debug-class subagent, and the pipeline's **authoritative, graduated root-cause analyzer** for simulation failures (not a read-only log classifier).
 
-- **Input:** the Orchestrator injects only `{module, sim_run}` — two coordinates, zero inline field assembly. `simulation-triage` self-reads everything else: the failed simulation's `Verification/simulation/result.json` and its full `runs/<sim_run>/` (UVM logs, coverage DB, KDB), `Design/specification/*.md`, RTL sources (via the filelist), and `Verification/simulation-plan/**` (scaffold, verification-plan, refmodel/scoreboard).
+- **Input:** the Orchestrator injects only `{module, sim_run}` — two coordinates, zero inline field assembly. `simulation-triage` self-reads everything else: the failed simulation's `Verification/simulation/result.json` and its full `runs/<sim_run>/` (UVM logs, coverage DB, KDB, and — for a failing test — the full-hierarchy `<test_id>.fsdb`; §7.1), `Design/specification/*.md`, RTL sources (via the filelist), and `Verification/simulation-plan/**` (scaffold, verification-plan, refmodel/scoreboard).
 - **Method — graduated L1 → L2, cheapest sufficient tier wins:**
-  - **L1 (default, cheap, read-only):** reason over the failure evidence (regression log / UVM_INFO / `failing_cases` / `coverage_gaps` / `conformance_findings`) plus spec and refmodel to reach a `root_cause` and `confidence`. Most failures resolve here.
-  - **L2 (only when L1 cannot reach high confidence):** build a **cycle-accurate reproduction in scratch** to characterize/isolate the fault — a newly written harness (never a copy of canonical RTL) that re-instantiates the DUT's leaf modules, taps internals via SV hierarchical references, drives a per-cycle text dump (no waveform files), checks against a golden model kept semantically consistent with the UVM refmodel/scoreboard, and adds isolation micro-harnesses as needed to pin the fault to a specific function or cell. Canonical RTL is read-only `` `include`` material throughout — L2 never edits it, which is what keeps it from colliding with any other stage's output. Iteration is bounded by an `l2_repro_max_rounds` budget.
-- **Output:** self-written (never through `cmd_reap`) `Verification/simulation-triage/analysis.json` (atomically published) plus, per analyzed run, `runs/<sim_run>/analysis.json` and — only when L2 triggers — `runs/<sim_run>/repro/` (harness, golden model, run log, isolation harnesses; persisted for audit, never cleaned; see §7.1). `analysis.json`'s routing tier carries `analysis_state` / `root_cause` / the gating `confidence`; its advisory tier carries `level` (`L1`/`L2`), a repro-backed `fix_direction`, `findings[]`, and (L2 only) `repro` metadata.
-- **Authority — confidence-gated:** `confidence` is a **gating** routing field, not advisory prose. A `high` verdict is authoritative and drives `route.py` straight to a `REWORK` target; `medium`/`low` (including an L2 run that still leaves competing hypotheses) escalate to the operator (`triage_low_confidence`, §5.4) instead of auto-routing.
-- **Side effects:** writes only under its own `Verification/simulation-triage/**` (including `runs/<N>/repro/`); never edits `task.json`, or any other stage's `result.json`, RTL, TB, spec, or plan. It is **NOT read-only** (L2 is a builder) and **NOT idempotent** — a repeated dispatch re-runs L2 rather than replaying a cached result; repeatability across re-dispatches comes from the atomic self-write, not from memoized output. It remains a **leaf**: no fan-out, no sub-Task dispatch — any adversarial cross-check happens, if at all, within triage's own single session.
+  - **L1 (default, cheap, read-only):** reason over the failure evidence (regression log / UVM_INFO / `failing_cases` / `coverage_gaps` / `conformance_findings`) plus spec and refmodel — reinforced by the failing run's own **FSDB waveform**: query specific signals over a cycle window with `fsdbreport` (slash-form hierarchical paths, `-bt`/`-et` window) to check a hypothesis against what the real run actually did. A missing, empty, or truncated FSDB degrades this to log+code-only reasoning rather than blocking — the waveform is fact-based reinforcement of the real run, not a hard dependency. Most failures resolve here.
+  - **L2 (only when L1 still leaves an uncertain conjecture):** run a **controlled experiment**, not a rebuild of the real run to characterize it — characterization-by-observation of the *real* failing run now lives in L1, via its FSDB. L2 tests one specific hypothesis with stimulus the real run never drove: chosen stimulus, an isolation micro-harness (a newly written harness, never a copy of canonical RTL, that re-instantiates the DUT's leaf modules and taps internals via SV hierarchical references — e.g. Verilator) pinning the fault to a specific function or cell, a hand-built golden model kept semantically consistent with the UVM refmodel/scoreboard, or a parametric sweep. L2 observes only its own controlled run — a per-cycle text dump of that run, never the real failing run's FSDB, which cannot see stimulus L2 alone drives. Canonical RTL is read-only `` `include`` material throughout — L2 never edits it, which is what keeps it from colliding with any other stage's output. Iteration is bounded by an `l2_experiment_max_rounds` budget.
+- **Output:** self-written (never through `cmd_reap`) `Verification/simulation-triage/analysis.json` (atomically published) plus, per analyzed run, `runs/<sim_run>/analysis.json` and — only when L2 triggers — `runs/<sim_run>/experiment/` (harness, golden model, run log, isolation harnesses; persisted for audit, never cleaned; see §7.1). `analysis.json`'s routing tier carries `analysis_state` / `root_cause` / the gating `confidence`; its advisory tier carries `level` (`L1`/`L2`), a waveform- or experiment-backed `fix_direction`, `findings[]`, `waveform` query evidence (L1 — the `fsdbreport` commands issued, the signals queried, and the observation drawn from them), and (L2 only) `experiment` metadata.
+- **Authority — confidence-gated:** `confidence` is a **gating** routing field, not advisory prose. A `high` verdict is authoritative and drives `route.py` straight to a `REWORK` target; `medium`/`low` (including an L2 experiment that still leaves competing hypotheses) escalate to the operator (`triage_low_confidence`, §5.4) instead of auto-routing.
+- **Side effects:** writes only under its own `Verification/simulation-triage/**` (including `runs/<N>/experiment/`); never edits `task.json`, or any other stage's `result.json`, RTL, TB, spec, or plan. It is **NOT read-only** (L2 is a builder) and **NOT idempotent** — a repeated dispatch re-runs L2 rather than replaying a cached result; repeatability across re-dispatches comes from the atomic self-write, not from memoized output. It remains a **leaf**: no fan-out, no sub-Task dispatch — any adversarial cross-check happens, if at all, within triage's own single session.
 
 `simulation-triage` self-validates `analysis.json` via `scripts/simtriage/__main__.py` (the `validate-analysis` producer self-gate — see §5.6 validation doctrine) before landing it. The Orchestrator reads the landed file (`--analysis <path>`), passes `root_cause` / `analysis_state` / `confidence` to `route.py` inside `orchestrate.py decide` to select the `target_stage` (see §5.4), and the decider returns a `REWORK` (confidence `high`) or `ESCALATE` (otherwise) action, which the Orchestrator executes via `state.py rework` or the escalation path.
 
@@ -636,12 +636,13 @@ asic/<module>/
 │   └── timing-analysis/           { result.json + runs/<N>/ (slack / constraint reports) }
 ├── Verification/
 │   ├── simulation-plan/           { result.json + runs/<N>/ (verification-plan.md / scaffold-spec / ...) }
-│   ├── simulation/                { result.json + runs/<N>/ (UVM TB / regression) }
+│   ├── simulation/                { result.json + runs/<N>/ (UVM TB / regression /
+│                                                            <test_id>.fsdb per failing test — not promoted, gc-on-pass; §7.3) }
 │   ├── simulation-triage/         # NOT a DAG stage; self-written by simulation-triage, never via cmd_reap
 │   │   ├── analysis.json          #   latest pointer (atomic write-temp + rename); read by `decide --analysis <path>`
 │   │   └── runs/<N>/              #   N = the analyzed (failed) simulation run number, borrowed not counted
 │   │       ├── analysis.json      #     this round's routing + advisory
-│   │       └── repro/             #     L2 only: tb_wrap.sv / sim_main.cpp / golden.* / run.log / isolation harnesses
+│   │       └── experiment/        #     L2 only: tb_wrap.sv / sim_main.cpp / golden.* / run.log / isolation harnesses
 │   │                              #     (persisted for audit, never cleaned)
 │   └── power-analysis/            { result.json + runs/<N>/ (GLS simv / saif/<id>.saif /
 │                                    scaffold/power_tests/ / averaged power reports) }
@@ -657,3 +658,5 @@ asic/<module>/
 ### 7.3 Disk management
 
 By default, `runs/<N>/` directories persist (each rework or re-dispatch creates a new run, so disk usage grows monotonically without manual pruning). `state.py` does not provide a prune command; users may manually `rm -rf <stage>/runs/<N>/` after frontend-signoff passes or when debugging completes — canonical files survive because of hardlinks.
+
+One artifact class breaks that default-persist rule: a failing test's `<test_id>.fsdb` (§7.1) is the only thing under `runs/<N>/` that gets auto-deleted *inline*, mid-regress, rather than left for manual or reap-driven cleanup — `run_vcs_regression.sh` removes each test's FSDB the moment that test's status resolves `PASS`, so within a single run the retained FSDBs are bounded to that run's failing minority regardless of how large the full-hierarchy dump is. The bound is per-run only: an FSDB that survives gc-on-pass persists with its `runs/<N>/` directory exactly like every other artifact in it, so a rework storm that respins the same failure across many runs accumulates one retained FSDB per failing run, pruned only by the same manual/reap-driven run-level cleanup described above — this is not a globally bounded mechanism.

@@ -94,6 +94,30 @@ specification               → stage: "specification"
 
 The Symptom table above is the observed-symptom lens; the same four buckets are also reachable by **where the fix lands**. The one disambiguation it adds (not already crisp above): a fix confined entirely to `tb/uvm/**` scaffold/glue, needing no `verification-plan.md` / `scaffold-specification.json` change → `simulation` (rare — simulation usually absorbs this in its own scaffold-repair budget and never escalates); a fix that changes the plan-prescribed behavior → `simulation-plan`. (rtl-design and specification are already covered by the Symptom rows — not repeated here.)
 
+## L1 waveform query
+
+Step 2 queries the failing run's own FSDB (`Verification/simulation/runs/<sim_run>/<test_id>.fsdb`)
+once the log/spec/refmodel evidence forms a hypothesis about which signal and cycle window is
+suspect — not on every case, and never as a substitute for that evidence.
+
+- **When to query:** the log-anchor path (`regress` / `compile` / `smoke` / `prerequisite`) is
+  the common case — a `data_mismatch` or `timeout` anchor names or implies a signal; query it to
+  see what the real run actually did. A coverage or conformance case with no signal-level anchor
+  usually has nothing to query.
+- **How:** `fsdbreport <fsdb> -s /<hier>/<signal> -bt <t0> -et <t1> -of h -o <out>` — hierarchical
+  signal paths are **slash-form** (`/tb_top/u_dut/sig`, not dotted); the time window is
+  `-bt`/`-et`. Discover the signal hierarchy from the RTL (`Design/rtl-design`), or fall back to
+  `fsdb2vcd <fsdb> -o x.vcd` and grep its `$scope`/`$var` lines for the scope list.
+- **Treat the result as (A) fact:** the returned `Time | value` text is a direct observation of
+  the real failing run — weigh it the same as a log line or a line of RTL, not as a secondary or
+  advisory hint.
+- **Degrade on empty/truncated:** a missing, empty, or truncated FSDB (a failing run can truncate
+  at the `$fatal` that ended it) degrades this step to log+code reasoning only — it does not
+  block Step 2 and is not itself a reason to lower confidence. When the FSDB was expected but is
+  absent or unreadable, still record `expected FSDB absent/unreadable — degraded to log+code` in
+  `advisory.waveform.observation` (SKILL.md Step 5) so a systemic dump failure is visible rather
+  than silently absorbed.
+
 ## Confidence (gating)
 
 `confidence` is a **gating** routing field on the landed `analysis.json` (schema:
@@ -102,14 +126,16 @@ Only `high` auto-routes; `medium` / `low` escalate to the operator (see `route.p
 instead. Land it per this operable definition:
 
 - `high` — the verdict is authoritative. Reachable two ways:
-  - **L1 alone**: a single, non-conflicting explanation anchored to clear evidence (log path:
-    line / signal / `UVM_ERROR` text; coverage path: an unambiguous gap-bin-to-testpoints
-    relationship) — no competing hypothesis survives the reasoning in Step 2.
-  - **L2 isolation**: the cycle-accurate repro's isolation harness directly proves the fault —
-    pins it to a specific function/cell and reproduces the symptom against a refmodel-consistent
-    golden.
+  - **L1 waveform corroborates**: a single, non-conflicting explanation anchored to clear
+    evidence (log path: line / signal / `UVM_ERROR` text, optionally corroborated by an
+    `fsdbreport` query against the failing run's own FSDB; coverage path: an unambiguous
+    gap-bin-to-testpoints relationship) — no competing hypothesis survives the reasoning in
+    Step 2.
+  - **L2 experiment confirms**: the controlled experiment's isolation harness / sweep directly
+    confirms the fault — pins it to a specific function/cell and reproduces the symptom against
+    a refmodel-consistent golden.
 - `medium` — a single-case inference or moderate evidence; plausible but not pinned down by
-  either an L1 anchor or an L2 isolation.
+  either an L1 anchor (waveform included) or an L2 experiment.
 - `low` — no clear anchor, or multiple explanations coexist (e.g., `gaps_in_testpoints` could
   reflect either RTL unreachability or insufficient stimulus), even after L2.
 
@@ -119,17 +145,23 @@ escalation (see SKILL.md Red Flags).
 
 ## L2-trigger judgment
 
-Escalate from L1 to L2 (SKILL.md Step 3) when Step 2's reasoning cannot land `confidence: "high"`
-for one of these reasons:
+Escalate from L1 (including its FSDB waveform query) to L2's controlled experiment (SKILL.md
+Step 3) when Step 2's reasoning cannot land `confidence: "high"` for one of these reasons:
 
 - **Competing hypotheses** — two or more `root_cause_direction` candidates remain equally
-  plausible from the log/spec/refmodel evidence alone (e.g., could be a driver bug or an RTL bug).
+  plausible from the log/spec/refmodel/waveform evidence alone (e.g., could be a driver bug or
+  an RTL bug).
 - **Cannot localize** — the evidence anchors to a symptom (a mismatch, a hang) but not to a
-  specific file/line/signal.
+  specific file/line/signal, and the FSDB query (if one ran) didn't pin it down either.
 - **Locus in doubt** — the case's `root_cause_direction` looks clear, but the assigned stage
   doesn't follow from the coverage-gap / conformance-category default without direct confirmation
   (e.g., a `data_mismatch` that could be either the DUT or the TB refmodel).
 
+When Step 2 triggers L2, Step 3 runs a **controlled experiment** — chosen stimulus (not a
+regression vector), an isolation micro-harness, a hand-built golden, or a parametric sweep —
+that observes its own controlled run. It is not a rebuild of the real failing run to
+characterize it: that observation-by-the-real-run role already lives in L1, via its FSDB.
+
 When none of these apply — a single case with a clean log anchor and no plausible alternative
-explanation — land `confidence: "high"` from L1 alone and skip L2. L2 is the expensive tier; pay
-for it only when L1 genuinely can't decide.
+explanation — land `confidence: "high"` from L1 alone (waveform included) and skip L2. L2's
+controlled experiment is the expensive tier; pay for it only when L1 genuinely can't decide.

@@ -67,23 +67,23 @@ Orchestrator Agent 做决策；`state.py` 和 skills 负责执行；磁盘负责
    │                           │ veripower:simulation           │
    │                           │ (main-thread loaded)           │
    ▼                           ▼                                ▼
-┌────────────────────┐  ┌──────────────────────────────┐  ┌──────────────────────────┐
-│ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent  │
-│ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)      │
-│                    │  │   main thread)               │  │                          │
-│ state.py:          │  │                              │  │  Stage: executes stage   │
-│   state + 7 cmds   │  │  specification:              │  │    → writes result.json  │
-│ orchestrate.py:    │  │    fan-out → design.md       │  │  Debug: canon. RO,       │
-│  decide → action   │  │    design.md / manifest.json │  │    scratch RW builder    │
-│ route.py:          │  │    SDC / SGDC / result.json  │  │    → analysis.json+repro │
-│   rework target    │  │  simulation-plan:            │  │  Must NOT call state.py  │
-│                    │  │    plan generation +         │  │  or make routing calls   │
-│                    │  │    review loop               │  │  (see §6.1 for full)     │
-│                    │  │  rtl-design:                 │  │                          │
-│                    │  │    per-child RTL fan-out     │  │                          │
-│                    │  │  simulation:                 │  │                          │
-│                    │  │    env → smoke gate → verify │  │                          │
-└──────────┬─────────┘  └──────────────────────────────┘  └──────────────────────────┘
+┌────────────────────┐  ┌──────────────────────────────┐  ┌───────────────────────────────┐
+│ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent       │
+│ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)           │
+│                    │  │   main thread)               │  │                               │
+│ state.py:          │  │                              │  │  Stage: executes stage        │
+│   state + 7 cmds   │  │  specification:              │  │    → writes result.json       │
+│ orchestrate.py:    │  │    fan-out → design.md       │  │  Debug: canon. RO,            │
+│  decide → action   │  │    design.md / manifest.json │  │    scratch RW builder         │
+│ route.py:          │  │    SDC / SGDC / result.json  │  │    → analysis.json+experiment │
+│   rework target    │  │  simulation-plan:            │  │  Must NOT call state.py       │
+│                    │  │    plan generation +         │  │  or make routing calls        │
+│                    │  │    review loop               │  │  (see §6.1 for full)          │
+│                    │  │  rtl-design:                 │  │                               │
+│                    │  │    per-child RTL fan-out     │  │                               │
+│                    │  │  simulation:                 │  │                               │
+│                    │  │    env → smoke gate → verify │  │                               │
+└──────────┬─────────┘  └──────────────────────────────┘  └───────────────────────────────┘
            │ reads/writes
            ▼
 ┌────────────────────────────────────────────────────────────────────────────────────┐
@@ -131,7 +131,7 @@ Orchestrator 的三条派发路径：
 | **Orchestrator Agent** | `design-flow` skill，主会话 | 前向派发、返工路由（执行 `route.py` 选出的目标）、升级、用户协作；同时作为 `specification` / `simulation-plan` / `rtl-design` / `simulation` 四个阶段的主线程执行器 | 系统中唯一有权调用 `state.py`、使用 Task 工具、与用户交互的角色 |
 | **主线程 skill** | `veripower:specification`、`veripower:simulation-plan`、`veripower:rtl-design` 或 `veripower:simulation`，由 Orchestrator 通过 `Skill()` 加载 | 在 Orchestrator 线程中自驱动工作：`specification` 跑两波 sub-Task（分解 + 按 child）加主线程脚本和两次路径交接门（D0–D7 对话已前移到流水线外的 `brainstorm` skill）；`simulation-plan` 跑多轮计划审查对话并自派发一次一级 plan-adequacy 审查 sub-Task；`rtl-design` 无对话但持有一级扇出派发权（§2.2）；`simulation` 同样无对话且持有一级扇出派发权——Wave 1 派发 env-build child（首次 run / patch）或 freeze child（freeze）；非 freeze run 再运行 smoke gate、LLM conformance review-gate（Step 4）和 verify child（§2.2）。各自写入自己的产物和 `result.json`。 | `simulation-plan` 可跨轮次与用户交互；`specification` 额外在两次路径交接门处交互；`specification` / `rtl-design` / `simulation`（及 `simulation-plan`，限单次审查 sub-Task）可派发一级 sub-Task（§6.3.1）。其余边界与阶段子 Agent 相同（禁 `state.py`、禁路由）。契约靠 SKILL.md 中的条文纪律约束，不靠工具门控。 |
 | **阶段子 Agent** | 五个以 Task 方式派发的阶段 skills（`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis` / `frontend-signoff`），通过 Task 工具派发 | 执行单个阶段：读上游 → 做工作 → 写 `result.json` → 返回 STATUS 行 | 不准调 `state.py`，不准做路由决策（完整 5 条清单见 §6.1） |
-| **调试子 Agent** | `simulation-triage` skill，通过 Task 工具派发 | 权威的分级（L1 日志推理 → L2 cycle-accurate 重现）根因分析器；落盘 `analysis.json`（含 gating `confidence` + advisory），L2 触发时另持久化 `repro/`（§6.4） | canonical 只读、scratch 可写——只写自身 `Verification/simulation-triage/**`；绝不碰 `task.json` 或其它任何阶段的 `result.json`、RTL 或测试代码；非幂等（重复运行会重跑 L2） |
+| **调试子 Agent** | `simulation-triage` skill，通过 Task 工具派发 | 权威的分级（L1 日志+代码+FSDB 波形推理 → L2 受控实验）根因分析器；落盘 `analysis.json`（含 gating `confidence` + advisory），L2 触发时另持久化 `experiment/`（§6.4） | canonical 只读、scratch 可写——只写自身 `Verification/simulation-triage/**`；绝不碰 `task.json` 或其它任何阶段的 `result.json`、RTL 或测试代码；非幂等（重复运行会重跑 L2） |
 | **`state.py`** | Python CLI | 状态转换、前置校验、cascade-stale 传播、事件日志追加、上下文收集；尽力而为的异步子 Agent 转录镜像（`cmd_reap` 时的遥测副作用，见 §6.6） | 不含路由逻辑，不做判断 |
 | **`route.py`** | Python CLI（`state.py` 的同级脚本） | 纯确定性返工目标选择——将失败的封闭枚举字段映射为目标 / `ESCALATE` / `NEED_INPUT` | 不持有状态；输入为 CLI 标量标志（仿真路径上有 `--root-cause`/`--analysis-state`/`--confidence`）外加可选传入的 `result.json`。Orchestrator 读取其 JSON 输出，按 `decision` 字段行动。不做状态转换。 |
 
@@ -421,7 +421,7 @@ sequenceDiagram
     R-->>O: DISPATCH_TRIAGE (sim_run)
     O->>S: log debug_dispatch (sim_run)
     O->>T: Task ({module, sim_run})
-    Note over T: T 自读 canonical + 失败 runs/<N>/；L1，必要时升级 L2 重现
+    Note over T: T 自读 canonical + 失败 runs/<N>/（含 FSDB）；L1，必要时升级 L2 受控实验
     T-->>T: 落盘 Verification/simulation-triage/analysis.json（原子发布）
     Note over O: YIELD
     Note over O,S: 轮次 B — triage 通知到达
@@ -455,7 +455,7 @@ VeriPower 产出两类结构化输出，各走各的验证通道：
 
 **裁决输出**（喂给确定性核心做路由决策的值）——`result.json`（阶段结果）、事件负载（事件日志条目）：由 `state.py` 在写入时校验（`cmd_reap` 对 `result.json` 做 schema 校验；`append_event` 对每个事件做校验）。这些值直接决定路由走向；错了会污染状态机。校验是强制的、集中的，不通过则拒绝并让 run 失败。
 
-**描述性/咨询性产物输出**（给下游参考的上下文）——simulation-triage 的 `analysis.json` 路由块（现含 gating 的 `confidence` 字段，见 §5.4/§6.4）及其 advisory 层，以及 simulation-plan 的验证 scaffold：这些会影响路由但不是 `state.py` 的直接输入。`simulation-triage` 把 `analysis.json` 直接落盘到自己的 `Verification/simulation-triage/**`——transport 现在是 decider 经 `--analysis <path>` 读取的文件（§5.4/§7.1），不是 message-body 负载——但它是自写的，从不经 reap，也从不被 `cmd_reap` 做 schema 校验。这些产物改由生产者自检门校验（`skills/simulation-triage/scripts/simtriage/__main__.py`、`skills/simulation-plan/scripts/simplan/__main__.py`）：生产者校验失败则修了重来，通过才发出；Orchestrator 消费的是已校验过的负载，`state.py` 不碰。`confidence` 现在是 *gating* 字段（§5.4）并不代表它进了 `state.py` 校验层：它的正确性靠 schema 之外的两层机制保证——triage 自己的 L2 cycle-accurate 重现让 `high` 判定站得住脚，而置信度门把低于 `high` 的一律上浮给 operator，而不是盲信一个不牢靠的判定。
+**描述性/咨询性产物输出**（给下游参考的上下文）——simulation-triage 的 `analysis.json` 路由块（现含 gating 的 `confidence` 字段，见 §5.4/§6.4）及其 advisory 层，以及 simulation-plan 的验证 scaffold：这些会影响路由但不是 `state.py` 的直接输入。`simulation-triage` 把 `analysis.json` 直接落盘到自己的 `Verification/simulation-triage/**`——transport 现在是 decider 经 `--analysis <path>` 读取的文件（§5.4/§7.1），不是 message-body 负载——但它是自写的，从不经 reap，也从不被 `cmd_reap` 做 schema 校验。这些产物改由生产者自检门校验（`skills/simulation-triage/scripts/simtriage/__main__.py`、`skills/simulation-plan/scripts/simplan/__main__.py`）：生产者校验失败则修了重来，通过才发出；Orchestrator 消费的是已校验过的负载，`state.py` 不碰。`confidence` 现在是 *gating* 字段（§5.4）并不代表它进了 `state.py` 校验层：它的正确性靠 schema 之外的两层机制保证——L1 本身现已由失败 run 自己的 FSDB 波形观测支撑，不再只靠 log/代码猜测；若仍留不明确的猜想，则由 L2 的受控实验坐实或推翻后才落 `high` 判定；置信度门再把低于 `high` 的一律上浮给 operator，而不是盲信一个不牢靠的判定。
 
 两种做法不能简单统一：把 analysis.json 校验塞进 `state.py` 等于给纯状态工具加路由逻辑；把 `result.json` 校验推给生产者等于让脏数据污染 `task.json`。因此有三个校验点：
 
@@ -549,13 +549,13 @@ Orchestrator 通过 `Skill(veripower:specification|simulation-plan|rtl-design|si
 
 仅 `simulation-triage`——唯一的调试类子 Agent，也是流水线中对仿真失败做**权威、分级根因分析**的角色（不再是只读 log 分类器）。
 
-- **输入：** Orchestrator 只注入 `{module, sim_run}`——两个坐标，零字段内联组装。其余全部由 `simulation-triage` 自读：失败 simulation 的 `Verification/simulation/result.json` 及其完整 `runs/<sim_run>/`（UVM 日志、覆盖率 DB、KDB）、`Design/specification/*.md`、RTL 源码（经 filelist）、以及 `Verification/simulation-plan/**`（scaffold、verification-plan、refmodel/scoreboard）。
+- **输入：** Orchestrator 只注入 `{module, sim_run}`——两个坐标，零字段内联组装。其余全部由 `simulation-triage` 自读：失败 simulation 的 `Verification/simulation/result.json` 及其完整 `runs/<sim_run>/`（UVM 日志、覆盖率 DB、KDB，以及——失败 test 才有——全层次 `<test_id>.fsdb`；§7.1）、`Design/specification/*.md`、RTL 源码（经 filelist）、以及 `Verification/simulation-plan/**`（scaffold、verification-plan、refmodel/scoreboard）。
 - **方法——分级 L1 → L2，最便宜够用的一级达标即止：**
-  - **L1（默认、廉价、只读）：** 对失败证据（regression log / UVM_INFO / `failing_cases` / `coverage_gaps` / `conformance_findings`）加 spec 和 refmodel 推理，得出 `root_cause` 与 `confidence`。多数失败到此为止。
-  - **L2（仅当 L1 达不到高置信度才升级）：** 在 scratch 搭建 **cycle-accurate 重现**来表征/隔离故障——一份全新编写的 harness（绝非 canonical RTL 的副本），re-instantiate DUT 的叶子模块、经 SV 层次引用 tap 内部信号、驱动逐拍文本 dump（无波形文件）、对照与 UVM refmodel/scoreboard 语义一致的金标，必要时加隔离微 harness 把故障精确钉到某个函数或 cell。全程 canonical RTL 只作只读的 `` `include`` 素材——L2 绝不改它，这正是它不会与其它任何阶段的产物冲突的原因。迭代轮次受 `l2_repro_max_rounds` 预算约束。
-- **输出：** 自写（从不经 `cmd_reap`）`Verification/simulation-triage/analysis.json`（原子发布），以及针对本轮所分析的 run，`runs/<sim_run>/analysis.json`，加上——仅当触发 L2 时——`runs/<sim_run>/repro/`（harness、金标、run log、隔离 harness；持久化供审计，从不清理；见 §7.1）。`analysis.json` 的路由层携带 `analysis_state` / `root_cause` / gating 的 `confidence`；advisory 层携带 `level`（`L1`/`L2`）、repro-backed 的 `fix_direction`、`findings[]`，以及（仅 L2）`repro` 元数据。
-- **权威性——confidence-gated：** `confidence` 是 **gating** 路由字段，不是 advisory 散文。`high` 判定即为权威，直接驱动 `route.py` 选出 `REWORK` 目标；`medium`/`low`（含 L2 后仍存竞争假设的情形）则升级给操作者（`triage_low_confidence`，§5.4），不自动路由。
-- **副作用：** 只写自己的 `Verification/simulation-triage/**`（含 `runs/<N>/repro/`）；绝不碰 `task.json`，也不碰其它任何阶段的 `result.json`、RTL、TB、spec 或 plan。它**不是只读的**（L2 是 builder），也**不是幂等的**——重复派发会重跑 L2 而非回放缓存结果；跨重派发的可重复性来自原子自写，而非记忆化输出。它仍是**叶子**：无扇出、不派发子 Task——如有对抗性自检，也只在 triage 自己的单次会话内进行。
+  - **L1（默认、廉价、只读）：** 对失败证据（regression log / UVM_INFO / `failing_cases` / `coverage_gaps` / `conformance_findings`）加 spec 和 refmodel 推理——并由失败 run 自己的 **FSDB 波形**补强：用 `fsdbreport`（斜杠层次路径、`-bt`/`-et` 时间窗）定向查询具体信号、跟真实 run 的实际行为对照猜想。FSDB 缺失、为空或截断时，降级为仅 log+代码推理、而非阻塞——波形是对真实 run 的事实补强，不是硬依赖。多数失败到此为止。
+  - **L2（仅当 L1 之后仍留不明确的猜想才升级）：** 跑一次**受控实验**，而非重建真实 run 来表征它——表征真实失败 run 现在是 L1（经 FSDB）的工作。L2 用真实 run 从未驱动过的激励去验一个具体猜想：选定激励、隔离微 harness（一份全新编写的 harness，绝非 canonical RTL 的副本，re-instantiate DUT 的叶子模块、经 SV 层次引用 tap 内部信号——如 Verilator）把故障精确钉到某个函数或 cell、对照与 UVM refmodel/scoreboard 语义一致的手金标、或参数 sweep。L2 只观测它自己那次受控 run——驱动逐拍文本 dump，而非真实失败 run 的 FSDB（后者观测不到 L2 独自驱动的激励）。全程 canonical RTL 只作只读的 `` `include`` 素材——L2 绝不改它，这正是它不会与其它任何阶段的产物冲突的原因。迭代轮次受 `l2_experiment_max_rounds` 预算约束。
+- **输出：** 自写（从不经 `cmd_reap`）`Verification/simulation-triage/analysis.json`（原子发布），以及针对本轮所分析的 run，`runs/<sim_run>/analysis.json`，加上——仅当触发 L2 时——`runs/<sim_run>/experiment/`（harness、金标、run log、隔离 harness；持久化供审计，从不清理；见 §7.1）。`analysis.json` 的路由层携带 `analysis_state` / `root_cause` / gating 的 `confidence`；advisory 层携带 `level`（`L1`/`L2`）、由波形或实验坐实的 `fix_direction`、`findings[]`、`waveform` 查询证据（L1——发出的 `fsdbreport` 命令、查询的信号，以及由此得出的观察），以及（仅 L2）`experiment` 元数据。
+- **权威性——confidence-gated：** `confidence` 是 **gating** 路由字段，不是 advisory 散文。`high` 判定即为权威，直接驱动 `route.py` 选出 `REWORK` 目标；`medium`/`low`（含 L2 受控实验后仍存竞争假设的情形）则升级给操作者（`triage_low_confidence`，§5.4），不自动路由。
+- **副作用：** 只写自己的 `Verification/simulation-triage/**`（含 `runs/<N>/experiment/`）；绝不碰 `task.json`，也不碰其它任何阶段的 `result.json`、RTL、TB、spec 或 plan。它**不是只读的**（L2 是 builder），也**不是幂等的**——重复派发会重跑 L2 而非回放缓存结果；跨重派发的可重复性来自原子自写，而非记忆化输出。它仍是**叶子**：无扇出、不派发子 Task——如有对抗性自检，也只在 triage 自己的单次会话内进行。
 
 `simulation-triage` 在落盘前通过 `scripts/simtriage/__main__.py`（`validate-analysis` 动词）自检 `analysis.json`（生产者自检门——见 §5.6 验证体系）。Orchestrator 读取落盘文件（`--analysis <path>`），把 `root_cause` / `analysis_state` / `confidence` 在 `orchestrate.py decide` 内传给 `route.py` 选定 `target_stage`（见 §5.4），decider 据 `confidence` 是否为 `high` 返回 `REWORK` 或 `ESCALATE` 动作，Orchestrator 经 `state.py rework` 或升级路径执行。
 
@@ -625,12 +625,13 @@ asic/<module>/
 │   └── timing-analysis/           { result.json + runs/<N>/（slack / 约束报告） }
 ├── Verification/
 │   ├── simulation-plan/           { result.json + runs/<N>/（verification-plan.md / scaffold-spec / ...） }
-│   ├── simulation/                { result.json + runs/<N>/（UVM TB / 回归） }
+│   ├── simulation/                { result.json + runs/<N>/（UVM TB / 回归 /
+│                                                            <test_id>.fsdb（失败 test 才有，不 promote，通过后 gc-on-pass；§7.3） }
 │   ├── simulation-triage/         # 不是 DAG 阶段；由 simulation-triage 自写，从不经 cmd_reap
 │   │   ├── analysis.json          #   latest 指针（原子写临时文件+rename）；由 `decide --analysis <path>` 读取
 │   │   └── runs/<N>/              #   N = 被分析（失败）的 simulation run 号，借用而非另计数
 │   │       ├── analysis.json      #     本轮的路由 + advisory
-│   │       └── repro/             #     仅 L2 才有：tb_wrap.sv / sim_main.cpp / golden.* / run.log / 隔离 harness
+│   │       └── experiment/        #     仅 L2 才有：tb_wrap.sv / sim_main.cpp / golden.* / run.log / 隔离 harness
 │   │                              #     （持久化供审计，从不清理）
 │   └── power-analysis/            { result.json + runs/<N>/（GLS simv / saif/<id>.saif /
 │                                    scaffold/power_tests/ / 平均功耗报告） }
@@ -646,5 +647,7 @@ asic/<module>/
 ### 7.3 磁盘管理
 
 默认 `runs/<N>/` 目录持久保留（每次返工或重派发创建新 run，不加手工清理则磁盘使用单调增长）。`state.py` 不提供 prune 命令；用户可在 frontend-signoff 通过后或调试完成时手动 `rm -rf <stage>/runs/<N>/`——规范文件因 hardlink 机制不受影响。
+
+有一类产物打破了这条"默认留存"规则：失败 test 的 `<test_id>.fsdb`（§7.1）是 `runs/<N>/` 下唯一一个**运行中 regress 内联**自动删除、而非留给手动或 reap 驱动清理的产物——`run_vcs_regression.sh` 在某个 test 的 status 判定为 `PASS` 的那一刻就删掉它的 FSDB，因此单个 run 内留存的 FSDB 始终有界于该 run 的失败少数，与全层次 dump 本身多大无关。这个界**仅在单 run 内成立**：熬过 gc-on-pass 的 FSDB 会和它所在的 `runs/<N>/` 目录一样持久留存，与该目录里其它产物无异——于是一场在多个 run 间反复复现同一失败的返工风暴，会按失败 run 数累计留存的 FSDB，只能靠上面说的既有手动/reap 驱动的 run 级清理去裁剪——这不是一个全局有界的机制。
 
 > 译自 `ARCHITECTURE.md` @ `6ee1a53`。如有歧义，以英文原版为准。

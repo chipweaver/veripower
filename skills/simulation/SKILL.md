@@ -82,6 +82,10 @@ finalize. The env / verify phase split of the workdir artifacts is in
 
 > Every promoted path MUST appear in `result.json.artifacts[]`, otherwise it will not be promoted to
 > canonical (external read-only consumption of canonical `filelist.f` / `tb/uvm/`, etc. will fail).
+>
+> Failing tests additionally retain a full-hierarchy `<test_id>.fsdb` (dumped via `-ucli`
+> `$fsdbDumpvars`) at the run-dir root for `simulation-triage`'s L1 waveform query — per-run, **not
+> promoted**, and gc-on-pass keeps one only for failing tests (see `references/artifact-contract.md`).
 
 The promoted full set is enumerated by `sim finalize` (`enumerate_artifacts`) — this table is the contract surface; the per-phase inventory lives in `artifact-contract.md`.
 
