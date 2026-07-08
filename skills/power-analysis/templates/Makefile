@@ -68,7 +68,7 @@ gls-run: gls-compile  ## Run simv per scenario → per-scenario SAIF files
 		bash scripts/run_gls_power.sh \
 			--plan "$$PLAN_PATH" \
 			--saif-dir saif/ \
-			--simv simv \
+			--simv ./simv \
 			--log gls-run-log.txt'
 
 ptpx:  ## Run PT-PX averaged power analysis on SAIF batch

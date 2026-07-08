@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.venv/
 
 # Claude Code dir: personal settings stay local; shared project config is tracked
 .claude/*

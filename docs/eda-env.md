@@ -1,8 +1,11 @@
 # EDA Tool Environment
 
 VeriPower does not pin EDA install paths in the plugin. Templates and scripts
-invoke tools as the calling user, and produced artifacts inherit caller
-ownership. VeriPower is not tied to specific EDA tool releases or Linux
+invoke tools as the calling user, in a single execution environment: stage
+scripts and the tools they launch see the same filesystem, tool processes
+inherit the caller's exported variables, and a tool-produced executable (a VCS
+`simv`) runs from the same shell that built it. Produced artifacts inherit
+caller ownership. VeriPower is not tied to specific EDA tool releases or Linux
 distributions — the "mandatory" set below is what VeriPower contracts on;
 everything else (which VCS release, which std-cell library, which compiler) is
 a deployment choice.
@@ -15,6 +18,7 @@ a deployment choice.
 | `LM_LICENSE_FILE` and/or `SNPSLMD_LICENSE_FILE` | Synopsys license server checkout (tools read these at launch; VeriPower does not validate) | `lmstat -c "$LM_LICENSE_FILE"` |
 | `LIB_DB`, `LIB_V` | synthesis / power-analysis read std-cell libs | stage `env.sh` `:?` guard fires on miss |
 | `UVM_HOME` | simulation / power-analysis compile UVM DPI | same |
+| `python3` with `jsonschema` >= 4.18, `referencing`, `PyYAML` | framework state tool and stage gates validate result/review schemas (`registry=`-based `$ref` resolution needs the post-4.18 jsonschema API) | `python3 -c "import jsonschema, referencing, yaml"` |
 | `/bin/sh` → `bash` | The VCS launcher uses `#!/bin/sh -h` and relies on bash semantics | `readlink /bin/sh` should resolve to `bash` |
 
 ## Optional
