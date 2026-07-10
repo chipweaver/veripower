@@ -21,7 +21,7 @@ the UVM scaffold, compile, and run the smoke suite.
   The orchestrator has already pre-gated this path's readability (an unreadable trigger fails fast as
   `failure_phase="prerequisite"` before you are dispatched), so you receive the path for
   CONTENT only — do not re-classify readability.
-  If `{orchestrator_context_path}` is also injected, read that sibling fix-scope hint first; it takes
+  If `{directive_path}` is also injected, read that sibling fix-scope hint first; it takes
   priority over the trigger content. On the **first-run** branch (the workdir is freshly bootstrapped
   with no prior canonical TB), the only reference is the plan.
 - (patch branch only) `{canonical}` — the canonical `Verification/simulation/` directory from the

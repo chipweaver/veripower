@@ -4,7 +4,7 @@ Module:   {module}
 Stage:    {stage}
 Workdir:  {workdir}
 {Rework trigger: {rework_trigger}}?        # present on rework dispatch; mode distinguished by whether this line exists
-{Orchestrator context: {orchestrator_context_path}}?  # optional; sibling file emitted by Orchestrator's reasoning
+{Directive: {directive_path}}?  # optional; sibling file (directive.md) carrying the fix-scope hint
 
 To proceed: invoke Skill({skill}) and follow its guidance.
 

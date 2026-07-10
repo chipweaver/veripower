@@ -23,7 +23,7 @@ Bootstrap behavior:
 3. Create empty directories `tb/uvm/{interface,transaction,agent,checker,refmodel,env,seq,test,pkg,top}/`.
 4. When `--scaffold` is provided, the bootstrap verb renders the scaffold to generate the full UVM scaffold from `scaffold-specification.json` (agent / driver / monitor / refmodel / scoreboard / env / tb_top / tb_pkg / filelist / generated_tests / tests/testlist.json).
 
-If `{workdir}/Makefile` already exists, bootstrap aborts to avoid overwriting (when creating the workdir, the caller may place hint files such as `orchestrator-context.md`; those do not constitute "already deployed").
+If `{workdir}/Makefile` already exists, bootstrap aborts to avoid overwriting (when creating the workdir, the caller may place hint files such as `directive.md`; those do not constitute "already deployed").
 
 ## Template responsibilities
 

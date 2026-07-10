@@ -32,20 +32,18 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{orchestrator_context_path}` | Optional on any dispatch. Fix-scope hint file; when present, Read it first. |
+| `{directive_path}` | Optional on any dispatch. Fix-scope hint file; when present, Read it first. |
 
 ### External reference inputs
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Verification/simulation/result.json` | simulation envelope | Upstream gate: MUST be `status=pass` (Step 1). |
 | `Verification/simulation/filelist.f` | UVM filelist | TB infrastructure compile list (read-only). |
 | `Verification/simulation/tb/uvm/**/*.sv` | UVM SystemVerilog | TB infrastructure, referenced by `filelist.f` (read indirectly). |
 | `Verification/simulation-plan/scaffold-specification.json` | simulation-plan schema | `power_scenarios[]` list (drives `emit_power_tests` + `run_gls_power`). |
 | `Design/synthesis/out/<TOP>_syn.v` | structural Verilog | Synthesized netlist (VCS GLS compile + PT-PX `read_verilog`). |
 | `Design/synthesis/out/<TOP>_syn.sdc` | SDC | PT-PX `read_sdc` (constraint propagation). |
 | `Design/synthesis/out/<TOP>_syn.sdf` | SDF v3.0 | VCS SDF back-annotation delay + PT-PX `read_sdf` (state-dependent leakage). |
-| `Design/timing-analysis/result.json` | timing-analysis envelope | Upstream gate: MUST be `status=pass` (Step 1). |
 | `LIB_V` (env) | std cell Verilog model path | linked against the netlist at VCS compile time. |
 | `LIB_DB` (env) | std cell Liberty `.db`/`.lib` | PT-PX activity→power mapping (MUST match what was used at synthesis). |
 | `UVM_HOME` (env) | UVM library path | matches what TB infrastructure was built against. |
@@ -72,7 +70,7 @@ you interact with it only through the `make` targets.
 
 ### Step 1: Pre-check external references
 
-Confirm `Verification/simulation/result.json.status=pass` AND `Design/timing-analysis/result.json.status=pass` AND `Verification/simulation/filelist.f` / `scaffold-specification.json` (non-empty `power_scenarios[]`) / the synthesis trio (`<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing/not pass: <path>"` and exit. When `{orchestrator_context_path}` is injected, Read it first as a fix-scope hint.
+Confirm `Verification/simulation/filelist.f` / `scaffold-specification.json` (non-empty `power_scenarios[]`) / the synthesis trio (`<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"` and exit. When `{directive_path}` is injected, Read it first as a fix-scope hint.
 
 ### Step 2: Bootstrap (first-run only)
 

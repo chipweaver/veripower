@@ -16,7 +16,7 @@ The landed `analysis.json` has two tiers:
 - **Routing tier** — `analysis_state` + `root_cause` + the gating `confidence`; the hard,
   schema-validated contract `route.py` consumes to pick a rework target or escalate.
 - **Advisory tier** (`advisory.{level, fix_direction, findings[], waveform, experiment}`) —
-  persisted evidence forwarded to the rework target as `orchestrator_context`; informs the fix,
+  persisted evidence forwarded to the rework target as `directive`; informs the fix,
   does not gate routing.
 
 ## When to Use

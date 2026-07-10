@@ -22,6 +22,8 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 - **No child RTL in the main thread:** every child (including the top-integration child) is dispatched in the fan-out wave. The main thread consumes each sub-Task's `files[]` paths only (the scripts aggregate them into `filelist.txt`) and **MUST NOT read the dispatched child's** `.v`/`.sv` content back into the main-thread context — child RTL would otherwise compound across the long-lived main thread. There is no main-thread TOP authoring: even a single child is written by a sub-Task, never by the main thread.
 - **No whole-design elaboration in any child sub-Task:** per `references/child-task-contract.md`, no child may whole-design elaborate/compile, read sibling RTL bodies, or reverse-read an external verification harness; integration/elaboration correctness is verified by downstream verification. A unit child may best-effort `verilator --lint-only` its own module only.
 - **`<child>.md §2 Interface` incomplete:** if the interface spec is missing or underspecified, write `status=fail` + `fail_reason="<child>.md §2 Interface incomplete"`; do not invent interfaces.
+- **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's task actually requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise a trigger-driven rework's `violations[]` list is the scope (already binding — see the Trigger-driven rework branch); otherwise the incremental-update branch's `specification` diff is the scope. Every file outside that scope MUST stay byte-identical to the prior run — a full rewrite on a narrow fix defeats the incremental kernel's per-file cascade.
+- **Freeze-reuse when nothing changed.** When the incremental-update branch's `specification` diff comes back empty and no `{directive_path}` is injected, do not regenerate anything — reuse the prior run's RTL / `filelist.txt` / `README.md` verbatim (copy them forward; never ask a child sub-Task to reproduce them byte-for-byte, which a probabilistic model cannot guarantee). This is the generalization of `simulation`'s freeze branch to RTL — a forced full rebuild re-verifies existing conclusions, it does not regenerate them.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -33,7 +35,7 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
 | `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); presence selects the rework branch. |
-| `{orchestrator_context_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content and the incremental diff. |
+| `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content and the incremental diff. |
 
 ### External reference inputs
 
@@ -111,7 +113,7 @@ The `seed` verb derives the canonical dir as `{workdir}/../..` (no hardcoded per
 and carries unchanged children's RTL + the prior `.child_reports.json` ledger forward, no-clobber.
 First-run skips it.
 
-When `{orchestrator_context_path}` is injected, Read that sibling file first as a fix-scope hint. It
+When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint. It
 takes priority over both the trigger content (trigger-driven path) and the external-reference diff
 (incremental-update path) to further narrow the modification scope.
 

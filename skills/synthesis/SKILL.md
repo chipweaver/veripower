@@ -32,13 +32,13 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
 | `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); presence selects the rework branch. |
-| `{orchestrator_context_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content. |
+| `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content. |
 
 ### External reference inputs
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/lint-cdc/result.json` | `skills/lint-cdc/references/result.schema.json` | Confirm lint clean (Step 1 pre-check). |
+| `Design/lint-cdc/result.json` | `skills/lint-cdc/references/result.schema.json` | Incremental-update branch only — diffed for the incremental scope. |
 | `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | Incremental-update branch only — diffed for the incremental scope. |
 | `Design/rtl-design/filelist.txt` | text | RTL file list. |
 | `Design/rtl-design/README.md` | Custom markdown | Constraint-annotation note (SDC: generated clock / multicycle / false path). |
@@ -70,9 +70,9 @@ Based on whether `{rework_trigger}` is injected and whether the canonical path `
 - **Incremental-update branch** (no trigger; canonical path already has prior artifacts): read the diff of `Design/lint-cdc/result.json` / `Design/rtl-design/result.json` to determine the incremental scope.
 - **First-run branch** (no trigger; canonical path has no prior artifacts): run the first-pass serial flow.
 
-Then pre-check the external references: `Design/lint-cdc/result.json.status=pass` ∧ `Design/rtl-design/filelist.txt` (containing ≥1 RTL entry — not a comment, not a `+` / `-` directive) and `README.md` all present. If any file is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if filelist exists but has no usable RTL entries, write `fail_reason="external reference missing: Design/rtl-design/filelist.txt (no RTL entries)"` and exit; if `Design/lint-cdc/result.json.status≠pass`, write `fail_reason="external reference not pass: Design/lint-cdc/result.json"` and exit.
+Then pre-check the external references: `Design/rtl-design/filelist.txt` (containing ≥1 RTL entry — not a comment, not a `+` / `-` directive) and `README.md` all present. If any file is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if filelist exists but has no usable RTL entries, write `fail_reason="external reference missing: Design/rtl-design/filelist.txt (no RTL entries)"` and exit.
 
-When `{orchestrator_context_path}` is injected, Read that sibling file first as a fix-scope hint; it takes priority over the trigger content to further narrow the modification scope.
+When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint; it takes priority over the trigger content to further narrow the modification scope.
 
 **Branch scope.** Steps 2–8 run in the same order for all three branches and differ only in *scope*: Step 1 fixes the scope (first-run = full; incremental = the `Design/lint-cdc` / `Design/rtl-design` diff; trigger-driven = the trigger's `violations[]`), and the SDC / timing-exception edits in Steps 4 and 6 stay confined to it. Steps 2–3 (bootstrap + `LIB_DB`) are one-time workdir setup — Step 2 aborts once `{workdir}` is deployed; Steps 5 / 7 / 8 (synthesis run, PPA self-check, `result.json` write) are unconditional in every branch.
 

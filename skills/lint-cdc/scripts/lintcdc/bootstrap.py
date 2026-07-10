@@ -206,7 +206,7 @@ def run(module: str, workdir, top: str | None = None) -> int:
         return 1
 
     dest.mkdir(parents=True, exist_ok=True)
-    # A caller may pre-create the workdir with hint files (orchestrator-context.md
+    # A caller may pre-create the workdir with hint files (directive.md
     # etc.); only treat it as already-deployed when Makefile is present.
     if (dest / "Makefile").is_file():
         _err(f"already deployed (detected {dest / 'Makefile'})")

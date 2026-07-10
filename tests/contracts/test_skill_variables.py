@@ -2,7 +2,7 @@
 
 Rules:
   - The `{var}` placeholders appearing in SKILL.md ⊆ canonical 4:
-    `{workdir}` / `{module}` / `{rework_trigger}` / `{orchestrator_context_path}`.
+    `{workdir}` / `{module}` / `{rework_trigger}` / `{directive_path}`.
   - SKILL.md must not hardcode `asic/<M>` / `asic/<module>` / `runs/<N>`
     paths; always use `{workdir}` and the other context variables.
   - Variables injected by the dispatcher template
@@ -21,7 +21,7 @@ CANONICAL_VARS: set[str] = {
     "workdir",
     "module",
     "rework_trigger",
-    "orchestrator_context_path",
+    "directive_path",
 }
 
 # Hardcoded path patterns (must not appear in SKILL.md).

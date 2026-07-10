@@ -131,7 +131,7 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         return 1
 
     # Overwrite guard: a caller may pre-create the workdir with hint files
-    # (orchestrator-context.md etc.); only treat it as already-deployed when Makefile is present.
+    # (directive.md etc.); only treat it as already-deployed when Makefile is present.
     dest.mkdir(parents=True, exist_ok=True)
     if (dest / "Makefile").is_file():
         _err(f"infra already deployed (detected {dest / 'Makefile'})")
