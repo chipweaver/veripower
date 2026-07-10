@@ -298,6 +298,17 @@ def test_sgdc_emits_async_clock_groups(tmp_path):
     assert "clock -name clk_io -period 20.0 -edge {0 10.0} -domain clk_io" in sgdc
 
 
+def test_sgdc_domain_label_collision_fails_loudly():
+    # F1 guard: an async clock literally named "sync" would be assigned -domain sync and
+    # silently merged into the synchronous group — a false-negative CDC hole. Must fail.
+    clocks = [
+        {"name": "clk", "period": 10.0, "relationship": "primary", "generated": False},
+        {"name": "sync", "period": 20.0, "relationship": "async", "generated": False},
+    ]
+    with pytest.raises(SystemExit):
+        constraints._sgdc_clock_domains(clocks)
+
+
 def test_self_check_flags_clock_group_divergence():
     # F1 backstop: SDC (set_clock_groups) and SGDC (-domain) must agree on whether an
     # async clock declaration is present.

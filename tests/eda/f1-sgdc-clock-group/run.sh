@@ -2,6 +2,8 @@
 # F1 regression: run SpyGlass CDC on cdc_smoke with two SGDCs and compare.
 #   nogroups.sgdc -> expect NO cross-domain CDC violation (vacuous; the bug)
 #   groups.sgdc   -> expect a cross-domain CDC violation on a->q (the fix)
+# NOTE: that hypothesis did NOT hold on SpyGlass_vL-2016.06 — BOTH variants flag
+# Ac_unsync01 identically (see README.md "Result" for the observed record + why).
 # Must run under /home/mhc. Reuses the lint-cdc collect_report.py to aggregate.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -49,5 +51,7 @@ run_variant groups
 rm -rf spyglass_work spyglass*.log spyglass*.cmd sg_shell.log cdc-report.txt cdc-violations.json scripts/constraints.sgdc
 
 echo
-echo "Compare cdc-violations.nogroups.json (expect 0 error-severity crossings on a->q)"
-echo "against cdc-violations.groups.json (expect >=1). Record both in README.md."
+echo "Compare cdc-violations.nogroups.json against cdc-violations.groups.json."
+echo "Observed golden result (README.md \"Result\"): BOTH flag Ac_unsync01 identically"
+echo "(1 error each) on SpyGlass_vL-2016.06 — the original 'nogroups is vacuously clean'"
+echo "hypothesis did not hold. A deviation from that recorded result is the regression."
