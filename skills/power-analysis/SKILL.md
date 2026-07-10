@@ -50,7 +50,7 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 | `LIB_DB` (env) | std cell Liberty `.db`/`.lib` | PT-PX activity→power mapping (MUST match what was used at synthesis). |
 | `UVM_HOME` (env) | UVM library path | matches what TB infrastructure was built against. |
 
-`ppa_targets` (entries on the `power_mw` dimension only) is injected by the caller in the prompt.
+PPA targets (entries on the `power_mw` dimension only) are read by `power finalize` itself from `Design/specification/ppa.json` — nothing is injected in the prompt.
 
 ## Output Artifacts
 
@@ -104,11 +104,10 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
   ```bash
   python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
     --workdir {workdir} --module <module> \
-    --scaffold Verification/simulation-plan/scaffold-specification.json \
-    --ppa-targets '<ppa_targets JSON from prompt>'
+    --scaffold Verification/simulation-plan/scaffold-specification.json
   ```
 
-  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against `--ppa-targets`), writes `power-actual.json`, folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against the targets it reads itself from `Design/specification/ppa.json` — an absent file skips the gate), writes `power-actual.json`, folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
   `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); `infra` (external reference / license missing) is written by the Step-1 pre-check before finalize runs, and on the `make`-non-zero VCS-compile triage above you also write the `failures[]`/`failure_kind` directly (the gate never runs there).
 

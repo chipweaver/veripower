@@ -45,7 +45,7 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 | `Design/specification/constraints/<TOP>.sdc` | SDC | SDC source of truth (optional) — bootstrap seeds the working `constraints.sdc` from it, else the template placeholder. |
 | `LIB_DB` (env) | std cell Liberty `.db` path | Set before any run (Step 3) — `env.sh` / Makefile fail loudly when unset. |
 
-When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file; field names come from the triggering stage's own `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. `ppa_targets` (area_um2 / timing_slack_ns dimensions) is injected by the caller in the prompt.
+When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file; field names come from the triggering stage's own `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. PPA targets (`area_um2` / `timing_slack_ns` dimensions) are read by `synthesis finalize` itself from `Design/specification/ppa.json` — nothing is injected in the prompt.
 
 ## Output Artifacts
 
@@ -114,15 +114,14 @@ Extract the violated paths from `reports/timing_setup.rpt`, keeping each path's 
 
 ### Step 7: Build `{workdir}/result.json` (mandatory)
 
-Run the parser's finalize subcommand; do not hand-assemble the envelope or extract/compare by hand. Read `ppa_targets` from the prompt context (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream):
+Run the parser's finalize subcommand; do not hand-assemble the envelope or extract/compare by hand. It reads the PPA targets itself from `Design/specification/ppa.json` (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream; an absent file or dim leaves that dimension ungated) — you pass no target flags:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
-  --workdir {workdir} --module <module> --top <top_module> \
-  [--area-target <v>] [--slack-target <v>]
+  --workdir {workdir} --module <module> --top <top_module>
 ```
 
-`finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`), derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+`finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`) against the `Design/specification/ppa.json` targets, derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
 `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); you write `failure_kind=infra` on the pre-checks of Steps 1–5 (DC never ran — external ref / license / trigger) before finalize runs.
 

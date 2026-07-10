@@ -471,7 +471,7 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
         text=True,
     )
     assert r.returncode == 2  # argparse: missing --module
-    # missing --scaffold -> argparse exit 2 (required; --ppa-targets is optional)
+    # missing --scaffold -> argparse exit 2 (required)
     r = subprocess.run(
         ["python3", str(MAIN), "finalize", "--workdir", str(tmp_path), "--module", "m"],
         capture_output=True,
