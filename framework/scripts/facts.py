@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 
 import jsonschema
+from referencing import Registry, Resource
+from referencing.jsonschema import DRAFT202012
 
 sys.path.insert(0, str(Path(__file__).parent))
 import rules  # noqa: E402,F401
@@ -159,6 +161,47 @@ def append_event(module: str, event: dict, ts: str) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a") as fh:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+_ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
+_ENVELOPE_SCHEMA_PATH = (
+    _PLUGIN_ROOT / "framework" / "references" / "schemas" / "envelope.schema.json"
+)
+
+
+def _stage_result_schema_path(rule_name: str) -> Path:
+    """The rule's own result.schema.json, resolved from its skill name
+    (`veripower:<dir>` -> skills/<dir>/references/result.schema.json)."""
+    skill_dir = rules.RULES[rule_name].skill.split(":", 1)[1]
+    return _PLUGIN_ROOT / "skills" / skill_dir / "references" / "result.schema.json"
+
+
+def validate_result(rule_name: str, result: dict) -> str | None:
+    """Validate a parsed result.json against the rule's per-stage schema (which
+    $refs the shared result envelope). Returns None when valid, else the first
+    violation message. Read-only and side-effect-free; infrastructure failure
+    (missing/corrupt schema) is returned as a message too — the conservative
+    direction is 'not proven valid', never a silent pass."""
+    try:
+        stage_schema = json.loads(_stage_result_schema_path(rule_name).read_text())
+        envelope = Resource.from_contents(
+            json.loads(_ENVELOPE_SCHEMA_PATH.read_text()),
+            default_specification=DRAFT202012,
+        )
+        registry = Registry().with_resource(_ENVELOPE_URI, envelope)
+        validator = jsonschema.Draft202012Validator(stage_schema, registry=registry)
+        errors = sorted(
+            validator.iter_errors(result), key=lambda e: list(e.absolute_path)
+        )
+    except Exception as e:
+        return f"schema validation internal error: {type(e).__name__}: {e}"
+    if not errors:
+        return None
+    err = errors[0]
+    path = "$" + "".join(
+        f"[{p!r}]" if isinstance(p, int) else f".{p}" for p in err.absolute_path
+    )
+    return f"schema violation at {path}: {err.message}"
 
 
 def runs_of(events: list[dict], rule: str) -> int:

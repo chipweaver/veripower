@@ -39,9 +39,43 @@ def _write_file(module, rel, content):
     return p
 
 
+# Minimal pass-valid stage_specific per stage — exactly the per-stage schema's
+# status=pass conditional requirements (skills/<stage>/references/result.schema.json),
+# so the reap-time schema validation genuinely passes, not vacuously.
+_STAGE_SPECIFIC = {
+    "specification": {"top_module": "top", "ppa_targets": []},
+    "simulation-plan": {},
+    "rtl-design": {},
+    "lint-cdc": {"violations": []},
+    "synthesis": {"ppa_actual": []},
+    "timing-analysis": {
+        "violations": [],
+        "timing": {
+            "setup": {"worst_slack_ns": 0.1, "met": True, "worst_path": "p"},
+            "hold": {"worst_slack_ns": 0.1, "met": True, "worst_path": "p"},
+            "coverage": {
+                "unconstrained_max_delay_endpoints": 0,
+                "register_pins_no_clock": 0,
+            },
+        },
+    },
+    "simulation": {},
+    "power-analysis": {
+        "saif_artifacts": [],
+        "compile_info": {"vcs_version": "test"},
+        "failures": [],
+        "ppa_actual": [],
+        "violations": [],
+        "power_by_corner": [],
+    },
+    "frontend-signoff": {},
+}
+
+
 def _dispatch_write_reap(tmp_path, module, rule, files, *, objective="delivery"):
     """dispatch `rule`, write `files` (workdir-relative path -> content) + a passing
-    result.json declaring them as artifacts, then reap. Returns the reap JSON."""
+    schema-valid result.json declaring them as artifacts, then reap. Returns the
+    reap JSON."""
     d = _run_json(
         tmp_path,
         "dispatch",
@@ -56,7 +90,15 @@ def _dispatch_write_reap(tmp_path, module, rule, files, *, objective="delivery")
     workdir = d["workdir"]
     for rel, content in files.items():
         _write_file(module, f"{workdir}/{rel}", content)
-    result = {"status": "pass", "artifacts": [{"path": p} for p in files]}
+    result = {
+        "schema_version": 1,
+        "stage": rule,
+        "module": module,
+        "produced_at": "2026-07-10T00:00:00Z",
+        "status": "pass",
+        "artifacts": [{"path": p} for p in files],
+        "stage_specific": _STAGE_SPECIFIC[rule],
+    }
     _write_file(module, f"{workdir}/result.json", json.dumps(result))
     return _run_json(
         tmp_path, "reap", "--module", module, "--rule", rule, "--run", str(d["run"])
@@ -171,6 +213,36 @@ def test_full_mini_loop_dispatch_result_reap_decide(tmp_path, monkeypatch):
     a = _run_json(tmp_path, "decide", "--module", "m")
     assert a["action"] == "DISPATCH"
     assert a["rule"] == "simulation-plan"
+
+
+def test_reap_schema_violation_blocks_and_skips_promote(tmp_path, monkeypatch):
+    # result.json parses and carries status=pass, but violates the stage schema
+    # (missing the required envelope fields stage/module/produced_at/schema_version
+    # and the pass-path stage_specific.top_module/ppa_targets) -> the reap records
+    # a blocked outcome with reason schema_violation and promote is NOT called: a
+    # malformed-but-status-bearing result.json must never mint a valid proof.
+    monkeypatch.chdir(tmp_path)
+    _write_file("m", "brainstorm.md", "b1")
+    d = _run_json(tmp_path, "dispatch", "--module", "m", "--rule", "specification")
+    workdir = d["workdir"]
+    _write_file("m", f"{workdir}/design.md", "d1")
+    _write_file(
+        "m",
+        f"{workdir}/result.json",
+        json.dumps({"status": "pass", "artifacts": [{"path": "design.md"}]}),
+    )
+    r = _run_json(
+        tmp_path, "reap", "--module", "m", "--rule", "specification", "--run", "1"
+    )
+    assert r == {"ok": True, "rule": "specification", "run": 1, "verdict": "blocked"}
+    outcome = facts.read_events("m")[-1]
+    assert outcome["type"] == "outcome" and outcome["verdict"] == "blocked"
+    assert outcome["reason"] == "schema_violation"
+    assert outcome["outputs"] == {} and outcome["proofs"] == []
+    # promote not called: nothing appeared at the canonical stage dir
+    canonical = facts.module_root("m") / "Design" / "specification"
+    assert not (canonical / "result.json").exists()
+    assert not (canonical / "design.md").exists()
 
 
 def test_epoch_then_signoff_decide_gates_on_proposed_oracle(tmp_path, monkeypatch):

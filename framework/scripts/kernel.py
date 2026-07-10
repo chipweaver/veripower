@@ -209,8 +209,10 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
     status = env.get("status")
     if status not in ("pass", "fail"):
         return "blocked", "malformed", [], None
-    # schema validation reuses the per-stage result.schema.json via facts (add a helper);
+    # schema validation reuses the per-stage result.schema.json via facts;
     # a schema violation -> ("blocked", "schema_violation", [], None).
+    if facts.validate_result(rule_name, env) is not None:
+        return "blocked", "schema_violation", [], None
     if rule_name == "simulation-triage":
         return _derive_triage(module, env, events)  # Task C7 — same 4-tuple
     if rule.proof is None:
@@ -469,9 +471,19 @@ def main():
         if getattr(args, "diagnosis_refs", None)
         else None
     )
-    candidates = (
-        json.loads(args.candidates) if getattr(args, "candidates", None) else None
-    )
+    candidates = None
+    if getattr(args, "candidates", None):
+        try:
+            candidates = json.loads(args.candidates)
+        except json.JSONDecodeError as e:
+            print(
+                json.dumps(
+                    {"ok": False, "error": f"--candidates JSON parse error: {e}"},
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+            return
     handlers = {
         "decide": lambda: schedule.decide(
             args.module,
