@@ -91,12 +91,15 @@ _FAILURE_KIND_OF_CATEGORY = {
 }
 
 
-def _categorize(violations: list[dict]) -> str:
+def _categorize(violations: list[dict]) -> tuple[str, dict | None]:
+    """Return (category, matched_violation) — the violation whose rule prefix drove
+    the category, so failures[0].rule can name IT (not merely violations[0], which
+    may be a different, unmatched rule). None when nothing matched (default path)."""
     for v in violations:
         for prefix, cat in _RULE_CATEGORY.items():
             if v.get("rule", "").startswith(prefix):
-                return cat
-    return "lint_rtl"  # default: an RTL lint issue
+                return cat, v
+    return "lint_rtl", None  # default: an RTL lint issue
 
 
 def _load_violations(path: Path):
@@ -155,12 +158,12 @@ def run(workdir, module, *, top) -> int:
                 ss[key] = doc["counts"]
         if violations:
             ss["violations"] = violations
-            cat = _categorize(violations)
+            cat, matched = _categorize(violations)
             ss["failure_kind"] = _FAILURE_KIND_OF_CATEGORY[cat]
             ss["failures"] = [
                 {
                     "category": cat,
-                    "rule": violations[0]["rule"],
+                    "rule": (matched or violations[0])["rule"],
                     "error_summary": ss["fail_reason"],
                 }
             ]

@@ -256,17 +256,20 @@ def test_fail_envelope_is_schema_valid(tmp_path):
 
 def test_categorize_rtl_cdc_from_ac_unsync_prefix():
     # Empirically observed on SpyGlass_vL-2016.06 (F1 fixture): Ac_unsync01.
-    assert rb._categorize([{"rule": "Ac_unsync01"}]) == "rtl_cdc"
+    v = {"rule": "Ac_unsync01"}
+    assert rb._categorize([v]) == ("rtl_cdc", v)
 
 
 def test_categorize_sgdc_seed_from_clock_info_prefix():
     # Empirically observed on SpyGlass_vL-2016.06 (undeclared-clock experiment):
     # Clock_info03a.
-    assert rb._categorize([{"rule": "Clock_info05"}]) == "sgdc_seed"
+    v = {"rule": "Clock_info05"}
+    assert rb._categorize([v]) == ("sgdc_seed", v)
 
 
 def test_categorize_defaults_to_lint_rtl_when_unmatched():
-    assert rb._categorize([{"rule": "W123"}]) == "lint_rtl"
+    # No prefix match -> default category, no matched violation.
+    assert rb._categorize([{"rule": "W123"}]) == ("lint_rtl", None)
 
 
 def test_fail_envelope_sets_failures_rtl_cdc_category(tmp_path):
@@ -326,6 +329,57 @@ def test_fail_envelope_sets_failures_sgdc_seed_category(tmp_path):
         {
             "category": "sgdc_seed",
             "rule": "Clock_info05",
+            "error_summary": ss["fail_reason"],
+        }
+    ]
+
+
+def test_fail_envelope_rule_names_the_categorizing_violation(tmp_path):
+    # Mixed error set: the FIRST error in list order (W123, a lint rule matching
+    # no prefix) is not the one that drives the category — a later Ac_unsync01
+    # is. failures[0].rule must name THAT matching violation, not merely
+    # violations[0] (lint errors precede cdc errors in the concatenated list).
+    wd = _clean_workdir(tmp_path, lint_err=1, cdc_err=1)
+    (wd / "lint-violations.json").write_text(
+        json.dumps(
+            {
+                "kind": "lint",
+                "counts": {"error": 1, "warning": 0, "info": 0},
+                "violations": [
+                    {
+                        "id": "W123:foo.v:9",
+                        "rule": "W123",
+                        "severity": "error",
+                        "message": "inferred latch on signal q",
+                    }
+                ],
+            }
+        )
+    )
+    (wd / "cdc-violations.json").write_text(
+        json.dumps(
+            {
+                "kind": "cdc",
+                "counts": {"error": 1, "warning": 0, "info": 0},
+                "violations": [
+                    {
+                        "id": "Ac_unsync01:cdc_smoke.q",
+                        "rule": "Ac_unsync01",
+                        "severity": "error",
+                        "message": "Unsynchronized Crossing",
+                    }
+                ],
+            }
+        )
+    )
+    assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert ss["failure_kind"] == "cdc"
+    assert ss["failures"] == [
+        {
+            "category": "rtl_cdc",
+            "rule": "Ac_unsync01",
             "error_summary": ss["fail_reason"],
         }
     ]
