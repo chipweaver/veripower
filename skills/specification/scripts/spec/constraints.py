@@ -73,6 +73,26 @@ def _ports(design: str) -> list[dict]:
     return ports
 
 
+def _async_clock_groups(clocks: list[dict]) -> list[str]:
+    """`-group ...` fragments for `set_clock_groups -asynchronous`, shared by SDC + SGDC.
+
+    F1: both emitters MUST declare the same async relationships from the same data.
+    When they diverge (the SGDC omitting them) SpyGlass CDC defaults undeclared clock
+    pairs to *synchronous* and every multi-clock CDC check passes vacuously — a genuine
+    async crossing missing a synchronizer is silently accepted. Returns [] when there is
+    nothing to declare (fewer than 2 non-generated clocks, or none async)."""
+    non_gen = [c for c in clocks if not c["generated"]]
+    async_names = [c["name"] for c in non_gen if c["relationship"] == "async"]
+    if not (async_names and len(non_gen) >= 2):
+        return []
+    groups = []
+    sync_grp = [c["name"] for c in non_gen if c["relationship"] != "async"]
+    if sync_grp:
+        groups.append("-group [get_clocks {" + " ".join(sync_grp) + "}]")
+    groups.extend(f"-group [get_clocks {a}]" for a in async_names)
+    return groups
+
+
 def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     out = [
         f"# SDC constraints for {top}",
@@ -90,13 +110,8 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
         out.append(
             f"create_clock -name {c['name']} -period {c['period']} [get_ports {c['name']}]"
         )
-    async_names = [c["name"] for c in non_gen if c["relationship"] == "async"]
-    if async_names and len(non_gen) >= 2:
-        groups = []
-        sync_grp = [c["name"] for c in non_gen if c["relationship"] != "async"]
-        if sync_grp:
-            groups.append("-group [get_clocks {" + " ".join(sync_grp) + "}]")
-        groups.extend(f"-group [get_clocks {a}]" for a in async_names)
+    groups = _async_clock_groups(clocks)
+    if groups:
         out.append("set_clock_groups -asynchronous " + " ".join(groups))
     out.append("")
     out.append(
@@ -140,6 +155,12 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
         half = round(c["period"] / 2, 4)
         out.append(f"clock -name {c['name']} -period {c['period']} -edge {{0 {half}}}")
     out.append("")
+    groups = _async_clock_groups(clocks)
+    if groups:
+        # F1: mirror generate_sdc — declare async pairs so SpyGlass CDC does not
+        # default them to synchronous (which makes multi-clock CDC vacuous).
+        out.append("set_clock_groups -asynchronous " + " ".join(groups))
+        out.append("")
     for p in ports:
         if p["role"] != "reset":
             continue
@@ -177,6 +198,13 @@ def _data_port_in_sgdc(signal: str, sgdc: str) -> bool:
 def _self_check(top: str, clocks: list[dict], ports: list[dict], sdc: str, sgdc: str):
     if f"current_design {top}" not in sgdc:
         _fail(f"self-check: SGDC missing 'current_design {top}'")
+    # F1: SDC and SGDC both derive their clock groups from the same `clocks` list via
+    # _async_clock_groups, so a group present in one but not the other means the two
+    # emitters diverged — the exact defect F1 fixes. Backstop it here.
+    if ("set_clock_groups" in sdc) != ("set_clock_groups" in sgdc):
+        _fail(
+            "self-check: set_clock_groups present in one of SDC/SGDC but not the other"
+        )
     for c in clocks:
         if c["generated"]:
             continue

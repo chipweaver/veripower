@@ -1,10 +1,15 @@
 # tests/unit/test_spec_constraints.py
 import json
 import subprocess
+import sys  # noqa: E402
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
+
+sys.path.insert(0, str(ROOT / "skills" / "specification" / "scripts"))
+import pytest  # noqa: E402
+from spec import constraints  # noqa: E402
 
 
 def _run(workdir, check=True):
@@ -271,3 +276,30 @@ def test_short_named_data_port_on_generated_clock_deferred(tmp_path):
     assert proc.returncode == 0
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "abstract_port -ports {d}" not in sgdc
+
+
+def test_sgdc_emits_async_clock_groups(tmp_path):
+    # F1: two async clocks must produce set_clock_groups in the SGDC too, not just
+    # the SDC. Without it SpyGlass CDC defaults the pair to synchronous (vacuous).
+    design = _design(
+        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
+        "| clk_io | input | 1 | clk_io | clk | - | clock | - | - |\n"
+        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n",
+        "| clk | 100 | 10.0 | primary | no | primary clock |\n"
+        "| clk_io | 50 | 20.0 | async | no | io clock |\n",
+    )
+    _run(_wd(tmp_path, design))
+    sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
+    assert "set_clock_groups -asynchronous" in sgdc
+    assert "-group [get_clocks {clk}]" in sgdc
+    assert "-group [get_clocks clk_io]" in sgdc
+
+
+def test_self_check_flags_clock_group_divergence():
+    # F1 backstop: SDC and SGDC must agree on presence of set_clock_groups.
+    sdc = "set_clock_groups -asynchronous -group [get_clocks {clk}] -group [get_clocks clk_io]\n"
+    sgdc_ok = "current_design m\n" + sdc
+    sgdc_bad = "current_design m\n"  # groups dropped — the divergence F1 fixes
+    constraints._self_check("m", [], [], sdc, sgdc_ok)  # no raise
+    with pytest.raises(SystemExit):
+        constraints._self_check("m", [], [], sdc, sgdc_bad)
