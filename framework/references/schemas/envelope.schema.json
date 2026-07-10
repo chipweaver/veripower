@@ -7,7 +7,7 @@
   "required": ["stage", "module", "produced_at", "status", "schema_version", "artifacts", "stage_specific"],
   "additionalProperties": true,
   "properties": {
-    "stage":          {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","frontend-signoff"]},
+    "stage":          {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","frontend-signoff","simulation-triage"]},
     "module":         {"type": "string"},
     "produced_at":    {"type": "string"},
     "status":         {"type": "string", "enum": ["pass", "fail"]},

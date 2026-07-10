@@ -52,7 +52,7 @@ the other phases.
 | targeted | TB-side change; RTL untouched | Run only the affected case group | Sequence constraints, checker expected-value corrections. |
 | full | RTL logic change | Full regression | Functional bug, datapath, state machine. |
 
-Use this as the default classification. Deviate only with sufficient justification, and record the reason in the landed `analysis.json`'s `advisory.findings[]`.
+Use this as the default classification. Deviate only with sufficient justification, and record the reason in the landed `result.json`'s `stage_specific.advisory.findings[]`.
 
 ## Clustering guide
 
@@ -120,8 +120,8 @@ suspect — not on every case, and never as a substitute for that evidence.
 
 ## Confidence (gating)
 
-`confidence` is a **gating** routing field on the landed `analysis.json` (schema:
-`analysis.schema.json`; consumed by `route.py`'s confidence gate) — not an advisory qualifier.
+`confidence` is a **gating** routing field on the landed `result.json`'s `stage_specific`
+(schema: `result.schema.json`; consumed by `route.py`'s confidence gate) — not an advisory qualifier.
 Only `high` auto-routes; `medium` / `low` escalate to the operator (see `route.py`)
 instead. Land it per this operable definition:
 

@@ -12,7 +12,7 @@ def _run(*argv):
 def test_cli_help_lists_verb():
     r = _run("--help")
     assert r.returncode == 0, r.stderr
-    assert "validate-analysis" in r.stdout
+    assert "finalize" in r.stdout
 
 
 def test_cli_unknown_verb_exits_2():

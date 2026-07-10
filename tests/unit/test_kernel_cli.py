@@ -374,3 +374,159 @@ def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human(
     )
     assert r5["ok"] is True
     assert _latest_grade(module) == "human"
+
+
+# ── simulation-triage reap path (Task C7: proof=None -> diagnosis event, not a proof) ──
+
+
+def _dispatch_triage(tmp_path, module, sim_run):
+    d = _run_json(
+        tmp_path,
+        "dispatch",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--params",
+        json.dumps({"sim_run": sim_run}),
+    )
+    assert d["ok"] is True, d
+    return d
+
+
+def _write_triage_result(module, workdir, *, status, stage_specific):
+    result = {
+        "schema_version": 1,
+        "stage": "simulation-triage",
+        "module": module,
+        "produced_at": "2026-07-10T00:00:00Z",
+        "status": status,
+        "artifacts": [],
+        "stage_specific": stage_specific,
+    }
+    _write_file(module, f"{workdir}/result.json", json.dumps(result))
+
+
+def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    module = "triage1"
+    d = _dispatch_triage(tmp_path, module, sim_run=7)
+    _write_triage_result(
+        module,
+        d["workdir"],
+        status="pass",
+        stage_specific={
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+        },
+    )
+    r = _run_json(
+        tmp_path,
+        "reap",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--run",
+        str(d["run"]),
+    )
+    assert r["ok"] is True
+    assert r["verdict"] == "pass"  # non-blocked
+
+    events = facts.read_events(module)
+    outcomes = [e for e in events if e["type"] == "outcome"]
+    assert len(outcomes) == 1
+    assert outcomes[0]["verdict"] == "pass"
+    assert outcomes[0]["proofs"] == []  # triage mints no proof
+
+    diagnoses = [e for e in events if e["type"] == "diagnosis"]
+    assert len(diagnoses) == 1
+    diag = diagnoses[0]
+    assert diag["source"] == "triage"
+    assert diag["attribution"] == "rtl-design"
+    assert diag["fix_owner"] == "rtl-design"
+    assert diag["subject"] == {"proof": "simulation", "outcome_run": 7}
+    assert diag["confidence"] == "high"
+
+    # non-blocked -> promoted to canonical
+    canonical = (
+        facts.module_root(module) / "Verification" / "simulation-triage" / "result.json"
+    )
+    assert canonical.exists()
+
+
+def test_triage_skipped_reap_blocks_no_diagnosis(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    module = "triage2"
+    d = _dispatch_triage(tmp_path, module, sim_run=3)
+    _write_triage_result(
+        module,
+        d["workdir"],
+        status="fail",
+        stage_specific={
+            "analysis_state": "skipped",
+            "skipped_reason": "no fail case to analyze",
+        },
+    )
+    r = _run_json(
+        tmp_path,
+        "reap",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--run",
+        str(d["run"]),
+    )
+    assert r["ok"] is True
+    assert r["verdict"] == "blocked"
+
+    events = facts.read_events(module)
+    outcomes = [e for e in events if e["type"] == "outcome"]
+    assert len(outcomes) == 1
+    assert outcomes[0]["verdict"] == "blocked"
+    assert outcomes[0]["reason"] == "skipped_reason"
+    assert outcomes[0]["proofs"] == [] and outcomes[0]["outputs"] == {}
+    assert not any(e["type"] == "diagnosis" for e in events)
+
+    # blocked -> never promoted
+    canonical = (
+        facts.module_root(module) / "Verification" / "simulation-triage" / "result.json"
+    )
+    assert not canonical.exists()
+
+
+def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    module = "triage3"
+    d = _dispatch_triage(tmp_path, module, sim_run=9)
+    _write_triage_result(
+        module,
+        d["workdir"],
+        status="pass",
+        stage_specific={
+            "analysis_state": "complete",
+            "root_cause": "simulation",  # self-pointing: attribution recorded, no fix_owner
+            "confidence": "high",
+        },
+    )
+    r = _run_json(
+        tmp_path,
+        "reap",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--run",
+        str(d["run"]),
+    )
+    assert r["ok"] is True
+    assert r["verdict"] == "pass"  # no schema violation, no crash
+
+    events = facts.read_events(module)
+    diagnoses = [e for e in events if e["type"] == "diagnosis"]
+    assert len(diagnoses) == 1
+    diag = diagnoses[0]
+    assert diag["attribution"] == "simulation"
+    assert "fix_owner" not in diag
