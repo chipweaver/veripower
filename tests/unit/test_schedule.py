@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -158,6 +159,42 @@ def test_blocked_goes_forward_no_escalate(tmp_path, monkeypatch):
     assert a["action"] == "DISPATCH" and a["rule"] == "specification"
 
 
+def test_fresh_lintcdc_self_describing_failure_routes_by_category(
+    tmp_path, monkeypatch
+):
+    # Fix round 1: the self-describing-failure branch — route.route composed inline on
+    # stage_specific read from the failed rule's CANONICAL result.json (_route_kwargs).
+    # lint-cdc fresh fail, failures[0].category=rtl_cdc -> input-provenance target
+    # rtl-design (U4), dispatched with needs_directive.
+    monkeypatch.chdir(tmp_path)
+    _mk("m", "brainstorm.md", "b1")
+    _valid("m", "specification", 1)
+    _valid("m", "rtl-design", 1)
+    _fail("m", "lint-cdc", 1)  # fresh: closure (spec+rtl) valid, inputs match disk
+    # before the canonical result.json exists, route gets failures=None -> ESCALATE
+    # (proves the branch genuinely reads the file, not a vacuous pass)
+    pre = schedule.decide("m")
+    assert pre["action"] == "ESCALATE" and pre["reason"] == "lint_no_category"
+    _mk(
+        "m",
+        "Design/lint-cdc/result.json",
+        json.dumps(
+            {
+                "stage_specific": {
+                    "failure_kind": "tooling",
+                    "failures": [
+                        {"category": "rtl_cdc", "error_summary": "clock crossing"}
+                    ],
+                    "fail_reason": "cdc",
+                }
+            }
+        ),
+    )
+    a = schedule.decide("m")
+    assert a["action"] == "DISPATCH" and a["rule"] == "rtl-design"
+    assert a["needs_directive"] is True
+
+
 def test_delivery_no_overtake_but_repair_direct(tmp_path, monkeypatch):
     # same disk+ledger: delivery does not dispatch synthesis while lint-cdc in flight
     # (advisory prereq); repair dispatches synthesis even if lint-cdc stale.
@@ -199,14 +236,17 @@ def test_signoff_gate_blocks_without_epoch_or_with_proposed(tmp_path, monkeypatc
     monkeypatch.chdir(tmp_path)
     # (a) no epoch -> hard error, not an action.
     _build_all_valid("noepoch", 1)  # all valid, NO epoch event
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit, match="open an epoch first"):
         schedule.decide("noepoch", objective="signoff")
     # (b) open epoch, 8 upstream valid post-anchor, frontend-signoff the sole candidate
-    # that hits the gate; default oracle grades leave several proofs "proposed".
+    # that hits the gate; default oracle grades leave several proofs "proposed". The
+    # reason must name the FIRST offender in FORWARD_PRIORITY order (specification) —
+    # deterministic, never hash-seed-dependent set order.
     _epoch("proposed")
     _build_all_valid("proposed", 1, include=rules.FORWARD_PRIORITY[:8])
     a = schedule.decide("proposed", objective="signoff")
-    assert a["action"] == "ESCALATE" and "proposed" in a["reason"]
+    assert a["action"] == "ESCALATE"
+    assert a["reason"] == "signoff blocked: specification oracle is proposed (pin it)"
 
 
 # --- §6-mandated coverage (each maps to a spec §6 bullet) ---

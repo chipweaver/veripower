@@ -360,8 +360,12 @@ def _signoff_gate(module: str, events: list[dict]) -> dict | None:
     {tool, human}, no unknown recorded version. Returns an ESCALATE action if the gate
     fails, else None. The no-epoch case never reaches here: decide with objective=signoff
     forces conservative, and _reusable already hard-errors '先开纪元' (spec §3.6 —
-    报错不静默兜底, so it is an error, not an ESCALATE action)."""
-    for proof in set(rules.FORWARD_PRIORITY) - {"frontend-signoff"}:
+    报错不静默兜底, so it is an error, not an ESCALATE action). Iterates
+    FORWARD_PRIORITY in order — a set here would make the ESCALATE reason vary with
+    the hash seed when >1 proof fails the gate, breaching decide's purity invariant."""
+    for proof in rules.FORWARD_PRIORITY:
+        if proof == "frontend-signoff":
+            continue
         if not _reusable(module, events, proof, True):
             return {
                 "action": "ESCALATE",
