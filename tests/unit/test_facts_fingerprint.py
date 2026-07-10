@@ -62,3 +62,41 @@ def test_cache_roundtrip_and_invalidation(tmp_path):
     assert facts.fingerprint_cached(f, tmp_path) == fp1  # cache hit, same value
     f.write_text("twotwotwo")  # size + mtime change -> recompute
     assert facts.fingerprint_cached(f, tmp_path) != fp1
+
+
+def test_cached_symlink_not_followed_and_no_collision(tmp_path):
+    # file-first then link
+    root = tmp_path / "r1"
+    root.mkdir()
+    target = root / "target.txt"
+    target.write_text("AAAA")
+    lnk = root / "lnk"
+    os.symlink("target.txt", lnk)
+    fp_file = facts.fingerprint_cached(target, root)
+    fp_link = facts.fingerprint_cached(lnk, root)
+    assert fp_file == facts.fingerprint(target)
+    assert fp_link == facts.fingerprint(lnk)
+    assert fp_link != fp_file
+    # fresh root, link-first then file
+    root2 = tmp_path / "r2"
+    root2.mkdir()
+    target2 = root2 / "target.txt"
+    target2.write_text("AAAA")
+    lnk2 = root2 / "lnk"
+    os.symlink("target.txt", lnk2)
+    fp_link2 = facts.fingerprint_cached(lnk2, root2)
+    fp_file2 = facts.fingerprint_cached(target2, root2)
+    assert fp_link2 == facts.fingerprint(lnk2)
+    assert fp_file2 == facts.fingerprint(target2)
+    assert fp_link2 != fp_file2
+
+
+def test_cached_dir_reflects_nested_edit(tmp_path):
+    d = tmp_path / "d"
+    (d / "sub").mkdir(parents=True)
+    f = d / "sub" / "f.txt"
+    f.write_text("before")
+    fp1 = facts.fingerprint_cached(d, tmp_path)
+    # editing the nested file does NOT change d's own mtime
+    f.write_text("after-edit")
+    assert facts.fingerprint_cached(d, tmp_path) != fp1

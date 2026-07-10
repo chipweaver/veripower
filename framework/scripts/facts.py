@@ -75,7 +75,14 @@ def _load_cache(module_root: Path) -> dict:
 
 
 def fingerprint_cached(path: Path, module_root: Path) -> str:
-    """fingerprint() with an mtime/size cache. Pure speed cache — never a fact source."""
+    """fingerprint() with an mtime/size cache. Pure speed cache — never a fact source.
+
+    Only regular non-symlink files are cached: resolve()/stat() follow symlinks,
+    so caching a symlink would collide with its target's entry (and a symlink is
+    one readlink to fingerprint anyway); a directory's own [size, mtime_ns] does
+    not change when a nested file is edited, so a dir entry could go false-fresh."""
+    if path.is_symlink() or not path.is_file():
+        return fingerprint(path)
     try:
         rel = str(path.resolve().relative_to(module_root.resolve()))
     except ValueError:
