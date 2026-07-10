@@ -1,0 +1,6 @@
+current_design cdc_smoke
+clock -name clk  -period 10.0 -edge {0 5.0}
+clock -name clk2 -period 20.0 -edge {0 10.0}
+reset -name rst_n -value 0 -async
+abstract_port -ports rst_n -clock clk -reset rst_n
+abstract_port -ports d -clock clk

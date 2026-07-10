@@ -1,0 +1,9 @@
+spyglass_work/
+spyglass*.log
+spyglass*.cmd
+sg_shell.log
+cdc-report.txt
+cdc-violations*.json
+scripts/constraints.sgdc
+scripts/collect_report.py
+scripts/__pycache__/
