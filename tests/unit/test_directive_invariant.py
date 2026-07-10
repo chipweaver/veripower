@@ -1,6 +1,5 @@
 """Freeze the `directive` lifecycle (kernel.py) — the Task C6 rename of the old
-`orchestrator_context` channel (state.py, now retired from this test; state.py's
-own copy dies at D2).
+`orchestrator_context` channel (which lived in the now-retired old kernel CLI).
 
 The `directive` channel: a caller passes `--directive <file|->` to `kernel.py
 dispatch`; `cmd_dispatch` writes `<workdir>/directive.md` and records

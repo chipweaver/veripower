@@ -7,7 +7,6 @@ Task 3 (artifacts[]), Task 4 (golden + schema).
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -194,27 +193,22 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
 
 
 def test_golden_is_schema_valid(tmp_path):
-    # Reuse framework.scripts.state.validate_result (Draft202012Validator + Registry).
-    # It reads asic/<module>/Design/lint-cdc/result.json relative to cwd, so build
-    # into that layout + chdir.
-    from framework.scripts import state
+    # Reuse framework.scripts.facts.validate_result (Draft202012Validator + Registry)
+    # on the produced result.json dict.
+    from framework.scripts import facts
 
     wd = tmp_path / "asic" / "tpu_top" / "Design" / "lint-cdc"
     shutil.copytree(FIX, wd)
     rb.run(wd, module="tpu_top", top=None)
-    old_cwd = os.getcwd()
-    try:
-        os.chdir(tmp_path)
-        valid, err = state.validate_result("tpu_top", "lint-cdc")
-    finally:
-        os.chdir(old_cwd)
-    assert valid, f"golden lint-cdc result.json is not schema-valid: {err}"
+    result = json.loads((wd / "result.json").read_text())
+    err = facts.validate_result("lint-cdc", result)
+    assert err is None, f"golden lint-cdc result.json is not schema-valid: {err}"
 
 
 def test_fail_envelope_is_schema_valid(tmp_path):
     # The FAIL path must also be schema-valid (the result schema requires fail_reason
     # on fail). Guard the fail shape explicitly.
-    from framework.scripts import state
+    from framework.scripts import facts
 
     wd = tmp_path / "asic" / "tpu_top" / "Design" / "lint-cdc"
     shutil.copytree(FIX, wd)
@@ -238,14 +232,10 @@ def test_fail_envelope_is_schema_valid(tmp_path):
         )
     )
     assert rb.run(wd, module="tpu_top", top=None) == 0
-    old_cwd = os.getcwd()
-    try:
-        os.chdir(tmp_path)
-        valid, err = state.validate_result("tpu_top", "lint-cdc")
-    finally:
-        os.chdir(old_cwd)
-    assert valid, f"fail-path lint-cdc result.json is not schema-valid: {err}"
-    assert json.loads((wd / "result.json").read_text())["status"] == "fail"
+    result = json.loads((wd / "result.json").read_text())
+    err = facts.validate_result("lint-cdc", result)
+    assert err is None, f"fail-path lint-cdc result.json is not schema-valid: {err}"
+    assert result["status"] == "fail"
 
 
 # ---------------------------------------------------------------------------

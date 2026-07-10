@@ -5,7 +5,7 @@ Two layers: in-process unit tests of the inference helpers (BP3 — byte-for-byt
 synthesis helpers), and subprocess "mirror" tests of full deploy behavior (BP2/BP4-BP11)
 that run the real shipped skill with cwd set to a tmp design-tree root and build the
 upstream asic/<module>/... references under it. The bootstrap anchors the design tree
-on the CWD (matching state.py and the stage-subagent contract), independent of where
+on the CWD (matching kernel.py and the stage-subagent contract), independent of where
 the skill code lives. Neither verb shells out to any Tier-2 script — bootstrap is a
 pure deploy.
 """

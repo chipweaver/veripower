@@ -115,7 +115,7 @@ def test_build_result_passes_ppa_targets_through(tmp_path):
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert (
         ss["ppa_targets"] == targets
-    )  # verbatim — orchestrate._ppa_targets reads this
+    )  # recorded verbatim in stage_specific (faithful record of the γ-floor inputs)
     # ppa.json is the stable sidecar synthesis/power-analysis read directly (spec §4.3)
     assert json.loads((wd / "ppa.json").read_text()) == targets
 

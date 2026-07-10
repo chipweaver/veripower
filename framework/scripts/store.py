@@ -1,12 +1,11 @@
 """VeriPower filesystem artifact-lifecycle helpers.
 
-Moved out of state.py so state.py stays focused on state mutations. No I/O
-beyond the promote/mirror operations themselves. Imports only stdlib + rules
-(no jsonschema/referencing deps).
+Split out so the kernel stays focused on state mutations. No I/O beyond the
+promote/mirror operations themselves. Imports only stdlib + rules (no
+jsonschema/referencing deps).
 
-Re-exported from state.py so existing `state.promote` / `state._mirror_subagent_trace`
-/ `state.repair_partial_promote_if_needed` references keep resolving — same
-pattern as topology.py.
+Imported by kernel.py: its reap path calls `store.promote` /
+`store._mirror_subagent_trace` / `store.repair_partial_promote_if_needed`.
 """
 
 from __future__ import annotations
@@ -70,7 +69,7 @@ def _mirror_subagent_trace(
     leaving stage trace permanently unavailable for downstream analysis
     (external analysis / postmortem). Orchestrator forwards the value of
     the notification's <output-file> tag via --subagent-output-file on the
-    reap state.py reap call; this helper copies it to a stable workdir
+    kernel.py reap call; this helper copies it to a stable workdir
     relative path so the trace outlives the session.
 
     Destination: <workdir>/.subagent_traces/<rule>-<agent_id>.output
@@ -94,7 +93,7 @@ def _mirror_subagent_trace(
         return dst
     except OSError as e:
         print(
-            f"[state.py] mirror subagent trace failed "
+            f"[store.py] mirror subagent trace failed "
             f"(stage={rule}, agent_id={agent_id}): {e}",
             file=sys.stderr,
         )

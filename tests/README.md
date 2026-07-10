@@ -55,15 +55,13 @@ in `unit/` over re-deriving its logic in a standalone lint.
 ## Shared infrastructure (not buckets)
 
 - **`_skills_sot.py`** — shared test helpers/values: `PLUGIN_ROOT`, `load_stage_schema(stage)`,
-  `STAGE_SPECIFIC_MINIMAL` (minimal valid per-stage payloads), and `SKILL_DIRS` (**derived live**
+  and `SKILL_DIRS` (**derived live**
   from `skills/*/SKILL.md` — the filesystem is the source of truth, not a hand-maintained list).
   Importable from `unit/` and `contracts/` via `pytest.ini`'s `pythonpath = . tests`
   (`from _skills_sot import …`) — a module, not `conftest.py`, because these are imported by name.
 - **Test fixtures** live *inside the bucket that uses them* — e.g. `unit/fixtures/parse_coverage/`
   (URG report samples for `test_parse_coverage`). There is **no** shared
   top-level `fixtures/`: a fixture used by one bucket belongs to that bucket.
-- **`unit/conftest.py`** — pytest fixtures/helpers for `unit/` (e.g. `bootstrap_prereqs_pass_clean`,
-  `write_run_result`).
 
 ## Running
 

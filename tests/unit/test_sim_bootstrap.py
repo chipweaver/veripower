@@ -5,7 +5,7 @@ Two layers: in-process unit tests of the TOP-inference helpers (B1 — byte-for-
 lintcdc helpers), and subprocess "mirror" tests of full deploy behavior that run the real
 shipped skill with cwd set to a tmp design-tree root and build the upstream
 asic/<module>/Design/... references under it. The bootstrap anchors the design tree on the
-CWD (matching state.py and the stage-subagent contract), independent of where the skill
+CWD (matching kernel.py and the stage-subagent contract), independent of where the skill
 code lives.
 """
 

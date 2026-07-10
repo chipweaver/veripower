@@ -1,6 +1,6 @@
 """No skill-decided BLOCKED — schema-layer lock.
 
-VeriPower architectural invariant: only state.py program-exception paths
+VeriPower architectural invariant: only kernel.py program-exception paths
 emit BLOCKED-class sentinels. Skills emit `status ∈ {pass, fail}` in
 result.json; simulation-triage emits `analysis_state ∈ {complete,
 skipped}` in its ANALYSIS JSON.
@@ -30,7 +30,7 @@ def test_envelope_status_enum_is_pass_fail():
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     assert schema["properties"]["status"]["enum"] == ["pass", "fail"], (
         f"envelope.schema.json status.enum drifted: {schema['properties']['status']['enum']}. "
-        "Only state.py program-exception paths may emit BLOCKED-class sentinels; "
+        "Only kernel.py program-exception paths may emit BLOCKED-class sentinels; "
         "see memory feedback_blocked_uniform_removal."
     )
 

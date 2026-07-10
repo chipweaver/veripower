@@ -385,7 +385,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
 def test_golden_is_schema_valid(tmp_path):
     # Validate the in-memory envelope against {envelope schema + synthesis
     # result.schema} via Registry. Not _validate_envelope (it is bound to the
-    # frontend-signoff schema) nor state.validate_result (on-disk-path coupled).
+    # frontend-signoff schema); inline here to pin the synthesis schema explicitly.
     import shutil
 
     from jsonschema import Draft202012Validator
