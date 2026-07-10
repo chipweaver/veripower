@@ -130,7 +130,7 @@ smoke gate still decides smoke pass/fail.
 ## Prohibitions
 
 - **No Level-2 dispatch:** do not call the Task tool.
-- **No `state.py`:** do not call `state.py` — the parent session owns state transitions.
+- **No `kernel.py`:** do not call `kernel.py` — the parent session owns state transitions.
 - Stay inside `{workdir}`: all writes confined to `{workdir}` (reading the upstream plan + any prior
   canonical TB as read-only reference is allowed). Do not modify the plan, and do not read or modify
   the RTL source (see the no-RTL-source-read prohibition below; RTL enters only mechanically via the

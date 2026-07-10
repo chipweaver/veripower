@@ -26,7 +26,7 @@ from pathlib import Path
 # This file: skills/simulation/scripts/sim/bootstrap.py
 #   parents[2] = skills/simulation   (-> templates/, ships with the skill)
 # The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
-# lives — matching state.py and the stage-subagent contract ("workdir is relative to
+# lives — matching kernel.py and the stage-subagent contract ("workdir is relative to
 # the working tree root containing asic/").
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
@@ -99,7 +99,7 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         _err(f"missing infra template directory: {infra}")
         return 1
 
-    # The design tree is the CWD (state.py + stage-subagent contract). Resolve a
+    # The design tree is the CWD (kernel.py + stage-subagent contract). Resolve a
     # relative workdir against it + drop trailing slash.
     tree_root = Path.cwd()
     dest = Path(workdir)

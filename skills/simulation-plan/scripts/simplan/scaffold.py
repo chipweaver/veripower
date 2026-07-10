@@ -35,9 +35,9 @@ _DEFAULT_SCHEMA = (
 
 def _format_validation_errors(errors) -> str:
     """Format up to 3 jsonschema errors as 'schema violation at $.path: msg (validator=...)'.
-    Copied (~12 lines) from framework/scripts/state.py:_format_validation_errors per the
-    project's 'small enough to duplicate' convention — avoids a
-    skills/ -> framework/ cross-package import with no other consumer."""
+    A standalone (~12 lines) helper per the project's 'small enough to duplicate'
+    convention — avoids a skills/ -> framework/ cross-package import with no other
+    consumer."""
     head = errors[:3]
     tail = len(errors) - len(head)
     lines = []

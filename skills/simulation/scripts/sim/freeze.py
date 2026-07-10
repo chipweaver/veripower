@@ -14,7 +14,7 @@ Serves two modes (selected by the --mode argument to the copy-baseline verb):
     verify-handoff.json): a smoke/compile-failed baseline has none, and the patch child
     re-authors them anyway via a full conformance re-run.
 
-Both modes use CWD-anchored design tree (matching bootstrap / state.py).
+Both modes use CWD-anchored design tree (matching bootstrap / kernel.py).
 
 Exit codes: 0 materialized; 1 fail-closed guard (workdir already populated / missing canonical TB /
 missing RTL filelist / missing a required carry-forward).

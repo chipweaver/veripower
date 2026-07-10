@@ -30,7 +30,7 @@ Your boundary:
   (Level-2 forbidden — the audit boundary).
 - **Dispatch-and-wait:** after dispatching, end the turn; reap on the harness wake; aggregate the
   reviewer's report and proceed only after it reports (DONE or BLOCKED).
-- **No `state.py`:** this skill does not call `state.py`.
+- **No `kernel.py`:** this skill does not call `kernel.py`.
 
 ## Input Artifacts
 

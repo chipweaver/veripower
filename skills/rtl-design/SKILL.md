@@ -74,7 +74,7 @@ Completion Gate.
   end the turn; the harness wakes the main thread per completion (the wake is to the harness, not
   back to the caller). Reap each, and finalize only after all dispatched children have
   reported — never against a partial set.
-- **No `state.py`:** this skill does not call `state.py`.
+- **No `kernel.py`:** this skill does not call `kernel.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a
   harness-level signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the
   main thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to trigger-driven

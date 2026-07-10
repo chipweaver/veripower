@@ -100,7 +100,7 @@ Completion Gate.
 - **Dispatch-and-wait:** after dispatching a wave's sub-Task, send a brief status and end the turn;
   the harness wakes the main thread per completion (the wake is to the harness, not back to the
   caller). Reap the sub-Task on its wake before the downstream gate/wave.
-- **No `state.py`:** this skill does not call `state.py`.
+- **No `kernel.py`:** this skill does not call `kernel.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a
   harness-level signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the main
   thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to trigger-driven rework.

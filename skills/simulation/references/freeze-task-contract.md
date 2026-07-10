@@ -68,7 +68,7 @@ child consumes the frozen copy as-is. You do **not** re-derive or rewrite `verif
   `STATUS: BLOCKED compile <locus>` — do not attempt repairs.
 - **No RTL-source reads**: this child authors no RTL; reading RTL sources is outside its scope.
 - **No Level-2 dispatch**: do not call the Task tool.
-- **No `state.py`**: do not call `state.py` — the parent session owns state transitions.
+- **No `kernel.py`**: do not call `kernel.py` — the parent session owns state transitions.
 - Stay inside `{workdir}`: all writes are confined to `{workdir}`. Reading `{canonical}` as a
   read-only copy source is allowed.
 
