@@ -1,5 +1,5 @@
 // F1 regression DUT: a genuine async crossing (a: clk domain -> q: clk2 domain)
-// with NO synchronizer. SpyGlass CDC must flag it iff clk/clk2 are declared async.
+// with NO synchronizer. SpyGlass CDC flags it whenever clk/clk2 resolve to different domains — which vL-2016.06 does by default for separately-named clocks; see README.md.
 module cdc_smoke (
     input  wire clk,
     input  wire clk2,

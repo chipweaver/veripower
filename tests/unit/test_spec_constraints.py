@@ -1,7 +1,7 @@
 # tests/unit/test_spec_constraints.py
 import json
 import subprocess
-import sys  # noqa: E402
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -279,7 +279,7 @@ def test_short_named_data_port_on_generated_clock_deferred(tmp_path):
 
 
 def test_sgdc_emits_async_clock_groups(tmp_path):
-    # F1: two async clocks must produce a clock -domain declaration in the SGDC too, not
+    # F1: a primary + an async clock must produce a clock -domain declaration in the SGDC too, not
     # just set_clock_groups in the SDC. SpyGlass's SGDC parser rejects set_clock_groups as
     # an unknown command (confirmed on SpyGlass_vL-2016.06, Task 2 of the F1 plan) — the
     # SGDC-native equivalent is `clock -domain <D>`, one shared domain per sync/primary
