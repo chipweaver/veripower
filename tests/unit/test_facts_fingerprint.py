@@ -2,6 +2,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "framework" / "scripts"))
 import facts  # noqa: E402
@@ -99,4 +101,19 @@ def test_cached_dir_reflects_nested_edit(tmp_path):
     fp1 = facts.fingerprint_cached(d, tmp_path)
     # editing the nested file does NOT change d's own mtime
     f.write_text("after-edit")
-    assert facts.fingerprint_cached(d, tmp_path) != fp1
+    fp2 = facts.fingerprint_cached(d, tmp_path)
+    assert fp2 != fp1
+    assert fp2 == facts.fingerprint(d)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="permissions ineffective as root")
+def test_cached_unreadable_parent_returns_unknown(tmp_path):
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    f = locked / "f.txt"
+    f.write_text("secret")
+    locked.chmod(0o000)
+    try:
+        assert facts.fingerprint_cached(f, tmp_path) == facts.UNKNOWN
+    finally:
+        locked.chmod(0o755)  # restore so tmp cleanup works

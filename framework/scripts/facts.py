@@ -81,7 +81,10 @@ def fingerprint_cached(path: Path, module_root: Path) -> str:
     so caching a symlink would collide with its target's entry (and a symlink is
     one readlink to fingerprint anyway); a directory's own [size, mtime_ns] does
     not change when a nested file is edited, so a dir entry could go false-fresh."""
-    if path.is_symlink() or not path.is_file():
+    try:
+        if path.is_symlink() or not path.is_file():
+            return fingerprint(path)
+    except OSError:
         return fingerprint(path)
     try:
         rel = str(path.resolve().relative_to(module_root.resolve()))
