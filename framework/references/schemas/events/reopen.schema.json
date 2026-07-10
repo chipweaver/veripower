@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/schemas/events/reopen.schema.json",
+  "type": "object",
+  "required": ["ts", "type", "pin_ref", "reason"],
+  "additionalProperties": true,
+  "properties": {
+    "ts": {"type": "string"},
+    "type": {"const": "reopen"},
+    "pin_ref": {"type": "string"},
+    "reason": {"type": "string", "pattern": ".*\\S.*"}
+  }
+}

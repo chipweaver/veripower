@@ -1,17 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/schemas/events/dispatch.schema.json",
-  "title": "dispatch event",
-  "description": "events.jsonl record emitted when a stage is dispatched (ts, type, stage, mode, run, workdir).",
   "type": "object",
-  "required": ["ts", "type", "stage", "mode", "run", "workdir"],
+  "required": ["ts", "type", "rule", "run", "workdir", "params", "objective"],
   "additionalProperties": true,
   "properties": {
-    "ts":      {"type": "string"},
-    "type":    {"const": "dispatch"},
-    "stage":   {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","frontend-signoff"]},
-    "mode":    {"type": "string", "enum": ["forward", "rework"]},
-    "run":     {"type": "integer", "minimum": 1},
-    "workdir": {"type": "string"}
+    "ts": {"type": "string"},
+    "type": {"const": "dispatch"},
+    "rule": {"type": "string"},
+    "run": {"type": "integer", "minimum": 1},
+    "workdir": {"type": "string"},
+    "inputs": {"type": "object", "description": "consumed input version table; present only for proof-producing rules (sole source of proof.inputs). Absent for no-proof rules (triage)."},
+    "params": {"type": "object", "description": "recorded params incl. directive digest/path"},
+    "objective": {"type": "string", "enum": ["delivery", "repair", "signoff"]},
+    "conservative": {"type": "boolean"},
+    "diagnosis_refs": {"type": "array", "items": {"type": "string"}}
   }
 }

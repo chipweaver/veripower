@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/schemas/events/diagnosis.schema.json",
+  "type": "object",
+  "required": ["ts", "type", "id", "subject", "attribution", "evidence", "source"],
+  "additionalProperties": true,
+  "properties": {
+    "ts": {"type": "string"},
+    "type": {"const": "diagnosis"},
+    "id": {"type": "string"},
+    "subject": {"type": "object", "required": ["proof", "outcome_run"], "properties": {
+      "proof": {"type": "string"}, "outcome_run": {"type": "integer", "minimum": 1}
+    }},
+    "attribution": {"type": "string", "description": "root-cause rule name, or the failed rule itself when the attribution points at its own judge (oracle side)"},
+    "fix_owner": {"type": "string", "description": "auto-rebuild target; ABSENT when the attribution is self-pointing (oracle side) — such a diagnosis is recorded as-is (P4) but is unreliable, so disposition escalates instead of auto-rebuilding"},
+    "fix_locus": {"type": "array", "items": {"type": "string"}},
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+    "source": {"type": "string", "enum": ["triage", "human"]},
+    "provenance": {"type": "string", "description": "required when source=human"},
+    "supersedes": {"type": "string"}
+  }
+}
