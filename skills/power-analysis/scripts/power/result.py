@@ -418,7 +418,11 @@ def _envelope(module, *, status, stage_specific, artifacts) -> dict:
 
 
 def _write_result(workdir: Path, env: dict) -> None:
-    (workdir / "result.json").write_text(json.dumps(env, indent=2) + "\n")
+    tmp = workdir / "result.json.tmp"
+    tmp.write_text(json.dumps(env, indent=2) + "\n")
+    tmp.replace(
+        workdir / "result.json"
+    )  # atomic: never observed half-written (kernel §5.1)
     sys.stdout.write(
         f"[power finalize] Written: {workdir / 'result.json'} (status={env['status']})\n"
     )

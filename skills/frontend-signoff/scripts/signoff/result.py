@@ -300,9 +300,11 @@ def build_result(workdir: str, module: str) -> int:
         fail_reason=fail_reason,
         artifacts=[{"path": "checklist.md"}, {"path": "traceability.md"}],
     )
-    (workdir_p / "result.json").write_text(
-        json.dumps(env, indent=2) + "\n", encoding="utf-8"
-    )
+    tmp = workdir_p / "result.json.tmp"
+    tmp.write_text(json.dumps(env, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(
+        workdir_p / "result.json"
+    )  # atomic: never observed half-written (kernel §5.1)
     sys.stdout.write(
         f"[signoff finalize] Written: {workdir_p / 'result.json'} (status={status})\n"
     )

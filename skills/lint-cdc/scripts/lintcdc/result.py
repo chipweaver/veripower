@@ -49,7 +49,11 @@ def _envelope(module, *, status, stage_specific, artifacts) -> dict:
 
 
 def _write(workdir: Path, env: dict) -> None:
-    (workdir / "result.json").write_text(json.dumps(env, indent=2) + "\n")
+    tmp = workdir / "result.json.tmp"
+    tmp.write_text(json.dumps(env, indent=2) + "\n")
+    tmp.replace(
+        workdir / "result.json"
+    )  # atomic: never observed half-written (kernel §5.1)
     sys.stdout.write(
         f"[lintcdc finalize] Written: {workdir / 'result.json'}"
         f" (status={env['status']})\n"
