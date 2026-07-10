@@ -28,10 +28,10 @@ from typing import Any
 
 from _skills_sot import STAGE_SPECIFIC_MINIMAL
 
-from framework.scripts import state
-
 
 def bootstrap_prereqs_pass_clean(module: str, stage: str) -> None:
+    from framework.scripts import state
+
     task = state.read_task(module)
     visited: set[str] = set()
     queue = deque(state.PREREQ_OF[stage])
@@ -59,6 +59,8 @@ def write_run_result(
     stage_specific: dict[str, Any] | None = None,
     artifacts: list[dict[str, str]] | None = None,
 ) -> None:
+    from framework.scripts import state
+
     rj = state._result_path(module, stage).parent / "runs" / str(run) / "result.json"
     rj.parent.mkdir(parents=True, exist_ok=True)
 
