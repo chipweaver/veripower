@@ -39,7 +39,6 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | envelope + ppa_targets |
 | `Design/specification/design.md` | Custom markdown | Module-level design. Passed by path to the child sub-Tasks, read-scope limited to the §1.4.1/§1.4.2/§1.6 tables (`references/child-task-contract.md`); the main thread does not read it. |
 | `Design/specification/manifest.json` | JSON (`{module, children:[{name, doc, rtl_modules, brainstorm_anchor, role}]}`) | Child roster — drives the fan-out `N = len(children[])` (every child, incl. the top-integration child). |
 | `Design/specification/<child>.md` × N | Custom markdown (frontmatter + §1–§5) | Per-child sub-design: frontmatter (`ports` / `clocks` / `features` / `file_path`) + §2 Interface / §3 Internal Behavior drive per-child RTL derivation. |

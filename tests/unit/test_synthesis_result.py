@@ -441,3 +441,83 @@ def test_finalize_cli_happy_path(tmp_path):
         "pass",
         "tpu_top",
     )
+
+
+# ── PPA targets read from the sibling Design/specification/ppa.json sidecar ──
+def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
+    # No --area-target/--slack-target flags exist anymore: finalize reads the
+    # PPA gate straight from asic/<module>/Design/specification/ppa.json, the
+    # module root being workdir's parents[3] (.../Design/synthesis/runs/<N>),
+    # same fixed-depth convention as timing.result.parse_clock's SDC lookup.
+    module_root = tmp_path / "asic" / "tpu_top"
+    wd = module_root / "Design" / "synthesis" / "runs" / "1"
+    wd.mkdir(parents=True)
+    reports = wd / "reports"
+    reports.mkdir()
+    (reports / "area.rpt").write_text(SAMPLE_AREA)
+    (reports / "qor.rpt").write_text(SAMPLE_QOR)
+    spec_dir = module_root / "Design" / "specification"
+    spec_dir.mkdir(parents=True)
+    (spec_dir / "ppa.json").write_text(
+        json.dumps(
+            [
+                {"dim": "area_um2", "target": 1.0},  # unreachable -> forces a fail
+                {"dim": "power_mw", "target": 5.0},  # not a synthesis dim -> ignored
+            ]
+        )
+    )
+    MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
+    r = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(wd),
+            "--module",
+            "tpu_top",
+            "--top",
+            "tpu_top",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert ss["ppa_targets"] == ["area_um2"]  # power_mw dim filtered out
+    assert env["status"] == "fail"
+    assert ss["violations"] == [
+        {"dim": "area_um2", "target": 1.0, "actual": pytest.approx(65018.219263)}
+    ]
+
+
+def test_finalize_cli_no_ppa_json_is_vacuous_pass(tmp_path):
+    # No sibling ppa.json at all (e.g. a first-ever run) -> [] targets, same as
+    # the old no-flags-passed default; never a crash.
+    module_root = tmp_path / "asic" / "tpu_top"
+    wd = module_root / "Design" / "synthesis" / "runs" / "1"
+    wd.mkdir(parents=True)
+    reports = wd / "reports"
+    reports.mkdir()
+    (reports / "area.rpt").write_text(SAMPLE_AREA)
+    (reports / "qor.rpt").write_text(SAMPLE_QOR)
+    MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
+    r = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(wd),
+            "--module",
+            "tpu_top",
+            "--top",
+            "tpu_top",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "pass" and env["stage_specific"]["ppa_targets"] == []

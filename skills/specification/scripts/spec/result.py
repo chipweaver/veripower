@@ -36,6 +36,14 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
+def _write_ppa_json(workdir: Path, ppa_targets: list) -> None:
+    """The stable PPA-targets sidecar synthesis/power-analysis read directly
+    (spec §4.3) — same atomic temp+rename as result.json (kernel §5.1)."""
+    tmp = workdir / "ppa.json.tmp"
+    tmp.write_text(json.dumps(ppa_targets, indent=2) + "\n")
+    tmp.replace(workdir / "ppa.json")
+
+
 def compute_spec_gate(workdir: Path, waived: list) -> dict:
     """Re-derive the Step-7 gate verdict in-process from the on-disk spec-review.json
     (already schema-gated when Step 7 wrote it -> call the pure fold, not the CLI),
@@ -58,6 +66,7 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
         ("spec-review.json", "spec-review"),
         (f"constraints/{top}.sdc", "sdc"),
         (f"constraints/{top}.sgdc", "sgdc"),
+        ("ppa.json", "ppa"),
     ]
     child_docs = [
         (c["doc"], "child-design") for c in manifest.get("children", []) if c.get("doc")
@@ -112,6 +121,7 @@ def build_result(workdir, module, ppa_targets, waived, status) -> int:
         return 0
 
     if status == "pass":
+        _write_ppa_json(workdir, ppa_targets)
         ss = {"top_module": top, "ppa_targets": ppa_targets, "spec_gate": spec_gate}
     else:
         ss = {

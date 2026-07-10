@@ -481,9 +481,10 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
 
 
 def test_finalize_cli_happy_path(tmp_path):
-    # End-to-end through _cmd_finalize (lazy handler import + --scaffold/--ppa-targets
-    # arg mapping), not just in-process build_result. A handler typo would pass every
-    # other test (which call build_result directly) but fail here.
+    # End-to-end through _cmd_finalize (lazy handler import + --scaffold arg mapping
+    # + the ppa.json sidecar read), not just in-process build_result. A handler typo
+    # would pass every other test (which call build_result directly) but fail here.
+    # No sibling Design/specification/ppa.json here -> [] targets, vacuous pass.
     wd, plan = _make_workdir(
         tmp_path,
         _SCEN[:1],
@@ -502,8 +503,6 @@ def test_finalize_cli_happy_path(tmp_path):
             "tpu_top",
             "--scaffold",
             str(plan),
-            "--ppa-targets",
-            "[]",
         ],
         capture_output=True,
         text=True,
@@ -515,6 +514,63 @@ def test_finalize_cli_happy_path(tmp_path):
         "pass",
         "tpu_top",
     )
+
+
+# ── PPA targets read from the sibling Design/specification/ppa.json sidecar ──
+def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
+    # No --ppa-targets flag exists anymore: finalize reads the power_mw gate
+    # straight from asic/<module>/Design/specification/ppa.json, the module root
+    # being workdir's parents[3] (.../Verification/power-analysis/runs/<N>), same
+    # fixed-depth convention as timing.result.parse_clock's SDC lookup.
+    module_root = tmp_path / "asic" / "tpu_top"
+    wd, plan = _make_workdir(
+        module_root / "Verification" / "power-analysis" / "runs",
+        _SCEN[:1],
+        sizes={"S1": 2000},
+        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+    )
+    spec_dir = module_root / "Design" / "specification"
+    spec_dir.mkdir(parents=True)
+    (spec_dir / "ppa.json").write_text(
+        _json.dumps(
+            [
+                {
+                    "dim": "power_mw",
+                    "target": 0.1,
+                    "scenario_id": "S1",
+                },  # unreachable -> forces a fail
+                {"dim": "area_um2", "target": 999.0},  # not power's dim -> ignored
+            ]
+        )
+    )
+    MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
+    r = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(wd),
+            "--module",
+            "tpu_top",
+            "--scaffold",
+            str(plan),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    env = _json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert env["status"] == "fail" and ss["failure_kind"] == "ppa"
+    assert ss["violations"] == [
+        {
+            "dim": "power_mw",
+            "target": 0.1,
+            "actual": pytest.approx(0.42),
+            "scenario_id": "S1",
+        }
+    ]
 
 
 # ── Task 4: artifacts[] enumeration ───────────────────────────────────────────

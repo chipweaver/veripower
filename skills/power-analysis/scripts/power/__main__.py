@@ -15,6 +15,7 @@ imports; only this thin dispatcher defers.)
 """
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -27,6 +28,19 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def _read_ppa_targets(workdir, dims: set[str]) -> list:
+    """PPA targets from the sibling asic/<module>/Design/specification/ppa.json
+    sidecar (spec §4.3) — filtered to `dims` — replacing the old injected
+    --ppa-targets CLI arg (power-analysis binds to this file as its acceptance
+    standard). `workdir` is .../Verification/power-analysis/runs/<N>; parents[3]
+    is the module root, same fixed-depth convention as
+    timing.result.parse_clock's Design/synthesis/out lookup."""
+    p = Path(workdir).parents[3] / "Design" / "specification" / "ppa.json"
+    if not p.is_file():
+        return []
+    return [t for t in json.loads(p.read_text()) if t.get("dim") in dims]
+
+
 def _cmd_bootstrap(a: argparse.Namespace) -> int:
     from power import bootstrap
 
@@ -36,7 +50,8 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from power import result
 
-    return result.finalize(a.workdir, a.module, a.scaffold, a.ppa_targets)
+    targets = _read_ppa_targets(a.workdir, {"power_mw"})
+    return result.finalize(a.workdir, a.module, a.scaffold, json.dumps(targets))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -64,12 +79,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--scaffold",
         required=True,
         help="scaffold-specification.json (power_scenarios[])",
-    )
-    sp.add_argument(
-        "--ppa-targets",
-        default="[]",
-        dest="ppa_targets",
-        help="ppa_targets JSON array (power_mw dim), verbatim from the prompt",
     )
     sp.set_defaults(func=_cmd_finalize)
 

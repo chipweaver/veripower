@@ -99,6 +99,8 @@ def test_build_result_pass_lean_shape(tmp_path):
         "waived": [],
     }
     assert "notes" not in ss and "fail_reason" not in ss  # lean shape
+    assert json.loads((wd / "ppa.json").read_text()) == []  # sidecar written on pass
+    assert {"path": "ppa.json", "kind": "ppa"} in env["artifacts"]
 
 
 def test_build_result_passes_ppa_targets_through(tmp_path):
@@ -114,6 +116,8 @@ def test_build_result_passes_ppa_targets_through(tmp_path):
     assert (
         ss["ppa_targets"] == targets
     )  # verbatim — orchestrate._ppa_targets reads this
+    # ppa.json is the stable sidecar synthesis/power-analysis read directly (spec §4.3)
+    assert json.loads((wd / "ppa.json").read_text()) == targets
 
 
 def test_build_result_reject_status_writes_fail(tmp_path):
@@ -189,10 +193,12 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "tpu_top.md",
         "constraints/tpu_top.sdc",
         "constraints/tpu_top.sgdc",
+        "ppa.json",
     }
     assert "brainstorm.md" not in paths and "result.json" not in paths
     assert "notes" not in ss
     assert env["produced_at"].endswith("Z")
+    assert json.loads((wd / "ppa.json").read_text()) == targets
     _validate_envelope(env)
 
 
