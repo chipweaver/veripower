@@ -36,17 +36,27 @@ def test_envelope_status_enum_is_pass_fail():
 
 
 def test_simulation_triage_analysis_state_enum_is_canonical():
-    """simulation-triage analysis.schema.json's analysis_state discriminator is complete | skipped only."""
+    """simulation-triage's analysis_state discriminator is complete | skipped only.
+
+    Task C7 folded the standalone analysis.schema.json into
+    result.schema.json's stage_specific subschema — the invariant lives
+    there now (same canonical enum)."""
     schema_path = (
         PLUGIN_ROOT
         / "skills"
         / "simulation-triage"
         / "references"
-        / "analysis.schema.json"
+        / "result.schema.json"
     )
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    assert schema["properties"]["analysis_state"]["enum"] == ["complete", "skipped"], (
-        f"analysis.schema.json analysis_state.enum drifted: {schema['properties']['analysis_state']['enum']}. "
+    stage_specific = next(
+        sub["properties"]["stage_specific"]
+        for sub in schema["allOf"]
+        if "stage_specific" in sub.get("properties", {})
+    )
+    enum = stage_specific["properties"]["analysis_state"]["enum"]
+    assert enum == ["complete", "skipped"], (
+        f"result.schema.json stage_specific.analysis_state.enum drifted: {enum}. "
         "Reintroducing 'blocked' here would re-enable skill-decided BLOCKED — the 34fc144 regression class. "
         "31817a4 added this discriminator specifically to lock the invariant in schema form."
     )

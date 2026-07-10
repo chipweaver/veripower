@@ -16,7 +16,7 @@ Reasoning aid for landing the top-level `root_cause` (the routing field). These 
 
 ## `fault_type` and `root_cause_direction` detailed classification
 
-Reasoning aid for classifying each case; surfaced as free-text `fault_type` values inside `advisory.findings[]` (schema: `analysis.schema.json`) — not a separate enum of their own.
+Reasoning aid for classifying each case; surfaced as free-text `fault_type` values inside `advisory.findings[]` (schema: `result.schema.json`, under `stage_specific`) — not a separate enum of their own.
 
 | Fault category | `fault_type` | Typical symptom | `root_cause_direction` | How to trace |
 |---|---|---|---|---|
