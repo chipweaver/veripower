@@ -141,3 +141,14 @@ def test_skill_section_refs_resolve() -> None:
                 )
     assert checked, "regex matched no resolvable doc-prefixed §section refs"
     assert not bad, "Dead §section references:\n  " + "\n  ".join(bad)
+
+
+def test_no_skill_reads_result_json_for_top_module():
+    # Targeted: assert the exact read phrase is gone from the two migrated SKILLs.
+    # (A whole-tree "contains both words" check would false-positive specification's
+    # own SKILL, which legitimately documents producing top_module in its result.json.)
+    for name in ("rtl-design", "simulation-plan"):
+        text = (PLUGIN_ROOT / "skills" / name / "SKILL.md").read_text()
+        assert "stage_specific.top_module" not in text, (
+            f"{name}: still reads top_module from result.json (use manifest.module)"
+        )

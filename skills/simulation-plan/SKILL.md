@@ -45,9 +45,9 @@ Your boundary:
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | `specification` envelope — Step 1 gate (fail fast when missing or not `pass`); `stage_specific.top_module` fills the Top field in plan §1 Scope. You do not consume `ppa_targets`. |
+| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | `specification` envelope — Step 1 gate (fail fast when missing or not `pass`). You do not consume `ppa_targets`. |
 | `Design/specification/design.md` | Custom markdown | Module-level design (§1.1–1.6: features / IO / interconnects / timing scenarios / clocks). Per-submodule content lives in each `<child>.md`. |
-| `Design/specification/manifest.json` | Custom JSON (specification child registry) | Child roster — drives per-child `§5` consumption by `simplan derive-plan-data`. |
+| `Design/specification/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; child roster — drives per-child `§5` consumption by `simplan derive-plan-data`. |
 | `Design/specification/<child>.md × N` | Custom markdown | Only `§5 Verification Hints` is consumed (via `simplan derive-plan-data`, tagging `check_hints[]` with `child`). |
 
 When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file (e.g., `failure_phase` / `failing_cases` / `coverage_gaps` / `gaps_not_in_testpoints` / `failures[]` / corresponding log and summary files). The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.

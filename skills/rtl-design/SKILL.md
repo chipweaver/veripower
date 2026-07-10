@@ -81,8 +81,8 @@ Completion Gate.
 
 ### Step 1: Read inputs, select branch, seed if needed
 
-Read `Design/specification/result.json` (envelope + `stage_specific.top_module`) and
-`manifest.json` (the `children[]` dispatch roster: `name` + `doc` + `rtl_modules[]`). On first-run
+Read `Design/specification/result.json` (envelope) and `manifest.json` (`.module` =
+`<top_module>`; the `children[]` dispatch roster: `name` + `doc` + `rtl_modules[]`). On first-run
 the main thread reads nothing else — no `design.md`, no `<child>.md` body, no RTL.
 
 Based on whether `{rework_trigger}` is injected and whether the canonical path
@@ -166,7 +166,7 @@ than dispatched, keep waiting (do not finalize against a partial report set).
 `{"status":"done",...}`; `STATUS: BLOCKED <r>` → `{"status":"blocked","reason":"<r>"}`).
 
 **4.2 Build + topology gate** (`<manifest>` = `Design/specification/manifest.json`; `<top_module>` =
-`result.json.stage_specific.top_module`; `<design>` = `Design/specification/design.md`):
+`manifest.module`; `<design>` = `Design/specification/design.md`):
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py assemble --workdir {workdir} --manifest <manifest> --top <top_module> [--seeded]
