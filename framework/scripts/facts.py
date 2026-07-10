@@ -13,6 +13,8 @@ import os
 import sys
 from pathlib import Path
 
+import jsonschema
+
 sys.path.insert(0, str(Path(__file__).parent))
 import rules  # noqa: E402,F401
 
@@ -107,3 +109,70 @@ def fingerprint_cached(path: Path, module_root: Path) -> str:
         except OSError:
             pass
     return fp
+
+
+# Event log I/O
+
+_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_EVENT_SCHEMA_DIR = _PLUGIN_ROOT / "framework" / "references" / "schemas" / "events"
+
+
+def module_root(module: str) -> Path:
+    return Path("asic") / module
+
+
+def events_path(module: str) -> Path:
+    return module_root(module) / "events.jsonl"
+
+
+def read_events(module: str) -> list[dict]:
+    p = events_path(module)
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue  # tolerate a truncated line
+    return out
+
+
+def _event_schema(etype: str) -> dict:
+    path = _EVENT_SCHEMA_DIR / f"{etype}.schema.json"
+    if not path.exists():
+        sys.exit(f"append_event: no schema for event type {etype!r}")
+    return json.loads(path.read_text())
+
+
+def append_event(module: str, event: dict, ts: str) -> None:
+    etype = event.get("type")
+    record = {"ts": ts, **event}  # ts first
+    try:
+        jsonschema.validate(record, _event_schema(etype))
+    except jsonschema.ValidationError as e:
+        sys.exit(f"append_event: {etype} schema violation: {e.message}")
+    p = events_path(module)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("a") as fh:
+        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def runs_of(events: list[dict], rule: str) -> int:
+    return sum(1 for e in events if e["type"] == "dispatch" and e["rule"] == rule)
+
+
+def in_flight(events: list[dict]) -> list[dict]:
+    dispatched = [(e["rule"], e["run"]) for e in events if e["type"] == "dispatch"]
+    reaped = {(e["rule"], e["run"]) for e in events if e["type"] == "outcome"}
+    return [{"rule": r, "run": n} for (r, n) in dispatched if (r, n) not in reaped]
+
+
+def latest_outcome(events: list[dict], rule: str) -> dict | None:
+    for e in reversed(events):
+        if e["type"] == "outcome" and e["rule"] == rule:
+            return e
+    return None
