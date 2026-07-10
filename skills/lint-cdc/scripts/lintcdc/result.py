@@ -60,6 +60,45 @@ def _write(workdir: Path, env: dict) -> None:
     )
 
 
+# SpyGlass CDC/lint rule family -> input-provenance category (U4). Constraint/setup rules
+# implicate the SGDC seed (specification); crossing rules implicate the RTL (rtl-design).
+# Prefixes confirmed against SpyGlass_vL-2016.06: Ac_unsync01 (F1 fixture, cdc_smoke
+# a->q crossing, policy clock-reset, goal cdc/cdc_verify_struct) -> rtl_cdc; Clock_info03a
+# + Setup_port01 (undeclared-clock experiment: clk2 used in RTL but never `clock -name`d
+# in the SGDC, policy clock-reset, goal cdc/cdc_setup_check) -> sgdc_seed.
+_RULE_CATEGORY = {
+    "Clock_": "sgdc_seed",
+    "Reset_": "sgdc_seed",
+    "SGDC_": "sgdc_seed",
+    "Ac_unclocked": "sgdc_seed",
+    "Setup_": "sgdc_seed",
+    "Ac_unsync": "rtl_cdc",
+    "Ac_conv": "rtl_cdc",
+    "Ac_glitch": "rtl_cdc",
+    "Ac_sync": "rtl_cdc",
+    "Reconvergence": "rtl_cdc",
+}
+
+# Coarse failure_kind bucket for a given failures[0].category (Step 1's enum has 4
+# values vs. category's 5: sgdc_seed and constraint are both specification's fault,
+# so both fold into "constraint").
+_FAILURE_KIND_OF_CATEGORY = {
+    "sgdc_seed": "constraint",
+    "constraint": "constraint",
+    "rtl_cdc": "cdc",
+    "lint_rtl": "lint",
+    "tooling": "tooling",
+}
+
+
+def _categorize(violations: list[dict]) -> str:
+    for v in violations:
+        for prefix, cat in _RULE_CATEGORY.items():
+            if v.get("rule", "").startswith(prefix):
+                return cat
+    return "lint_rtl"  # default: an RTL lint issue
+
+
 def _load_violations(path: Path):
     """Return the collect_report.py JSON, or None if absent (write-fresh-or-nothing unlinks
     it on a parser fail, so absence == that kind did not produce a clean report)."""
@@ -116,6 +155,15 @@ def run(workdir, module, *, top) -> int:
                 ss[key] = doc["counts"]
         if violations:
             ss["violations"] = violations
+            cat = _categorize(violations)
+            ss["failure_kind"] = _FAILURE_KIND_OF_CATEGORY[cat]
+            ss["failures"] = [
+                {
+                    "category": cat,
+                    "rule": violations[0]["rule"],
+                    "error_summary": ss["fail_reason"],
+                }
+            ]
         _write(
             workdir,
             _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
