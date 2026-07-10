@@ -38,7 +38,6 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 | `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | envelope (upstream status confirmation; Step 1 pre-check). |
 | `Design/rtl-design/filelist.txt` | text | RTL file list. |
 | `Design/rtl-design/README.md` | Custom markdown | Constraint-annotation note (SGDC section: `sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`). |
-| `Design/specification/design.md` | markdown | Consulted only on a clock-period disagreement — §1.6 is the authoritative period (Decision Rules). |
 | `Design/specification/constraints/<TOP>.sgdc` | SGDC | Cold-bootstrap seed — copied to `{workdir}/scripts/constraints.sgdc` on first deployment; unused when the warm seed below exists (`makefile-bootstrap.md`). |
 | `Design/lint-cdc/scripts/constraints.sgdc` | SGDC | Warm-bootstrap seed (preferred) — the previous run's depth-annotated SGDC; seeding it spares a full annotation re-convergence. |
 
@@ -141,7 +140,7 @@ Every field in result.json is script-derived — the per-error `reason` comes fr
 
 - Only `severity=error` items trigger `fail`; warning / info are treated as `pass`.
 - It is preferable to run `make lint` first to converge `set_case_analysis` (removing test-control-signal false positives) before `make cdc`, or to run `make all` once (a single session sharing `elaborate`). The `make cdc` tool layer can run standalone (`cdc_setup` goals carry their own `elaborate`), but until the SGDC is stable CDC will report residual false positives.
-- If the clock period and the SDC disagree, `Design/specification/design.md §1.6` clock frequency table is authoritative — consistency issues are a `specification` rework, not fixed in this stage.
+- Clock and IO facts arrive via the SGDC seed (`Design/specification/constraints/*.sgdc`, produced by `derive-constraints`), which self-checks SDC≡§1.6 and SGDC≡SDC by construction (F1) — this stage does not re-check design.md-vs-SDC consistency. The warm `constraints.sgdc`-vs-SDC runtime sanity check (`references/makefile-bootstrap.md`) may still fire but is non-load-bearing.
 
 ## Red Flags
 
