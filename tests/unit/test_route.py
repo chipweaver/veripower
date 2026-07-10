@@ -19,18 +19,46 @@ def test_frontend_signoff_terminal():
     assert r["reason_hint"] == "x"
 
 
+def test_fixed_target_simulation_plan_only():
+    # lint-cdc is NO LONGER fixed-target (moved to input-provenance).
+    r = route.route("simulation-plan", fail_reason="v")
+    assert r["decision"] == "specification"
+    assert r["rule"] == "fixed:simulation-plan->specification"
+
+
 @pytest.mark.parametrize(
-    "stage,target",
+    "category,target",
     [
-        ("lint-cdc", "rtl-design"),
-        ("simulation-plan", "specification"),
+        ("sgdc_seed", "specification"),
+        ("constraint", "specification"),
+        ("rtl_cdc", "rtl-design"),
+        ("lint_rtl", "rtl-design"),
     ],
 )
-def test_fixed_target(stage, target):
-    r = route.route(stage, fail_reason="v")
+def test_lint_cdc_input_provenance(category, target):
+    r = route.route(
+        "lint-cdc",
+        failure_kind="tooling",
+        failures=[{"category": category, "error_summary": "e"}],
+    )
     assert r["decision"] == target
-    assert r["rule"] == f"fixed:{stage}->{target}"
-    assert r["reason_hint"] == "v"
+    assert r["rule"] == f"lint_category:{category}->{target}"
+
+
+def test_lint_cdc_tooling_escalates():
+    r = route.route(
+        "lint-cdc",
+        failure_kind="tooling",
+        failures=[{"category": "tooling", "error_summary": "e"}],
+    )
+    assert r["decision"] == ESCALATE
+
+
+def test_lint_cdc_unknown_category_escalates():
+    r = route.route(
+        "lint-cdc", failure_kind="tooling", failures=[{"category": "mystery"}]
+    )
+    assert r["decision"] == ESCALATE and r["rule"] == "unrouted:unknown_category"
 
 
 def test_simulation_needs_root_cause():

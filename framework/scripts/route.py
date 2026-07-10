@@ -3,11 +3,13 @@
 
 Pure evaluator: maps a stage failure to a rework target, or to ESCALATE /
 NEED_INPUT. Holds no state; the only I/O is optionally reading a result.json
-passed by path. Sibling to state.py (which owns state and stays routing-free).
-The Orchestrator (design-flow) gathers inputs, calls this, and acts on `decision`.
-
-This module is the SINGLE home for the static failure->target maps; no other
-file (SKILL.md / ARCHITECTURE.md / schemas) may restate them.
+passed by path. Most failures route on the closed-enum `failed_rule` /
+`failure_kind`; lint-cdc instead routes by input-provenance — `failures[0]
+.category` names which upstream input produced the failure (the SGDC seed vs.
+the RTL), so a CDC failure can route to `specification` instead of always
+blaming `rtl-design` (U4). Composed unchanged inside schedule.py; stays
+stateless and remains the SINGLE home for the static failure->target maps —
+no other file (SKILL.md / ARCHITECTURE.md / schemas) may restate them.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from pathlib import Path
 ESCALATE = "ESCALATE"
 NEED_INPUT = "NEED_INPUT"
 
-# ── Routing policy: three pure enum->target maps ───────────────────
+# ── Routing policy: four pure enum->target maps ────────────────────
 
 # power-analysis tooling failures, keyed by failures[0].category.
 PA_CATEGORY: dict[str, str] = {
@@ -35,8 +37,18 @@ PA_CATEGORY: dict[str, str] = {
 
 # Stages whose failure always routes to one fixed ancestor.
 FIXED_TARGET: dict[str, str] = {
-    "lint-cdc": "rtl-design",
     "simulation-plan": "specification",
+}
+
+# lint-cdc failures keyed by failures[0].category -> the input's producer (U4).
+# sgdc_seed/constraint come from specification's derive-constraints; rtl_cdc/lint_rtl
+# come from rtl-design's RTL. Only meaningful once F1 makes multi-clock CDC run.
+LINT_CATEGORY: dict[str, str] = {
+    "sgdc_seed": "specification",
+    "constraint": "specification",
+    "rtl_cdc": "rtl-design",
+    "lint_rtl": "rtl-design",
+    "tooling": ESCALATE,
 }
 
 # simulation-triage ANALYSIS.root_cause -> rework target.
@@ -63,7 +75,7 @@ def _decision(
 
 
 def route(
-    failed_stage: str,
+    failed_rule: str,
     *,
     failure_kind: str | None = None,
     failures: list[dict] | None = None,
@@ -79,18 +91,33 @@ def route(
     KeyError, never a silent drop). Every routing key is a closed enum.
     """
     # 1. Terminal stage — no DAG-internal target.
-    if failed_stage == "frontend-signoff":
+    if failed_rule == "frontend-signoff":
         return _decision(ESCALATE, "terminal_frontend_signoff", reason_hint=fail_reason)
 
-    # 2. Fixed-target stages.
-    if failed_stage in FIXED_TARGET:
-        target = FIXED_TARGET[failed_stage]
+    # 2. lint-cdc — input-provenance (U4). Category names which input class
+    # failed; route to that input's producer. Unroutable/tooling -> escalate.
+    if failed_rule == "lint-cdc":
+        if not failures:
+            return _decision(ESCALATE, "lint_no_category", reason_hint=fail_reason)
+        cat = failures[0].get("category")
+        if cat not in LINT_CATEGORY:
+            return _decision(
+                ESCALATE, "unrouted:unknown_category", reason_hint=fail_reason
+            )
+        target = LINT_CATEGORY[cat]
         return _decision(
-            target, f"fixed:{failed_stage}->{target}", reason_hint=fail_reason
+            target, f"lint_category:{cat}->{target}", reason_hint=fail_reason
         )
 
-    # 3. simulation — routed on triage ANALYSIS (landed analysis.json, supplied as args).
-    if failed_stage == "simulation":
+    # 3. Fixed-target stages.
+    if failed_rule in FIXED_TARGET:
+        target = FIXED_TARGET[failed_rule]
+        return _decision(
+            target, f"fixed:{failed_rule}->{target}", reason_hint=fail_reason
+        )
+
+    # 4. simulation — routed on triage ANALYSIS (landed analysis.json, supplied as args).
+    if failed_rule == "simulation":
         if analysis_state == "skipped":
             return _decision(ESCALATE, "triage_skipped")
         if root_cause is None or analysis_state is None:
@@ -104,15 +131,15 @@ def route(
         target = TRIAGE_ROOT_CAUSE[root_cause]
         return _decision(target, f"triage_root_cause:{root_cause}->{target}")
 
-    # 4. PPA-class stages — failure_kind dispatch.
-    if failed_stage in _PPA_STAGES:
+    # 5. PPA-class stages — failure_kind dispatch.
+    if failed_rule in _PPA_STAGES:
         if failure_kind == "infra":
             return _decision(ESCALATE, "failure_kind_infra", reason_hint=fail_reason)
         if failure_kind == "tooling":
-            # Gate on the closed-enum failed_stage, NOT on failures[] presence:
+            # Gate on the closed-enum failed_rule, NOT on failures[] presence:
             # synthesis/timing schemas allow additionalProperties, so a stray
             # failures[] there would pass validation and mis-route.
-            if failed_stage == "power-analysis" and failures:
+            if failed_rule == "power-analysis" and failures:
                 cat = failures[0]["category"]
                 hint = failures[0].get("error_summary")
                 if cat not in PA_CATEGORY:
@@ -127,7 +154,7 @@ def route(
         if failure_kind == "ppa":
             return _decision("rtl-design", "ppa->rtl-design", reason_hint=fail_reason)
 
-    # Defensive: unmodeled (failed_stage, failure_kind) — escalate, never silent.
+    # Defensive: unmodeled (failed_rule, failure_kind) — escalate, never silent.
     return _decision(ESCALATE, "unrouted")
 
 
@@ -144,7 +171,7 @@ def main() -> None:
     p = argparse.ArgumentParser(
         prog="route.py", description="VeriPower deterministic rework-router"
     )
-    p.add_argument("--failed-stage", required=True)
+    p.add_argument("--failed-rule", required=True)
     p.add_argument(
         "--result-json",
         default=None,
@@ -175,7 +202,7 @@ def main() -> None:
     if args.result_json:
         kwargs.update(_inputs_from_result_json(args.result_json))
 
-    print(json.dumps(route(args.failed_stage, **kwargs), indent=2, ensure_ascii=False))
+    print(json.dumps(route(args.failed_rule, **kwargs), indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
