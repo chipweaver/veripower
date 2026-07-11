@@ -265,3 +265,57 @@ def test_finalize_cli_happy_path(tmp_path):
         "pass",
         "tpu_top",
     )
+
+
+def test_finalize_records_input_digest_on_pass(tmp_path):
+    from rtl import classify  # noqa: E402
+
+    root = tmp_path / "asic" / "m"
+    wd = root / "Design" / "rtl-design" / "runs" / "1"
+    wd.mkdir(parents=True)
+    spec_dir = root / "Design" / "specification"
+    spec_dir.mkdir(parents=True)
+    (spec_dir / "design.md").write_text("D", encoding="utf-8")
+    (spec_dir / "manifest.json").write_text('{"module":"m"}', encoding="utf-8")
+    # reuse this file's existing PASS build_result fixture (_workdir) to populate wd
+    # (fresh_reports.json / .child_reports.json / semantic-review.json, etc.), then:
+    top, children = "m", ("mac",)
+    for c in children:
+        (wd / f"{c}.v").write_text(f"module {c}; endmodule\n")
+    (wd / f"{top}.v").write_text(f"module {top}; endmodule\n")
+    (wd / "filelist.txt").write_text(
+        "\n".join(f"{c}.v" for c in children) + f"\n{top}.v\n"
+    )
+    (wd / "README.md").write_text(f"**Top module**: {top}\n")
+
+    def _ann():
+        return {"sgdc": {}, "sdc": {}}
+
+    ledger = {
+        c: {"files": [f"{c}.v"], "annotations": _ann(), "incdirs": []} for c in children
+    }
+    ledger[top] = {"files": [f"{top}.v"], "annotations": _ann(), "incdirs": []}
+    (wd / ".child_reports.json").write_text(json.dumps(ledger))
+    (wd / "fresh_reports.json").write_text(
+        json.dumps({n: {"status": "done"} for n in ledger})
+    )
+    (wd / "semantic-review.json").write_text(json.dumps(_SEM_CLEAR))
+    # manifest.json doubles as a spec input (hashed by input_digest) and the
+    # --manifest the exit gate reads, so it must carry real children (module:"m" kept
+    # consistent with the stub written above).
+    manifest = spec_dir / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "module": top,
+                "children": [
+                    {"name": c, "doc": f"{c}.md", "rtl_modules": [c]} for c in children
+                ]
+                + [{"name": "topc", "doc": "topc.md", "rtl_modules": [top]}],
+            }
+        )
+    )
+
+    assert ve.build_result(wd, module="m", top=top, manifest=manifest) == 0
+    rj = json.loads((wd / "result.json").read_text())
+    assert rj["stage_specific"]["input_digest"] == classify.input_digest(spec_dir)
