@@ -18,8 +18,10 @@ kernel-issued run directory keyed by its own triage dispatch count, unrelated to
 
 The landed `result.json`'s `stage_specific` carries two tiers:
 - **Routing tier** — `analysis_state` + `root_cause` + the gating `confidence`; the hard,
-  schema-validated contract the kernel's reap-time triage branch and `route.py` consume to
-  mint a `diagnosis` event or escalate.
+  schema-validated contract the kernel's reap-time triage branch consumes (`root_cause` via
+  the `route.TRIAGE_ROOT_CAUSE` map) to mint a `diagnosis` event, recording `confidence`
+  as-is — the disposition reliability gate (`schedule._reliable`, §3.4) then auto-routes or
+  escalates on it.
 - **Advisory tier** (`advisory.{level, fix_direction, findings[], waveform, experiment}`) —
   persisted evidence forwarded to the rework target as `directive`; informs the fix,
   does not gate routing.
@@ -89,7 +91,7 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
   - The self-read inputs show no fail case (e.g., a mistakenly-dispatched scenario where regress / smoke is fully pass or coverage already 100%) → `skipped_reason: "no fail case to analyze"`.
 - **Complete classification** (`analysis_state: "complete"`): per `failure_phase`, take cases from one of three input shapes:
   - `regress` / `smoke` → cases = `failing_cases[]` (both run UVM test cases; `failing_cases[]` carries `error_message` / `log_snippet` per failing case; cross-reference the full per-case log under `Verification/simulation/runs/<sim_run>/` when the envelope's snippet isn't enough).
-  - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail (from `runs/<sim_run>/`) as a single synthetic case and describe it directly as the landed `root_cause` — a single synthetic case emits **no** `advisory.findings[]`.
+  - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail (from `runs/<sim_run>/`) as a single synthetic case. Land the `root_cause` from it directly, AND emit it as **one** `advisory.findings[]` entry (`fault_type` = the compile/prerequisite failure class, `anchor` = the compile-error location from the log tail, else the `fail_reason`; `cases` = the synthetic case) — like the coverage/conformance branches below, one case is one finding, so a high-confidence verdict always carries a concrete locus (schema-enforced: `high` ⇒ non-empty `findings[]` each with an `anchor`).
   - `coverage` → no `failing_cases[]` (regress already passed; only coverage is below target). cases = each gap bin in `coverage_gaps[]` (split by `gaps_in_testpoints` / `gaps_not_in_testpoints`); each gap bin is one case and becomes one `advisory.findings[]` entry (a lone gap bin is a single case — as in the degenerate path above).
   - `conformance` → no `failing_cases[]` and no log tail (compile + smoke both passed). cases = each gating finding in `conformance_findings[]`; each finding is one case. Its `category` is the reasoning key for Step 2 — there is no log to anchor on.
 
@@ -119,7 +121,7 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 ### Step 4: Land confidence and `root_cause`
 
 - **`confidence: "high"`** — either L1 alone (optionally corroborated by its FSDB waveform query) gave a single, non-conflicting explanation anchored to clear evidence, or L2's controlled experiment directly confirmed the fault. This is the only case that auto-routes.
-- **`confidence: "medium"` / `"low"`** — competing hypotheses remain, or the fault couldn't be localized/pinned down, even after L2. This escalates to the operator via `route.py`'s confidence gate (`triage_low_confidence`) — do not try to force a `high` verdict to avoid the escalation.
+- **`confidence: "medium"` / `"low"`** — competing hypotheses remain, or the fault couldn't be localized/pinned down, even after L2. The disposition reliability gate (`schedule._reliable`, §3.4) escalates these to the operator rather than auto-routing — do not try to force a `high` verdict to avoid the escalation.
 - `root_cause` was already landed at the end of Step 2 (Step 3's L2 evidence may sharpen it, e.g. confirm which of two competing directions is real, but does not change the attribution rule itself).
 
 ### Step 5: Land the result

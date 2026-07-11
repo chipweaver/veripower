@@ -121,9 +121,10 @@ suspect — not on every case, and never as a substitute for that evidence.
 ## Confidence (gating)
 
 `confidence` is a **gating** routing field on the landed `result.json`'s `stage_specific`
-(schema: `result.schema.json`; consumed by `route.py`'s confidence gate) — not an advisory qualifier.
-Only `high` auto-routes; `medium` / `low` escalate to the operator (see `route.py`)
-instead. Land it per this operable definition:
+(schema: `result.schema.json`) — not an advisory qualifier. The kernel's reap records it
+as-is on the `diagnosis` event (P4); the disposition **reliability gate** (`schedule._reliable`,
+§3.4) then decides: only `high` auto-routes to the fix_owner; `medium` / `low` escalate to the
+operator instead. Land it per this operable definition:
 
 - `high` — the verdict is authoritative. Reachable two ways:
   - **L1 waveform corroborates**: a single, non-conflicting explanation anchored to clear
