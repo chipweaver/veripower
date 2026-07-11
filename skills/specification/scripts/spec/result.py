@@ -3,6 +3,7 @@ import json
 import sys
 from pathlib import Path
 
+from spec.classify import input_digest
 from spec.constraints import derive_constraints
 from spec.review import gate_verdict
 
@@ -42,6 +43,15 @@ def _write_ppa_json(workdir: Path, ppa_targets: list) -> None:
     tmp = workdir / "ppa.json.tmp"
     tmp.write_text(json.dumps(ppa_targets, indent=2) + "\n")
     tmp.replace(workdir / "ppa.json")
+
+
+def _record_input_digest(ss: dict, workdir: Path) -> None:
+    """Record the declared-input digest for the next run's classify-delta freeze
+    check; silently skipped if the input isn't readable (safe no-freeze fallback)."""
+    try:
+        ss["input_digest"] = input_digest(workdir.parents[3] / "brainstorm.md")
+    except (OSError, IndexError):
+        pass
 
 
 def compute_spec_gate(workdir: Path, waived: list) -> dict:
@@ -123,6 +133,7 @@ def build_result(workdir, module, ppa_targets, waived, status) -> int:
     if status == "pass":
         _write_ppa_json(workdir, ppa_targets)
         ss = {"top_module": top, "ppa_targets": ppa_targets, "spec_gate": spec_gate}
+        _record_input_digest(ss, workdir)
     else:
         ss = {
             "top_module": top,

@@ -313,3 +313,38 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
         text=True,
     )
     assert r.returncode == 2  # argparse: missing --module/--status
+
+
+def test_finalize_records_input_digest_on_pass(tmp_path, monkeypatch):
+    # workdir = <root>/Design/specification/runs/1 ; brainstorm at <root>/brainstorm.md
+    from spec import classify  # noqa: E402
+
+    root = tmp_path / "asic" / "m"
+    wd = root / "Design" / "specification" / "runs" / "1"
+    wd.mkdir(parents=True)
+    brainstorm = root / "brainstorm.md"
+    brainstorm.write_text("b-content", encoding="utf-8")
+    design = _design(
+        "| i_clk | input | 1 | i_clk | clk | - | clock | - | - |\n",
+        "| i_clk | 100 | 10.0 | primary | no | primary clock |\n",
+    )
+    (wd / "design.md").write_text(design)
+    (wd / "manifest.json").write_text(
+        json.dumps(
+            {
+                "module": "tpu_top",
+                "children": [{"name": "mac", "doc": "mac.md", "rtl_modules": ["mac"]}],
+            }
+        )
+    )
+    (wd / "coverage.json").write_text(json.dumps({"status": "pass"}))
+    (wd / "mac.md").write_text("# child\n")
+    (wd / "spec-review.json").write_text(json.dumps(_CLEAR_REVIEW))
+    assert (
+        result.build_result(
+            wd, module="tpu_top", ppa_targets=[], waived=[], status="pass"
+        )
+        == 0
+    )
+    rj = json.loads((wd / "result.json").read_text())
+    assert rj["stage_specific"]["input_digest"] == classify.input_digest(brainstorm)
