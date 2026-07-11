@@ -60,3 +60,10 @@ def test_failed_baseline_is_proceed(tmp_path):
 def test_none_canonical_result_is_first_run(tmp_path):
     sd = _spec_dir(tmp_path)
     assert classify.classify_delta(None, sd)["verdict"] == "first-run"
+
+
+def test_non_dict_canonical_result_is_first_run(tmp_path):
+    sd = _spec_dir(tmp_path)
+    p = tmp_path / "result.json"
+    p.write_text("[1, 2, 3]", encoding="utf-8")
+    assert classify.classify_delta(p, sd)["verdict"] == "first-run"

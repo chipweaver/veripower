@@ -268,7 +268,7 @@ def test_finalize_cli_happy_path(tmp_path):
 
 
 def test_finalize_records_input_digest_on_pass(tmp_path):
-    from rtl import classify  # noqa: E402
+    from rtl import classify
 
     root = tmp_path / "asic" / "m"
     wd = root / "Design" / "rtl-design" / "runs" / "1"
@@ -299,7 +299,7 @@ def test_finalize_records_input_digest_on_pass(tmp_path):
     (wd / "fresh_reports.json").write_text(
         json.dumps({n: {"status": "done"} for n in ledger})
     )
-    (wd / "semantic-review.json").write_text(json.dumps(_SEM_CLEAR))
+    (wd / "semantic-review.json").write_text(json.dumps({**_SEM_CLEAR, "module": top}))
     # manifest.json doubles as a spec input (hashed by input_digest) and the
     # --manifest the exit gate reads, so it must carry real children (module:"m" kept
     # consistent with the stub written above).

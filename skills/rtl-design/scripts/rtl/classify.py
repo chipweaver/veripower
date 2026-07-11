@@ -40,10 +40,14 @@ def classify_delta(canonical_result, spec_dir) -> dict:
         rj = json.loads(cr.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {"verdict": "first-run", "reason": "canonical result unreadable"}
+    if not isinstance(rj, dict):
+        return {"verdict": "first-run", "reason": "canonical result unreadable"}
     ss = rj.get("stage_specific", {})
+    if not isinstance(ss, dict):
+        ss = {}
     status, recorded = rj.get("status"), ss.get("input_digest")
     if recorded is None:
-        return {"verdict": "proceed", "reason": "baseline has no input_digest (legacy)"}
+        return {"verdict": "proceed", "reason": "baseline has no recorded input_digest"}
     if recorded != current:
         return {"verdict": "proceed", "reason": "specification changed since baseline"}
     if status != "pass":

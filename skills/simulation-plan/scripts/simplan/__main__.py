@@ -6,7 +6,7 @@ Verbs (one stage = one tool; see skills/simulation-plan/SKILL.md for usage):
   materialize-scaffold  fill scaffold signals/clock/reset/inline (writes scaffold; exit 0; fail-loud)
   check-scaffold        structural+semantic+coverage gate        (exit 0 OK / 1 fix-message)
   validate-review       plan-review.json schema + gate           (stdout: gate JSON; exit 0/1)
-  classify-delta        freeze-branch selector                   (stdout: verdict JSON)
+  classify-delta        freeze-branch selector                   (stdout: verdict JSON; exit 0/1)
   seed                  carry prior canonical plan forward (no-clobber) (stdout: JSON; exit 0)
   finalize              assemble the lean result.json            (exit 0 written / 2 BLOCKED)
 

@@ -6,7 +6,7 @@ Verbs (one stage = one tool; see skills/specification/SKILL.md for usage):
   check-coverage      manifest-driven coverage gate         (writes coverage.json; exit 0/1)
   derive-constraints  generate SDC/SGDC from §1.6 + §1.4.1  (stdout: JSON; fail-loud)
   validate-review     spec-review.json schema + gate        (stdout: gate JSON; exit 0/1)
-  classify-delta      freeze-branch selector                (stdout: verdict JSON)
+  classify-delta      freeze-branch selector                (stdout: verdict JSON; exit 0/1)
   seed                carry prior canonical artifacts fwd   (stdout: seeded JSON)
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 

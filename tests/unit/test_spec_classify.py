@@ -64,3 +64,10 @@ def test_legacy_baseline_without_digest_is_proceed(tmp_path):
 def test_none_canonical_result_is_first_run(tmp_path):
     b = _brainstorm(tmp_path)
     assert classify.classify_delta(None, b)["verdict"] == "first-run"
+
+
+def test_non_dict_canonical_result_is_first_run(tmp_path):
+    b = _brainstorm(tmp_path)
+    p = tmp_path / "result.json"
+    p.write_text("[1, 2, 3]", encoding="utf-8")
+    assert classify.classify_delta(p, b)["verdict"] == "first-run"

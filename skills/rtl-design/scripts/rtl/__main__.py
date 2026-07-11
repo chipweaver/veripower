@@ -7,7 +7,7 @@ Verbs (one stage = one tool; see skills/rtl-design/SKILL.md for usage):
   assemble          build ledger/filelist/README + post exit-gate       (stdout: verdict; exit 0/1)
   check-conformance spec<->RTL presence gate                            (stdout: verdict; exit 0/1)
   validate-review   semantic-review.json schema + gate                  (stdout: gate JSON; exit 0/1)
-  classify-delta    freeze-branch selector                              (stdout: verdict JSON)
+  classify-delta    freeze-branch selector                              (stdout: verdict JSON; exit 0/1)
   finalize          assemble the lean result.json                       (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the rtl.*
