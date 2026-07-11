@@ -149,14 +149,14 @@ def test_i6_no_dispatch_event_on_write_failure(tmp_path, monkeypatch) -> None:
     hint = tmp_path / "hint.md"
     hint.write_text("should not survive")
 
-    real_write_text = Path.write_text
+    real_write_bytes = Path.write_bytes
 
-    def fake_write_text(self, data, *args, **kwargs):
+    def fake_write_bytes(self, data, *args, **kwargs):
         if self.name == "directive.md":
             raise OSError("simulated write failure")
-        return real_write_text(self, data, *args, **kwargs)
+        return real_write_bytes(self, data, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "write_text", fake_write_text)
+    monkeypatch.setattr(Path, "write_bytes", fake_write_bytes)
 
     raised = False
     try:

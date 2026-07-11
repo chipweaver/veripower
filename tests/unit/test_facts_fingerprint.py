@@ -117,3 +117,26 @@ def test_cached_unreadable_parent_returns_unknown(tmp_path):
         assert facts.fingerprint_cached(f, tmp_path) == facts.UNKNOWN
     finally:
         locked.chmod(0o755)  # restore so tmp cleanup works
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "[1, 2, 3]",            # list root -> cache.get() AttributeError
+        '"just-a-string"',      # str root -> cache.get() AttributeError
+        "42",                   # int root -> cache.get() AttributeError
+        '{"Design/x.v": 5}',    # int entry -> hit[0] TypeError
+        '{"Design/x.v": "s"}',  # str entry
+        '{"Design/x.v": [1, 2]}',   # short-tuple entry
+    ],
+)
+def test_corrupt_shape_fingerprint_cache_recomputes_not_crashes(tmp_path, payload):
+    # F2 / spec §1.1 & §5.1: the fingerprint cache is a PURE speed cache — "损坏 → 删了重算",
+    # "删除只影响速度，不影响任何结论". A cache file that is valid JSON but the WRONG SHAPE
+    # (list/str/int root, or a non-[size,mtime,fp] entry) must be treated as corrupt and
+    # recomputed, never crash a kernel verb with AttributeError/TypeError/IndexError.
+    f = tmp_path / "Design" / "x.v"
+    f.parent.mkdir(parents=True)
+    f.write_text("module x; endmodule\n")
+    (tmp_path / ".fingerprint-cache.json").write_text(payload)
+    assert facts.fingerprint_cached(f, tmp_path) == facts.fingerprint(f)

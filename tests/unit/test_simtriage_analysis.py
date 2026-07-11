@@ -53,7 +53,8 @@ def test_result_schema_has_no_standalone_analysis_schema_file():
 def test_default_schema_used_when_flag_omitted(tmp_path):
     r = _run(
         tmp_path,
-        {"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high"},
+        {"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high",
+         "advisory": {"level": "L1", "findings": [{"fault_type": "x", "anchor": "a.v:1"}]}},
     )
     assert r.returncode == 0, r.stderr
 
@@ -63,7 +64,8 @@ def test_explicit_schema_override_still_accepted(tmp_path):
     schema_path.write_text(json.dumps(_stage_specific_schema()))
     r = _run(
         tmp_path,
-        {"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high"},
+        {"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high",
+         "advisory": {"level": "L1", "findings": [{"fault_type": "x", "anchor": "a.v:1"}]}},
         schema=schema_path,
     )
     assert r.returncode == 0, r.stderr
@@ -72,7 +74,8 @@ def test_explicit_schema_override_still_accepted(tmp_path):
 def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
     r = _run(
         tmp_path,
-        {"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high"},
+        {"analysis_state": "complete", "root_cause": "rtl-design", "confidence": "high",
+         "advisory": {"level": "L1", "findings": [{"fault_type": "x", "anchor": "a.v:1"}]}},
     )
     assert r.returncode == 0, r.stderr
     env = json.loads((tmp_path / "result.json").read_text())
@@ -85,6 +88,7 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
         "analysis_state": "complete",
         "root_cause": "rtl-design",
         "confidence": "high",
+        "advisory": {"level": "L1", "findings": [{"fault_type": "x", "anchor": "a.v:1"}]},
     }
     # the written file itself validates against the full merged schema
     import jsonschema
@@ -229,6 +233,7 @@ def test_advisory_waveform_valid(tmp_path):
             "confidence": "high",
             "advisory": {
                 "level": "L1",
+                "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
                 "waveform": {
                     "commands": [
                         "fsdbreport T-SMOKE.fsdb -s /fa_tb_top/u_dut/scores_S -bt 40ns -et 80ns -of h"
@@ -251,6 +256,7 @@ def test_advisory_experiment_valid(tmp_path):
             "confidence": "high",
             "advisory": {
                 "level": "L2",
+                "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
                 "experiment": {
                     "tool": "verilator",
                     "stimulus": "hand-picked fp32_add operand pairs 2+(-3),4+(-5)",
@@ -272,6 +278,10 @@ def test_json_file_input(tmp_path):
                 "analysis_state": "complete",
                 "root_cause": "rtl-design",
                 "confidence": "high",
+                "advisory": {
+                    "level": "L1",
+                    "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
+                },
             }
         )
     )

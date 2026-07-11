@@ -47,3 +47,16 @@ def test_truncated_last_line_tolerated(tmp_path, monkeypatch):
     p = facts.events_path("m")
     p.write_text(p.read_text() + '{"type": "outcom')  # truncated
     assert len(facts.read_events("m")) == 1
+
+
+def test_read_events_mid_file_corruption_errors(tmp_path, monkeypatch):
+    # C4 / spec §5.1: ONLY a truncated LAST line is tolerated. A corrupt line in the MIDDLE
+    # is silently skipped today -> a dropped dispatch line -> run-number reuse. It must be a
+    # hard error (conservative — never proceed on a corrupt append-only log).
+    monkeypatch.chdir(tmp_path)
+    good = '{"type":"epoch","ts":"t","objective":"signoff","provenance":"p","reason":"r"}'
+    p = facts.events_path("m")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(good + "\n" + "THIS-IS-CORRUPT-NOT-JSON\n" + good + "\n")
+    with pytest.raises(SystemExit):
+        facts.read_events("m")

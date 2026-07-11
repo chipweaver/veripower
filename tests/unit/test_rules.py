@@ -12,9 +12,15 @@ SKILLS_DIR = ROOT / "skills"
 
 def test_ten_rules_nine_stages_plus_triage():
     assert len(rules.RULES) == 10
-    assert set(rules.FORWARD_PRIORITY) == {n for n, r in rules.RULES.items()
-                                           if r.name != "simulation-triage"}
+    # FORWARD_PRIORITY doubles as the signoff obligation set (_STAGE_PROOFS / _signoff_gate),
+    # so anchor it to the SEMANTIC property — proof-producing rules — not a hardcoded name
+    # exclusion. A future proof-rule added to RULES but not FORWARD_PRIORITY would otherwise
+    # be silently exempt from the signoff gate (F-5).
+    assert set(rules.FORWARD_PRIORITY) == {
+        n for n, r in rules.RULES.items() if r.proof is not None
+    }
     assert "simulation-triage" in rules.RULES
+    assert rules.RULES["simulation-triage"].proof is None
 
 
 def test_skill_dir_rule_bidirectional_coverage():
@@ -100,3 +106,15 @@ def _assert_acyclic(graph):
     for n in graph:
         if color[n] == WHITE:
             visit(n)
+
+
+def test_simulation_does_not_bind_rtl_readme():
+    # D6/G4: simulation reads top from manifest.module (spec §4.3), not README prose; README
+    # is not a sim verdict-dependency, so it must NOT be a declared simulation input (binding
+    # it made README-only edits falsely invalidate the simulation proof). lint-cdc / synthesis
+    # DO legitimately bind README (SGDC/SDC annotation notes).
+    sim_globs = [g for gs in rules.RULES["simulation"].inputs.values() for g in gs]
+    assert "Design/rtl-design/README.md" not in sim_globs
+    for r in ("lint-cdc", "synthesis"):
+        globs = [g for gs in rules.RULES[r].inputs.values() for g in gs]
+        assert "Design/rtl-design/README.md" in globs, f"{r} should still bind README"

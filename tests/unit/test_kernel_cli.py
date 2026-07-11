@@ -14,7 +14,10 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = str(ROOT / "framework" / "scripts" / "kernel.py")
 sys.path.insert(0, str(ROOT / "framework" / "scripts"))
 import facts  # noqa: E402
+import kernel  # noqa: E402
 import rules  # noqa: E402
+
+TS = "2026-07-10T00:00:00.000000Z"
 
 
 def _run(tmp_path, *args):
@@ -420,6 +423,12 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
             "analysis_state": "complete",
             "root_cause": "rtl-design",
             "confidence": "high",
+            "advisory": {
+                "level": "L2",
+                "findings": [{"fault_type": "logic", "anchor": "matvec.v:42", "cases": ["t1"]}],
+                "experiment": {"tool": "verilator", "artifacts": ["experiment/harness.sv"],
+                               "conclusion": "confirmed"},
+            },
         },
     )
     r = _run_json(
@@ -449,12 +458,49 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
     assert diag["fix_owner"] == "rtl-design"
     assert diag["subject"] == {"proof": "simulation", "outcome_run": 7}
     assert diag["confidence"] == "high"
+    # D5: fix_locus mapped from advisory.findings[].anchor; evidence includes the triage
+    # result.json plus the L2 experiment artifacts (no longer structurally empty).
+    assert diag["fix_locus"] == ["matvec.v:42"]
+    assert "Verification/simulation-triage/result.json" in diag["evidence"]
+    assert "experiment/harness.sv" in diag["evidence"]
 
     # non-blocked -> promoted to canonical
     canonical = (
         facts.module_root(module) / "Verification" / "simulation-triage" / "result.json"
     )
     assert canonical.exists()
+
+
+def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
+    # F3 / spec §2: triage 无独立 fail 态. A schema-legal result.json (the envelope allows
+    # status ∈ {pass, fail}; the triage schema does not pin it) that carries status="fail"
+    # with analysis_state="complete" must NOT produce an outcome verdict="fail" — a non-proof
+    # rule's fail outcome later crashes required_proofs(repair)/step-2's FORWARD_PRIORITY.index.
+    monkeypatch.chdir(tmp_path)
+    module = "triagefail"
+    d = _dispatch_triage(tmp_path, module, sim_run=4)
+    _write_triage_result(
+        module,
+        d["workdir"],
+        status="fail",  # schema-legal, but triage has no fail state
+        stage_specific={
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+            "advisory": {"level": "L1",
+                         "findings": [{"fault_type": "logic", "anchor": "a.v:1"}]},
+        },
+    )
+    r = _run_json(
+        tmp_path, "reap", "--module", module, "--rule", "simulation-triage",
+        "--run", str(d["run"]),
+    )
+    assert r["ok"] is True
+    assert r["verdict"] != "fail"  # complete triage is never a fail
+    outcomes = [e for e in facts.read_events(module) if e["type"] == "outcome"]
+    assert outcomes[0]["verdict"] != "fail"
+    # the attribution still lands as a diagnosis (complete -> outcome + diagnosis)
+    assert any(e["type"] == "diagnosis" for e in facts.read_events(module))
 
 
 def test_triage_skipped_reap_blocks_no_diagnosis(tmp_path, monkeypatch):
@@ -510,6 +556,7 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
             "analysis_state": "complete",
             "root_cause": "simulation",  # self-pointing: attribution recorded, no fix_owner
             "confidence": "high",
+            "advisory": {"level": "L1", "findings": [{"fault_type": "x", "anchor": "a.v:1"}]},
         },
     )
     r = _run_json(
@@ -555,3 +602,202 @@ def test_reap_never_dispatched_ok_false_no_event_appended(tmp_path, monkeypatch)
     )
     assert r["ok"] is False
     assert facts.read_events(module) == before
+
+# ── B-group regression fixes (kernel-review disposition) ──────────────────
+
+
+def test_reopen_unknown_pin_ref_rejected(tmp_path, monkeypatch):
+    # F6: reopen must not silently no-op on a typo'd pin_ref — a reopen that matches no
+    # pinned oracle_ref revokes nothing yet returns ok:true, so the human believes trust
+    # was withdrawn when it was not (not a conservative failure). It must error instead.
+    monkeypatch.chdir(tmp_path)
+    module = "reopenbad"
+    facts.append_event(  # a real pin on 'spec-review'
+        module,
+        {"type": "pin", "oracle_ref": "spec-review", "content_fingerprint": "sha256:x",
+         "provenance": "p", "reason": "endorse"},
+        "2026-07-10T00:00:00.000000Z",
+    )
+    r = _run_json(tmp_path, "reopen", "--module", module, "--pin-ref", "spec-reviewX", "--reason", "typo")
+    assert r["ok"] is False
+    assert "spec-reviewX" in r["error"]
+    # the good ref still works
+    ok = _run_json(tmp_path, "reopen", "--module", module, "--pin-ref", "spec-review", "--reason", "revoke")
+    assert ok["ok"] is True
+
+
+def test_dispatch_triage_without_sim_run_rejected(tmp_path, monkeypatch):
+    # F8a root cause: cmd_dispatch must enforce a rule's declared mandatory params. Without
+    # sim_run, the triage reap builds a diagnosis with subject.outcome_run=None -> schema
+    # violation AFTER the outcome already landed -> half-reap. Reject the dispatch up front.
+    monkeypatch.chdir(tmp_path)
+    r = _run_json(tmp_path, "dispatch", "--module", "m", "--rule", "simulation-triage")
+    assert r["ok"] is False
+    assert "sim_run" in r["error"]
+
+
+def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
+    # F8a: even if a malformed triage somehow reaches reap, the ledger must never end with
+    # an outcome landed but its diagnosis missing (a half-reap). With the dispatch guard the
+    # concrete None-sim_run path is closed; assert the guarded dispatch is the only way in.
+    monkeypatch.chdir(tmp_path)
+    module = "halfreap"
+    # dispatch WITH sim_run (the only accepted form) -> complete reap lands both events.
+    d = _dispatch_triage(tmp_path, module, sim_run=6)
+    _write_triage_result(
+        module, d["workdir"], status="pass",
+        stage_specific={"analysis_state": "complete", "root_cause": "rtl-design",
+                        "confidence": "high",
+                        "advisory": {"level": "L1",
+                                     "findings": [{"fault_type": "x", "anchor": "a.v:1"}]}},
+    )
+    r = _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage", "--run", str(d["run"]))
+    assert r["ok"] is True
+    kinds = [e["type"] for e in facts.read_events(module)]
+    assert kinds.count("outcome") == 1 and kinds.count("diagnosis") == 1
+
+
+def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
+    # F8b: _derive_triage must key sim_run off the run being reaped, NOT the latest triage
+    # dispatch. Re-reaping an older triage run while a newer one exists must label the
+    # diagnosis subject with the OLD run's sim_run (mirrors the proof path's per-run lookup).
+    monkeypatch.chdir(tmp_path)
+    module = "rereap"
+    _adv = {"level": "L1", "findings": [{"fault_type": "x", "anchor": "a.v:1"}]}
+    d1 = _dispatch_triage(tmp_path, module, sim_run=5)
+    _write_triage_result(module, d1["workdir"], status="pass",
+        stage_specific={"analysis_state": "complete", "root_cause": "rtl-design",
+                        "confidence": "high", "advisory": _adv})
+    _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage", "--run", str(d1["run"]))
+    d2 = _dispatch_triage(tmp_path, module, sim_run=9)  # a newer triage, different sim_run
+    _write_triage_result(module, d2["workdir"], status="pass",
+        stage_specific={"analysis_state": "complete", "root_cause": "simulation-plan",
+                        "confidence": "high", "advisory": _adv})
+    _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage", "--run", str(d2["run"]))
+    # RE-REAP the OLD run 1 (its result.json is still on disk)
+    _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage", "--run", str(d1["run"]))
+    diags = [e for e in facts.read_events(module) if e["type"] == "diagnosis"]
+    # the last diagnosis is from re-reaping run 1 -> must carry run 1's sim_run (5), not 9.
+    assert diags[-1]["subject"]["outcome_run"] == 5
+
+
+def test_dispatch_consumer_in_virgin_module_rejected(tmp_path, monkeypatch):
+    # F7: spec §2 — an input whose producer never ran is UNAVAILABLE. A manual dispatch of a
+    # consumer (synthesis) in a virgin module (rtl-design/specification never ran) must be
+    # rejected; else the run records an empty input table -> a vacuously-valid proof forever.
+    monkeypatch.chdir(tmp_path)
+    module = "virgin"
+    _write_file(module, "brainstorm.md", "b1")
+    r = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "synthesis")
+    assert r["ok"] is False
+    assert "not available" in r["error"]
+
+# ── C-group regression fixes (low-risk corners, kernel-review disposition) ──
+
+
+def test_dispatch_directive_byte_exact_transfer(tmp_path, monkeypatch):
+    # C1 / spec §3.4: the directive is a BYTE-EXACT transfer (triage forward forbids LLM
+    # rewrite; the recorded digest must match the source). read_text/write_text applies
+    # universal-newline translation (CRLF -> LF), so directive.md and its digest would drift.
+    monkeypatch.chdir(tmp_path)
+    _write_file("m", "brainstorm.md", "b1")
+    src = tmp_path / "directive_src.md"
+    src.write_bytes(b"line1\r\nline2\r\n")  # CRLF
+    d = _run_json(tmp_path, "dispatch", "--module", "m", "--rule", "specification",
+                  "--directive", str(src))
+    dst = facts.module_root("m") / d["workdir"] / "directive.md"
+    assert dst.read_bytes() == b"line1\r\nline2\r\n"  # byte-exact, no newline translation
+    assert d.get("ok", True)
+
+
+def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
+    # C2 / spec §5.4: reap compares the oracle's current content against the LATEST pin
+    # record, not ANY live pin. Two live pins (A then B, no reopen between); oracle content
+    # reverts to A -> the latest pin (B) does not match -> regrade to proposed, not human.
+    monkeypatch.chdir(tmp_path)
+    module = "gradepin"
+    sr = facts.module_root(module) / "Design" / "specification"
+    sr.mkdir(parents=True)
+    rev = sr / "spec-review.json"
+    rev.write_text("REVIEW-A")
+    fpA = facts.fingerprint(rev)
+    facts.append_event(module, {"type": "pin", "oracle_ref": "spec-review",
+        "content_fingerprint": fpA, "provenance": "p", "reason": "A"}, TS)
+    rev.write_text("REVIEW-B")
+    fpB = facts.fingerprint(rev)
+    facts.append_event(module, {"type": "pin", "oracle_ref": "spec-review",
+        "content_fingerprint": fpB, "provenance": "p", "reason": "B"}, TS)
+    rev.write_text("REVIEW-A")  # oracle back to A; latest pin (B) no longer matches
+    grade = kernel._graded(
+        module, facts.read_events(module), rules.RULES["specification"]
+    )
+    assert grade == "proposed"
+
+
+def test_proof_evidence_includes_artifacts(tmp_path, monkeypatch):
+    # C9 / spec §5.3: proof.evidence = the canonical result.json AND its artifacts[] paths
+    # (report-class products are the evidence). Recording only result.json truncates the
+    # audit trail.
+    monkeypatch.chdir(tmp_path)
+    _write_file("m", "brainstorm.md", "b1")
+    _dispatch_write_reap(tmp_path, "m", "specification", _STAGE_FILES["specification"])
+    _, outcome = facts._proof_outcome(facts.read_events("m"), "specification")
+    proof = next(p for p in outcome["proofs"] if p["name"] == "specification")
+    ev = proof["evidence"]
+    assert "Design/specification/result.json" in ev
+    assert any(e.endswith("design.md") for e in ev)  # an artifact beyond result.json
+
+
+def test_pin_zero_match_selector_rejected(tmp_path, monkeypatch):
+    # C10: pinning an oracle whose content selector matches nothing records
+    # content_fingerprint="unknown" and returns ok:true — an inert pin that can never grade
+    # human. A pin must endorse real content; reject when nothing matches (conservative).
+    monkeypatch.chdir(tmp_path)
+    r = _run_json(tmp_path, "pin", "--module", "m", "--rule", "specification",
+                  "--provenance", "p", "--reason", "endorse")
+    assert r["ok"] is False
+    assert "unknown" in r["error"].lower() or "no content" in r["error"].lower()
+
+
+def test_triage_high_confidence_without_findings_blocked(tmp_path, monkeypatch):
+    # D4/§3.4: a high-confidence complete triage MUST carry non-empty advisory.findings[]
+    # each with an anchor (so the auto-routed diagnosis's fix_locus is never empty). A
+    # high verdict with no findings violates the schema -> reap derives blocked.
+    monkeypatch.chdir(tmp_path)
+    module = "d4a"
+    d = _dispatch_triage(tmp_path, module, sim_run=1)
+    _write_triage_result(module, d["workdir"], status="pass",
+        stage_specific={"analysis_state": "complete", "root_cause": "rtl-design",
+                        "confidence": "high"})  # no advisory.findings
+    r = _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage",
+                  "--run", str(d["run"]))
+    assert r["verdict"] == "blocked"
+
+
+def test_triage_l2_without_experiment_blocked(tmp_path, monkeypatch):
+    # D4/§3.4: an L2 verdict ran a controlled experiment -> advisory.experiment must be
+    # present (its artifacts/conclusion are the mapped evidence). L2 without it is blocked.
+    monkeypatch.chdir(tmp_path)
+    module = "d4b"
+    d = _dispatch_triage(tmp_path, module, sim_run=1)
+    _write_triage_result(module, d["workdir"], status="pass",
+        stage_specific={"analysis_state": "complete", "root_cause": "rtl-design",
+                        "confidence": "high",
+                        "advisory": {"level": "L2",
+                                     "findings": [{"fault_type": "x", "anchor": "a.v:1"}]}})
+    r = _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage",
+                  "--run", str(d["run"]))
+    assert r["verdict"] == "blocked"
+
+
+def test_bare_import_single_module_identity():
+    # Cross-module SSoT identity (CONTRIBUTING "Modifying the kernel"): kernel/schedule/facts
+    # import the shared leaf modules the bare way off the same sys.path, so each resolves to
+    # ONE object. The package-path form (`framework.scripts.rules`) would mint a second module,
+    # splitting rules.RULES / facts freshness. Guards the dup-module bug class (replaces the
+    # retired test_topology.py identity check).
+    import schedule  # noqa: E402
+
+    assert kernel.rules is schedule.rules is facts.rules
+    assert kernel.schedule is schedule
+    assert kernel.facts is schedule.facts is facts
