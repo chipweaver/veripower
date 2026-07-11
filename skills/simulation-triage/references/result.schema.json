@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-triage/result.schema.json",
   "title": "simulation-triage result.json contract (schema_version 1)",
-  "description": "Complete contract for asic/<module>/Verification/simulation-triage/result.json (Task C7: folds the retired standalone analysis.schema.json — and the runs/<sim_run>/analysis.json + top-level analysis.json pointer double-file mechanism it gated — into this single result.json's stage_specific; single source of truth from here on). stage_specific carries the two-tier analysis verbatim: the routing tier (analysis_state/root_cause/confidence) that framework/scripts/kernel.py's reap-time _derive_triage consumes (root_cause via the route.TRIAGE_ROOT_CAUSE map) to mint a diagnosis event, recording confidence as-is; the disposition reliability gate (schedule._reliable) then auto-routes or escalates on that confidence. The advisory tier (advisory.{level, fix_direction, findings[], waveform, experiment}) forwarded to the rework target as directive context — persisted, non-gating. analysis_state discriminates: 'complete' carries root_cause + confidence; 'skipped' carries skipped_reason. confidence is a hard, gating routing field: high auto-routes, medium/low escalate to the operator.",
+  "description": "Complete contract for asic/<module>/Verification/simulation-triage/result.json (Task C7: folds the retired standalone analysis.schema.json — and the runs/<sim_run>/analysis.json + top-level analysis.json pointer double-file mechanism it gated — into this single result.json's stage_specific; single source of truth from here on). stage_specific carries the two-tier analysis verbatim: the routing tier (analysis_state/root_cause/confidence) that the kernel's reap-time triage consumes (root_cause picks the rework target) to mint a diagnosis event, recording confidence as-is; the disposition reliability gate then auto-routes or escalates on that confidence. The advisory tier (advisory.{level, fix_direction, findings[], waveform, experiment}) forwarded to the rework target as directive context — persisted, non-gating. analysis_state discriminates: 'complete' carries root_cause + confidence; 'skipped' carries skipped_reason. confidence is a hard, gating routing field: high auto-routes, medium/low escalate to the operator.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
@@ -63,12 +63,12 @@
               "then": {"required": ["skipped_reason"]}
             },
             {
-              "$comment": "D4/§3.4: a high-confidence verdict must carry a concrete locus — non-empty advisory.findings[], each with an anchor. Enforced structurally so an auto-routed diagnosis's fix_locus (mapped from findings[].anchor) is never empty.",
+              "$comment": "a high-confidence verdict must carry a concrete locus — non-empty advisory.findings[], each with an anchor. Enforced structurally so an auto-routed diagnosis's fix_locus (mapped from findings[].anchor) is never empty.",
               "if":   {"properties": {"confidence": {"const": "high"}}, "required": ["confidence"]},
               "then": {"required": ["advisory"], "properties": {"advisory": {"required": ["findings"], "properties": {"findings": {"type": "array", "minItems": 1, "items": {"required": ["anchor"], "properties": {"anchor": {"type": "string", "minLength": 1}}}}}}}}
             },
             {
-              "$comment": "D4/§3.4: an L2 verdict ran a controlled experiment — advisory.experiment must be present (its artifacts/conclusion are the evidence mapped to diagnosis.evidence).",
+              "$comment": "an L2 verdict ran a controlled experiment — advisory.experiment must be present (its artifacts/conclusion are the evidence mapped to diagnosis.evidence).",
               "if":   {"properties": {"advisory": {"properties": {"level": {"const": "L2"}}, "required": ["level"]}}, "required": ["advisory"]},
               "then": {"properties": {"advisory": {"required": ["experiment"]}}}
             }

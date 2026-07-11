@@ -215,7 +215,7 @@ def _write_result(workdir: Path, env: dict) -> None:
     tmp.write_text(json.dumps(env, indent=2) + "\n")
     tmp.replace(
         workdir / "result.json"
-    )  # atomic: never observed half-written (kernel §5.1)
+    )  # atomic: never observed half-written
     sys.stdout.write(
         f"[timing finalize] Written: {workdir / 'result.json'} (status={env['status']})\n"
     )

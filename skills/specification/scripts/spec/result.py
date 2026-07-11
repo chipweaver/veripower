@@ -31,7 +31,7 @@ def _write_result(workdir: Path, env: dict) -> None:
     tmp.write_text(json.dumps(env, indent=2) + "\n")
     tmp.replace(
         workdir / "result.json"
-    )  # atomic: never observed half-written (kernel §5.1)
+    )  # atomic: never observed half-written
     sys.stdout.write(
         f"[spec finalize] Written: {workdir / 'result.json'} (status={env['status']})\n"
     )
@@ -39,7 +39,7 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 def _write_ppa_json(workdir: Path, ppa_targets: list) -> None:
     """The stable PPA-targets sidecar synthesis/power-analysis read directly
-    (spec §4.3) — same atomic temp+rename as result.json (kernel §5.1)."""
+    — same atomic temp+rename as result.json."""
     tmp = workdir / "ppa.json.tmp"
     tmp.write_text(json.dumps(ppa_targets, indent=2) + "\n")
     tmp.replace(workdir / "ppa.json")

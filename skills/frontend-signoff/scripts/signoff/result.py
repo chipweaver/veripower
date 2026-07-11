@@ -304,7 +304,7 @@ def build_result(workdir: str, module: str) -> int:
     tmp.write_text(json.dumps(env, indent=2) + "\n", encoding="utf-8")
     tmp.replace(
         workdir_p / "result.json"
-    )  # atomic: never observed half-written (kernel §5.1)
+    )  # atomic: never observed half-written
     sys.stdout.write(
         f"[signoff finalize] Written: {workdir_p / 'result.json'} (status={status})\n"
     )
