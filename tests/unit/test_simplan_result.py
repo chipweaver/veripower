@@ -310,3 +310,22 @@ def test_finalize_blocked_on_bad_waived_json(tmp_path):
 def test_finalize_blocked_on_internal_raise(tmp_path):
     # missing scaffold-specification.json → build_result raises → caught → exit 2 BLOCKED
     assert vs.finalize(tmp_path, "m", waived_json=None, status=None, revision=None) == 2
+
+
+# ── input_digest recording on the pass path (freeze-classifier support, F2) ──
+def test_finalize_records_input_digest_on_pass(tmp_path):
+    from simplan import classify
+
+    root = tmp_path / "asic" / "m"
+    wd = root / "Verification" / "simulation-plan" / "runs" / "1"
+    wd.mkdir(parents=True)
+    spec_dir = root / "Design" / "specification"
+    spec_dir.mkdir(parents=True)
+    (spec_dir / "design.md").write_text("D", encoding="utf-8")
+    (spec_dir / "manifest.json").write_text('{"module":"m"}', encoding="utf-8")
+
+    _finalize_workdir(wd)
+    assert vs.build_result(wd, module="m", waived=None, status=None, revision=None) == 0
+
+    rj = json.loads((wd / "result.json").read_text())
+    assert rj["stage_specific"]["input_digest"] == classify.input_digest(spec_dir)
