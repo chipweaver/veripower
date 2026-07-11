@@ -141,6 +141,7 @@ _STAGE_FILES = {
     "simulation": {
         "case-results-summary.md": "all pass",
         "env.sh": "#!/bin/sh",
+        "filelist.f": "-f rtl_filelist.f",
         "rtl_filelist.f": "top.v",
         "tb/uvm/dummy.sv": "// tb",
     },
@@ -530,3 +531,27 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
     diag = diagnoses[0]
     assert diag["attribution"] == "simulation"
     assert "fix_owner" not in diag
+
+
+# ── reap guard: never-dispatched run (defensive, no TypeError) ─────────────────
+#
+# NOTE: a re-reap of an ALREADY-outcome'd (rule, run) is deliberately NOT guarded
+# against here — ARCHITECTURE.md §4.7/§7.2 documents promote as idempotent so a
+# crash mid-promote is repaired by the next reap, and
+# test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human above
+# reaps the same run 4 times in a row (post-pin regrade) and asserts ok:True each
+# time. Guarding on "already has an outcome" would break that documented, tested
+# behavior, so only the never-dispatched case (no workdir to derive from -> the
+# actual TypeError) is guarded.
+
+
+def test_reap_never_dispatched_ok_false_no_event_appended(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    module = "reapguard1"
+    _write_file(module, "brainstorm.md", "b1")
+    before = facts.read_events(module)
+    r = _run_json(
+        tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
+    )
+    assert r["ok"] is False
+    assert facts.read_events(module) == before

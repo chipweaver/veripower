@@ -113,8 +113,15 @@ def cmd_dispatch(
 
 def cmd_reap(module, rule, run, subagent_output_file=None):
     events = facts.read_events(module)
-    root = facts.module_root(module)
+    # Guard BEFORE deriving anything: a dispatch event for (rule, run) must exist, or
+    # there is no workdir to derive a verdict from (the prior bug: TypeError on
+    # `root / None`). Re-reaping an ALREADY-outcome'd run is deliberately still
+    # allowed — it is the documented crash-mid-promote repair path and the pin/regrade
+    # mechanism (ARCHITECTURE.md §4.7/§7.2; test_pin_content_drift_regrades_...).
     workdir = schedule._workdir_of(events, rule, run)
+    if workdir is None:
+        return {"ok": False, "error": f"no dispatch event for {rule} run {run}"}
+    root = facts.module_root(module)
     if subagent_output_file:
         store._mirror_subagent_trace(root / workdir, rule, subagent_output_file)
     rj = root / workdir / "result.json"

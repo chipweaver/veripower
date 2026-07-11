@@ -94,11 +94,12 @@ RULES: dict[str, Rule] = {
         name="simulation", stage="simulation", skill="veripower:simulation",
         execution="main-thread", workdir_root=("Verification", "simulation"),
         inputs={"rtl": ("Design/rtl-design/*.v", "Design/rtl-design/filelist.txt"),
+                "rtl_doc": ("Design/rtl-design/README.md",),
                 "plan": ("Verification/simulation-plan/verification-plan.md",),
                 "scaffold": ("Verification/simulation-plan/scaffold-specification.json",)},
         outputs=("case-results-summary.md", "conformance-review.json",
-                 "env.sh", "rtl_filelist.f", "tb/uvm/*"),  # TB env: real promoted products
-                 # (sim/result.py enumerate_artifacts) — power-analysis consumes them
+                 "env.sh", "filelist.f", "rtl_filelist.f", "tb/uvm/*"),  # TB env: real
+                 # promoted products (sim/result.py enumerate_artifacts) — power-analysis consumes them
         proof="simulation", oracle=("tb-refmodel", "proposed"),
         oracle_selector="tb/uvm/refmodel/*",  # pin endorses the JUDGE itself (spec §2) —
         # survives runs; content drift (LLM regenerates refmodel) drops the pin at reap
@@ -110,6 +111,7 @@ RULES: dict[str, Rule] = {
         inputs={"netlist": ("Design/synthesis/out/*_syn.v", "Design/synthesis/out/*_syn.sdc",
                             "Design/synthesis/out/*_syn.sdf"),
                 "tb_env": ("Verification/simulation/env.sh",
+                           "Verification/simulation/filelist.f",
                            "Verification/simulation/rtl_filelist.f",
                            "Verification/simulation/tb/uvm/*"),
                 "scaffold": ("Verification/simulation-plan/scaffold-specification.json",),
