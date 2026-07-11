@@ -5,7 +5,7 @@ promote/mirror operations themselves. Imports only stdlib + rules (no
 jsonschema/referencing deps).
 
 Imported by kernel.py: its reap path calls `store.promote` /
-`store._mirror_subagent_trace` / `store.repair_partial_promote_if_needed`.
+`store._mirror_subagent_trace`.
 """
 
 from __future__ import annotations
@@ -110,8 +110,9 @@ def promote(module: str, rule: str, run_n: int) -> None:
 
     Step 1 failure (any hardlink/mkdir error) → .promote-tmp cleared,
     canonical fully intact. Step 2 partial failure may leave canonical in
-    a partial state; repair_partial_promote_if_needed cleans leftover
-    .promote-tmp/ on the next cmd entry.
+    a partial state; the next reap that promotes this stage re-runs
+    promote(), which clears any stale .promote-tmp/ before starting and
+    rebuilds from scratch — promote is idempotent.
     """
     stage_dir = _result_path(module, rule).parent
     run_dir = stage_dir / "runs" / str(run_n)

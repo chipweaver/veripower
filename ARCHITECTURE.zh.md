@@ -113,7 +113,7 @@ Orchestrator 的三条派发路径：
 | `facts.py` | 事件日志 I/O（`read_events` / `append_event`，写入即校验 schema）、内容指纹（`fingerprint`），以及建立在其上的新鲜度查询——`proof_valid`、`input_available`、`projection`。不持有任何可变状态；一切从日志 + 磁盘计算。 |
 | `schedule.py` | 调度器：`decide(objective) → 恰好一个动作`。对 (磁盘, 日志, 参数) 纯函数；组合 `route.py`。持有目标→所需证明集映射、新鲜失败处置、保守/签核门。 |
 | `route.py` | 纯确定性返工目标选择——静态失败→目标映射表的**唯一居所**（`PA_CATEGORY`、`FIXED_TARGET`、`LINT_CATEGORY`、`TRIAGE_ROOT_CAUSE`）。不持有状态；原样组合进 `schedule.py` 与 `kernel.py`。 |
-| `store.py` | 文件系统产物生命周期助手（`promote`、`repair_partial_promote_if_needed`、`_mirror_subagent_trace`）。由 `kernel.py` 的收割路径导入；从不直接调用。 |
+| `store.py` | 文件系统产物生命周期助手（`promote`、`_mirror_subagent_trace`）。由 `kernel.py` 的收割路径导入；从不直接调用。 |
 
 事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（7 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
 
@@ -251,7 +251,7 @@ Orchestrator 的三条派发路径：
 |---|---|---|
 | `dispatch` | 自动（`dispatch`） | 开启一个 run：`rule`、`run`、`workdir`、`params`（含 `directive` 的路径+摘要）、`objective`、可选 `conservative`、`diagnosis_refs`，以及——仅产证明规则——消费的 `inputs` 版本表（`proof.inputs` 的唯一来源）。 |
 | `outcome` | 自动（`reap`） | 关闭一个 run：`verdict ∈ {pass, fail, blocked}`、产出的 `outputs` 版本表（含规范 `result.json`）、`proofs[]`、`tool_versions`、可选 `reason`（blocked 子类）。 |
-| `diagnosis` | triage 自动（`reap`）；人工经 `diagnose` | 一条失败归因：`subject {proof, outcome_run}`、`attribution`、可选 `fix_owner`、`fix_locus`、`evidence`、`confidence`、`source ∈ {triage, human}`、`provenance`（`human` 必填）、`supersedes`。 |
+| `diagnosis` | triage 自动（`reap`）；人工经 `diagnose` | 一条失败归因。必填（按 `diagnosis.schema.json`）：`id`、`subject {proof, outcome_run}`、`attribution`、`evidence`、`source ∈ {triage, human}`。可选：`fix_owner`、`fix_locus`、`confidence`、`supersedes`；`provenance`（`human` 必填，由 `diagnose` 强制）。 |
 | `epoch` | `epoch` | 保守锚点：`objective`、`provenance`、`reason`。保守/签核目标下只有纪元之后的证明才算数（§5.5）。 |
 | `pin` | `pin` | 把 `proposed` oracle 向 `human` 棘轮：`oracle_ref`、`content_fingerprint`（pin 时记录）、`provenance`、`reason`。 |
 | `reopen` | `reopen` | 撤销一个 pin：`pin_ref`、`reason`。使 oracle 在其落账后被 reopen 的证明失效（§4.4）。 |
@@ -493,7 +493,7 @@ asic/<module>/
 
 子 Agent 永远写 `runs/<N>/`（`dispatch` 给出的 workdir），从不直写规范路径。run 在 `pass` 或 `fail` 完成后，`cmd_reap` 调用 `store.promote`：先在 `.promote-tmp/` 构建 `result.json` + 全部 `artifacts[]` 条目的新视图（全硬链接；产物路径经封闭性检查，绕过校验的生产者也无法链接到 `runs/<N>/` 之外），再逐条目 `rename` 进规范目录（先移除同名旧目标），最后尽力删除不在新视图中的规范旧条目。规范文件因此与最近提升的 run 共享 inode，下游规则读规范路径永远看到最新完成的内容。
 
-> **契约：** promote 幂等。promote 中途崩溃留下 `.promote-tmp/`，由 `store.repair_partial_promote_if_needed` 在下一次内核进入时清除；重试重建同样的硬链接（无操作），收割恰好落一条 `outcome`。这就是只追加日志能在 promote 中途崩溃后依然自洽的原因。
+> **契约：** promote 幂等。promote 中途崩溃可能留下陈旧的 `.promote-tmp/`；下一次对该阶段做 promote 的收割会重跑 `promote()`——它在开始前先清掉残留的 `.promote-tmp/`，再重建同样的硬链接（无操作），恰好落一条 `outcome`。这就是只追加日志能在 promote 中途崩溃后依然自洽的原因。
 
 ### 7.3 磁盘管理
 
