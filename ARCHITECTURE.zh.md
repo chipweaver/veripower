@@ -372,7 +372,7 @@ flowchart TD
 2. **无诊断，且失败是 `simulation`。** 失败有歧义（仿真挂掉可能是 RTL、计划或 spec）→ `DISPATCH simulation-triage`，带 `params.sim_run = <失败 run>`（若 triage 已在途则 `YIELD`）。triage 运行，在*它的*收割时内核派生诊断（见下）；下一次 `decide` 看到诊断即重入处置分支 1。
 3. **无诊断，自描述失败。** 失败自带路由字段 → `route.route` 内联选出目标（无需诊断事件）。`ESCALATE`/`NEED_INPUT` → 升级；目标输入可用 → 自动重建 `DISPATCH`；否则顺延前向。
 
-**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`root_cause`、`confidence`、`fix_locus`、`evidence`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（仿真失败保持歧义；下一轮重新派发 triage）。否则内核追加一条 `diagnosis`（`source: triage`），`attribution` 取 `root_cause`，`fix_owner` 取 `route.TRIAGE_ROOT_CAUSE[root_cause]`——*除非*映射到 `ESCALATE` 哨兵（`root_cause == simulation`），此时省略 `fix_owner`（处置会将这条自指归因升级）。`confidence` 原样落账；决定它能否自动路由的是可靠性门，不是收割分支。
+**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`skipped_reason`、`root_cause`、`confidence`、`advisory`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（仿真失败保持歧义；下一轮重新派发 triage）。否则内核追加一条 `diagnosis`（`source: triage`），`attribution` 取 `root_cause`，`fix_owner` 取 `route.TRIAGE_ROOT_CAUSE[root_cause]`——*除非*映射到 `ESCALATE` 哨兵（`root_cause == simulation`），此时省略 `fix_owner`（处置会将这条自指归因升级）。`confidence` 原样落账；决定它能否自动路由的是可靠性门，不是收割分支。
 
 ### 5.4 失败路由（`route.py`）
 

@@ -6,9 +6,9 @@ It sits one layer above `skills/` — every skill produces or consumes artifacts
 defined here, but no skill *owns* this layer.
 
 > **Why "framework" and not "shared"?** "Shared" implied "multi-consumer" — but
-> three of the four items below have `design-flow` as their primary caller, and
-> they belong here for a different reason: they're the **infrastructure** that
-> defines what every skill (and the orchestrator) plugs into.
+> most of the items below have `design-flow` (the Orchestrator, driving `kernel.py`)
+> as their primary caller, and they belong here for a different reason: they're the
+> **infrastructure** that defines what every skill (and the orchestrator) plugs into.
 
 ## Contents
 
@@ -24,8 +24,8 @@ consumer (orchestrator, tests, debugging tools) validates against it.
 ### `references/schemas/events/` — audit-log schema
 
 Schemas for `asic/<module>/events.jsonl` entries (one schema file per event
-type: `dispatch`, `outcome`, `rework_decision`, `cascade`, `escalation`,
-`invalidate`, `debug_dispatch`). Events are written by `state.py` (via Orchestrator)
+type: `dispatch`, `outcome`, `diagnosis`, `epoch`, `pin`, `reopen`, `escalation`).
+Events are written by `kernel.py` — the sole state file, no `task.json` snapshot —
 and **readable by anyone debugging or auditing a pipeline run** — not just the
 writer.
 
@@ -36,49 +36,63 @@ Defines the canonical injection points (`{workdir}`, `{module}`,
 `{rework_trigger}`, `{directive_path}`) that every stage skill
 documents in its SKILL.md input table.
 
-### `scripts/state.py` — orchestration-protocol CLI
+### `scripts/kernel.py` — the kernel CLI
 
-A standalone Python CLI implementing the state machine. 7 commands:
-`init`, `status`, `dispatch`, `reap`, `rework`, `invalidate-stage`, `log`.
-The authoritative source for stage state; re-exports `PREREQ_OF` and other DAG constants from `topology.py`.
+The SOLE writer of `events.jsonl`. Ten verbs: `decide`, `dispatch`, `reap`,
+`diagnose`, `escalate`, `epoch`, `pin`, `reopen`, `status`, `consequences`
+(flags via `kernel.py <verb> --help`). The `design-flow` Orchestrator loops
+`decide` → execute the one returned action.
 
-### `scripts/topology.py` — pipeline DAG structural SSoT
+The tool is **runnable by anyone**: humans manually driving a pipeline, tests,
+CI, future automated runners. Not a private library imported by one skill — a
+project CLI that implements the protocol the framework defines.
 
-The authoritative source for `PREREQ_OF` (the stage DAG), `FORWARD_PRIORITY`, `SKILL_OF`, `eligible()`, and `descendants()`. Dependency-light leaf with no I/O — importable without pulling in `jsonschema`.
+### `scripts/rules.py` — the rule registry SSoT
 
-### `scripts/orchestrate.py` — the decider
+`RULES`, `FORWARD_PRIORITY`, `PIPELINE_INPUTS`, `ADVISORY_ORDER`. One `Rule` =
+one kernel-scheduled unit; the dependency graph is DERIVED from rules' artifact
+input/output selectors (`producer_of` / `input_producers` / `input_closure`) — no
+separate stage-view DAG is maintained. Dependency-light leaf, bare-importable.
 
-A standalone Python CLI that reads on-disk state and returns exactly one action per call (`orchestrate.py decide --module <M> [--wake <stage>:<run>] [--analysis <path>]`). The `design-flow` Orchestrator executes this action and loops until `YIELD`/`DONE`/`ESCALATE`. All deterministic control-loop logic lives here (composes `route.py` and `eligible()`); the Orchestrator is a thin executor.
+### `scripts/facts.py` — event-log I/O and freshness queries
 
-Primary caller is the `design-flow` Orchestrator loop, but the tool is **runnable
-by anyone**: humans manually driving a pipeline, tests, CI, future automated
-runners. Not a private library imported by one skill — a project CLI that
-implements the protocol the framework defines.
+Event-log I/O, content fingerprints, and the freshness queries (`proof_valid`,
+`input_available`, `projection`). Validity is a query over the log + disk,
+computed on demand — never a stored bit.
+
+### `scripts/schedule.py` — the scheduler
+
+Implements `kernel.py decide`: objective-scoped (`delivery`/`repair`/`signoff`),
+pure over (disk, log, args), returns exactly one action per call. Composes
+`route.py` for self-describing-failure attribution. Import-only — reached
+solely through `kernel.py`.
 
 ### `scripts/route.py` — deterministic rework-target router
 
 The sole home of the failure→target maps: a pure, stateless evaluator that maps a
 stage failure to a rework target (or to `ESCALATE` / `NEED_INPUT`). Composed
-unchanged inside `orchestrate.py` — an import-only internal, never invoked directly.
+unchanged inside `schedule.py` and `kernel.py` — an import-only internal, never
+invoked directly. Holds no state.
 
-### `scripts/artifacts.py` — artifact-lifecycle internals
+### `scripts/store.py` — artifact-lifecycle internals
 
-The promote + trace-mirroring helpers imported by `state.py` (canonical-view
+The promote + trace-mirroring helpers imported by `kernel.py` (canonical-view
 rebuild, hardlink promote, async-transcript mirroring). An import-only internal —
-`state.py` is its only caller; never invoked directly.
+`kernel.py` is its only caller; never invoked directly.
 
 ## Ownership model
 
 | Item | Producer | Primary consumer | Available to |
 |---|---|---|---|
 | `envelope.schema.json` | Stage skills (via $ref) | Anyone reading `result.json` | All skills + orchestrator + tests |
-| `events/*.schema.json` | `state.py` | `state.py` + auditors | All consumers of `events.jsonl` |
+| `events/*.schema.json` | `kernel.py` | `kernel.py` + auditors | All consumers of `events.jsonl` |
 | `stage-subagent.md.tpl` | n/a (template) | `design-flow` (renderer) | Designers studying the protocol |
-| `state.py` | n/a (binary) | `design-flow` | tests / manual operators |
-| `topology.py` | n/a (constants) | `state.py` + `orchestrate.py` (import) | tests / anyone importing the DAG |
-| `orchestrate.py` | n/a (binary) | `design-flow` (decider) | tests / manual operators / CI |
-| `route.py` | n/a (pure fn) | `orchestrate.py` (import) | internal / tests |
-| `artifacts.py` | n/a (internal) | `state.py` (import) | internal only |
+| `kernel.py` | n/a (binary) | `design-flow` | tests / manual operators |
+| `rules.py` | n/a (constants) | `kernel.py` + `facts.py` + `schedule.py` (import) | tests / anyone importing the registry |
+| `facts.py` | n/a (library) | `kernel.py` + `schedule.py` (import) | tests / anyone reading events.jsonl |
+| `schedule.py` | n/a (internal) | `kernel.py` (import, `decide` verb) | internal / tests |
+| `route.py` | n/a (pure fn) | `schedule.py` + `kernel.py` (import) | internal / tests |
+| `store.py` | n/a (internal) | `kernel.py` (import) | internal only |
 
 ## What does NOT belong here
 
@@ -96,7 +110,9 @@ contains the *protocol* those components implement. A new stage skill would:
    `framework/references/schemas/envelope.schema.json`.
 2. Optionally add a new event type schema under `framework/references/schemas/events/`
    (only if introducing a new event class — usually existing types suffice).
-3. Add itself to `PREREQ_OF` in `framework/scripts/topology.py` (re-exported from `state.py`).
+3. Add itself as a `Rule` to `RULES` in `framework/scripts/rules.py`, declaring its
+   artifact input/output selectors — the dependency graph is derived from these,
+   there is no separate DAG to update.
 
 No changes to `framework/` should ever be made in service of a single skill's
 private needs — those go under that skill's own directory.

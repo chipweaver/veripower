@@ -39,7 +39,7 @@ Your boundary:
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
 | `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); absent → session-resume or first-run by on-disk artifacts. |
-| `{directive_path}` | Optional. Fix-scope hint file (Orchestrator reasoning, or forwarded triage `analysis.json`); when present, Read it first. |
+| `{directive_path}` | Optional. Fix-scope hint file (Orchestrator reasoning, or forwarded triage `result.json`); when present, Read it first. |
 
 ### External reference inputs
 

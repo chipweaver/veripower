@@ -38,7 +38,7 @@ runs, then you loop back to `decide`.
 ## Iron Rule
 
 - Do not run EDA tools (make / vcs / dc_shell / pt_shell / spyglass) yourself — that is the stage subagent's job.
-- Do not hand-edit `task.json` / `events.jsonl` or any stage `result.json` / artifact. `kernel.py` is the only writer of ledger state; stage artifacts are written only by the dispatched executor. A main-thread write to either is an isolation violation.
+- Do not hand-edit `events.jsonl` or any stage `result.json` / artifact. `kernel.py` is the only writer of ledger state; stage artifacts are written only by the dispatched executor. A main-thread write to either is an isolation violation.
 - **Scripts are black boxes — never Read their source.** Invoke `kernel.py` per this skill's documented command lines (flags via `<verb> --help`); on a non-zero exit or an `ok: false` envelope, act on the documented failure protocol, not the source. Sole exception: debugging a suspected bug in the script itself.
 
 ## Setup (once per session)

@@ -41,7 +41,7 @@ Per-module work tree under `asic/<module>/`:
 - `events.jsonl` — append-only event log, the SOLE durable state file (7 event types: `dispatch`, `outcome`, `diagnosis`, `epoch`, `pin`, `reopen`, `escalation`; schemas `framework/references/schemas/events/`). Written only by `kernel.py`; per-stage status is derived from it + disk fingerprints on demand (`kernel.py status`), never stored.
 - `Design/<stage>/result.json` — for specification, rtl-design, lint-cdc, synthesis, timing-analysis
 - `Design/rtl-design/semantic-review.json` — gating per-child intent-review produced by rtl-design's Step-4.4 semantic gate (schema `skills/rtl-design/references/semantic-review.schema.json`).
-- `Verification/<stage>/result.json` — for simulation-plan, simulation, power-analysis
+- `Verification/<stage>/result.json` — for simulation-plan, simulation, power-analysis, simulation-triage
 - `Verification/simulation/conformance-review.json` — gating per-testpoint check-adequacy review produced by the simulation stage's Step-4 conformance gate (schema `skills/simulation/references/conformance-review.schema.json`); promoted advisory artifact, gate source for `failure_phase=conformance`.
 - `Verification/simulation-plan/plan-review.json` — gating testpoint-adequacy review (`coverage` vs spec blocks; `adequacy` check-strategy soundness is advisory must-acknowledge) produced by simulation-plan's Step-4 adequacy gate via a self-dispatched Level-1 reviewer (schema `skills/simulation-plan/references/plan-review.schema.json`).
 - `frontend-signoff/result.json` — terminal signoff

@@ -116,7 +116,7 @@ def route(
             target, f"fixed:{failed_rule}->{target}", reason_hint=fail_reason
         )
 
-    # 4. simulation — routed on triage ANALYSIS (landed analysis.json, supplied as args).
+    # 4. simulation — routed on triage ANALYSIS (landed result.json, supplied as args).
     if failed_rule == "simulation":
         if analysis_state == "skipped":
             return _decision(ESCALATE, "triage_skipped")
@@ -180,12 +180,12 @@ def main() -> None:
     p.add_argument(
         "--root-cause",
         default=None,
-        help="simulation-triage landed analysis.json root_cause (simulation only)",
+        help="simulation-triage landed result.json root_cause (simulation only)",
     )
     p.add_argument(
         "--analysis-state",
         default=None,
-        help="simulation-triage landed analysis.json analysis_state (simulation only)",
+        help="simulation-triage landed result.json analysis_state (simulation only)",
     )
     p.add_argument(
         "--confidence",
