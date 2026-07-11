@@ -14,7 +14,7 @@ The design problem is to express all three paths without a `mode` parameter that
 
 ### 3.1 P1 — Two-signal routing
 
-Step 1 routing uses exactly two signals: `{rework_trigger}` injection (yes / no) × disk-prev-artifact existence (yes / no). No other signals. Skills do NOT self-scan disk beyond prev-artifact presence, and do NOT consult `task.json`, `events.jsonl`, or any external state.
+Step 1 routing uses exactly two signals: `{rework_trigger}` injection (yes / no) × disk-prev-artifact existence (yes / no). No other signals. Skills do NOT self-scan disk beyond prev-artifact presence, and do NOT consult `events.jsonl` or any external state.
 
 ### 3.2 P2 — Step-1-only routing
 
@@ -26,7 +26,7 @@ If Step 1 produces N branches, downstream steps MUST address how each branch thr
 
 ### 3.4 P4 — Idempotency by design
 
-The disk is the source of truth for artifacts, not for progress. Do NOT track partial completion via custom disk markers. Trust `result.json` presence and the canonical-vs-`runs/` promotion owned by `framework/scripts/state.py`.
+The disk is the source of truth for artifacts, not for progress. Do NOT track partial completion via custom disk markers. Trust `result.json` presence and the canonical-vs-`runs/` promotion owned by `framework/scripts/kernel.py`.
 
 ### 3.5 P5 — Fail-closed semantics
 
@@ -73,7 +73,7 @@ Six skills deviate from the standard 3-branch worker pattern. Each must referenc
 
 ### 6.1 Never-trigger-target (power-analysis)
 
-`power-analysis` is never a rework-DAG fix target; callers never inject `{rework_trigger}`. Fix-scope context arrives via `{orchestrator_context_path}` (read-only hint). Step 1 has no trigger-driven branch — first-run and cascade rework only. (`skills/power-analysis/SKILL.md` Workflow rationale.)
+`power-analysis` is never a rework-DAG fix target; callers never inject `{rework_trigger}`. Fix-scope context arrives via `{directive_path}` (read-only hint). Step 1 has no trigger-driven branch — first-run and cascade rework only. (`skills/power-analysis/SKILL.md` Workflow rationale.)
 
 ### 6.2 Terminal stage (frontend-signoff)
 
@@ -93,8 +93,8 @@ Six skills deviate from the standard 3-branch worker pattern. Each must referenc
 
 ### 6.6 Never-trigger-target / read-only re-verifier (timing-analysis)
 
-`timing-analysis` is never a rework-DAG fix target: `route.py` never returns it (on a `ppa` failure it routes away to rtl-design/specification; `_PPA_STAGES`), and the orchestrator attaches `{rework_trigger}` only on a `REWORK` action to its target. It runs only by forward `DISPATCH`, which carries no trigger — the same archetype as §6.1 (power-analysis), but simpler: it consumes no `{orchestrator_context_path}` hint either, because it is read-only w.r.t. `Design/synthesis/` and cannot fix anything. Step 1 is a single linear pre-flight check (synthesis `status=pass` + netlist/SDC present); no trigger / incremental / first-run fork. P5 (fail-closed on unreadable trigger) does not apply — no trigger is ever delivered. (`skills/timing-analysis/SKILL.md` Workflow rationale.)
+`timing-analysis` is never a rework-DAG fix target: `route.py` never returns it (on a `ppa` failure it routes away to rtl-design/specification; `_PPA_STAGES`), and the orchestrator attaches `{rework_trigger}` only on an auto-rebuild (repair) `DISPATCH` to its target. It runs only by forward `DISPATCH`, which carries no trigger — the same archetype as §6.1 (power-analysis), but simpler: it consumes no `{directive_path}` hint either, because it is read-only w.r.t. `Design/synthesis/` and cannot fix anything. Step 1 is a single linear pre-flight check (synthesis `status=pass` + netlist/SDC present); no trigger / incremental / first-run fork. P5 (fail-closed on unreadable trigger) does not apply — no trigger is ever delivered. (`skills/timing-analysis/SKILL.md` Workflow rationale.)
 
 ## 8. Process for changing
 
-When a stage's branching shape evolves, coordinate with `framework/scripts/state.py` `PREREQ_OF` if input vectors change. If the new shape does not fit an existing §6 carve-out, add a new subsection and reference it from the affected skill's Workflow rationale before merging.
+When a stage's branching shape evolves, coordinate with `framework/scripts/rules.py` (the dependency graph is derived from each rule's input/output artifact selectors) if input vectors change. If the new shape does not fit an existing §6 carve-out, add a new subsection and reference it from the affected skill's Workflow rationale before merging.

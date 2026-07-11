@@ -59,11 +59,11 @@ summarizes the workflow, the agent follows that summary instead of reading the f
 summary (one review) instead of the skill body (two reviews). The description shortcut
 overrides the body. This is the strongest evidence-backed principle in this document.
 
-**Genre caveat — VeriPower dispatch is mostly deterministic.** The 9 pipeline stages are
-dispatched by `orchestrate.py`, not retrieved by description-matching, so the discovery
-pressure in P3 binds primarily for the description-discovered skills (`brainstorm`,
-`design-flow`, `simulation-triage`). For orchestrate-dispatched stages, treat P3 (no workflow
-summary) as scope-clarity and human-readability discipline.
+**Genre caveat — VeriPower dispatch is mostly deterministic.** The 9 pipeline stages —
+plus `simulation-triage`, itself a kernel Task rule — are dispatched by `kernel.py decide`,
+not retrieved by description-matching, so the discovery pressure in P3 binds primarily for
+the description-discovered skills (`brainstorm`, `design-flow`). For kernel-dispatched
+stages, treat P3 (no workflow summary) as scope-clarity and human-readability discipline.
 
 Frontmatter must be English. See `language-posture-design.md` §3 (Surface 1) for the
 canonical rationale.

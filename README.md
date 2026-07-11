@@ -24,7 +24,7 @@ Chip-design teams trying to put LLMs in their EDA flow hit three structural fail
 - **Manual stage gating doesn't scale.** Tracking which module is at which stage, which reworks are pending, and which results are stale across a portfolio of designs is a full-time human job.
 - **AI-driven decisions leave no audit trail.** Production EDA tape-out review demands traceability for every decision; black-box agents fail this bar on day one.
 
-VeriPower's answer: the state machine is cleanly separated from the LLM, deterministic rework-routing lives in a pure sibling script (`route.py`), and every dispatch is event-sourced — so the Orchestrator can't be wrong about a target over the closed-enum routing, and `state.py` remains the safety net that keeps any residual error from corrupting completed work.
+VeriPower's answer: the deterministic scheduling core is cleanly separated from the LLM, deterministic rework-routing lives in a pure sibling script (`route.py`), and every dispatch is event-sourced — so the Orchestrator can't be wrong about a target over the closed-enum routing, and `kernel.py`'s append-only event log remains the safety net that keeps any residual error from corrupting completed work.
 
 ## What a run looks like
 
@@ -34,8 +34,8 @@ Settle the module's requirements with the pre-pipeline `brainstorm` skill (its o
 
 The `design-flow` Orchestrator bootstraps the module's state and walks the pipeline from there. A run produces:
 
-- `asic/{module}/events.jsonl` — append-only, schema-validated event log (the audit trail).
-- `asic/{module}/task.json` — current state snapshot, rebuildable by replaying the event log.
+- `asic/{module}/events.jsonl` — append-only, schema-validated event log; the **sole** durable state file (the audit trail).
+- per-stage status is **not** persisted — it is computed on demand from the event log + disk fingerprints (`kernel.py status`), so it can never drift from what's on disk.
 - per-stage `result.json` artifacts under `Design/` and `Verification/`, plus the terminal `frontend-signoff/result.json`.
 
 Full step-by-step walkthrough: [`GETTING-STARTED.md`](GETTING-STARTED.md).
@@ -82,7 +82,7 @@ VeriPower covers the full ASIC frontend — spec through signoff, no point-tool 
 | `power-analysis` | GLS + SAIF + PT-PX averaged power, with PPA self-judgment | Synopsys VCS + PrimeTime PX |
 | `frontend-signoff` | Aggregate checklist + traceability across all stages | (LLM) |
 
-Full DAG semantics including rework edges live in [`ARCHITECTURE.md §3`](ARCHITECTURE.md#3-pipeline-dag).
+Full dependency-graph semantics live in [`ARCHITECTURE.md §3`](ARCHITECTURE.md#3-rule-registry-and-the-derived-dependency-graph).
 
 ---
 
@@ -90,41 +90,41 @@ Full DAG semantics including rework edges live in [`ARCHITECTURE.md §3`](ARCHIT
 
 ### 1. Determinism boundary: judgment in the agent, state in Python
 
-> A deterministic Python CLI (`framework/scripts/state.py`, 8 commands) owns all state; `orchestrate.py decide` owns all control-loop decisions; the Orchestrator agent is a thin executor. Between every two CLI calls sits exactly one decider call — if not, the boundary is wrong.
+> A deterministic Python CLI (`framework/scripts/kernel.py`, 10 verbs) is the sole writer of all state and `kernel.py decide` (implemented in `schedule.py`) owns all control-loop decisions; the Orchestrator agent is a thin executor. Every state-mutating call is bracketed by a `decide` — two consecutive mutating calls with no `decide` between them is a bug.
 
 **For chip-design teams.** State is replayable from disk and unit-testable in Python. The bookkeeping cannot drift even when the agent does — the same property regulated EDA flows demand from their existing toolchains.
 
 **For agent-system builders.** This is a clean pattern for splitting LLM judgment from deterministic state in a long-horizon agent. Every decision the LLM makes is bracketed by a CLI call; every CLI call has a unit test. Transferable to any multi-stage agent system.
 
-Full mechanics: [`ARCHITECTURE.md §5`](ARCHITECTURE.md#5-orchestrator-decision-loop).
+Full mechanics: [`ARCHITECTURE.md §5`](ARCHITECTURE.md#5-scheduler-decision-loop).
 
-### 2. Two-dimensional stage state makes parallel rework first-class
+### 2. Validity is a query, not a stored flag
 
-> Each stage carries `status × freshness`; the non-obvious combination `in_progress/stale` legalizes "rework arrived mid-run" without process-killing or full-pipeline restart.
+> No stage carries a stored `stale` bit. A stage's output is trusted only while a *proof* it recorded still holds — its recorded input and output fingerprints still match disk and its oracle is un-reopened. Edit an upstream file and every proof whose fingerprints no longer match silently becomes invalid on the next query; nothing has to remember to mark it stale.
 
-**For chip-design teams.** Real chip flows have rework storms — lint fail forces an RTL fix, which cascades stale through synthesis, timing, simulation, and power. The 2-D model handles the storm without killing what's already running — stages that were already in flight at the moment of rework finish naturally, only stale stages restart. Concurrency cap (distinct in-flight stages ≤ 2) emerges from DAG topology, not from a policy knob.
+**For chip-design teams.** Real chip flows have rework storms — a lint fail forces an RTL fix, which invalidates synthesis, timing, simulation, and power downstream. Because staleness is recomputed from content rather than tracked as a flag, editing the RTL auto-expires exactly the downstream proofs that consumed it — and a stage already in flight at that moment finishes and has its result re-checked rather than being killed. The concurrency cap (at most two distinct rules in flight) emerges from the derived dependency graph, not from a policy knob.
 
-**For agent-system builders.** `in_progress/stale` is a novel state-machine value worth stealing. It says: "the work this agent is currently doing has been invalidated by an upstream change, but rather than killing it, let it finish and discard the result so we don't lose process-level invariants." A transferable idea for any rework-heavy long-horizon agent.
+**For agent-system builders.** "Recompute trust from content, never store it" is the idea worth stealing. A stored `stale` flag is a fact that can drift from reality the instant someone forgets to update it; a content-fingerprint query cannot. Any rework-heavy long-horizon agent that must answer "is this earlier result still good?" can borrow the pattern.
 
-Full mechanics: [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-state-model).
+Full mechanics: [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-state-model-the-event-log).
 
-### 3. Event-sourced audit log: events.jsonl is truth, task.json is a projection
+### 3. Event-sourced audit log: events.jsonl is the only durable state
 
-> Seven typed event schemas with a strict "event-first, state-after" write order; `task.json` is always rebuildable by replaying `events.jsonl`. The Orchestrator can only write 2 of the 7 event types via `log` — the other 5 are side-effects of state transitions, rejected if injected externally, so the audit log cannot be forged.
+> Seven typed, schema-validated event types in one append-only log; there is no `task.json` and no status snapshot — every stage's status is *derived* from the log plus disk fingerprints on demand. `kernel.py` is the sole writer of all seven event types and validates each against its schema at write time, so the audit log cannot be forged through an agent prompt.
 
-**For chip-design teams.** Every AI-driven decision in the design flow leaves a tamper-evident record — the table-stakes property that converts an "AI demo" into a production-defensible EDA tool. Crash recovery is a free side effect: if a write crashes between event and state, the event already exists and replay reconstructs the state.
+**For chip-design teams.** Every AI-driven decision in the design flow leaves a tamper-evident record — the table-stakes property that converts an "AI demo" into a production-defensible EDA tool. Crash recovery is a free side effect: a run whose executor died left a `dispatch` with no matching `outcome`, so it still reads as in-flight and the next `decide` reaps it — no separate recovery phase.
 
-**For agent-system builders.** Classic event sourcing applied to agent orchestration — mature in distributed systems, rare in agent design. The forgery-resistance pattern (only some event types are agent-writable) is a useful primitive for any agent system that needs to be auditable.
+**For agent-system builders.** Classic event sourcing applied to agent orchestration — mature in distributed systems, rare in agent design. The forgery-resistance pattern (a single validated writer, with no agent-writable event channel) is a useful primitive for any agent system that needs to be auditable.
 
-Full mechanics: [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-state-model) (event types and the replay/projection contract).
+Full mechanics: [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-state-model-the-event-log) (the seven event types and the projection contract).
 
 ## Swappable execution layer
 
 VeriPower separates orchestration from execution:
 
-- **Orchestration layer (tool-agnostic):** `framework/scripts/state.py`, `framework/references/schemas/`, the DAG itself.
+- **Orchestration layer (tool-agnostic):** `framework/scripts/kernel.py`, `framework/references/schemas/`, and the rule registry (`rules.py`).
 - **Execution layer (vendor-bound):** each `skills/<stage>/` is a Claude Code skill that wraps one or more vendor tools.
-- **Extension seam:** swap a single skill (e.g., a Verilator-backed `simulation` or a Yosys-backed `synthesis`) without touching the orchestration. `framework/scripts/topology.py`'s `SKILL_OF` mapping is the pivot.
+- **Extension seam:** swap a single skill (e.g., a Verilator-backed `simulation` or a Yosys-backed `synthesis`) without touching the orchestration. Each rule's `skill` field in `framework/scripts/rules.py` (`RULES`) is the pivot.
 
 The reference implementation ships Synopsys-backed skills because that's the toolchain our use cases target. No promises about FOSS-tool skills today — but the seam is real, not aspirational.
 
@@ -150,7 +150,7 @@ veripower/
 ├── LICENSE                  # MIT
 ├── .claude-plugin/          # plugin manifest
 ├── skills/                  # one skill per pipeline stage + orchestrator + triage
-├── framework/               # state.py + JSON schemas + prompt template
+├── framework/               # kernel.py + rule registry + JSON schemas + prompt template
 ├── docs/                    # auxiliary design docs (schema, skill authoring)
 └── tests/                   # unit / contracts / scenarios (three tiers)
 ```
@@ -160,6 +160,6 @@ veripower/
 Three tiers, each answering a different question: **`tests/unit/`** (pure-Python code behavior), **`tests/contracts/`** (deterministic artifact-sync / invariant lints, no code executed), and **`tests/scenarios/`** (skill-level agent-discipline regression — Claude as the system under test, no EDA tools). How to run each, the fast loop, and the CI gate are in [CONTRIBUTING.md § Testing](CONTRIBUTING.md#testing).
 ## Status, license, contributing
 
-- **Status:** alpha (v0.1.0). Stable interfaces: the `state.py` CLI surface and the cross-stage envelope schema. Unstable: skill internals.
+- **Status:** alpha (v0.1.0). Stable interfaces: the `kernel.py` CLI surface and the cross-stage envelope schema. Unstable: skill internals.
 - **License:** MIT. See [`LICENSE`](LICENSE).
 - **Contributing:** the contribution model is documented in [`CONTRIBUTING.md`](CONTRIBUTING.md). For now, please file issues at <https://github.com/chipweaver/veripower/issues>.
