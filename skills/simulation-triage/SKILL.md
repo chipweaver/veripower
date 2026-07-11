@@ -18,9 +18,9 @@ kernel-issued run directory keyed by its own triage dispatch count, unrelated to
 
 The landed `result.json`'s `stage_specific` carries two tiers:
 - **Routing tier** — `analysis_state` + `root_cause` + the gating `confidence`; the hard,
-  schema-validated contract the kernel's reap-time triage branch consumes (`root_cause` via
-  the `route.TRIAGE_ROOT_CAUSE` map) to mint a `diagnosis` event, recording `confidence`
-  as-is — the disposition reliability gate (`schedule._reliable`, §3.4) then auto-routes or
+  schema-validated contract the kernel's reap-time triage branch consumes (`root_cause`
+  picks the rework target) to mint a `diagnosis` event, recording `confidence`
+  as-is — the disposition reliability gate then auto-routes or
   escalates on it.
 - **Advisory tier** (`advisory.{level, fix_direction, findings[], waveform, experiment}`) —
   persisted evidence forwarded to the rework target as `directive`; informs the fix,
@@ -121,7 +121,7 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 ### Step 4: Land confidence and `root_cause`
 
 - **`confidence: "high"`** — either L1 alone (optionally corroborated by its FSDB waveform query) gave a single, non-conflicting explanation anchored to clear evidence, or L2's controlled experiment directly confirmed the fault. This is the only case that auto-routes.
-- **`confidence: "medium"` / `"low"`** — competing hypotheses remain, or the fault couldn't be localized/pinned down, even after L2. The disposition reliability gate (`schedule._reliable`, §3.4) escalates these to the operator rather than auto-routing — do not try to force a `high` verdict to avoid the escalation.
+- **`confidence: "medium"` / `"low"`** — competing hypotheses remain, or the fault couldn't be localized/pinned down, even after L2. The disposition reliability gate escalates these to the operator rather than auto-routing — do not try to force a `high` verdict to avoid the escalation.
 - `root_cause` was already landed at the end of Step 2 (Step 3's L2 evidence may sharpen it, e.g. confirm which of two competing directions is real, but does not change the attribution rule itself).
 
 ### Step 5: Land the result
