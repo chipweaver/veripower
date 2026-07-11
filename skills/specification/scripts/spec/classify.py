@@ -25,8 +25,8 @@ def input_digest(brainstorm: str | Path) -> str:
 
 def classify_delta(canonical_result, brainstorm) -> dict:
     current = input_digest(brainstorm)
-    cr = Path(canonical_result)
-    if not cr.is_file():
+    cr = Path(canonical_result) if canonical_result is not None else None
+    if cr is None or not cr.is_file():
         return {"verdict": "first-run", "reason": "no canonical specification result"}
     try:
         rj = json.loads(cr.read_text(encoding="utf-8"))

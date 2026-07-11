@@ -59,3 +59,8 @@ def test_legacy_baseline_without_digest_is_proceed(tmp_path):
     b = _brainstorm(tmp_path)
     cr = _baseline(tmp_path, status="pass", input_digest=None)
     assert classify.classify_delta(cr, b)["verdict"] == "proceed"
+
+
+def test_none_canonical_result_is_first_run(tmp_path):
+    b = _brainstorm(tmp_path)
+    assert classify.classify_delta(None, b)["verdict"] == "first-run"
