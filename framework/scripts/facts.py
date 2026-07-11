@@ -73,9 +73,12 @@ def _cache_path(module_root: Path) -> Path:
 
 def _load_cache(module_root: Path) -> dict:
     try:
-        return json.loads(_cache_path(module_root).read_text())
+        data = json.loads(_cache_path(module_root).read_text())
     except (OSError, json.JSONDecodeError):
         return {}
+    # Pure speed cache (§1.1/§5.1): valid JSON of the wrong shape (list/scalar root) is
+    # corruption — recompute, never crash. Per-entry shape is checked at the hit site.
+    return data if isinstance(data, dict) else {}
 
 
 def fingerprint_cached(path: Path, module_root: Path) -> str:
@@ -101,7 +104,9 @@ def fingerprint_cached(path: Path, module_root: Path) -> str:
     except OSError:
         return fingerprint(path)
     hit = cache.get(rel)
-    if hit and hit[0] == key[0] and hit[1] == key[1]:
+    # A well-formed entry is [size, mtime_ns, fp] (what we write below); anything else
+    # is corruption — fall through to recompute rather than IndexError/TypeError (§5.1).
+    if isinstance(hit, list) and len(hit) == 3 and hit[0] == key[0] and hit[1] == key[1]:
         return hit[2]
     fp = fingerprint(path)
     if fp != UNKNOWN:
@@ -131,15 +136,20 @@ def read_events(module: str) -> list[dict]:
     p = events_path(module)
     if not p.exists():
         return []
+    lines = [ln for ln in (ln.strip() for ln in p.read_text().splitlines()) if ln]
     out = []
-    for line in p.read_text().splitlines():
-        line = line.strip()
-        if not line:
-            continue
+    for i, line in enumerate(lines):
         try:
             out.append(json.loads(line))
         except json.JSONDecodeError:
-            continue  # tolerate a truncated line
+            if i == len(lines) - 1:
+                break  # tolerate ONLY a truncated LAST line (spec §5.1)
+            # A corrupt line mid-log would silently drop events (e.g. a dispatch -> run-
+            # number reuse). Fail loud instead — never proceed on a corrupt append-only log.
+            sys.exit(
+                f"read_events: corrupt line {i + 1} of {p} "
+                "(only a truncated last line is tolerated, spec §5.1)"
+            )
     return out
 
 
@@ -235,11 +245,34 @@ def _proof_outcome(events: list[dict], proof_name: str) -> tuple[int, dict] | No
     return None
 
 
-def _reopened_after(events: list[dict], oracle_ref: str, proof_index: int) -> bool:
-    """True iff a reopen of oracle_ref appears at/after the proof's outcome position."""
+def _reopened_after(events: list[dict], oracle_ref: str, anchor_index: int) -> bool:
+    """True iff a reopen of oracle_ref appears at/after `anchor_index`."""
     for i, e in enumerate(events):
-        if i >= proof_index and e["type"] == "reopen" and e["pin_ref"] == oracle_ref:
+        if i >= anchor_index and e["type"] == "reopen" and e["pin_ref"] == oracle_ref:
             return True
+    return False
+
+
+def _dispatch_index(events: list[dict], rule: str, run: int) -> int | None:
+    """Event position of the (rule, run) dispatch — when this run actually executed.
+    A re-reap appends a later OUTCOME but reuses this dispatch, so it anchors condition 3
+    to execution time, not to the re-readable outcome position."""
+    for i, e in enumerate(events):
+        if e["type"] == "dispatch" and e["rule"] == rule and e["run"] == run:
+            return i
+    return None
+
+
+def _live_pin_exists(events: list[dict], oracle_ref: str) -> bool:
+    """True iff some pin of oracle_ref has NO later reopen — i.e. the oracle is currently
+    (re-)endorsed. Mirrors kernel._graded's liveness (existence only; grade needs the record)."""
+    for i, e in enumerate(events):
+        if e["type"] == "pin" and e["oracle_ref"] == oracle_ref:
+            if not any(
+                r["type"] == "reopen" and r["pin_ref"] == oracle_ref
+                for r in events[i + 1 :]
+            ):
+                return True
     return False
 
 
@@ -269,9 +302,18 @@ def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:
     for path, recorded in outcome.get("outputs", {}).items():
         if not versions_match(recorded, fingerprint_cached(root / path, root)):
             return False
-    # condition 3 (oracle not reopened after this proof landed)
-    if rule.oracle and _reopened_after(events, proof["oracle"]["ref"], idx):
-        return False
+    # condition 3 (oracle trust): invalid iff the oracle was reopened after this RUN's
+    # DISPATCH and has not since been re-pinned. Anchoring on the dispatch (execution time),
+    # not the outcome position, closes the re-reap whitewash (F5): a bare re-reap re-lands the
+    # outcome past a reopen but re-executes nothing and re-pins nothing, so it must not
+    # resurrect the proof. Genuine recovery still validates — a fresh dispatch AFTER the reopen
+    # post-dates it (reopened_after=False), and a re-pin leaves a live pin (second conjunct false).
+    if rule.oracle:
+        oref = proof["oracle"]["ref"]
+        d_idx = _dispatch_index(events, proof_name, outcome["run"])
+        anchor = d_idx if d_idx is not None else idx
+        if _reopened_after(events, oref, anchor) and not _live_pin_exists(events, oref):
+            return False
     return True
 
 
@@ -291,23 +333,22 @@ def input_available(
     if prod is None:
         return False
     if prod == consumer:
-        # self-produced in∩out input (e.g. lint-cdc waiver.tcl): compare against own
-        # latest outcome's OUTPUT version; no outcome or no file = cold start, dispatchable
-        # (never self-locks, spec §2 自产输入豁免).
-        own = latest_outcome(events, consumer)
-        if own is None:
-            return True
-        root = module_root(module)
-        return all(
-            versions_match(recorded, fingerprint_cached(root / path, root))
-            for path, recorded in own.get("outputs", {}).items()
-            if fnmatch.fnmatch(path, glob)
-        )
+        # self-produced in∩out input (e.g. lint-cdc waiver.tcl): ALWAYS available (spec §2
+        # 自产输入豁免). The rule regenerates it; a cold start has none; and it must NEVER
+        # gate the rule's own dispatch. Editing or deleting it invalidates THIS rule's proof
+        # via condition 4 (§1.3) — which is exactly what schedules the re-run. Requiring the
+        # on-disk file to match the last recorded output here would re-lock the rule the
+        # instant that proof invalidates: the self-lock the exemption exists to forbid
+        # ("无 outcome 或文件缺失 = 冷启动，照常可派发", and an edited file no differently).
+        return True
     outcome = latest_outcome(events, prod)
     if outcome is None:
-        return (
-            True  # true cold start: producer never ran — forward will schedule it first
-        )
+        # Producer never ran -> no output version exists -> input UNAVAILABLE (spec §2:
+        # 可用 iff 生产规则最新 outcome 的产出版本 == 当前磁盘指纹). Forward scheduling still
+        # reaches the producer via step-2's closure expansion; and this stops a manual
+        # dispatch of a consumer in a virgin module from recording an empty input table —
+        # a vacuously-valid proof forever (F7).
+        return False
     root = module_root(module)
     matched = False
     for path, recorded in outcome.get("outputs", {}).items():

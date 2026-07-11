@@ -1,25 +1,24 @@
-#!/usr/bin/env python3
 """VeriPower deterministic rework-router.
 
-Pure evaluator: maps a stage failure to a rework target, or to ESCALATE /
-NEED_INPUT. Holds no state; the only I/O is optionally reading a result.json
-passed by path. Most failures route on the closed-enum `failed_rule` /
-`failure_kind`; lint-cdc instead routes by input-provenance — `failures[0]
-.category` names which upstream input produced the failure (the SGDC seed vs.
-the RTL), so a CDC failure can route to `specification` instead of always
-blaming `rtl-design` (U4). Composed unchanged inside schedule.py; stays
-stateless and remains the SINGLE home for the static failure->target maps —
-no other file (SKILL.md / ARCHITECTURE.md / schemas) may restate them.
+Pure evaluator: maps a SELF-DESCRIBING stage failure to a rework target, or to
+ESCALATE. Holds no state and does no I/O. Most failures route on the closed-enum
+`failed_rule` / `failure_kind`; lint-cdc instead routes by input-provenance —
+`failures[0].category` names which upstream input produced the failure (the SGDC
+seed vs. the RTL), so a CDC failure can route to `specification` instead of always
+blaming `rtl-design` (U4). Composed unchanged inside schedule.py; the sole home
+for the static failure->target maps — no other file (SKILL.md / ARCHITECTURE.md /
+schemas) may restate them.
+
+Ambiguous simulation failures are NOT routed here: schedule.py dispatches
+`simulation-triage`, whose reap (kernel._derive_triage) mints a diagnosis via the
+`TRIAGE_ROOT_CAUSE` map below, and the confidence/reliability gate lives in
+schedule._reliable (§3.4). route() is only ever called for non-simulation,
+self-describing failures.
 """
 
 from __future__ import annotations
 
-import argparse
-import json
-from pathlib import Path
-
 ESCALATE = "ESCALATE"
-NEED_INPUT = "NEED_INPUT"
 
 # ── Routing policy: four pure enum->target maps ────────────────────
 
@@ -51,7 +50,9 @@ LINT_CATEGORY: dict[str, str] = {
     "tooling": ESCALATE,
 }
 
-# simulation-triage ANALYSIS.root_cause -> rework target.
+# simulation-triage ANALYSIS.root_cause -> rework target. Consumed by
+# kernel._derive_triage at triage-reap time (NOT by route() — simulation is not
+# self-describing and never reaches route()); kept here as the single map home.
 TRIAGE_ROOT_CAUSE: dict[str, str] = {
     "rtl-design": "rtl-design",
     "simulation-plan": "simulation-plan",
@@ -62,13 +63,9 @@ TRIAGE_ROOT_CAUSE: dict[str, str] = {
 _PPA_STAGES = {"synthesis", "power-analysis", "timing-analysis"}
 
 
-def _decision(
-    decision: str, rule: str, *, need: str | None = None, reason_hint: str | None = None
-) -> dict:
-    """Build the result dict; optional keys (need / reason_hint) omitted when None."""
+def _decision(decision: str, rule: str, *, reason_hint: str | None = None) -> dict:
+    """Build the result dict; optional reason_hint omitted when None."""
     out = {"decision": decision, "rule": rule}
-    if need is not None:
-        out["need"] = need
     if reason_hint is not None:
         out["reason_hint"] = reason_hint
     return out
@@ -80,15 +77,13 @@ def route(
     failure_kind: str | None = None,
     failures: list[dict] | None = None,
     fail_reason: str | None = None,
-    root_cause: str | None = None,
-    analysis_state: str | None = None,
-    confidence: str | None = None,
 ) -> dict:
-    """Return {decision, rule, [need], [reason_hint]}.
+    """Return {decision, rule, [reason_hint]} for a self-describing failure.
 
-    decision ∈ {<stage>, ESCALATE, NEED_INPUT}. Total over all inputs — any value
-    outside a known enum falls through to a named `unrouted*` ESCALATE (never a
-    KeyError, never a silent drop). Every routing key is a closed enum.
+    decision ∈ {<stage>, ESCALATE}. Total over all inputs — any value outside a
+    known enum falls through to a named `unrouted*` ESCALATE (never a KeyError,
+    never a silent drop). Every routing key is a closed enum. `failed_rule ==
+    "simulation"` never reaches route() (schedule dispatches triage first).
     """
     # 1. Terminal stage — no DAG-internal target.
     if failed_rule == "frontend-signoff":
@@ -116,22 +111,7 @@ def route(
             target, f"fixed:{failed_rule}->{target}", reason_hint=fail_reason
         )
 
-    # 4. simulation — routed on triage ANALYSIS (landed result.json, supplied as args).
-    if failed_rule == "simulation":
-        if analysis_state == "skipped":
-            return _decision(ESCALATE, "triage_skipped")
-        if root_cause is None or analysis_state is None:
-            return _decision(NEED_INPUT, "need_input:root_cause", need="root_cause")
-        # confidence-gated authority: only a high-confidence verdict auto-routes;
-        # medium/low (or missing) surfaces to the operator (spec §3.4).
-        if confidence != "high":
-            return _decision(ESCALATE, "triage_low_confidence")
-        if root_cause not in TRIAGE_ROOT_CAUSE:
-            return _decision(ESCALATE, "unrouted:unknown_root_cause")
-        target = TRIAGE_ROOT_CAUSE[root_cause]
-        return _decision(target, f"triage_root_cause:{root_cause}->{target}")
-
-    # 5. PPA-class stages — failure_kind dispatch.
+    # 4. PPA-class stages — failure_kind dispatch.
     if failed_rule in _PPA_STAGES:
         if failure_kind == "infra":
             return _decision(ESCALATE, "failure_kind_infra", reason_hint=fail_reason)
@@ -156,54 +136,3 @@ def route(
 
     # Defensive: unmodeled (failed_rule, failure_kind) — escalate, never silent.
     return _decision(ESCALATE, "unrouted")
-
-
-def _inputs_from_result_json(path: str) -> dict:
-    ss = json.loads(Path(path).read_text()).get("stage_specific", {})
-    return {
-        "failure_kind": ss.get("failure_kind"),
-        "failures": ss.get("failures"),
-        "fail_reason": ss.get("fail_reason"),
-    }
-
-
-def main() -> None:
-    p = argparse.ArgumentParser(
-        prog="route.py", description="VeriPower deterministic rework-router"
-    )
-    p.add_argument("--failed-rule", required=True)
-    p.add_argument(
-        "--result-json",
-        default=None,
-        help="canonical result.json path (PPA / lint-cdc / simulation-plan)",
-    )
-    p.add_argument(
-        "--root-cause",
-        default=None,
-        help="simulation-triage landed result.json root_cause (simulation only)",
-    )
-    p.add_argument(
-        "--analysis-state",
-        default=None,
-        help="simulation-triage landed result.json analysis_state (simulation only)",
-    )
-    p.add_argument(
-        "--confidence",
-        default=None,
-        help="triage ANALYSIS confidence (simulation only)",
-    )
-    args = p.parse_args()
-
-    kwargs: dict = {
-        "root_cause": args.root_cause,
-        "analysis_state": args.analysis_state,
-        "confidence": args.confidence,
-    }
-    if args.result_json:
-        kwargs.update(_inputs_from_result_json(args.result_json))
-
-    print(json.dumps(route(args.failed_rule, **kwargs), indent=2, ensure_ascii=False))
-
-
-if __name__ == "__main__":
-    main()

@@ -57,6 +57,18 @@ def cmd_dispatch(
         return {"ok": False, "error": f"{rule} already in-flight"}
     if not facts.rule_available(module, events, rule):
         return {"ok": False, "error": f"{rule} inputs not available"}
+    # Mandatory declared params must be supplied via --params (the `directive` channel is
+    # optional and lands via --directive). Missing them mints a malformed event downstream:
+    # a triage without sim_run derives a diagnosis with subject.outcome_run=None -> schema
+    # violation AFTER the outcome already landed -> half-reap (F8a). Reject up front.
+    required_params = [p for p in rules.RULES[rule].params if p != "directive"]
+    missing = [p for p in required_params if not (extra_params and p in extra_params)]
+    if missing:
+        return {
+            "ok": False,
+            "error": f"{rule} dispatch missing required --params {missing} "
+            f"(Rule.params={list(rules.RULES[rule].params)})",
+        }
     if rule == "frontend-signoff":
         if objective != "signoff":
             return {
@@ -74,12 +86,15 @@ def cmd_dispatch(
     params: dict = dict(extra_params) if extra_params else {}
     if directive_path:
         dst = facts.module_root(module) / workdir / "directive.md"
-        text = (
-            sys.stdin.read()
+        # Byte-exact transfer (§3.4 禁 LLM 转写): read/write bytes, never text mode —
+        # universal-newline translation (CRLF -> LF) would drift both the file and its
+        # recorded digest from the source (e.g. a verbatim-forwarded triage result.json).
+        data = (
+            sys.stdin.buffer.read()
             if directive_path == "-"
-            else Path(directive_path).read_text()
+            else Path(directive_path).read_bytes()
         )
-        dst.write_text(text)
+        dst.write_bytes(data)
         params["directive"] = {
             "path": str(Path(workdir) / "directive.md"),
             "digest": facts.fingerprint(dst),
@@ -235,7 +250,7 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
     if facts.validate_result(rule_name, env) is not None:
         return "blocked", "schema_violation", [], None
     if rule_name == "simulation-triage":
-        return _derive_triage(module, env, events)  # Task C7 — same 4-tuple
+        return _derive_triage(module, env, events, run)  # Task C7 — same 4-tuple
     if rule.proof is None:
         return status, None, [], None
     dispatch = next(
@@ -243,17 +258,24 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
         for e in reversed(events)
         if e["type"] == "dispatch" and e["rule"] == rule_name and e["run"] == run
     )
+    cdir = Path(*rule.workdir_root)
+    # evidence = canonical result.json AND its artifacts[] (§5.3 "及其 artifacts[]"): the
+    # report-class products ARE the evidence; recording only result.json truncates the audit
+    # trail. Audit-only — not in validity (all already covered by output binding, §5.3).
+    evidence = [str(cdir / "result.json")] + [
+        str(cdir / a["path"]) for a in env.get("artifacts", [])
+    ]
     proof = {
         "name": rule.proof,
         "verdict": status,
         "inputs": dispatch.get("inputs", {}),
         "oracle": {"ref": rule.oracle[0], "grade": _graded(module, events, rule)},
-        "evidence": [str(Path(*rule.workdir_root) / "result.json")],
+        "evidence": evidence,
     }
     return status, None, [proof], None
 
 
-def _derive_triage(module, env, events):
+def _derive_triage(module, env, events, run):
     """Triage reap (§2 triage contract): complete -> (verdict, None, [], diagnosis-event);
     skipped/crash -> blocked, no diagnosis (the sim failure stays ambiguous; next round
     re-dispatches triage, §3.3). Confidence lands as-is (P4) — reliability is decide's
@@ -270,23 +292,41 @@ def _derive_triage(module, env, events):
     root_cause = ss.get("root_cause")
     target = route.TRIAGE_ROOT_CAUSE.get(root_cause, route.ESCALATE)
     sim_hit = None
-    for e in reversed(events):  # the sim fail outcome this triage was dispatched for
-        if e["type"] == "dispatch" and e["rule"] == "simulation-triage":
+    for e in reversed(events):  # THIS run's own dispatch (not the latest triage dispatch,
+        # which would mislabel subject.outcome_run when re-reaping an older run — F8b)
+        if (
+            e["type"] == "dispatch"
+            and e["rule"] == "simulation-triage"
+            and e["run"] == run
+        ):
             sim_hit = e["params"].get("sim_run")
             break
+    # Structural correlates live in the ADVISORY tier — stage_specific is
+    # additionalProperties:false with no evidence/fix_locus keys, so the old
+    # ss.get("evidence"/"fix_locus") reads were ALWAYS empty (D5). Map them: L2 repro
+    # artifacts -> diagnosis.evidence (§3.4 "L2 repro 经 diagnosis.evidence 引用"), and
+    # per-finding anchors -> fix_locus. The triage result.json is the always-present primary
+    # evidence record.
+    advisory = ss.get("advisory", {})
+    triage_rj = str(Path(*rules.RULES["simulation-triage"].workdir_root) / "result.json")
+    evidence = [triage_rj] + list(advisory.get("experiment", {}).get("artifacts", []))
+    fix_locus = [f["anchor"] for f in advisory.get("findings", []) if f.get("anchor")]
     diagnosis = {
         "type": "diagnosis",
         "id": f"diag-{uuid.uuid4().hex[:12]}",
         "subject": {"proof": "simulation", "outcome_run": sim_hit},
         "attribution": root_cause,
-        "fix_locus": ss.get("fix_locus", []),
-        "evidence": ss.get("evidence", []),
+        "fix_locus": fix_locus,
+        "evidence": evidence,
         "confidence": ss.get("confidence"),
         "source": "triage",
     }
     if target != route.ESCALATE:
         diagnosis["fix_owner"] = target  # legality: target ∈ input_closure("simulation")
-    return env["status"], None, [], diagnosis
+    # A complete triage is never a fail (spec §2 triage 无独立 fail 态): it mints no proof,
+    # so its verdict is a plain non-blocked "pass" regardless of env["status"] (the envelope
+    # schema permits status=fail, but a triage fail outcome would crash repair's proof scan).
+    return "pass", None, [], diagnosis
 
 
 def _graded(module, events, rule):
@@ -310,11 +350,10 @@ def _graded(module, events, rule):
     current = _oracle_content_fp(module, rule)
     if current == facts.UNKNOWN:
         return "proposed"  # unreadable oracle content never inherits trust
-    return (
-        "human"
-        if any(p["content_fingerprint"] == current for p in live)
-        else "proposed"
-    )
+    # Compare against the LATEST live pin only (spec §5.4 "与最新 pin 记录比对"). `live` is in
+    # event order, so live[-1] is the newest; an OLDER live pin matching current content must
+    # not resurrect trust the newer endorsement moved on from.
+    return "human" if live[-1]["content_fingerprint"] == current else "proposed"
 
 
 def cmd_diagnose(
@@ -395,6 +434,15 @@ def cmd_pin(module, rule, provenance, reason):
             "error": f"{rule} has no oracle_selector (grade={grade!r}, not pinnable)",
         }
     fp = _oracle_content_fp(module, r)
+    if fp == facts.UNKNOWN:
+        # A pin must endorse REAL content (§5.4). A zero-match selector records
+        # content_fingerprint="unknown" — an inert pin that can never grade human — yet
+        # returns ok:true. Reject so the human learns nothing was pinned (conservative).
+        return {
+            "ok": False,
+            "error": f"{rule} oracle selector {r.oracle_selector!r} matched no readable "
+            "content (unknown fingerprint — nothing to pin)",
+        }
     ev = {
         "type": "pin",
         "oracle_ref": r.oracle[0],
@@ -407,6 +455,17 @@ def cmd_pin(module, rule, provenance, reason):
 
 
 def cmd_reopen(module, pin_ref, reason):
+    events = facts.read_events(module)
+    # A reopen must revoke a real pin: pin_ref names a pinned oracle_ref (§5.4). A typo'd
+    # ref would append a reopen that matches nothing — ok:true yet zero revocation, so the
+    # human believes trust was withdrawn when it was not. Reject instead (conservative).
+    if not any(
+        e["type"] == "pin" and e["oracle_ref"] == pin_ref for e in events
+    ):
+        return {
+            "ok": False,
+            "error": f"reopen: no pin for oracle_ref {pin_ref!r} (nothing to revoke)",
+        }
     ev = {"type": "reopen", "pin_ref": pin_ref, "reason": reason}
     facts.append_event(module, ev, _now())
     return {"ok": True, "pin_ref": pin_ref}

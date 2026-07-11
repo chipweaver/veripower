@@ -94,7 +94,9 @@ RULES: dict[str, Rule] = {
         name="simulation", stage="simulation", skill="veripower:simulation",
         execution="main-thread", workdir_root=("Verification", "simulation"),
         inputs={"rtl": ("Design/rtl-design/*.v", "Design/rtl-design/filelist.txt"),
-                "rtl_doc": ("Design/rtl-design/README.md",),
+                # NOT rtl_doc/README: simulation's only README use was top inference, now
+                # read from manifest.module (§4.3); README prose is not a sim verdict-dependency,
+                # so binding it only caused README-only edits to falsely invalidate (D6/G4).
                 "plan": ("Verification/simulation-plan/verification-plan.md",),
                 "scaffold": ("Verification/simulation-plan/scaffold-specification.json",)},
         outputs=("case-results-summary.md", "conformance-review.json",

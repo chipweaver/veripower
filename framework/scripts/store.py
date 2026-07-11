@@ -189,26 +189,3 @@ def promote(module: str, rule: str, run_n: int) -> None:
         if tmp.exists():
             shutil.rmtree(tmp)
         raise
-
-
-def repair_partial_promote_if_needed(module: str, rule: str) -> None:
-    """Per-cmd-entry fix-up for partial promote crashes.
-
-    A crashed promote() may leave `.promote-tmp/` populated if the process
-    was killed before the except-handler's rmtree could run (SIGKILL, OOM,
-    OS panic). Detection signal: `.promote-tmp/` exists at start of any
-    cmd. Action: rmtree it so the subsequent promote() retry can rebuild
-    from scratch.
-
-    Note: this DOES NOT restore canonical to a known-good state. Canonical
-    may remain in a partial state (some entries from run N, some still
-    from run N-1, some missing). The subsequent promote() retry in
-    cmd_reap (called by orchestrator) will overwrite whatever partial
-    state exists via the per-entry merge step.
-
-    Idempotent: safe to call repeatedly with no .promote-tmp present.
-    """
-    stage_dir = _result_path(module, rule).parent
-    tmp = stage_dir / ".promote-tmp"
-    if tmp.exists():
-        shutil.rmtree(tmp)

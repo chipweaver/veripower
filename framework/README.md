@@ -70,9 +70,11 @@ solely through `kernel.py`.
 ### `scripts/route.py` — deterministic rework-target router
 
 The sole home of the failure→target maps: a pure, stateless evaluator that maps a
-stage failure to a rework target (or to `ESCALATE` / `NEED_INPUT`). Composed
+self-describing stage failure to a rework target (or to `ESCALATE`). Composed
 unchanged inside `schedule.py` and `kernel.py` — an import-only internal, never
-invoked directly. Holds no state.
+invoked directly. Holds no state. (Ambiguous simulation failures are not routed
+here — schedule dispatches `simulation-triage`; the `TRIAGE_ROOT_CAUSE` map is
+consumed by `kernel._derive_triage`, and the reliability gate by `schedule._reliable`.)
 
 ### `scripts/store.py` — artifact-lifecycle internals
 
