@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""simplan seed — carry prior canonical verification-plan PRODUCTS into a freeze workdir.
+"""simplan seed — carry prior canonical verification-plan PRODUCTS into a rework/freeze workdir.
 
 Whitelist copy with NO-CLOBBER semantics (a file already present is never overwritten —
 resume-idempotent): verification-plan.md and scaffold-specification.json. Adjudication
