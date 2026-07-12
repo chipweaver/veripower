@@ -458,41 +458,6 @@ def test_reject_default_reason_unchanged(tmp_path):
     assert ss["spec_gate"]["gate"] == "clear"  # review record present -> still graded
 
 
-def test_finalize_records_input_digest_on_pass(tmp_path, monkeypatch):
-    # workdir = <root>/Design/specification/runs/1 ; brainstorm at <root>/brainstorm.md
-    from spec import classify  # noqa: E402
-
-    root = tmp_path / "asic" / "m"
-    wd = root / "Design" / "specification" / "runs" / "1"
-    wd.mkdir(parents=True)
-    brainstorm = root / "brainstorm.md"
-    brainstorm.write_text("b-content", encoding="utf-8")
-    design = _design(
-        "| i_clk | input | 1 | i_clk | clk | - | clock | - | - |\n",
-        "| i_clk | 100 | 10.0 | primary | no | primary clock |\n",
-    )
-    (wd / "design.md").write_text(design)
-    (wd / "manifest.json").write_text(
-        json.dumps(
-            {
-                "module": "tpu_top",
-                "children": [{"name": "mac", "doc": "mac.md", "rtl_modules": ["mac"]}],
-            }
-        )
-    )
-    (wd / "coverage.json").write_text(json.dumps({"status": "pass"}))
-    (wd / "mac.md").write_text("# child\n")
-    (wd / "spec-review.json").write_text(json.dumps(_CLEAR_REVIEW))
-    assert (
-        result.build_result(
-            wd, module="tpu_top", ppa_targets=[], waived=[], status="pass"
-        )
-        == 0
-    )
-    rj = json.loads((wd / "result.json").read_text())
-    assert rj["stage_specific"]["input_digest"] == classify.input_digest(brainstorm)
-
-
 # ── adversarial-review follow-ups: fail-path edges ──────────────────────────
 
 
@@ -545,23 +510,7 @@ def test_fail_path_merges_waived_into_spec_gate(tmp_path):
     assert ss["spec_gate"]["waived"] == waived  # review record present -> merged
 
 
-# ── code-review round: products digest + B-group fixes ──────────────────────
-
-
-def test_pass_records_products_digest(tmp_path):
-    from spec import classify
-
-    wd = _spec_workdir(tmp_path)
-    (wd / "ppa.json").write_text("[]")
-    assert (
-        result.build_result(
-            wd, module="tpu_top", ppa_targets=None, waived=[], status="pass"
-        )
-        == 0
-    )
-    env = json.loads((wd / "result.json").read_text())
-    expected = classify.products_digest(wd, [a["path"] for a in env["artifacts"]])
-    assert env["stage_specific"]["products_digest"] == expected
+# ── code-review round: B-group fixes ─────────────────────────────────────────
 
 
 def test_nan_ppa_is_blocked_on_both_paths(tmp_path):

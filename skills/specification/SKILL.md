@@ -25,7 +25,6 @@ Your boundary:
 - **`design.md` and every `<child>.md` MUST reference the PPA targets by pointing at `ppa.json`, never restate the numeric target values in prose** (carrier line in `design-template.md` §1.1). `ppa.json` is the single home of PPA numbers — synthesis and power-analysis bind to it directly as their acceptance standard, so a restated number can silently drift from the value they actually gate on. This is the one sanctioned by-reference pointer; brainstorm content still must be inlined verbatim.
 - **`manifest.json` is read-only after the partition gate.** Changes to N require a fresh specification run (or re-dispatching Wave 1 with new grouping before the partition gate is reconfirmed).
 - **Minimal edit on any re-dispatch with a prior valid `design.md` on disk.** Edit only what this round's task requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise a trigger-driven rework amends `design.md` only. Every file outside that scope — `manifest.json`, the `<child>.md` set, `ppa.json`, the constraint files — MUST stay byte-identical to the prior run.
-- **Freeze-reuse when nothing changed** — see the Step-1 entry table's freeze row; never re-judge byte-identical content (it would regenerate `spec-review.json` and drop its `pin`).
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -81,14 +80,11 @@ When `{directive_path}` is injected, Read it first — its `fix_locus` narrows w
 
 | # | Condition (test in order) | Seeding | Enters at | Ends with |
 |---|---|---|---|---|
-| 1 | No trigger, no directive, and `spec classify-delta --canonical-result asic/{module}/Design/specification/result.json --brainstorm asic/{module}/brainstorm.md` prints `verdict=freeze` (it verifies **both** the brainstorm digest **and** the canonical products against the digests the prior pass recorded — a hand-edited canonical classifies `proceed`, never freeze) | `spec seed --workdir {workdir} --freeze` | Step 9 directly — no wave, no gate re-runs | Step 9 `finalize --status pass --waived '<canonical stage_specific.spec_gate.waived, verbatim>'` — `ppa_targets` is read from the seeded `ppa.json`, no flag needed |
-| 2 | `{rework_trigger}` injected | `spec seed --workdir {workdir}` | Read the trigger's `stage_specific` once, dispatch one design.md-level rework sub-Task (body stays off the main thread; `brainstorm.md` read-only), then **re-enter the main chain at Step 6 and flow through Steps 7–9** | Step 9 |
-| 3 | No trigger + `{workdir}` holds partial wave products (`manifest.json` / `design.md`) | — (residue is the baseline) | The last incomplete wave; gates re-ask idempotently. Resume-guard: if `stage_specific.spec_gate` is not `clear`-or-all-`waived` (absent / `trip` / predates the latest design.md edit), re-run Step 7 before Step 8 | Step 9 |
-| 4 | Otherwise (first-run; brainstorm-level rework recovery also lands here — fresh empty workdir, full re-derivation, no version compare) | — | Step 2 | Step 9 |
+| 1 | `{rework_trigger}` injected | `spec seed --workdir {workdir}` | Read the trigger's `stage_specific` once, dispatch one design.md-level rework sub-Task (body stays off the main thread; `brainstorm.md` read-only), then **re-enter the main chain at Step 6 and flow through Steps 7–9** | Step 9 |
+| 2 | No trigger + `{workdir}` holds partial wave products (`manifest.json` / `design.md`) | — (residue is the baseline) | The last incomplete wave; gates re-ask idempotently. Resume-guard: if `stage_specific.spec_gate` is not `clear`-or-all-`waived` (absent / `trip` / predates the latest design.md edit), re-run Step 7 before Step 8 | Step 9 |
+| 3 | Otherwise (first-run; brainstorm-level rework recovery also lands here — fresh empty workdir, full re-derivation, no version compare) | — | Step 2 | Step 9 |
 
-Freeze rationale (row 1): the double digest match **proves** the products are the exact bytes the prior human approval covered, so Steps 2–8 are skipped outright — re-judging byte-identical content would regenerate `spec-review.json` and drop its `pin`, and re-asking the human adds nothing the digests have not already proven. `seed` is a whitelist byte-copy of the prior products (`design.md` / `<child>.md` set / `manifest.json` / `coverage.json` / `ppa.json` / constraints; `--freeze` additionally carries `spec-review.json`); `result.json` is never seeded — a freeze run still ends with its own freshly-stamped envelope (finalize re-runs the derivation in-process as its usual divergence-proof), and a carried-in stale one is reaped `blocked` (`stale_result`), never as a verdict. A legacy baseline without a recorded `products_digest` classifies `proceed` (full chain), never freeze.
-
-Legacy note (row 2): if `ppa.json` is absent after seeding (a canonical from before the ppa.json migration), pass finalize `--ppa-targets` **verbatim** from the canonical `result.json` `stage_specific.ppa_targets` — a one-time migration; every later pass writes the file.
+Legacy note (row 1): if `ppa.json` is absent after seeding (a canonical from before the ppa.json migration), pass finalize `--ppa-targets` **verbatim** from the canonical `result.json` `stage_specific.ppa_targets` — a one-time migration; every later pass writes the file.
 
 **Early-fail exit (all branches).** Whenever a documented failure below cannot be resolved in-branch, close the run with the finalize early-fail entry — never hand-assemble the envelope:
 
@@ -97,7 +93,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
   --workdir {workdir} --module {module} --status fail --fail-reason "<one-line reason>"
 ```
 
-Reasons used by this skill: `rework_trigger not readable: <path>`; `requirements need revision: <D-dim>` (a contradiction unfixable without changing the frozen brainstorm — routes to ESCALATE; recovery is out-of-band); `manifest child missing rtl_modules`; `constraint derivation: <table> defect`. finalize enumerates `artifacts[]` present-only, so a seeded workdir's carried **product** set all promotes — an early fail never shrinks it (the judged `spec-review.json` is the one exception: deliberately not carried on non-freeze rework, per invalidate-on-rework).
+Reasons used by this skill: `rework_trigger not readable: <path>`; `requirements need revision: <D-dim>` (a contradiction unfixable without changing the frozen brainstorm — routes to ESCALATE; recovery is out-of-band); `manifest child missing rtl_modules`; `constraint derivation: <table> defect`. finalize enumerates `artifacts[]` present-only, so a seeded workdir's carried **product** set all promotes — an early fail never shrinks it (the judged `spec-review.json` is the one exception: deliberately never carried on rework, per invalidate-on-rework).
 
 ### Main chain at a glance
 
@@ -168,7 +164,7 @@ It generates the complete `constraints/<TOP>.{sdc,sgdc}` purely from the §1.6 +
 
 ### Step 7: Wave 3 — semantic review (gating)
 
-You run this wave after Step 6 is fully clean and before the design.md gate, on **every** pass through the main chain (the Step-1 freeze row bypasses the chain and carries the prior review forward). Dispatch Wave 3 — **N per-child Level-1 reviewers** (one per `manifest.children[]`) per `references/spec-review-task-contract.md`, paths only: you read no body. Lens definitions, the gating split (`faithfulness`/`conformance` block; `soundness` advisory), and scope boundaries live in that contract — do not restate or reinterpret them here.
+You run this wave after Step 6 is fully clean and before the design.md gate, on **every** pass through the main chain. Dispatch Wave 3 — **N per-child Level-1 reviewers** (one per `manifest.children[]`) per `references/spec-review-task-contract.md`, paths only: you read no body. Lens definitions, the gating split (`faithfulness`/`conformance` block; `soundness` advisory), and scope boundaries live in that contract — do not restate or reinterpret them here.
 
 > **Gate semantics (block-in-place).** A `gate=trip` does **NOT** write `status=fail` and does **NOT** route out of the stage: it blocks `status=pass` **in place** and surfaces findings into the design.md gate (Step 8). Never a fail-out verdict.
 
@@ -244,7 +240,7 @@ Downstream consumption note: synthesis and power-analysis read `ppa.json` direct
 
 ### Session-resume semantics
 
-Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, Step 1's entry table selects again. The two path-handoff gates always re-ask idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** The Step-7 verdict is not itself a completion marker; the resume-guard (Step 1 row 3) and the Step-8 approve precondition together ensure a mid-wave compaction or a stale `clear` cannot yield an unreviewed pass. `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before you run; you never approve or re-approve it.
+Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, Step 1's entry table selects again. The two path-handoff gates always re-ask idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** The Step-7 verdict is not itself a completion marker; the resume-guard (Step 1 row 2) and the Step-8 approve precondition together ensure a mid-wave compaction or a stale `clear` cannot yield an unreviewed pass. `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before you run; you never approve or re-approve it.
 
 ## Bundled References
 

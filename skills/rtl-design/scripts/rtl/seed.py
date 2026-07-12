@@ -13,11 +13,8 @@ monotonically) and promote internals instead of matching-then-filtering.
 
 Adjudication artifacts are excluded by construction (room-birth hygiene, ARCHITECTURE
 §7.2): result.json is never seeded (a carried-in stale envelope is reaped
-blocked/stale_result). The judged review record (semantic-review.json) is copied ONLY
-with --freeze — the freeze branch's byte-carry that keeps a `pin` on the record alive.
---freeze also materializes `fresh_reports.json` as `{}` when absent: a freeze round
-dispatches zero children, and finalize's post exit gate hard-requires the file — an
-empty map is that round's true reaped-report translation. First-run (no canonical dir)
+blocked/stale_result), and the judged review record (semantic-review.json) is never
+seeded either — a rework run must earn a fresh review. First-run (no canonical dir)
 is a no-op.
 
 Canonical defaults to `{workdir}/../..`: the framework lays the workdir at
@@ -33,7 +30,6 @@ from pathlib import Path
 
 PRODUCT_SUFFIXES = (".v", ".sv", ".vh", ".svh")
 PRODUCT_FILES = ("filelist.txt", "README.md", ".child_reports.json")
-FREEZE_EXTRAS = ("semantic-review.json",)
 # pruned from the walk; these top-level dirs are never product homes.
 _EXCLUDE_TOP = ("runs", ".promote-tmp", ".subagent_traces")
 
@@ -71,36 +67,25 @@ def _product_rels(canonical: Path) -> list[Path]:
     return sorted(set(rels))
 
 
-def seed(canonical: Path, workdir: Path, freeze: bool = False) -> list:
+def seed(canonical: Path, workdir: Path) -> list:
     copied: list = []
     if not canonical.is_dir():
         return copied
-    rels = _product_rels(canonical)
-    if freeze:
-        rels += [Path(f) for f in FREEZE_EXTRAS if (canonical / f).is_file()]
-    for rel in rels:
+    for rel in _product_rels(canonical):
         dst = workdir / rel
         if dst.exists():  # no-clobber: keep freshly-authored work
             continue
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(canonical / rel, dst)
         copied.append(str(rel))
-    if freeze:
-        # Zero children are dispatched on a freeze round; materialize that round's true
-        # reaped-report translation so finalize's post exit gate can close the run
-        # (its absence fails finalize with artifacts=[] — a canonical-wiping promote).
-        fresh = workdir / "fresh_reports.json"
-        if not fresh.exists():
-            fresh.write_text("{}\n")
-            copied.append("fresh_reports.json")
     return copied
 
 
-def run(workdir, canonical=None, freeze: bool = False) -> int:
+def run(workdir, canonical=None) -> int:
     workdir = Path(workdir)
     canonical = (
         Path(canonical) if canonical is not None else workdir.resolve().parent.parent
     )
-    copied = seed(canonical, workdir, freeze=freeze)
+    copied = seed(canonical, workdir)
     print(json.dumps({"seeded": copied, "count": len(copied)}, ensure_ascii=False))
     return 0

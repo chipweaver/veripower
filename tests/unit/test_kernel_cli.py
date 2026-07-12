@@ -162,25 +162,10 @@ _STAGE_FILES = {
 }
 
 
-def _build_full_chain(tmp_path, module, *, epoch_first):
+def _build_full_chain(tmp_path, module):
     """Dispatch+write+reap every stage but frontend-signoff, in FORWARD_PRIORITY
-    order, leaving every oracle unpinned (proposed). `epoch_first` controls whether
-    the epoch anchor precedes (post-anchor valid chain) or is absent entirely."""
+    order, leaving every oracle unpinned (proposed)."""
     _write_file(module, "brainstorm.md", "b1")
-    if epoch_first:
-        e = _run_json(
-            tmp_path,
-            "epoch",
-            "--module",
-            module,
-            "--objective",
-            "signoff",
-            "--provenance",
-            "andrew",
-            "--reason",
-            "start signoff epoch",
-        )
-        assert e["ok"] is True, e
     for rule in rules.FORWARD_PRIORITY:
         if rule == "frontend-signoff":
             continue
@@ -257,9 +242,9 @@ def test_reap_schema_violation_blocks_and_skips_promote(tmp_path, monkeypatch):
     assert not (canonical / "design.md").exists()
 
 
-def test_epoch_then_signoff_decide_gates_on_proposed_oracle(tmp_path, monkeypatch):
+def test_signoff_decide_gates_on_proposed_oracle(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _build_full_chain(tmp_path, "gate1", epoch_first=True)
+    _build_full_chain(tmp_path, "gate1")
     a = _run_json(tmp_path, "decide", "--module", "gate1", "--objective", "signoff")
     assert a == {
         "action": "ESCALATE",
@@ -275,27 +260,9 @@ def test_unknown_rule_argparse_exits_cleanly(tmp_path, monkeypatch):
     assert "Traceback" not in r.stderr
 
 
-def test_signoff_bypass_blocked_no_epoch_hard_error(tmp_path, monkeypatch):
+def test_signoff_bypass_blocked_proposed_oracle(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _build_full_chain(tmp_path, "gate2", epoch_first=False)
-    r = _run(
-        tmp_path,
-        "dispatch",
-        "--module",
-        "gate2",
-        "--rule",
-        "frontend-signoff",
-        "--objective",
-        "signoff",
-    )
-    assert r.returncode != 0
-    assert "open an epoch first" in r.stderr
-    assert r.stdout == ""
-
-
-def test_signoff_bypass_blocked_epoch_open_proposed_oracle(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    _build_full_chain(tmp_path, "gate3", epoch_first=True)
+    _build_full_chain(tmp_path, "gate3")
     d = _run_json(
         tmp_path,
         "dispatch",

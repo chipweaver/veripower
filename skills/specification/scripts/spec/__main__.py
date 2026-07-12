@@ -6,7 +6,6 @@ Verbs (one stage = one tool; see skills/specification/SKILL.md for usage):
   check-coverage      manifest-driven coverage gate         (writes coverage.json; exit 0/1)
   derive-constraints  generate SDC/SGDC from §1.6 + §1.4.1  (stdout: JSON; fail-loud)
   validate-review     spec-review.json schema + gate        (stdout: gate JSON; exit 0/1)
-  classify-delta      freeze-branch selector                (stdout: verdict JSON; exit 0/1)
   seed                carry prior canonical products fwd    (stdout: seeded JSON)
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 
@@ -60,16 +59,10 @@ def _cmd_derive_constraints(a: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_classify_delta(a: argparse.Namespace) -> int:
-    from spec import classify
-
-    return classify.run(a.canonical_result, a.brainstorm)
-
-
 def _cmd_seed(a: argparse.Namespace) -> int:
     from spec import seed
 
-    return seed.run(a.workdir, a.canonical, freeze=a.freeze)
+    return seed.run(a.workdir, a.canonical)
 
 
 def _cmd_validate_review(a: argparse.Namespace) -> int:
@@ -118,18 +111,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=_cmd_validate_review)
 
     sp = sub.add_parser(
-        "classify-delta", help="freeze-branch selector: first-run|freeze|proceed"
-    )
-    sp.add_argument("--brainstorm", required=True, type=Path)
-    sp.add_argument(
-        "--canonical-result",
-        type=Path,
-        default=None,
-        help="canonical Design/specification/result.json (absent => first-run)",
-    )
-    sp.set_defaults(func=_cmd_classify_delta)
-
-    sp = sub.add_parser(
         "seed",
         help="carry prior canonical PRODUCTS forward (whitelist, no-clobber; "
         "never result.json)",
@@ -140,11 +121,6 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="prior canonical dir; default = {workdir}/../..",
-    )
-    sp.add_argument(
-        "--freeze",
-        action="store_true",
-        help="freeze branch only: additionally byte-carry spec-review.json (keeps its pin alive)",
     )
     sp.set_defaults(func=_cmd_seed)
 

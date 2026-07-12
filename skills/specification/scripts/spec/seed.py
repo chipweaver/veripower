@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""spec seed — carry prior canonical specification PRODUCTS into a rework/freeze workdir.
+"""spec seed — carry prior canonical specification PRODUCTS into a rework workdir.
 
 Whitelist copy with NO-CLOBBER semantics (a file already present is never overwritten —
 resume-idempotent): design.md + the per-child <child>.md set (root *.md), manifest.json,
@@ -9,8 +9,8 @@ finalized as status=fail promotes a present-only artifact set, and an absent ppa
 would be GC'd out of canonical — severing synthesis/power-analysis's declared input.
 Adjudication artifacts are excluded by construction (room-birth hygiene, ARCHITECTURE
 §7.2): result.json is never seeded (a carried-in stale envelope is reaped
-blocked/stale_result). The judged review record (spec-review.json) is copied ONLY
-with --freeze — the freeze branch's byte-carry that keeps a `pin` on the record alive.
+blocked/stale_result), and the judged review record (spec-review.json) is never seeded
+either — a rework run must earn a fresh review.
 First-run (no canonical dir) is a no-op. Canonical defaults to `{workdir}/../..`
 (workdir is runs/<N>).
 """
@@ -29,14 +29,13 @@ PRODUCTS = (
     "constraints/*.sdc",
     "constraints/*.sgdc",
 )
-FREEZE_EXTRAS = ("spec-review.json",)
 
 
-def seed(canonical: Path, workdir: Path, freeze: bool = False) -> list:
+def seed(canonical: Path, workdir: Path) -> list:
     copied: list = []
     if not canonical.is_dir():
         return copied
-    for g in PRODUCTS + (FREEZE_EXTRAS if freeze else ()):
+    for g in PRODUCTS:
         for src in sorted(canonical.glob(g)):
             if not src.is_file():
                 continue
@@ -50,11 +49,11 @@ def seed(canonical: Path, workdir: Path, freeze: bool = False) -> list:
     return copied
 
 
-def run(workdir, canonical=None, freeze: bool = False) -> int:
+def run(workdir, canonical=None) -> int:
     workdir = Path(workdir)
     canonical = (
         Path(canonical) if canonical is not None else workdir.resolve().parent.parent
     )
-    copied = seed(canonical, workdir, freeze=freeze)
+    copied = seed(canonical, workdir)
     print(json.dumps({"seeded": copied, "count": len(copied)}, ensure_ascii=False))
     return 0

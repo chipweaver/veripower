@@ -38,7 +38,7 @@ whose reap lands a `diagnosis` event. Authoritative registry and routing rules:
 
 Per-module work tree under `asic/<module>/`:
 
-- `events.jsonl` — append-only event log, the SOLE durable state file (7 event types: `dispatch`, `outcome`, `diagnosis`, `epoch`, `pin`, `reopen`, `escalation`; schemas `framework/references/schemas/events/`). Written only by `kernel.py`; per-stage status is derived from it + disk fingerprints on demand (`kernel.py status`), never stored.
+- `events.jsonl` — append-only event log, the SOLE durable state file (6 event types: `dispatch`, `outcome`, `diagnosis`, `pin`, `reopen`, `escalation`; schemas `framework/references/schemas/events/`). Written only by `kernel.py`; per-stage status is derived from it + disk fingerprints on demand (`kernel.py status`), never stored.
 - `Design/<stage>/result.json` — for specification, rtl-design, lint-cdc, synthesis, timing-analysis
 - `Design/rtl-design/semantic-review.json` — gating per-child intent-review produced by rtl-design's Step-4.4 semantic gate (schema `skills/rtl-design/references/semantic-review.schema.json`).
 - `Verification/<stage>/result.json` — for simulation-plan, simulation, power-analysis, simulation-triage
@@ -63,7 +63,7 @@ Domain-specific coding rules live in each skill's references.
 
 ## Kernel & Skill Dispatch
 
-- `framework/scripts/kernel.py` — the kernel CLI, the SOLE writer of `events.jsonl` (10 verbs: `decide`, `dispatch`, `reap`, `diagnose`, `escalate`, `epoch`, `pin`, `reopen`, `status`, `consequences`; flags via `kernel.py <verb> --help`). The `design-flow` Orchestrator loops `decide` → execute the one returned action.
+- `framework/scripts/kernel.py` — the kernel CLI, the SOLE writer of `events.jsonl` (9 verbs: `decide`, `dispatch`, `reap`, `diagnose`, `escalate`, `pin`, `reopen`, `status`, `consequences`; flags via `kernel.py <verb> --help`). The `design-flow` Orchestrator loops `decide` → execute the one returned action.
 - `kernel.py pin` / `reopen` are **ask-gated judgment verbs** — proposed only on explicit human intent; the harness permission gate prompts the user on every call. They ratchet a `proposed` (LLM-authored) oracle to `human` grade and back — the signoff trust boundary.
 - `framework/scripts/rules.py` — the rule registry SSoT (`RULES`, `FORWARD_PRIORITY`, `PIPELINE_INPUTS`, `ADVISORY_ORDER`); the dependency graph is derived from rules' artifact selectors (`producer_of` / `input_producers` / `input_closure`).
 - `framework/scripts/facts.py` — event-log I/O, content fingerprints, and the freshness queries (`proof_valid`, `input_available`, `projection`). Validity is a query over the log + disk, never a stored bit.

@@ -74,7 +74,7 @@ def test_truncated_last_line_tolerated(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _append(
         "m",
-        {"type": "epoch", "objective": "signoff", "provenance": "u", "reason": "go"},
+        {"type": "escalation", "reason": "r", "open_question": "q"},
     )
     p = facts.events_path("m")
     p.write_text(p.read_text() + '{"type": "outcom')  # truncated
@@ -86,9 +86,7 @@ def test_read_events_mid_file_corruption_errors(tmp_path, monkeypatch):
     # is silently skipped today -> a dropped dispatch line -> run-number reuse. It must be a
     # hard error (conservative — never proceed on a corrupt append-only log).
     monkeypatch.chdir(tmp_path)
-    good = (
-        '{"type":"epoch","ts":"t","objective":"signoff","provenance":"p","reason":"r"}'
-    )
+    good = '{"type":"escalation","ts":"t","reason":"r","open_question":"q"}'
     p = facts.events_path("m")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(good + "\n" + "THIS-IS-CORRUPT-NOT-JSON\n" + good + "\n")

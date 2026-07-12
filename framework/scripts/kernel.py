@@ -37,7 +37,6 @@ def cmd_dispatch(
     module,
     rule,
     objective,
-    conservative,
     directive_path,
     diagnosis_refs,
     extra_params=None,
@@ -75,9 +74,7 @@ def cmd_dispatch(
                 "ok": False,
                 "error": "frontend-signoff dispatches only under objective=signoff (§3.2)",
             }
-        gate = schedule._signoff_gate(
-            module, events
-        )  # sys.exits '先开纪元' when no epoch
+        gate = schedule._signoff_gate(module, events)
         if gate is not None:
             return {"ok": False, "error": gate["reason"]}
     run = facts.runs_of(events, rule) + 1
@@ -107,8 +104,6 @@ def cmd_dispatch(
         "params": params,
         "objective": objective,
     }
-    if conservative:
-        ev["conservative"] = True
     if rules.RULES[
         rule
     ].proof:  # only proof-producing rules record the input version table
@@ -446,17 +441,6 @@ def cmd_escalate(module, reason, open_question, candidates):
     return {"ok": True}
 
 
-def cmd_epoch(module, objective, provenance, reason):
-    ev = {
-        "type": "epoch",
-        "objective": objective,
-        "provenance": provenance,
-        "reason": reason,
-    }
-    facts.append_event(module, ev, _now())
-    return {"ok": True}
-
-
 def cmd_pin(module, rule, provenance, reason):
     r = rules.RULES[rule]
     if r.oracle_selector is None:
@@ -536,13 +520,11 @@ def main():
     d = sub.add_parser("decide")
     d.add_argument("--module", required=True)
     d.add_argument("--objective", default="delivery")
-    d.add_argument("--conservative", action="store_true")
     d.add_argument("--wake", default=None)
     di = sub.add_parser("dispatch")
     di.add_argument("--module", required=True)
     di.add_argument("--rule", required=True, choices=list(rules.RULES))
     di.add_argument("--objective", default="delivery")
-    di.add_argument("--conservative", action="store_true")
     di.add_argument("--directive", default=None)
     di.add_argument(
         "--diagnosis-refs",
@@ -585,11 +567,6 @@ def main():
     es.add_argument(
         "--candidates", default=None, help="JSON array of candidate objects"
     )
-    ep = sub.add_parser("epoch")
-    ep.add_argument("--module", required=True)
-    ep.add_argument("--objective", required=True)
-    ep.add_argument("--provenance", required=True)
-    ep.add_argument("--reason", required=True)
     pn = sub.add_parser("pin")
     pn.add_argument("--module", required=True)
     pn.add_argument("--rule", required=True, choices=list(rules.RULES))
@@ -647,13 +624,11 @@ def main():
             args.module,
             wake=args.wake,
             objective=args.objective,
-            conservative=args.conservative,
         ),
         "dispatch": lambda: cmd_dispatch(
             args.module,
             args.rule,
             args.objective,
-            args.conservative,
             args.directive,
             refs,
             extra_params,
@@ -676,9 +651,6 @@ def main():
         ),
         "escalate": lambda: cmd_escalate(
             args.module, args.reason, args.open_question, candidates
-        ),
-        "epoch": lambda: cmd_epoch(
-            args.module, args.objective, args.provenance, args.reason
         ),
         "pin": lambda: cmd_pin(args.module, args.rule, args.provenance, args.reason),
         "reopen": lambda: cmd_reopen(args.module, args.pin_ref, args.reason),

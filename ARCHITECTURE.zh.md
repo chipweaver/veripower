@@ -32,7 +32,6 @@
 | **oracle 与 grade** | 裁决一个证明的裁判，`(ref, grade)`，`grade ∈ {tool, human, proposed}`。tool oracle 自身即权威；`proposed`（LLM 自撰）oracle 只能经人工 `pin` 棘轮升格为 `human`（§4.5）。 |
 | **objective**（目标） | 一次 `decide` 调用所调度的目标：`delivery`、`repair` 或 `signoff`。它决定所需证明集（§5.1）。 |
 | **disposition**（处置） | 调度器对单个*新鲜*失败的裁定：自动重建、triage 或升级——由附着诊断的可靠性把门（§5.3）。 |
-| **epoch**（纪元） | 保守锚点事件。在保守/签核目标下，只有落在最近一次纪元*之后*的证明才算可复用（§4.5, §5.5）。 |
 | **reap**（收割） | 以 `kernel.py reap`（无裁决标志）结束一个在途 run：`cmd_reap` 读该 run 的 `result.json`，提升产物，追加 `outcome`（triage 则另追加 `diagnosis`）（§5.6）。 |
 | **promote**（提升） | 将 `runs/<N>/` 下的文件逐条目硬链接合并到规范阶段目录，`cmd_reap` 在 pass 和 fail 两种路径上均执行，幂等（§7.2）。 |
 | **projection**（投影） | `facts.projection` 纯粹从事件日志 + 磁盘算出的每规则状态格（`valid / stale / failed / blocked / in-flight / missing`）。取代任何存储的状态快照（§4.6）。 |
@@ -108,16 +107,16 @@ Orchestrator 的三条派发路径：
 
 | 模块 | 职责 |
 |---|---|
-| `kernel.py` | CLI，且是 `events.jsonl` 的**唯一写者**。十个动词：`decide`、`dispatch`、`reap`、`diagnose`、`escalate`、`epoch`、`pin`、`reopen`、`status`、`consequences`。每个动词打印一个 JSON 信封。 |
+| `kernel.py` | CLI，且是 `events.jsonl` 的**唯一写者**。九个动词：`decide`、`dispatch`、`reap`、`diagnose`、`escalate`、`pin`、`reopen`、`status`、`consequences`。每个动词打印一个 JSON 信封。 |
 | `rules.py` | 规则注册表（`RULES`）——内核调度对象的单一真相源，也是依赖图的*来源*（§3）。另有 `FORWARD_PRIORITY`、`PIPELINE_INPUTS`、`ADVISORY_ORDER`，以及派生助手 `producer_of` / `input_producers` / `input_closure` / `sort_prereqs`。依赖极轻的叶子模块。 |
 | `facts.py` | 事件日志 I/O（`read_events` / `append_event`，写入即校验 schema）、内容指纹（`fingerprint`），以及建立在其上的新鲜度查询——`proof_valid`、`input_available`、`projection`。不持有任何可变状态；一切从日志 + 磁盘计算。 |
-| `schedule.py` | 调度器：`decide(objective) → 恰好一个动作`。对 (磁盘, 日志, 参数) 纯函数；组合 `route.py`。持有目标→所需证明集映射、新鲜失败处置、保守/签核门。 |
+| `schedule.py` | 调度器：`decide(objective) → 恰好一个动作`。对 (磁盘, 日志, 参数) 纯函数；组合 `route.py`。持有目标→所需证明集映射、新鲜失败处置、签核门。 |
 | `route.py` | 纯确定性返工目标选择——静态失败→目标映射表的**唯一居所**（`PA_CATEGORY`、`FIXED_TARGET`、`LINT_CATEGORY`、`TRIAGE_ROOT_CAUSE`）。不持有状态；原样组合进 `schedule.py` 与 `kernel.py`。 |
 | `store.py` | 文件系统产物生命周期助手（`promote`、`_mirror_subagent_trace`）。由 `kernel.py` 的收割路径导入；从不直接调用。 |
 
 事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（7 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
 
-> **黑箱纪律。** Orchestrator 按文档化的命令行调用 `kernel.py`（标志经 `<verb> --help`，每个动词打印 JSON 信封），从不读框架脚本源码。遇到非零退出或 `ok:false` 信封，按文档化的失败协议处理（开纪元、修正目标、升级该 `ok:false`），绝不绕过。
+> **黑箱纪律。** Orchestrator 按文档化的命令行调用 `kernel.py`（标志经 `<verb> --help`，每个动词打印 JSON 信封），从不读框架脚本源码。遇到非零退出或 `ok:false` 信封，按文档化的失败协议处理（修正目标、升级该 `ok:false`），绝不绕过。
 
 ### 2.3 哪些阶段走主线程加载，以及流水线前的 brainstorm
 
@@ -140,7 +139,7 @@ Orchestrator 的三条派发路径：
 
 | **角色** | **载体** | **职责** | **能力边界** |
 |---|---|---|---|
-| **Orchestrator Agent** | `design-flow` skill，主会话 | 执行每次 `decide` 返回的那一个动作；撰写按派发的 `directive`（它唯一的判断通道）；仅在用户明确意图下提议 `epoch` / `pin` / `reopen` / 人工 `diagnose`；升级；与用户协作。同时作为四条主线程规则的主线程执行器。 | 系统中唯一有权调用 `kernel.py`、使用 Task 工具、与用户交互的角色。不手写任何事件——每个事件都由 `kernel.py` 写入。 |
+| **Orchestrator Agent** | `design-flow` skill，主会话 | 执行每次 `decide` 返回的那一个动作；撰写按派发的 `directive`（它唯一的判断通道）；仅在用户明确意图下提议 `pin` / `reopen` / 人工 `diagnose`；升级；与用户协作。同时作为四条主线程规则的主线程执行器。 | 系统中唯一有权调用 `kernel.py`、使用 Task 工具、与用户交互的角色。不手写任何事件——每个事件都由 `kernel.py` 写入。 |
 | **主线程 skill** | 四条主线程规则之一，经 `Skill()` 加载 | 在 Orchestrator 线程中自驱动工作：sub-Task 扇出（生产者规则、simulation）、多轮对话（simulation-plan）、或单次审查派发。各自写入自己的产物和 `result.json`。 | 可派发一级 sub-Task（生产者规则 / simulation）或与用户交互（simulation-plan；specification 限其两次路径交接门）。禁 `kernel.py`、禁路由。靠 SKILL.md 条文纪律约束，不靠工具门控。 |
 | **阶段子 Agent** | 五条 Task 派发的规则（`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis` / `frontend-signoff`） | 执行单条规则：读上游 → 做工作 → 写 `result.json` → 返回 STATUS 行 | 不准调 `kernel.py`，不准做路由决策（§6.1） |
 | **调试子 Agent** | `simulation-triage`，经 Task 派发 | 对仿真失败做分级（L1 日志+代码+FSDB 推理 → L2 受控实验）根因分析；写出的 `result.json` 其 `stage_specific` 携带归因，由内核在收割时转成 `diagnosis`（§6.4） | canonical 只读、自身 workdir 可写；绝不编辑其它规则的 `result.json`、RTL 或测试；非幂等（重复运行重跑 L2） |
@@ -149,7 +148,7 @@ Orchestrator 的三条派发路径：
 
 ### 2.5 核心设计原则
 
-- **判断归 Orchestrator，状态与调度归内核**——确定性边界。Orchestrator 只做两类判断：为一次派发撰写什么 `directive` 文本，以及是否提议 `epoch` / `pin` / `reopen` / 人工 `diagnose`（均需用户明确意图）。其余一切——下一步跑什么、某个证明是否有效、某个失败路由到哪——都由 `kernel.py decide` 计算。Orchestrator 是薄执行器：调 `decide`，执行返回的那一个动作，循环。
+- **判断归 Orchestrator，状态与调度归内核**——确定性边界。Orchestrator 只做两类判断：为一次派发撰写什么 `directive` 文本，以及是否提议 `pin` / `reopen` / 人工 `diagnose`（均需用户明确意图）。其余一切——下一步跑什么、某个证明是否有效、某个失败路由到哪——都由 `kernel.py decide` 计算。Orchestrator 是薄执行器：调 `decide`，执行返回的那一个动作，循环。
 - **决策边界 = 工具边界。** 每个调度决策都下沉到 `decide`。其可验证形式：*两次状态变更类内核调用之间没有 `decide`，就是 bug。*
 - **文件即数据库。** `events.jsonl` 是持久日志；`result.json` 是阶段输出；其余一切（状态、新鲜度、在途）都是二者的纯函数。没有中间缓存，没有服务端存储。模块下的 `.fingerprint-cache.json` 是纯 mtime/size 加速缓存——从不作为事实来源。
 - **压缩安全的续跑。** 因为文件即数据库、Orchestrator 在轮次之间持有*零*持久控制状态，会话中途的上下文压缩或进程崩溃都可幸存：每一轮都经 `decide` 从磁盘重新推导下一个动作。唯一驻留会话的状态是为下一次派发撰写的 `directive` 文本——可重derive，且一经传给 `dispatch` 即落盘为 `directive.md`。
@@ -242,21 +241,20 @@ Orchestrator 的三条派发路径：
 
 因为日志即状态，在途也是派生的：`facts.in_flight` = 每个没有匹配 `outcome` 的 `dispatch`（按 `(rule, run)` 键）。崩溃恢复因此是内生的——执行器死掉的 run 留下一个没有 `outcome` 的 `dispatch`，所以它仍显示在途，`decide` 会去收割它（§5.6）。
 
-### 4.2 七类事件
+### 4.2 六类事件
 
-`events.jsonl` 携带 **7 类事件**，各由 `framework/references/schemas/events/<type>.schema.json` 校验。`kernel.py` 是全部七类的唯一写者——不存在任何让 Agent 提示词注入原始事件的通道。
+`events.jsonl` 携带 **6 类事件**，各由 `framework/references/schemas/events/<type>.schema.json` 校验。`kernel.py` 是全部六类的唯一写者——不存在任何让 Agent 提示词注入原始事件的通道。
 
 | **type** | **写入方（动词）** | **用途 / 关键字段** |
 |---|---|---|
-| `dispatch` | 自动（`dispatch`） | 开启一个 run：`rule`、`run`、`workdir`、`params`（含 `directive` 的路径+摘要）、`objective`、可选 `conservative`、`diagnosis_refs`，以及——仅产证明规则——消费的 `inputs` 版本表（`proof.inputs` 的唯一来源）。 |
+| `dispatch` | 自动（`dispatch`） | 开启一个 run：`rule`、`run`、`workdir`、`params`（含 `directive` 的路径+摘要）、`objective`、`diagnosis_refs`，以及——仅产证明规则——消费的 `inputs` 版本表（`proof.inputs` 的唯一来源）。 |
 | `outcome` | 自动（`reap`） | 关闭一个 run：`verdict ∈ {pass, fail, blocked}`、产出的 `outputs` 版本表（含规范 `result.json`）、`proofs[]`、`tool_versions`、可选 `reason`（blocked 子类）。 |
 | `diagnosis` | triage 自动（`reap`）；人工经 `diagnose` | 一条失败归因。必填（按 `diagnosis.schema.json`）：`id`、`subject {proof, outcome_run}`、`attribution`、`evidence`、`source ∈ {triage, human}`。可选：`fix_owner`、`fix_locus`、`confidence`、`supersedes`；`provenance`（`human` 必填，由 `diagnose` 强制）。 |
-| `epoch` | `epoch` | 保守锚点：`objective`、`provenance`、`reason`。保守/签核目标下只有纪元之后的证明才算数（§5.5）。 |
 | `pin` | `pin` | 把 `proposed` oracle 向 `human` 棘轮：`oracle_ref`、`content_fingerprint`（pin 时记录）、`provenance`、`reason`。 |
 | `reopen` | `reopen` | 撤销一个 pin：`pin_ref`、`reason`。使 oracle 在其落账后被 reopen 的证明失效（§4.4）。 |
 | `escalation` | `escalate` | 记录流程把决定交给用户：`reason`、`open_question`、可选 `candidates`。 |
 
-`dispatch` / `outcome` 是执行工作的纯副作用。triage 的 `diagnosis` 在收割时从 triage run 的 `result.json` 派生（§5.3）。另外五个动词（人工 `diagnose`、`epoch`、`pin`、`reopen`、`escalate`）承载 Orchestrator/用户的判断——但仍然经过 `kernel.py`，由它校验并（对 `diagnose`/`pin`）执行 schema 无法表达的结构性关联约束（§5.3、§4.5）。所有事件携带 UTC ISO8601 的 `ts`，写在记录首位。
+`dispatch` / `outcome` 是执行工作的纯副作用。triage 的 `diagnosis` 在收割时从 triage run 的 `result.json` 派生（§5.3）。另外四个动词（人工 `diagnose`、`pin`、`reopen`、`escalate`）承载 Orchestrator/用户的判断——但仍然经过 `kernel.py`，由它校验并（对 `diagnose`/`pin`）执行 schema 无法表达的结构性关联约束（§5.3、§4.5）。所有事件携带 UTC ISO8601 的 `ts`，写在记录首位。
 
 ### 4.3 内容指纹
 
@@ -282,7 +280,7 @@ Orchestrator 的三条派发路径：
 
 **输入可用性**（`facts.input_available`）是派发时刻的对应物：消费者的某个输入 glob 可用，当且仅当它是外部的 `brainstorm.md`（只需存在），或其生产者从未运行过（真冷启动——前向调度会先运行生产者），或生产者最新 outcome 落账了匹配且仍新鲜的输出**且**该生产者的证明当前有效。生产者运行过却无一匹配（落账或磁盘上都没有）= 输入确实缺失 → 不可用（保守方向——绝不让消费者对着静默缺失的输入派发）。自产输入（in∩out——按推导图其生产者就是消费规则自身的输入 glob，如 `lint-cdc` 自己的 `scripts/waiver.tcl`）豁免自锁：没有先前 outcome 时可派发（冷启动），否则与该规则自己落账的输出比对。该豁免由 `inputs`/`outputs` 选择器推导（`producer_of(glob) == consumer`），没有单独的声明字段。
 
-### 4.5 oracle 等级、pin 与纪元
+### 4.5 oracle 等级与 pin
 
 每条证明的 `oracle` 是 `(ref, grade)`。grade 由 `kernel._graded` *在收割时派生*：
 
@@ -292,8 +290,6 @@ Orchestrator 的三条派发路径：
 一个 pin **存活**，当且仅当事件序中它之后没有指名其 `oracle_ref` 的 `reopen`（按事件逐个判断，因此 `pin → reopen → pin` 正确地再次产生存活 pin）。pin 指纹的 oracle 内容是该规则的 `oracle_selector` glob（如 `simulation` 的 `tb/uvm/refmodel/*`——pin 背书的是*裁判本身*，它跨 run 存续；LLM 重新生成 refmodel 时内容指纹随之分叉，下一次收割即跌回 `proposed`）。不可读的 oracle 内容（`UNKNOWN`）永远不继承信任。
 
 这就是信任边界（§2.5）背后的机械装置：`pin`/`reopen` 是把裁判移过 proposed↔human 界线的唯一杠杆，二者均问必批，且棘轮以内容为锚——信任无法静默地活过它所授予的那份内容。
-
-**纪元**是正交的保守锚点。`kernel epoch` 追加一条 `epoch` 事件；在保守或 `signoff` 目标下，一个证明只有既有效*又*在最近纪元之后落账才算可复用（`schedule._reusable`）。这让人可以在不改动任何产物的情况下要求"从这里起全部重验，别信更早的任何东西"。日志上没有纪元时，保守 `decide` 硬报错"先开纪元"，绝不静默兜底（§5.5）。
 
 ### 4.6 投影
 
@@ -320,7 +316,7 @@ Orchestrator 每轮运行一个确定性步骤：
 
 ```
 loop:
-  a = kernel.py decide --module <M> --objective <obj> [--conservative] [--wake <rule>:<run>]
+  a = kernel.py decide --module <M> --objective <obj> [--wake <rule>:<run>]
   execute(a)                       # a.action ∈ {DISPATCH, REAP, YIELD, DONE, ESCALATE}
   if a.action in {YIELD, DONE, ESCALATE}: end turn
 ```
@@ -332,7 +328,7 @@ loop:
 Orchestrator 作为会话值携带的 `objective` 决定 `decide` 向什么调度（`schedule.required_proofs`）：
 
 - **`delivery`**（默认）— 前向构建整个 DAG，*除去* `frontend-signoff`（八个非签核证明）。
-- **`signoff`**（仅限用户明确请求）— 全部九个证明，且*强制*保守（§5.5）。
+- **`signoff`**（仅限用户明确请求）— 全部九个证明，并武装签核门（§5.5）。
 - **`repair`** — 最新失败那一条规则的证明。当 `delivery` 下的 `decide` 返回自动重建的 `DISPATCH`（`needs_directive: true`）时，Orchestrator 切到 `repair`，把后续 `decide` 收窄到只重建能让失败证明重新验证的闭包；`repair` 返回 `DONE` 后切回 `delivery`。
 
 ### 5.2 五个动作与决策步骤
@@ -384,23 +380,20 @@ flowchart TD
 
 `route.route` 对输入全域：任何超出已知枚举的值落入具名 `unrouted*` `ESCALATE`，绝不 `KeyError`，绝不静默丢弃。确切映射与规则标识见 `framework/scripts/route.py` 和 `tests/unit/test_route.py`（穷举式行为规格）。
 
-### 5.5 保守复用、纪元与签核闭合
-
-`schedule._reusable(proof, conservative)` 是"我能复用这个证明而不重建吗"的门：始终要求 `proof_valid`；在 `conservative` 下（`signoff` 强制开启）*额外*要求该证明的 outcome 落在最近 `epoch` 锚点之后。保守模式下日志上没有纪元是硬错误而非静默通过——Orchestrator 必须先 `kernel.py epoch`。
+### 5.5 签核闭合
 
 闭合签核是系统里最严的门（`schedule._signoff_gate`，派发时刻复查）。`frontend-signoff` 在 `objective=signoff` 下获准派发之前，*其余每一个*证明必须：
 
-1. 锚点后可复用（有效且在纪元之后），
-2. oracle 等级为 `tool` 或 `human`——`proposed` oracle 阻塞签核（"pin it"），且
-3. 不携带任何 `UNKNOWN` 落账版本。
+1. 当前有效（§4.4），
+2. oracle 等级为 `tool` 或 `human`——`proposed` oracle 阻塞签核（"pin it"），
+3. 不携带任何 `UNKNOWN` 落账版本，且
+4. 没有带外**新增**输入：磁盘上匹配该规则输入选择器、却不在该证明落账输入集里的文件，从未被任何 run 验证过。已落账文件的改与删本就使证明失效（§4.4）；唯独"加"能逃过落账集比对，所以签核门在此对选择器重新 glob 一遍——日常 delivery/repair 路径仍用便宜的落账集比对。
 
 任何一条不满足即返回指名违规证明的 `ESCALATE`；Orchestrator 呈给用户（典型动作是"把 proposed oracle pin 掉"——一次人工 `pin`，§2.5）。该门按 `FORWARD_PRIORITY` 顺序迭代，使升级理由确定。这就是信任边界咬合之处：流水线可以*交付*在 LLM proposed oracle 之上，但在人把每个 proposed 裁判 pin 到 `human` 等级之前，它无法*签核*。
 
-**重验不重生成。** 保守/签核趟次经确定性指纹比对复查证明；它*不*重建仍然有效的阶段。当某个证明失效必须重跑时，它依赖的 LLM 创作输入（design.md、RTL、评审记录）应冻结复用而非重新生成——杀手是重生成，不是重验证。冻结是各 skill 的义务（如 `simulation` 的 TB-freeze 路径）；内核的职责只是识别仍然有效的证明并跳过它。
-
 ### 5.6 派发、收割与 directive 通道
 
-**派发。** `kernel.py dispatch --rule <r> --objective <o> [--conservative] [--directive <file|->] [--diagnosis-refs …] [--params <json>]` 复查可派发性，落账 `dispatch` 事件（分配 `run = 已有 run 数 + 1` 并创建 `runs/<N>/`），返回 `{ok, rule, run, workdir, skill, execution}`。对产证明规则，它把消费的 `inputs` 版本表快照进事件（`proof.inputs` 的唯一来源）。Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripower:<skill>)`（同步；下一次 `decide` 即收割）；`task` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<渲染后模板>)`（异步；由后续 wake 收割）。
+**派发。** `kernel.py dispatch --rule <r> --objective <o> [--directive <file|->] [--diagnosis-refs …] [--params <json>]` 复查可派发性，落账 `dispatch` 事件（分配 `run = 已有 run 数 + 1` 并创建 `runs/<N>/`），返回 `{ok, rule, run, workdir, skill, execution}`。对产证明规则，它把消费的 `inputs` 版本表快照进事件（`proof.inputs` 的唯一来源）。Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripower:<skill>)`（同步；下一次 `decide` 即收割）；`task` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<渲染后模板>)`（异步；由后续 wake 收割）。
 
 **directive** 是 Orchestrator 通往一次派发的唯一判断通道：按派发一份、经推理的 markdown 指令，帮目标干活——绝不是日志/倾倒槽，绝不是子 Agent 本就从规范文件读得到的数据。`dispatch` 把它写到 `<workdir>/directive.md`，并把路径+摘要记入事件的 `params`；它从不提升，也从不进入 `result.json.artifacts`。两条纪律化的用法：
 
@@ -494,7 +487,7 @@ asic/<module>/
 
 > **契约：** promote 幂等。promote 中途崩溃可能留下陈旧的 `.promote-tmp/`；下一次对该阶段做 promote 的收割会重跑 `promote()`——它在开始前先清掉残留的 `.promote-tmp/`，再重建同样的硬链接（无操作），恰好落一条 `outcome`。这就是只追加日志能在 promote 中途崩溃后依然自洽的原因。
 
-> **契约（房间出生卫生）：** run 的 workdir 出生时**不含裁决类工件**：`result.json` 与已判决的评审记录从不被播种进新房间，因此 workdir 里存在 `result.json` 当且仅当本轮执行者写了它——其时间半边由收割机械地强制（`produced_at` 早于本 run dispatch → `blocked` / `stale_result`，§4.7）。把先前**产物**带进房间（返工/增量的最小编辑基线）是各 skill 在自己分支逻辑内的显式白名单动作——freeze/返工/patch/首跑的分支判定发生在 dispatch 之后、skill 内部，这正是播种不属于内核职责的原因。评审记录排除项的唯一例外是 freeze 分支对自己已判决评审记录的字节携带（`seed --freeze`；simulation 的 freeze 模式 `copy-baseline`），其目的是让 `pin` 在字节不变的内容上存活。
+> **契约（房间出生卫生）：** run 的 workdir 出生时**不含裁决类工件**：`result.json` 与已判决的评审记录从不被播种进新房间，因此 workdir 里存在 `result.json` 当且仅当本轮执行者写了它——其时间半边由收割机械地强制（`produced_at` 早于本 run dispatch → `blocked` / `stale_result`，§4.7）。把先前**产物**带进房间（返工/增量的最小编辑基线）是各 skill 在自己分支逻辑内的显式白名单动作——返工/增量/首跑（以及 simulation 的 freeze/patch）的分支判定发生在 dispatch 之后、skill 内部，这正是播种不属于内核职责的原因。评审记录排除项的唯一例外是 simulation freeze 模式 `copy-baseline` 对自己已判决 `conformance-review.json` 的字节携带，其目的是让 `pin` 在字节不变的内容上存活。
 
 ### 7.3 磁盘管理
 

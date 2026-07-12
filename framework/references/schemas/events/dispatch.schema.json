@@ -13,7 +13,6 @@
     "inputs": {"type": "object", "description": "consumed input version table; present only for proof-producing rules (sole source of proof.inputs). Absent for no-proof rules (triage)."},
     "params": {"type": "object", "description": "recorded params incl. directive digest/path"},
     "objective": {"type": "string", "enum": ["delivery", "repair", "signoff"]},
-    "conservative": {"type": "boolean"},
     "diagnosis_refs": {"type": "array", "items": {"type": "string"}}
   }
 }

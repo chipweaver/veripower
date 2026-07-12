@@ -7,7 +7,6 @@ Verbs (one stage = one tool; see skills/rtl-design/SKILL.md for usage):
   assemble          build ledger/filelist/README + post exit-gate       (stdout: verdict; exit 0/1)
   check-conformance spec<->RTL presence gate                            (stdout: verdict; exit 0/1)
   validate-review   semantic-review.json schema + gate                  (stdout: gate JSON; exit 0/1)
-  classify-delta    freeze-branch selector                              (stdout: verdict JSON; exit 0/1)
   finalize          assemble the lean result.json                       (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the rtl.*
@@ -34,13 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def _cmd_seed(a: argparse.Namespace) -> int:
     from rtl import seed
 
-    return seed.run(a.workdir, a.canonical, freeze=a.freeze)
-
-
-def _cmd_classify_delta(a: argparse.Namespace) -> int:
-    from rtl import classify
-
-    return classify.run(a.canonical_result, a.spec_dir)
+    return seed.run(a.workdir, a.canonical)
 
 
 def _cmd_check_partition(a: argparse.Namespace) -> int:
@@ -89,11 +82,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="prior canonical dir; default = {workdir}/../..",
     )
-    sp.add_argument(
-        "--freeze",
-        action="store_true",
-        help="freeze branch only: additionally byte-carry semantic-review.json (keeps its pin alive)",
-    )
     sp.set_defaults(func=_cmd_seed)
 
     sp = sub.add_parser(
@@ -127,18 +115,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("validate-review", help="semantic-review.json schema + gate")
     sp.add_argument("--review", required=True, type=Path)
     sp.set_defaults(func=_cmd_validate_review)
-
-    sp = sub.add_parser(
-        "classify-delta", help="freeze-branch selector: first-run|freeze|proceed"
-    )
-    sp.add_argument("--spec-dir", required=True, type=Path, help="Design/specification")
-    sp.add_argument(
-        "--canonical-result",
-        type=Path,
-        default=None,
-        help="canonical Design/rtl-design/result.json (absent => first-run)",
-    )
-    sp.set_defaults(func=_cmd_classify_delta)
 
     sp = sub.add_parser("finalize", help="assemble the lean result.json")
     sp.add_argument("--workdir", required=True, type=Path)

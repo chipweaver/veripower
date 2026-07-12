@@ -10,22 +10,21 @@ kernel tool `python3 framework/scripts/kernel.py` (written `kernel.py` below):
 
 ```text
 loop:
-  a = kernel.py decide --module {module} --objective <obj> [--conservative] [--wake <rule>:<run>]
+  a = kernel.py decide --module {module} --objective <obj> [--wake <rule>:<run>]
   execute(a)                       # a.action ∈ {DISPATCH, REAP, YIELD, DONE, ESCALATE}
   if a.action in {YIELD, DONE, ESCALATE}: end turn
 ```
 
 `kernel.py` is the **sole writer** of `asic/{module}/events.jsonl` and the sole decider.
 `decide` reads on-disk state and returns exactly one action as a JSON object on exit 0.
-It exits non-zero only for its documented hard errors — a conservative `decide` with no
-prior epoch ("open an epoch first") and an unknown `--objective` — so on a non-zero exit,
-follow the printed error (open the epoch / fix the objective), don't debug the script.
+It exits non-zero only for its documented hard error — an unknown `--objective` — so on a
+non-zero exit, follow the printed error (fix the objective), don't debug the script.
 You execute the one returned action and loop. All routing lives inside `decide` — you
 never re-derive the next stage yourself; when several stages are eligible it dispatches the
 earliest in `rules.FORWARD_PRIORITY` order (the forward-priority SSoT).
 
 **Discipline:** call `decide` before every action. Two consecutive
-state-mutating kernel calls (`dispatch` / `reap` / `diagnose` / `escalate` / `epoch` /
+state-mutating kernel calls (`dispatch` / `reap` / `diagnose` / `escalate` /
 `pin` / `reopen`) with no `decide` between them is a bug — the executor for each action
 runs, then you loop back to `decide`.
 
@@ -66,7 +65,7 @@ and re-pass the same `--wake` on every re-query within the turn.
 | `REAP` | `kernel.py reap --module {module} --rule <rule> --run <run> [--subagent-output-file <output-file>]`, then loop. Pass `--subagent-output-file` (from the `<task-notification>`'s `<output-file>`) for every async Task reap so the trace is mirrored; the four main-thread skills complete synchronously and need no such file. `reap` derives the verdict from the run's own `result.json` (pass/fail; missing/unparseable/malformed/schema-invalid → `blocked`; a `produced_at` predating this run's dispatch → `blocked` `stale_result`, an unparseable `produced_at` → `blocked` `produced_at_unparseable` — a carried-in or mis-stamped envelope, so the stage must be re-run to author a fresh one) — never pass a verdict yourself. |
 | `DISPATCH`, `execution: main-thread` | `kernel.py dispatch ...` (see Dispatch below) → `Skill(veripower:<skill>)` (the skill from the dispatch return) → loop. The next `decide` sees the finished run's `result.json` and returns `REAP`. |
 | `DISPATCH`, `execution: task` | `kernel.py dispatch ...` → render `framework/references/prompts/stage-subagent.md.tpl`, filling **every** template slot: `{module}`; the stage and skill lines from the dispatch return's `rule` / `skill` fields; `{workdir}` from the dispatch return; on a rework dispatch also `{rework_trigger}` and `{directive_path}` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered template>)` → loop. The next `decide` typically returns `YIELD` (the async run has no `result.json` yet) but may `DISPATCH` another eligible branch first — the loop is unconditional either way; a later `--wake` returns `REAP`. |
-| `DISPATCH`, `rule: simulation-triage` | The ambiguous-`simulation`-failure branch. `kernel.py dispatch --module {module} --rule simulation-triage --objective <action.objective> [--conservative if action.conservative] --params '{"sim_run": <sim_run>}'` (take `<sim_run>` from the action's `params.sim_run`) → render the template AND append one explicit line giving the subagent its `<sim_run>` (the template has no slot for it; triage reads everything else from canonical disk) → `Task(subagent_type="general-purpose", run_in_background=True, ...)` → loop. |
+| `DISPATCH`, `rule: simulation-triage` | The ambiguous-`simulation`-failure branch. `kernel.py dispatch --module {module} --rule simulation-triage --objective <action.objective> --params '{"sim_run": <sim_run>}'` (take `<sim_run>` from the action's `params.sim_run`) → render the template AND append one explicit line giving the subagent its `<sim_run>` (the template has no slot for it; triage reads everything else from canonical disk) → `Task(subagent_type="general-purpose", run_in_background=True, ...)` → loop. |
 | `YIELD` | Run the Dead in-flight check on the returned `in_flight[]`, then reply the in-flight list to the user and end the turn. (A triage-pending `YIELD` carries the triage run in `in_flight[]` — say a triage subagent is running.) |
 | `DONE` | Reply a completion summary; end the turn. Under a `repair` objective, `DONE` means the failing proof re-verified (or nothing repairable remains — e.g. the re-verify was reaped `blocked`) — see Objective policy. |
 | `ESCALATE` | See Escalation below. |
@@ -75,7 +74,7 @@ and re-pass the same `--wake` on every re-query within the turn.
 
 ```bash
 kernel.py dispatch --module {module} --rule <action.rule> \
-  --objective <action.objective> [--conservative if action.conservative] \
+  --objective <action.objective> \
   [--directive <file|->] [--diagnosis-refs id1,id2,...] [--params '{"sim_run": <sim_run>}']
 ```
 
@@ -98,19 +97,15 @@ You carry the current `objective` as a session value and pass it to every `decid
   `decide` under `repair` returns `DONE` (the failing proof re-verified — or nothing
   repairable remains, e.g. the re-verify was reaped `blocked`), switch back to `delivery`
   and continue.
-- **`signoff` — only on explicit user request.** The request itself opens an epoch: run
-  `kernel.py epoch --module {module} --objective signoff --provenance <user> --reason "<…>"`
-  **before** re-entering the loop (a conservative `decide` with no prior epoch hard-errors
-  "open an epoch first"). Then loop with `--objective signoff --conservative` (signoff
-  implies conservative; passing it is explicit). Inside a signoff epoch, stay in `signoff`
-  even across auto-rebuild episodes — repair episodes do NOT switch the objective here.
+- **`signoff` — only on explicit user request.** Loop with `--objective signoff`. It adds
+  `frontend-signoff` to the required set and arms the signoff gate: every other proof must
+  be valid, every oracle pinned (`grade ∈ {tool, human}`), no unknown recorded version, no
+  out-of-band added input. Inside a signoff episode, stay in `signoff` even across
+  auto-rebuild episodes — repair episodes do NOT switch the objective here.
 - The user may change the objective at any time; honor it on the next `decide`.
 
-## Epoch, pin, and reopen
+## Pin and reopen
 
-- **`epoch`** marks a conservative anchor: run it on a signoff request (above) or when the
-  user explicitly asks for a conservative re-verify.
-  `kernel.py epoch --module {module} --objective <obj> --provenance <user> --reason "<…>"`.
 - **`pin` / `reopen` are ask-gated judgment verbs — never autonomous.** You propose them
   only on explicit human intent, and the harness permission gate prompts the user on every
   call. Do NOT wrap them to slip past the gate.

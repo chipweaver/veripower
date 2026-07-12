@@ -4,7 +4,6 @@ import math
 import sys
 from pathlib import Path
 
-from spec.classify import input_digest, products_digest
 from spec.constraints import derive_constraints
 from spec.review import gate_verdict
 
@@ -108,15 +107,6 @@ def _top_from_manifest(workdir: Path) -> str:
     return top
 
 
-def _record_input_digest(ss: dict, workdir: Path) -> None:
-    """Record the declared-input digest for the next run's classify-delta freeze
-    check; silently skipped if the input isn't readable (safe no-freeze fallback)."""
-    try:
-        ss["input_digest"] = input_digest(workdir.parents[3] / "brainstorm.md")
-    except (OSError, IndexError):
-        pass
-
-
 def compute_spec_gate(workdir: Path, waived: list) -> dict:
     """Re-derive the Step-7 gate verdict in-process from the on-disk spec-review.json
     (already schema-gated when Step 7 wrote it -> call the pure fold, not the CLI),
@@ -158,8 +148,7 @@ def build_result(workdir, module, ppa_targets, waived, status, fail_reason=None)
     downgrades to a written status=fail BEFORE any ppa handling, so a ppa fault can
     never preempt the documented downgrade) → resolve ppa_targets (an explicit
     override wins and lands on disk; otherwise the Wave-1-authored {workdir}/ppa.json
-    is read) → enumerate artifacts[], record the freeze digests (input_digest +
-    products_digest), write the envelope.
+    is read) → enumerate artifacts[], write the envelope.
 
     fail path (human reject, or an early-fail exit carrying fail_reason): NEVER runs
     the derivation — an early-fail's tables may be incomplete, and the derivation's
@@ -237,12 +226,7 @@ def build_result(workdir, module, ppa_targets, waived, status, fail_reason=None)
         ppa_targets = _load_ppa_from_disk(workdir)
 
     ss = {"top_module": top, "ppa_targets": ppa_targets, "spec_gate": spec_gate}
-    _record_input_digest(ss, workdir)
     artifacts = enumerate_artifacts(workdir, top)
-    # The freeze check's second half: bind this pass's exact product bytes, so a later
-    # classify-delta can prove "the canonical products are still what the human approved"
-    # before the freeze branch skips the reviewer wave and the human gate.
-    ss["products_digest"] = products_digest(workdir, [a["path"] for a in artifacts])
     _write_result(
         workdir,
         _envelope(module, status="pass", stage_specific=ss, artifacts=artifacts),

@@ -103,12 +103,6 @@ def test_build_result_pass_lean_shape(tmp_path):
         "test_count": 1,
     }
     assert ss["plan_adequacy_gate"] == {"gate": "clear", "flagged": [], "must_ack": []}
-    # freeze-check second half: the pass binds the exact promoted product bytes
-    from simplan import classify
-
-    assert ss["products_digest"] == classify.products_digest(
-        wd, [a["path"] for a in env["artifacts"]]
-    )
     # lean shape: no narration when not passed; no fail_reason on pass
     assert "revision" not in ss and "fail_reason" not in ss
 
@@ -312,7 +306,6 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     }
     assert "result.json" not in paths
     assert env["produced_at"].endswith("Z")
-    assert "products_digest" in ss  # freeze-check second half recorded on pass
     _validate_envelope(env)
 
 
@@ -344,66 +337,6 @@ def test_finalize_blocked_on_bad_waived_json(tmp_path):
 def test_finalize_blocked_on_internal_raise(tmp_path):
     # missing scaffold-specification.json → build_result raises → caught → exit 2 BLOCKED
     assert vs.finalize(tmp_path, "m", waived_json=None, status=None, revision=None) == 2
-
-
-# ── input_digest recording on the pass path (freeze-classifier support, F2) ──
-def test_finalize_records_input_digest_on_pass(tmp_path):
-    from simplan import classify
-
-    root = tmp_path / "asic" / "m"
-    wd = root / "Verification" / "simulation-plan" / "runs" / "1"
-    wd.mkdir(parents=True)
-    spec_dir = root / "Design" / "specification"
-    spec_dir.mkdir(parents=True)
-    (spec_dir / "design.md").write_text("D", encoding="utf-8")
-    (spec_dir / "manifest.json").write_text('{"module":"m"}', encoding="utf-8")
-
-    _finalize_workdir(wd)
-    assert vs.build_result(wd, module="m", waived=None, status=None, revision=None) == 0
-
-    rj = json.loads((wd / "result.json").read_text())
-    assert rj["stage_specific"]["input_digest"] == classify.input_digest(spec_dir)
-
-
-def test_input_digest_skipped_off_layout(tmp_path):
-    # a workdir outside the canonical .../Verification/simulation-plan/runs/<N>
-    # layout must never hash a coincidental directory into the freeze baseline
-    root = tmp_path / "asic" / "m"
-    wd = root / "Verification" / "some-other-stage" / "runs" / "1"
-    wd.mkdir(parents=True)
-    spec_dir = root / "Design" / "specification"
-    spec_dir.mkdir(parents=True)
-    (spec_dir / "design.md").write_text("D", encoding="utf-8")
-    (spec_dir / "manifest.json").write_text('{"module":"m"}', encoding="utf-8")
-
-    _finalize_workdir(wd)
-    assert vs.build_result(wd, module="m", waived=None, status=None, revision=None) == 0
-
-    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert "input_digest" not in ss  # skipped -> next classify-delta says proceed
-    assert "products_digest" in ss  # workdir-relative, recorded regardless
-
-
-def test_input_digest_layout_check_is_lexical_not_physical(tmp_path):
-    # the layout check must key on the as-invoked names: a deployment that symlinks
-    # a layout segment to a differently-named store keeps its freeze eligibility
-    from simplan import classify
-
-    root = tmp_path / "asic" / "m"
-    store = root / "verif-store"
-    (store / "simulation-plan" / "runs" / "1").mkdir(parents=True)
-    (root / "Verification").symlink_to(store, target_is_directory=True)
-    spec_dir = root / "Design" / "specification"
-    spec_dir.mkdir(parents=True)
-    (spec_dir / "design.md").write_text("D", encoding="utf-8")
-    (spec_dir / "manifest.json").write_text('{"module":"m"}', encoding="utf-8")
-
-    wd = root / "Verification" / "simulation-plan" / "runs" / "1"
-    _finalize_workdir(wd)
-    assert vs.build_result(wd, module="m", waived=None, status=None, revision=None) == 0
-
-    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["input_digest"] == classify.input_digest(spec_dir)
 
 
 # ── early-fail entry (--fail-reason): routable fail, present-only carry ──────
