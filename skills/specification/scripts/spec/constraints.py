@@ -73,6 +73,66 @@ def _ports(design: str) -> list[dict]:
     return ports
 
 
+_SGDC_SYNC_DOMAIN = "sync"
+
+
+def _clock_partition(clocks: list[dict]) -> tuple[list[str], list[str]]:
+    """The single source of grouping truth shared by BOTH emitters (F1): partition the
+    non-generated §1.6 clocks into (sync_names, async_names), preserving table order.
+    `_async_clock_groups` (SDC) and `_sgdc_clock_domains` (SGDC) must render this ONE
+    partition in their respective native syntaxes — computing it twice is how the two
+    formats silently diverge, the exact defect F1 fixes. Returns ([], []) when there is
+    nothing to declare (fewer than 2 non-generated clocks, or none async)."""
+    non_gen = [c for c in clocks if not c["generated"]]
+    async_names = [c["name"] for c in non_gen if c["relationship"] == "async"]
+    if not (async_names and len(non_gen) >= 2):
+        return [], []
+    sync_names = [c["name"] for c in non_gen if c["relationship"] != "async"]
+    return sync_names, async_names
+
+
+def _async_clock_groups(clocks: list[dict]) -> list[str]:
+    """`-group ...` fragments for `set_clock_groups -asynchronous` (SDC only — see
+    `_sgdc_clock_domains` for the SGDC-native equivalent; SpyGlass's SGDC parser rejects
+    `set_clock_groups` as an unknown command, confirmed on SpyGlass_vL-2016.06, Task 2 of
+    the F1 plan). Renders the shared `_clock_partition`; returns [] when it is empty."""
+    sync_names, async_names = _clock_partition(clocks)
+    if not async_names:
+        return []
+    groups = []
+    if sync_names:
+        groups.append("-group [get_clocks {" + " ".join(sync_names) + "}]")
+    groups.extend(f"-group [get_clocks {a}]" for a in async_names)
+    return groups
+
+
+def _sgdc_clock_domains(clocks: list[dict]) -> dict[str, str]:
+    """`clock -name ... -domain <D>` domain assignment — the SGDC-native equivalent of
+    `_async_clock_groups`, since SpyGlass's SGDC parser has no `set_clock_groups` command
+    (SGDCSTX_002 "Use of unknown SGDC command", confirmed on SpyGlass_vL-2016.06, Task 2 of
+    the F1 plan: `set_clock_groups` inside `constraints.sgdc` is a fatal setup error, not a
+    CDC violation). All `primary`/`synchronous-related` clocks share one domain (so SpyGlass
+    does not spuriously flag them as unsynchronized against each other); each `async` clock
+    gets its own distinct domain (its own name — SpyGlass already treats separately-named
+    clocks with no `-domain` as separate domains by default, so this makes that relationship
+    explicit/self-documenting rather than changing the CDC verdict). Renders the shared
+    `_clock_partition`; returns {} when it is empty."""
+    sync_names, async_names = _clock_partition(clocks)
+    if not async_names:
+        return {}
+    if sync_names and _SGDC_SYNC_DOMAIN in async_names:
+        # An async clock literally named "sync" would get -domain sync and be silently
+        # merged into the synchronous group — a false-negative CDC hole (the F1 defect
+        # class). Fail loudly; rename the clock in design.md §1.6.
+        _fail(
+            f"async clock {_SGDC_SYNC_DOMAIN!r} collides with the SGDC sync-group domain "
+            f"label {_SGDC_SYNC_DOMAIN!r}; rename the clock in design.md §1.6"
+        )
+    domains = {name: _SGDC_SYNC_DOMAIN for name in sync_names}
+    domains.update({name: name for name in async_names})
+    return domains
+
+
 def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     out = [
         f"# SDC constraints for {top}",
@@ -90,13 +150,8 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
         out.append(
             f"create_clock -name {c['name']} -period {c['period']} [get_ports {c['name']}]"
         )
-    async_names = [c["name"] for c in non_gen if c["relationship"] == "async"]
-    if async_names and len(non_gen) >= 2:
-        groups = []
-        sync_grp = [c["name"] for c in non_gen if c["relationship"] != "async"]
-        if sync_grp:
-            groups.append("-group [get_clocks {" + " ".join(sync_grp) + "}]")
-        groups.extend(f"-group [get_clocks {a}]" for a in async_names)
+    groups = _async_clock_groups(clocks)
+    if groups:
         out.append("set_clock_groups -asynchronous " + " ".join(groups))
     out.append("")
     out.append(
@@ -134,11 +189,15 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
         f"current_design {top}",
         "",
     ]
+    domains = _sgdc_clock_domains(clocks)
     for c in clocks:
         if c["generated"]:
             continue
         half = round(c["period"] / 2, 4)
-        out.append(f"clock -name {c['name']} -period {c['period']} -edge {{0 {half}}}")
+        domain_flag = f" -domain {domains[c['name']]}" if c["name"] in domains else ""
+        out.append(
+            f"clock -name {c['name']} -period {c['period']} -edge {{0 {half}}}{domain_flag}"
+        )
     out.append("")
     for p in ports:
         if p["role"] != "reset":
@@ -177,6 +236,14 @@ def _data_port_in_sgdc(signal: str, sgdc: str) -> bool:
 def _self_check(top: str, clocks: list[dict], ports: list[dict], sdc: str, sgdc: str):
     if f"current_design {top}" not in sgdc:
         _fail(f"self-check: SGDC missing 'current_design {top}'")
+    # F1: SDC and SGDC both derive their async-clock declaration from the same `clocks`
+    # list (via _async_clock_groups / _sgdc_clock_domains respectively — different syntax,
+    # same underlying data), so one declaring it and the other not means the two emitters
+    # diverged — the exact defect F1 fixes. Backstop it here.
+    if ("set_clock_groups" in sdc) != ("-domain" in sgdc):
+        _fail(
+            "self-check: async clock declaration present in one of SDC/SGDC but not the other"
+        )
     for c in clocks:
         if c["generated"]:
             continue
