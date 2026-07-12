@@ -25,6 +25,7 @@ I6 — Compute-phase write: if the `directive.md` write raises, no dispatch even
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,6 +33,12 @@ sys.path.insert(0, str(ROOT / "framework" / "scripts"))
 import facts  # noqa: E402
 import kernel  # noqa: E402
 import rules  # noqa: E402
+
+
+def _now_iso() -> str:
+    """Fresh second-resolution UTC stamp (mirrors skill finalizers) so a mid-test
+    result.json passes the reap temporal-integrity check."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _write_file(module: str, rel: str, content: str) -> Path:
@@ -124,7 +131,7 @@ def test_i5_not_promoted_to_canonical(tmp_path, monkeypatch) -> None:
         "schema_version": 1,
         "stage": "specification",
         "module": "M1",
-        "produced_at": "2026-07-10T00:00:00Z",
+        "produced_at": _now_iso(),
         "status": "pass",
         "artifacts": [{"path": "design.md"}],
         "stage_specific": {"top_module": "top", "ppa_targets": []},

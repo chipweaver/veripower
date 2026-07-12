@@ -2,7 +2,7 @@
 """rtl — rtl-design-stage CLI.
 
 Verbs (one stage = one tool; see skills/rtl-design/SKILL.md for usage):
-  seed              carry prior canonical RTL forward (no-clobber)      (stdout: JSON; exit 0)
+  seed              carry prior canonical RTL products fwd (whitelist)  (stdout: JSON; exit 0)
   check-partition   pre-dispatch coverage+purity gate (manifest+top)    (stdout: verdict; exit 0/1)
   assemble          build ledger/filelist/README + post exit-gate       (stdout: verdict; exit 0/1)
   check-conformance spec<->RTL presence gate                            (stdout: verdict; exit 0/1)
@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def _cmd_seed(a: argparse.Namespace) -> int:
     from rtl import seed
 
-    return seed.run(a.workdir, a.canonical)
+    return seed.run(a.workdir, a.canonical, freeze=a.freeze)
 
 
 def _cmd_classify_delta(a: argparse.Namespace) -> int:
@@ -77,13 +77,22 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="rtl", description="rtl-design-stage CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sp = sub.add_parser("seed", help="carry prior canonical RTL forward (no-clobber)")
+    sp = sub.add_parser(
+        "seed",
+        help="carry prior canonical RTL products forward (whitelist, no-clobber; "
+        "never result.json)",
+    )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
         "--canonical",
         type=Path,
         default=None,
         help="prior canonical dir; default = {workdir}/../..",
+    )
+    sp.add_argument(
+        "--freeze",
+        action="store_true",
+        help="freeze branch only: additionally byte-carry semantic-review.json (keeps its pin alive)",
     )
     sp.set_defaults(func=_cmd_seed)
 

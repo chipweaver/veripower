@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,6 +34,13 @@ import rules  # noqa: E402
 import schedule  # noqa: E402
 
 TS = "2026-07-10T00:00:00.000000Z"
+
+
+def _now_iso() -> str:
+    """Fresh second-resolution UTC stamp (mirrors skill finalizers) so a mid-test
+    result.json passes the reap temporal-integrity check."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 
 # ── test_schedule.py helper idioms (copied verbatim — real event logs) ──────────
 
@@ -241,7 +249,7 @@ def _triage(module, sim_run, root_cause, confidence):
         "schema_version": 1,
         "stage": "simulation-triage",
         "module": module,
-        "produced_at": "2026-07-10T00:00:00Z",
+        "produced_at": _now_iso(),
         "status": "pass",
         "artifacts": [],
         "stage_specific": {
@@ -565,20 +573,19 @@ def test_step5_cold_regenerated_seed_byte_identical(tmp_path, monkeypatch):
 
 
 def test_step5_lintcdc_dispatchable_and_waiver_never_cached(tmp_path, monkeypatch):
-    """lint-cdc stays dispatchable after its warm cache seed is deleted (the cache is
-    a derived seed, not a hard input), and waiver exemptions never live in cache files
-    (so cold regeneration can never resurrect a stale waiver)."""
-    # waiver exemptions never live in ANY rule's cache declaration.
-    for name, r in rules.RULES.items():
-        assert all("waiver" not in c for c in r.cache), f"{name} caches a waiver"
+    """lint-cdc stays dispatchable after its warm SGDC seed is deleted (the seed is a
+    derived warm-start, not a hard input), and the waiver is a declared in∩out input —
+    its self-lock exemption is derived from producer_of==consumer, with no separate
+    cache declaration (the old Rule.cache field had no machine consumer and was removed)."""
     lint = rules.RULES["lint-cdc"]
     assert "scripts/waiver.tcl" in lint.outputs  # it IS a real promoted product
-    assert "scripts/waiver.tcl" not in lint.cache  # but never a cache seed
-    assert lint.cache == ("scripts/constraints.sgdc",)  # the sole cache seed
-    # the cache seed is not among lint-cdc's declared inputs — its absence cannot gate.
+    # waiver.tcl is also a declared input of lint-cdc itself — the in∩out shape whose
+    # availability exemption facts.input_available derives from producer_of==consumer.
     input_globs = [g for gs in lint.inputs.values() for g in gs]
-    for c in lint.cache:
-        assert f"Design/lint-cdc/{c}" not in input_globs
+    assert "Design/lint-cdc/scripts/waiver.tcl" in input_globs
+    assert rules.producer_of("Design/lint-cdc/scripts/waiver.tcl") == "lint-cdc"
+    # the warm SGDC seed is NOT among lint-cdc's declared inputs — absence cannot gate.
+    assert "Design/lint-cdc/scripts/constraints.sgdc" not in input_globs
 
     monkeypatch.chdir(tmp_path)
     m = "cold"

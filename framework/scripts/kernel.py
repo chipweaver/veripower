@@ -229,10 +229,38 @@ def _oracle_content_fp(module, rule):
     return "merkle:" + h.hexdigest()
 
 
+def _stale_result_reason(produced_at, dispatch_ts) -> str | None:
+    """Temporal integrity of a reaped verdict (§5.6): result.json must have been authored
+    by THIS run's executor, so its produced_at must not predate the run's own dispatch —
+    an older stamp means a carried-in stale envelope (e.g. a prior canonical result.json
+    copied into the workdir), which must never mint an outcome. The dispatch ts is floored
+    to whole seconds before comparing: skill finalizers stamp second-resolution UTC while
+    the kernel stamps microseconds, and a sub-second run must not be misjudged stale.
+    Unparseable produced_at blocks too (conservative — the envelope contract mandates
+    ISO-8601, stage-subagent.md.tpl); a naive timestamp is taken as UTC."""
+
+    def parse(s):
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    try:
+        produced = parse(produced_at)
+    except (ValueError, TypeError, AttributeError):
+        return "produced_at_unparseable"
+    try:
+        dispatched = parse(dispatch_ts)
+    except (ValueError, TypeError, AttributeError):
+        return None  # kernel-authored ts; a malformed one is not the run's fault
+    if produced < dispatched.replace(microsecond=0):
+        return "stale_result"
+    return None
+
+
 def _derive_verdict(module, rule_name, run, rj: Path, events):
     """UNIFORM return: (verdict, reason, proofs, diagnosis) — proofs is [] and diagnosis
     is None whenever not applicable; the shape NEVER varies by rule kind. result.json
-    status -> verdict; missing/unparseable/malformed/schema-violation -> blocked. For
+    status -> verdict; missing/unparseable/malformed/schema-violation/stale -> blocked
+    (stale = produced_at predates this run's dispatch, _stale_result_reason). For
     simulation-triage (proof=None) the triage branch (Task C7) derives a diagnosis event
     dict from stage_specific — or blocked when it skipped/crashed."""
     rule = rules.RULES[rule_name]
@@ -249,15 +277,21 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
     # a schema violation -> ("blocked", "schema_violation", [], None).
     if facts.validate_result(rule_name, env) is not None:
         return "blocked", "schema_violation", [], None
-    if rule_name == "simulation-triage":
-        return _derive_triage(module, env, events, run)  # Task C7 — same 4-tuple
-    if rule.proof is None:
-        return status, None, [], None
+    # Temporal integrity for EVERY rule kind (proof, triage, none) — the dispatch event
+    # exists by cmd_reap's guard. A re-reap of an old run compares against that run's OWN
+    # dispatch, so the crash-repair and pin-regrade paths are unaffected.
     dispatch = next(
         e
         for e in reversed(events)
         if e["type"] == "dispatch" and e["rule"] == rule_name and e["run"] == run
     )
+    stale = _stale_result_reason(env.get("produced_at"), dispatch["ts"])
+    if stale:
+        return "blocked", stale, [], None
+    if rule_name == "simulation-triage":
+        return _derive_triage(module, env, dispatch)  # Task C7 — same 4-tuple
+    if rule.proof is None:
+        return status, None, [], None
     cdir = Path(*rule.workdir_root)
     # evidence = canonical result.json AND its artifacts[] (§5.3 "及其 artifacts[]"): the
     # report-class products ARE the evidence; recording only result.json truncates the audit
@@ -275,13 +309,16 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
     return status, None, [proof], None
 
 
-def _derive_triage(module, env, events, run):
+def _derive_triage(module, env, dispatch):
     """Triage reap (§2 triage contract): complete -> (verdict, None, [], diagnosis-event);
     skipped/crash -> blocked, no diagnosis (the sim failure stays ambiguous; next round
     re-dispatches triage, §3.3). Confidence lands as-is (P4) — reliability is decide's
     gate, not a reap branch. The root_cause map is route.TRIAGE_ROOT_CAUSE — route.py is
     the SINGLE home of failure→target maps; its ESCALATE sentinel means 'no auto
-    fix_owner' here (self-pointing: attribution recorded, fix_owner omitted — A3)."""
+    fix_owner' here (self-pointing: attribution recorded, fix_owner omitted — A3).
+    `dispatch` is THIS run's own dispatch event, located once in _derive_verdict (not
+    the latest triage dispatch, which would mislabel subject.outcome_run when
+    re-reaping an older run — F8b)."""
     import uuid
 
     import route
@@ -291,18 +328,7 @@ def _derive_triage(module, env, events, run):
         return "blocked", "skipped_reason", [], None
     root_cause = ss.get("root_cause")
     target = route.TRIAGE_ROOT_CAUSE.get(root_cause, route.ESCALATE)
-    sim_hit = None
-    for e in reversed(
-        events
-    ):  # THIS run's own dispatch (not the latest triage dispatch,
-        # which would mislabel subject.outcome_run when re-reaping an older run — F8b)
-        if (
-            e["type"] == "dispatch"
-            and e["rule"] == "simulation-triage"
-            and e["run"] == run
-        ):
-            sim_hit = e["params"].get("sim_run")
-            break
+    sim_hit = dispatch["params"].get("sim_run")
     # Structural correlates live in the ADVISORY tier — stage_specific is
     # additionalProperties:false with no evidence/fix_locus keys, so the old
     # ss.get("evidence"/"fix_locus") reads were ALWAYS empty (D5). Map them: L2 repro
