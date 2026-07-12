@@ -7,7 +7,7 @@ Verbs (one stage = one tool; see skills/specification/SKILL.md for usage):
   derive-constraints  generate SDC/SGDC from §1.6 + §1.4.1  (stdout: JSON; fail-loud)
   validate-review     spec-review.json schema + gate        (stdout: gate JSON; exit 0/1)
   classify-delta      freeze-branch selector                (stdout: verdict JSON; exit 0/1)
-  seed                carry prior canonical artifacts fwd   (stdout: seeded JSON)
+  seed                carry prior canonical products fwd    (stdout: seeded JSON)
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the
@@ -69,7 +69,7 @@ def _cmd_classify_delta(a: argparse.Namespace) -> int:
 def _cmd_seed(a: argparse.Namespace) -> int:
     from spec import seed
 
-    return seed.run(a.workdir, a.canonical)
+    return seed.run(a.workdir, a.canonical, freeze=a.freeze)
 
 
 def _cmd_validate_review(a: argparse.Namespace) -> int:
@@ -87,6 +87,7 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         status=a.status,
         ppa_targets_json=a.ppa_targets,
         waived_json=a.waived,
+        fail_reason=a.fail_reason,
     )
 
 
@@ -129,7 +130,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=_cmd_classify_delta)
 
     sp = sub.add_parser(
-        "seed", help="carry prior canonical artifacts forward (no-clobber)"
+        "seed",
+        help="carry prior canonical PRODUCTS forward (whitelist, no-clobber; "
+        "never result.json)",
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
@@ -137,6 +140,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="prior canonical dir; default = {workdir}/../..",
+    )
+    sp.add_argument(
+        "--freeze",
+        action="store_true",
+        help="freeze branch only: additionally byte-carry spec-review.json (keeps its pin alive)",
     )
     sp.set_defaults(func=_cmd_seed)
 
@@ -147,17 +155,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--status",
         required=True,
         choices=["pass", "fail"],
-        help="the human approve/reject decision at the Step-8 design.md gate (γ-floor)",
+        help="the human approve/reject decision at the Step-8 design.md gate; "
+        "fail also serves the documented early-fail exits (with --fail-reason)",
     )
     sp.add_argument(
         "--ppa-targets",
-        default="[]",
-        help="ppa_targets JSON array, verbatim from D6 brainstorm (γ-floor)",
+        default=None,
+        help="optional override: ppa_targets JSON array; default = read the "
+        "Wave-1-authored {workdir}/ppa.json from disk",
     )
     sp.add_argument(
         "--waived",
         default="[]",
-        help="human-waiver JSON array recorded at the Step-8 gate (γ-floor)",
+        help="human-waiver JSON array recorded at the Step-8 gate",
+    )
+    sp.add_argument(
+        "--fail-reason",
+        default=None,
+        help="on --status fail: the one-line failure narrative (early-fail entry); "
+        "default = the Step-8 human-reject wording",
     )
     sp.set_defaults(func=_cmd_finalize)
 

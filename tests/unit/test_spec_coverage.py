@@ -829,3 +829,35 @@ def test_driver_skipped_without_child_texts():
 
     s = cc.compute_structure(_IO_MANIFEST, _io_design(_row("drv")))  # child_texts=None
     assert s["top_io_driver_violations"] == []
+
+
+# ── token-survival: PPA Targets chapter exemption (ppa.json single-home) ─────
+
+
+def test_token_survival_ppa_targets_section_exempt(tmp_path):
+    # a D6-only numeric like "0.5 ns" single-homes in ppa.json; demanding prose
+    # survival would deadlock against the design-template §1.1 no-restatement rule
+    from spec import coverage as cc
+
+    manifest = {"module": "m", "children": []}
+    brainstorm = (
+        "# B\n\n## PPA Targets\n\n- timing slack target 0.5 ns\n\n## Document Control\n"
+    )
+    tok = cc.compute_token_survival(
+        tmp_path, manifest, brainstorm, "main design, no tokens"
+    )
+    assert tok["missing_tokens"] == []
+
+
+def test_token_survival_ppa_token_elsewhere_still_required(tmp_path):
+    # only the PPA-chapter occurrence is exempt: the same token appearing in another
+    # chapter is still extracted there and must survive into design.md ∪ children
+    from spec import coverage as cc
+
+    manifest = {"module": "m", "children": []}
+    brainstorm = (
+        "# B\n\n## Clocks and Reset\n\nsampling window is 0.5 ns\n\n"
+        "## PPA Targets\n\n- slack target 0.5 ns\n"
+    )
+    tok = cc.compute_token_survival(tmp_path, manifest, brainstorm, "no tokens here")
+    assert {"missing_token": "0.5 ns"} in tok["missing_tokens"]

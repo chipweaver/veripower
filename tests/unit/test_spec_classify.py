@@ -15,11 +15,17 @@ def _brainstorm(tmp_path, text="b1"):
     return p
 
 
-def _baseline(tmp_path, *, status, input_digest):
+def _baseline(tmp_path, *, status, input_digest, artifacts=(), products_digest=None):
     ss = {"top_module": "m"}
     if input_digest is not None:
         ss["input_digest"] = input_digest
-    rj = {"status": status, "stage_specific": ss}
+    if products_digest is not None:
+        ss["products_digest"] = products_digest
+    rj = {
+        "status": status,
+        "stage_specific": ss,
+        "artifacts": [{"path": p} for p in artifacts],
+    }
     p = tmp_path / "result.json"
     p.write_text(json.dumps(rj), encoding="utf-8")
     return p
@@ -40,8 +46,63 @@ def test_no_canonical_result_is_first_run(tmp_path):
 
 def test_unchanged_pass_baseline_is_freeze(tmp_path):
     b = _brainstorm(tmp_path)
-    cr = _baseline(tmp_path, status="pass", input_digest=classify.input_digest(b))
+    (tmp_path / "design.md").write_text("d", encoding="utf-8")
+    pd = classify.products_digest(tmp_path, ["design.md"])
+    cr = _baseline(
+        tmp_path,
+        status="pass",
+        input_digest=classify.input_digest(b),
+        artifacts=["design.md"],
+        products_digest=pd,
+    )
     assert classify.classify_delta(cr, b)["verdict"] == "freeze"
+
+
+def test_pass_without_products_digest_is_proceed(tmp_path):
+    # brainstorm unchanged alone is NOT enough for freeze: without the products half,
+    # a hand-edited canonical could be re-blessed without any reviewer/human seeing it.
+    b = _brainstorm(tmp_path)
+    (tmp_path / "design.md").write_text("d", encoding="utf-8")
+    cr = _baseline(
+        tmp_path,
+        status="pass",
+        input_digest=classify.input_digest(b),
+        artifacts=["design.md"],
+    )
+    v = classify.classify_delta(cr, b)
+    assert v["verdict"] == "proceed" and "products_digest" in v["reason"]
+
+
+def test_drifted_products_is_proceed(tmp_path):
+    b = _brainstorm(tmp_path)
+    (tmp_path / "design.md").write_text("approved bytes", encoding="utf-8")
+    pd = classify.products_digest(tmp_path, ["design.md"])
+    cr = _baseline(
+        tmp_path,
+        status="pass",
+        input_digest=classify.input_digest(b),
+        artifacts=["design.md"],
+        products_digest=pd,
+    )
+    (tmp_path / "design.md").write_text("hand-edited bytes", encoding="utf-8")
+    v = classify.classify_delta(cr, b)
+    assert v["verdict"] == "proceed" and "drifted" in v["reason"]
+
+
+def test_missing_product_file_is_proceed(tmp_path):
+    b = _brainstorm(tmp_path)
+    (tmp_path / "design.md").write_text("d", encoding="utf-8")
+    pd = classify.products_digest(tmp_path, ["design.md"])
+    cr = _baseline(
+        tmp_path,
+        status="pass",
+        input_digest=classify.input_digest(b),
+        artifacts=["design.md"],
+        products_digest=pd,
+    )
+    (tmp_path / "design.md").unlink()
+    v = classify.classify_delta(cr, b)
+    assert v["verdict"] == "proceed" and "missing" in v["reason"]
 
 
 def test_changed_input_is_proceed(tmp_path):

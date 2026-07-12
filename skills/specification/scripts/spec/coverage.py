@@ -305,12 +305,38 @@ _HARD_TOKEN_RE = re.compile(
 )
 
 
+def _strip_ppa_targets_section(brainstorm_text: str) -> str:
+    """Remove the brainstorm's `PPA Targets` chapter (checklist Section Layout, D6)
+    before hard-token extraction. PPA numbers legitimately live ONLY in ppa.json (the
+    design-template §1.1 single-home rule), so a D6-only token like `0.5 ns` must not
+    demand prose survival in design.md ∪ children — that demand and the single-home
+    rule would otherwise deadlock the Step-6 loop. A token that ALSO appears outside
+    the PPA chapter is still extracted from its other occurrence and must survive."""
+    out: list[str] = []
+    skipping, skip_depth = False, 0
+    for line in brainstorm_text.splitlines():
+        m = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
+        if m:
+            depth = len(m.group(1))
+            if skipping and depth <= skip_depth:
+                skipping = False
+            if not skipping and re.search(r"PPA\s+Targets", m.group(2), re.IGNORECASE):
+                skipping, skip_depth = True, depth
+                continue
+        if not skipping:
+            out.append(line)
+    return "\n".join(out)
+
+
 def compute_token_survival(
     workdir: Path, manifest: dict, brainstorm_text: str, main_design_text: str
 ) -> dict:
-    """Every hard token in the WHOLE brainstorm must appear (substring) in
-    design.md ∪ children. Objective + ungameable; guards the verbatim-RTL contract.
+    """Every hard token in the WHOLE brainstorm — minus the `PPA Targets` chapter
+    (see _strip_ppa_targets_section: its numerics single-home in ppa.json) — must
+    appear (substring) in design.md ∪ children. Objective + ungameable; guards the
+    verbatim-RTL contract.
     """
+    brainstorm_text = _strip_ppa_targets_section(brainstorm_text)
     # Read each child body once, not once-per-token.
     child_texts = [
         (workdir / child["doc"]).read_text(encoding="utf-8")
