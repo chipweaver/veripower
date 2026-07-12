@@ -77,11 +77,13 @@ def classify_delta(canonical_result, spec_dir) -> dict:
     paths = [
         a.get("path")
         for a in rj.get("artifacts", [])
-        if isinstance(a, dict) and a.get("path")
+        if isinstance(a, dict) and isinstance(a.get("path"), str) and a.get("path")
     ]
+    # ValueError covers pathological path strings (e.g. an embedded NUL), which
+    # open() raises as ValueError, not OSError — same safe no-freeze verdict.
     try:
         current_products = products_digest(cr.parent, paths)
-    except OSError:
+    except (OSError, ValueError):
         return {"verdict": "proceed", "reason": "canonical products missing/unreadable"}
     if current_products != recorded_products:
         return {

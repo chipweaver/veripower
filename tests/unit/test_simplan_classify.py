@@ -139,3 +139,22 @@ def test_non_dict_canonical_result_is_first_run(tmp_path):
     p = tmp_path / "result.json"
     p.write_text("[1, 2, 3]", encoding="utf-8")
     assert classify.classify_delta(p, sd)["verdict"] == "first-run"
+
+
+def test_corrupt_artifacts_path_is_proceed_not_crash(tmp_path):
+    # a hand-edited envelope with a non-string artifacts[].path must yield a safe
+    # verdict, never an unhandled traceback out of the CLI
+    sd = _spec_dir(tmp_path)
+    arts = _canonical_products(tmp_path)
+    rj = {
+        "status": "pass",
+        "stage_specific": {
+            "input_digest": classify.input_digest(sd),
+            "products_digest": classify.products_digest(tmp_path, arts),
+        },
+        "artifacts": [{"path": 123}, {"path": arts[0]}],
+    }
+    p = tmp_path / "result.json"
+    p.write_text(json.dumps(rj), encoding="utf-8")
+    v = classify.classify_delta(p, sd)
+    assert v["verdict"] == "proceed"  # digest over the sanitized set mismatches

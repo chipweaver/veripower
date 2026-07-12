@@ -2,9 +2,10 @@
 
 The parsing seam extracted from the 501-line god-file: read_text, write_text,
 normalize_header, extract_section, parse_first_markdown_table,
-parse_all_markdown_tables, map_headers, default_if_blank. STAGE-PRIVATE — only
-plan_data.py consumes these. Stage-internal dedup only: specification and
-rtl-design keep their own copies (skills stay decoupled; design §1 non-goals).
+parse_all_markdown_tables, map_headers, default_if_blank. STAGE-PRIVATE —
+consumed only inside this stage (plan_data.py, plus result.count_features for
+extract_section). Stage-internal dedup only: specification and rtl-design keep
+their own copies (skills stay decoupled; design §1 non-goals).
 """
 
 from __future__ import annotations

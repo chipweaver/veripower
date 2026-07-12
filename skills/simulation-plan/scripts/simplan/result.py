@@ -45,9 +45,12 @@ def _record_input_digest(ss: dict, workdir: Path) -> None:
     The parents[3] climb assumes the canonical asic/<module>/Verification/
     simulation-plan/runs/<N> layout — verified by name before recording, so an
     off-layout workdir can never hash a coincidental wrong directory into the
-    freeze baseline (it just skips, and the next classify-delta says proceed)."""
+    freeze baseline (it just skips, and the next classify-delta says proceed).
+    The check is LEXICAL (no resolve()): a deployment that symlinks a layout
+    segment to a differently-named target keeps its as-invoked names and must
+    not lose freeze eligibility to the physical-path rewrite."""
     try:
-        parts = workdir.resolve().parents
+        parts = workdir.parents
         if (
             parts[0].name != "runs"
             or parts[1].name != "simulation-plan"
@@ -64,8 +67,10 @@ def count_features(plan_md: str) -> int:
     section (0 when the section is absent). Deliberately NOT a whole-document scan: a §5
     revision note citing a dropped F-NN must not inflate the count across reworks — the
     number means "features the current testpoints trace to". The \\b boundary + \\d+
-    excludes a bare 'F-' and 'Frame-01'."""
-    section = extract_section(plan_md, r"(^|.*)§?\s*3\.?\s*.*Testpoints")
+    excludes a bare 'F-' and 'Frame-01'. The heading pattern is anchored to the start
+    of the heading text (so '## 1.3 Overview of Testpoints strategy' cannot shadow the
+    real '## 3. Testpoints Table') and case-insensitive."""
+    section = extract_section(plan_md, r"(?i)^\s*§?\s*3[.\s].*Testpoints?")
     return len(set(re.findall(r"\bF-\d+\b", section)))
 
 
@@ -105,8 +110,24 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
     workdir = Path(workdir)
 
     if status == "fail":
+        review_present = (workdir / "plan-review.json").is_file()
+        if fail_reason is None and not review_present:
+            # A user reject can only follow Step 4/5 — the judged record must be on
+            # disk. A bare --status fail on a workdir that never ran the gate would
+            # fabricate a human rejection; force the caller to say what failed.
+            raise ValueError(
+                "--status fail without --fail-reason is the Step-5 user reject and "
+                "requires plan-review.json on disk; for an early fail pass --fail-reason"
+            )
+        if waived and not review_present:
+            # A waiver is a human trust record attached to a judged gate; with no
+            # plan-review.json there is no gate to attach it to — dropping it
+            # silently would lose the operator's classifications for the rework.
+            raise ValueError(
+                "--waived supplied but no plan-review.json on disk to attach it to"
+            )
         ss = {"fail_reason": fail_reason or _REJECT_REASON}
-        if (workdir / "plan-review.json").is_file():
+        if review_present:
             review = json.loads(
                 (workdir / "plan-review.json").read_text(encoding="utf-8")
             )
@@ -212,6 +233,14 @@ def finalize(
     if fail_reason is not None and not fail_reason.strip():
         print(
             "[simplan finalize] ERROR: --fail-reason must be a non-empty one-line reason",
+            file=sys.stderr,
+        )
+        return 2
+    if fail_reason is not None and status != "fail":
+        # An unpaired --fail-reason is a caller slip about to invert a failure into a
+        # computed pass; refuse loudly instead of silently discarding the reason.
+        print(
+            "[simplan finalize] ERROR: --fail-reason requires --status fail",
             file=sys.stderr,
         )
         return 2
