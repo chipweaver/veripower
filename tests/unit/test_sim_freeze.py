@@ -2,7 +2,7 @@
 """sim freeze verb — deterministic copy of the prior canonical TB + rtl_filelist regen.
 
 Subprocess mirror tests: run the real shipped verb with cwd set to a tmp design-tree root
-(the freeze verb anchors the design tree on the CWD, matching bootstrap/state.py).
+(the freeze verb anchors the design tree on the CWD, matching bootstrap/kernel.py).
 """
 
 import subprocess

@@ -5,7 +5,7 @@ Two layers: in-process unit tests of infer_top_from_filelist (BP1), and subproce
 "mirror" tests of full deploy behavior (BP2-BP11 + the §8 cross-stage contract CS1).
 The mirror runs the real shipped skill with cwd set to a tmp design-tree root and builds
 the upstream asic/<module>/... references under it. The bootstrap anchors the design tree
-on the CWD (matching state.py and the stage-subagent contract), independent of where the
+on the CWD (matching kernel.py and the stage-subagent contract), independent of where the
 skill code lives. The bootstrap shells out to the DEPLOYED emit_power_tests.py (Tier-2)
 to render the initial power tests; a §8 violation there propagates as exit 1.
 """

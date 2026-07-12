@@ -32,20 +32,20 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
 | `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); presence selects the rework branch. |
-| `{orchestrator_context_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content. |
+| `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content. |
 
 ### External reference inputs
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/lint-cdc/result.json` | `skills/lint-cdc/references/result.schema.json` | Confirm lint clean (Step 1 pre-check). |
+| `Design/lint-cdc/result.json` | `skills/lint-cdc/references/result.schema.json` | Incremental-update branch only — diffed for the incremental scope. |
 | `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | Incremental-update branch only — diffed for the incremental scope. |
 | `Design/rtl-design/filelist.txt` | text | RTL file list. |
 | `Design/rtl-design/README.md` | Custom markdown | Constraint-annotation note (SDC: generated clock / multicycle / false path). |
 | `Design/specification/constraints/<TOP>.sdc` | SDC | SDC source of truth (optional) — bootstrap seeds the working `constraints.sdc` from it, else the template placeholder. |
 | `LIB_DB` (env) | std cell Liberty `.db` path | Set before any run (Step 3) — `env.sh` / Makefile fail loudly when unset. |
 
-When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file; field names come from the triggering stage's own `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. `ppa_targets` (area_um2 / timing_slack_ns dimensions) is injected by the caller in the prompt.
+When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file; field names come from the triggering stage's own `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. PPA targets (`area_um2` / `timing_slack_ns` dimensions) are read by `synthesis finalize` itself from `Design/specification/ppa.json` — nothing is injected in the prompt.
 
 ## Output Artifacts
 
@@ -70,9 +70,9 @@ Based on whether `{rework_trigger}` is injected and whether the canonical path `
 - **Incremental-update branch** (no trigger; canonical path already has prior artifacts): read the diff of `Design/lint-cdc/result.json` / `Design/rtl-design/result.json` to determine the incremental scope.
 - **First-run branch** (no trigger; canonical path has no prior artifacts): run the first-pass serial flow.
 
-Then pre-check the external references: `Design/lint-cdc/result.json.status=pass` ∧ `Design/rtl-design/filelist.txt` (containing ≥1 RTL entry — not a comment, not a `+` / `-` directive) and `README.md` all present. If any file is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if filelist exists but has no usable RTL entries, write `fail_reason="external reference missing: Design/rtl-design/filelist.txt (no RTL entries)"` and exit; if `Design/lint-cdc/result.json.status≠pass`, write `fail_reason="external reference not pass: Design/lint-cdc/result.json"` and exit.
+Then pre-check the external references: `Design/rtl-design/filelist.txt` (containing ≥1 RTL entry — not a comment, not a `+` / `-` directive) and `README.md` all present. If any file is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if filelist exists but has no usable RTL entries, write `fail_reason="external reference missing: Design/rtl-design/filelist.txt (no RTL entries)"` and exit.
 
-When `{orchestrator_context_path}` is injected, Read that sibling file first as a fix-scope hint; it takes priority over the trigger content to further narrow the modification scope.
+When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint; it takes priority over the trigger content to further narrow the modification scope.
 
 **Branch scope.** Steps 2–8 run in the same order for all three branches and differ only in *scope*: Step 1 fixes the scope (first-run = full; incremental = the `Design/lint-cdc` / `Design/rtl-design` diff; trigger-driven = the trigger's `violations[]`), and the SDC / timing-exception edits in Steps 4 and 6 stay confined to it. Steps 2–3 (bootstrap + `LIB_DB`) are one-time workdir setup — Step 2 aborts once `{workdir}` is deployed; Steps 5 / 7 / 8 (synthesis run, PPA self-check, `result.json` write) are unconditional in every branch.
 
@@ -114,15 +114,14 @@ Extract the violated paths from `reports/timing_setup.rpt`, keeping each path's 
 
 ### Step 7: Build `{workdir}/result.json` (mandatory)
 
-Run the parser's finalize subcommand; do not hand-assemble the envelope or extract/compare by hand. Read `ppa_targets` from the prompt context (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream):
+Run the parser's finalize subcommand; do not hand-assemble the envelope or extract/compare by hand. It reads the PPA targets itself from `Design/specification/ppa.json` (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream; an absent file or dim leaves that dimension ungated) — you pass no target flags:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
-  --workdir {workdir} --module <module> --top <top_module> \
-  [--area-target <v>] [--slack-target <v>]
+  --workdir {workdir} --module <module> --top <top_module>
 ```
 
-`finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`), derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+`finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`) against the `Design/specification/ppa.json` targets, derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
 `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); you write `failure_kind=infra` on the pre-checks of Steps 1–5 (DC never ran — external ref / license / trigger) before finalize runs.
 

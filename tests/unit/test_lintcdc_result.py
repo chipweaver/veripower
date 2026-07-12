@@ -7,7 +7,6 @@ Task 3 (artifacts[]), Task 4 (golden + schema).
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -194,27 +193,22 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
 
 
 def test_golden_is_schema_valid(tmp_path):
-    # Reuse framework.scripts.state.validate_result (Draft202012Validator + Registry).
-    # It reads asic/<module>/Design/lint-cdc/result.json relative to cwd, so build
-    # into that layout + chdir.
-    from framework.scripts import state
+    # Reuse framework.scripts.facts.validate_result (Draft202012Validator + Registry)
+    # on the produced result.json dict.
+    from framework.scripts import facts
 
     wd = tmp_path / "asic" / "tpu_top" / "Design" / "lint-cdc"
     shutil.copytree(FIX, wd)
     rb.run(wd, module="tpu_top", top=None)
-    old_cwd = os.getcwd()
-    try:
-        os.chdir(tmp_path)
-        valid, err = state.validate_result("tpu_top", "lint-cdc")
-    finally:
-        os.chdir(old_cwd)
-    assert valid, f"golden lint-cdc result.json is not schema-valid: {err}"
+    result = json.loads((wd / "result.json").read_text())
+    err = facts.validate_result("lint-cdc", result)
+    assert err is None, f"golden lint-cdc result.json is not schema-valid: {err}"
 
 
 def test_fail_envelope_is_schema_valid(tmp_path):
     # The FAIL path must also be schema-valid (the result schema requires fail_reason
     # on fail). Guard the fail shape explicitly.
-    from framework.scripts import state
+    from framework.scripts import facts
 
     wd = tmp_path / "asic" / "tpu_top" / "Design" / "lint-cdc"
     shutil.copytree(FIX, wd)
@@ -238,14 +232,160 @@ def test_fail_envelope_is_schema_valid(tmp_path):
         )
     )
     assert rb.run(wd, module="tpu_top", top=None) == 0
-    old_cwd = os.getcwd()
-    try:
-        os.chdir(tmp_path)
-        valid, err = state.validate_result("tpu_top", "lint-cdc")
-    finally:
-        os.chdir(old_cwd)
-    assert valid, f"fail-path lint-cdc result.json is not schema-valid: {err}"
-    assert json.loads((wd / "result.json").read_text())["status"] == "fail"
+    result = json.loads((wd / "result.json").read_text())
+    err = facts.validate_result("lint-cdc", result)
+    assert err is None, f"fail-path lint-cdc result.json is not schema-valid: {err}"
+    assert result["status"] == "fail"
+
+
+# ---------------------------------------------------------------------------
+# Task 5: input-provenance category classification (U4) — failure_kind +
+# failures[0].category, consumed by route.py's LINT_CATEGORY (Task B1).
+# ---------------------------------------------------------------------------
+
+
+def test_categorize_rtl_cdc_from_ac_unsync_prefix():
+    # Empirically observed on SpyGlass_vL-2016.06 (F1 fixture): Ac_unsync01.
+    v = {"rule": "Ac_unsync01"}
+    assert rb._categorize([v]) == ("rtl_cdc", v)
+
+
+def test_categorize_sgdc_seed_from_clock_info_prefix():
+    # Empirically observed on SpyGlass_vL-2016.06 (undeclared-clock experiment):
+    # Clock_info03a.
+    v = {"rule": "Clock_info05"}
+    assert rb._categorize([v]) == ("sgdc_seed", v)
+
+
+def test_categorize_defaults_to_lint_rtl_when_unmatched():
+    # No prefix match -> default category, no matched violation.
+    assert rb._categorize([{"rule": "W123"}]) == ("lint_rtl", None)
+
+
+def test_fail_envelope_sets_failures_rtl_cdc_category(tmp_path):
+    wd = _clean_workdir(tmp_path, cdc_err=1)
+    (wd / "cdc-violations.json").write_text(
+        json.dumps(
+            {
+                "kind": "cdc",
+                "counts": {"error": 1, "warning": 0, "info": 14},
+                "violations": [
+                    {
+                        "id": "Ac_unsync01:cdc_smoke.q",
+                        "rule": "Ac_unsync01",
+                        "severity": "error",
+                        "message": "Unsynchronized Crossing",
+                    }
+                ],
+            }
+        )
+    )
+    assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert ss["failure_kind"] == "cdc"
+    assert ss["failures"] == [
+        {
+            "category": "rtl_cdc",
+            "rule": "Ac_unsync01",
+            "error_summary": ss["fail_reason"],
+        }
+    ]
+
+
+def test_fail_envelope_sets_failures_sgdc_seed_category(tmp_path):
+    wd = _clean_workdir(tmp_path, cdc_err=1)
+    (wd / "cdc-violations.json").write_text(
+        json.dumps(
+            {
+                "kind": "cdc",
+                "counts": {"error": 1, "warning": 0, "info": 0},
+                "violations": [
+                    {
+                        "id": "Clock_info05:cdc_smoke.clk2",
+                        "rule": "Clock_info05",
+                        "severity": "error",
+                        "message": "Clock-Net is unconstrained",
+                    }
+                ],
+            }
+        )
+    )
+    assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert ss["failure_kind"] == "constraint"
+    assert ss["failures"] == [
+        {
+            "category": "sgdc_seed",
+            "rule": "Clock_info05",
+            "error_summary": ss["fail_reason"],
+        }
+    ]
+
+
+def test_fail_envelope_rule_names_the_categorizing_violation(tmp_path):
+    # Mixed error set: the FIRST error in list order (W123, a lint rule matching
+    # no prefix) is not the one that drives the category — a later Ac_unsync01
+    # is. failures[0].rule must name THAT matching violation, not merely
+    # violations[0] (lint errors precede cdc errors in the concatenated list).
+    wd = _clean_workdir(tmp_path, lint_err=1, cdc_err=1)
+    (wd / "lint-violations.json").write_text(
+        json.dumps(
+            {
+                "kind": "lint",
+                "counts": {"error": 1, "warning": 0, "info": 0},
+                "violations": [
+                    {
+                        "id": "W123:foo.v:9",
+                        "rule": "W123",
+                        "severity": "error",
+                        "message": "inferred latch on signal q",
+                    }
+                ],
+            }
+        )
+    )
+    (wd / "cdc-violations.json").write_text(
+        json.dumps(
+            {
+                "kind": "cdc",
+                "counts": {"error": 1, "warning": 0, "info": 0},
+                "violations": [
+                    {
+                        "id": "Ac_unsync01:cdc_smoke.q",
+                        "rule": "Ac_unsync01",
+                        "severity": "error",
+                        "message": "Unsynchronized Crossing",
+                    }
+                ],
+            }
+        )
+    )
+    assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert ss["failure_kind"] == "cdc"
+    assert ss["failures"] == [
+        {
+            "category": "rtl_cdc",
+            "rule": "Ac_unsync01",
+            "error_summary": ss["fail_reason"],
+        }
+    ]
+
+
+def test_fail_envelope_no_violations_omits_failures(tmp_path):
+    # Report-missing early-fail path: no error-severity violation rows at all ->
+    # nothing to categorize -> failures/failure_kind stay unset (not invented).
+    wd = _clean_workdir(tmp_path)
+    (wd / "lint-violations.json").unlink()
+    assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert env["status"] == "fail"
+    assert "failures" not in ss
+    assert "failure_kind" not in ss
 
 
 # ---------------------------------------------------------------------------

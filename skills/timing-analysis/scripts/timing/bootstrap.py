@@ -33,7 +33,7 @@ from pathlib import Path
 # This file: skills/timing-analysis/scripts/timing/bootstrap.py
 #   parents[2] = skills/timing-analysis   (-> templates/, ships with the skill)
 # The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
-# lives — matching state.py and the stage-subagent contract ("workdir is relative to
+# lives — matching kernel.py and the stage-subagent contract ("workdir is relative to
 # the working tree root containing asic/").
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
@@ -72,7 +72,7 @@ def run(module: str, workdir, top: str | None = None) -> int:
         _err(f"missing {_TEMPLATE_DIR}")
         return 1
 
-    # The design tree is the CWD (state.py + stage-subagent contract). Resolve a
+    # The design tree is the CWD (kernel.py + stage-subagent contract). Resolve a
     # relative workdir against it. type=Path already dropped any trailing slash.
     tree_root = Path.cwd()
     workdir = Path(workdir)

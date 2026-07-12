@@ -108,7 +108,8 @@ VeriPower 通过一条 10 个阶段的流水线，把一个已批准的想法变
 
 > {module} 现在到哪一步了？
 
-这会回到 `design-flow`，由它从 `task.json` 汇报每个阶段的状态。每个阶段也会在磁盘上
+这会回到 `design-flow`，由它汇报每个阶段的状态——该状态是按需从事件日志与磁盘指纹
+计算得出的（`kernel.py status`），并非读取某个存储的快照。每个阶段也会在磁盘上
 留下一份 `result.json`——设计类阶段在 `Design/` 下，验证类阶段在 `Verification/` 下。
 
 > **【真实运行记录——即将补充】** 这里放一份真实的状态快照。
@@ -117,19 +118,17 @@ VeriPower 通过一条 10 个阶段的流水线，把一个已批准的想法变
 
 阶段失败会被**自动路由**——一个确定性的决策器（decider）选定返工目标，协调器
 重新派发对应阶段。你不需要手动路由任何东西，已经在执行中的工作也不会被丢弃。
-（完整的状态模型与返工边见 [`ARCHITECTURE.md §3`](ARCHITECTURE.md#3-pipeline-dag)
-与 [`§4`](ARCHITECTURE.md#4-state-model)。）
+（完整的依赖图与状态模型见 [`ARCHITECTURE.md §3`](ARCHITECTURE.md#3-rule-registry-and-the-derived-dependency-graph)
+与 [`§4`](ARCHITECTURE.md#4-state-model-the-event-log)。）
 
 有一类失败会升级给**你**：当需求本身需要修改时，`specification` 会以
 *「requirements need revision: …」* 的 `fail_reason` 升级。恢复办法：
 
 1. 重新运行 `brainstorm` 技能，并重新批准更新后的 `brainstorm.md`。
-2. 让规格失效，使流水线从新的头脑风暴重新推导：
-   ```bash
-   python3 framework/scripts/state.py invalidate-stage \
-       --module {module} --stage specification --reason "<why>"
-   ```
-3. 让 agent 再次运行设计流程。
+2. 这就是全部的失效操作。`brainstorm.md` 是 `specification` 记录在案的输入，改动它
+   会让规格证明（proof）的指纹与磁盘不再匹配——该阶段在下一次查询时自动过期变为
+   stale，凡是消费了该规格的下游证明也随之一并过期。没有任何失效命令需要执行。
+3. 让 agent 再次运行设计流程——`decide` 会从新的头脑风暴重新推导，并重建已过期的阶段。
 
 > **【真实运行记录——即将补充】** 这里放一个真实的返工示例。
 
@@ -140,14 +139,15 @@ VeriPower 通过一条 10 个阶段的流水线，把一个已批准的想法变
 
 它背后是每次运行都会产生的审计轨迹：
 
-- `asic/{module}/events.jsonl` —— 仅追加、经 schema 校验的事件日志（真源）。
-- `asic/{module}/task.json` —— 当前状态快照，可通过重放事件日志重建。
+- `asic/{module}/events.jsonl` —— 仅追加、经 schema 校验的事件日志；**唯一**的持久状态文件（真源）。
+- 每个阶段的状态 —— **不**存储在任何地方；`kernel.py status` 按需从事件日志与磁盘指纹
+  计算得出，因此它绝不会与磁盘上的真实内容发生漂移。
 
 > **【真实运行记录——即将补充】** 这里放一份真实的签核结果。
 
 ## 接下来去哪
 
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) —— 流水线 DAG、返工边与设计原理。
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) —— 规则注册表、派生出的依赖图与设计原理。
 - [`docs/eda-env.md`](docs/eda-env.md) —— 工具相关阶段所需的 EDA 工具 / license /
   环境配置。
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) —— 扩展或替换某个阶段技能。

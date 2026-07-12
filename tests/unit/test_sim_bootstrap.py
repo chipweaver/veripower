@@ -5,7 +5,7 @@ Two layers: in-process unit tests of the TOP-inference helpers (B1 — byte-for-
 lintcdc helpers), and subprocess "mirror" tests of full deploy behavior that run the real
 shipped skill with cwd set to a tmp design-tree root and build the upstream
 asic/<module>/Design/... references under it. The bootstrap anchors the design tree on the
-CWD (matching state.py and the stage-subagent contract), independent of where the skill
+CWD (matching kernel.py and the stage-subagent contract), independent of where the skill
 code lives.
 """
 
@@ -21,14 +21,18 @@ from sim import bootstrap  # noqa: E402
 
 
 # ── B1: TOP-inference helpers (in-process) ─────────────────────────────────────
-def test_top_from_readme_top_module_line(tmp_path):
-    (tmp_path / "README.md").write_text("**Top module**: my_top\n\nbody\n")
-    assert bootstrap.infer_top_from_readme(tmp_path) == "my_top"
+def test_top_from_manifest_module_field(tmp_path):
+    # D6/G4: top is read from manifest.module (authoritative, spec §4.3), not README prose.
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"module": "my_top", "children": []})
+    )
+    assert bootstrap.infer_top_from_manifest(tmp_path) == "my_top"
 
 
-def test_top_from_readme_skips_table_rows(tmp_path):
-    (tmp_path / "README.md").write_text("| top | note |\n|---|---|\n| a | b |\n")
-    assert bootstrap.infer_top_from_readme(tmp_path) is None
+def test_top_from_manifest_absent_or_no_module(tmp_path):
+    assert bootstrap.infer_top_from_manifest(tmp_path) is None  # no manifest
+    (tmp_path / "manifest.json").write_text(json.dumps({"children": []}))  # no module
+    assert bootstrap.infer_top_from_manifest(tmp_path) is None
 
 
 def test_top_from_filelist_first_rtl_basename(tmp_path):
@@ -51,7 +55,11 @@ def test_top_from_filelist_rejects_padded_bare_name(tmp_path):
 
 # ── full deploy "mirror" tests (subprocess; isolated repo root) ───────────────
 def _mirror(
-    tmp_path, *, readme="**Top module**: dut\n", filelist="rtl/dut.v\n+incdir+inc\n"
+    tmp_path,
+    *,
+    readme="**Top module**: dut\n",
+    filelist="rtl/dut.v\n+incdir+inc\n",
+    manifest=None,
 ):
     """Seed the upstream rtl-design references under a tmp design-tree root. Returns
     (main, workdir, module); deploy tests run `main` (the real shipped skill) with
@@ -61,7 +69,15 @@ def _mirror(
     rtl.mkdir(parents=True)
     (rtl / "README.md").write_text(readme)
     (rtl / "filelist.txt").write_text(filelist)
-    (tmp_path / "asic" / module / "Design" / "specification").mkdir(parents=True)
+    spec = tmp_path / "asic" / module / "Design" / "specification"
+    spec.mkdir(parents=True)
+    # top now comes from manifest.module (D6); seed it (matches the "dut" the fixtures expect).
+    # Pass manifest={"children": []} (no module) to model an uninferrable top.
+    (spec / "manifest.json").write_text(
+        json.dumps(
+            manifest if manifest is not None else {"module": "dut", "children": []}
+        )
+    )
     workdir = tmp_path / "asic" / module / "Verification" / "simulation" / "runs" / "1"
     return _MAIN, workdir, module
 
@@ -181,7 +197,10 @@ def test_bootstrap_allows_hint_only_workdir(tmp_path):
 
 def test_bootstrap_uninferrable_top_exit_1(tmp_path):
     main, wd, module = _mirror(
-        tmp_path, readme="no top here\n", filelist="+incdir+inc\n"
+        tmp_path,
+        readme="no top here\n",
+        filelist="+incdir+inc\n",
+        manifest={"children": []},  # no module -> manifest can't infer either
     )
     r = _run(main, module, wd)
     assert r.returncode == 1 and "infer top" in r.stderr.lower()

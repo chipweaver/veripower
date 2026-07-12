@@ -1,17 +1,34 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/schemas/events/outcome.schema.json",
-  "title": "outcome event",
-  "description": "events.jsonl record emitted when a stage completes, recording its result status (ts, type, stage, run, result_status).",
   "type": "object",
-  "required": ["ts", "type", "stage", "run", "result_status"],
+  "required": ["ts", "type", "rule", "run", "verdict", "outputs", "proofs", "tool_versions"],
   "additionalProperties": true,
   "properties": {
-    "ts":            {"type": "string"},
-    "type":          {"const": "outcome"},
-    "stage":         {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","frontend-signoff"]},
-    "run":           {"type": "integer", "minimum": 1},
-    "result_status": {"type": "string", "enum": ["pass", "fail", "blocked", "invalid", "discarded", "promote_failed"]},
-    "reason":        {"type": "string"}
+    "ts": {"type": "string"},
+    "type": {"const": "outcome"},
+    "rule": {"type": "string"},
+    "run": {"type": "integer", "minimum": 1},
+    "verdict": {"type": "string", "enum": ["pass", "fail", "blocked"]},
+    "outputs": {"type": "object", "description": "produced version table incl. canonical result.json"},
+    "proofs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "verdict", "inputs", "oracle"],
+        "properties": {
+          "name": {"type": "string"},
+          "verdict": {"type": "string", "enum": ["pass", "fail"]},
+          "inputs": {"type": "object"},
+          "oracle": {"type": "object", "required": ["ref", "grade"], "properties": {
+            "ref": {"type": "string"},
+            "grade": {"type": "string", "enum": ["tool", "human", "proposed"]}
+          }},
+          "evidence": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "tool_versions": {"type": "object"},
+    "reason": {"type": "string", "description": "blocked sub-class (free string): schema_violation / skipped_reason / unparseable / malformed / crash / missing"}
   }
 }

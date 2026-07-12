@@ -19,7 +19,7 @@ import json
 import pytest
 from _skills_sot import PLUGIN_ROOT, load_stage_schema
 
-from framework.scripts import state
+from framework.scripts import facts, rules
 
 _ENVELOPE = (
     PLUGIN_ROOT / "framework" / "references" / "schemas" / "envelope.schema.json"
@@ -50,7 +50,7 @@ def _repins_schema_version(node) -> bool:
     return False
 
 
-@pytest.mark.parametrize("stage", state.FORWARD_PRIORITY)
+@pytest.mark.parametrize("stage", rules.FORWARD_PRIORITY)
 def test_per_stage_schema_does_not_repin_schema_version(stage):
     # Single source of truth: schema_version is inherited from the envelope,
     # never re-pinned (property) or re-required in a per-stage schema.
@@ -60,13 +60,8 @@ def test_per_stage_schema_does_not_repin_schema_version(stage):
     )
 
 
-@pytest.mark.parametrize("stage", state.FORWARD_PRIORITY)
-def test_schema_version_enforced_via_envelope(stage, tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    state.cmd_init("M")
-    rdir = state._result_path("M", stage).parent
-    rdir.mkdir(parents=True, exist_ok=True)
-
+@pytest.mark.parametrize("stage", rules.FORWARD_PRIORITY)
+def test_schema_version_enforced_via_envelope(stage):
     stage_specific = {"fail_reason": "test fail"}
     if stage in _FAILURE_KIND_STAGES:
         stage_specific["failure_kind"] = "infra"
@@ -81,19 +76,17 @@ def test_schema_version_enforced_via_envelope(stage, tmp_path, monkeypatch):
         "artifacts": [],
         "stage_specific": stage_specific,
     }
-    result = rdir / "result.json"
 
     # Missing schema_version -> rejected (now enforced by the envelope).
-    result.write_text(json.dumps(base))
-    valid, _ = state.validate_result("M", stage)
-    assert not valid, f"{stage}: result.json without schema_version accepted"
+    assert facts.validate_result(stage, base) is not None, (
+        f"{stage}: result.json without schema_version accepted"
+    )
 
     # Wrong schema_version -> rejected (const 1).
-    result.write_text(json.dumps({"schema_version": 2, **base}))
-    valid, _ = state.validate_result("M", stage)
-    assert not valid, f"{stage}: schema_version=2 accepted"
+    assert facts.validate_result(stage, {"schema_version": 2, **base}) is not None, (
+        f"{stage}: schema_version=2 accepted"
+    )
 
     # schema_version: 1 -> accepted.
-    result.write_text(json.dumps({"schema_version": 1, **base}))
-    valid, err = state.validate_result("M", stage)
-    assert valid, f"{stage}: valid envelope with schema_version=1 rejected: {err}"
+    err = facts.validate_result(stage, {"schema_version": 1, **base})
+    assert err is None, f"{stage}: valid envelope with schema_version=1 rejected: {err}"

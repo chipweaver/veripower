@@ -38,7 +38,6 @@ Only `{workdir}` / `{module}` are delivered. (See the Workflow rationale.)
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/synthesis/result.json` | `skills/synthesis/references/result.schema.json` | Prerequisite `status=pass` (Step 1 pre-check). |
 | `Design/synthesis/out/<TOP>_syn.v` | Verilog gate-level netlist | STA input netlist. |
 | `Design/synthesis/out/<TOP>_syn.sdc` | SDC | Post-synthesis constraints. |
 | `LIB_DB` (env) | std cell Liberty `.db` path (same `.db` as synthesis) | Set before the STA run (Step 3) — `run_sta.tcl` errors when unset (or edit `config.tcl`). |
@@ -59,7 +58,7 @@ This is a single linear flow (no branch fork — see rationale below).
 
 ### Step 1: Pre-check external references
 
-Confirm `Design/synthesis/result.json` exists and `status=pass`, and `Design/synthesis/out/<TOP>_syn.{v,sdc}` are present. If `result.json` is missing or `status≠pass`, write `status=fail`, `failure_kind="infra"`, `fail_reason="external reference not pass: Design/synthesis/result.json"` and exit; if the netlist/SDC are missing, write `failure_kind="infra"`, `fail_reason="external reference missing: <path>"` and exit.
+Confirm `Design/synthesis/out/<TOP>_syn.{v,sdc}` are present. If the netlist/SDC are missing, write `status=fail`, `failure_kind="infra"`, `fail_reason="external reference missing: <path>"` and exit.
 
 ### Step 2: Bootstrap
 

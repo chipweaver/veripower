@@ -2,16 +2,18 @@
 """simtriage — simulation-triage-stage CLI.
 
 Verbs (one stage = one tool; see skills/simulation-triage/SKILL.md for usage):
-  validate-analysis   schema-gate the analysis.json routing block   (exit 0 valid / 1 invalid; writes no files)
+  finalize   schema-gate the analysis judgment, then atomically write result.json
+             (exit 0 written / 1 schema violation / 2 BLOCKED)
 
-simulation-triage is an N=1 producer self-gate: it writes no result.json and has no
-finalize / --workdir (canonical read-only + scratch-writable Iron Rule — the skill lands
-analysis.json itself, directly to disk under its own Verification/simulation-triage/**,
-not through this script). Thin dispatcher: the subcommand parses its
-own flags and calls into the simtriage.* library. The library import is deferred into
-the handler (NOT top-level) so --help and verb dispatch run during incremental per-task
-TDD before the sibling module exists. (The library module itself uses top-level absolute
-imports; only this thin dispatcher defers.)
+Task C7: simulation-triage is now an ordinary kernel-scheduled rule (rules.py:
+proof=None) — its result.json lands under its own kernel-issued {workdir}
+(Verification/simulation-triage/runs/<N>/), written by this CLI's `finalize` verb
+(the old runs/<sim_run>/analysis.json + top-level pointer double-file mechanism is
+retired). Thin dispatcher: the subcommand parses its own flags and calls into the
+simtriage.* library. The library import is deferred into the handler (NOT top-level)
+so --help and verb dispatch run during incremental per-task TDD before the sibling
+module exists. (The library module itself uses top-level absolute imports; only this
+thin dispatcher defers.)
 """
 
 import argparse
@@ -22,15 +24,15 @@ from pathlib import Path
 # Put the package PARENT (…/simulation-triage/scripts) on sys.path so absolute imports
 # `from simtriage import …` resolve whether this file is run directly
 # (python3 …/simtriage/__main__.py) or via `python3 -m simtriage`. abspath() is required;
-# the double dirname climbs simtriage/ -> scripts/. NEVER `import analysis` bare inside
+# the double dirname climbs simtriage/ -> scripts/. NEVER `import result` bare inside
 # this package — only `from simtriage import …`.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _cmd_validate_analysis(a: argparse.Namespace) -> int:
-    from simtriage import analysis
+def _cmd_finalize(a: argparse.Namespace) -> int:
+    from simtriage import result
 
-    return analysis.validate(a.json_file, a.json_stdin, a.schema)
+    return result.finalize(a.workdir, a.module, a.json_file, a.json_stdin, a.schema)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,18 +42,21 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser(
-        "validate-analysis", help="schema-gate the ANALYSIS routing block"
+        "finalize", help="schema-gate the analysis judgment, then write result.json"
     )
+    sp.add_argument("--workdir", required=True, type=Path)
+    sp.add_argument("--module", required=True)
     sp.add_argument(
         "--schema",
         type=Path,
         default=None,
-        help="optional schema override (default: sibling references/analysis.schema.json)",
+        help="optional stage_specific schema override (default: the subschema folded "
+        "into the sibling references/result.schema.json)",
     )
     g = sp.add_mutually_exclusive_group(required=True)
     g.add_argument("--json-file", type=Path)
     g.add_argument("--json-stdin", action="store_true")
-    sp.set_defaults(func=_cmd_validate_analysis)
+    sp.set_defaults(func=_cmd_finalize)
 
     return p
 

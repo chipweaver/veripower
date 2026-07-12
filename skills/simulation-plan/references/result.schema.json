@@ -12,6 +12,7 @@
           "type": "object",
           "properties": {
             "fail_reason":          {"type": "string",  "minLength": 1},
+            "input_digest": { "type": "string", "description": "sha256 of the specification inputs at this run; the next run's classify-delta compares against it to decide freeze." },
             "plan_adequacy_gate": {
               "type": "object",
               "additionalProperties": false,

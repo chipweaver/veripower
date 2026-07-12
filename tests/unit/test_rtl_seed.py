@@ -68,7 +68,7 @@ def test_does_not_copy_prior_run_workdirs(tmp_path):
 
 
 def test_canonical_defaults_to_workdir_grandparent_S3(tmp_path):
-    # Mirrors state.py's layout: workdir = <canonical>/runs/<N>; omit --canonical.
+    # Mirrors kernel.py's layout: workdir = <canonical>/runs/<N>; omit --canonical.
     canonical = tmp_path / "rtl-design"
     wd = canonical / "runs" / "2"
     wd.mkdir(parents=True)

@@ -68,15 +68,15 @@ verb (it reuses the report parser **in-process** — there is no standalone pars
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
-        --workdir <workdir> --module <module> --top <top_module> \
-        [--area-target <v>] [--slack-target <v>]
+        --workdir <workdir> --module <module> --top <top_module>
 ```
 
 It extracts `area_um2` (`area.rpt` "Total cell area") and `timing_slack_ns` (the
 **min** `Critical Path Slack` across all `qor.rpt` clock-group blocks — never the
 first listed), cross-checks the worst slack against the design `WNS` /
-violating-path summary, judges the gate (`area_um2 <= --area-target`;
-`timing_slack_ns >= --slack-target`; each optional), and writes the lean
+violating-path summary, judges the gate against the targets it reads from
+`Design/specification/ppa.json` (`area_um2` <= target; `timing_slack_ns` >= target;
+each optional — an absent file or dim leaves that dimension ungated), and writes the lean
 `result.json`. Command exit is **0 = result.json written** (status pass or fail)
 / **2 = BLOCKED** (program exception). How a missing/unparseable report folds into
 `result.json` (`status` / `failure_kind` / `fail_reason`) is owned by SKILL.md Step 7.

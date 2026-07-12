@@ -14,7 +14,7 @@
 ## 1. Background — what `result.json` is
 
 Every stage produces exactly one `result.json` at `asic/<module>/<area>/<stage>/result.json`
-(canonical) and `asic/<module>/<area>/<stage>/runs/<N>/result.json` (per-run). `state.py`
+(canonical) and `asic/<module>/<area>/<stage>/runs/<N>/result.json` (per-run). `kernel.py`
 validates each `result.json` against `<skill>/references/result.schema.json`, which composes
 the cross-stage `framework/references/schemas/envelope.schema.json` via JSON-Schema `$ref`.
 
@@ -26,8 +26,8 @@ metadata carrier that wraps them.
 
 | Role | What it carries | Who reads it |
 |---|---|---|
-| **R1 — Completion certificate** | "This stage finished, here is the verdict." Fields: `stage`, `status`, `produced_at`, `schema_version`, `module` | `state.py` for state-machine bookkeeping |
-| **R2 — Artifact manifest** | "Here is where my outputs live." Fields: `artifacts[].path` (and optional per-item metadata) | `state.py.promote()` (hardlinking); downstream consumers locating files |
+| **R1 — Completion certificate** | "This stage finished, here is the verdict." Fields: `stage`, `status`, `produced_at`, `schema_version`, `module` | `kernel.py` for outcome/status bookkeeping |
+| **R2 — Artifact manifest** | "Here is where my outputs live." Fields: `artifacts[].path` (and optional per-item metadata) | `kernel.py`'s reap-time `promote()` (hardlinking); downstream consumers locating files |
 | **R3 — Structured handoff** | "Here is small machine-readable data downstream needs at envelope-read time." Fields: `stage_specific.*` | downstream code (Orchestrator, subagents) and downstream LLMs |
 
 R1 and R2 are universal across all stages and live in `envelope.schema.json`. R3 is
@@ -64,7 +64,7 @@ artifact file with a path in `artifacts[]`.
 **What does not belong in `result.json`:**
 
 - **Orchestration-internal tracking metadata.** Fields like `__run` belong in
-  `task.json` / `events.jsonl`, owned by `state.py`. They are not cross-stage envelope concerns.
+  `events.jsonl`, owned by `kernel.py`. They are not cross-stage envelope concerns.
 - **Documentation of what the stage produces.** That belongs in SKILL.md prose (the Input
   Artifacts / Output Artifacts sections). Schema = consumer contract, not stage description.
 - **Aspirational fields ("may be useful someday").** If no consumer exists today, the field

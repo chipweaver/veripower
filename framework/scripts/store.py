@@ -1,12 +1,11 @@
 """VeriPower filesystem artifact-lifecycle helpers.
 
-Moved out of state.py so state.py stays focused on state mutations. No I/O
-beyond the promote/mirror operations themselves. Imports only stdlib + the
-_result_path helper from topology (no jsonschema/referencing deps).
+Split out so the kernel stays focused on state mutations. No I/O beyond the
+promote/mirror operations themselves. Imports only stdlib + rules (no
+jsonschema/referencing deps).
 
-Re-exported from state.py so existing `state.promote` / `state._mirror_subagent_trace`
-/ `state.repair_partial_promote_if_needed` references keep resolving — same
-pattern as topology.py.
+Imported by kernel.py: its reap path calls `store.promote` /
+`store._mirror_subagent_trace`.
 """
 
 from __future__ import annotations
@@ -17,7 +16,12 @@ import shutil
 import sys
 from pathlib import Path
 
-from topology import _result_path
+sys.path.insert(0, str(Path(__file__).parent))
+import rules  # noqa: E402
+
+
+def _result_path(module: str, rule: str) -> Path:
+    return Path("asic", module, *rules.workdir_root(rule), "result.json")
 
 
 def _is_safe_rel(rel: str) -> bool:
@@ -56,7 +60,7 @@ def _cp_al(src: Path, dst: Path) -> None:
 
 
 def _mirror_subagent_trace(
-    workdir: Path, stage: str, output_file: str | None
+    workdir: Path, rule: str, output_file: str | None
 ) -> Path | None:
     """Best-effort mirror of an async subagent transcript into workdir.
 
@@ -65,10 +69,10 @@ def _mirror_subagent_trace(
     leaving stage trace permanently unavailable for downstream analysis
     (external analysis / postmortem). Orchestrator forwards the value of
     the notification's <output-file> tag via --subagent-output-file on the
-    reap state.py reap call; this helper copies it to a stable workdir
+    kernel.py reap call; this helper copies it to a stable workdir
     relative path so the trace outlives the session.
 
-    Destination: <workdir>/.subagent_traces/<stage>-<agent_id>.output
+    Destination: <workdir>/.subagent_traces/<rule>-<agent_id>.output
     (agent_id derived from src basename minus .output)
 
     Returns the destination path on success, or None on any skip / failure
@@ -84,19 +88,19 @@ def _mirror_subagent_trace(
     dst_dir = workdir / ".subagent_traces"
     try:
         dst_dir.mkdir(parents=True, exist_ok=True)
-        dst = dst_dir / f"{stage}-{agent_id}.output"
+        dst = dst_dir / f"{rule}-{agent_id}.output"
         shutil.copy2(src, dst)
         return dst
     except OSError as e:
         print(
-            f"[state.py] mirror subagent trace failed "
-            f"(stage={stage}, agent_id={agent_id}): {e}",
+            f"[store.py] mirror subagent trace failed "
+            f"(stage={rule}, agent_id={agent_id}): {e}",
             file=sys.stderr,
         )
         return None
 
 
-def promote(module: str, stage: str, run_n: int) -> None:
+def promote(module: str, rule: str, run_n: int) -> None:
     """Atomic per-entry merge promote.
 
     1. Build new canonical view in .promote-tmp/ (all hardlinks)
@@ -106,10 +110,11 @@ def promote(module: str, stage: str, run_n: int) -> None:
 
     Step 1 failure (any hardlink/mkdir error) → .promote-tmp cleared,
     canonical fully intact. Step 2 partial failure may leave canonical in
-    a partial state; repair_partial_promote_if_needed cleans leftover
-    .promote-tmp/ on the next cmd entry.
+    a partial state; the next reap that promotes this stage re-runs
+    promote(), which clears any stale .promote-tmp/ before starting and
+    rebuilds from scratch — promote is idempotent.
     """
-    stage_dir = _result_path(module, stage).parent
+    stage_dir = _result_path(module, rule).parent
     run_dir = stage_dir / "runs" / str(run_n)
     rj_src = run_dir / "result.json"
     if not rj_src.exists():
@@ -184,26 +189,3 @@ def promote(module: str, stage: str, run_n: int) -> None:
         if tmp.exists():
             shutil.rmtree(tmp)
         raise
-
-
-def repair_partial_promote_if_needed(module: str, stage: str) -> None:
-    """Per-cmd-entry fix-up for partial promote crashes.
-
-    A crashed promote() may leave `.promote-tmp/` populated if the process
-    was killed before the except-handler's rmtree could run (SIGKILL, OOM,
-    OS panic). Detection signal: `.promote-tmp/` exists at start of any
-    cmd. Action: rmtree it so the subsequent promote() retry can rebuild
-    from scratch.
-
-    Note: this DOES NOT restore canonical to a known-good state. Canonical
-    may remain in a partial state (some entries from run N, some still
-    from run N-1, some missing). The subsequent promote() retry in
-    cmd_reap (called by orchestrator) will overwrite whatever partial
-    state exists via the per-entry merge step.
-
-    Idempotent: safe to call repeatedly with no .promote-tmp present.
-    """
-    stage_dir = _result_path(module, stage).parent
-    tmp = stage_dir / ".promote-tmp"
-    if tmp.exists():
-        shutil.rmtree(tmp)

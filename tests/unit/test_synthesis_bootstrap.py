@@ -5,7 +5,7 @@ Two layers: in-process unit tests of the inference helpers (BP1/BP2 — the
 byte-stable README-grep coupling locked from the other side by
 test_rtl_assemble.py), and subprocess "mirror" tests of full deploy behavior
 (BP3-BP11) that run the real shipped skill with cwd set to a tmp design-tree
-root. The bootstrap anchors the design tree on the CWD (matching state.py and
+root. The bootstrap anchors the design tree on the CWD (matching kernel.py and
 the stage-subagent contract), independent of where the skill code lives.
 """
 

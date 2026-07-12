@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--top",
         default=None,
-        help="RTL top (inferred from rtl-design README/filelist if omitted)",
+        help="RTL top (inferred from specification manifest.module, else rtl filelist, if omitted)",
     )
     sp.add_argument(
         "--scaffold",

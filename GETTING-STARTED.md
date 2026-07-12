@@ -120,9 +120,11 @@ the branches rejoin at `power-analysis`, then `frontend-signoff`.
 
 > Where is {module}?
 
-That routes back into `design-flow`, which reports each stage's status from
-`task.json`. Each stage also leaves a `result.json` on disk — under `Design/`
-for design stages, `Verification/` for verification stages.
+That routes back into `design-flow`, which reports each stage's status —
+computed on demand from the event log and disk fingerprints (`kernel.py
+status`), never read from a stored snapshot. Each stage also leaves a
+`result.json` on disk — under `Design/` for design stages, `Verification/` for
+verification stages.
 
 > **[Captured run — coming soon]** A real status snapshot here.
 
@@ -131,20 +133,21 @@ for design stages, `Verification/` for verification stages.
 Stage failures are **routed automatically** — a deterministic decider picks the
 rework target and the Orchestrator re-dispatches the right stage. You don't
 route anything by hand, and work already in flight isn't thrown away. (The full
-state model and rework edges live in [`ARCHITECTURE.md §3`](ARCHITECTURE.md#3-pipeline-dag)
-and [`§4`](ARCHITECTURE.md#4-state-model).)
+dependency graph and state model live in [`ARCHITECTURE.md §3`](ARCHITECTURE.md#3-rule-registry-and-the-derived-dependency-graph)
+and [`§4`](ARCHITECTURE.md#4-state-model-the-event-log).)
 
 One failure escalates to **you**: when the requirements themselves need to
 change, `specification` escalates with a `fail_reason` of *"requirements need
 revision: …"*. To recover:
 
 1. Re-run the `brainstorm` skill and re-approve the updated `brainstorm.md`.
-2. Invalidate the spec so the pipeline re-derives from the new brainstorm:
-   ```bash
-   python3 framework/scripts/state.py invalidate-stage \
-       --module {module} --stage specification --reason "<why>"
-   ```
-3. Ask the agent to run the design flow again.
+2. That's the whole invalidation. `brainstorm.md` is `specification`'s recorded
+   input, so editing it makes the spec's proof fingerprints no longer match
+   disk — the stage auto-expires as stale on the next query, and every
+   downstream proof that consumed the spec expires with it. There is no
+   invalidate command to run.
+3. Ask the agent to run the design flow again — `decide` re-derives from the
+   new brainstorm and rebuilds the expired stages.
 
 > **[Captured run — coming soon]** A real rework example here.
 
@@ -155,17 +158,18 @@ revision: …"*. To recover:
 
 Behind it sits the audit trail every run produces:
 
-- `asic/{module}/events.jsonl` — append-only, schema-validated event log (the
-  source of truth).
-- `asic/{module}/task.json` — the current state snapshot, rebuildable by
-  replaying the event log.
+- `asic/{module}/events.jsonl` — append-only, schema-validated event log; the
+  **sole** durable state file (the source of truth).
+- per-stage status — **not** stored anywhere; `kernel.py status` computes it on
+  demand from the event log and disk fingerprints, so it can never drift from
+  what's on disk.
 
 > **[Captured run — coming soon]** A real signoff result here.
 
 ## Where to go next
 
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — the pipeline DAG, rework edges, and
-  design rationale.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — the rule registry, derived dependency
+  graph, and design rationale.
 - [`docs/eda-env.md`](docs/eda-env.md) — the EDA tool / license / environment
   setup for the tool-gated stages.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — extending or swapping a stage skill.

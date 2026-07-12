@@ -15,6 +15,7 @@ imports; only this thin dispatcher defers.)
 """
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -27,6 +28,19 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def _read_ppa_targets(workdir, dims: set[str]) -> list:
+    """PPA targets from the sibling asic/<module>/Design/specification/ppa.json
+    sidecar (spec §4.3) — filtered to `dims` — replacing the old injected
+    --area-target/--slack-target CLI args (synthesis binds to this file as its
+    acceptance standard). `workdir` is .../Design/synthesis/runs/<N>; parents[3]
+    is the module root, same fixed-depth convention as
+    timing.result.parse_clock's Design/synthesis/out lookup."""
+    p = Path(workdir).parents[3] / "Design" / "specification" / "ppa.json"
+    if not p.is_file():
+        return []
+    return [t for t in json.loads(p.read_text()) if t.get("dim") in dims]
+
+
 def _cmd_bootstrap(a: argparse.Namespace) -> int:
     from synthesis import bootstrap
 
@@ -36,7 +50,12 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from synthesis import result
 
-    return result.finalize(a.workdir, a.module, a.top, a.area_target, a.slack_target)
+    targets = _read_ppa_targets(a.workdir, {"area_um2", "timing_slack_ns"})
+    area_target = next((t["target"] for t in targets if t["dim"] == "area_um2"), None)
+    slack_target = next(
+        (t["target"] for t in targets if t["dim"] == "timing_slack_ns"), None
+    )
+    return result.finalize(a.workdir, a.module, a.top, area_target, slack_target)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,8 +82,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--top", required=True, help="top module (required; finalize cannot infer it)"
     )
-    sp.add_argument("--area-target", type=float, default=None)
-    sp.add_argument("--slack-target", type=float, default=None)
     sp.set_defaults(func=_cmd_finalize)
 
     return p

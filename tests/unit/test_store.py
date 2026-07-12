@@ -1,9 +1,8 @@
-"""Tests for framework/scripts/artifacts.py — fs-lifecycle helpers.
+"""Tests for framework/scripts/store.py — fs-lifecycle helpers.
 
 Moved from test_state.py (TestPromoteAtomic + TestSubagentTraceMirror).
-Imports the artifact functions from the artifacts module directly to verify
-the module boundary; also imports state for cmd_init/cmd_dispatch/cmd_reap
-integration tests.
+Imports the store functions from the store module directly to verify
+the module boundary.
 """
 
 import json
@@ -15,10 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "framework" / "scripts"))
 
-import artifacts
-from conftest import bootstrap_prereqs_pass_clean, write_run_result
-
-from framework.scripts import state
+import store
 
 
 class TestPromoteAtomic:
@@ -34,8 +30,7 @@ class TestPromoteAtomic:
         """Set up a run dir with result.json + optional file/dir artifacts.
         Returns (run_dir)."""
         monkeypatch.chdir(tmp_path)
-        state.cmd_init("foo")
-        run_dir = state._result_path("foo", stage).parent / "runs" / str(run_n)
+        run_dir = store._result_path("foo", stage).parent / "runs" / str(run_n)
         run_dir.mkdir(parents=True)
         if artifacts_list is None:
             artifacts_list = []
@@ -72,8 +67,8 @@ class TestPromoteAtomic:
         run_dir = self._setup_run(
             tmp_path, monkeypatch, "lint-cdc", 1, artifacts_list=["report.txt"]
         )
-        artifacts.promote("foo", "lint-cdc", 1)
-        canonical_rj = state._result_path("foo", "lint-cdc")
+        store.promote("foo", "lint-cdc", 1)
+        canonical_rj = store._result_path("foo", "lint-cdc")
         canonical_artifact = canonical_rj.parent / "report.txt"
         assert canonical_rj.exists()
         assert canonical_artifact.exists()
@@ -89,8 +84,8 @@ class TestPromoteAtomic:
         run_dir = self._setup_run(
             tmp_path, monkeypatch, "lint-cdc", 1, dir_artifacts=["reports"]
         )
-        artifacts.promote("foo", "lint-cdc", 1)
-        canonical_dir = state._result_path("foo", "lint-cdc").parent / "reports"
+        store.promote("foo", "lint-cdc", 1)
+        canonical_dir = store._result_path("foo", "lint-cdc").parent / "reports"
         assert canonical_dir.is_dir()
         assert (canonical_dir / "child.txt").exists()
         assert (canonical_dir / "child.txt").stat().st_ino == (
@@ -102,9 +97,9 @@ class TestPromoteAtomic:
         self._setup_run(
             tmp_path, monkeypatch, "lint-cdc", 1, artifacts_list=["report.txt"]
         )
-        artifacts.promote("foo", "lint-cdc", 1)
+        store.promote("foo", "lint-cdc", 1)
         # run 2 with different content
-        run2 = state._result_path("foo", "lint-cdc").parent / "runs" / "2"
+        run2 = store._result_path("foo", "lint-cdc").parent / "runs" / "2"
         run2.mkdir()
         (run2 / "report.txt").write_text("v2 content")
         rj = {
@@ -117,8 +112,8 @@ class TestPromoteAtomic:
             "stage_specific": {"violations": []},
         }
         (run2 / "result.json").write_text(json.dumps(rj))
-        artifacts.promote("foo", "lint-cdc", 2)
-        canonical_rj = state._result_path("foo", "lint-cdc")
+        store.promote("foo", "lint-cdc", 2)
+        canonical_rj = store._result_path("foo", "lint-cdc")
         # canonical now reflects run 2
         assert canonical_rj.read_text() == (run2 / "result.json").read_text()
         assert (canonical_rj.parent / "report.txt").read_text() == "v2 content"
@@ -127,9 +122,9 @@ class TestPromoteAtomic:
         """second promote on a dir artifact must work
         (POSIX rename(2) on non-empty target returns ENOTEMPTY; need rmtree-then-rename)."""
         self._setup_run(tmp_path, monkeypatch, "lint-cdc", 1, dir_artifacts=["reports"])
-        artifacts.promote("foo", "lint-cdc", 1)
+        store.promote("foo", "lint-cdc", 1)
         # run 2 with different content in reports/
-        run2 = state._result_path("foo", "lint-cdc").parent / "runs" / "2"
+        run2 = store._result_path("foo", "lint-cdc").parent / "runs" / "2"
         run2.mkdir()
         (run2 / "reports").mkdir()
         (run2 / "reports" / "v2-area.txt").write_text("v2 area report")
@@ -144,8 +139,8 @@ class TestPromoteAtomic:
             "stage_specific": {"violations": []},
         }
         (run2 / "result.json").write_text(json.dumps(rj))
-        artifacts.promote("foo", "lint-cdc", 2)  # KEY: should not raise ENOTEMPTY
-        canonical_dir = state._result_path("foo", "lint-cdc").parent / "reports"
+        store.promote("foo", "lint-cdc", 2)  # KEY: should not raise ENOTEMPTY
+        canonical_dir = store._result_path("foo", "lint-cdc").parent / "reports"
         # canonical reports/ now reflects run 2 (v1 child.txt gone, v2 files present)
         assert (canonical_dir / "v2-area.txt").exists()
         assert (canonical_dir / "v2-timing.txt").exists()
@@ -158,9 +153,9 @@ class TestPromoteAtomic:
         self._setup_run(
             tmp_path, monkeypatch, "lint-cdc", 1, artifacts_list=["report.txt"]
         )
-        artifacts.promote("foo", "lint-cdc", 1)
+        store.promote("foo", "lint-cdc", 1)
         # run 2: artifact references non-existent file
-        run2 = state._result_path("foo", "lint-cdc").parent / "runs" / "2"
+        run2 = store._result_path("foo", "lint-cdc").parent / "runs" / "2"
         run2.mkdir()
         rj = {
             "schema_version": 1,
@@ -174,9 +169,9 @@ class TestPromoteAtomic:
         (run2 / "result.json").write_text(json.dumps(rj))
         # promote should raise
         with pytest.raises((FileNotFoundError, OSError)):
-            artifacts.promote("foo", "lint-cdc", 2)
+            store.promote("foo", "lint-cdc", 2)
         # canonical still reflects run 1 (run 1's produced_at is 00:00, run 2's 01:00)
-        canonical_rj = state._result_path("foo", "lint-cdc")
+        canonical_rj = store._result_path("foo", "lint-cdc")
         canonical_data = json.loads(canonical_rj.read_text())
         assert canonical_data["produced_at"] == "2026-04-27T00:00:00Z"
         # .promote-tmp cleaned up
@@ -191,8 +186,8 @@ class TestPromoteAtomic:
             tmp_path, monkeypatch, "lint-cdc", 1, artifacts_list=["result.json"]
         )
         # Must not raise FileExistsError.
-        artifacts.promote("foo", "lint-cdc", 1)
-        canonical_rj = state._result_path("foo", "lint-cdc")
+        store.promote("foo", "lint-cdc", 1)
+        canonical_rj = store._result_path("foo", "lint-cdc")
         assert canonical_rj.exists()
         # Single link — canonical result.json IS the run's result.json (same inode).
         assert canonical_rj.stat().st_ino == (run_dir / "result.json").stat().st_ino
@@ -210,10 +205,10 @@ class TestPromoteAtomic:
         data["artifacts"] = [{"path": bad_path}]
         rj.write_text(json.dumps(data))
         with pytest.raises(ValueError, match="escapes run dir"):
-            artifacts.promote("foo", "lint-cdc", 1)
+            store.promote("foo", "lint-cdc", 1)
         # tmp cleaned up by the except-handler; canonical untouched
         assert not (
-            state._result_path("foo", "lint-cdc").parent / ".promote-tmp"
+            store._result_path("foo", "lint-cdc").parent / ".promote-tmp"
         ).exists()
 
     def test_promote_symlink_does_not_traverse(self, tmp_path, monkeypatch):
@@ -222,13 +217,12 @@ class TestPromoteAtomic:
         Symlinks are hardlinked at the symlink level (preserved as-is).
         """
         monkeypatch.chdir(tmp_path)
-        state.cmd_init("foo")
         # Set up an external dir outside runs/
         external = tmp_path / "external_dir"
         external.mkdir()
         (external / "should_not_traverse.txt").write_text("EXTERNAL")
         # Create a run with a symlinked dir artifact pointing outside
-        run_dir = state._result_path("foo", "lint-cdc").parent / "runs" / "1"
+        run_dir = store._result_path("foo", "lint-cdc").parent / "runs" / "1"
         run_dir.mkdir(parents=True)
         (run_dir / "real_dir").mkdir()
         (run_dir / "real_dir" / "child.txt").write_text("inside")
@@ -245,9 +239,9 @@ class TestPromoteAtomic:
         }
         (run_dir / "result.json").write_text(json.dumps(rj))
         # promote should succeed without traversing into external/
-        artifacts.promote("foo", "lint-cdc", 1)
+        store.promote("foo", "lint-cdc", 1)
         # canonical/real_dir/child.txt copied (hardlink)
-        canonical = state._result_path("foo", "lint-cdc").parent
+        canonical = store._result_path("foo", "lint-cdc").parent
         assert (canonical / "real_dir" / "child.txt").exists()
         # canonical/symlink_to_external is a symlink (preserved as-is, not traversed)
         sym = canonical / "symlink_to_external"
@@ -278,7 +272,7 @@ class TestSubagentTraceMirror:
         )
         workdir.mkdir(parents=True)
 
-        dst = artifacts._mirror_subagent_trace(workdir, "simulation", str(src))
+        dst = store._mirror_subagent_trace(workdir, "simulation", str(src))
         assert dst is not None
         assert dst == workdir / ".subagent_traces" / f"simulation-{agent_id}.output"
         assert dst.exists()
@@ -289,7 +283,7 @@ class TestSubagentTraceMirror:
             tmp_path / "asic" / "foo" / "Verification" / "simulation" / "runs" / "1"
         )
         workdir.mkdir(parents=True)
-        result = artifacts._mirror_subagent_trace(
+        result = store._mirror_subagent_trace(
             workdir,
             "simulation",
             str(tmp_path / "nonexistent" / "a000.output"),
@@ -302,7 +296,7 @@ class TestSubagentTraceMirror:
             tmp_path / "asic" / "foo" / "Verification" / "simulation" / "runs" / "1"
         )
         workdir.mkdir(parents=True)
-        assert artifacts._mirror_subagent_trace(workdir, "simulation", None) is None
+        assert store._mirror_subagent_trace(workdir, "simulation", None) is None
         assert not (workdir / ".subagent_traces").exists()
 
     def test_empty_output_file_skips(self, tmp_path):
@@ -310,28 +304,7 @@ class TestSubagentTraceMirror:
             tmp_path / "asic" / "foo" / "Verification" / "simulation" / "runs" / "1"
         )
         workdir.mkdir(parents=True)
-        assert artifacts._mirror_subagent_trace(workdir, "simulation", "") is None
-        assert not (workdir / ".subagent_traces").exists()
-
-    def test_cmd_reap_backward_compat_no_subagent_output_file(
-        self, tmp_path, monkeypatch
-    ):
-        """Existing callers that do not pass --subagent-output-file must still work."""
-        monkeypatch.chdir(tmp_path)
-        state.cmd_init("foo")
-        bootstrap_prereqs_pass_clean("foo", "specification")
-        result = state.cmd_dispatch("foo", "specification")
-        run_n = result["run"]
-        write_run_result("foo", "specification", run_n)
-
-        # no subagent_output_file kwarg — must not raise
-        resp = state.cmd_reap("foo", "specification", run=run_n, outcome="pass")
-        assert resp.get("action") == "completed"
-        assert resp.get("result_status") == "pass"
-        # no .subagent_traces created (None output_file path)
-        workdir = (
-            state._result_path("foo", "specification").parent / "runs" / str(run_n)
-        )
+        assert store._mirror_subagent_trace(workdir, "simulation", "") is None
         assert not (workdir / ".subagent_traces").exists()
 
     def test_oserror_returns_none_and_writes_stderr(
@@ -358,9 +331,9 @@ class TestSubagentTraceMirror:
         def _raise(_src, _dst):
             raise PermissionError("simulated permission denied")
 
-        monkeypatch.setattr(artifacts.shutil, "copy2", _raise)
+        monkeypatch.setattr(store.shutil, "copy2", _raise)
 
-        result = artifacts._mirror_subagent_trace(workdir, "simulation", str(src))
+        result = store._mirror_subagent_trace(workdir, "simulation", str(src))
         assert result is None
         # stderr carries diagnostic with stage + agent_id (operator-visible)
         captured = capsys.readouterr()
@@ -373,41 +346,3 @@ class TestSubagentTraceMirror:
         assert not (
             workdir / ".subagent_traces" / f"simulation-{agent_id}.output"
         ).exists()
-
-    def test_cmd_reap_forwards_subagent_output_file(self, tmp_path, monkeypatch):
-        """End-to-end: cmd_reap with subagent_output_file mirrors the
-        transcript into <workdir>/.subagent_traces/ during the reap path.
-
-        Complements the 4 helper-level cases above (happy / missing / None /
-        empty) by verifying the cmd_reap integration: the new kwarg
-        actually flows through to _mirror_subagent_trace and lands the file.
-        """
-        monkeypatch.chdir(tmp_path)
-        # Set up a /tmp-style transcript outside the module workspace
-        src_dir = tmp_path / "claude-1001" / "wd-enc" / "uuid" / "tasks"
-        src_dir.mkdir(parents=True)
-        agent_id = "b0123456789abcdef"
-        src = src_dir / f"{agent_id}.output"
-        src.write_text('{"role":"assistant","content":"sim run"}\n')
-
-        state.cmd_init("foo")
-        bootstrap_prereqs_pass_clean("foo", "specification")
-        result = state.cmd_dispatch("foo", "specification")
-        run_n = result["run"]
-        write_run_result("foo", "specification", run_n)
-
-        resp = state.cmd_reap(
-            "foo",
-            "specification",
-            run=run_n,
-            outcome="pass",
-            subagent_output_file=str(src),
-        )
-        assert resp.get("action") == "completed"
-
-        workdir = (
-            state._result_path("foo", "specification").parent / "runs" / str(run_n)
-        )
-        mirrored = workdir / ".subagent_traces" / f"specification-{agent_id}.output"
-        assert mirrored.exists(), f"trace mirror missing at {mirrored}"
-        assert mirrored.read_text() == src.read_text()

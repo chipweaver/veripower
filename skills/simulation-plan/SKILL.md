@@ -19,6 +19,8 @@ Your boundary:
 
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
 - **Do not read RTL source, do not invoke EDA tools, and do not write `tb/uvm/` / `Makefile` / `vcd/`.** These belong to the TB-materialization stage.
+- **Minimal edit on any re-dispatch with a prior valid `verification-plan.md` / `scaffold-specification.json` on disk.** Edit only what this round's task requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise the violation-type targeting table (Decision Rules) or the incremental-update branch's `specification` diff sets the scope (already binding — see Step 1/Step 3: "unaffected parts... preserved verbatim"). Every section outside that scope MUST stay byte-identical to the prior run.
+- **Freeze-reuse when nothing changed.** With no `{directive_path}`, run `simplan classify-delta --canonical-result asic/{module}/Verification/simulation-plan/result.json --spec-dir asic/{module}/Design/specification`. On `verdict=freeze`, run `simplan seed --workdir {workdir}` (it byte-copies the prior `verification-plan.md` / `scaffold-specification.json` **and `plan-review.json`** forward, no-clobber) and **SKIP the Step-4 adequacy gate** — do not re-dispatch the reviewer. The carried-forward `plan-review.json` keeps its `pin` alive: re-judging identical content would regenerate the record and drop the pin. On `first-run` / `proceed`, fall through to the normal branch.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Fan-out Dispatch Contract
@@ -28,7 +30,7 @@ Your boundary:
   (Level-2 forbidden — the audit boundary).
 - **Dispatch-and-wait:** after dispatching, end the turn; reap on the harness wake; aggregate the
   reviewer's report and proceed only after it reports (DONE or BLOCKED).
-- **No `state.py`:** this skill does not call `state.py`.
+- **No `kernel.py`:** this skill does not call `kernel.py`.
 
 ## Input Artifacts
 
@@ -39,15 +41,15 @@ Your boundary:
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
 | `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (field names per that stage's schema); absent → Step 1 selects session-resume / incremental-update / first-run. |
-| `{orchestrator_context_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger's attribution fields. |
+| `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger's attribution fields. |
 
 ### External reference inputs
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | `specification` envelope — Step 1 gate (fail fast when missing or not `pass`); `stage_specific.top_module` fills the Top field in plan §1 Scope. You do not consume `ppa_targets`. |
+| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | `specification` envelope — existence-checked at Step 1; diffed for the incremental-update branch's scope. You do not consume `ppa_targets`. |
 | `Design/specification/design.md` | Custom markdown | Module-level design (§1.1–1.6: features / IO / interconnects / timing scenarios / clocks). Per-submodule content lives in each `<child>.md`. |
-| `Design/specification/manifest.json` | Custom JSON (specification child registry) | Child roster — drives per-child `§5` consumption by `simplan derive-plan-data`. |
+| `Design/specification/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; child roster — drives per-child `§5` consumption by `simplan derive-plan-data`. |
 | `Design/specification/<child>.md × N` | Custom markdown | Only `§5 Verification Hints` is consumed (via `simplan derive-plan-data`, tagging `check_hints[]` with `child`). |
 
 When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file (e.g., `failure_phase` / `failing_cases` / `coverage_gaps` / `gaps_not_in_testpoints` / `failures[]` / corresponding log and summary files). The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
@@ -117,14 +119,14 @@ Authoring judgment the schema/validator cannot express:
 
 ### Step 1: Read inputs and select routing branch
 
-Read `Design/specification/result.json` + `design.md` + `manifest.json`; if any required input missing, write `result.json` with `status=fail` + `stage_specific.fail_reason="external reference missing: <path>"`, then exit; if `Design/specification/result.json` is present but `status≠pass`, write `status=fail` + `stage_specific.fail_reason="external reference not pass: Design/specification/result.json"`, then exit. Select among four branches in this order:
+Read `Design/specification/result.json` + `design.md` + `manifest.json`; if any required input missing, write `result.json` with `status=fail` + `stage_specific.fail_reason="external reference missing: <path>"`, then exit. Select among four branches in this order:
 
 - **Trigger-driven rework** (`{rework_trigger}` injected): read the attribution structure and the context for this round's revision from the trigger file (field names come from the triggering stage's own `result.schema.json`); Read the canonical baseline (`Verification/simulation-plan/verification-plan.md` + `scaffold-specification.json`; when `{workdir}` already holds an updated version, prefer the `{workdir}` copy) as the revision baseline; amend per the violation-type targeting table in Decision Rules. If the trigger is unreadable, write `status=fail` + `fail_reason="rework_trigger not readable"`. A trigger-driven rework that amends the plan invalidates any prior `plan_adequacy_gate=clear`; Step 4 re-runs before the Step-5 user loop (the Step-5 approve precondition enforces this).
 - **Session-resume branch** (no trigger + `{workdir}/verification-plan.md` present + `{workdir}/result.json` absent): use the residual `{workdir}` artifacts as the baseline; depending on how complete the residue is, return to Step 3 or Step 5 to continue (preserve already-written sections verbatim; only fill in the missing parts). **Before continuing, if `stage_specific.plan_adequacy_gate` is not `clear`-or-all-`waived` (absent / `trip` / written by a wave predating the latest plan edit), route to Step 4 first — not straight to Step 3 or Step 5.**
 - **Incremental-update branch** (no trigger + `{workdir}` empty + canonical `Verification/simulation-plan/verification-plan.md` present): Read the canonical existing artifacts as the baseline; diff `Design/specification/result.json` against that baseline; amend only the affected sections incrementally. **Sections not affected by the diff — together with their testpoint IDs / sequence names / `power_scenarios.sequence_ref` — are preserved verbatim** (keep ID / naming as stable anchors so coverage data / scaffold / SAIF caches do not drift on ID changes). An incremental update that amends the plan likewise invalidates any prior `plan_adequacy_gate=clear`; Step 4 re-runs before the Step-5 user loop (the Step-5 approve precondition enforces this).
 - **First-run branch** (no trigger + `{workdir}` empty + canonical absent): full generation of plan + scaffold.
 
-When `{orchestrator_context_path}` is injected, Read that sibling file first as a fix-scope hint (priority per the Input Artifacts variable description).
+When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint (priority per the Input Artifacts variable description).
 
 ### Step 2: Minimum field completeness self-check
 
@@ -137,7 +139,7 @@ Branch scope: **first-run** fully generates both artifacts; **trigger-driven rew
 - Derive plan-data (run on every branch):
 
   ```bash
-  python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workdir <spec-workdir>
+  python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workdir <spec-workdir> --output {workdir}/plan-data.json
   ```
 
   Writes `{workdir}/plan-data.json`; reads `manifest.json` + `design.md` + each `<child>.md §5`; cheap, deterministic, idempotent.

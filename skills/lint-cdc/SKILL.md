@@ -29,16 +29,15 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{orchestrator_context_path}` | Optional. Fix-scope hint file; Read it first — priority over the incremental diff. |
+| `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the incremental diff. |
 
 ### External reference inputs
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | envelope (upstream status confirmation; Step 1 pre-check). |
+| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | Incremental-update branch only — diffed for the incremental scope. |
 | `Design/rtl-design/filelist.txt` | text | RTL file list. |
 | `Design/rtl-design/README.md` | Custom markdown | Constraint-annotation note (SGDC section: `sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`). |
-| `Design/specification/design.md` | markdown | Consulted only on a clock-period disagreement — §1.6 is the authoritative period (Decision Rules). |
 | `Design/specification/constraints/<TOP>.sgdc` | SGDC | Cold-bootstrap seed — copied to `{workdir}/scripts/constraints.sgdc` on first deployment; unused when the warm seed below exists (`makefile-bootstrap.md`). |
 | `Design/lint-cdc/scripts/constraints.sgdc` | SGDC | Warm-bootstrap seed (preferred) — the previous run's depth-annotated SGDC; seeding it spares a full annotation re-convergence. |
 
@@ -63,11 +62,11 @@ Based on whether the canonical path `Design/lint-cdc/result.json` already exists
 - **Incremental-update branch** (canonical path already has prior artifacts): read the `Design/rtl-design/result.json` diff to determine the incremental scope.
 - **First-run branch** (canonical path has no prior artifacts): run the first-pass serial flow.
 
-Then pre-check the external references: `Design/rtl-design/result.json.status=pass` AND `filelist.txt` and `README.md` are present AND the SGDC seed is available (warm: `Design/lint-cdc/scripts/constraints.sgdc` exists → preferred; cold: `Design/specification/constraints/<TOP>.sgdc` exists → fallback; neither → missing). If any required file is missing, write `status=fail` with `fail_reason="external reference missing: <path>"` and exit; if `Design/rtl-design/result.json.status≠pass`, write `fail_reason="external reference not pass: Design/rtl-design/result.json"` and exit.
+Then pre-check the external references: `filelist.txt` and `README.md` are present AND the SGDC seed is available (warm: `Design/lint-cdc/scripts/constraints.sgdc` exists → preferred; cold: `Design/specification/constraints/<TOP>.sgdc` exists → fallback; neither → missing). If any required file is missing, write `status=fail` with `fail_reason="external reference missing: <path>"` and exit.
 
-When `{orchestrator_context_path}` is injected, Read that sibling file first as a fix-scope hint. It takes priority over the external-reference diff (incremental-update path) to further narrow the modification scope.
+When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint. It takes priority over the external-reference diff (incremental-update path) to further narrow the modification scope.
 
-Steps 2–7 are mechanically identical across both branches; the branch selected here sets only the **fix scope** — incremental-update narrows the Step 4/5 triage to the `Design/rtl-design/result.json` diff, first-run covers everything — and `{orchestrator_context_path}` narrows it further when injected.
+Steps 2–7 are mechanically identical across both branches; the branch selected here sets only the **fix scope** — incremental-update narrows the Step 4/5 triage to the `Design/rtl-design/result.json` diff, first-run covers everything — and `{directive_path}` narrows it further when injected.
 
 ### Step 2: Bootstrap
 
@@ -77,7 +76,7 @@ Run:
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
 ```
 
-The script deploys the templates to `{workdir}`, substitutes the `MY_TOP` placeholder, and fills `scripts/constraints.sgdc` from the SGDC seed (warm → cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `orchestrator-context.md` does NOT count as "deployed"). When `--top` is omitted, infer it from `Design/rtl-design/README.md` or `filelist.txt` (inference failure aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files you edit are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.
+The script deploys the templates to `{workdir}`, substitutes the `MY_TOP` placeholder, and fills `scripts/constraints.sgdc` from the SGDC seed (warm → cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `directive.md` does NOT count as "deployed"). When `--top` is omitted, infer it from `Design/rtl-design/README.md` or `filelist.txt` (inference failure aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files you edit are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.
 
 ### Step 3: Add RTL custom-synchronizer annotations
 
@@ -141,7 +140,7 @@ Every field in result.json is script-derived — the per-error `reason` comes fr
 
 - Only `severity=error` items trigger `fail`; warning / info are treated as `pass`.
 - It is preferable to run `make lint` first to converge `set_case_analysis` (removing test-control-signal false positives) before `make cdc`, or to run `make all` once (a single session sharing `elaborate`). The `make cdc` tool layer can run standalone (`cdc_setup` goals carry their own `elaborate`), but until the SGDC is stable CDC will report residual false positives.
-- If the clock period and the SDC disagree, `Design/specification/design.md §1.6` clock frequency table is authoritative — consistency issues are a `specification` rework, not fixed in this stage.
+- Clock and IO facts arrive via the SGDC seed (`Design/specification/constraints/*.sgdc`, produced by `derive-constraints`), which self-checks SDC≡§1.6 and SGDC≡SDC by construction (F1) — this stage does not re-check design.md-vs-SDC consistency. The warm `constraints.sgdc`-vs-SDC runtime sanity check (`references/makefile-bootstrap.md`) may still fire but is non-load-bearing.
 
 ## Red Flags
 

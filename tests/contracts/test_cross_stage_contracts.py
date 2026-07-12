@@ -11,9 +11,9 @@ boundaries:
    loses signal silently.
 
 2. **result.json path consistency.** Every `(Design|Verification)/<stage>/
-   result.json` reference in any SKILL.md must match the (dir, stage)
-   tuple in `topology._RESULT_DIR`. A SKILL.md saying `Design/synthesis/`
-   while state.py promotes to `Verification/synthesis/` is the canonical
+   result.json` reference in any SKILL.md must match the stage's canonical
+   `rules.RULES[stage].workdir_root`. A SKILL.md saying `Design/synthesis/`
+   while the kernel promotes to `Verification/synthesis/` is the canonical
    path-drift incident type the failure-memory entry flags.
 """
 
@@ -22,8 +22,12 @@ import re
 import pytest
 from _skills_sot import PLUGIN_ROOT, load_stage_schema
 
-from framework.scripts.state import FORWARD_PRIORITY
-from framework.scripts.topology import _RESULT_DIR
+from framework.scripts import rules
+from framework.scripts.rules import FORWARD_PRIORITY
+
+# stage -> canonical workdir_root tuple (the kernel-era (dir, stage) mapping,
+# derived live from rules.RULES).
+_RESULT_DIR = {name: r.workdir_root for name, r in rules.RULES.items()}
 
 
 def _collect_dim_values_from_array_schema(array_schema: dict) -> set[str]:
@@ -91,7 +95,7 @@ _RESULT_PATH_RE = re.compile(
 @pytest.mark.parametrize("skill_name", FORWARD_PRIORITY)
 def test_result_path_references_match_state_dir(skill_name: str) -> None:
     """In each SKILL.md, every Design|Verification/<stage>/result.json
-    citation must use the dir prefix topology._RESULT_DIR maps for that stage.
+    citation must use the dir prefix rules.RULES[stage].workdir_root maps.
     """
     skill_md = PLUGIN_ROOT / "skills" / skill_name / "SKILL.md"
     text = skill_md.read_text(encoding="utf-8")
@@ -107,7 +111,7 @@ def test_result_path_references_match_state_dir(skill_name: str) -> None:
             drifts.append((cited_stage, cited_dir, expected[0]))
 
     assert not drifts, f"SKILL.md {skill_name}: result.json path drift — " + "; ".join(
-        f"cites {d}/{s}/result.json but topology._RESULT_DIR says {e}/{s}"
+        f"cites {d}/{s}/result.json but rules.workdir_root says {e}/{s}"
         for s, d, e in drifts
     )
 

@@ -6,6 +6,8 @@ Verbs (one stage = one tool; see skills/specification/SKILL.md for usage):
   check-coverage      manifest-driven coverage gate         (writes coverage.json; exit 0/1)
   derive-constraints  generate SDC/SGDC from §1.6 + §1.4.1  (stdout: JSON; fail-loud)
   validate-review     spec-review.json schema + gate        (stdout: gate JSON; exit 0/1)
+  classify-delta      freeze-branch selector                (stdout: verdict JSON; exit 0/1)
+  seed                carry prior canonical artifacts fwd   (stdout: seeded JSON)
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the
@@ -58,6 +60,18 @@ def _cmd_derive_constraints(a: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_classify_delta(a: argparse.Namespace) -> int:
+    from spec import classify
+
+    return classify.run(a.canonical_result, a.brainstorm)
+
+
+def _cmd_seed(a: argparse.Namespace) -> int:
+    from spec import seed
+
+    return seed.run(a.workdir, a.canonical)
+
+
 def _cmd_validate_review(a: argparse.Namespace) -> int:
     from spec import review
 
@@ -101,6 +115,30 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("validate-review", help="spec-review.json schema + gate")
     sp.add_argument("--review", required=True, type=Path)
     sp.set_defaults(func=_cmd_validate_review)
+
+    sp = sub.add_parser(
+        "classify-delta", help="freeze-branch selector: first-run|freeze|proceed"
+    )
+    sp.add_argument("--brainstorm", required=True, type=Path)
+    sp.add_argument(
+        "--canonical-result",
+        type=Path,
+        default=None,
+        help="canonical Design/specification/result.json (absent => first-run)",
+    )
+    sp.set_defaults(func=_cmd_classify_delta)
+
+    sp = sub.add_parser(
+        "seed", help="carry prior canonical artifacts forward (no-clobber)"
+    )
+    sp.add_argument("--workdir", required=True, type=Path)
+    sp.add_argument(
+        "--canonical",
+        type=Path,
+        default=None,
+        help="prior canonical dir; default = {workdir}/../..",
+    )
+    sp.set_defaults(func=_cmd_seed)
 
     sp = sub.add_parser("finalize", help="assemble the lean result.json")
     sp.add_argument("--workdir", required=True, type=Path)

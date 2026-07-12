@@ -16,7 +16,7 @@ Reasoning aid for landing the top-level `root_cause` (the routing field). These 
 
 ## `fault_type` and `root_cause_direction` detailed classification
 
-Reasoning aid for classifying each case; surfaced as free-text `fault_type` values inside `advisory.findings[]` (schema: `analysis.schema.json`) — not a separate enum of their own.
+Reasoning aid for classifying each case; surfaced as free-text `fault_type` values inside `advisory.findings[]` (schema: `result.schema.json`, under `stage_specific`) — not a separate enum of their own.
 
 | Fault category | `fault_type` | Typical symptom | `root_cause_direction` | How to trace |
 |---|---|---|---|---|
@@ -52,7 +52,7 @@ the other phases.
 | targeted | TB-side change; RTL untouched | Run only the affected case group | Sequence constraints, checker expected-value corrections. |
 | full | RTL logic change | Full regression | Functional bug, datapath, state machine. |
 
-Use this as the default classification. Deviate only with sufficient justification, and record the reason in the landed `analysis.json`'s `advisory.findings[]`.
+Use this as the default classification. Deviate only with sufficient justification, and record the reason in the landed `result.json`'s `stage_specific.advisory.findings[]`.
 
 ## Clustering guide
 
@@ -120,10 +120,11 @@ suspect — not on every case, and never as a substitute for that evidence.
 
 ## Confidence (gating)
 
-`confidence` is a **gating** routing field on the landed `analysis.json` (schema:
-`analysis.schema.json`; consumed by `route.py`'s confidence gate) — not an advisory qualifier.
-Only `high` auto-routes; `medium` / `low` escalate to the operator (see `route.py`)
-instead. Land it per this operable definition:
+`confidence` is a **gating** routing field on the landed `result.json`'s `stage_specific`
+(schema: `result.schema.json`) — not an advisory qualifier. The kernel records it as-is on
+the `diagnosis` event; the disposition **reliability gate** then decides: only `high`
+auto-routes to the fix_owner; `medium` / `low` escalate to the
+operator instead. Land it per this operable definition:
 
 - `high` — the verdict is authoritative. Reachable two ways:
   - **L1 waveform corroborates**: a single, non-conflicting explanation anchored to clear

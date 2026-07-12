@@ -4,12 +4,10 @@ route() is a pure total function over closed enums, so the whole decision
 space is enumerable. Each case asserts both `decision` and `rule`.
 """
 
-import json
-
 import pytest
 
 from framework.scripts import route
-from framework.scripts.route import ESCALATE, NEED_INPUT
+from framework.scripts.route import ESCALATE
 
 
 def test_frontend_signoff_terminal():
@@ -19,79 +17,53 @@ def test_frontend_signoff_terminal():
     assert r["reason_hint"] == "x"
 
 
+def test_fixed_target_simulation_plan_only():
+    # lint-cdc is NO LONGER fixed-target (moved to input-provenance).
+    r = route.route("simulation-plan", fail_reason="v")
+    assert r["decision"] == "specification"
+    assert r["rule"] == "fixed:simulation-plan->specification"
+
+
 @pytest.mark.parametrize(
-    "stage,target",
+    "category,target",
     [
-        ("lint-cdc", "rtl-design"),
-        ("simulation-plan", "specification"),
+        ("sgdc_seed", "specification"),
+        ("constraint", "specification"),
+        ("rtl_cdc", "rtl-design"),
+        ("lint_rtl", "rtl-design"),
     ],
 )
-def test_fixed_target(stage, target):
-    r = route.route(stage, fail_reason="v")
-    assert r["decision"] == target
-    assert r["rule"] == f"fixed:{stage}->{target}"
-    assert r["reason_hint"] == "v"
-
-
-def test_simulation_needs_root_cause():
-    r = route.route("simulation")
-    assert r["decision"] == NEED_INPUT
-    assert r["need"] == "root_cause"
-    assert r["rule"] == "need_input:root_cause"
-
-
-def test_simulation_skipped_escalates():
+def test_lint_cdc_input_provenance(category, target):
     r = route.route(
-        "simulation",
-        analysis_state="skipped",
+        "lint-cdc",
+        failure_kind="tooling",
+        failures=[{"category": category, "error_summary": "e"}],
+    )
+    assert r["decision"] == target
+    assert r["rule"] == f"lint_category:{category}->{target}"
+
+
+def test_lint_cdc_tooling_escalates():
+    r = route.route(
+        "lint-cdc",
+        failure_kind="tooling",
+        failures=[{"category": "tooling", "error_summary": "e"}],
     )
     assert r["decision"] == ESCALATE
-    assert r["rule"] == "triage_skipped"
 
 
-@pytest.mark.parametrize(
-    "root_cause,target",
-    [
-        ("rtl-design", "rtl-design"),
-        ("simulation-plan", "simulation-plan"),
-        ("specification", "specification"),
-        ("simulation", ESCALATE),
-    ],
-)
-def test_simulation_root_cause(root_cause, target):
+def test_lint_cdc_unknown_category_escalates():
     r = route.route(
-        "simulation",
-        root_cause=root_cause,
-        analysis_state="complete",
-        confidence="high",
+        "lint-cdc", failure_kind="tooling", failures=[{"category": "mystery"}]
     )
-    assert r["decision"] == target
-    assert r["rule"] == f"triage_root_cause:{root_cause}->{target}"
+    assert r["decision"] == ESCALATE and r["rule"] == "unrouted:unknown_category"
 
 
-def test_simulation_high_confidence_routes_to_target():
-    r = route.route(
-        "simulation",
-        root_cause="rtl-design",
-        analysis_state="complete",
-        confidence="high",
-    )
-    assert r["decision"] == "rtl-design"
-
-
-def test_simulation_medium_confidence_escalates_to_operator():
-    r = route.route(
-        "simulation",
-        root_cause="rtl-design",
-        analysis_state="complete",
-        confidence="medium",
-    )
-    assert r["decision"] == ESCALATE and r["rule"] == "triage_low_confidence"
-
-
-def test_simulation_missing_confidence_escalates():
-    r = route.route("simulation", root_cause="rtl-design", analysis_state="complete")
-    assert r["decision"] == ESCALATE and r["rule"] == "triage_low_confidence"
+# NOTE: simulation is NOT routed by route() — schedule dispatches simulation-triage and the
+# confidence/reliability gate lives in schedule._reliable (kernel._derive_triage uses the
+# TRIAGE_ROOT_CAUSE map at reap). route()'s old simulation branch + CLI were dead and removed
+# (F-1); those tests moved with the logic (schedule/kernel coverage). The map⊆closure test
+# below still exercises TRIAGE_ROOT_CAUSE's legality.
 
 
 @pytest.mark.parametrize("stage", ["synthesis", "power-analysis", "timing-analysis"])
@@ -162,19 +134,6 @@ def test_unrouted_defensive_escalate(stage):
     assert r["rule"] == "unrouted"
 
 
-def test_simulation_unknown_root_cause_escalates():
-    # I-1: an unknown root_cause (e.g. schema drift) → named unrouted ESCALATE, not KeyError.
-    # confidence="high" clears the confidence gate so this reaches the root_cause check.
-    r = route.route(
-        "simulation",
-        root_cause="nonsense",
-        analysis_state="complete",
-        confidence="high",
-    )
-    assert r["decision"] == ESCALATE
-    assert r["rule"] == "unrouted:unknown_root_cause"
-
-
 def test_power_analysis_unknown_category_escalates():
     # I-1: an unknown category → named unrouted ESCALATE, not KeyError.
     r = route.route(
@@ -186,24 +145,27 @@ def test_power_analysis_unknown_category_escalates():
     assert r["rule"] == "unrouted:unknown_category"
 
 
-def test_cli_inputs_from_result_json(tmp_path):
-    rj = tmp_path / "result.json"
-    rj.write_text(
-        json.dumps(
-            {
-                "stage_specific": {
-                    "failure_kind": "tooling",
-                    "failures": [
-                        {"category": "gls_runtime", "error_summary": "uvm_fatal"}
-                    ],
-                    "fail_reason": "x",
-                }
-            }
-        )
-    )
-    got = route._inputs_from_result_json(str(rj))
-    assert got == {
-        "failure_kind": "tooling",
-        "failures": [{"category": "gls_runtime", "error_summary": "uvm_fatal"}],
-        "fail_reason": "x",
+def test_route_maps_targets_are_within_failed_rule_input_closure():
+    # E6 / §3.4 fix_owner legality: every static failure->target map must only name targets
+    # inside the failed rule's TRANSITIVE input closure (kernel.py asserts this in a COMMENT
+    # only). A drifted map entry would mint an illegal auto-rebuild target. ESCALATE is exempt.
+    from framework.scripts import rules
+
+    maps = {
+        "simulation": route.TRIAGE_ROOT_CAUSE,
+        "lint-cdc": route.LINT_CATEGORY,
+        "power-analysis": route.PA_CATEGORY,
+        "simulation-plan": route.FIXED_TARGET,  # {"simulation-plan": "specification"}
     }
+    for failed_rule, mapping in maps.items():
+        closure = rules.input_closure(failed_rule)
+        for key, target in mapping.items():
+            if target == ESCALATE:
+                continue
+            # FIXED_TARGET is keyed by failed_rule, not by a category
+            fr = key if failed_rule == "simulation-plan" else failed_rule
+            assert target in rules.input_closure(fr), (
+                f"{fr} routes to {target!r} which is NOT in its input closure "
+                f"{sorted(rules.input_closure(fr))}"
+            )
+        assert closure  # sanity: the failed rule actually has upstream producers

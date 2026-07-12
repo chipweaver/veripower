@@ -9,14 +9,21 @@ The pipeline's authoritative, graduated root-cause analyzer for a failed simulat
 reason over the failure evidence first (**L1** — logs, spec, refmodel, and the failing run's
 own FSDB waveform), and only when L1 can't reach high confidence, run a controlled experiment
 in scratch to verify the uncertain conjecture that remains (**L2**) — then land the verdict.
-**Canonical read-only, scratch-writable**: free to read any canonical artifact; the only files
-you ever write live under your own `Verification/simulation-triage/**`.
+You are dispatched as an ordinary kernel-scheduled rule (`rules.py`'s `simulation-triage`,
+`proof=None` — you mint no proof, only a diagnosis), a Task-dispatched subagent like the
+other single-shot stages. **Canonical read-only, own-workdir writable**: free to read any
+canonical artifact; the only files you ever write live under your own `{workdir}` — a
+kernel-issued run directory keyed by its own triage dispatch count, unrelated to
+`<sim_run>`, the simulation run you are analyzing.
 
-The landed `analysis.json` has two tiers:
+The landed `result.json`'s `stage_specific` carries two tiers:
 - **Routing tier** — `analysis_state` + `root_cause` + the gating `confidence`; the hard,
-  schema-validated contract `route.py` consumes to pick a rework target or escalate.
+  schema-validated contract the kernel's reap-time triage branch consumes (`root_cause`
+  picks the rework target) to mint a `diagnosis` event, recording `confidence`
+  as-is — the disposition reliability gate then auto-routes or
+  escalates on it.
 - **Advisory tier** (`advisory.{level, fix_direction, findings[], waveform, experiment}`) —
-  persisted evidence forwarded to the rework target as `orchestrator_context`; informs the fix,
+  persisted evidence forwarded to the rework target as `directive`; informs the fix,
   does not gate routing.
 
 ## When to Use
@@ -27,16 +34,16 @@ The landed `analysis.json` has two tiers:
 
 ## Iron Rule
 
-- **Canonical read-only, scratch-writable**: read any canonical artifact freely (RTL, spec, TB
+- **Canonical read-only, own-workdir writable**: read any canonical artifact freely (RTL, spec, TB
   logs, plan) but never modify another stage's canonical output — RTL, TB, spec, plan, or any
   other stage's `result.json`. The only files you write live under your own
-  `Verification/simulation-triage/**` (including `runs/<sim_run>/experiment/` for L2).
+  `{workdir}` (including `{workdir}/experiment/` for L2).
 - L2's experiment harness is new-written scratch, never a copy-and-edit of canonical RTL —
   canonical RTL is `` `include``d read-only throughout, which is what keeps L2 from colliding
   with any other stage's output.
-- Both the `runs/<sim_run>/analysis.json` you write and the top-level `analysis.json` you publish
-  MUST validate against `references/analysis.schema.json` (contract violation otherwise).
-  `root_cause`'s and `confidence`'s legal values are enforced there — do not re-enumerate them here.
+- Your `{workdir}/result.json` MUST validate against `references/result.schema.json`
+  (contract violation otherwise) — its `stage_specific.root_cause` and `.confidence` legal
+  values are enforced there; do not re-enumerate them here.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -46,11 +53,10 @@ The landed `analysis.json` has two tiers:
 | Variable | Purpose |
 |---|---|
 | `{module}` | Module name. |
-| `<sim_run>` | The failed `simulation` run number (`Verification/simulation/runs/<sim_run>/`) — the Orchestrator injects it straight from the run it just reaped as `fail`. |
+| `{workdir}` | Your own kernel-issued run workspace root; write `result.json` and (L2 only) `experiment/` here, nowhere else. |
+| `<sim_run>` | The failed `simulation` run number (`Verification/simulation/runs/<sim_run>/`) you are triaging — carried in the dispatch event's `params.sim_run` and injected into your prompt the same way `{module}` / `{workdir}` are. |
 
-Nothing else is injected — no inline field assembly. You have no `cmd_dispatch`-issued
-`{workdir}`; compute your own working area as `Verification/simulation-triage/runs/<sim_run>/`.
-Everything besides `{module}` / `<sim_run>` is self-read from canonical disk.
+Everything besides `{module}` / `{workdir}` / `<sim_run>` is self-read from canonical disk.
 
 ### Self-read from canonical disk
 
@@ -65,15 +71,14 @@ Everything besides `{module}` / `<sim_run>` is self-read from canonical disk.
 
 ## Output Artifacts
 
-| Path | Format | Use |
+| Path (relative to `{workdir}`) | Schema / Format | Use |
 |---|---|---|
-| `Verification/simulation-triage/runs/<sim_run>/analysis.json` | JSON (schema: `references/analysis.schema.json`) | This round's routing + advisory verdict. |
-| `Verification/simulation-triage/analysis.json` | JSON (same schema) | Latest pointer, atomically published from the `runs/<sim_run>/` copy above; `orchestrate.py decide --analysis <path>` reads this fixed path. |
-| `Verification/simulation-triage/runs/<sim_run>/experiment/` | Mixed (harness SV/C++, golden model, run log, isolation harnesses) | **L2 only** — the controlled experiment, persisted for audit (never cleaned up). |
+| `result.json` | `references/result.schema.json` + envelope.schema.json | This round's routing + advisory verdict (`stage_specific`); written by `finalize` (Step 5). |
+| `experiment/` | Mixed (harness SV/C++, golden model, run log, isolation harnesses) | **L2 only** — the controlled experiment, persisted for audit (never cleaned up). |
 
-You write no artifact outside `Verification/simulation-triage/**`. This is not a DAG stage: no
-`cmd_reap`, no promote, no `result.json` — the two `analysis.json` files above are the entire
-output surface.
+You write nothing outside `{workdir}`. `result.json` is your entire output surface — the
+kernel's `reap` promotes it and derives a `diagnosis` event (or `blocked`) from it; there is
+no separate publish step.
 
 ## Workflow
 
@@ -86,7 +91,7 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
   - The self-read inputs show no fail case (e.g., a mistakenly-dispatched scenario where regress / smoke is fully pass or coverage already 100%) → `skipped_reason: "no fail case to analyze"`.
 - **Complete classification** (`analysis_state: "complete"`): per `failure_phase`, take cases from one of three input shapes:
   - `regress` / `smoke` → cases = `failing_cases[]` (both run UVM test cases; `failing_cases[]` carries `error_message` / `log_snippet` per failing case; cross-reference the full per-case log under `Verification/simulation/runs/<sim_run>/` when the envelope's snippet isn't enough).
-  - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail (from `runs/<sim_run>/`) as a single synthetic case and describe it directly as the landed `root_cause` — a single synthetic case emits **no** `advisory.findings[]`.
+  - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail (from `runs/<sim_run>/`) as a single synthetic case. Land the `root_cause` from it directly, AND emit it as **one** `advisory.findings[]` entry (`fault_type` = the compile/prerequisite failure class, `anchor` = the compile-error location from the log tail, else the `fail_reason`; `cases` = the synthetic case) — like the coverage/conformance branches below, one case is one finding, so a high-confidence verdict always carries a concrete locus (schema-enforced: `high` ⇒ non-empty `findings[]` each with an `anchor`).
   - `coverage` → no `failing_cases[]` (regress already passed; only coverage is below target). cases = each gap bin in `coverage_gaps[]` (split by `gaps_in_testpoints` / `gaps_not_in_testpoints`); each gap bin is one case and becomes one `advisory.findings[]` entry (a lone gap bin is a single case — as in the degenerate path above).
   - `conformance` → no `failing_cases[]` and no log tail (compile + smoke both passed). cases = each gating finding in `conformance_findings[]`; each finding is one case. Its `category` is the reasoning key for Step 2 — there is no log to anchor on.
 
@@ -108,7 +113,7 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 ### Step 3: L2 gate — controlled experiment when L1 (including its FSDB waveform) can't reach high confidence
 
 - **Trigger:** enter L2 only when Step 2 — including its FSDB waveform query — cannot land `confidence: "high"` — per the "L2-trigger judgment" in `references/fail-analysis-patterns.md` (competing hypotheses / cannot localize / locus in doubt). A single case with a clean log anchor and no plausible alternative explanation skips L2 entirely.
-- **Run a controlled experiment** under `Verification/simulation-triage/runs/<sim_run>/experiment/` to verify the uncertain conjecture Step 2 left standing — not a rebuild of the real run to characterize it (that characterization-by-observation now lives in L1, via its FSDB; see Step 2). Drive stimulus the real run never exercised: a hand-chosen input (not a regression vector), an isolation micro-harness that re-instantiates the DUT's leaf modules and taps internals via SV hierarchical references to pin the fault to a specific function or cell, a hand-built golden model kept semantically consistent with the `Verification/simulation-plan` UVM refmodel/scoreboard (a small standalone golden is fine as long as its behavior matches; it need not embed UVM components), or a parametric sweep. Pick a tool yourself (Verilator has worked well — fast, cycle-accurate, and hierarchical references make internal taps easy) or a controlled re-run. **Keep observing your own controlled run**: drive a per-cycle **TEXT** dump of it (or another self-owned dump) — the failing run's own FSDB (`Verification/simulation/runs/<sim_run>/<test_id>.fsdb`, L1's read-only `fsdbreport` evidence from Step 2) cannot see stimulus your controlled run alone drives, so L2 keeps observing its own run rather than relying on it. Canonical RTL is read-only `` `include`` material throughout — never copy-and-edit it.
+- **Run a controlled experiment** under `{workdir}/experiment/` to verify the uncertain conjecture Step 2 left standing — not a rebuild of the real run to characterize it (that characterization-by-observation now lives in L1, via its FSDB; see Step 2). Drive stimulus the real run never exercised: a hand-chosen input (not a regression vector), an isolation micro-harness that re-instantiates the DUT's leaf modules and taps internals via SV hierarchical references to pin the fault to a specific function or cell, a hand-built golden model kept semantically consistent with the `Verification/simulation-plan` UVM refmodel/scoreboard (a small standalone golden is fine as long as its behavior matches; it need not embed UVM components), or a parametric sweep. Pick a tool yourself (Verilator has worked well — fast, cycle-accurate, and hierarchical references make internal taps easy) or a controlled re-run. **Keep observing your own controlled run**: drive a per-cycle **TEXT** dump of it (or another self-owned dump) — the failing run's own FSDB (`Verification/simulation/runs/<sim_run>/<test_id>.fsdb`, L1's read-only `fsdbreport` evidence from Step 2) cannot see stimulus your controlled run alone drives, so L2 keeps observing its own run rather than relying on it. Canonical RTL is read-only `` `include`` material throughout — never copy-and-edit it.
 - **Budget:** ≤ `defaults.yaml:l2_experiment_max_rounds` iteration rounds.
 - **Optional:** a single-session blind/adversarial self-check (reason the same evidence twice, once trying to confirm and once trying to refute) to harden the verdict before landing it — never spawn a sub-Task for this; triage stays a leaf.
 - Persist every experiment artifact (harness, golden model, run log, isolation harnesses) — never clean up, even after landing the verdict.
@@ -116,12 +121,12 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 ### Step 4: Land confidence and `root_cause`
 
 - **`confidence: "high"`** — either L1 alone (optionally corroborated by its FSDB waveform query) gave a single, non-conflicting explanation anchored to clear evidence, or L2's controlled experiment directly confirmed the fault. This is the only case that auto-routes.
-- **`confidence: "medium"` / `"low"`** — competing hypotheses remain, or the fault couldn't be localized/pinned down, even after L2. This escalates to the operator via `route.py`'s confidence gate (`triage_low_confidence`) — do not try to force a `high` verdict to avoid the escalation.
+- **`confidence: "medium"` / `"low"`** — competing hypotheses remain, or the fault couldn't be localized/pinned down, even after L2. The disposition reliability gate escalates these to the operator rather than auto-routing — do not try to force a `high` verdict to avoid the escalation.
 - `root_cause` was already landed at the end of Step 2 (Step 3's L2 evidence may sharpen it, e.g. confirm which of two competing directions is real, but does not change the attribution rule itself).
 
 ### Step 5: Land the result
 
-Write `Verification/simulation-triage/runs/<sim_run>/analysis.json`:
+Assemble the analysis judgment (shape below):
 
 ```jsonc
 {
@@ -140,7 +145,7 @@ Write `Verification/simulation-triage/runs/<sim_run>/analysis.json`:
     "experiment": {                // present only when Step 3 triggered
       "tool": "verilator",
       "stimulus": "<hand-chosen input(s) / sweep the real run never drove>",
-      "artifacts": ["runs/<sim_run>/experiment/tb_wrap.sv", "…/sim_main.cpp", "…/golden.py", "…/run.log"],
+      "artifacts": ["experiment/tb_wrap.sv", "…/sim_main.cpp", "…/golden.py", "…/run.log"],
       "golden": "<golden model description or path>",
       "conclusion": "<what the isolation harness / sweep proved, incl. any adversarial self-check>"
     }
@@ -150,25 +155,20 @@ Write `Verification/simulation-triage/runs/<sim_run>/analysis.json`:
 
 The `skipped` shape carries only `analysis_state: "skipped"` + `skipped_reason` (no `advisory`).
 
-Validate before publishing:
+Invoke `finalize` to schema-gate this judgment and atomically write `{workdir}/result.json`
+in one step — nothing else to publish:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/simtriage/__main__.py validate-analysis \
-  --json-file asic/{module}/Verification/simulation-triage/runs/<sim_run>/analysis.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/simtriage/__main__.py finalize \
+  --workdir {workdir} --module {module} \
+  --json-file <path to the analysis JSON you assembled>   # or --json-stdin
 ```
 
-On non-zero exit, read stderr, fix, and re-run — the authoritative gate for the routing contract.
-Then atomically publish the top-level pointer (write-temp + rename, same directory):
-
-```bash
-cp asic/{module}/Verification/simulation-triage/runs/<sim_run>/analysis.json \
-   asic/{module}/Verification/simulation-triage/analysis.json.tmp
-mv asic/{module}/Verification/simulation-triage/analysis.json.tmp \
-   asic/{module}/Verification/simulation-triage/analysis.json
-```
-
-Emit `STATUS: DONE` as the last line. Nothing is returned in the message body — the landed files
-are the result.
+On non-zero exit, read stderr and act: exit 1 = schema violation in your judgment (fix the
+content and re-run — the authoritative gate for the routing contract); exit 2 = a program
+exception (`STATUS: BLOCKED`, never a decision you choose). Exit 0 means `{workdir}/result.json`
+is now landed — the kernel's `reap` promotes it and derives the `diagnosis` event (or `blocked`
+when `analysis_state` is `skipped`) from it.
 
 ## Decision Rules
 
@@ -179,7 +179,7 @@ Root-cause selection lives in [`references/fail-analysis-patterns.md`](reference
 | Excuse | Reality |
 |---|---|
 | "I can't fully analyze this — I'll just return `STATUS: BLOCKED`" | Forbidden as a skill decision. Incomplete inputs / no fail case → `analysis_state: "skipped"` + `skipped_reason`. |
-| "While I'm in here I'll just fix the bug in the RTL/TB I found" | Analyze and characterize only — writing scratch experiment artifacts under your own `runs/<sim_run>/experiment/` is expected (L2), but never patch canonical RTL/TB/spec/plan. That collapses the analysis/repair separation that makes the caller's routing valid. |
+| "While I'm in here I'll just fix the bug in the RTL/TB I found" | Analyze and characterize only — writing scratch experiment artifacts under your own `{workdir}/experiment/` is expected (L2), but never patch canonical RTL/TB/spec/plan. That collapses the analysis/repair separation that makes the caller's routing valid. |
 | "L1 is inconclusive but running an experiment is expensive — I'll just call it `high` anyway" | Confidence is a gating field; a forced `high` skips the operator net entirely. If Step 2 (incl. its FSDB waveform query) can't land `high`, either run L2 (Step 3) or land `medium`/`low` honestly. |
 
 ## Pitfalls
@@ -188,25 +188,24 @@ Root-cause selection lives in [`references/fail-analysis-patterns.md`](reference
 |---|---|
 | Lumping every case into one cluster | Cluster strictly by the clustering signals; when same-origin cannot be established, each case stands alone. |
 | `fix_direction` too vague | Be specific: file, line, suggested change — for an L2 verdict, ground it in what the isolation harness proved. |
-| Putting `level` / `fix_direction` / `findings` / `waveform` / `experiment` at the top level of `analysis.json` | The schema is `additionalProperties: false` at the root — those keys must nest under `advisory`; a top-level placement fails `validate-analysis`. |
+| Putting `level` / `fix_direction` / `findings` / `waveform` / `experiment` at the top level of the analysis judgment | The `stage_specific` subschema is `additionalProperties: false` — those keys must nest under `advisory`; a top-level placement fails `finalize`'s schema gate. |
 
 ## Completion Gate
 
-- [ ] `Verification/simulation-triage/runs/<sim_run>/analysis.json` is written and `simtriage validate-analysis` exits 0 against it (authoritative schema gate).
-- [ ] The same content is atomically published to the top-level `Verification/simulation-triage/analysis.json` pointer.
-- [ ] `analysis_state` is set (`complete` or `skipped`).
-- [ ] When `complete`: `root_cause` and `confidence` are both set; every fail case is reflected in `advisory.findings[]` (a single synthetic/degenerate case needs none).
-- [ ] When L2 triggered: `advisory.level == "L2"`, `advisory.experiment` is populated, and `runs/<sim_run>/experiment/` is persisted on disk (not cleaned up).
-- [ ] When `skipped`: `skipped_reason` carries a specific reason.
-- [ ] No Iron Rule or Red Flag was triggered — nothing outside `Verification/simulation-triage/**` was written.
+- [ ] `{workdir}/result.json` has been written by `finalize` (exit 0) and validates against `references/result.schema.json`.
+- [ ] `stage_specific.analysis_state` is set (`complete` or `skipped`).
+- [ ] When `complete`: `stage_specific.root_cause` and `.confidence` are both set; every fail case is reflected in `advisory.findings[]` (a single synthetic/degenerate case needs none).
+- [ ] When L2 triggered: `advisory.level == "L2"`, `advisory.experiment` is populated, and `{workdir}/experiment/` is persisted on disk (not cleaned up).
+- [ ] When `skipped`: `stage_specific.skipped_reason` carries a specific reason.
+- [ ] No Iron Rule or Red Flag was triggered — nothing outside `{workdir}` was written.
 
 ## Return Contract
 
-The result is landed on disk, not the message body: `Verification/simulation-triage/runs/<sim_run>/analysis.json` plus the atomically-published top-level `Verification/simulation-triage/analysis.json` pointer (schema: `references/analysis.schema.json`). The last line emits `STATUS: DONE`. `STATUS: BLOCKED <reason>` is reserved for the harness fallback when a program exception prevented landing the result; you never choose it.
+As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `STATUS: BLOCKED <one-line reason>` (when a program exception prevented the write). The harness uses this signal to fire the Task-completion notification; the caller then decides based on `result.json`.
 
 ## Bundled References
 
 - [`references/fail-analysis-patterns.md`](references/fail-analysis-patterns.md) — Symptom/scope → `root_cause`, fault-type / `root_cause_direction` classification, regression-level table, clustering guide, the gating confidence definitions + the L2-trigger judgment, and the root-cause attribution + tiebreak rule.
-- [`references/analysis.schema.json`](references/analysis.schema.json) — `analysis.json` schema: routing tier (`analysis_state` / `root_cause` / `confidence`) + advisory tier (`level` / `fix_direction` / `findings[]` / `waveform` / `experiment`).
-- `scripts/simtriage/` (the `validate-analysis` verb) — pre-publish self-gate (invocation contract: Step 5 + `--help`; run before publishing the top-level pointer).
+- [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema: envelope + `stage_specific` routing tier (`analysis_state` / `root_cause` / `confidence`) + advisory tier (`level` / `fix_direction` / `findings[]` / `waveform` / `experiment`).
+- `scripts/simtriage/` (the `finalize` verb) — schema-gates your analysis judgment, then atomically writes `result.json` (invocation contract: Step 5 + `--help`).
 - `defaults.yaml` — `l2_experiment_max_rounds`, the L2 iteration budget (Step 3).

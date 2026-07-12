@@ -18,7 +18,7 @@ Deployment target: the directory passed via `--workdir` (typically
 When `--top` is omitted, the script infers the top-module name from
 `Design/rtl-design/README.md` or `filelist.txt`; if inference fails, pass
 `--top` explicitly. An existing `{workdir}/Makefile` is treated as "already
-deployed" and the script aborts (a caller-placed `orchestrator-context.md`
+deployed" and the script aborts (a caller-placed `directive.md`
 inside the workdir does NOT trigger this check); back up first and clean up
 manually or merge.
 

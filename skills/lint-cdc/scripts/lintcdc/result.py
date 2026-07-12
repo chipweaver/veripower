@@ -49,11 +49,55 @@ def _envelope(module, *, status, stage_specific, artifacts) -> dict:
 
 
 def _write(workdir: Path, env: dict) -> None:
-    (workdir / "result.json").write_text(json.dumps(env, indent=2) + "\n")
+    tmp = workdir / "result.json.tmp"
+    tmp.write_text(json.dumps(env, indent=2) + "\n")
+    tmp.replace(workdir / "result.json")  # atomic: never observed half-written
     sys.stdout.write(
         f"[lintcdc finalize] Written: {workdir / 'result.json'}"
         f" (status={env['status']})\n"
     )
+
+
+# SpyGlass CDC/lint rule family -> input-provenance category (U4). Constraint/setup rules
+# implicate the SGDC seed (specification); crossing rules implicate the RTL (rtl-design).
+# Prefixes confirmed against SpyGlass_vL-2016.06: Ac_unsync01 (F1 fixture, cdc_smoke
+# a->q crossing, policy clock-reset, goal cdc/cdc_verify_struct) -> rtl_cdc; Clock_info03a
+# + Setup_port01 (undeclared-clock experiment: clk2 used in RTL but never `clock -name`d
+# in the SGDC, policy clock-reset, goal cdc/cdc_setup_check) -> sgdc_seed.
+_RULE_CATEGORY = {
+    "Clock_": "sgdc_seed",
+    "Reset_": "sgdc_seed",
+    "SGDC_": "sgdc_seed",
+    "Ac_unclocked": "sgdc_seed",
+    "Setup_": "sgdc_seed",
+    "Ac_unsync": "rtl_cdc",
+    "Ac_conv": "rtl_cdc",
+    "Ac_glitch": "rtl_cdc",
+    "Ac_sync": "rtl_cdc",
+    "Reconvergence": "rtl_cdc",
+}
+
+# Coarse failure_kind bucket for a given failures[0].category (Step 1's enum has 4
+# values vs. category's 5: sgdc_seed and constraint are both specification's fault,
+# so both fold into "constraint").
+_FAILURE_KIND_OF_CATEGORY = {
+    "sgdc_seed": "constraint",
+    "constraint": "constraint",
+    "rtl_cdc": "cdc",
+    "lint_rtl": "lint",
+    "tooling": "tooling",
+}
+
+
+def _categorize(violations: list[dict]) -> tuple[str, dict | None]:
+    """Return (category, matched_violation) — the violation whose rule prefix drove
+    the category, so failures[0].rule can name IT (not merely violations[0], which
+    may be a different, unmatched rule). None when nothing matched (default path)."""
+    for v in violations:
+        for prefix, cat in _RULE_CATEGORY.items():
+            if v.get("rule", "").startswith(prefix):
+                return cat, v
+    return "lint_rtl", None  # default: an RTL lint issue
 
 
 def _load_violations(path: Path):
@@ -112,6 +156,15 @@ def run(workdir, module, *, top) -> int:
                 ss[key] = doc["counts"]
         if violations:
             ss["violations"] = violations
+            cat, matched = _categorize(violations)
+            ss["failure_kind"] = _FAILURE_KIND_OF_CATEGORY[cat]
+            ss["failures"] = [
+                {
+                    "category": cat,
+                    "rule": (matched or violations[0])["rule"],
+                    "error_summary": ss["fail_reason"],
+                }
+            ]
         _write(
             workdir,
             _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),

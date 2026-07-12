@@ -28,7 +28,7 @@ import re
 import pytest
 from _skills_sot import PLUGIN_ROOT, load_stage_schema
 
-from framework.scripts.state import FORWARD_PRIORITY
+from framework.scripts.rules import FORWARD_PRIORITY
 
 
 def _schema_required_stage_specific(stage: str) -> set[str]:

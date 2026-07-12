@@ -3,7 +3,7 @@
 Lock the if/then-gated pass-only required fields pattern. Without this,
 a stage shipping unconditional `required: [ppa_actual]` (or similar
 pass-only field) rejects a minimum status=fail result.json, causing
-state.py to mark the run "invalid" and silently swallow the fail signal.
+the kernel to mark the run "invalid" and silently swallow the fail signal.
 
 Anchor: 2026-05-10 review round, 3 same-class fixes in 5 days —
 synthesis 3250876, timing-analysis b0df23d, power-analysis 357a525.
@@ -14,11 +14,9 @@ status=fail envelope (envelope-required fields + stage_specific.fail_reason,
 for simulation).
 """
 
-import json
-
 import pytest
 
-from framework.scripts import state
+from framework.scripts import facts, rules
 
 # Stages that require failure_kind in their fail envelope (per route.py's
 # failure_kind dispatch — route.py is the sole home of the routing maps).
@@ -29,36 +27,26 @@ _FAILURE_KIND_STAGES = {"synthesis", "timing-analysis", "power-analysis"}
 _FAILURE_PHASE_STAGES = {"simulation"}
 
 
-@pytest.mark.parametrize("stage", state.FORWARD_PRIORITY)
-def test_schema_validates_minimum_fail_envelope(stage, tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    state.cmd_init("M")
-
-    rdir = state._result_path("M", stage).parent
-    rdir.mkdir(parents=True, exist_ok=True)
-
+@pytest.mark.parametrize("stage", rules.FORWARD_PRIORITY)
+def test_schema_validates_minimum_fail_envelope(stage):
     stage_specific = {"fail_reason": "test fail"}
     if stage in _FAILURE_KIND_STAGES:
         stage_specific["failure_kind"] = "infra"
     if stage in _FAILURE_PHASE_STAGES:
         stage_specific["failure_phase"] = "compile"
 
-    (rdir / "result.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "stage": stage,
-                "module": "M",
-                "produced_at": "2026-05-12T00:00:00Z",
-                "status": "fail",
-                "artifacts": [],
-                "stage_specific": stage_specific,
-            }
-        )
-    )
+    result = {
+        "schema_version": 1,
+        "stage": stage,
+        "module": "M",
+        "produced_at": "2026-05-12T00:00:00Z",
+        "status": "fail",
+        "artifacts": [],
+        "stage_specific": stage_specific,
+    }
 
-    valid, err = state.validate_result("M", stage)
-    assert valid, f"stage {stage}: minimum status=fail envelope rejected: {err}"
+    err = facts.validate_result(stage, result)
+    assert err is None, f"stage {stage}: minimum status=fail envelope rejected: {err}"
 
 
 # A status=fail + failure_kind=ppa must additionally carry the measured numbers
@@ -81,42 +69,39 @@ _PPA_FAIL_NUMBERS = {
 }
 
 
-def _write_fail(tmp_path, stage, stage_specific):
-    rdir = state._result_path("M", stage).parent
-    rdir.mkdir(parents=True, exist_ok=True)
-    (rdir / "result.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "stage": stage,
-                "module": "M",
-                "produced_at": "2026-06-15T00:00:00Z",
-                "status": "fail",
-                "artifacts": [],
-                "stage_specific": stage_specific,
-            }
-        )
-    )
+def _fail_result(stage, stage_specific):
+    return {
+        "schema_version": 1,
+        "stage": stage,
+        "module": "M",
+        "produced_at": "2026-06-15T00:00:00Z",
+        "status": "fail",
+        "artifacts": [],
+        "stage_specific": stage_specific,
+    }
 
 
 @pytest.mark.parametrize("stage", sorted(_PPA_FAIL_NUMBERS))
-def test_ppa_fail_requires_numbers(stage, tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    state.cmd_init("M")
+def test_ppa_fail_requires_numbers(stage):
     numbers = _PPA_FAIL_NUMBERS[stage]
 
     # Without the measured numbers, a failure_kind=ppa fail is rejected.
-    _write_fail(
-        tmp_path, stage, {"fail_reason": "PPA gate exceeded", "failure_kind": "ppa"}
+    err = facts.validate_result(
+        stage,
+        _fail_result(
+            stage, {"fail_reason": "PPA gate exceeded", "failure_kind": "ppa"}
+        ),
     )
-    valid, _ = state.validate_result("M", stage)
-    assert not valid, f"stage {stage}: ppa fail without ppa_actual/violations accepted"
+    assert err is not None, (
+        f"stage {stage}: ppa fail without ppa_actual/violations accepted"
+    )
 
     # With ppa_actual + violations, it validates.
-    _write_fail(
-        tmp_path,
+    err = facts.validate_result(
         stage,
-        {"fail_reason": "PPA gate exceeded", "failure_kind": "ppa", **numbers},
+        _fail_result(
+            stage,
+            {"fail_reason": "PPA gate exceeded", "failure_kind": "ppa", **numbers},
+        ),
     )
-    valid, err = state.validate_result("M", stage)
-    assert valid, f"stage {stage}: ppa fail with numbers rejected: {err}"
+    assert err is None, f"stage {stage}: ppa fail with numbers rejected: {err}"

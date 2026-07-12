@@ -12,6 +12,19 @@
           "type": "object",
           "properties": {
             "fail_reason": {"type": "string", "minLength": 1},
+            "failure_kind": {"type": "string", "enum": ["tooling", "constraint", "cdc", "lint"]},
+            "failures": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["category"],
+                "properties": {
+                  "category": {"enum": ["sgdc_seed", "constraint", "rtl_cdc", "lint_rtl", "tooling"]},
+                  "rule": {"type": "string"},
+                  "error_summary": {"type": "string"}
+                }
+              }
+            },
             "violations": {
               "type": "array",
               "items": {

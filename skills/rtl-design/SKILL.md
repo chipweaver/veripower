@@ -22,6 +22,8 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 - **No child RTL in the main thread:** every child (including the top-integration child) is dispatched in the fan-out wave. The main thread consumes each sub-Task's `files[]` paths only (the scripts aggregate them into `filelist.txt`) and **MUST NOT read the dispatched child's** `.v`/`.sv` content back into the main-thread context — child RTL would otherwise compound across the long-lived main thread. There is no main-thread TOP authoring: even a single child is written by a sub-Task, never by the main thread.
 - **No whole-design elaboration in any child sub-Task:** per `references/child-task-contract.md`, no child may whole-design elaborate/compile, read sibling RTL bodies, or reverse-read an external verification harness; integration/elaboration correctness is verified by downstream verification. A unit child may best-effort `verilator --lint-only` its own module only.
 - **`<child>.md §2 Interface` incomplete:** if the interface spec is missing or underspecified, write `status=fail` + `fail_reason="<child>.md §2 Interface incomplete"`; do not invent interfaces.
+- **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's task actually requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise a trigger-driven rework's `violations[]` list is the scope (already binding — see the Trigger-driven rework branch); otherwise the incremental-update branch's `specification` diff is the scope. Every file outside that scope MUST stay byte-identical to the prior run — a full rewrite on a narrow fix defeats the incremental kernel's per-file cascade.
+- **Freeze-reuse when nothing changed.** With no `{directive_path}`, run `rtl classify-delta --canonical-result asic/{module}/Design/rtl-design/result.json --spec-dir asic/{module}/Design/specification`. On `verdict=freeze`, run `rtl seed --workdir {workdir}` (it byte-copies the prior RTL / `filelist.txt` / `README.md` **and `semantic-review.json`** forward, no-clobber) and **SKIP the Step-4.4 semantic gate wave** — do not re-dispatch any child sub-Task. The carried-forward `semantic-review.json` keeps its `pin` alive: re-judging byte-identical RTL would regenerate the record and drop the pin. On `first-run` / `proceed`, fall through to the normal branch.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -33,17 +35,15 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
 | `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); presence selects the rework branch. |
-| `{orchestrator_context_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content and the incremental diff. |
+| `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content and the incremental diff. |
 
 ### External reference inputs
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | envelope + ppa_targets |
 | `Design/specification/design.md` | Custom markdown | Module-level design. Passed by path to the child sub-Tasks, read-scope limited to the §1.4.1/§1.4.2/§1.6 tables (`references/child-task-contract.md`); the main thread does not read it. |
 | `Design/specification/manifest.json` | JSON (`{module, children:[{name, doc, rtl_modules, brainstorm_anchor, role}]}`) | Child roster — drives the fan-out `N = len(children[])` (every child, incl. the top-integration child). |
 | `Design/specification/<child>.md` × N | Custom markdown (frontmatter + §1–§5) | Per-child sub-design: frontmatter (`ports` / `clocks` / `features` / `file_path`) + §2 Interface / §3 Internal Behavior drive per-child RTL derivation. |
-| `Design/specification/constraints/<TOP>.{sdc,sgdc}` | SDC + SGDC | Paths handed to the child sub-Tasks as reference; annotation rules derive from the design.md tables — no read is mandated. |
 
 When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file: when the trigger carries `violations[]` / `ppa_actual[]`, they are the primary inputs (a trigger without them — e.g. coverage-rooted — falls back to Step 2's module-wide mapping). When a PPA dimension is present (`ppa_actual` non-empty), also read the sibling `reports/` or `reports_*/` subdirectory (`timing_*.rpt` / `area.rpt` / `power_*.rpt`) to locate the bottleneck down to the RTL module. The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
 
@@ -57,7 +57,7 @@ When `{rework_trigger}` is injected, read additional context from the same direc
 | `filelist.txt` | text (`#` comments + `+incdir+` + file path list) | Compile / synthesis input list — generated by `assemble` from the ledger. |
 | `README.md` | Custom markdown | `**Top module**: <top_module>` line + constraint-annotation note (SGDC + SDC) — generated by `assemble`. |
 | `.child_reports.json` | JSON ledger (`{<child>: {files, incdirs?, annotations}}`) | Reaped-report ledger — generated by `assemble`; the `seed` verb carries it forward into the next incremental/rework run. |
-| `semantic-review.json` | `references/semantic-review.schema.json` | Gating per-child intent review (Step 4.4), aggregated by the main thread on every clean-gate finalize. |
+| `semantic-review.json` | `references/semantic-review.schema.json` | Gating per-child intent review (Step 4.4), aggregated by the main thread on every clean-gate finalize — **except the freeze-reuse branch, which copies the prior `semantic-review.json` forward without re-judging** (see Freeze-reuse, so a `pin` on it survives). |
 
 The promoted full set is enumerated by `rtl finalize` — this table is the contract surface, not a mirror of it.
 
@@ -74,7 +74,7 @@ Completion Gate.
   end the turn; the harness wakes the main thread per completion (the wake is to the harness, not
   back to the caller). Reap each, and finalize only after all dispatched children have
   reported — never against a partial set.
-- **No `state.py`:** this skill does not call `state.py`.
+- **No `kernel.py`:** this skill does not call `kernel.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a
   harness-level signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the
   main thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to trigger-driven
@@ -82,8 +82,8 @@ Completion Gate.
 
 ### Step 1: Read inputs, select branch, seed if needed
 
-Read `Design/specification/result.json` (envelope + `stage_specific.top_module`) and
-`manifest.json` (the `children[]` dispatch roster: `name` + `doc` + `rtl_modules[]`). On first-run
+Read `Design/specification/result.json` (envelope) and `manifest.json` (`.module` =
+`<top_module>`; the `children[]` dispatch roster: `name` + `doc` + `rtl_modules[]`). On first-run
 the main thread reads nothing else — no `design.md`, no `<child>.md` body, no RTL.
 
 Based on whether `{rework_trigger}` is injected and whether the canonical path
@@ -113,7 +113,7 @@ The `seed` verb derives the canonical dir as `{workdir}/../..` (no hardcoded per
 and carries unchanged children's RTL + the prior `.child_reports.json` ledger forward, no-clobber.
 First-run skips it.
 
-When `{orchestrator_context_path}` is injected, Read that sibling file first as a fix-scope hint. It
+When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint. It
 takes priority over both the trigger content (trigger-driven path) and the external-reference diff
 (incremental-update path) to further narrow the modification scope.
 
@@ -167,7 +167,7 @@ than dispatched, keep waiting (do not finalize against a partial report set).
 `{"status":"done",...}`; `STATUS: BLOCKED <r>` → `{"status":"blocked","reason":"<r>"}`).
 
 **4.2 Build + topology gate** (`<manifest>` = `Design/specification/manifest.json`; `<top_module>` =
-`result.json.stage_specific.top_module`; `<design>` = `Design/specification/design.md`):
+`manifest.module`; `<design>` = `Design/specification/design.md`):
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py assemble --workdir {workdir} --manifest <manifest> --top <top_module> [--seeded]

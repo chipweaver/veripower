@@ -24,7 +24,10 @@ Your boundary:
 - **Deriving design.md requires an approved `brainstorm.md`.** `asic/{module}/brainstorm.md` must read `Status: approved` (design-flow's entry gate verifies it). A missing/draft brainstorm means the user must run `Skill(veripower:brainstorm)` first.
 - **Constraint correctness** (periods consistent, IO delays / `abstract_port`s present) is generated and self-checked by `derive-constraints` — not a human rule.
 - **`design.md` must not contain by-reference jumps.** `design.md` is the unique source of truth; downstream stages do not read `brainstorm.md`. Any `see brainstorm`, `see spec D`, `refer to brainstorm`, etc. = information loss. The referenced passage must be inlined verbatim.
+- **`design.md` and every `<child>.md` MUST reference the PPA targets by pointing at `ppa.json`, never restate the numeric target values in prose.** `ppa.json` is the single home of PPA numbers — synthesis and power-analysis bind to it directly as their acceptance standard, so a restated number in design.md prose can silently drift from the value they actually gate on. This is the one sanctioned by-reference pointer; it does not reopen the by-reference-jumps rule above (brainstorm content still must be inlined verbatim).
 - **`manifest.json` is read-only after the partition gate.** Changes to N require a fresh specification run (or re-dispatching wave 1 with new grouping before the partition gate is reconfirmed).
+- **Minimal edit on any re-dispatch with a prior valid `design.md` on disk.** Edit only what this round's task requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise a trigger-driven rework amends `design.md` only (already binding — see Step 1). Every file outside that scope — `manifest.json`, the `<child>.md` set, the constraint files — MUST stay byte-identical to the prior run.
+- **Freeze-reuse when nothing changed.** With no `{directive_path}`, run `spec classify-delta --canonical-result asic/{module}/Design/specification/result.json --brainstorm asic/{module}/brainstorm.md`. On `verdict=freeze`, run `spec seed --workdir {workdir}` (it byte-copies the prior `design.md` / `<child>.md` set / `manifest.json` / constraint files **and `spec-review.json`** into `{workdir}`, no-clobber) and **SKIP the Step-7 semantic gate wave** — do not re-invoke the LLM. The carried-forward `spec-review.json` keeps its `pin` alive: re-judging byte-identical content would regenerate the record and drop the pin. On `first-run` / `proceed`, fall through to the normal branch selection below.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -36,7 +39,7 @@ Your boundary:
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
 | `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); absent → session-resume or first-run by on-disk artifacts. |
-| `{orchestrator_context_path}` | Optional. Fix-scope hint file (Orchestrator reasoning, or forwarded triage `analysis.json`); when present, Read it first. |
+| `{directive_path}` | Optional. Fix-scope hint file (Orchestrator reasoning, or forwarded triage `result.json`); when present, Read it first. |
 
 ### External reference inputs
 
@@ -79,7 +82,7 @@ Completion Gate.
 - **Dispatch-and-wait:** after dispatching a wave's sub-Task(s), send a brief status and end the
   turn; the harness wakes the main thread per completion. Reap each, and finalize only after
   all dispatched sub-Tasks have reported — never against a partial set.
-- **No `state.py`:** this skill does not call `state.py`.
+- **No `kernel.py`:** this skill does not call `kernel.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>`
   is a harness-level signal, distinct from the `result.json.status` enum; the main thread maps it to `status=fail` + `fail_reason` listing failed children and
   defers per-child re-dispatch to trigger-driven rework.

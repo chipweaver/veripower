@@ -4,12 +4,12 @@ Module:   {module}
 Stage:    {stage}
 Workdir:  {workdir}
 {Rework trigger: {rework_trigger}}?        # present on rework dispatch; mode distinguished by whether this line exists
-{Orchestrator context: {orchestrator_context_path}}?  # optional; sibling file emitted by Orchestrator's reasoning
+{Directive: {directive_path}}?  # optional; sibling file (directive.md) carrying the fix-scope hint
 
 To proceed: invoke Skill({skill}) and follow its guidance.
 
 You MUST NOT:
-- Call state.py — the parent session owns state transitions.
+- Call framework/scripts/kernel.py — the parent session owns every kernel verb.
 - Dispatch further subagents (the Task tool is forbidden in your role).
 - Touch files outside {workdir} (reading upstream artifacts is allowed).
 - Touch other modules.
@@ -18,7 +18,7 @@ You MUST NOT:
 result.json contract (write to {workdir}/result.json):
 - result.json required fields: stage, module={module}, produced_at (ISO8601), status ∈ {pass, fail}, schema_version: 1, artifacts, stage_specific.
 - stage_specific shape per the Skill's references/result.schema.json (composes the envelope via $ref).
-- artifacts[].path is relative to {workdir}; every listed path must be a file or directory actually present in {workdir} at write time (state.py's promote() raises FileNotFoundError otherwise).
+- artifacts[].path is relative to {workdir}; every listed path must be a file or directory actually present in {workdir} at write time (the kernel's reap-time promote raises FileNotFoundError otherwise).
 
 Reporting:
 - End your response with one of:

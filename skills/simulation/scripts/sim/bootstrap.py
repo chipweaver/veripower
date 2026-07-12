@@ -17,6 +17,7 @@ Exit codes (returned as int; __main__ does sys.exit):
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -26,7 +27,7 @@ from pathlib import Path
 # This file: skills/simulation/scripts/sim/bootstrap.py
 #   parents[2] = skills/simulation   (-> templates/, ships with the skill)
 # The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
-# lives — matching state.py and the stage-subagent contract ("workdir is relative to
+# lives — matching kernel.py and the stage-subagent contract ("workdir is relative to
 # the working tree root containing asic/").
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
@@ -51,28 +52,21 @@ def _err(msg: str) -> None:
     print(f"[sim bootstrap] {msg}", file=sys.stderr)
 
 
-def infer_top_from_readme(rtl_dir: Path) -> str | None:
-    """First non-table line naming a top module -> first identifier after ':'/'：'.
-    Port of the shell's infer_top_from_readme (grep + sed). A ':' or '：' is REQUIRED; the
-    producer always emits the cross-stage contract form `**Top module**: <top>`. First match
-    wins; a first match that yields no valid identifier returns None (shell head -1 parity)."""
-    f = rtl_dir / "README.md"
+def infer_top_from_manifest(spec_dir: Path) -> str | None:
+    """Top module name from the specification manifest (`manifest.module` — the authoritative
+    structured source, spec §4.3; rtl-design / simulation-plan read the same field). Absent /
+    unreadable / no `module` / non-identifier -> None (fall back to the RTL filelist). The
+    manifest is read only for this coordinate — the top's freshness is absorbed by the tracked
+    RTL fileset (§2⑦: a real top change necessarily changes RTL bytes), so simulation does NOT
+    declare the manifest as an input."""
+    f = spec_dir / "manifest.json"
     if not f.is_file():
         return None
-    line_re = re.compile(r"(^|[*#\s])(top|top\s+module)", re.I)
-    extract_re = re.compile(r"^[^:：]*[:：]\s*([A-Za-z0-9_]+)")
-    for raw in f.read_text(errors="replace").splitlines():
-        line = raw.replace("\r", "")
-        if re.match(r"^\s*\|", line):  # skip markdown table rows
-            continue
-        if not line_re.search(line):
-            continue
-        m = extract_re.match(line)
-        if not m:
-            return None
-        top = m.group(1)
-        return top if _IDENT_RE.match(top) else None
-    return None
+    try:
+        top = json.loads(f.read_text()).get("module")
+    except (OSError, ValueError):
+        return None
+    return top if isinstance(top, str) and _IDENT_RE.match(top) else None
 
 
 def infer_top_from_filelist(rtl_dir: Path) -> str | None:
@@ -99,7 +93,7 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         _err(f"missing infra template directory: {infra}")
         return 1
 
-    # The design tree is the CWD (state.py + stage-subagent contract). Resolve a
+    # The design tree is the CWD (kernel.py + stage-subagent contract). Resolve a
     # relative workdir against it + drop trailing slash.
     tree_root = Path.cwd()
     dest = Path(workdir)
@@ -116,9 +110,12 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
     rtl_rel = os.path.relpath(rtl_dir, dest)
     spec_rel = os.path.relpath(spec_dir, dest)
 
-    # Infer TOP (README first, then filelist) BEFORE the prereq/guard (shell order).
+    # Infer TOP (manifest.module first — authoritative, spec §4.3 — then filelist) BEFORE
+    # the prereq/guard. README is no longer consulted: manifest.module is the structured
+    # source, and dropping the README read lets simulation stop declaring README as an input
+    # (it was never a verdict-dependency — D6/G4).
     if not top:
-        top = infer_top_from_readme(rtl_dir)
+        top = infer_top_from_manifest(spec_dir)
     if not top:
         top = infer_top_from_filelist(rtl_dir)
     if not top:
@@ -131,7 +128,7 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         return 1
 
     # Overwrite guard: a caller may pre-create the workdir with hint files
-    # (orchestrator-context.md etc.); only treat it as already-deployed when Makefile is present.
+    # (directive.md etc.); only treat it as already-deployed when Makefile is present.
     dest.mkdir(parents=True, exist_ok=True)
     if (dest / "Makefile").is_file():
         _err(f"infra already deployed (detected {dest / 'Makefile'})")

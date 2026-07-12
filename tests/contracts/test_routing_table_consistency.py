@@ -11,10 +11,11 @@ import json
 
 from _skills_sot import PLUGIN_ROOT, load_stage_schema
 
-from framework.scripts import state
+from framework.scripts import rules
 from framework.scripts.route import (
     ESCALATE,
     FIXED_TARGET,
+    LINT_CATEGORY,
     PA_CATEGORY,
     TRIAGE_ROOT_CAUSE,
 )
@@ -54,7 +55,7 @@ def test_triage_root_cause_matches_analysis_schema_enum():
             / "skills"
             / "simulation-triage"
             / "references"
-            / "analysis.schema.json"
+            / "result.schema.json"
         ).read_text(encoding="utf-8")
     )
     enums = _find_enums(schema, "root_cause")
@@ -63,10 +64,11 @@ def test_triage_root_cause_matches_analysis_schema_enum():
 
 
 def test_every_target_is_real_stage_or_escalate():
-    valid = set(state.FORWARD_PRIORITY) | {ESCALATE}
+    valid = set(rules.FORWARD_PRIORITY) | {ESCALATE}
     maps = {
         "PA_CATEGORY": PA_CATEGORY,
         "FIXED_TARGET": FIXED_TARGET,
+        "LINT_CATEGORY": LINT_CATEGORY,
         "TRIAGE_ROOT_CAUSE": TRIAGE_ROOT_CAUSE,
     }
     for name, m in maps.items():
@@ -75,6 +77,6 @@ def test_every_target_is_real_stage_or_escalate():
 
 
 def test_map_keys_are_real_stages():
-    stages = set(state.FORWARD_PRIORITY)
+    stages = set(rules.FORWARD_PRIORITY)
     for key in (*FIXED_TARGET, *TRIAGE_ROOT_CAUSE):
         assert key in stages, f"unknown map key: {key}"

@@ -47,22 +47,20 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
 | `{workdir}` | Current run workspace root (shared by all sub-Tasks). |
 | `{module}` | Module name. |
 | `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema). It does NOT select the branch (Step 1 classifier is TRIGGER-AGNOSTIC); on `patch` it is passed to the env-build child to narrow the rewrite scope. |
-| `{orchestrator_context_path}` | Optional. Fix-scope hint file — passed through to the env-build child (patch branch). |
+| `{directive_path}` | Optional. Fix-scope hint file — passed through to the env-build child (patch branch). |
 
 ### External reference inputs
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | Upstream gate: MUST be `status=pass` (Step 1). |
 | `Design/rtl-design/filelist.txt` | text | DUT RTL compile list — bootstrap rebases it into `rtl_filelist.f` (fails when missing); RTL enters only mechanically via this list (Iron Rule). |
 | `Design/rtl-design/README.md` | Custom markdown | `<TOP>` inference source for `sim bootstrap` (falls back to `filelist.txt`). |
-| `Verification/simulation-plan/result.json` | `skills/simulation-plan/references/result.schema.json` | Plan gate: MUST be `status=pass` (Step 1). |
 | `Verification/simulation-plan/verification-plan.md` | Custom markdown | env-build sub-Task input — passed by path; the main thread never reads the body. |
 | `Verification/simulation-plan/scaffold-specification.json` | Custom JSON | TB scaffold contract — sub-Task input; the main thread asserts existence only. |
 | canonical `Verification/simulation/` directory | promoted TB baseline | Patch/freeze branches only — passed to the Wave-1 child for `copy-baseline` seeding. |
 
 When `{rework_trigger}` is injected, you pass its path (and any
-`{orchestrator_context_path}`) to the env-build sub-Task, which reads the failed stage's
+`{directive_path}`) to the env-build sub-Task, which reads the failed stage's
 `stage_specific` to drive this round's rewrite scope.
 
 ## Output Artifacts
@@ -102,20 +100,17 @@ Completion Gate.
 - **Dispatch-and-wait:** after dispatching a wave's sub-Task, send a brief status and end the turn;
   the harness wakes the main thread per completion (the wake is to the harness, not back to the
   caller). Reap the sub-Task on its wake before the downstream gate/wave.
-- **No `state.py`:** this skill does not call `state.py`.
+- **No `kernel.py`:** this skill does not call `kernel.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a
   harness-level signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the main
   thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to trigger-driven rework.
 
 ### Step 1: Prerequisite + branch select
 
-Read `Verification/simulation-plan/result.json` (MUST be `status=pass`) and
-`Design/rtl-design/result.json` (MUST be `status=pass`), and assert the plan artifacts
-(`verification-plan.md` + `scaffold-specification.json`) exist. If any is missing or not `pass`, run
-`sim finalize --workdir {workdir} --module <module> --phase prerequisite
+Assert the plan artifacts (`verification-plan.md` + `scaffold-specification.json`) exist. If
+either is missing, run `sim finalize --workdir {workdir} --module <module> --phase prerequisite
 --fail-reason "external reference missing: <path>"` and return without dispatching. The
-main thread does not read the scaffold-spec / verification-plan body — only the envelopes + path
-existence.
+main thread does not read the scaffold-spec / verification-plan body — only path existence.
 
 Select the branch by running the classifier (before dispatching any wave):
 
@@ -132,7 +127,7 @@ the classifier `reason` in the completion summary every run.
 
 **TRIGGER-AGNOSTIC:** `{rework_trigger}` does **not** force a branch — the verdict is decided
 solely by whether the plan + scaffold match the canonical baseline. A freeze verdict stands even
-when `{rework_trigger}` is injected. On the `patch` branch only, the trigger (+ any `{orchestrator_context_path}`) is still passed to the env-build child to narrow the rewrite scope.
+when `{rework_trigger}` is injected. On the `patch` branch only, the trigger (+ any `{directive_path}`) is still passed to the env-build child to narrow the rewrite scope.
 
 Pre-gate `{rework_trigger}` readability before dispatching any wave: if the trigger path is
 unreadable, run `sim finalize --workdir {workdir} --module <module> --phase prerequisite
@@ -333,7 +328,7 @@ The `failure_phase` value table below documents which step decides each phase; f
 
 | failure_phase | First-failing phase | Companion fields (besides `fail_reason`) | Decided in |
 |---|---|---|---|
-| `prerequisite` | Step 1 reference missing / not pass, or `{rework_trigger}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]`; or freeze `STATUS: BLOCKED <reason>` (sim copy-baseline setup failure) | — | main thread |
+| `prerequisite` | Step 1 reference missing, or `{rework_trigger}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]`; or freeze `STATUS: BLOCKED <reason>` (sim copy-baseline setup failure) | — | main thread |
 | `compile` | `make simv` failed (no smoke status); or `sim finalize` thin-D1 file missing / `TODO(` residue | — | smoke gate (Step 3) / finalize (Step 6) |
 | `smoke` | `make smoke` ran but a `RESULT` line is not `PASS` | `failing_cases` | smoke gate (Step 3) |
 | `conformance` | Conformance gate (Step 4): a finding `category ∈ {missing,wrong-behavior,fake-green,intent-defect}` at `critical`/`important` | `conformance_findings` | conformance gate (Step 4) |

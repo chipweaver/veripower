@@ -3,7 +3,7 @@
 The simulation main thread dispatches one Level-1 `Task(run_in_background=True)` — the
 conformance reviewer — as Wave 2 (Step 4) AFTER the deterministic smoke gate passes
 and BEFORE the verify wave. This review is **gating**: findings above the threshold in
-`SKILL.md` Step 4 set the stage `status=fail` (`failure_phase=conformance`). Do not call the Task tool (no Level-2 dispatch) and do not call `state.py`.
+`SKILL.md` Step 4 set the stage `status=fail` (`failure_phase=conformance`). Do not call the Task tool (no Level-2 dispatch) and do not call `kernel.py`.
 
 **Not dispatched on a TB-freeze re-run.** When the Step-1 classify-delta verb returns `verdict=freeze`
 (the TB is copied byte-identical and the plan is unchanged), the main thread does NOT dispatch this

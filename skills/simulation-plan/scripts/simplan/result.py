@@ -4,6 +4,7 @@ import re
 import sys
 from pathlib import Path
 
+from simplan.classify import input_digest
 from simplan.review import gate_verdict
 
 STAGE = "simulation-plan"
@@ -26,10 +27,23 @@ def _envelope(module, *, status, stage_specific, artifacts) -> dict:
 
 
 def _write_result(workdir: Path, env: dict) -> None:
-    (workdir / "result.json").write_text(json.dumps(env, indent=2) + "\n")
+    tmp = workdir / "result.json.tmp"
+    tmp.write_text(json.dumps(env, indent=2) + "\n")
+    tmp.replace(workdir / "result.json")  # atomic: never observed half-written
     sys.stdout.write(
         f"[simplan finalize] Written: {workdir / 'result.json'} (status={env['status']})\n"
     )
+
+
+def _record_input_digest(ss: dict, workdir: Path) -> None:
+    """Record the declared-input digest for the next run's classify-delta freeze
+    check; silently skipped if the inputs aren't readable (safe no-freeze fallback)."""
+    try:
+        ss["input_digest"] = input_digest(
+            workdir.parents[3] / "Design" / "specification"
+        )
+    except (OSError, IndexError):
+        pass
 
 
 def count_features(plan_md: str) -> int:
@@ -87,6 +101,7 @@ def build_result(workdir, module, *, waived, status, revision) -> int:
             },
             "plan_adequacy_gate": gate,
         }
+        _record_input_digest(ss, workdir)
     else:
         reason = (
             "user rejected plan"

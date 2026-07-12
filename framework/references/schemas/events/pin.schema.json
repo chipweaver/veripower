@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/schemas/events/pin.schema.json",
+  "type": "object",
+  "required": ["ts", "type", "oracle_ref", "content_fingerprint", "provenance", "reason"],
+  "additionalProperties": true,
+  "properties": {
+    "ts": {"type": "string"},
+    "type": {"const": "pin"},
+    "oracle_ref": {"type": "string"},
+    "content_fingerprint": {"type": "string"},
+    "provenance": {"type": "string"},
+    "reason": {"type": "string", "pattern": ".*\\S.*"}
+  }
+}

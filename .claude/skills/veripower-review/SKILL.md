@@ -88,8 +88,8 @@ finding — see §4). Apply the lenses a surface warrants.
   rule means `must` / `never`.
 - **Same-change guard** — Does a change that adds a structured thing ship its guard in the same
   change? *Shape:* a new `result.json` / event field with no validation test; a new advisory artifact
-  with no validator its producer runs before emitting; a new DAG stage missing from a `topology.py`
-  map, its scenario tests, or the orchestrator update.
+  with no validator its producer runs before emitting; a new rule missing from `rules.py:RULES`,
+  its scenario tests, or the orchestrator update.
 - **Invariant residue (no runtime backstop)** — Does the change hold the two invariants code cannot
   sandbox — stage isolation and scripted verdict gates? *Shape:* a `Task()` inside a Task-dispatched
   stage's sub-Task, or the dispatcher full-file-Reading such a stage's SKILL.md to inline it; a
@@ -137,7 +137,7 @@ with `/`→`-`). This area is gitignored — the report is not committed.
 
 ## Boundaries
 
-- Read-only: never edit code; never touch `task.json` / `events.jsonl` / git state.
+- Read-only: never edit code; never touch `events.jsonl` or git state.
 - Advisory: findings inform; they block nothing. Keep this judgment-heavy review on-demand,
   never wired in as a standing pass/fail gate.
 - One pass, but a complete one: cover every changed surface, not a sample. Run no multi-pass recall
