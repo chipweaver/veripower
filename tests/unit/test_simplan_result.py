@@ -227,6 +227,21 @@ def test_count_features_ignores_s5_revision_mentions():
     assert vs.count_features(md) == 1
 
 
+def test_count_features_not_shadowed_by_decoy_heading():
+    # a heading merely MENTIONING testpoints must not capture the section — the
+    # pattern anchors to the start of the heading text
+    md = (
+        "## 1.3 Overview of Testpoints strategy\nprose citing F-77\n"
+        "## 3. Testpoints Table\n| TP-1 | F-01 | x |\n| TP-2 | F-02 | y |\n"
+    )
+    assert vs.count_features(md) == 2  # F-01/F-02, not F-77
+
+
+def test_count_features_case_insensitive_heading():
+    md = "## 3. TESTPOINTS TABLE\n| TP-1 | F-01 | x |\n"
+    assert vs.count_features(md) == 1
+
+
 # ── artifacts[] enumeration (fixed 3-entry set, present-only, no self-listing) ─
 def test_enumerate_artifacts_fixed_set_with_kinds(tmp_path):
     wd = _finalize_workdir(tmp_path)
@@ -369,6 +384,28 @@ def test_input_digest_skipped_off_layout(tmp_path):
     assert "products_digest" in ss  # workdir-relative, recorded regardless
 
 
+def test_input_digest_layout_check_is_lexical_not_physical(tmp_path):
+    # the layout check must key on the as-invoked names: a deployment that symlinks
+    # a layout segment to a differently-named store keeps its freeze eligibility
+    from simplan import classify
+
+    root = tmp_path / "asic" / "m"
+    store = root / "verif-store"
+    (store / "simulation-plan" / "runs" / "1").mkdir(parents=True)
+    (root / "Verification").symlink_to(store, target_is_directory=True)
+    spec_dir = root / "Design" / "specification"
+    spec_dir.mkdir(parents=True)
+    (spec_dir / "design.md").write_text("D", encoding="utf-8")
+    (spec_dir / "manifest.json").write_text('{"module":"m"}', encoding="utf-8")
+
+    wd = root / "Verification" / "simulation-plan" / "runs" / "1"
+    _finalize_workdir(wd)
+    assert vs.build_result(wd, module="m", waived=None, status=None, revision=None) == 0
+
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["input_digest"] == classify.input_digest(spec_dir)
+
+
 # ── early-fail entry (--fail-reason): routable fail, present-only carry ──────
 def test_finalize_earlyfail_empty_workdir(tmp_path):
     # Step-1/2 early fail: nothing generated yet — finalize must still write a
@@ -418,7 +455,9 @@ def test_finalize_blocked_on_empty_fail_reason(tmp_path):
     assert not (tmp_path / "result.json").exists()
 
 
-def test_pass_ignores_fail_reason(tmp_path):
+def test_fail_reason_without_status_fail_is_blocked(tmp_path):
+    # an unpaired --fail-reason is a caller slip about to invert a failure into a
+    # computed pass — refused loudly, never silently discarded
     wd = _finalize_workdir(tmp_path)
     rc = vs.finalize(
         wd,
@@ -426,12 +465,39 @@ def test_pass_ignores_fail_reason(tmp_path):
         waived_json=None,
         status=None,
         revision=None,
-        fail_reason="should be ignored",
+        fail_reason="user rejected plan",
     )
-    assert rc == 0
-    env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "pass"
-    assert "fail_reason" not in env["stage_specific"]
+    assert rc == 2
+    assert not (wd / "result.json").exists()
+
+
+def test_bare_status_fail_without_review_is_blocked(tmp_path):
+    # a user reject can only follow Step 4/5 — with no judged record on disk a bare
+    # --status fail would fabricate a human rejection that never happened
+    (tmp_path / "verification-plan.md").write_text("PLAN", encoding="utf-8")
+    rc = vs.finalize(tmp_path, "m", waived_json=None, status="fail", revision=None)
+    assert rc == 2
+    assert not (tmp_path / "result.json").exists()
+
+
+def test_waived_on_fail_without_review_is_blocked(tmp_path):
+    # a well-formed waiver must never silently vanish from the promoted fail
+    waived = json.dumps(
+        [
+            {
+                "tp_id": "TP-X",
+                "lens": "coverage",
+                "location": "§3",
+                "classification": "accepted-risk",
+                "reason": "operator judgment",
+            }
+        ]
+    )
+    rc = vs.finalize(
+        tmp_path, "m", waived_json=waived, status="fail", revision=None, fail_reason="x"
+    )
+    assert rc == 2
+    assert not (tmp_path / "result.json").exists()
 
 
 def test_fail_with_corrupt_plan_review_is_blocked(tmp_path):
