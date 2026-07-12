@@ -24,7 +24,7 @@ consumer (orchestrator, tests, debugging tools) validates against it.
 ### `references/schemas/events/` — audit-log schema
 
 Schemas for `asic/<module>/events.jsonl` entries (one schema file per event
-type: `dispatch`, `outcome`, `diagnosis`, `epoch`, `pin`, `reopen`, `escalation`).
+type: `dispatch`, `outcome`, `diagnosis`, `pin`, `reopen`, `escalation`).
 Events are written by `kernel.py` — the sole state file, no `task.json` snapshot —
 and **readable by anyone debugging or auditing a pipeline run** — not just the
 writer.
@@ -38,8 +38,8 @@ documents in its SKILL.md input table.
 
 ### `scripts/kernel.py` — the kernel CLI
 
-The SOLE writer of `events.jsonl`. Ten verbs: `decide`, `dispatch`, `reap`,
-`diagnose`, `escalate`, `epoch`, `pin`, `reopen`, `status`, `consequences`
+The SOLE writer of `events.jsonl`. Nine verbs: `decide`, `dispatch`, `reap`,
+`diagnose`, `escalate`, `pin`, `reopen`, `status`, `consequences`
 (flags via `kernel.py <verb> --help`). The `design-flow` Orchestrator loops
 `decide` → execute the one returned action.
 

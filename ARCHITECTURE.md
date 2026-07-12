@@ -32,7 +32,6 @@ Core coined terms, each defined once here and elaborated in the linked section. 
 | **oracle & grade** | The judge that decided a proof, `(ref, grade)` with `grade ∈ {tool, human, proposed}`. A tool oracle is authoritative; a `proposed` (LLM-authored) oracle can be ratcheted to `human` only by a `pin`. (§4.5) |
 | **objective** | The goal a `decide` call is scheduling toward: `delivery`, `repair`, or `signoff`. It picks the required-proof set. (§5.1) |
 | **disposition** | The scheduler's decision for one *fresh* failure: auto-rebuild, triage, or escalate — gated by the reliability of any diagnosis attached to it. (§5.3) |
-| **epoch** | A conservative anchor event. Under a conservative/signoff objective, only proofs that landed *after* the latest epoch count as reusable. (§4.5, §5.5) |
 | **reap** | Closing an in-flight run with `kernel.py reap` (no verdict flag): `cmd_reap` reads the run's `result.json`, promotes artifacts, and appends the `outcome` (and, for triage, a `diagnosis`). (§5.6) |
 | **promote** | The per-entry hardlink merge from `runs/<N>/` to the canonical stage dir, run by `cmd_reap` on pass *and* fail. Idempotent. (§7.2) |
 | **projection** | The per-rule status cell (`valid / stale / failed / blocked / in-flight / missing`) `facts.projection` computes purely from the event log + disk. Replaces any stored status snapshot. (§4.6) |
@@ -108,16 +107,16 @@ The three dispatch paths from the Orchestrator:
 
 | Module | Responsibility |
 |---|---|
-| `kernel.py` | The CLI and the **sole writer** of `events.jsonl`. Ten verbs: `decide`, `dispatch`, `reap`, `diagnose`, `escalate`, `epoch`, `pin`, `reopen`, `status`, `consequences`. Every verb prints a JSON envelope. |
+| `kernel.py` | The CLI and the **sole writer** of `events.jsonl`. Nine verbs: `decide`, `dispatch`, `reap`, `diagnose`, `escalate`, `pin`, `reopen`, `status`, `consequences`. Every verb prints a JSON envelope. |
 | `rules.py` | The rule registry (`RULES`) — the SSoT for what the kernel schedules and the *source* of the dependency graph (§3). Also `FORWARD_PRIORITY`, `PIPELINE_INPUTS`, `ADVISORY_ORDER`, and the derivation helpers `producer_of` / `input_producers` / `input_closure` / `sort_prereqs`. Dependency-light leaf. |
 | `facts.py` | Event-log I/O (`read_events` / `append_event`, schema-validating), content fingerprints (`fingerprint`), and the freshness queries built on them — `proof_valid`, `input_available`, `projection`. Owns nothing mutable; everything is computed from the log + disk. |
-| `schedule.py` | The scheduler: `decide(objective) → exactly one action`. Pure over (disk, log, args); composes `route.py`. Owns the objective→required-proof map, the fresh-failure disposition, and the conservative/signoff gate. |
+| `schedule.py` | The scheduler: `decide(objective) → exactly one action`. Pure over (disk, log, args); composes `route.py`. Owns the objective→required-proof map, the fresh-failure disposition, and the signoff gate. |
 | `route.py` | Pure deterministic rework-target selection — the **single home** of the static failure→target maps (`PA_CATEGORY`, `FIXED_TARGET`, `LINT_CATEGORY`, `TRIAGE_ROOT_CAUSE`). Holds no state; composed unchanged inside `schedule.py` and `kernel.py`. |
 | `store.py` | Filesystem artifact-lifecycle helpers (`promote`, `_mirror_subagent_trace`). Imported by `kernel.py`'s reap path; never invoked directly. |
 
 The event schemas at `framework/references/schemas/events/<type>.schema.json` (7 of them, §4.2) and the result envelope at `framework/references/schemas/envelope.schema.json` complete the core.
 
-> **Black-box discipline.** The Orchestrator invokes `kernel.py` by its documented command lines (flags via `<verb> --help`, each verb prints a JSON envelope) and never reads the framework scripts' source. On a non-zero exit or an `ok:false` envelope it follows the documented failure protocol (open an epoch, fix the objective, escalate the `ok:false`), never patches around it.
+> **Black-box discipline.** The Orchestrator invokes `kernel.py` by its documented command lines (flags via `<verb> --help`, each verb prints a JSON envelope) and never reads the framework scripts' source. On a non-zero exit or an `ok:false` envelope it follows the documented failure protocol (fix the objective, escalate the `ok:false`), never patches around it.
 
 ### 2.3 Main-thread-loaded stages and the pre-pipeline brainstorm
 
@@ -140,7 +139,7 @@ The `execution` field on each `Rule` (`"main-thread"` or `"task"`) is what the O
 
 | **Role** | **Carrier** | **Responsibilities** | **Capability boundaries** |
 |---|---|---|---|
-| **Orchestrator agent** | `design-flow` skill, main conversation | Execute the one action each `decide` returns; author the per-dispatch `directive` (its one judgment channel); propose `epoch` / `pin` / `reopen` / human `diagnose` on explicit user intent; escalate; collaborate with the user. Also acts as the main-thread executor for the four main-thread rules. | The only role that may call `kernel.py`, use the Task tool, and interact with the user. Authors NO event by hand — every event is written by `kernel.py`. |
+| **Orchestrator agent** | `design-flow` skill, main conversation | Execute the one action each `decide` returns; author the per-dispatch `directive` (its one judgment channel); propose `pin` / `reopen` / human `diagnose` on explicit user intent; escalate; collaborate with the user. Also acts as the main-thread executor for the four main-thread rules. | The only role that may call `kernel.py`, use the Task tool, and interact with the user. Authors NO event by hand — every event is written by `kernel.py`. |
 | **Main-thread skill** | one of the four main-thread rules, loaded via `Skill()` | Self-driven work in the Orchestrator's thread: sub-Task fan-out (producers, simulation), multi-turn dialogue (simulation-plan), or a single review dispatch. Each writes its own artifacts + `result.json`. | May dispatch Level-1 sub-Tasks (producers / simulation) or interact with the user (simulation-plan; specification at its two path-handoff gates). No `kernel.py`, no routing. Held by SKILL.md prose discipline, not tool gating. |
 | **Stage subagent** | the five Task-dispatched rules (`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis` / `frontend-signoff`) | Execute one rule: read upstream → do the work → write `result.json` → return a STATUS line | Must NOT call `kernel.py` or make routing decisions (§6.1) |
 | **Debug subagent** | `simulation-triage`, dispatched via Task | Graduated (L1 log+code+FSDB reasoning → L2 controlled experiment) root-cause analysis on a simulation failure; writes a `result.json` whose `stage_specific` carries the attribution the kernel turns into a `diagnosis` at reap (§6.4) | Canonical read-only, scratch-writable under its own workdir; never edits any other rule's `result.json`, RTL, or tests; NOT idempotent (a repeat re-runs L2) |
@@ -149,7 +148,7 @@ The `execution` field on each `Rule` (`"main-thread"` or `"task"`) is what the O
 
 ### 2.5 Core design principles
 
-- **Judgment in the Orchestrator, state and scheduling in the kernel** — the determinism boundary. The Orchestrator makes exactly two kinds of judgment call: which `directive` text to author for a dispatch, and whether to propose an `epoch` / `pin` / `reopen` / human `diagnose` (all on explicit user intent). Everything else — what to run next, whether a proof is valid, where a failure routes — is computed by `kernel.py decide`. The Orchestrator is a thin executor: it calls `decide`, executes the one returned action, and loops.
+- **Judgment in the Orchestrator, state and scheduling in the kernel** — the determinism boundary. The Orchestrator makes exactly two kinds of judgment call: which `directive` text to author for a dispatch, and whether to propose a `pin` / `reopen` / human `diagnose` (all on explicit user intent). Everything else — what to run next, whether a proof is valid, where a failure routes — is computed by `kernel.py decide`. The Orchestrator is a thin executor: it calls `decide`, executes the one returned action, and loops.
 - **Decision boundary = tool boundary.** Every scheduling decision is pushed down to `decide`. Its verifiable form: *two consecutive state-mutating kernel calls with no `decide` between them is a bug.*
 - **Files are the database.** `events.jsonl` is the durable log; `result.json` files are stage outputs; everything else (status, freshness, in-flight) is a pure function of those. No intermediate cache, no service-side store. The `.fingerprint-cache.json` under a module is a pure mtime/size speed cache — never a fact source.
 - **Compaction-safe resume.** Because files are the database and the Orchestrator holds *zero* durable control state between turns, a mid-session context compaction or process crash is survivable: every turn re-derives the next action from disk via `decide`. The only conversation-resident state is the `directive` text authored for the next dispatch — re-derivable, and once passed to `dispatch` it is disk-backed as `directive.md`.
@@ -244,19 +243,18 @@ Because the log is the state, in-flight is derived too: `facts.in_flight` = ever
 
 ### 4.2 The seven event types
 
-`events.jsonl` carries **7 event types**, each validated by `framework/references/schemas/events/<type>.schema.json`. `kernel.py` is the sole writer of all seven — there is no channel by which an agent prompt can inject a raw event.
+`events.jsonl` carries **6 event types**, each validated by `framework/references/schemas/events/<type>.schema.json`. `kernel.py` is the sole writer of all six — there is no channel by which an agent prompt can inject a raw event.
 
 | **type** | **Written by (verb)** | **Purpose / key fields** |
 |---|---|---|
-| `dispatch` | auto (`dispatch`) | Opens a run: `rule`, `run`, `workdir`, `params` (incl. the `directive` path+digest), `objective`, optional `conservative`, `diagnosis_refs`, and — for proof-producing rules only — the consumed `inputs` version table (the sole source of `proof.inputs`). |
+| `dispatch` | auto (`dispatch`) | Opens a run: `rule`, `run`, `workdir`, `params` (incl. the `directive` path+digest), `objective`, `diagnosis_refs`, and — for proof-producing rules only — the consumed `inputs` version table (the sole source of `proof.inputs`). |
 | `outcome` | auto (`reap`) | Closes a run: `verdict ∈ {pass, fail, blocked}`, the produced `outputs` version table (incl. the canonical `result.json`), `proofs[]`, `tool_versions`, optional `reason` (the blocked sub-class). |
 | `diagnosis` | auto for triage (`reap`); human via `diagnose` | A failure attribution. Required (per `diagnosis.schema.json`): `id`, `subject {proof, outcome_run}`, `attribution`, `evidence`, `source ∈ {triage, human}`. Optional: `fix_owner`, `fix_locus`, `confidence`, `supersedes`; `provenance` (required for `human`, enforced by `diagnose`). |
-| `epoch` | `epoch` | A conservative anchor: `objective`, `provenance`, `reason`. Only proofs after the latest epoch count under a conservative/signoff objective (§5.5). |
 | `pin` | `pin` | Ratchets a `proposed` oracle toward `human`: `oracle_ref`, `content_fingerprint` (recorded at pin time), `provenance`, `reason`. |
 | `reopen` | `reopen` | Retires a pin: `pin_ref`, `reason`. Invalidates any proof whose oracle was reopened after it landed (§4.4). |
 | `escalation` | `escalate` | Records that the flow handed a decision to the user: `reason`, `open_question`, optional `candidates`. |
 
-`dispatch` / `outcome` are pure side-effects of running work. The triage `diagnosis` is derived at reap from the triage run's `result.json` (§5.3). The other five verbs (`diagnose`-human, `epoch`, `pin`, `reopen`, `escalate`) carry the Orchestrator's/user's judgment — but they still go through `kernel.py`, which validates and (for `diagnose`/`pin`) enforces structural correlates the schema alone cannot express (§5.3, §4.5). All events carry a UTC ISO8601 `ts` written first in the record.
+`dispatch` / `outcome` are pure side-effects of running work. The triage `diagnosis` is derived at reap from the triage run's `result.json` (§5.3). The other four verbs (`diagnose`-human, `pin`, `reopen`, `escalate`) carry the Orchestrator's/user's judgment — but they still go through `kernel.py`, which validates and (for `diagnose`/`pin`) enforces structural correlates the schema alone cannot express (§5.3, §4.5). All events carry a UTC ISO8601 `ts` written first in the record.
 
 ### 4.3 Content fingerprints
 
@@ -282,7 +280,7 @@ The consequence: editing any file a proof touched — an input, an output, or th
 
 **Input availability** (`facts.input_available`) is the dispatch-time counterpart: a consumer's input glob is available iff it is the external `brainstorm.md` (need only exist), OR its producer never ran (true cold start — forward scheduling will run the producer first), OR the producer's latest outcome recorded a matching, still-fresh output AND that producer's proof is currently valid. A producer that has run but matches nothing (recorded or on disk) is genuinely absent → unavailable (the conservative direction — never dispatch a consumer against a silently missing input). A self-produced input (in∩out — an input glob whose producer, per the derived graph, is the consuming rule itself, e.g. `lint-cdc`'s own `scripts/waiver.tcl`) is exempt from self-locking: with no prior outcome it is dispatchable (cold start), otherwise compared against the rule's own recorded outputs. The exemption is derived from the `inputs`/`outputs` selectors (`producer_of(glob) == consumer`); there is no separate declaration for it.
 
-### 4.5 Oracle grades, pins, and epochs
+### 4.5 Oracle grades and pins
 
 Each proof's `oracle` is `(ref, grade)`. The grade is *derived at reap* by `kernel._graded`:
 
@@ -292,8 +290,6 @@ Each proof's `oracle` is `(ref, grade)`. The grade is *derived at reap* by `kern
 A pin is **live** iff no `reopen` naming its `oracle_ref` appears after it in event order (membership tracked per-event, so `pin → reopen → pin` correctly yields a live pin again). The oracle content a pin fingerprints is the rule's `oracle_selector` glob (e.g. `simulation`'s `tb/uvm/refmodel/*` — the pin endorses the *judge* itself, which survives runs; when the LLM regenerates the refmodel, the content fingerprint diverges and the grade drops back to `proposed` at the next reap). An unreadable oracle content (`UNKNOWN`) never inherits trust.
 
 This is the machinery behind the trust boundary (§2.5): `pin`/`reopen` are the only levers that move a judge across the proposed↔human line, they are ask-gated, and the ratchet is content-anchored so trust cannot silently outlive the thing it was granted for.
-
-An **epoch** is an orthogonal conservative anchor. `kernel epoch` appends an `epoch` event; under a conservative or `signoff` objective a proof counts as reusable only if it is valid *and* its outcome landed after the latest epoch (`schedule._reusable`). This lets a human demand "re-verify everything from here, don't trust anything older" without editing a single artifact. With no epoch on record, a conservative `decide` hard-errors "open an epoch first" rather than silently falling back (§5.5).
 
 ### 4.6 The projection
 
@@ -320,7 +316,7 @@ The Orchestrator runs one deterministic step per turn:
 
 ```
 loop:
-  a = kernel.py decide --module <M> --objective <obj> [--conservative] [--wake <rule>:<run>]
+  a = kernel.py decide --module <M> --objective <obj> [--wake <rule>:<run>]
   execute(a)                       # a.action ∈ {DISPATCH, REAP, YIELD, DONE, ESCALATE}
   if a.action in {YIELD, DONE, ESCALATE}: end turn
 ```
@@ -332,7 +328,7 @@ loop:
 The `objective` the Orchestrator carries as a session value picks what `decide` schedules toward (`schedule.required_proofs`):
 
 - **`delivery`** (default) — forward-build the whole DAG *except* `frontend-signoff` (the eight non-signoff proofs).
-- **`signoff`** (only on explicit user request) — all nine proofs, and it *forces* conservative (§5.5).
+- **`signoff`** (only on explicit user request) — all nine proofs, and it arms the signoff gate (§5.5).
 - **`repair`** — the single latest-failing rule's proof. The Orchestrator switches to `repair` when a `delivery` `decide` returns an auto-rebuild `DISPATCH` (`needs_directive: true`), narrowing subsequent `decide`s to rebuilding just the closure that re-verifies the failing proof, then switches back to `delivery` when `repair` returns `DONE`.
 
 ### 5.2 The five actions and the decision steps
@@ -384,23 +380,20 @@ All static failure→target selection lives in `route.py` — a pure, stateless 
 
 `route.route` is total: any value outside a known enum falls through to a named `unrouted*` `ESCALATE`, never a `KeyError` and never a silent drop. For the exact maps and rule identifiers, read `framework/scripts/route.py` and `tests/unit/test_route.py` (the exhaustive behavioral spec).
 
-### 5.5 Conservative reuse, epochs, and signoff closure
-
-`schedule._reusable(proof, conservative)` is the gate on "may I reuse this proof instead of rebuilding it?": always requires `proof_valid`; under `conservative` (which `signoff` forces) it *additionally* requires the proof's outcome to have landed after the latest `epoch` anchor. No epoch on record under conservative is a hard error, not a silent pass — the Orchestrator must `kernel.py epoch` first.
+### 5.5 Signoff closure
 
 Closing signoff is the strictest gate in the system (`schedule._signoff_gate`, re-checked at dispatch time). Before `frontend-signoff` may dispatch under `objective=signoff`, *every other* proof must:
 
-1. be reusable post-anchor (valid and after the epoch),
-2. carry an oracle grade of `tool` or `human` — a `proposed` oracle blocks signoff ("pin it"), and
-3. carry no `UNKNOWN` recorded version.
+1. be currently valid (§4.4),
+2. carry an oracle grade of `tool` or `human` — a `proposed` oracle blocks signoff ("pin it"),
+3. carry no `UNKNOWN` recorded version, and
+4. have no out-of-band **added** input: a file on disk that matches the rule's input selectors but is absent from the proof's recorded inputs was never verified by any run. Edits and deletes of recorded files already invalidate the proof (§4.4); an add escapes the recorded-set checks, so the gate re-globs the selectors here — the daily delivery/repair path keeps the cheap recorded-set check.
 
 Any failure returns an `ESCALATE` naming the offending proof; the Orchestrator surfaces it (typically "pin the proposed oracle" — a human `pin`, §2.5). The gate iterates `FORWARD_PRIORITY` in order so the escalation reason is deterministic. This is where the trust boundary bites: a pipeline can *deliver* on LLM-proposed oracles, but it cannot *sign off* until a human has pinned each proposed judge to `human` grade.
 
-**Re-verify, don't regenerate.** A conservative/signoff pass re-checks proofs via deterministic fingerprint comparison; it does *not* rebuild a still-valid stage. When a proof is invalid and must be re-run, the LLM-authored inputs it depends on (design.md, RTL, review records) are frozen and reused, not regenerated — the killer is re-generation, not re-verification. Freezing is a per-skill obligation (e.g. `simulation`'s TB-freeze path); the kernel's role is only to recognize the still-valid proof and skip it.
-
 ### 5.6 Dispatch, reap, and the directive channel
 
-**Dispatch.** `kernel.py dispatch --rule <r> --objective <o> [--conservative] [--directive <file|->] [--diagnosis-refs …] [--params <json>]` re-checks dispatchability, records the `dispatch` event (allocating `run = prior runs + 1` and creating `runs/<N>/`), and returns `{ok, rule, run, workdir, skill, execution}`. For proof-producing rules it snapshots the consumed `inputs` version table into the event (the sole source of `proof.inputs`). The Orchestrator branches on the returned `execution`: `main-thread` → `Skill(veripower:<skill>)` (synchronous; the next `decide` reaps it); `task` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered template>)` (async; reaped on a later wake).
+**Dispatch.** `kernel.py dispatch --rule <r> --objective <o> [--directive <file|->] [--diagnosis-refs …] [--params <json>]` re-checks dispatchability, records the `dispatch` event (allocating `run = prior runs + 1` and creating `runs/<N>/`), and returns `{ok, rule, run, workdir, skill, execution}`. For proof-producing rules it snapshots the consumed `inputs` version table into the event (the sole source of `proof.inputs`). The Orchestrator branches on the returned `execution`: `main-thread` → `Skill(veripower:<skill>)` (synchronous; the next `decide` reaps it); `task` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered template>)` (async; reaped on a later wake).
 
 **The directive** is the Orchestrator's one judgment channel into a dispatch: a per-dispatch, reasoned markdown instruction that helps the target — never a log/dump, never data the subagent already reads from canonical files. `dispatch` writes it to `<workdir>/directive.md` and records its path + digest in the event's `params`; it is never promoted and never enters `result.json.artifacts`. Two disciplined uses:
 
@@ -494,7 +487,7 @@ Subagents always write to `runs/<N>/` (the workdir from `dispatch`); they never 
 
 > **Contract:** Promote is idempotent. A crash mid-promote may leave a stale `.promote-tmp/`; the next reap that promotes this stage re-runs `promote()`, which clears any leftover `.promote-tmp/` before starting and rebuilds the same hardlinks (a no-op), landing exactly one `outcome`. This is what lets the append-only log survive a crash mid-promote.
 
-> **Contract (room-birth hygiene):** A run's workdir is born **without adjudication artifacts**: `result.json` and the judged review records are never seeded into a fresh room, so a workdir `result.json` exists iff this run's executor authored it — and reap enforces the temporal half mechanically (`produced_at` predating the run's dispatch → `blocked` / `stale_result`, §4.7). Carrying prior *products* forward (the rework/incremental minimal-edit baseline) is each skill's explicit, whitelisted act inside its own branch logic — the branch decisions (freeze/rework/patch/first-run) happen after dispatch, inside the skill, which is why seeding is not a kernel responsibility. The single exception to the review-record exclusion is the freeze branch's byte-carry of its own judged review record (`seed --freeze`; simulation's freeze-mode `copy-baseline`), whose purpose is `pin` survival over byte-identical content.
+> **Contract (room-birth hygiene):** A run's workdir is born **without adjudication artifacts**: `result.json` and the judged review records are never seeded into a fresh room, so a workdir `result.json` exists iff this run's executor authored it — and reap enforces the temporal half mechanically (`produced_at` predating the run's dispatch → `blocked` / `stale_result`, §4.7). Carrying prior *products* forward (the rework/incremental minimal-edit baseline) is each skill's explicit, whitelisted act inside its own branch logic — the branch decisions (rework/incremental/first-run; simulation's freeze/patch) happen after dispatch, inside the skill, which is why seeding is not a kernel responsibility. The single exception to the review-record exclusion is simulation's freeze-mode `copy-baseline` byte-carry of its own judged `conformance-review.json`, whose purpose is `pin` survival over byte-identical content.
 
 ### 7.3 Disk management
 

@@ -20,7 +20,6 @@ Your boundary:
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
 - **Do not read RTL source, do not invoke EDA tools, and do not write `tb/uvm/` / `Makefile` / `vcd/`.** These belong to the TB-materialization stage.
 - **Minimal edit on any re-dispatch with a prior valid `verification-plan.md` / `scaffold-specification.json` on disk.** Edit only what this round's task requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise the violation-type targeting table (Decision Rules) or the incremental-update branch's spec-vs-baseline comparison sets the scope (already binding — see Step 1/Step 3: "unaffected parts... preserved verbatim"). Every section outside that scope MUST stay byte-identical to the prior run.
-- **Freeze-reuse when nothing changed** — see the Step-1 branch list's freeze branch; never re-judge byte-identical content (it would regenerate `plan-review.json` and drop its `pin`).
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Fan-out Dispatch Contract
@@ -40,14 +39,14 @@ Your boundary:
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (field names per that stage's schema); absent → Step 1 selects freeze / session-resume / incremental-update / first-run. |
+| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (field names per that stage's schema); absent → Step 1 selects session-resume / incremental-update / first-run. |
 | `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger's attribution fields. |
 
 ### External reference inputs
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | `specification` envelope — existence-checked at Step 1; its recorded digests feed the Step-1 `classify-delta` branch selection. You do not consume `ppa_targets`. |
+| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | `specification` envelope — existence-checked at Step 1. You do not consume `ppa_targets`. |
 | `Design/specification/design.md` | Custom markdown | Module-level design (§1.1–1.6: features / IO / interconnects / timing scenarios / clocks). Per-submodule content lives in each `<child>.md`. |
 | `Design/specification/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; child roster — drives per-child `§5` consumption by `simplan derive-plan-data`. |
 | `Design/specification/<child>.md × N` | Custom markdown | Only `§5 Verification Hints` is consumed (via `simplan derive-plan-data`, tagging `check_hints[]` with `child`). |
@@ -62,7 +61,7 @@ When `{rework_trigger}` is injected, read additional context from the same direc
 | `verification-plan.md` | Custom markdown (section outline below); after the review loop carries frontmatter `Status: approved` | Human-readable review anchor — drives the Step-5 user loop. |
 | `scaffold-specification.json` | Custom JSON (field convention below); written after the Plan Gate | Machine-read contract (drives TB-materialization bootstrap + scaffold generation). |
 | `plan-review.json` | `references/plan-review.schema.json` | Gating plan-adequacy review (Step 4 aggregate); promoted — the resume-guard re-reads the promoted copy. |
-| `plan-data.json` | Custom JSON (derived by `simplan derive-plan-data`) | Intermediate cache, re-derived on every Step-3 pass (the freeze branch skips Step 3); **not** placed in `result.json.artifacts[]`. |
+| `plan-data.json` | Custom JSON (derived by `simplan derive-plan-data`) | Intermediate cache, re-derived on every Step-3 pass; **not** placed in `result.json.artifacts[]`. |
 
 The promoted full set is enumerated by `simplan finalize` — this table is the contract surface, not a mirror of it.
 
@@ -119,12 +118,11 @@ Authoring judgment the schema/validator cannot express:
 
 ### Step 1: Read inputs and select routing branch
 
-Read `Design/specification/result.json` + `design.md` + `manifest.json`; if any required input is missing, close the run with the early-fail exit below (`fail_reason="external reference missing: <path>"`). When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint (priority per the Input Artifacts variable description). Select among five branches in this order:
+Read `Design/specification/result.json` + `design.md` + `manifest.json`; if any required input is missing, close the run with the early-fail exit below (`fail_reason="external reference missing: <path>"`). When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint (priority per the Input Artifacts variable description). Select among four branches in this order:
 
-- **Freeze branch** (no trigger + no directive + `{workdir}` empty + `simplan classify-delta --canonical-result asic/{module}/Verification/simulation-plan/result.json --spec-dir asic/{module}/Design/specification` prints `verdict=freeze` — it verifies **both** the spec-input digest **and** the canonical products against the digests the prior pass recorded, so a hand-edited canonical classifies `proceed`, never freeze; a legacy baseline without a recorded `products_digest` likewise classifies `proceed`): run `simplan seed --workdir {workdir} --freeze` (whitelist byte-copy of the prior `verification-plan.md` / `scaffold-specification.json`, no-clobber; `--freeze` additionally carries `plan-review.json` — the byte-carry keeps its `pin` alive; `result.json` / `plan-data.json` are never seeded; `--freeze` also re-verifies the **carried** bytes against the canonical-recorded `products_digest` — a non-zero exit means the canonical drifted mid-run or the workdir was not empty; treat it as a program exception, not a verdict), then **skip Steps 2–5 outright** — the double digest match proves the products are the exact bytes the prior approval covered, so no reviewer re-dispatch and no user loop — and close with the Step-6 `simplan finalize`, passing `--waived` **verbatim** from the canonical `result.json` `stage_specific.plan_adequacy_gate.waived` when present (omit `--status` / `--revision` — nothing changed). A freeze run still ends with its own freshly-stamped `result.json`; a carried-in stale envelope is reaped `blocked` (`stale_result`), never as a verdict. On `first-run` / `proceed`, fall through to the branches below.
 - **Trigger-driven rework** (`{rework_trigger}` injected): first run `simplan seed --workdir {workdir}` (whitelist no-clobber carry of the prior canonical plan + scaffold; the judged `plan-review.json` is deliberately NOT carried — invalidate-on-rework). Then read the attribution structure and the context for this round's revision from the trigger file (field names come from the triggering stage's own `result.schema.json`); use the seeded baseline (when `{workdir}` already holds an updated version, prefer the `{workdir}` copy) and amend per the violation-type targeting table in Decision Rules. If the trigger is unreadable, close the run with the early-fail exit (`fail_reason="rework_trigger not readable: <path>"`). A rework that amends the plan voids any prior gate `clear`; Step 4 re-runs before the Step-5 user loop.
 - **Session-resume branch** (no trigger + `{workdir}/verification-plan.md` present + `{workdir}/result.json` absent): use the residual `{workdir}` artifacts as the baseline; depending on how complete the residue is, return to Step 3 or Step 5 to continue (preserve already-written sections verbatim; only fill in the missing parts). **Before continuing, if the plan-adequacy gate is not `clear`-or-all-`waived` (`plan-review.json` absent / `trip` / written before the latest plan edit), route to Step 4 first — not straight to Step 3 or Step 5.**
-- **Incremental-update branch** (no trigger + `{workdir}` empty + canonical `Verification/simulation-plan/verification-plan.md` present): first run `simplan seed --workdir {workdir}` (same whitelist carry as the trigger branch). classify-delta has already proven the specification changed (`proceed`); compare the current specification content (`design.md` / `<child>.md`) against the seeded plan baseline to determine the affected sections, and amend only those. **Sections not affected — together with their testpoint IDs / sequence names / `power_scenarios.sequence_ref` — are preserved verbatim** (keep ID / naming as stable anchors so coverage data / scaffold / SAIF caches do not drift on ID changes). An incremental update that amends the plan likewise voids any prior gate `clear`; Step 4 re-runs before the Step-5 user loop.
+- **Incremental-update branch** (no trigger + `{workdir}` empty + canonical `Verification/simulation-plan/verification-plan.md` present): first run `simplan seed --workdir {workdir}` (same whitelist carry as the trigger branch). Compare the current specification content (`design.md` / `<child>.md`) against the seeded plan baseline to determine the affected sections, and amend only those. **Sections not affected — together with their testpoint IDs / sequence names / `power_scenarios.sequence_ref` — are preserved verbatim** (keep ID / naming as stable anchors so coverage data / scaffold / SAIF caches do not drift on ID changes). An incremental update that amends the plan likewise voids any prior gate `clear`; Step 4 re-runs before the Step-5 user loop.
 - **First-run branch** (no trigger + `{workdir}` empty + canonical absent): full generation of plan + scaffold.
 
 **Early-fail exit (all branches).** Whenever a documented failure cannot be resolved in-branch, first run `simplan seed --workdir {workdir}` (no-clobber; a no-op when no canonical exists — this covers fails that fire before any branch seeded, e.g. a missing external reference), then close the run with the finalize early-fail entry — never hand-assemble the envelope:
@@ -134,7 +132,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
   --workdir {workdir} --module {module} --status fail --fail-reason "<one-line reason>"
 ```
 
-Reasons used by this skill: `external reference missing: <path>`; `rework_trigger not readable: <path>`; `specification minimum field completeness: <one-line missing-field summary>` (Step 2). finalize enumerates `artifacts[]` present-only, so the seeded carried product set all promotes — an early fail never shrinks canonical (the judged `plan-review.json` is the one exception: deliberately not carried on non-freeze rework, per invalidate-on-rework).
+Reasons used by this skill: `external reference missing: <path>`; `rework_trigger not readable: <path>`; `specification minimum field completeness: <one-line missing-field summary>` (Step 2). finalize enumerates `artifacts[]` present-only, so the seeded carried product set all promotes — an early fail never shrinks canonical (the judged `plan-review.json` is the one exception: deliberately never carried on rework, per invalidate-on-rework).
 
 ### Step 2: Minimum field completeness self-check
 
@@ -172,7 +170,7 @@ Branch scope: **first-run** fully generates both artifacts; **trigger-driven rew
 ### Step 4: Plan-adequacy review (self-dispatched Level-1 reviewer) — gating
 
 Runs after `simplan check-scaffold` is green (Step 3) and before the Step-5 user review loop, on
-every branch that reaches it (the Step-1 freeze branch carries the prior review forward instead).
+every branch that reaches it.
 Dispatch ONE Level-1 reviewer per `references/plan-review-task-contract.md` (paths only — you
 read no body): it judges testpoints vs spec (lens `coverage`) and check-strategy soundness
 (lens `adequacy`).
@@ -237,7 +235,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
   [--revision '<one-line revision narrative>']   # trigger-driven rework only
 ```
 
-finalize re-derives `status` from the Step-4 plan-adequacy gate (it re-runs `simplan validate-review`'s reduction over the on-disk `plan-review.json` and copies `{gate, flagged, must_ack}` into `stage_specific.plan_adequacy_gate`; `--waived` is merged in as `plan_adequacy_gate.waived[]` after a content check — a placeholder waiver with an empty `reason` or an unknown `classification` is rejected, exit 2), **enforces the Step-5 approve precondition itself** (a tripped-and-unwaived gate downgrades to a written `status=fail`), derives the summary counts as array-length reads of the promoted artifacts (`testpoint_count`/`power_scenario_count` + `scaffold_summary.{agent_count,sequence_count,test_count}` from `scaffold-specification.json`; `feature_count` = distinct `F-NN` in the `verification-plan.md` §3 Testpoints section), records the freeze digests (`input_digest` + `products_digest` — the next run's classify-delta compares both before permitting a freeze), enumerates `artifacts[]` present-only (plan + scaffold + plan-review), and writes the complete `result.json`. `--status fail` wins unconditionally: with `--fail-reason` it is the early-fail exit (Step 1); without, it is the user reject (`fail_reason="user rejected plan"`). Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+finalize re-derives `status` from the Step-4 plan-adequacy gate (it re-runs `simplan validate-review`'s reduction over the on-disk `plan-review.json` and copies `{gate, flagged, must_ack}` into `stage_specific.plan_adequacy_gate`; `--waived` is merged in as `plan_adequacy_gate.waived[]` after a content check — a placeholder waiver with an empty `reason` or an unknown `classification` is rejected, exit 2), **enforces the Step-5 approve precondition itself** (a tripped-and-unwaived gate downgrades to a written `status=fail`), derives the summary counts as array-length reads of the promoted artifacts (`testpoint_count`/`power_scenario_count` + `scaffold_summary.{agent_count,sequence_count,test_count}` from `scaffold-specification.json`; `feature_count` = distinct `F-NN` in the `verification-plan.md` §3 Testpoints section), enumerates `artifacts[]` present-only (plan + scaffold + plan-review), and writes the complete `result.json`. `--status fail` wins unconditionally: with `--fail-reason` it is the early-fail exit (Step 1); without, it is the user reject (`fail_reason="user rejected plan"`). Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
 The plan's canonical revision history lives in `verification-plan.md` §5; `--revision` carries the one-line machine-readable copy. The plan's structured data (`agents` / `sequences` / `tests` / `testpoints` / `power_scenarios`) lives in `scaffold-specification.json` and is not duplicated into `stage_specific`.
 
@@ -272,9 +270,7 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 
 ## Completion Gate
 
-On a freeze run, the Step-3 script-gate items below (`check-scaffold` / `materialize-scaffold` / the count matches) are attested by the byte-carry — the carried products passed them when originally approved, and `seed --freeze` re-verified the bytes against the recorded `products_digest`. Do NOT re-run the Step-3 scripts on carried bytes (materialize would rewrite the scaffold and break the byte-identity the freeze is built on); the user-approval item is attested by the carried `Status: approved` frontmatter.
-
-- [ ] result.json was written by `simplan finalize` (it owns status / the derived counts / `plan_adequacy_gate` / the freeze digests / `artifacts[]`; you supply only `--waived` / `--status` / `--fail-reason` / `--revision` from Steps 1 and 5).
+- [ ] result.json was written by `simplan finalize` (it owns status / the derived counts / `plan_adequacy_gate` / `artifacts[]`; you supply only `--waived` / `--status` / `--fail-reason` / `--revision` from Steps 1 and 5).
 - [ ] `simplan check-scaffold` passes — structural schema + semantic cross-refs; authoritative gate, runs on every branch.
 - [ ] When `status=fail`, `stage_specific.fail_reason` records the missing item / user-rejection reason.
 - [ ] `artifacts[]` has at least 2 entries (`verification-plan.md` + `scaffold-specification.json`); both files exist inside `{workdir}`.
@@ -294,7 +290,7 @@ On a freeze run, the Step-3 script-gate items below (`check-scaffold` / `materia
 
 ### Session-resume semantics
 
-Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, Workflow Step 1's five branches run again in order (trigger still injected → trigger-driven; otherwise `{workdir}` has residue → session-resume; otherwise freeze / incremental update / first-run by their conditions). Step 5 (the user review loop) **always re-runs**: it is idempotent with "ask the user again," re-presenting the current state of `verification-plan.md` for the user to reconfirm. There is no cross-session "already complete" flag.
+Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, Workflow Step 1's four branches run again in order (trigger still injected → trigger-driven; otherwise `{workdir}` has residue → session-resume; otherwise incremental update / first-run by their conditions). Step 5 (the user review loop) **always re-runs**: it is idempotent with "ask the user again," re-presenting the current state of `verification-plan.md` for the user to reconfirm. There is no cross-session "already complete" flag.
 
 > **Adequacy-gate resume-guard:** the Step-4 verdict lives in `{workdir}` scratch + the promoted canonical `plan-review.json`. The guard is enforced in Step 1's session-resume branch and at Step 5's approve precondition, so a compaction between review and finalize, or a stale `clear`, cannot yield an unreviewed/unre-reviewed pass.
 

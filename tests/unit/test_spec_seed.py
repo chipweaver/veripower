@@ -1,8 +1,8 @@
 """spec seed — whitelist no-clobber carry of prior canonical PRODUCTS (incl. coverage.json
 and ppa.json — a fail-finalized rework promotes a present-only artifact set, and an
 absent ppa.json would be GC'd out of canonical, severing synthesis/power's declared
-input). result.json is never seeded, and the judged spec-review.json is carried only
-under freeze=True (room-birth hygiene, §7.2)."""
+input). result.json and the judged spec-review.json are never seeded (room-birth
+hygiene, §7.2)."""
 
 import sys
 from pathlib import Path
@@ -50,18 +50,9 @@ def test_seed_carries_products_never_adjudication(tmp_path):
         assert (wd / rel).read_text() == (c / rel).read_text(), rel
     # adjudication artifacts stay out — a workdir result.json exists iff this run wrote it
     assert not (wd / "result.json").exists()
-    assert not (wd / "spec-review.json").exists()  # review carried only on freeze
+    assert not (wd / "spec-review.json").exists()  # judged review is never carried
     assert not (wd / "runs").exists()  # prior run workdirs are never carried
     assert not (wd / ".promote-tmp").exists()  # promote internals never carried
-
-
-def test_seed_freeze_additionally_carries_review_record(tmp_path):
-    c = _canonical(tmp_path)
-    wd = tmp_path / "wd"
-    wd.mkdir()
-    seed.run(wd, canonical=c, freeze=True)
-    assert (wd / "spec-review.json").read_text() == '{"pin":1}'  # byte-carry keeps pin
-    assert not (wd / "result.json").exists()  # never, even on freeze
 
 
 def test_seed_no_clobber_keeps_fresh_work(tmp_path):

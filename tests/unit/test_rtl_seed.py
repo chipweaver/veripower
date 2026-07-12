@@ -59,7 +59,7 @@ def test_carries_nested_rtl_and_headers(tmp_path):
 
 def test_never_carries_adjudication_artifacts(tmp_path):
     # Room-birth hygiene (§7.2): result.json is never seeded (a carried-in stale envelope
-    # would be reaped blocked/stale_result); semantic-review.json only under --freeze.
+    # would be reaped blocked/stale_result); semantic-review.json is never seeded either.
     canon = tmp_path / "canon"
     canon.mkdir()
     (canon / "a.v").write_text("module a; endmodule\n")
@@ -73,24 +73,7 @@ def test_never_carries_adjudication_artifacts(tmp_path):
     assert not (wd / "semantic-review.json").exists()
 
 
-def test_freeze_additionally_carries_review_record(tmp_path):
-    canon = tmp_path / "canon"
-    canon.mkdir()
-    (canon / "a.v").write_text("module a; endmodule\n")
-    (canon / "result.json").write_text('{"status":"pass"}')
-    (canon / "semantic-review.json").write_text('{"pin":1}')
-    wd = tmp_path / "runs" / "2"
-    wd.mkdir(parents=True)
-    _run(canon, wd, "--freeze")
-    assert (wd / "semantic-review.json").read_text() == '{"pin":1}'
-    assert not (wd / "result.json").exists()  # never, even on freeze
-    # freeze dispatches zero children: seed materializes that round's true
-    # reaped-report translation so the finalize post exit gate can close the run
-    # (absence would fail finalize with artifacts=[] — a canonical-wiping promote).
-    assert json.loads((wd / "fresh_reports.json").read_text()) == {}
-
-
-def test_non_freeze_does_not_materialize_fresh_reports(tmp_path):
+def test_seed_does_not_materialize_fresh_reports(tmp_path):
     canon = tmp_path / "canon"
     canon.mkdir()
     (canon / "a.v").write_text("module a; endmodule\n")
@@ -167,69 +150,6 @@ def test_does_not_copy_prior_run_workdirs_or_promote_tmp(tmp_path):
     assert (wd / "a.sv").exists()
     assert not (wd / "runs").exists()  # prior run workdirs not carried in
     assert not (wd / ".promote-tmp").exists()  # promote internals not carried in
-
-
-def test_freeze_close_seed_then_finalize_passes(tmp_path):
-    # Regression for the freeze-continuation defect: the SKILL.md freeze path is
-    # seed --freeze -> rtl finalize; finalize's post exit gate hard-requires
-    # fresh_reports.json (never promoted, so absent from canonical) — seed --freeze
-    # must materialize it as {} or every freeze run fails with artifacts=[] and the
-    # fail-promote GC wipes the canonical RTL tree.
-    from rtl import result as ve
-
-    top, child = "tpu_top", "mac"
-    canon = tmp_path / "Design" / "rtl-design"
-    canon.mkdir(parents=True)
-    for m in (child, top):
-        (canon / f"{m}.v").write_text(f"module {m}; endmodule\n")
-    (canon / "filelist.txt").write_text(f"{child}.v\n{top}.v\n")
-    (canon / "README.md").write_text(f"**Top module**: {top}\n")
-    ann = {"sgdc": {}, "sdc": {}}
-    ledger = {
-        m: {"files": [f"{m}.v"], "annotations": ann, "incdirs": []}
-        for m in (child, top)
-    }
-    (canon / ".child_reports.json").write_text(json.dumps(ledger))
-    (canon / "semantic-review.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "stage": "rtl-design",
-                "module": top,
-                "reviewed_children": [child],
-                "verdict": "ok",
-                "has_critical": False,
-                "findings": [],
-            }
-        )
-    )
-    spec = tmp_path / "Design" / "specification"
-    spec.mkdir(parents=True)
-    (spec / "manifest.json").write_text(
-        json.dumps(
-            {
-                "module": top,
-                "children": [
-                    {"name": child, "doc": f"{child}.md", "rtl_modules": [child]},
-                    {"name": "topc", "doc": "topc.md", "rtl_modules": [top]},
-                ],
-            }
-        )
-    )
-    wd = canon / "runs" / "2"
-    wd.mkdir(parents=True)
-    _run(canon, wd, "--freeze")
-    assert (
-        ve.build_result(wd, module=top, top=top, manifest=spec / "manifest.json") == 0
-    )
-    env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "pass", env
-    paths = {a["path"] for a in env["artifacts"]}
-    assert {f"{child}.v", f"{top}.v", "semantic-review.json"} <= paths
-    # every artifact the envelope names is present in the workdir -> promote cannot
-    # FileNotFoundError, and the canonical view is fully re-materialized (no GC loss).
-    for p in paths:
-        assert (wd / p).exists(), p
 
 
 def test_canonical_defaults_to_workdir_grandparent_S3(tmp_path):

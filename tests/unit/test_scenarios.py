@@ -242,7 +242,7 @@ def _triage(module, sim_run, root_cause, confidence):
     """Real triage dispatch+reap: crafted schema-valid result.json -> a promoted
     canonical result.json + a minted diagnosis event (kernel _derive_triage)."""
     d = kernel.cmd_dispatch(
-        module, "simulation-triage", "delivery", False, None, None, {"sim_run": sim_run}
+        module, "simulation-triage", "delivery", None, None, {"sim_run": sim_run}
     )
     assert d["ok"], d
     result = {
@@ -293,7 +293,7 @@ def test_step2_repair_direct_hash_invariance_triage_forward(tmp_path, monkeypatc
     # (d) triage-forward (§3.4): the directive handed to rtl-design is byte-identical
     # to the triage result.json.
     triage_rj = facts.module_root(m) / "Verification/simulation-triage/result.json"
-    dr = kernel.cmd_dispatch(m, "rtl-design", "delivery", False, str(triage_rj), None)
+    dr = kernel.cmd_dispatch(m, "rtl-design", "delivery", str(triage_rj), None)
     assert dr["ok"], dr
     dispatch_ev = next(
         e
@@ -354,7 +354,7 @@ def test_step2_repair_direct_hash_invariance_triage_forward(tmp_path, monkeypatc
 
 def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
     """A design.md prose tweak expires the specification proof and forces a forward
-    re-dispatch with NO directive; the producer freeze-reuses its prior outputs:
+    re-dispatch with NO directive; the producer carries its prior outputs forward:
     every untouched output's fingerprint in the new outcome is byte-identical to the
     previous run's (§4.3 义务无条件 / §6 同式覆盖 — Step 2's minimal-edit invariant on a
     directive-LESS forward path)."""
@@ -374,7 +374,7 @@ def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
     assert a["action"] == "DISPATCH" and a["rule"] == "specification"
     assert "needs_directive" not in a  # directive-LESS forward
 
-    # the producer freeze-reuses prior outputs: it re-runs (run 2) re-emitting every
+    # the producer carries prior outputs forward: it re-runs (run 2) re-emitting every
     # untouched artifact byte-for-byte (only design.md, the tweaked file, differs).
     inputs = _recorded_inputs(m, "specification")
     outputs = {rel: _fp(m, rel) for rel in _OUTPUTS["specification"]}
@@ -401,7 +401,7 @@ def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
     for rel in _OUTPUTS["specification"]:
         if rel == touched:
             continue
-        assert spec2[rel] == spec1[rel], f"{rel} must freeze-reuse (byte-identical)"
+        assert spec2[rel] == spec1[rel], f"{rel} must carry forward (byte-identical)"
     assert spec2[touched] != spec1[touched]  # non-vacuous: the tweak actually bit
 
 

@@ -16,7 +16,6 @@ import json
 import sys
 from pathlib import Path
 
-from rtl.classify import input_digest
 from rtl.partition import post_verdict
 from rtl.review import compute_gate
 
@@ -46,17 +45,6 @@ def _write_result(workdir: Path, env: dict) -> None:
     sys.stdout.write(
         f"[rtl finalize] Written: {workdir / 'result.json'} (status={env['status']})\n"
     )
-
-
-def _record_input_digest(ss: dict, workdir: Path) -> None:
-    """Record the declared-input digest for the next run's classify-delta freeze
-    check; silently skipped if the inputs aren't readable (safe no-freeze fallback)."""
-    try:
-        ss["input_digest"] = input_digest(
-            workdir.parents[3] / "Design" / "specification"
-        )
-    except (OSError, IndexError):
-        pass
 
 
 def _exit_verdict(workdir: Path, top: str, manifest: Path) -> dict:
@@ -119,7 +107,6 @@ def build_result(workdir, module, top, manifest) -> int:
         )
         return 0
     ss = {"top_module": top, "semantic_gate": gate}
-    _record_input_digest(ss, workdir)
     _write_result(
         workdir,
         _envelope(module, status="pass", stage_specific=ss, artifacts=artifacts),

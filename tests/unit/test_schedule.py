@@ -2,8 +2,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "framework" / "scripts"))
 import facts  # noqa: E402
@@ -222,32 +220,19 @@ def test_delivery_no_overtake_but_repair_direct(tmp_path, monkeypatch):
     assert r["action"] == "DISPATCH" and r["rule"] == "synthesis"
 
 
-def test_epoch_conservative_reuse_and_done(tmp_path, monkeypatch):
-    # after an epoch, proofs whose outcome predates the anchor are NOT reusable under
-    # conservative; those after are. signoff reaches DONE once all rebuilt post-anchor.
+def test_signoff_all_valid_pinned_done(tmp_path, monkeypatch):
+    # all 9 proofs valid with every oracle pinned -> objective=signoff is DONE.
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1)  # all 9 proofs valid, PRE-anchor
-    _epoch("m")
-    a = schedule.decide("m", objective="signoff")  # forces conservative
-    assert a["action"] == "DISPATCH"  # pre-anchor proofs not reusable -> full rebuild
-    _build_all_valid("m", 2, oracle_grades=_PIN_ALL)  # rebuilt POST-anchor
+    _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
     assert schedule.decide("m", objective="signoff")["action"] == "DONE"
 
 
-def test_signoff_gate_blocks_without_epoch_or_with_proposed(tmp_path, monkeypatch):
-    # objective=signoff with no epoch -> SystemExit ("open an epoch first" — spec §3.6
-    # 报错不静默兜底, an error not an action); a proposed-grade oracle proof (unpinned)
-    # under an open epoch -> ESCALATE "oracle is proposed (pin it)".
+def test_signoff_gate_blocks_on_proposed_oracle(tmp_path, monkeypatch):
+    # 8 upstream proofs valid, frontend-signoff the sole candidate that hits the gate;
+    # default oracle grades leave several proofs "proposed". The reason must name the
+    # FIRST offender in FORWARD_PRIORITY order (specification) — deterministic, never
+    # hash-seed-dependent set order.
     monkeypatch.chdir(tmp_path)
-    # (a) no epoch -> hard error, not an action.
-    _build_all_valid("noepoch", 1)  # all valid, NO epoch event
-    with pytest.raises(SystemExit, match="open an epoch first"):
-        schedule.decide("noepoch", objective="signoff")
-    # (b) open epoch, 8 upstream valid post-anchor, frontend-signoff the sole candidate
-    # that hits the gate; default oracle grades leave several proofs "proposed". The
-    # reason must name the FIRST offender in FORWARD_PRIORITY order (specification) —
-    # deterministic, never hash-seed-dependent set order.
-    _epoch("proposed")
     _build_all_valid("proposed", 1, include=rules.FORWARD_PRIORITY[:8])
     a = schedule.decide("proposed", objective="signoff")
     assert a["action"] == "ESCALATE"
@@ -306,34 +291,6 @@ def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
     _fail("m", "timing-analysis", 1)
     a = schedule.decide("m", objective="repair")
     assert a["action"] == "DISPATCH" and a["rule"] == "synthesis"
-
-
-def test_adjacent_epochs_do_not_fuse(tmp_path, monkeypatch):
-    # §6: 相邻两纪元不黏连 — after a completed signoff epoch, opening a second epoch
-    # makes every proof pre-anchor again: first conservative decide -> DISPATCH (full
-    # rebuild), not DONE.
-    monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1)
-    _epoch("m")  # epoch 1
-    _build_all_valid(
-        "m", 2, oracle_grades=_PIN_ALL
-    )  # rebuilt post-epoch-1 (would be DONE)
-    _epoch("m")  # epoch 2 -> every proof pre-anchor again
-    a = schedule.decide("m", objective="signoff")
-    assert a["action"] == "DISPATCH"
-
-
-def test_epoch_internal_repair_keeps_prefix(tmp_path, monkeypatch):
-    # §6: 纪元内修复插曲不作废前缀 — proofs rebuilt post-anchor stay reusable across a
-    # failure+fix episode inside the same epoch (no new epoch event in between).
-    monkeypatch.chdir(tmp_path)
-    _epoch("m")
-    _build_all_valid("m", 1)  # prefix built POST-anchor
-    _sim_fail("m", 2)  # failure episode, same epoch (no epoch event)
-    _valid("m", "rtl-design", 2, tag="fix")  # fix lands, still same epoch
-    evs = facts.read_events("m")
-    assert schedule._reusable("m", evs, "specification", True)  # prefix survives
-    assert schedule._reusable("m", evs, "rtl-design", True)  # the fix is post-anchor
 
 
 def test_human_supersede_restores_auto_rebuild(tmp_path, monkeypatch):
@@ -425,16 +382,6 @@ def test_triage_blocked_redispatches_no_livelock(tmp_path, monkeypatch):
     _outcome("m", "simulation-triage", 1, "blocked", {}, [], reason="missing")
     a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "simulation-triage"
-
-
-def test_conservative_workset_superset_of_regular(tmp_path, monkeypatch):
-    # §6 invariant: --conservative 工作集 ⊇ 常规 — a proof valid but PRE-anchor: plain
-    # delivery reuses it (DONE), conservative re-dispatches its rule.
-    monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1, include=rules.FORWARD_PRIORITY[:8])  # delivery set, valid
-    _epoch("m")  # anchor AFTER the proofs -> all pre-anchor
-    assert schedule.decide("m")["action"] == "DONE"  # plain delivery reuses
-    assert schedule.decide("m", conservative=True)["action"] == "DISPATCH"  # superset
 
 
 # --- Elided prefix-builder helpers (mechanical, test_facts_freshness pattern) ---
@@ -592,19 +539,6 @@ def _reopen(module, pin_ref):
     )
 
 
-def _epoch(module):
-    facts.append_event(
-        module,
-        {
-            "type": "epoch",
-            "objective": "signoff",
-            "provenance": "test",
-            "reason": "sign off",
-        },
-        TS,
-    )
-
-
 def _valid_chain_through_simulation(module):
     """spec/plan/rtl proofs valid on disk — simulation's whole input closure."""
     _mk(module, "brainstorm.md", "b1")
@@ -707,7 +641,7 @@ def test_repair_stale_signoff_fail_does_not_dispatch_signoff(tmp_path, monkeypat
 
 
 def test_signoff_gate_flags_valid_proof_carrying_unknown_version(tmp_path, monkeypatch):
-    # E1 / §3.6: a proof that is VALID yet carries an `unknown` recorded version must block
+    # a proof that is VALID yet carries an `unknown` recorded version must block
     # signoff. Reachable for in∩out inputs — cond 2 substitutes the same-run OUTPUT version,
     # so the proof validates while its recorded INPUT table still holds an unknown. (The
     # outputs-side of the gate check is defensively unreachable: an unknown output already
@@ -718,7 +652,6 @@ def test_signoff_gate_flags_valid_proof_carrying_unknown_version(tmp_path, monke
     _mk("m", "Design/specification/design.md", "dm")
     bm = _fp("m", "brainstorm.md")
     dm = _fp("m", "Design/specification/design.md")
-    _epoch("m")
     _dispatch("m", "specification", 1, {"brainstorm.md": bm}, objective="signoff")
     _outcome(
         "m",
@@ -792,12 +725,11 @@ def test_projection_signoff_cell_regresses_on_hand_edit(tmp_path, monkeypatch):
 
 
 def test_signoff_gate_blocks_on_out_of_band_added_input(tmp_path, monkeypatch):
-    # G1 (b'): a file added out-of-band that matches a rule's input selector (but was not in
+    # a file added out-of-band that matches a rule's input selector (but was not in
     # the recorded inputs) escapes proof_valid conditions 2/4 (which only check recorded
     # paths). The signoff gate rejects it so a smuggled-in source can't ship unverified —
     # enforced ONLY at the signoff trust boundary (daily path keeps the cheap check).
     monkeypatch.chdir(tmp_path)
-    _epoch("m")
     _build_all_valid("m", 1, include=rules.FORWARD_PRIORITY[:8], oracle_grades=_PIN_ALL)
     assert (
         schedule._signoff_gate("m", facts.read_events("m")) is None

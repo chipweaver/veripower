@@ -228,37 +228,12 @@ def _workdir_of(events, rule, run):
     return None
 
 
-def _anchor_index(events: list[dict]) -> int | None:
-    for i in range(len(events) - 1, -1, -1):
-        if events[i]["type"] == "epoch":
-            return i
-    return None
-
-
-def _reusable(module: str, events: list[dict], proof: str, conservative: bool) -> bool:
-    if not facts.proof_valid(module, events, proof):
-        return False
-    if not conservative:
-        return True
-    anchor = _anchor_index(events)
-    if anchor is None:
-        # spec §3.6: 无 epoch 事件时报错"先开纪元"，不静默兜底 — a hard error, not an action.
-        sys.exit(
-            "decide --conservative: no epoch event; open an epoch first (kernel epoch)"
-        )
-    hit = facts._proof_outcome(events, proof)
-    return hit is not None and hit[0] > anchor
-
-
 def decide(
     module: str,
     *,
     wake: str | None = None,
     objective: str = "delivery",
-    conservative: bool = False,
 ) -> dict:
-    if objective == "signoff":
-        conservative = True
     events = facts.read_events(module)
     inflight = facts.in_flight(events)
 
@@ -301,7 +276,7 @@ def decide(
             # public premise: target already in-flight -> do not double-dispatch
             if any(f["rule"] == disp["rule"] for f in inflight):
                 return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
-            return {**disp, "objective": objective, "conservative": conservative}
+            return {**disp, "objective": objective}
         else:
             return disp  # ESCALATE / YIELD
 
@@ -310,7 +285,7 @@ def decide(
     # producers of unavailable inputs; delivery's required set already spans the DAG so
     # the expansion is usually a no-op there.
     required = required_proofs(module, events, objective)
-    work = {p for p in required if not _reusable(module, events, p, conservative)}
+    work = {p for p in required if not facts.proof_valid(module, events, p)}
     frontier = set(work)
     while frontier:
         nxt = set()
@@ -356,13 +331,12 @@ def decide(
             "rule": rule,
             "execution": rules.RULES[rule].execution,
             "objective": objective,
-            "conservative": conservative,
         }
 
     # step 3
     if inflight:
         return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
-    if all(_reusable(module, events, p, conservative) for p in required):
+    if all(facts.proof_valid(module, events, p) for p in required):
         return {"action": "DONE"}
     return {
         "action": "ESCALATE",
@@ -373,9 +347,10 @@ def decide(
 def _added_inputs(module: str, rule_name: str, proof: dict) -> list[str]:
     """Files on disk matching rule_name's input selectors but NOT in the proof's recorded
     inputs — i.e. added out-of-band AFTER the proof landed. proof_valid conditions 2/4 only
-    check RECORDED paths, so an ADD (unlike an edit/delete) escapes them (G1); the signoff gate
-    uses this so a smuggled-in source can't ship unverified. Self-produced (in∩out) selectors
-    are excluded — those are covered by output binding, not a fresh out-of-band add."""
+    check RECORDED paths, so an out-of-band ADD (unlike an edit/delete) escapes them; the
+    signoff gate uses this so a smuggled-in source can't ship unverified. Self-produced
+    (in∩out) selectors are excluded — those are covered by output binding, not a fresh
+    out-of-band add."""
     root = facts.module_root(module)
     recorded = set(proof.get("inputs", {}))
     extra: list[str] = []
@@ -391,20 +366,18 @@ def _added_inputs(module: str, rule_name: str, proof: dict) -> list[str]:
 
 
 def _signoff_gate(module: str, events: list[dict]) -> dict | None:
-    """§3.6 signoff dispatchability: every other proof valid & post-anchor, oracle grade ∈
-    {tool, human}, no unknown recorded version. Returns an ESCALATE action if the gate
-    fails, else None. The no-epoch case never reaches here: decide with objective=signoff
-    forces conservative, and _reusable already hard-errors '先开纪元' (spec §3.6 —
-    报错不静默兜底, so it is an error, not an ESCALATE action). Iterates
-    FORWARD_PRIORITY in order — a set here would make the ESCALATE reason vary with
-    the hash seed when >1 proof fails the gate, breaching decide's purity invariant."""
+    """Signoff dispatchability: every other proof valid, oracle grade ∈ {tool, human},
+    no unknown recorded version, no out-of-band added input. Returns an ESCALATE action
+    if the gate fails, else None. Iterates FORWARD_PRIORITY in order — a set here would
+    make the ESCALATE reason vary with the hash seed when >1 proof fails the gate,
+    breaching decide's purity invariant."""
     for proof in rules.FORWARD_PRIORITY:
         if proof == "frontend-signoff":
             continue
-        if not _reusable(module, events, proof, True):
+        if not facts.proof_valid(module, events, proof):
             return {
                 "action": "ESCALATE",
-                "reason": f"signoff blocked: {proof} not valid post-anchor",
+                "reason": f"signoff blocked: {proof} not valid",
             }
         _, outcome = facts._proof_outcome(events, proof)
         p = next(x for x in outcome["proofs"] if x["name"] == proof)
@@ -423,8 +396,8 @@ def _signoff_gate(module: str, events: list[dict]) -> dict | None:
             }
         added = _added_inputs(module, proof, p)
         if added:
-            # G1 (b'): a new file matching this rule's selectors appeared out-of-band after
-            # the proof landed — it was never verified. Only enforced here at the signoff
+            # A new file matching this rule's selectors appeared out-of-band after the
+            # proof landed — it was never verified. Only enforced here at the signoff
             # trust boundary (the daily delivery/repair path keeps the cheap recorded-set check).
             return {
                 "action": "ESCALATE",

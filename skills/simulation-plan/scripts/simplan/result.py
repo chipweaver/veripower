@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 
 from simplan._md import extract_section
-from simplan.classify import input_digest, products_digest
 from simplan.review import gate_verdict
 
 STAGE = "simulation-plan"
@@ -39,29 +38,6 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def _record_input_digest(ss: dict, workdir: Path) -> None:
-    """Record the declared-input digest for the next run's classify-delta freeze
-    check; silently skipped if the inputs aren't readable (safe no-freeze fallback).
-    The parents[3] climb assumes the canonical asic/<module>/Verification/
-    simulation-plan/runs/<N> layout — verified by name before recording, so an
-    off-layout workdir can never hash a coincidental wrong directory into the
-    freeze baseline (it just skips, and the next classify-delta says proceed).
-    The check is LEXICAL (no resolve()): a deployment that symlinks a layout
-    segment to a differently-named target keeps its as-invoked names and must
-    not lose freeze eligibility to the physical-path rewrite."""
-    try:
-        parts = workdir.parents
-        if (
-            parts[0].name != "runs"
-            or parts[1].name != "simulation-plan"
-            or parts[2].name != "Verification"
-        ):
-            return
-        ss["input_digest"] = input_digest(parts[3] / "Design" / "specification")
-    except (OSError, IndexError):
-        pass
-
-
 def count_features(plan_md: str) -> int:
     """feature_count = distinct F-NN feature IDs referenced in the §3 Testpoints Table
     section (0 when the section is absent). Deliberately NOT a whole-document scan: a §5
@@ -91,9 +67,8 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
 
     pass path: re-derives the counts (scaffold arrays + distinct-F-NN in the plan md §3)
     and the plan-adequacy gate verdict (gate_verdict over the on-disk plan-review.json)
-    in-process, enforces the Step-5 approve precondition (a tripped-and-unwaived gate
-    downgrades to a written status=fail), then records the freeze digests (input_digest
-    + products_digest over the promoted artifact set).
+    in-process, and enforces the Step-5 approve precondition (a tripped-and-unwaived gate
+    downgrades to a written status=fail).
 
     fail path (user reject, or an early-fail exit carrying fail_reason): NEVER reads the
     plan/scaffold — an early-fail workdir may hold neither, and a raise here would turn
@@ -176,12 +151,7 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
             },
             "plan_adequacy_gate": gate,
         }
-        _record_input_digest(ss, workdir)
         artifacts = enumerate_artifacts(workdir)
-        # The freeze check's second half: bind this pass's exact product bytes, so a
-        # later classify-delta can prove "the canonical products are still what the
-        # human approved" before the freeze branch skips the reviewer and the user loop.
-        ss["products_digest"] = products_digest(workdir, [a["path"] for a in artifacts])
     else:
         ss = {
             "fail_reason": "plan-adequacy gate tripped (see plan-review.json)",

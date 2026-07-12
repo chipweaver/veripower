@@ -49,7 +49,7 @@ def _write_file(module: str, rel: str, content: str) -> Path:
 
 
 def _dispatch(module, rule="specification", directive_path=None):
-    return kernel.cmd_dispatch(module, rule, "delivery", False, directive_path, None)
+    return kernel.cmd_dispatch(module, rule, "delivery", directive_path, None)
 
 
 def _latest_dispatch_event(module, rule):

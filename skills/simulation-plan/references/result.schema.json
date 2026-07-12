@@ -12,8 +12,6 @@
           "type": "object",
           "properties": {
             "fail_reason":          {"type": "string",  "minLength": 1},
-            "input_digest": { "type": "string", "description": "sha256 of the specification inputs at this run; the next run's classify-delta compares against it to decide freeze." },
-            "products_digest": { "type": "string", "description": "sha256 over the promoted artifact set (sorted relative paths + per-file content hash), recorded at a passing finalize; classify-delta compares it to prove the canonical products are still the exact bytes the human approved before permitting the freeze branch (which skips the reviewer and the user loop)." },
             "plan_adequacy_gate": {
               "type": "object",
               "additionalProperties": false,
