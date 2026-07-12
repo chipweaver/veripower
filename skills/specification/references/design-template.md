@@ -31,6 +31,9 @@ Each timing diagram must be paired with a textual description that **maps one-to
 ### 1.1 Overview
 (Module description: role in the system, core problem solved, scope boundaries.)
 
+PPA targets: see `ppa.json` (numeric target values live there only — do not restate them
+in prose; synthesis / power-analysis bind to that file directly).
+
 ### 1.2 Module Structure
 (Architecture diagram + table of submodules and primary functions.)
 

@@ -1,4 +1,8 @@
-"""spec seed — no-clobber carry-forward of prior canonical outputs incl. the review record."""
+"""spec seed — whitelist no-clobber carry of prior canonical PRODUCTS (incl. coverage.json
+and ppa.json — a fail-finalized rework promotes a present-only artifact set, and an
+absent ppa.json would be GC'd out of canonical, severing synthesis/power's declared
+input). result.json is never seeded, and the judged spec-review.json is carried only
+under freeze=True (room-birth hygiene, §7.2)."""
 
 import sys
 from pathlib import Path
@@ -16,13 +20,20 @@ def _canonical(tmp_path):
     (c / "child_a.md").write_text("CA", encoding="utf-8")
     (c / "spec-review.json").write_text('{"pin":1}', encoding="utf-8")
     (c / "constraints" / "m.sdc").write_text("S", encoding="utf-8")
+    (c / "constraints" / "m.sgdc").write_text("G", encoding="utf-8")
+    (c / "coverage.json").write_text('{"verdict":"pass"}', encoding="utf-8")
+    (c / "ppa.json").write_text("[]", encoding="utf-8")
+    # the adjudication envelope that must NEVER be carried into a fresh room
+    (c / "result.json").write_text('{"status":"pass"}', encoding="utf-8")
     (c / "runs").mkdir()
     (c / "runs" / "1").mkdir()
     (c / "runs" / "1" / "stale.txt").write_text("X", encoding="utf-8")
+    (c / ".promote-tmp").mkdir()
+    (c / ".promote-tmp" / "leftover.md").write_text("L", encoding="utf-8")
     return c
 
 
-def test_seed_copies_all_incl_review_record_skips_runs(tmp_path):
+def test_seed_carries_products_never_adjudication(tmp_path):
     c = _canonical(tmp_path)
     wd = tmp_path / "canonical" / "runs" / "2"
     wd.mkdir(parents=True)
@@ -31,11 +42,26 @@ def test_seed_copies_all_incl_review_record_skips_runs(tmp_path):
         "design.md",
         "manifest.json",
         "child_a.md",
-        "spec-review.json",
+        "coverage.json",
+        "ppa.json",  # carried: a fail-finalized rework must not GC it out of canonical
         "constraints/m.sdc",
+        "constraints/m.sgdc",
     ]:
         assert (wd / rel).read_text() == (c / rel).read_text(), rel
+    # adjudication artifacts stay out — a workdir result.json exists iff this run wrote it
+    assert not (wd / "result.json").exists()
+    assert not (wd / "spec-review.json").exists()  # review carried only on freeze
     assert not (wd / "runs").exists()  # prior run workdirs are never carried
+    assert not (wd / ".promote-tmp").exists()  # promote internals never carried
+
+
+def test_seed_freeze_additionally_carries_review_record(tmp_path):
+    c = _canonical(tmp_path)
+    wd = tmp_path / "wd"
+    wd.mkdir()
+    seed.run(wd, canonical=c, freeze=True)
+    assert (wd / "spec-review.json").read_text() == '{"pin":1}'  # byte-carry keeps pin
+    assert not (wd / "result.json").exists()  # never, even on freeze
 
 
 def test_seed_no_clobber_keeps_fresh_work(tmp_path):

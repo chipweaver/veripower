@@ -315,6 +315,149 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
     assert r.returncode == 2  # argparse: missing --module/--status
 
 
+# ── ppa.json disk-read path (wave-1 product; --ppa-targets is an override) ──
+
+
+def test_pass_reads_ppa_from_disk_when_no_override(tmp_path):
+    wd = _spec_workdir(tmp_path)
+    targets = [{"dim": "area_um2", "target": 70000.0}]
+    (wd / "ppa.json").write_text(json.dumps(targets))
+    assert (
+        result.build_result(
+            wd, module="tpu_top", ppa_targets=None, waived=[], status="pass"
+        )
+        == 0
+    )
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["ppa_targets"] == targets
+    # the wave-1 disk copy IS the source — untouched, not rewritten
+    assert json.loads((wd / "ppa.json").read_text()) == targets
+
+
+def test_forgotten_override_no_longer_wipes_ppa_json(tmp_path):
+    # regression: finalize WITHOUT --ppa-targets used to default to "[]" and
+    # unconditionally rewrite ppa.json — silently disarming the downstream PPA gates.
+    wd = _spec_workdir(tmp_path)
+    targets = [{"dim": "power_mw", "target": 12.5}]
+    (wd / "ppa.json").write_text(json.dumps(targets))
+    MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
+    r = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(wd),
+            "--module",
+            "tpu_top",
+            "--status",
+            "pass",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0
+    assert json.loads((wd / "ppa.json").read_text()) == targets  # NOT wiped
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["ppa_targets"] == targets
+
+
+def test_pass_missing_ppa_json_is_blocked(tmp_path):
+    wd = _spec_workdir(tmp_path)  # no ppa.json on disk
+    rc = result.finalize(wd, "tpu_top", status="pass", waived_json="[]")
+    assert rc == 2  # BLOCKED: wave-1 must emit ppa.json (or caller overrides)
+    assert not (wd / "result.json").exists()
+
+
+def test_pass_invalid_disk_ppa_is_blocked(tmp_path):
+    wd = _spec_workdir(tmp_path)
+    (wd / "ppa.json").write_text(json.dumps([{"dim": "bogus", "target": 1}]))
+    assert result.finalize(wd, "tpu_top", status="pass", waived_json="[]") == 2
+
+
+def test_invalid_override_is_blocked(tmp_path):
+    wd = _spec_workdir(tmp_path)
+    rc = result.finalize(
+        wd,
+        "tpu_top",
+        status="pass",
+        ppa_targets_json='[{"dim": "bogus", "target": 1}]',
+        waived_json="[]",
+    )
+    assert rc == 2
+
+
+# ── early-fail entry (--fail-reason): routable fail, full artifact carry ──
+
+
+def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
+    # a seeded rework workdir that fails early (e.g. unreadable trigger) must still
+    # promote the FULL prior product set — an under-enumerated artifacts[] on a
+    # promoted fail would GC canonical down to a hollow view (W4).
+    wd = _spec_workdir(tmp_path)
+    constraints.derive_constraints(
+        wd
+    )  # constraints present, as a seeded workdir would have
+    (wd / "ppa.json").write_text("[]")
+    assert (
+        result.build_result(
+            wd,
+            module="tpu_top",
+            ppa_targets=None,
+            waived=[],
+            status="fail",
+            fail_reason="rework_trigger not readable: /x/result.json",
+        )
+        == 0
+    )
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    ss = env["stage_specific"]
+    assert ss["fail_reason"] == "rework_trigger not readable: /x/result.json"
+    assert ss["top_module"] == "tpu_top"  # from manifest.module, no derivation run
+    paths = {a["path"] for a in env["artifacts"]}
+    assert {
+        "design.md",
+        "manifest.json",
+        "coverage.json",
+        "spec-review.json",
+        "mac.md",
+        "ppa.json",
+        "constraints/tpu_top.sdc",
+        "constraints/tpu_top.sgdc",
+    } <= paths  # nothing dropped
+    _validate_envelope(env)
+
+
+def test_early_fail_without_review_record_omits_spec_gate(tmp_path):
+    wd = _spec_workdir(tmp_path)
+    (wd / "spec-review.json").unlink()  # early fail can precede the Step-7 wave
+    assert (
+        result.build_result(
+            wd,
+            module="tpu_top",
+            ppa_targets=None,
+            waived=[],
+            status="fail",
+            fail_reason="manifest child missing rtl_modules",
+        )
+        == 0
+    )
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    assert "spec_gate" not in env["stage_specific"]
+    _validate_envelope(env)
+
+
+def test_reject_default_reason_unchanged(tmp_path):
+    # the human-reject path (no --fail-reason) keeps its established wording
+    wd = _spec_workdir(tmp_path)
+    result.build_result(wd, module="tpu_top", ppa_targets=[], waived=[], status="fail")
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["fail_reason"] == "design.md gate rejected at human review"
+    assert ss["spec_gate"]["gate"] == "clear"  # review record present -> still graded
+
+
 def test_finalize_records_input_digest_on_pass(tmp_path, monkeypatch):
     # workdir = <root>/Design/specification/runs/1 ; brainstorm at <root>/brainstorm.md
     from spec import classify  # noqa: E402
@@ -348,3 +491,160 @@ def test_finalize_records_input_digest_on_pass(tmp_path, monkeypatch):
     )
     rj = json.loads((wd / "result.json").read_text())
     assert rj["stage_specific"]["input_digest"] == classify.input_digest(brainstorm)
+
+
+# ── adversarial-review follow-ups: fail-path edges ──────────────────────────
+
+
+def test_fail_without_manifest_is_blocked(tmp_path):
+    # first-run wave-1 BLOCKED before manifest.json exists: finalize must exit 2
+    # (fail-closed — a blocked run never promotes, so canonical cannot be GC'd
+    # against a hollow view). Documented in the Fan-out carve-out edge note.
+    rc = result.finalize(
+        tmp_path, "tpu_top", status="fail", fail_reason="wave-1 BLOCKED: x"
+    )
+    assert rc == 2
+    assert not (tmp_path / "result.json").exists()
+
+
+def test_pass_ignores_fail_reason(tmp_path):
+    wd = _spec_workdir(tmp_path)
+    (wd / "ppa.json").write_text("[]")
+    rc = result.finalize(
+        wd, "tpu_top", status="pass", waived_json="[]", fail_reason="should be ignored"
+    )
+    assert rc == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "pass"
+    assert "fail_reason" not in env["stage_specific"]
+
+
+def test_fail_path_merges_waived_into_spec_gate(tmp_path):
+    wd = _spec_workdir(tmp_path)
+    waived = [
+        {
+            "child": "mac",
+            "lens": "faithfulness",
+            "location": "§1.3",
+            "classification": "accepted-risk",
+            "reason": "human-authored",
+        }
+    ]
+    assert (
+        result.build_result(
+            wd,
+            module="tpu_top",
+            ppa_targets=None,
+            waived=waived,
+            status="fail",
+            fail_reason="requirements need revision: D2",
+        )
+        == 0
+    )
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["spec_gate"]["waived"] == waived  # review record present -> merged
+
+
+# ── code-review round: products digest + B-group fixes ──────────────────────
+
+
+def test_pass_records_products_digest(tmp_path):
+    from spec import classify
+
+    wd = _spec_workdir(tmp_path)
+    (wd / "ppa.json").write_text("[]")
+    assert (
+        result.build_result(
+            wd, module="tpu_top", ppa_targets=None, waived=[], status="pass"
+        )
+        == 0
+    )
+    env = json.loads((wd / "result.json").read_text())
+    expected = classify.products_digest(wd, [a["path"] for a in env["artifacts"]])
+    assert env["stage_specific"]["products_digest"] == expected
+
+
+def test_nan_ppa_is_blocked_on_both_paths(tmp_path):
+    # Python's json.loads accepts the NaN token; the shape check must reject it
+    # before it corrupts the ppa.json SSoT for strict downstream parsers.
+    wd = _spec_workdir(tmp_path)
+    rc = result.finalize(
+        wd,
+        "tpu_top",
+        status="pass",
+        ppa_targets_json='[{"dim": "power_mw", "target": NaN}]',
+        waived_json="[]",
+    )
+    assert rc == 2
+    (wd / "ppa.json").write_text('[{"dim": "power_mw", "target": NaN}]')
+    assert result.finalize(wd, "tpu_top", status="pass", waived_json="[]") == 2
+
+
+def test_corrupt_review_on_fail_is_blocked(tmp_path):
+    # only an ABSENT spec-review.json is the legitimate early-fail case; a
+    # present-but-corrupt record must surface (exit 2), never be silently dropped
+    # from the promoted fail envelope.
+    wd = _spec_workdir(tmp_path)
+    (wd / "spec-review.json").write_text("{truncated")
+    rc = result.finalize(
+        wd, "tpu_top", status="fail", fail_reason="requirements need revision: D2"
+    )
+    assert rc == 2
+    assert not (wd / "result.json").exists()
+
+
+def test_precondition_downgrade_not_preempted_by_missing_ppa(tmp_path):
+    # double fault: tripped review with no waiver AND no ppa.json — the documented
+    # downgrade-to-fail must win; a ppa fault must not turn it into a no-write BLOCKED.
+    wd = tmp_path / "specification"
+    shutil.copytree(_FIX, wd)
+    (wd / "spec-review.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "stage": "specification",
+                "module": "tpu_top",
+                "reviewed_children": ["mac"],
+                "verdict": "concerns",
+                "has_critical": True,
+                "findings": [
+                    {
+                        "child": "mac",
+                        "lens": "faithfulness",
+                        "severity": "critical",
+                        "location": "§1.3",
+                        "summary": "missing feature",
+                    }
+                ],
+            }
+        )
+    )
+    assert not (wd / "ppa.json").exists()
+    rc = result.finalize(wd, "tpu_top", status="pass", waived_json="[]")
+    assert rc == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    assert "approve precondition unmet" in env["stage_specific"]["fail_reason"]
+
+
+def test_derivation_failure_on_pass_is_blocked_exit2(tmp_path):
+    # derive_constraints fail-louds via sys.exit (SystemExit, a BaseException);
+    # finalize must keep its documented 0/2 contract instead of leaking exit 1.
+    wd = _spec_workdir(tmp_path)
+    (wd / "ppa.json").write_text("[]")
+    (wd / "design.md").write_text(
+        _design(
+            "| i_clk | input | 1 | i_clk | clk | - | clock | - | - |\n",
+            "| i_clk | 100 | banana | primary | no | primary clock |\n",
+        )
+    )
+    assert result.finalize(wd, "tpu_top", status="pass", waived_json="[]") == 2
+
+
+def test_empty_fail_reason_is_blocked(tmp_path):
+    # an empty --fail-reason must never be silently replaced by the human-reject
+    # wording (that would fabricate a human-gate record for a run that had none).
+    wd = _spec_workdir(tmp_path)
+    rc = result.finalize(wd, "tpu_top", status="fail", fail_reason="   ")
+    assert rc == 2
+    assert not (wd / "result.json").exists()
