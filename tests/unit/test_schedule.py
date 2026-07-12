@@ -651,7 +651,9 @@ def test_required_proofs_repair_only_targets_stage_proofs(tmp_path, monkeypatch)
     # outcome ever carries verdict=fail, required_proofs(repair) must stay within the 9
     # stage proofs — else step-2's sorted(work, key=FORWARD_PRIORITY.index) raises ValueError.
     monkeypatch.chdir(tmp_path)
-    _outcome("m", "simulation-triage", 1, "fail", {}, [])  # non-proof rule, newest outcome
+    _outcome(
+        "m", "simulation-triage", 1, "fail", {}, []
+    )  # non-proof rule, newest outcome
     req = schedule.required_proofs("m", facts.read_events("m"), "repair")
     assert "simulation-triage" not in req
     assert req <= set(rules.FORWARD_PRIORITY)
@@ -679,15 +681,26 @@ def test_repair_stale_signoff_fail_does_not_dispatch_signoff(tmp_path, monkeypat
     # frontend-signoff failed, but its recorded inputs are STALE (reports since changed)
     # -> the fail is not fresh (step 1 skips it) yet it is the newest fail.
     _dispatch(
-        "m", "frontend-signoff", 1,
+        "m",
+        "frontend-signoff",
+        1,
         {"Design/specification/design.md": "sha256:STALEVERSION"},
         objective="signoff",
     )
     _outcome(
-        "m", "frontend-signoff", 1, "fail", {},
-        [{"name": "frontend-signoff", "verdict": "fail",
-          "inputs": {"Design/specification/design.md": "sha256:STALEVERSION"},
-          "oracle": {"ref": "signoff-aggregator", "grade": "tool"}}],
+        "m",
+        "frontend-signoff",
+        1,
+        "fail",
+        {},
+        [
+            {
+                "name": "frontend-signoff",
+                "verdict": "fail",
+                "inputs": {"Design/specification/design.md": "sha256:STALEVERSION"},
+                "oracle": {"ref": "signoff-aggregator", "grade": "tool"},
+            }
+        ],
     )
     a = schedule.decide("m", objective="repair")
     assert not (a["action"] == "DISPATCH" and a["rule"] == "frontend-signoff")
@@ -708,11 +721,22 @@ def test_signoff_gate_flags_valid_proof_carrying_unknown_version(tmp_path, monke
     _epoch("m")
     _dispatch("m", "specification", 1, {"brainstorm.md": bm}, objective="signoff")
     _outcome(
-        "m", "specification", 1, "pass",
+        "m",
+        "specification",
+        1,
+        "pass",
         {"Design/specification/design.md": dm},
-        [{"name": "specification", "verdict": "pass",
-          "inputs": {"brainstorm.md": bm, "Design/specification/design.md": facts.UNKNOWN},
-          "oracle": {"ref": "spec-review", "grade": "human"}}],
+        [
+            {
+                "name": "specification",
+                "verdict": "pass",
+                "inputs": {
+                    "brainstorm.md": bm,
+                    "Design/specification/design.md": facts.UNKNOWN,
+                },
+                "oracle": {"ref": "spec-review", "grade": "human"},
+            }
+        ],
     )
     gate = schedule._signoff_gate("m", facts.read_events("m"))
     assert gate is not None
@@ -726,10 +750,20 @@ def test_fresh_fail_fix_owner_in_flight_yields(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
     _sim_fail("m", run=1)
-    facts.append_event("m", {"type": "diagnosis", "id": "d1",
-        "subject": {"proof": "simulation", "outcome_run": 1}, "attribution": "rtl-design",
-        "fix_owner": "rtl-design", "evidence": ["x"], "confidence": "high",
-        "source": "triage"}, TS)
+    facts.append_event(
+        "m",
+        {
+            "type": "diagnosis",
+            "id": "d1",
+            "subject": {"proof": "simulation", "outcome_run": 1},
+            "attribution": "rtl-design",
+            "fix_owner": "rtl-design",
+            "evidence": ["x"],
+            "confidence": "high",
+            "source": "triage",
+        },
+        TS,
+    )
     _dispatch("m", "rtl-design", 2, {})  # fix_owner already in flight
     assert schedule.decide("m", objective="repair")["action"] == "YIELD"
 
@@ -751,7 +785,9 @@ def test_projection_signoff_cell_regresses_on_hand_edit(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1)
     assert facts.projection("m", facts.read_events("m"))["frontend-signoff"] == "valid"
-    _mk("m", "Design/specification/design.md", "HAND-EDITED")  # tamper a promoted artifact
+    _mk(
+        "m", "Design/specification/design.md", "HAND-EDITED"
+    )  # tamper a promoted artifact
     assert facts.projection("m", facts.read_events("m"))["frontend-signoff"] == "stale"
 
 
@@ -763,7 +799,9 @@ def test_signoff_gate_blocks_on_out_of_band_added_input(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _epoch("m")
     _build_all_valid("m", 1, include=rules.FORWARD_PRIORITY[:8], oracle_grades=_PIN_ALL)
-    assert schedule._signoff_gate("m", facts.read_events("m")) is None  # clean, gate passes
+    assert (
+        schedule._signoff_gate("m", facts.read_events("m")) is None
+    )  # clean, gate passes
     # a new .v appears in rtl-design/ out-of-band — matches lint/synth/sim `*.v` selectors
     _mk("m", "Design/rtl-design/sneaky.v", "module sneaky; endmodule")
     gate = schedule._signoff_gate("m", facts.read_events("m"))

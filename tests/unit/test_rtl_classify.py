@@ -1,4 +1,5 @@
 """rtl classify-delta — directive-agnostic first-run/freeze/proceed over the spec input set."""
+
 import json
 import sys
 from pathlib import Path

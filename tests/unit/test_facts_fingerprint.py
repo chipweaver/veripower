@@ -122,12 +122,12 @@ def test_cached_unreadable_parent_returns_unknown(tmp_path):
 @pytest.mark.parametrize(
     "payload",
     [
-        "[1, 2, 3]",            # list root -> cache.get() AttributeError
-        '"just-a-string"',      # str root -> cache.get() AttributeError
-        "42",                   # int root -> cache.get() AttributeError
-        '{"Design/x.v": 5}',    # int entry -> hit[0] TypeError
+        "[1, 2, 3]",  # list root -> cache.get() AttributeError
+        '"just-a-string"',  # str root -> cache.get() AttributeError
+        "42",  # int root -> cache.get() AttributeError
+        '{"Design/x.v": 5}',  # int entry -> hit[0] TypeError
         '{"Design/x.v": "s"}',  # str entry
-        '{"Design/x.v": [1, 2]}',   # short-tuple entry
+        '{"Design/x.v": [1, 2]}',  # short-tuple entry
     ],
 )
 def test_corrupt_shape_fingerprint_cache_recomputes_not_crashes(tmp_path, payload):

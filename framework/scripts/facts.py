@@ -106,7 +106,12 @@ def fingerprint_cached(path: Path, module_root: Path) -> str:
     hit = cache.get(rel)
     # A well-formed entry is [size, mtime_ns, fp] (what we write below); anything else
     # is corruption — fall through to recompute rather than IndexError/TypeError (§5.1).
-    if isinstance(hit, list) and len(hit) == 3 and hit[0] == key[0] and hit[1] == key[1]:
+    if (
+        isinstance(hit, list)
+        and len(hit) == 3
+        and hit[0] == key[0]
+        and hit[1] == key[1]
+    ):
         return hit[2]
     fp = fingerprint(path)
     if fp != UNKNOWN:

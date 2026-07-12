@@ -249,8 +249,10 @@ def _triage(module, sim_run, root_cause, confidence):
             "root_cause": root_cause,
             "confidence": confidence,
             # high confidence requires a non-empty finding with an anchor (D4/§3.4)
-            "advisory": {"level": "L1",
-                         "findings": [{"fault_type": "x", "anchor": "matvec.v:1"}]},
+            "advisory": {
+                "level": "L1",
+                "findings": [{"fault_type": "x", "anchor": "matvec.v:1"}],
+            },
         },
     }
     _mk(module, f"{d['workdir']}/result.json", json.dumps(result))

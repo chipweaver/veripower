@@ -292,7 +292,9 @@ def _derive_triage(module, env, events, run):
     root_cause = ss.get("root_cause")
     target = route.TRIAGE_ROOT_CAUSE.get(root_cause, route.ESCALATE)
     sim_hit = None
-    for e in reversed(events):  # THIS run's own dispatch (not the latest triage dispatch,
+    for e in reversed(
+        events
+    ):  # THIS run's own dispatch (not the latest triage dispatch,
         # which would mislabel subject.outcome_run when re-reaping an older run — F8b)
         if (
             e["type"] == "dispatch"
@@ -308,7 +310,9 @@ def _derive_triage(module, env, events, run):
     # per-finding anchors -> fix_locus. The triage result.json is the always-present primary
     # evidence record.
     advisory = ss.get("advisory", {})
-    triage_rj = str(Path(*rules.RULES["simulation-triage"].workdir_root) / "result.json")
+    triage_rj = str(
+        Path(*rules.RULES["simulation-triage"].workdir_root) / "result.json"
+    )
     evidence = [triage_rj] + list(advisory.get("experiment", {}).get("artifacts", []))
     fix_locus = [f["anchor"] for f in advisory.get("findings", []) if f.get("anchor")]
     diagnosis = {
@@ -322,7 +326,9 @@ def _derive_triage(module, env, events, run):
         "source": "triage",
     }
     if target != route.ESCALATE:
-        diagnosis["fix_owner"] = target  # legality: target ∈ input_closure("simulation")
+        diagnosis["fix_owner"] = (
+            target  # legality: target ∈ input_closure("simulation")
+        )
     # A complete triage is never a fail (spec §2 triage 无独立 fail 态): it mints no proof,
     # so its verdict is a plain non-blocked "pass" regardless of env["status"] (the envelope
     # schema permits status=fail, but a triage fail outcome would crash repair's proof scan).
@@ -459,9 +465,7 @@ def cmd_reopen(module, pin_ref, reason):
     # A reopen must revoke a real pin: pin_ref names a pinned oracle_ref (§5.4). A typo'd
     # ref would append a reopen that matches nothing — ok:true yet zero revocation, so the
     # human believes trust was withdrawn when it was not. Reject instead (conservative).
-    if not any(
-        e["type"] == "pin" and e["oracle_ref"] == pin_ref for e in events
-    ):
+    if not any(e["type"] == "pin" and e["oracle_ref"] == pin_ref for e in events):
         return {
             "ok": False,
             "error": f"reopen: no pin for oracle_ref {pin_ref!r} (nothing to revoke)",
@@ -523,7 +527,7 @@ def main():
         "--params",
         default=None,
         help="JSON object merged into the dispatch event's params, e.g. "
-        '--params \'{"sim_run": 5}\' (simulation-triage; rules.RULES[rule].params '
+        "--params '{\"sim_run\": 5}' (simulation-triage; rules.RULES[rule].params "
         "names what a rule expects)",
     )
     re_ = sub.add_parser("reap")

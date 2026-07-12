@@ -23,7 +23,9 @@ from sim import bootstrap  # noqa: E402
 # ── B1: TOP-inference helpers (in-process) ─────────────────────────────────────
 def test_top_from_manifest_module_field(tmp_path):
     # D6/G4: top is read from manifest.module (authoritative, spec §4.3), not README prose.
-    (tmp_path / "manifest.json").write_text(json.dumps({"module": "my_top", "children": []}))
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"module": "my_top", "children": []})
+    )
     assert bootstrap.infer_top_from_manifest(tmp_path) == "my_top"
 
 
@@ -72,7 +74,9 @@ def _mirror(
     # top now comes from manifest.module (D6); seed it (matches the "dut" the fixtures expect).
     # Pass manifest={"children": []} (no module) to model an uninferrable top.
     (spec / "manifest.json").write_text(
-        json.dumps(manifest if manifest is not None else {"module": "dut", "children": []})
+        json.dumps(
+            manifest if manifest is not None else {"module": "dut", "children": []}
+        )
     )
     workdir = tmp_path / "asic" / module / "Verification" / "simulation" / "runs" / "1"
     return _MAIN, workdir, module

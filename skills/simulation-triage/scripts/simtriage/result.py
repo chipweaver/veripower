@@ -117,9 +117,7 @@ def finalize(workdir, module, json_file, json_stdin, schema_override) -> int:
         workdir_path = Path(workdir)
         tmp = workdir_path / "result.json.tmp"
         tmp.write_text(json.dumps(env, indent=2) + "\n")
-        tmp.replace(
-            workdir_path / "result.json"
-        )  # atomic: never observed half-written
+        tmp.replace(workdir_path / "result.json")  # atomic: never observed half-written
     except OSError as e:
         print(f"result.json write error: {e}", file=sys.stderr)
         return 2

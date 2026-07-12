@@ -1,4 +1,5 @@
 """spec classify-delta — directive-agnostic first-run/freeze/proceed verdict."""
+
 import json
 import sys
 from pathlib import Path

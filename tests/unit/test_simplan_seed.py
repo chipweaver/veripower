@@ -1,4 +1,5 @@
 """simplan seed — no-clobber carry-forward of prior canonical outputs incl. the review record."""
+
 import sys
 from pathlib import Path
 
@@ -24,7 +25,11 @@ def test_seed_copies_all_incl_review_record_skips_runs(tmp_path):
     wd = tmp_path / "canonical" / "runs" / "2"
     wd.mkdir(parents=True)
     seed.run(wd, canonical=c)
-    for rel in ["verification-plan.md", "scaffold-specification.json", "plan-review.json"]:
+    for rel in [
+        "verification-plan.md",
+        "scaffold-specification.json",
+        "plan-review.json",
+    ]:
         assert (wd / rel).read_text() == (c / rel).read_text(), rel
     assert not (wd / "runs").exists()  # prior run workdirs are never carried
 

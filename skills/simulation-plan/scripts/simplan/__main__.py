@@ -115,9 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser(
         "classify-delta", help="freeze-branch selector: first-run|freeze|proceed"
     )
-    sp.add_argument(
-        "--spec-dir", required=True, type=Path, help="Design/specification"
-    )
+    sp.add_argument("--spec-dir", required=True, type=Path, help="Design/specification")
     sp.add_argument(
         "--canonical-result",
         type=Path,

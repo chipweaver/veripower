@@ -128,7 +128,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.set_defaults(func=_cmd_classify_delta)
 
-    sp = sub.add_parser("seed", help="carry prior canonical artifacts forward (no-clobber)")
+    sp = sub.add_parser(
+        "seed", help="carry prior canonical artifacts forward (no-clobber)"
+    )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
         "--canonical",

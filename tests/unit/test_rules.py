@@ -28,8 +28,11 @@ def test_skill_dir_rule_bidirectional_coverage():
     # Excluded: brainstorm (pre-pipeline, own session) and design-flow (the
     # Orchestrator skill — it drives the kernel, it is not a scheduled rule).
     NON_RULE_SKILLS = {"brainstorm", "design-flow"}
-    skill_dirs = {p.name for p in SKILLS_DIR.iterdir()
-                  if (p / "SKILL.md").exists() and p.name not in NON_RULE_SKILLS}
+    skill_dirs = {
+        p.name
+        for p in SKILLS_DIR.iterdir()
+        if (p / "SKILL.md").exists() and p.name not in NON_RULE_SKILLS
+    }
     rule_skills = {r.skill.split(":", 1)[1] for r in rules.RULES.values()}
     assert skill_dirs == rule_skills
 
@@ -40,7 +43,9 @@ def test_every_input_traces_to_a_producer_or_pipeline_input():
             for g in globs:
                 if g in rules.PIPELINE_INPUTS:
                     continue
-                assert rules.producer_of(g) is not None, f"{name}: input {g} has no producer"
+                assert rules.producer_of(g) is not None, (
+                    f"{name}: input {g} has no producer"
+                )
 
 
 def test_declared_input_graph_is_acyclic_cache_excluded():
@@ -54,8 +59,10 @@ def test_advisory_edges_reference_registered_rules_and_stay_acyclic():
         assert consumer in rules.RULES
         for p in prereqs:
             assert p in rules.RULES
-    graph = {n: rules.input_producers(n) | set(rules.ADVISORY_ORDER.get(n, ()))
-             for n in rules.RULES}
+    graph = {
+        n: rules.input_producers(n) | set(rules.ADVISORY_ORDER.get(n, ()))
+        for n in rules.RULES
+    }
     _assert_acyclic(graph)
 
 
@@ -71,14 +78,16 @@ def test_proposed_oracle_declares_selector_within_inputs_union_outputs():
             assert sel, f"{rule.name}: proposed oracle without oracle_selector"
             sel_base = sel.rstrip("/*")  # dir-glob selector matches via its base path
             covered = any(
-                o == sel or fnmatch.fnmatch(sel_base, o.rstrip("/*")) or fnmatch.fnmatch(sel_base, o)
+                o == sel
+                or fnmatch.fnmatch(sel_base, o.rstrip("/*"))
+                or fnmatch.fnmatch(sel_base, o)
                 for o in rule.outputs
-            ) or any(
-                g.endswith(sel) for globs in rule.inputs.values() for g in globs
-            )
+            ) or any(g.endswith(sel) for globs in rule.inputs.values() for g in globs)
             assert covered, f"{rule.name}: oracle_selector {sel} not in inputs∪outputs"
         elif rule.oracle:
-            assert rule.oracle_selector is None, f"{rule.name}: tool oracle must not carry a selector"
+            assert rule.oracle_selector is None, (
+                f"{rule.name}: tool oracle must not carry a selector"
+            )
 
 
 def test_sort_prereqs_examples():

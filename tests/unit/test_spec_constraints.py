@@ -313,7 +313,9 @@ def test_self_check_flags_clock_group_divergence():
     # F1 backstop: SDC (set_clock_groups) and SGDC (-domain) must agree on whether an
     # async clock declaration is present.
     sdc = "set_clock_groups -asynchronous -group [get_clocks {clk}] -group [get_clocks clk_io]\n"
-    sgdc_ok = "current_design m\nclock -name clk -period 10.0 -edge {0 5.0} -domain sync\n"
+    sgdc_ok = (
+        "current_design m\nclock -name clk -period 10.0 -edge {0 5.0} -domain sync\n"
+    )
     sgdc_bad = "current_design m\n"  # domain dropped — the divergence F1 fixes
     constraints._self_check("m", [], [], sdc, sgdc_ok)  # no raise
     with pytest.raises(SystemExit):

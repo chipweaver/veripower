@@ -425,9 +425,14 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
             "confidence": "high",
             "advisory": {
                 "level": "L2",
-                "findings": [{"fault_type": "logic", "anchor": "matvec.v:42", "cases": ["t1"]}],
-                "experiment": {"tool": "verilator", "artifacts": ["experiment/harness.sv"],
-                               "conclusion": "confirmed"},
+                "findings": [
+                    {"fault_type": "logic", "anchor": "matvec.v:42", "cases": ["t1"]}
+                ],
+                "experiment": {
+                    "tool": "verilator",
+                    "artifacts": ["experiment/harness.sv"],
+                    "conclusion": "confirmed",
+                },
             },
         },
     )
@@ -487,13 +492,21 @@ def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
             "analysis_state": "complete",
             "root_cause": "rtl-design",
             "confidence": "high",
-            "advisory": {"level": "L1",
-                         "findings": [{"fault_type": "logic", "anchor": "a.v:1"}]},
+            "advisory": {
+                "level": "L1",
+                "findings": [{"fault_type": "logic", "anchor": "a.v:1"}],
+            },
         },
     )
     r = _run_json(
-        tmp_path, "reap", "--module", module, "--rule", "simulation-triage",
-        "--run", str(d["run"]),
+        tmp_path,
+        "reap",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--run",
+        str(d["run"]),
     )
     assert r["ok"] is True
     assert r["verdict"] != "fail"  # complete triage is never a fail
@@ -556,7 +569,10 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
             "analysis_state": "complete",
             "root_cause": "simulation",  # self-pointing: attribution recorded, no fix_owner
             "confidence": "high",
-            "advisory": {"level": "L1", "findings": [{"fault_type": "x", "anchor": "a.v:1"}]},
+            "advisory": {
+                "level": "L1",
+                "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
+            },
         },
     )
     r = _run_json(
@@ -603,6 +619,7 @@ def test_reap_never_dispatched_ok_false_no_event_appended(tmp_path, monkeypatch)
     assert r["ok"] is False
     assert facts.read_events(module) == before
 
+
 # ── B-group regression fixes (kernel-review disposition) ──────────────────
 
 
@@ -614,15 +631,38 @@ def test_reopen_unknown_pin_ref_rejected(tmp_path, monkeypatch):
     module = "reopenbad"
     facts.append_event(  # a real pin on 'spec-review'
         module,
-        {"type": "pin", "oracle_ref": "spec-review", "content_fingerprint": "sha256:x",
-         "provenance": "p", "reason": "endorse"},
+        {
+            "type": "pin",
+            "oracle_ref": "spec-review",
+            "content_fingerprint": "sha256:x",
+            "provenance": "p",
+            "reason": "endorse",
+        },
         "2026-07-10T00:00:00.000000Z",
     )
-    r = _run_json(tmp_path, "reopen", "--module", module, "--pin-ref", "spec-reviewX", "--reason", "typo")
+    r = _run_json(
+        tmp_path,
+        "reopen",
+        "--module",
+        module,
+        "--pin-ref",
+        "spec-reviewX",
+        "--reason",
+        "typo",
+    )
     assert r["ok"] is False
     assert "spec-reviewX" in r["error"]
     # the good ref still works
-    ok = _run_json(tmp_path, "reopen", "--module", module, "--pin-ref", "spec-review", "--reason", "revoke")
+    ok = _run_json(
+        tmp_path,
+        "reopen",
+        "--module",
+        module,
+        "--pin-ref",
+        "spec-review",
+        "--reason",
+        "revoke",
+    )
     assert ok["ok"] is True
 
 
@@ -645,13 +685,29 @@ def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
     # dispatch WITH sim_run (the only accepted form) -> complete reap lands both events.
     d = _dispatch_triage(tmp_path, module, sim_run=6)
     _write_triage_result(
-        module, d["workdir"], status="pass",
-        stage_specific={"analysis_state": "complete", "root_cause": "rtl-design",
-                        "confidence": "high",
-                        "advisory": {"level": "L1",
-                                     "findings": [{"fault_type": "x", "anchor": "a.v:1"}]}},
+        module,
+        d["workdir"],
+        status="pass",
+        stage_specific={
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+            "advisory": {
+                "level": "L1",
+                "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
+            },
+        },
     )
-    r = _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage", "--run", str(d["run"]))
+    r = _run_json(
+        tmp_path,
+        "reap",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--run",
+        str(d["run"]),
+    )
     assert r["ok"] is True
     kinds = [e["type"] for e in facts.read_events(module)]
     assert kinds.count("outcome") == 1 and kinds.count("diagnosis") == 1
@@ -665,17 +721,62 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
     module = "rereap"
     _adv = {"level": "L1", "findings": [{"fault_type": "x", "anchor": "a.v:1"}]}
     d1 = _dispatch_triage(tmp_path, module, sim_run=5)
-    _write_triage_result(module, d1["workdir"], status="pass",
-        stage_specific={"analysis_state": "complete", "root_cause": "rtl-design",
-                        "confidence": "high", "advisory": _adv})
-    _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage", "--run", str(d1["run"]))
-    d2 = _dispatch_triage(tmp_path, module, sim_run=9)  # a newer triage, different sim_run
-    _write_triage_result(module, d2["workdir"], status="pass",
-        stage_specific={"analysis_state": "complete", "root_cause": "simulation-plan",
-                        "confidence": "high", "advisory": _adv})
-    _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage", "--run", str(d2["run"]))
+    _write_triage_result(
+        module,
+        d1["workdir"],
+        status="pass",
+        stage_specific={
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+            "advisory": _adv,
+        },
+    )
+    _run_json(
+        tmp_path,
+        "reap",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--run",
+        str(d1["run"]),
+    )
+    d2 = _dispatch_triage(
+        tmp_path, module, sim_run=9
+    )  # a newer triage, different sim_run
+    _write_triage_result(
+        module,
+        d2["workdir"],
+        status="pass",
+        stage_specific={
+            "analysis_state": "complete",
+            "root_cause": "simulation-plan",
+            "confidence": "high",
+            "advisory": _adv,
+        },
+    )
+    _run_json(
+        tmp_path,
+        "reap",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--run",
+        str(d2["run"]),
+    )
     # RE-REAP the OLD run 1 (its result.json is still on disk)
-    _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage", "--run", str(d1["run"]))
+    _run_json(
+        tmp_path,
+        "reap",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--run",
+        str(d1["run"]),
+    )
     diags = [e for e in facts.read_events(module) if e["type"] == "diagnosis"]
     # the last diagnosis is from re-reaping run 1 -> must carry run 1's sim_run (5), not 9.
     assert diags[-1]["subject"]["outcome_run"] == 5
@@ -692,6 +793,7 @@ def test_dispatch_consumer_in_virgin_module_rejected(tmp_path, monkeypatch):
     assert r["ok"] is False
     assert "not available" in r["error"]
 
+
 # ── C-group regression fixes (low-risk corners, kernel-review disposition) ──
 
 
@@ -703,10 +805,20 @@ def test_dispatch_directive_byte_exact_transfer(tmp_path, monkeypatch):
     _write_file("m", "brainstorm.md", "b1")
     src = tmp_path / "directive_src.md"
     src.write_bytes(b"line1\r\nline2\r\n")  # CRLF
-    d = _run_json(tmp_path, "dispatch", "--module", "m", "--rule", "specification",
-                  "--directive", str(src))
+    d = _run_json(
+        tmp_path,
+        "dispatch",
+        "--module",
+        "m",
+        "--rule",
+        "specification",
+        "--directive",
+        str(src),
+    )
     dst = facts.module_root("m") / d["workdir"] / "directive.md"
-    assert dst.read_bytes() == b"line1\r\nline2\r\n"  # byte-exact, no newline translation
+    assert (
+        dst.read_bytes() == b"line1\r\nline2\r\n"
+    )  # byte-exact, no newline translation
     assert d.get("ok", True)
 
 
@@ -721,12 +833,30 @@ def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
     rev = sr / "spec-review.json"
     rev.write_text("REVIEW-A")
     fpA = facts.fingerprint(rev)
-    facts.append_event(module, {"type": "pin", "oracle_ref": "spec-review",
-        "content_fingerprint": fpA, "provenance": "p", "reason": "A"}, TS)
+    facts.append_event(
+        module,
+        {
+            "type": "pin",
+            "oracle_ref": "spec-review",
+            "content_fingerprint": fpA,
+            "provenance": "p",
+            "reason": "A",
+        },
+        TS,
+    )
     rev.write_text("REVIEW-B")
     fpB = facts.fingerprint(rev)
-    facts.append_event(module, {"type": "pin", "oracle_ref": "spec-review",
-        "content_fingerprint": fpB, "provenance": "p", "reason": "B"}, TS)
+    facts.append_event(
+        module,
+        {
+            "type": "pin",
+            "oracle_ref": "spec-review",
+            "content_fingerprint": fpB,
+            "provenance": "p",
+            "reason": "B",
+        },
+        TS,
+    )
     rev.write_text("REVIEW-A")  # oracle back to A; latest pin (B) no longer matches
     grade = kernel._graded(
         module, facts.read_events(module), rules.RULES["specification"]
@@ -753,8 +883,18 @@ def test_pin_zero_match_selector_rejected(tmp_path, monkeypatch):
     # content_fingerprint="unknown" and returns ok:true — an inert pin that can never grade
     # human. A pin must endorse real content; reject when nothing matches (conservative).
     monkeypatch.chdir(tmp_path)
-    r = _run_json(tmp_path, "pin", "--module", "m", "--rule", "specification",
-                  "--provenance", "p", "--reason", "endorse")
+    r = _run_json(
+        tmp_path,
+        "pin",
+        "--module",
+        "m",
+        "--rule",
+        "specification",
+        "--provenance",
+        "p",
+        "--reason",
+        "endorse",
+    )
     assert r["ok"] is False
     assert "unknown" in r["error"].lower() or "no content" in r["error"].lower()
 
@@ -766,11 +906,26 @@ def test_triage_high_confidence_without_findings_blocked(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "d4a"
     d = _dispatch_triage(tmp_path, module, sim_run=1)
-    _write_triage_result(module, d["workdir"], status="pass",
-        stage_specific={"analysis_state": "complete", "root_cause": "rtl-design",
-                        "confidence": "high"})  # no advisory.findings
-    r = _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage",
-                  "--run", str(d["run"]))
+    _write_triage_result(
+        module,
+        d["workdir"],
+        status="pass",
+        stage_specific={
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+        },
+    )  # no advisory.findings
+    r = _run_json(
+        tmp_path,
+        "reap",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--run",
+        str(d["run"]),
+    )
     assert r["verdict"] == "blocked"
 
 
@@ -780,13 +935,30 @@ def test_triage_l2_without_experiment_blocked(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "d4b"
     d = _dispatch_triage(tmp_path, module, sim_run=1)
-    _write_triage_result(module, d["workdir"], status="pass",
-        stage_specific={"analysis_state": "complete", "root_cause": "rtl-design",
-                        "confidence": "high",
-                        "advisory": {"level": "L2",
-                                     "findings": [{"fault_type": "x", "anchor": "a.v:1"}]}})
-    r = _run_json(tmp_path, "reap", "--module", module, "--rule", "simulation-triage",
-                  "--run", str(d["run"]))
+    _write_triage_result(
+        module,
+        d["workdir"],
+        status="pass",
+        stage_specific={
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+            "advisory": {
+                "level": "L2",
+                "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
+            },
+        },
+    )
+    r = _run_json(
+        tmp_path,
+        "reap",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--run",
+        str(d["run"]),
+    )
     assert r["verdict"] == "blocked"
 
 

@@ -26,22 +26,22 @@ COLLECT="$(git rev-parse --show-toplevel)/skills/lint-cdc/templates/scripts/coll
 #     content on exit (trap, so it restores even on error) so the tracked file is
 #     unchanged in git.
 ORIG_FILELIST="$(cat scripts/filelist.txt)"
-restore_filelist() { printf '%s' "$ORIG_FILELIST" > scripts/filelist.txt; }
+restore_filelist() { printf '%s' "$ORIG_FILELIST" >scripts/filelist.txt; }
 trap restore_filelist EXIT
-printf '%s/rtl/cdc_smoke.v\n' "$(pwd)" > scripts/filelist.txt
+printf '%s/rtl/cdc_smoke.v\n' "$(pwd)" >scripts/filelist.txt
 
-run_variant () {
-    local variant="$1"
-    rm -rf spyglass_work cdc-report.txt cdc-violations.json spyglass*.log spyglass*.cmd sg_shell.log
-    cp "scripts/${variant}.sgdc" scripts/constraints.sgdc
-    spyglass -64bit -shell -tcl scripts/run.tcl
-    cp "$COLLECT" scripts/collect_report.py
-    python3 scripts/collect_report.py cdc
-    rm -f scripts/collect_report.py
-    rm -rf scripts/__pycache__
-    echo "=== ${variant}: cdc-violations.json ==="
-    cat cdc-violations.json
-    cp cdc-violations.json "cdc-violations.${variant}.json"
+run_variant() {
+	local variant="$1"
+	rm -rf spyglass_work cdc-report.txt cdc-violations.json spyglass*.log spyglass*.cmd sg_shell.log
+	cp "scripts/${variant}.sgdc" scripts/constraints.sgdc
+	spyglass -64bit -shell -tcl scripts/run.tcl
+	cp "$COLLECT" scripts/collect_report.py
+	python3 scripts/collect_report.py cdc
+	rm -f scripts/collect_report.py
+	rm -rf scripts/__pycache__
+	echo "=== ${variant}: cdc-violations.json ==="
+	cat cdc-violations.json
+	cp cdc-violations.json "cdc-violations.${variant}.json"
 }
 
 run_variant nogroups

@@ -31,9 +31,7 @@ _GATE_PATTERNS = [
 def test_no_skill_gates_on_upstream_status():
     offenders = []
     for name in SKILL_DIRS:
-        text = (PLUGIN_ROOT / "skills" / name / "SKILL.md").read_text(
-            encoding="utf-8"
-        )
+        text = (PLUGIN_ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
         for pat in _GATE_PATTERNS:
             if pat.search(text):
                 offenders.append(f"{name}/SKILL.md: {pat.pattern!r}")

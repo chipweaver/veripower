@@ -16,9 +16,17 @@ def _append(module, ev):
 
 def test_append_and_read_roundtrip(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _append("m", {"type": "dispatch", "rule": "specification", "run": 1,
-                  "workdir": "Design/specification/runs/1", "params": {},
-                  "objective": "delivery"})
+    _append(
+        "m",
+        {
+            "type": "dispatch",
+            "rule": "specification",
+            "run": 1,
+            "workdir": "Design/specification/runs/1",
+            "params": {},
+            "objective": "delivery",
+        },
+    )
     evs = facts.read_events("m")
     assert len(evs) == 1 and evs[0]["ts"] == TS and evs[0]["type"] == "dispatch"
 
@@ -26,24 +34,48 @@ def test_append_and_read_roundtrip(tmp_path, monkeypatch):
 def test_append_rejects_schema_violation(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit):
-        _append("m", {"type": "dispatch", "rule": "specification"})  # missing run/workdir/...
+        _append(
+            "m", {"type": "dispatch", "rule": "specification"}
+        )  # missing run/workdir/...
 
 
 def test_run_number_and_in_flight(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _append("m", {"type": "dispatch", "rule": "rtl-design", "run": 1,
-                  "workdir": "w", "params": {}, "objective": "delivery"})
+    _append(
+        "m",
+        {
+            "type": "dispatch",
+            "rule": "rtl-design",
+            "run": 1,
+            "workdir": "w",
+            "params": {},
+            "objective": "delivery",
+        },
+    )
     evs = facts.read_events("m")
     assert facts.runs_of(evs, "rtl-design") == 1
     assert facts.in_flight(evs) == [{"rule": "rtl-design", "run": 1}]
-    _append("m", {"type": "outcome", "rule": "rtl-design", "run": 1, "verdict": "pass",
-                  "outputs": {}, "proofs": [], "tool_versions": {}})
+    _append(
+        "m",
+        {
+            "type": "outcome",
+            "rule": "rtl-design",
+            "run": 1,
+            "verdict": "pass",
+            "outputs": {},
+            "proofs": [],
+            "tool_versions": {},
+        },
+    )
     assert facts.in_flight(facts.read_events("m")) == []
 
 
 def test_truncated_last_line_tolerated(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _append("m", {"type": "epoch", "objective": "signoff", "provenance": "u", "reason": "go"})
+    _append(
+        "m",
+        {"type": "epoch", "objective": "signoff", "provenance": "u", "reason": "go"},
+    )
     p = facts.events_path("m")
     p.write_text(p.read_text() + '{"type": "outcom')  # truncated
     assert len(facts.read_events("m")) == 1
@@ -54,7 +86,9 @@ def test_read_events_mid_file_corruption_errors(tmp_path, monkeypatch):
     # is silently skipped today -> a dropped dispatch line -> run-number reuse. It must be a
     # hard error (conservative — never proceed on a corrupt append-only log).
     monkeypatch.chdir(tmp_path)
-    good = '{"type":"epoch","ts":"t","objective":"signoff","provenance":"p","reason":"r"}'
+    good = (
+        '{"type":"epoch","ts":"t","objective":"signoff","provenance":"p","reason":"r"}'
+    )
     p = facts.events_path("m")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(good + "\n" + "THIS-IS-CORRUPT-NOT-JSON\n" + good + "\n")

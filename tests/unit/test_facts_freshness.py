@@ -262,24 +262,40 @@ def test_self_produced_inout_input_never_self_locks(tmp_path, monkeypatch):
     facts.append_event(
         "m",
         {
-            "type": "dispatch", "rule": "lint-cdc", "run": 1, "workdir": "w",
-            "inputs": {w: v1}, "params": {}, "objective": "delivery",
+            "type": "dispatch",
+            "rule": "lint-cdc",
+            "run": 1,
+            "workdir": "w",
+            "inputs": {w: v1},
+            "params": {},
+            "objective": "delivery",
         },
         TS,
     )
     facts.append_event(
         "m",
         {
-            "type": "outcome", "rule": "lint-cdc", "run": 1, "verdict": "pass",
+            "type": "outcome",
+            "rule": "lint-cdc",
+            "run": 1,
+            "verdict": "pass",
             "outputs": {w: v1},
-            "proofs": [{"name": "lint-cdc", "verdict": "pass", "inputs": {w: v1},
-                        "oracle": {"ref": "spyglass-ruleset", "grade": "tool"}}],
+            "proofs": [
+                {
+                    "name": "lint-cdc",
+                    "verdict": "pass",
+                    "inputs": {w: v1},
+                    "oracle": {"ref": "spyglass-ruleset", "grade": "tool"},
+                }
+            ],
             "tool_versions": {},
         },
         TS,
     )
     E = facts.read_events("m")
-    assert facts.input_available("m", E, w, consumer="lint-cdc")  # present, matches recorded
+    assert facts.input_available(
+        "m", E, w, consumer="lint-cdc"
+    )  # present, matches recorded
     _write("m", w, "waive-v2-edited")  # edited out-of-band
     assert facts.input_available("m", facts.read_events("m"), w, consumer="lint-cdc")
     (facts.module_root("m") / w).unlink()  # deleted (spec: file missing = cold start)
@@ -333,9 +349,7 @@ def _sign_off_everything(module):
         )
 
 
-def test_projection_signoff_cell_regresses_on_reopen(
-    tmp_path, monkeypatch
-):
+def test_projection_signoff_cell_regresses_on_reopen(tmp_path, monkeypatch):
     # §3.6/§6: reopen of any pin flips the signoff cell back. (The hand-edit half of the
     # §3.6 invariant needs on-disk outputs this empty-outputs fixture cannot carry — it is
     # covered by test_schedule.py::test_projection_signoff_cell_regresses_on_hand_edit.)
@@ -363,32 +377,82 @@ def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypa
     _write("m", rjrel, '{"status": "pass"}')
     bm = _fp("m", "brainstorm.md")
     rj = _fp("m", rjrel)
-    facts.append_event("m", {"type": "dispatch", "rule": "specification", "run": 1,
-        "workdir": "w", "inputs": {"brainstorm.md": bm}, "params": {},
-        "objective": "delivery"}, TS)
-    facts.append_event("m", {"type": "outcome", "rule": "specification", "run": 1,
-        "verdict": "pass", "outputs": {rjrel: rj},
-        "proofs": [{"name": "specification", "verdict": "pass",
+    facts.append_event(
+        "m",
+        {
+            "type": "dispatch",
+            "rule": "specification",
+            "run": 1,
+            "workdir": "w",
+            "inputs": {"brainstorm.md": bm},
+            "params": {},
+            "objective": "delivery",
+        },
+        TS,
+    )
+    facts.append_event(
+        "m",
+        {
+            "type": "outcome",
+            "rule": "specification",
+            "run": 1,
+            "verdict": "pass",
+            "outputs": {rjrel: rj},
+            "proofs": [
+                {
+                    "name": "specification",
+                    "verdict": "pass",
                     "inputs": {"brainstorm.md": bm},
-                    "oracle": {"ref": "spec-review", "grade": "proposed"}}],
-        "tool_versions": {}}, TS)
+                    "oracle": {"ref": "spec-review", "grade": "proposed"},
+                }
+            ],
+            "tool_versions": {},
+        },
+        TS,
+    )
     assert facts.proof_valid("m", facts.read_events("m"), "specification")
-    _write("m", rjrel, '{"status": "pass", "coverage": "INFLATED"}')  # 灌水: edit result.json
+    _write(
+        "m", rjrel, '{"status": "pass", "coverage": "INFLATED"}'
+    )  # 灌水: edit result.json
     assert not facts.proof_valid("m", facts.read_events("m"), "specification")
 
 
 def _spec_run(module, run, *, oracle_grade="human"):
     """Dispatch+pass specification run N with brainstorm on disk; returns nothing."""
     bm = _fp(module, "brainstorm.md")
-    facts.append_event(module, {"type": "dispatch", "rule": "specification", "run": run,
-        "workdir": "w", "inputs": {"brainstorm.md": bm}, "params": {},
-        "objective": "delivery"}, TS)
-    facts.append_event(module, {"type": "outcome", "rule": "specification", "run": run,
-        "verdict": "pass", "outputs": {},
-        "proofs": [{"name": "specification", "verdict": "pass",
+    facts.append_event(
+        module,
+        {
+            "type": "dispatch",
+            "rule": "specification",
+            "run": run,
+            "workdir": "w",
+            "inputs": {"brainstorm.md": bm},
+            "params": {},
+            "objective": "delivery",
+        },
+        TS,
+    )
+    facts.append_event(
+        module,
+        {
+            "type": "outcome",
+            "rule": "specification",
+            "run": run,
+            "verdict": "pass",
+            "outputs": {},
+            "proofs": [
+                {
+                    "name": "specification",
+                    "verdict": "pass",
                     "inputs": {"brainstorm.md": bm},
-                    "oracle": {"ref": "spec-review", "grade": oracle_grade}}],
-        "tool_versions": {}}, TS)
+                    "oracle": {"ref": "spec-review", "grade": oracle_grade},
+                }
+            ],
+            "tool_versions": {},
+        },
+        TS,
+    )
 
 
 def test_re_reap_after_reopen_does_not_resurrect_proof(tmp_path, monkeypatch):
@@ -397,20 +461,46 @@ def test_re_reap_after_reopen_does_not_resurrect_proof(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")
     _spec_run("m", 1)  # dispatch(run1) + outcome(run1)
-    facts.append_event("m", {"type": "pin", "oracle_ref": "spec-review",
-        "content_fingerprint": "sha256:x", "provenance": "p", "reason": "endorse"}, TS)
+    facts.append_event(
+        "m",
+        {
+            "type": "pin",
+            "oracle_ref": "spec-review",
+            "content_fingerprint": "sha256:x",
+            "provenance": "p",
+            "reason": "endorse",
+        },
+        TS,
+    )
     assert facts.proof_valid("m", facts.read_events("m"), "specification")
-    facts.append_event("m", {"type": "reopen", "pin_ref": "spec-review",
-        "reason": "revoke"}, TS)
+    facts.append_event(
+        "m", {"type": "reopen", "pin_ref": "spec-review", "reason": "revoke"}, TS
+    )
     assert not facts.proof_valid("m", facts.read_events("m"), "specification")
     # RE-REAP run 1: append a later outcome for the SAME run (no new dispatch, no re-pin)
-    facts.append_event("m", {"type": "outcome", "rule": "specification", "run": 1,
-        "verdict": "pass", "outputs": {},
-        "proofs": [{"name": "specification", "verdict": "pass",
+    facts.append_event(
+        "m",
+        {
+            "type": "outcome",
+            "rule": "specification",
+            "run": 1,
+            "verdict": "pass",
+            "outputs": {},
+            "proofs": [
+                {
+                    "name": "specification",
+                    "verdict": "pass",
                     "inputs": {"brainstorm.md": _fp("m", "brainstorm.md")},
-                    "oracle": {"ref": "spec-review", "grade": "proposed"}}],
-        "tool_versions": {}}, TS)
-    assert not facts.proof_valid("m", facts.read_events("m"), "specification")  # STAYS invalid
+                    "oracle": {"ref": "spec-review", "grade": "proposed"},
+                }
+            ],
+            "tool_versions": {},
+        },
+        TS,
+    )
+    assert not facts.proof_valid(
+        "m", facts.read_events("m"), "specification"
+    )  # STAYS invalid
 
 
 def test_repin_after_reopen_restores_validity(tmp_path, monkeypatch):
@@ -419,14 +509,35 @@ def test_repin_after_reopen_restores_validity(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")
     _spec_run("m", 1)
-    facts.append_event("m", {"type": "pin", "oracle_ref": "spec-review",
-        "content_fingerprint": "sha256:x", "provenance": "p", "reason": "endorse"}, TS)
-    facts.append_event("m", {"type": "reopen", "pin_ref": "spec-review",
-        "reason": "revoke"}, TS)
+    facts.append_event(
+        "m",
+        {
+            "type": "pin",
+            "oracle_ref": "spec-review",
+            "content_fingerprint": "sha256:x",
+            "provenance": "p",
+            "reason": "endorse",
+        },
+        TS,
+    )
+    facts.append_event(
+        "m", {"type": "reopen", "pin_ref": "spec-review", "reason": "revoke"}, TS
+    )
     assert not facts.proof_valid("m", facts.read_events("m"), "specification")
-    facts.append_event("m", {"type": "pin", "oracle_ref": "spec-review",
-        "content_fingerprint": "sha256:y", "provenance": "p", "reason": "re-endorse"}, TS)
-    assert facts.proof_valid("m", facts.read_events("m"), "specification")  # re-pin restores
+    facts.append_event(
+        "m",
+        {
+            "type": "pin",
+            "oracle_ref": "spec-review",
+            "content_fingerprint": "sha256:y",
+            "provenance": "p",
+            "reason": "re-endorse",
+        },
+        TS,
+    )
+    assert facts.proof_valid(
+        "m", facts.read_events("m"), "specification"
+    )  # re-pin restores
 
 
 def test_fresh_dispatch_after_reopen_is_valid(tmp_path, monkeypatch):
@@ -435,9 +546,21 @@ def test_fresh_dispatch_after_reopen_is_valid(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")
     _spec_run("m", 1)
-    facts.append_event("m", {"type": "pin", "oracle_ref": "spec-review",
-        "content_fingerprint": "sha256:x", "provenance": "p", "reason": "endorse"}, TS)
-    facts.append_event("m", {"type": "reopen", "pin_ref": "spec-review",
-        "reason": "revoke"}, TS)
-    _spec_run("m", 2, oracle_grade="proposed")  # fresh dispatch(run2)+outcome AFTER the reopen
+    facts.append_event(
+        "m",
+        {
+            "type": "pin",
+            "oracle_ref": "spec-review",
+            "content_fingerprint": "sha256:x",
+            "provenance": "p",
+            "reason": "endorse",
+        },
+        TS,
+    )
+    facts.append_event(
+        "m", {"type": "reopen", "pin_ref": "spec-review", "reason": "revoke"}, TS
+    )
+    _spec_run(
+        "m", 2, oracle_grade="proposed"
+    )  # fresh dispatch(run2)+outcome AFTER the reopen
     assert facts.proof_valid("m", facts.read_events("m"), "specification")

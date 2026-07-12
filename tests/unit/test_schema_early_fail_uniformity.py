@@ -88,7 +88,9 @@ def test_ppa_fail_requires_numbers(stage):
     # Without the measured numbers, a failure_kind=ppa fail is rejected.
     err = facts.validate_result(
         stage,
-        _fail_result(stage, {"fail_reason": "PPA gate exceeded", "failure_kind": "ppa"}),
+        _fail_result(
+            stage, {"fail_reason": "PPA gate exceeded", "failure_kind": "ppa"}
+        ),
     )
     assert err is not None, (
         f"stage {stage}: ppa fail without ppa_actual/violations accepted"
