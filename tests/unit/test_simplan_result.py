@@ -1,4 +1,4 @@
-"""Tests for the simplan finalize verb — build_result + gamma-floor args + count/enumerate."""
+"""Tests for the simplan finalize verb — build_result + human-gate args + count/enumerate."""
 
 import json
 import sys
@@ -103,6 +103,12 @@ def test_build_result_pass_lean_shape(tmp_path):
         "test_count": 1,
     }
     assert ss["plan_adequacy_gate"] == {"gate": "clear", "flagged": [], "must_ack": []}
+    # freeze-check second half: the pass binds the exact promoted product bytes
+    from simplan import classify
+
+    assert ss["products_digest"] == classify.products_digest(
+        wd, [a["path"] for a in env["artifacts"]]
+    )
     # lean shape: no narration when not passed; no fail_reason on pass
     assert "revision" not in ss and "fail_reason" not in ss
 
@@ -190,12 +196,15 @@ def test_build_result_gate_trip_fully_waived_is_pass(tmp_path):
     assert ss["plan_adequacy_gate"]["waived"] == waived
     assert (
         ss["revision"] == "rev 0.2 (rework r1): waived TP-X"
-    )  # gamma-floor narration carried
+    )  # human-gate narration carried
 
 
-# ── feature_count derivation (distinct F-NN in verification-plan.md) ─────────
+# ── feature_count derivation (distinct F-NN in the §3 Testpoints section) ────
 def test_count_features_distinct():
-    md = "| TP-1 | F-01 | x |\n| TP-2 | F-01 | y |\n| TP-3 | F-02 | z |\n"
+    md = (
+        "## 3. Testpoints Table\n"
+        "| TP-1 | F-01 | x |\n| TP-2 | F-01 | y |\n| TP-3 | F-02 | z |\n"
+    )
     assert vs.count_features(md) == 2  # F-01 counted once
 
 
@@ -204,9 +213,18 @@ def test_count_features_zero_when_absent():
 
 
 def test_count_features_ignores_non_fnn_tokens():
-    assert (
-        vs.count_features("prose mentions F- and Frame-01 and F-12\n") == 1
-    )  # only F-12
+    md = "## 3. Testpoints Table\nprose mentions F- and Frame-01 and F-12\n"
+    assert vs.count_features(md) == 1  # only F-12
+
+
+def test_count_features_ignores_s5_revision_mentions():
+    # an F-NN cited only in the §5 revision note (e.g. a dropped testpoint's
+    # attribution) must not inflate the count across reworks
+    md = (
+        "## 3. Testpoints Table\n| TP-1 | F-01 | x |\n"
+        "## 5. Revision Summary\nremoved over-spec testpoint for F-99\n"
+    )
+    assert vs.count_features(md) == 1
 
 
 # ── artifacts[] enumeration (fixed 3-entry set, present-only, no self-listing) ─
@@ -269,7 +287,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "test_count": 7,
     }
     assert ss["plan_adequacy_gate"] == {"gate": "clear", "flagged": [], "must_ack": []}
-    assert ss["revision"] == rev  # gamma-floor narration carried through
+    assert ss["revision"] == rev  # human-gate narration carried through
     # artifacts: the 3-entry set (plan-review.json staged → promoted)
     paths = {a["path"] for a in env["artifacts"]}
     assert paths == {
@@ -279,6 +297,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     }
     assert "result.json" not in paths
     assert env["produced_at"].endswith("Z")
+    assert "products_digest" in ss  # freeze-check second half recorded on pass
     _validate_envelope(env)
 
 
@@ -329,3 +348,134 @@ def test_finalize_records_input_digest_on_pass(tmp_path):
 
     rj = json.loads((wd / "result.json").read_text())
     assert rj["stage_specific"]["input_digest"] == classify.input_digest(spec_dir)
+
+
+def test_input_digest_skipped_off_layout(tmp_path):
+    # a workdir outside the canonical .../Verification/simulation-plan/runs/<N>
+    # layout must never hash a coincidental directory into the freeze baseline
+    root = tmp_path / "asic" / "m"
+    wd = root / "Verification" / "some-other-stage" / "runs" / "1"
+    wd.mkdir(parents=True)
+    spec_dir = root / "Design" / "specification"
+    spec_dir.mkdir(parents=True)
+    (spec_dir / "design.md").write_text("D", encoding="utf-8")
+    (spec_dir / "manifest.json").write_text('{"module":"m"}', encoding="utf-8")
+
+    _finalize_workdir(wd)
+    assert vs.build_result(wd, module="m", waived=None, status=None, revision=None) == 0
+
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert "input_digest" not in ss  # skipped -> next classify-delta says proceed
+    assert "products_digest" in ss  # workdir-relative, recorded regardless
+
+
+# ── early-fail entry (--fail-reason): routable fail, present-only carry ──────
+def test_finalize_earlyfail_empty_workdir(tmp_path):
+    # Step-1/2 early fail: nothing generated yet — finalize must still write a
+    # routable fail envelope (never BLOCKED, never a hand-assembled envelope)
+    rc = vs.finalize(
+        tmp_path,
+        "m",
+        waived_json=None,
+        status="fail",
+        revision=None,
+        fail_reason="external reference missing: Design/specification/design.md",
+    )
+    assert rc == 0
+    env = json.loads((tmp_path / "result.json").read_text())
+    assert env["status"] == "fail"
+    ss = env["stage_specific"]
+    assert ss["fail_reason"].startswith("external reference missing")
+    assert "plan_adequacy_gate" not in ss  # legitimate pre-Step-4 fail
+    assert env["artifacts"] == []
+
+
+def test_finalize_earlyfail_seeded_workdir_carries_products(tmp_path):
+    # on a seeded rework workdir the present-only enumeration carries the prior
+    # products, so a promoted early fail cannot GC canonical down to a hollow view
+    (tmp_path / "verification-plan.md").write_text("PLAN", encoding="utf-8")
+    (tmp_path / "scaffold-specification.json").write_text("{}", encoding="utf-8")
+    rc = vs.finalize(
+        tmp_path,
+        "m",
+        waived_json=None,
+        status="fail",
+        revision=None,
+        fail_reason="rework_trigger not readable: /x/result.json",
+    )
+    assert rc == 0
+    env = json.loads((tmp_path / "result.json").read_text())
+    paths = {a["path"] for a in env["artifacts"]}
+    assert paths == {"verification-plan.md", "scaffold-specification.json"}
+    assert "plan_adequacy_gate" not in env["stage_specific"]
+
+
+def test_finalize_blocked_on_empty_fail_reason(tmp_path):
+    rc = vs.finalize(
+        tmp_path, "m", waived_json=None, status="fail", revision=None, fail_reason="  "
+    )
+    assert rc == 2
+    assert not (tmp_path / "result.json").exists()
+
+
+def test_pass_ignores_fail_reason(tmp_path):
+    wd = _finalize_workdir(tmp_path)
+    rc = vs.finalize(
+        wd,
+        "m",
+        waived_json=None,
+        status=None,
+        revision=None,
+        fail_reason="should be ignored",
+    )
+    assert rc == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "pass"
+    assert "fail_reason" not in env["stage_specific"]
+
+
+def test_fail_with_corrupt_plan_review_is_blocked(tmp_path):
+    # presence decides: an absent record is a legitimate early fail, but a
+    # present-and-corrupt one must surface (exit 2), not silently drop the gate
+    (tmp_path / "plan-review.json").write_text("{not json", encoding="utf-8")
+    rc = vs.finalize(
+        tmp_path, "m", waived_json=None, status="fail", revision=None, fail_reason="x"
+    )
+    assert rc == 2
+    assert not (tmp_path / "result.json").exists()
+
+
+def test_fail_with_present_review_carries_gate(tmp_path):
+    # user reject after Step 4: the judged gate travels with the promoted fail
+    wd = _finalize_workdir(tmp_path)
+    rc = vs.finalize(wd, "m", waived_json=None, status="fail", revision=None)
+    assert rc == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["stage_specific"]["fail_reason"] == "user rejected plan"
+    assert env["stage_specific"]["plan_adequacy_gate"]["gate"] == "clear"
+
+
+# ── --waived content validation (human trust record, no placeholder laundering) ──
+def test_finalize_blocked_on_waived_missing_reason(tmp_path):
+    wd = _finalize_workdir(tmp_path)
+    bad = json.dumps(
+        [{"tp_id": "TP-X", "lens": "coverage", "classification": "accepted-risk"}]
+    )
+    assert vs.finalize(wd, "m", waived_json=bad, status=None, revision=None) == 2
+    assert not (wd / "result.json").exists()
+
+
+def test_finalize_blocked_on_waived_bad_classification(tmp_path):
+    wd = _finalize_workdir(tmp_path)
+    bad = json.dumps(
+        [
+            {
+                "tp_id": "TP-X",
+                "lens": "coverage",
+                "classification": "acceptable",  # not in the enum
+                "reason": "looks fine",
+            }
+        ]
+    )
+    assert vs.finalize(wd, "m", waived_json=bad, status=None, revision=None) == 2
+    assert not (wd / "result.json").exists()

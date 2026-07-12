@@ -2,14 +2,20 @@
 """simplan classify-delta — select the freeze branch: first-run | freeze | proceed.
 
 Pure read + hash over the specification input set (design.md + manifest.json + each
-<child>.md). Directive-agnostic: the SKILL consults it only on the directive-less path.
-freeze iff the spec inputs are byte-unchanged from the run that produced the canonical
-simulation-plan result AND that run passed — then `simplan seed` copies the prior
-verification-plan.md / scaffold-specification.json AND plan-review.json forward, and the
-Step-4 adequacy gate is skipped.
+<child>.md). Directive-agnostic: the SKILL consults it only on the directive-less path
+(a directive means a scoped fix, never a freeze). freeze iff BOTH halves hold: (1) the
+spec inputs are byte-unchanged from the run that produced the canonical simulation-plan
+result AND that run passed; (2) the canonical products still match the products_digest
+that pass recorded — spec-unchanged alone is not enough, because a hand-edited canonical
+product would otherwise be re-blessed by the freeze branch without any reviewer or human
+gate seeing it. Either digest absent (legacy baseline) → proceed, never freeze (safe
+fallback). On freeze, `simplan seed --freeze` copies the prior verification-plan.md /
+scaffold-specification.json AND plan-review.json forward, and the Step-4 adequacy gate
+is skipped.
 
-input_digest() is the single home for the digest algorithm; simplan.result imports it so
-finalize records the same value the classifier later compares against.
+input_digest() / products_digest() are the single home for both digest algorithms;
+simplan.result imports them so finalize records the same values the classifier later
+compares against.
 """
 
 from __future__ import annotations
@@ -29,6 +35,18 @@ def input_digest(spec_dir: str | Path) -> str:
         h.update(b"\0")
         h.update(p.read_bytes())
         h.update(b"\0")
+    return h.hexdigest()
+
+
+def products_digest(root: str | Path, artifact_paths: list[str]) -> str:
+    """Digest over an artifact set (sorted relative paths + per-file content hash) —
+    the freeze check's second half. Raises OSError when any listed file is missing
+    or unreadable (the caller treats that as no-freeze)."""
+    h = hashlib.sha256()
+    for rel in sorted(artifact_paths):
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        h.update(hashlib.sha256((Path(root) / rel).read_bytes()).digest())
     return h.hexdigest()
 
 
@@ -53,7 +71,27 @@ def classify_delta(canonical_result, spec_dir) -> dict:
         return {"verdict": "proceed", "reason": "specification changed since baseline"}
     if status != "pass":
         return {"verdict": "proceed", "reason": f"baseline not pass (status={status})"}
-    return {"verdict": "freeze", "reason": "specification frozen, baseline pass"}
+    recorded_products = ss.get("products_digest")
+    if recorded_products is None:
+        return {"verdict": "proceed", "reason": "baseline has no products_digest"}
+    paths = [
+        a.get("path")
+        for a in rj.get("artifacts", [])
+        if isinstance(a, dict) and a.get("path")
+    ]
+    try:
+        current_products = products_digest(cr.parent, paths)
+    except OSError:
+        return {"verdict": "proceed", "reason": "canonical products missing/unreadable"}
+    if current_products != recorded_products:
+        return {
+            "verdict": "proceed",
+            "reason": "canonical products drifted since baseline",
+        }
+    return {
+        "verdict": "freeze",
+        "reason": "specification + products unchanged, baseline pass",
+    }
 
 
 def run(canonical_result, spec_dir) -> int:

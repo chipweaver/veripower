@@ -71,7 +71,12 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     from simplan import result
 
     return result.finalize(
-        a.workdir, a.module, waived_json=a.waived, status=a.status, revision=a.revision
+        a.workdir,
+        a.module,
+        waived_json=a.waived,
+        status=a.status,
+        revision=a.revision,
+        fail_reason=a.fail_reason,
     )
 
 
@@ -146,17 +151,22 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("finalize", help="assemble the lean result.json")
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument("--module", required=True)
-    sp.add_argument(
-        "--waived", default=None, help="JSON array of human waiver objects (γ-floor)"
-    )
+    sp.add_argument("--waived", default=None, help="JSON array of human waiver objects")
     sp.add_argument(
         "--status",
         choices=["pass", "fail"],
         default=None,
-        help="human Step-5 verdict; --status fail = user rejected plan (γ-floor)",
+        help="human Step-5 verdict; fail = user reject, or a documented "
+        "early-fail exit (with --fail-reason)",
     )
     sp.add_argument(
-        "--revision", default=None, help="agent-composed revision narrative (γ-floor)"
+        "--revision", default=None, help="agent-composed revision narrative"
+    )
+    sp.add_argument(
+        "--fail-reason",
+        default=None,
+        help="on --status fail: the one-line failure narrative (early-fail entry); "
+        "default = the Step-5 user-reject wording",
     )
     sp.set_defaults(func=_cmd_finalize)
 
