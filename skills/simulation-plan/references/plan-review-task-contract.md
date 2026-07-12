@@ -2,7 +2,7 @@
 
 The simulation-plan main thread self-dispatches ONE Level-1 `Task(run_in_background=True)` — a
 fresh plan-adequacy reviewer — as Step 4, AFTER `simplan check-scaffold` (structural +
-coverage-matrix) passes and BEFORE the Step-5 user review loop. This review is **gating** (T2):
+coverage-matrix) passes and BEFORE the Step-5 user review loop. This review is **gating**:
 `coverage` findings at `severity ∈ {critical, important}` BLOCK `status=pass` until resolved;
 `adequacy` findings are advisory **must-acknowledge** (surfaced to the user, never block). The
 main thread does NOT auto-fix the plan. Do not call the Task tool and do not call `kernel.py`.
