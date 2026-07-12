@@ -7,7 +7,7 @@ Verbs (one stage = one tool; see skills/simulation-plan/SKILL.md for usage):
   check-scaffold        structural+semantic+coverage gate        (exit 0 OK / 1 fix-message)
   validate-review       plan-review.json schema + gate           (stdout: gate JSON; exit 0/1)
   classify-delta        freeze-branch selector                   (stdout: verdict JSON; exit 0/1)
-  seed                  carry prior canonical plan forward (no-clobber) (stdout: JSON; exit 0)
+  seed                  carry prior canonical plan products fwd (whitelist) (stdout: JSON; exit 0)
   finalize              assemble the lean result.json            (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the simplan.*
@@ -64,7 +64,7 @@ def _cmd_classify_delta(a: argparse.Namespace) -> int:
 def _cmd_seed(a: argparse.Namespace) -> int:
     from simplan import seed
 
-    return seed.run(a.workdir, a.canonical)
+    return seed.run(a.workdir, a.canonical, freeze=a.freeze)
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
@@ -124,13 +124,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.set_defaults(func=_cmd_classify_delta)
 
-    sp = sub.add_parser("seed", help="carry prior canonical plan forward (no-clobber)")
+    sp = sub.add_parser(
+        "seed",
+        help="carry prior canonical plan products forward (whitelist, no-clobber; "
+        "never result.json/plan-data.json)",
+    )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
         "--canonical",
         type=Path,
         default=None,
         help="prior canonical dir; default = {workdir}/../..",
+    )
+    sp.add_argument(
+        "--freeze",
+        action="store_true",
+        help="freeze branch only: additionally byte-carry plan-review.json (keeps its pin alive)",
     )
     sp.set_defaults(func=_cmd_seed)
 

@@ -20,7 +20,6 @@ class Rule:
     workdir_root: tuple[str, ...]
     inputs: dict[str, tuple[str, ...]] = field(default_factory=dict)
     outputs: tuple[str, ...] = ()
-    cache: tuple[str, ...] = ()
     proof: str | None = None
     oracle: tuple[str, str] | None = None  # (ref, grade)
     oracle_selector: str | None = (
@@ -69,7 +68,6 @@ RULES: dict[str, Rule] = {
             "scaffold-specification.json",
             "plan-review.json",
         ),
-        cache=("plan-data.json",),
         proof="simulation-plan",
         oracle=("plan-review", "proposed"),
         oracle_selector="plan-review.json",
@@ -112,7 +110,6 @@ RULES: dict[str, Rule] = {
             "scripts/constraints.sgdc",
             "scripts/waiver.tcl",
         ),
-        cache=("scripts/constraints.sgdc",),
         proof="lint-cdc",
         oracle=("spyglass-ruleset", "tool"),
         params=("directive",),
@@ -241,7 +238,6 @@ RULES: dict[str, Rule] = {
         workdir_root=("Verification", "simulation-triage"),
         inputs={},
         outputs=(),
-        cache=(),
         proof=None,
         oracle=None,
         params=("sim_run",),

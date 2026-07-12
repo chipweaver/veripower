@@ -71,6 +71,7 @@ def _make_tree(
     filelist="rtl/dut.v\n",
     readme=None,
     warm=None,
+    waiver=None,
     cold=None,
     sdc=None,
 ):
@@ -85,10 +86,13 @@ def _make_tree(
         (rtl / "filelist.txt").write_text(filelist)
     if readme is not None:
         (rtl / "README.md").write_text(readme)
-    if warm is not None:
+    if warm is not None or waiver is not None:
         ws = base / "Design" / "lint-cdc" / "scripts"
         ws.mkdir(parents=True)
-        (ws / "constraints.sgdc").write_text(warm)
+        if warm is not None:
+            (ws / "constraints.sgdc").write_text(warm)
+        if waiver is not None:
+            (ws / "waiver.tcl").write_text(waiver)
     if cold is not None or sdc is not None:
         spec = base / "Design" / "specification" / "constraints"
         spec.mkdir(parents=True)
@@ -147,6 +151,31 @@ def test_warm_seed_used_and_not_resubstituted(tmp_path):
     assert "SENTINEL warm" in (workdir / "scripts" / "constraints.sgdc").read_text()
     assert "warm-start" in r.stdout
     assert "MY_TOP" not in (workdir / "env.sh").read_text()
+
+
+def test_warm_waiver_carried_verbatim(tmp_path):
+    # Canonical waiver.tcl holds HUMAN-reviewed waivers (promoted per SKILL.md) — a
+    # redeploy must carry it verbatim, not reset it to the pristine template (which
+    # would erase the waivers from canonical at the next promote).
+    m, workdir, main = _make_tree(
+        tmp_path,
+        waiver='# SENTINEL reviewed waiver\nwaive -rules W123 -comment "ok. Owner: a Date: 2026-07-01"\n',
+    )
+    r = _run(m, workdir, main, extra=["--top", "dut"])
+    assert r.returncode == 0, r.stderr
+    assert (
+        "SENTINEL reviewed waiver" in (workdir / "scripts" / "waiver.tcl").read_text()
+    )
+    assert "warm-start used Design/lint-cdc/scripts/waiver.tcl" in r.stdout
+
+
+def test_no_warm_waiver_keeps_substituted_template(tmp_path):
+    # No canonical waiver -> the copytree'd template waiver.tcl stays, MY_TOP-substituted.
+    m, workdir, main = _make_tree(tmp_path)
+    r = _run(m, workdir, main, extra=["--top", "dut"])
+    assert r.returncode == 0, r.stderr
+    tpl = (workdir / "scripts" / "waiver.tcl").read_text()
+    assert "MY_TOP" not in tpl
 
 
 def test_cold_seed_used(tmp_path):

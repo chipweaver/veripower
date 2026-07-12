@@ -49,7 +49,7 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 | `lint-report.txt` | SpyGlass text report | Lint summary report (frontend-signoff evidence). |
 | `cdc-report.txt` | SpyGlass text report | CDC summary report (frontend-signoff evidence; missing = fail, `collect_report.py` exits 1). |
 | `scripts/constraints.sgdc` | SGDC | Depth-annotation iteration site, edited by you. On `status=pass` list it in `artifacts[]` — promotion enables the next run's warm-start (Iron Rule). |
-| `scripts/waiver.tcl` | TCL | Reviewed waivers, written by you (Step 6); promoted so waivers survive across runs. |
+| `scripts/waiver.tcl` | TCL | Reviewed waivers, written by you (Step 6); promoted, and the bootstrap warm-start carries the canonical copy into each new run verbatim — that carry is what makes waivers survive across runs. |
 
 The promoted full set (including the `*-violations.json` gate sources read in Steps 4/5/7) is enumerated by `lintcdc finalize` — this table is the contract surface, not a mirror of it.
 
@@ -76,7 +76,7 @@ Run:
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
 ```
 
-The script deploys the templates to `{workdir}`, substitutes the `MY_TOP` placeholder, and fills `scripts/constraints.sgdc` from the SGDC seed (warm → cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `directive.md` does NOT count as "deployed"). When `--top` is omitted, infer it from `Design/rtl-design/README.md` or `filelist.txt` (inference failure aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files you edit are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.
+The script deploys the templates to `{workdir}`, substitutes the `MY_TOP` placeholder, fills `scripts/constraints.sgdc` from the SGDC seed (warm → cold → template priority; see `references/makefile-bootstrap.md`), and carries the canonical `Design/lint-cdc/scripts/waiver.tcl` forward verbatim when present (template otherwise — reviewed waivers survive across runs). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `directive.md` does NOT count as "deployed"). When `--top` is omitted, infer it from `Design/rtl-design/README.md` or `filelist.txt` (inference failure aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files you edit are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.
 
 ### Step 3: Add RTL custom-synchronizer annotations
 
@@ -107,6 +107,8 @@ The script re-derives the counts — you do not count by hand.
 ### Step 6: Waivers
 
 Write each reviewed waiver to `scripts/waiver.tcl`; each entry carries `-rules` and `-comment "<reason>. Owner: <owner> Date: <yyyy-mm-dd>"`. `waiver.tcl` is sourced automatically by `run.tcl` (when `SPYGLASS_STAGE=lint` or `all`). Re-run `make lint` to verify the waivers take effect.
+
+Carried-forward waivers are NOT pre-validated: the bootstrap warm-carries the canonical `waiver.tcl` verbatim, so an entry written against an old finding can silently swallow a NEW same-rule violation introduced by an RTL rework. On every run whose RTL changed, re-review each carried entry against this run's reports before Step 7: scope waivers as narrowly as the rule allows (anchor to the design unit/instance, never a bare rule id when avoidable) and delete entries whose original finding no longer exists.
 
 ### Step 7: Write `{workdir}/result.json` (mandatory)
 

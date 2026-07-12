@@ -23,7 +23,7 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 - **No whole-design elaboration in any child sub-Task:** per `references/child-task-contract.md`, no child may whole-design elaborate/compile, read sibling RTL bodies, or reverse-read an external verification harness; integration/elaboration correctness is verified by downstream verification. A unit child may best-effort `verilator --lint-only` its own module only.
 - **`<child>.md §2 Interface` incomplete:** if the interface spec is missing or underspecified, write `status=fail` + `fail_reason="<child>.md §2 Interface incomplete"`; do not invent interfaces.
 - **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's task actually requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise a trigger-driven rework's `violations[]` list is the scope (already binding — see the Trigger-driven rework branch); otherwise the incremental-update branch's `specification` diff is the scope. Every file outside that scope MUST stay byte-identical to the prior run — a full rewrite on a narrow fix defeats the incremental kernel's per-file cascade.
-- **Freeze-reuse when nothing changed.** With no `{directive_path}`, run `rtl classify-delta --canonical-result asic/{module}/Design/rtl-design/result.json --spec-dir asic/{module}/Design/specification`. On `verdict=freeze`, run `rtl seed --workdir {workdir}` (it byte-copies the prior RTL / `filelist.txt` / `README.md` **and `semantic-review.json`** forward, no-clobber) and **SKIP the Step-4.4 semantic gate wave** — do not re-dispatch any child sub-Task. The carried-forward `semantic-review.json` keeps its `pin` alive: re-judging byte-identical RTL would regenerate the record and drop the pin. On `first-run` / `proceed`, fall through to the normal branch.
+- **Freeze-reuse when nothing changed.** With no `{directive_path}`, run `rtl classify-delta --canonical-result asic/{module}/Design/rtl-design/result.json --spec-dir asic/{module}/Design/specification`. On `verdict=freeze`, run `rtl seed --workdir {workdir} --freeze` (whitelist byte-copy of the prior RTL fileset / `filelist.txt` / `README.md` / `.child_reports.json` ledger, no-clobber; `--freeze` additionally carries `semantic-review.json` and materializes `fresh_reports.json` as `{}` — zero children are dispatched this round, and the finalize post exit gate requires the file; `result.json` is never seeded) and **SKIP the Step-4.4 semantic gate wave** — do not re-dispatch any child sub-Task. The carried-forward `semantic-review.json` keeps its `pin` alive: re-judging byte-identical RTL would regenerate the record and drop the pin. Then close the run with the Step-4.5 `rtl finalize` over the seeded ledger — a freeze run still ends with its own freshly-stamped `result.json`; a carried-in stale envelope is reaped `blocked` (`stale_result`), never as a verdict. On `first-run` / `proceed`, fall through to the normal branch.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -110,8 +110,11 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py seed --workdir {workdir}
 ```
 
 The `seed` verb derives the canonical dir as `{workdir}/../..` (no hardcoded per-module path here)
-and carries unchanged children's RTL + the prior `.child_reports.json` ledger forward, no-clobber.
-First-run skips it.
+and carries unchanged children's RTL + `filelist.txt` / `README.md` + the prior
+`.child_reports.json` ledger forward (whitelist = HDL suffixes at any depth ∪ every file
+the ledger's `files` entries list — children's non-HDL support files are products too;
+no-clobber — never `result.json`, and `semantic-review.json` only under the Freeze-reuse
+branch's `--freeze`; Step 4.4 re-judges here). First-run skips it.
 
 When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint. It
 takes priority over both the trigger content (trigger-driven path) and the external-reference diff

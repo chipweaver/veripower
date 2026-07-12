@@ -8,6 +8,7 @@ test_facts_*/test_rules/test_route/test_schedule/test_store.
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,6 +19,13 @@ import kernel  # noqa: E402
 import rules  # noqa: E402
 
 TS = "2026-07-10T00:00:00.000000Z"
+
+
+def _now_iso() -> str:
+    """Second-resolution UTC stamp, mirroring the skill finalizers' _now_iso() — so a
+    result.json written mid-test passes the reap temporal-integrity check the same way
+    a real freshly-finalized envelope does (incl. the same-second floor semantics)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _run(tmp_path, *args):
@@ -97,7 +105,7 @@ def _dispatch_write_reap(tmp_path, module, rule, files, *, objective="delivery")
         "schema_version": 1,
         "stage": rule,
         "module": module,
-        "produced_at": "2026-07-10T00:00:00Z",
+        "produced_at": _now_iso(),
         "status": "pass",
         "artifacts": [{"path": p} for p in files],
         "stage_specific": _STAGE_SPECIFIC[rule],
@@ -403,7 +411,7 @@ def _write_triage_result(module, workdir, *, status, stage_specific):
         "schema_version": 1,
         "stage": "simulation-triage",
         "module": module,
-        "produced_at": "2026-07-10T00:00:00Z",
+        "produced_at": _now_iso(),
         "status": status,
         "artifacts": [],
         "stage_specific": stage_specific,
@@ -960,6 +968,112 @@ def test_triage_l2_without_experiment_blocked(tmp_path, monkeypatch):
         str(d["run"]),
     )
     assert r["verdict"] == "blocked"
+
+
+# ── reap temporal-integrity check (room-birth hygiene, ARCHITECTURE §4.7/§7.2) ──
+#
+# The kernel's only trust input from a workdir is result.json; a produced_at predating
+# this run's own dispatch means the envelope was carried in (e.g. a canonical result.json
+# copied into the room), not authored by this run's executor. Without this check the
+# whitewash is fully automatic: decide step 0 auto-REAPs any in-flight run whose workdir
+# holds a result.json, so an interrupted seeded run would land a stale pass with a fresh
+# inputs table.
+
+
+def test_reap_stale_produced_at_blocked_no_promote(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    module = "stale1"
+    _write_file(module, "brainstorm.md", "b1")
+    d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
+    workdir = d["workdir"]
+    for rel, content in _STAGE_FILES["specification"].items():
+        _write_file(module, f"{workdir}/{rel}", content)
+    result = {
+        "schema_version": 1,
+        "stage": "specification",
+        "module": module,
+        "produced_at": "2026-07-10T00:00:00Z",  # predates the just-made dispatch
+        "status": "pass",
+        "artifacts": [{"path": p} for p in _STAGE_FILES["specification"]],
+        "stage_specific": _STAGE_SPECIFIC["specification"],
+    }
+    _write_file(module, f"{workdir}/result.json", json.dumps(result))
+    r = _run_json(
+        tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
+    )
+    assert r == {"ok": True, "rule": "specification", "run": 1, "verdict": "blocked"}
+    outcome = facts.read_events(module)[-1]
+    assert outcome["reason"] == "stale_result"
+    assert outcome["outputs"] == {} and outcome["proofs"] == []
+    canonical = facts.module_root(module) / "Design" / "specification"
+    assert not (canonical / "result.json").exists()  # blocked never promotes
+
+
+def test_reap_same_second_produced_at_not_misjudged(tmp_path, monkeypatch):
+    # Skill finalizers stamp second-resolution UTC while the kernel dispatch ts carries
+    # microseconds: a sub-second run's produced_at can equal the dispatch second exactly.
+    # The check floors the dispatch ts, so the boundary case must reap pass, not stale.
+    monkeypatch.chdir(tmp_path)
+    module = "boundary1"
+    _write_file(module, "brainstorm.md", "b1")
+    d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
+    dispatch_ts = facts.read_events(module)[-1]["ts"]  # %Y-%m-%dT%H:%M:%S.%fZ
+    workdir = d["workdir"]
+    for rel, content in _STAGE_FILES["specification"].items():
+        _write_file(module, f"{workdir}/{rel}", content)
+    result = {
+        "schema_version": 1,
+        "stage": "specification",
+        "module": module,
+        "produced_at": dispatch_ts[:19] + "Z",  # dispatch second, microseconds dropped
+        "status": "pass",
+        "artifacts": [{"path": p} for p in _STAGE_FILES["specification"]],
+        "stage_specific": _STAGE_SPECIFIC["specification"],
+    }
+    _write_file(module, f"{workdir}/result.json", json.dumps(result))
+    r = _run_json(
+        tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
+    )
+    assert r["verdict"] == "pass", r
+
+
+def test_reap_unparseable_produced_at_blocked(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    module = "stale2"
+    _write_file(module, "brainstorm.md", "b1")
+    d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
+    workdir = d["workdir"]
+    for rel, content in _STAGE_FILES["specification"].items():
+        _write_file(module, f"{workdir}/{rel}", content)
+    result = {
+        "schema_version": 1,
+        "stage": "specification",
+        "module": module,
+        "produced_at": "yesterday-ish",  # schema-legal string, not a timestamp
+        "status": "pass",
+        "artifacts": [{"path": p} for p in _STAGE_FILES["specification"]],
+        "stage_specific": _STAGE_SPECIFIC["specification"],
+    }
+    _write_file(module, f"{workdir}/result.json", json.dumps(result))
+    r = _run_json(
+        tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
+    )
+    assert r["verdict"] == "blocked"
+    assert facts.read_events(module)[-1]["reason"] == "produced_at_unparseable"
+
+
+def test_stale_result_reason_boundaries():
+    # Direct boundary semantics of the helper: same-second passes (floored dispatch),
+    # earlier second is stale, naive timestamps are taken as UTC, garbage is unparseable.
+    f = kernel._stale_result_reason
+    assert f("2026-07-10T00:00:00Z", "2026-07-10T00:00:00.900000Z") is None
+    assert f("2026-07-10T00:00:00Z", "2026-07-10T00:00:01.000000Z") == "stale_result"
+    assert f("2026-07-10T00:00:01Z", "2026-07-10T00:00:00.900000Z") is None
+    assert f("2026-07-10T00:00:00", "2026-07-10T00:00:00.900000Z") is None  # naive=UTC
+    assert (
+        f("yesterday-ish", "2026-07-10T00:00:00.000000Z") == "produced_at_unparseable"
+    )
+    assert f(None, "2026-07-10T00:00:00.000000Z") == "produced_at_unparseable"
 
 
 def test_bare_import_single_module_identity():

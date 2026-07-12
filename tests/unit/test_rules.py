@@ -48,8 +48,8 @@ def test_every_input_traces_to_a_producer_or_pipeline_input():
                 )
 
 
-def test_declared_input_graph_is_acyclic_cache_excluded():
-    # cache selectors do not participate; build edges consumer -> producer.
+def test_declared_input_graph_is_acyclic_self_edges_excluded():
+    # input_producers drops self-edges (in∩out inputs), so the derived graph is acyclic.
     graph = {n: rules.input_producers(n) for n in rules.RULES}
     _assert_acyclic(graph)
 

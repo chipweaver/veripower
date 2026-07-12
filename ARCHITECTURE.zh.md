@@ -172,7 +172,6 @@ Orchestrator 的三条派发路径：
 | `workdir_root` | 模块相对的规范目录（如 `Design/specification`）；run 落在 `<workdir_root>/runs/<N>/`。 |
 | `inputs` | 规则消费的、按名分组的模块相对规范路径 *glob*。 |
 | `outputs` | 规则产出的（以 workdir_root 为前缀的）模块相对 glob——依赖图的来源。 |
-| `cache` | 自产输入（in∩out），如 `lint-cdc` 自己的 `scripts/constraints.sgdc`——豁免自锁（§4.4）。 |
 | `proof` | 产证明规则在收割时落账的证明名（`simulation-triage` 为 `None`）。 |
 | `oracle` | `(ref, grade)`——裁判及其信任等级（§4.5）。 |
 | `oracle_selector` | 对 `proposed` oracle，`pin` 所指纹的 workdir 相对 glob。 |
@@ -281,7 +280,7 @@ Orchestrator 的三条派发路径：
 
 推论：编辑证明触碰过的任何文件——输入、输出、或结果信封——都会在下一次查询时静默使该证明失效，并传递性地使消费它的下游证明失效。没有任何东西需要去*标记*陈旧；陈旧就是"不再有匹配的指纹"这一事实本身。`kernel.py consequences --paths <p…>` 让这一点可以事先查询：一个只读的 what-if，对每个路径报告若其内容改变、哪些当前有效的证明会翻转为无效。
 
-**输入可用性**（`facts.input_available`）是派发时刻的对应物：消费者的某个输入 glob 可用，当且仅当它是外部的 `brainstorm.md`（只需存在），或其生产者从未运行过（真冷启动——前向调度会先运行生产者），或生产者最新 outcome 落账了匹配且仍新鲜的输出**且**该生产者的证明当前有效。生产者运行过却无一匹配（落账或磁盘上都没有）= 输入确实缺失 → 不可用（保守方向——绝不让消费者对着静默缺失的输入派发）。自产输入（`cache`，in∩out）豁免自锁：没有先前 outcome 时可派发（冷启动），否则与该规则自己落账的输出比对。
+**输入可用性**（`facts.input_available`）是派发时刻的对应物：消费者的某个输入 glob 可用，当且仅当它是外部的 `brainstorm.md`（只需存在），或其生产者从未运行过（真冷启动——前向调度会先运行生产者），或生产者最新 outcome 落账了匹配且仍新鲜的输出**且**该生产者的证明当前有效。生产者运行过却无一匹配（落账或磁盘上都没有）= 输入确实缺失 → 不可用（保守方向——绝不让消费者对着静默缺失的输入派发）。自产输入（in∩out——按推导图其生产者就是消费规则自身的输入 glob，如 `lint-cdc` 自己的 `scripts/waiver.tcl`）豁免自锁：没有先前 outcome 时可派发（冷启动），否则与该规则自己落账的输出比对。该豁免由 `inputs`/`outputs` 选择器推导（`producer_of(glob) == consumer`），没有单独的声明字段。
 
 ### 4.5 oracle 等级、pin 与纪元
 
@@ -313,7 +312,7 @@ Orchestrator 的三条派发路径：
 
 ### 4.7 结果信封与 schema 校验
 
-每个 `result.json` 按共享信封（`framework/references/schemas/envelope.schema.json`：`stage` / `module` / `produced_at` / `status` / `artifacts` / `stage_specific`）外加该规则的按阶段 schema `skills/<skill>/references/result.schema.json`（其 `$ref` 引用信封）校验。`kernel._derive_verdict` 在收割时运行这套校验：格式良好的 `status ∈ {pass, fail}` 即成为裁决；缺失、不可解析、非对象、status 畸形或违反 schema 的信封成为 `blocked`（子类记入 outcome 的 `reason`）。`facts.validate_result` 只读，且把基础设施故障（schema 缺失/损坏）也作为违规消息返回——保守方向永远是"未证明有效"，绝不静默通过。
+每个 `result.json` 按共享信封（`framework/references/schemas/envelope.schema.json`：`stage` / `module` / `produced_at` / `status` / `artifacts` / `stage_specific`）外加该规则的按阶段 schema `skills/<skill>/references/result.schema.json`（其 `$ref` 引用信封）校验。`kernel._derive_verdict` 在收割时运行这套校验：格式良好的 `status ∈ {pass, fail}` 即成为裁决；缺失、不可解析、非对象、status 畸形或违反 schema 的信封成为 `blocked`（子类记入 outcome 的 `reason`）。随后检查**时间完整性**：`produced_at` 早于本 run 自己的 `dispatch` 事件（与向下取整到秒的 dispatch `ts` 比对——skill 侧 finalize 打的是秒级时间戳）意味着信封是被携带进来的、而非本轮执行者所写，派生为 `blocked` / `stale_result`（`produced_at` 不可解析则为 `blocked` / `produced_at_unparseable`）；它绝不铸成裁决，因此陈旧副本无法被一次裸收割漂白进账本。`facts.validate_result` 只读，且把基础设施故障（schema 缺失/损坏）也作为违规消息返回——保守方向永远是"未证明有效"，绝不静默通过。
 
 ## 5. 调度决策循环
 
@@ -408,7 +407,7 @@ flowchart TD
 - **PPA 目标 → `rtl-design` directive。** `specification` 产出 `Design/specification/ppa.json`。`synthesis` 与 `power-analysis` *直接*消费它——它是二者的声明输入（`Rule.inputs["ppa"]`），目标由它们自己从文件读取，提示词里不注入任何东西。`rtl-design` 没有 `ppa.json` 输入边，故 Orchestrator 撰写 rtl-design 的 directive 时把每个 PPA 目标的 `dim` 与数值转录进去——directive 是 rtl-design 唯一的 PPA 通道。PPA 目标就此只经文件和 directive 传递；内核不向任何提示词注入 PPA 字段。
 - **triage 转发（逐字节）。** 携带 `triage_forward: true` 的自动重建，其 directive *就是* triage 的 `result.json`，逐字节转发（`--directive <triage result.json>`）——`dispatch` 复制字节，禁止 LLM 转述。多诊断合并把每个来源按诊断归属标题串接。
 
-**收割。** `kernel.py reap --rule <r> --run <n> [--subagent-output-file <f>]` 不接受裁决标志——一切由 `cmd_reap` 派生（§4.7）。它尽力镜像异步转录（§6.5），派生 `(verdict, reason, proofs, diagnosis)` 四元组，在 `pass` *与* `fail` 上（`blocked` 除外）`store.promote` 产物到规范目录，按实际 promote 集把指纹记入 outcome 的 `outputs`，追加 `outcome`，并——对完成的 triage——追加派生的 `diagnosis`。promote 幂等（§7.2），promote 中途崩溃由下一次收割修复。
+**收割。** `kernel.py reap --rule <r> --run <n> [--subagent-output-file <f>]` 不接受裁决标志——一切由 `cmd_reap` 派生（§4.7），包括时间完整性检查：`produced_at` 早于本 run dispatch 的 `result.json` 是被携带进来的陈旧信封，派生为 `blocked` / `stale_result`（§4.7）。它尽力镜像异步转录（§6.5），派生 `(verdict, reason, proofs, diagnosis)` 四元组，在 `pass` *与* `fail` 上（`blocked` 除外）`store.promote` 产物到规范目录，按实际 promote 集把指纹记入 outcome 的 `outputs`，追加 `outcome`，并——对完成的 triage——追加派生的 `diagnosis`。promote 幂等（§7.2），promote 中途崩溃由下一次收割修复。
 
 **崩溃恢复折叠进循环。** 没有单独的初始化或恢复阶段：第一次 `dispatch` 创建日志；已完成但未收割的 run 由 `decide` 第 0 步接住。执行器*没写* `result.json` 就死掉的 run 仍在途，在 `YIELD` 的 `in_flight[]` 视图中以 `has_result: false` 现身；Orchestrator 确认执行器已死后，发出显式 `reap`，派生 `blocked`，为重路由解锁账本（`skills/design-flow/SKILL.md` 的 Dead-in-flight 规则）。
 
@@ -494,6 +493,8 @@ asic/<module>/
 子 Agent 永远写 `runs/<N>/`（`dispatch` 给出的 workdir），从不直写规范路径。run 在 `pass` 或 `fail` 完成后，`cmd_reap` 调用 `store.promote`：先在 `.promote-tmp/` 构建 `result.json` + 全部 `artifacts[]` 条目的新视图（全硬链接；产物路径经封闭性检查，绕过校验的生产者也无法链接到 `runs/<N>/` 之外），再逐条目 `rename` 进规范目录（先移除同名旧目标），最后尽力删除不在新视图中的规范旧条目。规范文件因此与最近提升的 run 共享 inode，下游规则读规范路径永远看到最新完成的内容。
 
 > **契约：** promote 幂等。promote 中途崩溃可能留下陈旧的 `.promote-tmp/`；下一次对该阶段做 promote 的收割会重跑 `promote()`——它在开始前先清掉残留的 `.promote-tmp/`，再重建同样的硬链接（无操作），恰好落一条 `outcome`。这就是只追加日志能在 promote 中途崩溃后依然自洽的原因。
+
+> **契约（房间出生卫生）：** run 的 workdir 出生时**不含裁决类工件**：`result.json` 与已判决的评审记录从不被播种进新房间，因此 workdir 里存在 `result.json` 当且仅当本轮执行者写了它——其时间半边由收割机械地强制（`produced_at` 早于本 run dispatch → `blocked` / `stale_result`，§4.7）。把先前**产物**带进房间（返工/增量的最小编辑基线）是各 skill 在自己分支逻辑内的显式白名单动作——freeze/返工/patch/首跑的分支判定发生在 dispatch 之后、skill 内部，这正是播种不属于内核职责的原因。评审记录排除项的唯一例外是 freeze 分支对自己已判决评审记录的字节携带（`seed --freeze`；simulation 的 freeze 模式 `copy-baseline`），其目的是让 `pin` 在字节不变的内容上存活。
 
 ### 7.3 磁盘管理
 

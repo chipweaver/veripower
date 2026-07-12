@@ -10,7 +10,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap \
 ```
 
 - Deploys into the directory passed via `--workdir` (typically `asic/<module>/Design/lint-cdc/runs/<N>/`, caller-provided). A relative `--workdir` resolves against the working tree root (the CWD, i.e. the directory containing `asic/`).
-- Substitutes the `MY_TOP` placeholder in: `env.sh`, `scripts/spyglass_lint.prj`, `scripts/filelist.txt`, `scripts/constraints.sgdc`, `scripts/waiver.tcl`.
+- Substitutes the `MY_TOP` placeholder in: `env.sh`, `scripts/spyglass_lint.prj`, `scripts/filelist.txt`, `scripts/constraints.sgdc`, `scripts/waiver.tcl` — except entries replaced by a warm/cold carry (see below), which are copied verbatim.
+- Carries the canonical `Design/lint-cdc/scripts/waiver.tcl` forward verbatim when present (warm → template priority): the human-reviewed waivers persisted by a prior run survive into each new deploy instead of being reset to the pristine template.
 - RTL paths in `scripts/filelist.txt` are written as `../../../rtl-design/...` (relative to the sourcelist file `scripts/filelist.txt`: scripts/ → runs/<N>/ → lint-cdc/ → Design/ → rtl-design/).
 - An existing `{workdir}/Makefile` is treated as "already deployed" and the script aborts; a caller-placed `directive.md` inside the workdir does NOT count as "deployed".
 - When `--top` is omitted, the script infers it from `Design/rtl-design/README.md` or `filelist.txt`.

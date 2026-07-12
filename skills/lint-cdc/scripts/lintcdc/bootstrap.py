@@ -7,10 +7,12 @@ no sed-delimiter hazard).
 
 Deploys templates/ into the caller-provided workdir
 (asic/<module>/Design/lint-cdc/runs/<N>/), infers TOP from the rtl-design
-README/filelist, seeds scripts/constraints.sgdc (warm -> cold -> template priority),
-substitutes the MY_TOP placeholder, syncs scripts/filelist.txt from the rtl-design
-filelist (RTL paths rebased to ../../../rtl-design/...), chmods the deployed shell
-scripts executable, and runs a WARN-only SGDC<->SDC clock-period smoke check.
+README/filelist, seeds scripts/constraints.sgdc (warm -> cold -> template priority)
+and scripts/waiver.tcl (warm -> template: the canonical human-reviewed waivers carry
+forward verbatim when present), substitutes the MY_TOP placeholder, syncs
+scripts/filelist.txt from the rtl-design filelist (RTL paths rebased to
+../../../rtl-design/...), chmods the deployed shell scripts executable, and runs a
+WARN-only SGDC<->SDC clock-period smoke check.
 Fail-closed on a missing template dir, a missing design tree (rtl-design dir absent
 under the CWD), an un-inferrable top, an already-deployed workdir, or an empty
 rtl-design filelist.
@@ -259,6 +261,19 @@ def run(module: str, workdir, top: str | None = None) -> int:
     else:
         sub_targets.append("scripts/constraints.sgdc")  # template copy needs MY_TOP
         sgdc_source = ""
+    # Waiver warm-start: the canonical waiver.tcl holds HUMAN-reviewed waivers (promoted
+    # per SKILL.md so they survive across runs) — without this carry, every redeploy
+    # overwrites them with the pristine template and the next promote erases them from
+    # canonical. Copied verbatim (already concrete content, not MY_TOP-substituted).
+    warm_waiver = (
+        tree_root / "asic" / module / "Design" / "lint-cdc" / "scripts" / "waiver.tcl"
+    )
+    if warm_waiver.is_file():
+        shutil.copyfile(warm_waiver, dest / "scripts" / "waiver.tcl")
+        sub_targets.remove("scripts/waiver.tcl")
+        print(
+            "[lintcdc bootstrap] warm-start used Design/lint-cdc/scripts/waiver.tcl -> scripts/waiver.tcl"
+        )
     for rel in sub_targets:
         _sub(dest / rel, "MY_TOP", top)
 
