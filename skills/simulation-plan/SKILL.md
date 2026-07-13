@@ -83,7 +83,7 @@ Agent grouping / sequence design / RM type / scoreboard boundary.
 ## 4. Power Scenarios Materialization
 (Materialize each scenario per `references/power-scenarios-template.md`: reset sequence name / business_flow / low-power signals / DVFS frequency bands; equivalent scenarios share `sequence_ref` but keep independent IDs and `corner_intent`.)
 
-## 5. Revision Summary (append on trigger-driven revision / incremental update when a real diff is present)
+## 5. Revision Summary (append on a scoped revision when a real diff is present)
 Trigger context + revision highlights.
 
 ## Document Control
@@ -237,7 +237,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
   [--waived '<json array of {tp_id,lens,location,classification,reason}>'] \
   [--status fail]            # user reject, or a documented early-fail exit \
   [--fail-reason "<one-line reason>"]   # early-fail exits only (Step 1) \
-  [--revision '<one-line revision narrative>']   # trigger-driven rework only
+  [--revision '<one-line revision narrative>']   # a scoped revision only
 ```
 
 finalize re-derives `status` from the Step-4 plan-adequacy gate (it re-runs `simplan validate-review`'s reduction over the on-disk `plan-review.json` and copies `{gate, flagged, must_ack}` into `stage_specific.plan_adequacy_gate`; `--waived` is merged in as `plan_adequacy_gate.waived[]` after a content check — a placeholder waiver with an empty `reason` or an unknown `classification` is rejected, exit 2), **enforces the Step-5 approve precondition itself** (a tripped-and-unwaived gate downgrades to a written `status=fail`), derives the summary counts as array-length reads of the promoted artifacts (`testpoint_count`/`power_scenario_count` + `scaffold_summary.{agent_count,sequence_count,test_count}` from `scaffold-specification.json`; `feature_count` = distinct `F-NN` in the `verification-plan.md` §3 Testpoints section), enumerates `artifacts[]` present-only (plan + scaffold + plan-review), and writes the complete `result.json`. `--status fail` wins unconditionally: with `--fail-reason` it is the early-fail exit (Step 1); without, it is the user reject (`fail_reason="user rejected plan"`). Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
@@ -250,7 +250,7 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 - User-requested minor tweaks vs. full overturn during review → minor tweaks take the in-loop revision path; full overturn takes the reject path.
 - Equivalent power-scenario merging vs. splitting → same stimulus must be merged on `sequence_ref`; different `corner_intent` must be split into independent IDs.
 
-**Violation-type targeting table** (during trigger-driven rework, when multiple violation kinds appear together, how to decide the primary edit target):
+**Violation-type targeting table** (when a `{failing_result}` carries multiple violation kinds, how to decide the primary edit target):
 
 | Violation type | Primary edit target |
 |---|---|
@@ -264,7 +264,7 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 | Excuse | Reality |
 |---|---|
 | "Most check_hints are covered — close enough to pass" | `simplan check-scaffold` enforces the matrix: every `check_hints[]` check_id must be in some `testpoints[].covers[]` or in `skipped_checks[]`. It is not a self-judgment you can rationalize past. |
-| "This rework is trigger-driven, the feedback is automatic — skip the review loop" | All paths run the plan review loop; do not skip user approval because feedback came from a trigger. |
+| "This repair is automatic feedback — skip the review loop" | Every run runs the plan review loop; do not skip user approval because feedback came from a `{failing_result}`. |
 | "I already know which power scenarios this module needs — I'll author them directly instead of loading the 9-scenarios template" | The standard set in `references/power-scenarios-template.md` is the required coverage basis — load it first, then materialize. `simplan check-scaffold` only checks `sequence_ref` resolution and the check-hints matrix; it does **not** verify a scenario came from the standard set, so an invented or dropped scenario passes the gate. No machine backstop — the template is the discipline. |
 
 ## Pitfalls
@@ -281,7 +281,7 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 - [ ] `artifacts[]` has at least 2 entries (`verification-plan.md` + `scaffold-specification.json`); both files exist inside `{workdir}`.
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] **The user has approved the review loop** (dialogue form — `status=pass` only after approval; `verification-plan.md` carries frontmatter `Status: approved`).
-- [ ] `verification-plan.md` contains §1–§4 (first-run must include §1 / §2 / §3 / §4; trigger-driven revision / incremental update adds §5 when a real diff is present).
+- [ ] `verification-plan.md` contains §1–§4 (a first delivery must include §1 / §2 / §3 / §4; a scoped revision adds §5 when a real diff is present).
 - [ ] Every `agents[]` entry declares a non-empty `interface_groups` array, and `simplan materialize-scaffold` ran successfully (each agent now carries a non-empty `interface.signals`). `simplan materialize-scaffold` + `simplan check-scaffold` fail loud here on an empty/underivable interface; sim-plan's own gate is authoritative — the scaffold contract is fully validated here.
 - [ ] `scaffold-specification.json` contains the two single-object fields `primary_clock` (`dut_port_name` + `period_ns`) and `reset` (`dut_port_name`) (required; populated by `simplan materialize-scaffold` — a non-zero materialize exit in Step 3 is the fail path).
 - [ ] The number of entries in `verification-plan.md` §3 testpoints table matches the length of `scaffold-specification.json.testpoints[]`.

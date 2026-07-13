@@ -331,10 +331,11 @@ scope-not-branches rule. Apply the F3 LLM-friendliness sub-rules (§3.3) through
 
 Commands are embedded directly in the relevant step text — no separate Quick Reference table.
 
-**Form delta — dialogue:** Step 1 incorporates disk-reentry detection for the brainstorm or
-review state. Example branch: if `brainstorm.md` already exists and is `Status: approved`,
-skip the brainstorm phase; if `design.md` already exists, enter the incremental-update branch.
-The `external-reference pre-check` and `status=fail` + `fail_reason` semantics apply the same
+**Form delta — dialogue:** Step 1 is the seed → scope-ladder → minimal-edit flow, plus a
+human review loop whose re-entry is idempotent (`result.json` is the sole completion signal;
+the review step re-asks). If `design.md` already exists, `seed` carries it no-clobber and the
+edit is scoped per the ladder — specification enters its post-partition step
+(`skill-branch-routing-design.md` §6.3). The `external-reference pre-check` and `status=fail` + `fail_reason` semantics apply the same
 as in worker form.
 
 **Form delta — analyzer:** Step 1 self-reads the failed run's material from canonical disk,
