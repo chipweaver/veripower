@@ -322,6 +322,35 @@ def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:
     return True
 
 
+def stale_inputs(module: str, events: list[dict], rule: str) -> list[str]:
+    """The recorded inputs of `rule`'s latest outcome whose version no longer matches
+    disk — the kernel-computed "what changed since the last run" set a forward re-run
+    consumes for scope (written to `<workdir>/changed-inputs.md` at dispatch, see
+    kernel.cmd_dispatch). Reuses proof_valid's per-input comparison but COLLECTS the
+    mismatches instead of short-circuiting on the first. Self-produced in∩out inputs
+    (e.g. lint-cdc's own `scripts/waiver.tcl`) and PIPELINE_INPUTS are excluded — a
+    hand-edited own-output is not an upstream scope change (mirrors schedule._added_inputs).
+    Empty when the rule never produced an outcome (a first delivery) — the caller then
+    falls to full scope. Read-only; stores nothing (NOT the retired per-skill classify-delta
+    input_digest — this is a query over the input versions already recorded in the log)."""
+    hit = _proof_outcome(events, rule)
+    if hit is None:
+        return []
+    _, outcome = hit
+    proof = next((p for p in outcome["proofs"] if p["name"] == rule), None)
+    if proof is None:
+        return []
+    root = module_root(module)
+    own_outputs = set(outcome.get("outputs", {}))
+    changed: list[str] = []
+    for path, recorded in proof.get("inputs", {}).items():
+        if path in own_outputs or path in rules.PIPELINE_INPUTS:
+            continue
+        if not versions_match(recorded, fingerprint_cached(root / path, root)):
+            changed.append(path)
+    return changed
+
+
 def _selector_paths(root: Path, glob: str) -> list[Path]:
     """Resolve a module-relative glob to existing paths (empty match = empty list)."""
     return sorted(root.glob(glob))

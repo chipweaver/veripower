@@ -125,7 +125,7 @@ Run `simplan seed --workdir {workdir}` (whitelist no-clobber carry of the prior 
 Determine this round's edit scope from the first available source:
 1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
 2. Else, on a `{failing_result}`, the attribution structure + this round's revision context read from the trigger file (field names come from the triggering stage's own `result.schema.json`), amended per the violation-type targeting table in Decision Rules. If the trigger is unreadable, close the run with the early-fail exit (`fail_reason="failing_result not readable: <path>"`).
-3. Else compare the current specification content (`design.md` / `<child>.md`) against the seeded plan baseline to determine the affected sections.
+3. Else, if `{workdir}/changed-inputs.md` is present, it lists the input files that changed since this stage's last run — amend only the plan sections its `design.md` / `<child>.md` paths map to. If it is absent or empty but `seed` carried a prior canonical (a re-verify, not a first delivery), amend no section — re-run Step 4's gate on the seeded plan and finalize; every section outside scope stays byte-identical.
 4. Else (a first delivery, no prior canonical) full generation of plan + scaffold.
 
 Amend only the in-scope sections. **Sections outside scope — together with their testpoint IDs / sequence names / `power_scenarios.sequence_ref` — are preserved verbatim** (stable anchors so coverage data / scaffold / SAIF caches do not drift on ID changes). When the seeded workdir already holds an updated version, that residue is the baseline. Any amendment to the plan voids any prior gate `clear`; Step 4 re-runs before the Step-5 user loop.
@@ -145,7 +145,7 @@ Per `references/spec-input-contract.md`, validate the required columns of `desig
 
 ### Step 3: Generate / update artifacts
 
-Scope: a first delivery fully generates both artifacts; a narrowed scope (directive / `{failing_result}` / spec diff, per Step 1) amends only the targeted sections, preserving everything outside scope verbatim (Step 1's stable-anchor rule).
+Scope: a first delivery fully generates both artifacts; a narrowed scope (directive / `{failing_result}` / `changed-inputs.md`, per Step 1) amends only the targeted sections, preserving everything outside scope verbatim (Step 1's stable-anchor rule).
 
 - Derive plan-data (run on every run that reaches this step):
 

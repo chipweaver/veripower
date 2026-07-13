@@ -600,3 +600,43 @@ def test_step5_lintcdc_dispatchable_and_waiver_never_cached(tmp_path, monkeypatc
     assert facts.rule_available(m, evs, "lint-cdc")
     (facts.module_root(m) / "Design/lint-cdc/scripts/constraints.sgdc").unlink()
     assert facts.rule_available(m, facts.read_events(m), "lint-cdc")
+
+
+# ── Forward scope signal (changed-inputs.md) ─────────────────────────────────────
+
+
+def test_forward_dispatch_writes_changed_inputs_md(tmp_path, monkeypatch):
+    """A forward re-dispatch — spec re-ran, drifting rtl-design's recorded inputs — drops a
+    kernel-computed `changed-inputs.md` scope hint into the run workdir listing the changed
+    declared inputs the skill's forward fallback narrows to (vs diffing an upstream envelope)."""
+    monkeypatch.chdir(tmp_path)
+    m = "fwd-scope"
+    _mk(m, "brainstorm.md", "b1")
+    _valid(m, "specification", 1)
+    _valid(m, "rtl-design", 1)  # records design.md/child/manifest at r1 fingerprints
+    assert facts.proof_valid(m, facts.read_events(m), "rtl-design")
+
+    _valid(m, "specification", 2, tag="r2")  # spec re-runs, re-promoting those files
+    assert not facts.proof_valid(
+        m, facts.read_events(m), "rtl-design"
+    )  # inputs drifted
+
+    d = kernel.cmd_dispatch(m, "rtl-design", "delivery", None, None)
+    assert d["ok"], d
+    cim = facts.module_root(m) / d["workdir"] / "changed-inputs.md"
+    assert cim.is_file()
+    body = cim.read_text()
+    assert "Design/specification/design.md" in body
+    assert "Design/specification/child.md" in body
+
+
+def test_first_dispatch_writes_no_changed_inputs_md(tmp_path, monkeypatch):
+    """A first delivery (no prior rtl-design outcome) writes NO changed-inputs.md — the skill
+    then falls to full scope, distinct from the empty-file 're-verify only' branch."""
+    monkeypatch.chdir(tmp_path)
+    m = "fwd-first"
+    _mk(m, "brainstorm.md", "b1")
+    _valid(m, "specification", 1)  # spec present so rtl-design's inputs are available
+    d = kernel.cmd_dispatch(m, "rtl-design", "delivery", None, None)
+    assert d["ok"], d
+    assert not (facts.module_root(m) / d["workdir"] / "changed-inputs.md").exists()

@@ -5,7 +5,7 @@ description: Use when writing or modifying Verilog/SystemVerilog RTL, maintainin
 
 # RTL Design
 
-Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatcher. The main thread reads only `manifest.json` + specification's `result.json`, runs one fan-out wave (one sub-Task per child unit, including the top-integration child), then runs deterministic finalize scripts over the reaped reports and writes `result.json`. Per-child RTL (one or more `.v`/`.sv` per child) is produced by the sub-Tasks; `filelist.txt`, `README.md` (top-module declaration + SGDC/SDC constraint-annotation notes), and the `.child_reports.json` ledger are produced by scripts. The main thread never authors RTL, never reads `design.md`, and never reads child RTL.
+Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatcher. The main thread reads only `manifest.json`, runs one fan-out wave (one sub-Task per child unit, including the top-integration child), then runs deterministic finalize scripts over the reaped reports and writes `result.json`. Per-child RTL (one or more `.v`/`.sv` per child) is produced by the sub-Tasks; `filelist.txt`, `README.md` (top-module declaration + SGDC/SDC constraint-annotation notes), and the `.child_reports.json` ledger are produced by scripts. The main thread never authors RTL, never reads `design.md`, and never reads child RTL.
 
 **Load mode:** this skill runs main-thread, invoked via `Skill(veripower:rtl-design)` by its caller (not dispatched as a Task subagent). It uses the Task tool for one fan-out wave (one Level-1 sub-Task per child unit, including the top-integration child); finalize is then deterministic main-thread scripts, not a sub-Task. The main thread never authors RTL inline.
 
@@ -81,10 +81,11 @@ Completion Gate.
 
 ### Step 1: Read inputs, seed, determine scope
 
-Read `Design/specification/result.json` (envelope) and `manifest.json` (`.module` =
+Read `manifest.json` (`.module` =
 `<top_module>`; the `children[]` dispatch roster: `name` + `doc` + `rtl_modules[]`). Nothing else is
-read up front — no `design.md`, no `<child>.md` body, no RTL; the per-child sub-Tasks read their own
-docs.
+read up front — no `design.md`, no `<child>.md` body, no RTL, and no upstream `result.json`;
+the per-child sub-Tasks read their own docs. (Step-1 source 3 below consults `{workdir}/changed-inputs.md`
+for scope when present.)
 
 Run `seed` (it internally handles both the canonical-present and first-delivery cases):
 
@@ -107,7 +108,11 @@ Determine this round's edit scope from the first available source:
    `stage_specific.fail_reason="failing_result not readable"` and exit. When `ppa_actual` is
    non-empty, also read the trigger's sibling `reports/` or `reports_*/` subdirectory to locate the
    bottleneck RTL module.
-3. Else the `Design/specification/result.json` diff vs the seeded baseline.
+3. Else, if `{workdir}/changed-inputs.md` is present, it lists the input files that changed since
+   this stage's last run — map each to affected children (a `<child>.md` → that child; `design.md`
+   → module-wide). If it is absent or empty but `seed` carried a prior canonical (a re-verify, not a
+   first delivery), re-author no child: re-run Step 4's gate on the seeded RTL and finalize; every
+   file stays byte-identical.
 4. Else (a first delivery, no prior canonical) ALL children.
 
 Map the scope to affected children per Step 2. The module-level `design.md` + per-child `<child>.md`
@@ -130,7 +135,7 @@ emits `artifacts`.)
 
 ### Step 2: map_to_child (when scope is narrower than all children)
 
-(Applies whenever Step 1 narrowed the scope — a directive, a `{failing_result}`, or a spec diff. On
+(Applies whenever Step 1 narrowed the scope — a directive, a `{failing_result}`, or a `changed-inputs.md` change-set. On
 a first delivery the scope is ALL children and this step is skipped.)
 
 1. Read `manifest.json` and the frontmatter of each `<child>.md` listed under

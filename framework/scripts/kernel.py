@@ -80,6 +80,21 @@ def cmd_dispatch(
     run = facts.runs_of(events, rule) + 1
     workdir = str(Path(*rules.workdir_root(rule), "runs", str(run)))
     (facts.module_root(module) / workdir).mkdir(parents=True, exist_ok=True)
+    # Forward scope signal: the kernel already computes which recorded inputs drifted from
+    # disk (that drift is what marks the proof stale and triggers this re-dispatch). Surface
+    # that set as a scope hint the skill's forward fallback reads — instead of the skill
+    # re-deriving it by diffing an upstream result.json envelope or reading design content in
+    # its main thread. Its OWN file, never appended to directive.md (a triage-forward directive
+    # is a byte-exact result.json a markdown append would corrupt). On a repair the skill's
+    # scope ladder prefers directive/failing_result, so a written-but-unused file here is inert.
+    changed = facts.stale_inputs(module, events, rule)
+    if changed:
+        (facts.module_root(module) / workdir / "changed-inputs.md").write_text(
+            "# Changed inputs\n\n"
+            "These input files changed since this stage's last run:\n\n"
+            + "".join(f"- {p}\n" for p in changed),
+            encoding="utf-8",
+        )
     params: dict = dict(extra_params) if extra_params else {}
     if directive_path:
         dst = facts.module_root(module) / workdir / "directive.md"

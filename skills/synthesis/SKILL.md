@@ -38,8 +38,6 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/lint-cdc/result.json` | `skills/lint-cdc/references/result.schema.json` | Diffed for the fix scope when a prior run has been promoted. |
-| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | Diffed for the fix scope when a prior run has been promoted. |
 | `Design/rtl-design/filelist.txt` | text | RTL file list. |
 | `Design/rtl-design/README.md` | Custom markdown | Constraint-annotation note (SDC: generated clock / multicycle / false path). |
 | `Design/specification/constraints/<TOP>.sdc` | SDC | SDC source of truth (optional) — bootstrap seeds the working `constraints.sdc` from it, else the template placeholder. |
@@ -70,7 +68,7 @@ Pre-check the external references: `Design/rtl-design/filelist.txt` (containing 
 Determine this round's fix scope from the first available source:
 1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
 2. Else, on a `{failing_result}`, its `stage_specific.violations[]` — if the trigger is unreadable, write `result.json` with `status=fail` + `stage_specific.fail_reason="failing_result not readable"` and exit.
-3. Else the diff of `Design/lint-cdc/result.json` / `Design/rtl-design/result.json` vs the promoted baseline.
+3. Else, if `{workdir}/changed-inputs.md` is present, it lists the input files that changed since this stage's last run — confine the Step 4/6 SDC / timing-exception edits to them. If it is absent or empty but a prior run was promoted (a re-verify), keep the scope empty — the synthesis run and PPA self-check (Steps 5/7/8) are unconditional regardless.
 4. Else (a first delivery) the full flow.
 
 **Scope confinement.** Steps 2–8 run in the same order regardless of scope and differ only in it: the SDC / timing-exception edits in Steps 4 and 6 stay confined to the scope set here. Steps 2–3 (bootstrap + `LIB_DB`) deploy the workdir — Step 2 aborts once `{workdir}` is already deployed, so a within-run re-entry is a no-op and any residue survives; Steps 5 / 7 / 8 (synthesis run, PPA self-check, `result.json` write) are unconditional.
