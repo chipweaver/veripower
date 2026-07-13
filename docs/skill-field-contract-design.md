@@ -17,7 +17,7 @@ extension, stated there). Every other rule in this document is SKILL.md-body-onl
 - `skill-frontmatter-design.md` — governs the `name` and `description` frontmatter keys; their
   full rules are out of scope for this document.
 - `skill-branch-routing-design.md` — governs Step 1 of the Workflow field in detail: the
-  two-signal routing table, branch-coverage rule, and per-form carve-outs.
+  scope ladder, the scope-not-branches rule, and per-stage carve-outs.
 - `skill-structure-design.md` — governs the orchestration-vocabulary prohibition that constrains
   the content of every field in SKILL.md, and the Bundled References field rule: externalization
   criteria and the suffix naming taxonomy.
@@ -176,7 +176,7 @@ The following fields are forbidden — they MUST NOT appear in any SKILL.md:
 | Status-explanation / stage-wrap-up prose paragraphs | Identical across all 12 SKILL.md; promoted to framework-level template (`stage-subagent.md.tpl`); per-skill copy is drift-only overhead |
 | Per-stage artifact-summary headings (`Stage Artifacts`, `Minimum Stage Artifacts`, `Deliverable: result.json`, or similar) | Merged into the Output Artifacts table |
 | `Prerequisites` | Merged into Input Artifacts |
-| Mode-dispatch heading (`Mode Selection` or similar) | Mode dispatch is expressed implicitly through the branch-routing two-signal model (`{rework_trigger}` × disk-prev-artifact); see `skill-branch-routing-design.md` for the full table |
+| Mode-dispatch heading (`Mode Selection` or similar) | There is no mode dispatch — Step 1 is a linear seed → scope-ladder → minimal-edit flow (`directive ?? failing_result ?? diff ?? ALL`); see `skill-branch-routing-design.md` |
 
 **Note:** The `allowed-tools` rejection is empirically grounded: `veripower:simulation` listed 14 Write tools while `veripower:rtl-design` and `veripower:synthesis` listed none, yet both wrote files freely — confirming the field is non-enforced.
 
@@ -249,11 +249,11 @@ column prose. External-reference table columns: Path / Schema or format / Use.
 |---|---|
 | `{workdir}` | Current run workspace root (contains the run-number path segment `runs/<N>/`); injected by the dispatcher |
 | `{module}` | Module name; injected by the dispatcher |
-| `{rework_trigger}` | Optional: path to the failed stage's canonical `result.json`, injected on a rework dispatch; its `stage_specific` shape is defined by that stage's own `result.schema.json` — never re-enumerate the possible triggering stages (route.py owns the failure→target maps). Its presence is the primary branch-routing signal |
+| `{failing_result}` | Optional: path to the failed stage's canonical `result.json`, injected on a repair dispatch; its `stage_specific` shape is defined by that stage's own `result.schema.json` — never re-enumerate the possible failing stages (route.py owns the failure→target maps). When present, it supplies this round's fix scope (Step 1 ladder) |
 | `{directive_path}` | Optional on any dispatch: path to a per-dispatch file carrying either Orchestrator-authored reasoning (conversation-residual hints held in no on-disk artifact) or, for a `simulation` rework, the verbatim-forwarded triage `result.json` (a version-frozen copy). Read first as a fix-scope hint; never promoted |
 
-For branch-routing semantics of these variables — how their presence/absence determines
-forward vs. rework vs. cascade-rework paths — see `skill-branch-routing-design.md`.
+For how these variables' presence/absence sets the Step-1 scope — see
+`skill-branch-routing-design.md`.
 
 Hard constraints on variables: SKILL.md must never hard-code `asic/<M>`, `asic/<module>`, or
 `runs/<N>` path fragments — use `{workdir}` exclusively. `{mode}` is removed from all
@@ -266,13 +266,13 @@ shape, nothing else. Never state why the router will or will not target this sta
 valid fix target"-style claims): route.py is the single home of the failure→target maps,
 such claims are derived restatements that go stale silently, and they carry zero operational
 value for the executing agent. A stage whose Workflow defines no rework branch simply lists
-no `{rework_trigger}` row.
+no `{failing_result}` row.
 
 **Form delta — analyzer:** Analyzer skills (e.g., `veripower:simulation-triage`) receive only
 identifying coordinates — `{module}` plus the failed run number — with zero inline field
-assembly: no `{workdir}`, no `{rework_trigger}`. Everything else is self-read from canonical
+assembly: no `{workdir}`, no `{failing_result}`. Everything else is self-read from canonical
 disk, so the field splits into a context-variable table and a "self-read from canonical disk"
-table. The `{rework_trigger}` × disk-prev-artifact two-signal routing model does not apply.
+table. The Step-1 scope ladder does not apply.
 
 #### 4.3.6 Output Artifacts
 
@@ -322,12 +322,12 @@ Structure: numbered step **headings** — each top-level step is an H3 heading `
 <Title>` (colon separator; the em-dash is reserved for *intra-title* clauses, e.g.
 `### Step 2: Wave 1 — dispatch env-build`). Numbered markdown lists (`1.` `2.`) are used only
 for sub-steps inside a step and other ordered sub-sequences, never for the top-level steps.
-Step 1 is a read-inputs step; the worker form's three-branch decision is the default, but
-degenerate forms collapse to fewer branches (a stage whose Workflow defines no rework branch
-lists no `{rework_trigger}` row; the analyzer self-reads its canonical inputs from the two
-injected coordinates).
-See `skill-branch-routing-design.md` for the complete two-signal table and the
-branch-coverage = step-coverage rule. Apply the F3 LLM-friendliness sub-rules (§3.3) throughout.
+Step 1 is a read-inputs step; the worker form's linear seed → scope-ladder → minimal-edit
+flow is the default, but degenerate forms drop ladder arms (a stage that is never a route-DAG
+fix target lists no `{failing_result}` row; a read-only stage has `scope ≡ ALL`; the analyzer
+self-reads its canonical inputs from the two injected coordinates).
+See `skill-branch-routing-design.md` for the complete scope ladder and the
+scope-not-branches rule. Apply the F3 LLM-friendliness sub-rules (§3.3) throughout.
 
 Commands are embedded directly in the relevant step text — no separate Quick Reference table.
 
@@ -339,8 +339,8 @@ as in worker form.
 
 **Form delta — analyzer:** Step 1 self-reads the failed run's material from canonical disk,
 navigating from the two injected coordinates (`{module}` + the failed run number). The
-analyzer has **no** `{rework_trigger}` variable and no two-signal routing (consistent with
-§4.3.5). Standard worker three-branch logic does not apply.
+analyzer has **no** `{failing_result}` variable and no scope ladder (consistent with
+§4.3.5). The standard worker Step-1 flow does not apply.
 
 **Form delta — orchestrator:** Step 1 re-derives dispatch state from `events.jsonl` via `kernel.py decide` (the dispatcher
 exemption in `skill-structure-design.md` applies; the orchestrator is the dispatcher and is
@@ -486,9 +486,9 @@ subsections cited.
 
 | Form | Input Artifacts delta (§4.3.5) | Output Artifacts delta (§4.3.6) | Workflow delta (§4.3.7) | Completion Gate delta (§4.3.11) | Return Contract delta (§4.3.12) |
 |---|---|---|---|---|---|
-| worker | Standard `{workdir}` / `{module}` / `{rework_trigger}` / `{directive_path}` | `result.json` as first row; additional artifact rows | Three-branch: trigger-driven / cascade-rework / first-run | Standard four-item checklist | `STATUS: DONE` or `STATUS: BLOCKED` on exception |
+| worker | Standard `{workdir}` / `{module}` / `{failing_result}` / `{directive_path}` | `result.json` as first row; additional artifact rows | Linear: seed/bootstrap → scope ladder (`directive ?? failing_result ?? diff ?? ALL`) → minimal-edit | Standard four-item checklist | `STATUS: DONE` or `STATUS: BLOCKED` on exception |
 | dialogue | Same as worker | Append approval-gated artifact rows (e.g., `brainstorm.md` with `Status: approved`) | Step 1 adds disk-reentry detection for brainstorm/review state; same external-ref pre-check | Append user-approval gate item | Replace with direct control-return; no harness signal |
-| analyzer | Coordinates only (`{module}` + failed run number); everything else self-read from canonical disk | A single `result.json` (two-tier analysis in `stage_specific`) under own workdir, reaped + promoted like any Task rule (reap mints a `diagnosis`/`blocked`, not a proof) | Step 1 self-reads canonical inputs; no two-signal routing | Replace items 1–2: `result.json` validates against `references/result.schema.json` + writes-confined-to-own-workdir invariant | Result landed on disk, nothing in message body; `STATUS: DONE` or `STATUS: BLOCKED` on exception |
+| analyzer | Coordinates only (`{module}` + failed run number); everything else self-read from canonical disk | A single `result.json` (two-tier analysis in `stage_specific`) under own workdir, reaped + promoted like any Task rule (reap mints a `diagnosis`/`blocked`, not a proof) | Step 1 self-reads canonical inputs; no scope ladder | Replace items 1–2: `result.json` validates against `references/result.schema.json` + writes-confined-to-own-workdir invariant | Result landed on disk, nothing in message body; `STATUS: DONE` or `STATUS: BLOCKED` on exception |
 | orchestrator | Re-derives dispatch state from `events.jsonl` (via `kernel.py decide`); dispatcher-exemption applies | Lists `events.jsonl` + per-dispatch `directive.md`; downstream stages write business artifacts | Setup + executor loop, not a Step 1..N sequence; Setup re-derives dispatch state from `events.jsonl` | Not applicable per-turn; replaced by main-loop termination conditions | Not applicable per-turn; replaced by main-loop termination section |
 
 **Note:** Branch-name definitions and full per-field rules live in §4.3.5, §4.3.7, §4.3.11, §4.3.12. The table above is the cross-form summary.
@@ -501,7 +501,7 @@ These conventions apply to every SKILL.md body and every `references/*.md` file:
   canonical **field titles** (`## When to Use`, `## Workflow`, …; never `## 1.`/`## 2.`), and
   Workflow H3 steps use `### Step N: <Title>` (orchestrator exempt — see §4.3.7); descriptive
   non-step H3 sub-blocks are permitted under any field (e.g. `### Fan-out Dispatch Contract`,
-  `### Context variables`, `### Session-resume semantics`) — only the sequential Workflow steps
+  `### Context variables`, `### Re-entry and completion`) — only the sequential Workflow steps
   take `### Step N:`. In the **design docs themselves**, H2/H3 are numbered sections (`## 1.`,
   `### 3.1`, `### 4.3`); H4 only when essential (the §4.3.x per-field rules use H4).
 - H1 title content: a concise Title Case **concept name** for what the skill is — one coherent
