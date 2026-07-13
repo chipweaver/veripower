@@ -23,7 +23,7 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
 
 - First-time end-to-end run against the plan.
 - Incremental re-run after an RTL or plan change.
-- Trigger-driven rework after a downstream stage routes back.
+- A repair dispatch after a downstream stage routes back.
 
 ## Iron Rule
 
@@ -103,7 +103,7 @@ Completion Gate.
 - **No `kernel.py`:** this skill does not call `kernel.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a
   harness-level signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the main
-  thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to trigger-driven rework.
+  thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to a later repair dispatch.
 
 ### Step 1: Prerequisite + branch select
 
