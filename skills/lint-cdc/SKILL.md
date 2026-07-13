@@ -35,7 +35,7 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | Incremental-update branch only — diffed for the incremental scope. |
+| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | Diffed for the fix scope when a prior run has been promoted. |
 | `Design/rtl-design/filelist.txt` | text | RTL file list. |
 | `Design/rtl-design/README.md` | Custom markdown | Constraint-annotation note (SGDC section: `sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`). |
 | `Design/specification/constraints/<TOP>.sgdc` | SGDC | Cold-bootstrap seed — copied to `{workdir}/scripts/constraints.sgdc` on first deployment; unused when the warm seed below exists (`makefile-bootstrap.md`). |
@@ -55,18 +55,16 @@ The promoted full set (including the `*-violations.json` gate sources read in St
 
 ## Workflow
 
-### Step 1: Read inputs and select routing branch
+### Step 1: Read inputs and determine scope
 
-Based on whether the canonical path `Design/lint-cdc/result.json` already exists (a previous run has been promoted), choose one of two branches:
+Pre-check the external references: `filelist.txt` and `README.md` are present AND the SGDC seed is available (warm: `Design/lint-cdc/scripts/constraints.sgdc` exists → preferred; cold: `Design/specification/constraints/<TOP>.sgdc` exists → fallback; neither → missing). If any required file is missing, write `status=fail` with `fail_reason="external reference missing: <path>"` and exit.
 
-- **Incremental-update branch** (canonical path already has prior artifacts): read the `Design/rtl-design/result.json` diff to determine the incremental scope.
-- **First-run branch** (canonical path has no prior artifacts): run the first-pass serial flow.
+Determine this round's fix scope from the first available source:
+1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
+2. Else, when a prior run has been promoted (canonical `Design/lint-cdc/result.json` exists), the `Design/rtl-design/result.json` diff vs that baseline.
+3. Else (a first delivery, no prior canonical) everything.
 
-Then pre-check the external references: `filelist.txt` and `README.md` are present AND the SGDC seed is available (warm: `Design/lint-cdc/scripts/constraints.sgdc` exists → preferred; cold: `Design/specification/constraints/<TOP>.sgdc` exists → fallback; neither → missing). If any required file is missing, write `status=fail` with `fail_reason="external reference missing: <path>"` and exit.
-
-When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint. It takes priority over the external-reference diff (incremental-update path) to further narrow the modification scope.
-
-Steps 2–7 are mechanically identical across both branches; the branch selected here sets only the **fix scope** — incremental-update narrows the Step 4/5 triage to the `Design/rtl-design/result.json` diff, first-run covers everything — and `{directive_path}` narrows it further when injected.
+Steps 2–7 are mechanically identical regardless of scope; the scope set here narrows only the Step 4/5 triage (a diff-scoped run narrows to the `Design/rtl-design/result.json` diff; a first delivery covers everything).
 
 ### Step 2: Bootstrap
 
