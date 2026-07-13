@@ -564,3 +564,118 @@ def test_fresh_dispatch_after_reopen_is_valid(tmp_path, monkeypatch):
         "m", 2, oracle_grade="proposed"
     )  # fresh dispatch(run2)+outcome AFTER the reopen
     assert facts.proof_valid("m", facts.read_events("m"), "specification")
+
+
+def test_stale_inputs_returns_changed_declared_inputs(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write("m", "Design/specification/design.md", "d1")
+    _write("m", "Design/specification/manifest.json", "{}")
+    _write("m", "Design/specification/child_a.md", "a1")
+    recorded = {
+        "Design/specification/design.md": _fp("m", "Design/specification/design.md"),
+        "Design/specification/manifest.json": _fp(
+            "m", "Design/specification/manifest.json"
+        ),
+        "Design/specification/child_a.md": _fp("m", "Design/specification/child_a.md"),
+    }
+    facts.append_event(
+        "m",
+        {
+            "type": "dispatch",
+            "rule": "rtl-design",
+            "run": 1,
+            "workdir": "w",
+            "inputs": recorded,
+            "params": {},
+            "objective": "delivery",
+        },
+        TS,
+    )
+    facts.append_event(
+        "m",
+        {
+            "type": "outcome",
+            "rule": "rtl-design",
+            "run": 1,
+            "verdict": "pass",
+            "outputs": {},
+            "proofs": [
+                {
+                    "name": "rtl-design",
+                    "verdict": "pass",
+                    "inputs": recorded,
+                    "oracle": {"ref": "semantic-review", "grade": "proposed"},
+                }
+            ],
+            "tool_versions": {},
+        },
+        TS,
+    )
+    evs = facts.read_events("m")
+    assert facts.stale_inputs("m", evs, "rtl-design") == []  # nothing drifted yet
+    _write("m", "Design/specification/child_a.md", "a2-changed")  # one input drifts
+    assert facts.stale_inputs("m", evs, "rtl-design") == [
+        "Design/specification/child_a.md"
+    ]
+
+
+def test_stale_inputs_excludes_self_produced_inout(tmp_path, monkeypatch):
+    # lint-cdc's scripts/waiver.tcl is both input and output (in∩out): hand-editing it
+    # invalidates the proof (cond-4) but is the stage's OWN product, not an upstream change.
+    monkeypatch.chdir(tmp_path)
+    _write("m", "Design/rtl-design/mac.v", "v1")
+    _write("m", "Design/lint-cdc/scripts/waiver.tcl", "w1")
+    recorded = {
+        "Design/rtl-design/mac.v": _fp("m", "Design/rtl-design/mac.v"),
+        "Design/lint-cdc/scripts/waiver.tcl": _fp(
+            "m", "Design/lint-cdc/scripts/waiver.tcl"
+        ),
+    }
+    facts.append_event(
+        "m",
+        {
+            "type": "dispatch",
+            "rule": "lint-cdc",
+            "run": 1,
+            "workdir": "w",
+            "inputs": recorded,
+            "params": {},
+            "objective": "delivery",
+        },
+        TS,
+    )
+    facts.append_event(
+        "m",
+        {
+            "type": "outcome",
+            "rule": "lint-cdc",
+            "run": 1,
+            "verdict": "pass",
+            "outputs": {
+                "Design/lint-cdc/scripts/waiver.tcl": recorded[
+                    "Design/lint-cdc/scripts/waiver.tcl"
+                ]
+            },
+            "proofs": [
+                {
+                    "name": "lint-cdc",
+                    "verdict": "pass",
+                    "inputs": recorded,
+                    "oracle": {"ref": "spyglass-ruleset", "grade": "tool"},
+                }
+            ],
+            "tool_versions": {},
+        },
+        TS,
+    )
+    evs = facts.read_events("m")
+    _write("m", "Design/rtl-design/mac.v", "v2")  # upstream RTL drifts
+    _write("m", "Design/lint-cdc/scripts/waiver.tcl", "w2")  # own in∩out product drifts
+    result = facts.stale_inputs("m", evs, "lint-cdc")
+    assert "Design/rtl-design/mac.v" in result  # upstream change surfaces
+    assert "Design/lint-cdc/scripts/waiver.tcl" not in result  # self-produced excluded
+
+
+def test_stale_inputs_empty_without_prior_outcome(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert facts.stale_inputs("m", [], "rtl-design") == []

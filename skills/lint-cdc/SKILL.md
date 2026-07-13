@@ -35,7 +35,6 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/rtl-design/result.json` | `skills/rtl-design/references/result.schema.json` | Diffed for the fix scope when a prior run has been promoted. |
 | `Design/rtl-design/filelist.txt` | text | RTL file list. |
 | `Design/rtl-design/README.md` | Custom markdown | Constraint-annotation note (SGDC section: `sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`). |
 | `Design/specification/constraints/<TOP>.sgdc` | SGDC | Cold-bootstrap seed — copied to `{workdir}/scripts/constraints.sgdc` on first deployment; unused when the warm seed below exists (`makefile-bootstrap.md`). |
@@ -61,10 +60,10 @@ Pre-check the external references: `filelist.txt` and `README.md` are present AN
 
 Determine this round's fix scope from the first available source:
 1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
-2. Else, when a prior run has been promoted (canonical `Design/lint-cdc/result.json` exists), the `Design/rtl-design/result.json` diff vs that baseline.
+2. Else, if `{workdir}/changed-inputs.md` is present, it lists the input files that changed since this stage's last run — narrow the Step 4/5 triage to them. If it is absent or empty but a prior run was promoted (a re-verify), the lint tool still runs on the whole RTL — there is simply no change-set to narrow the triage to.
 3. Else (a first delivery, no prior canonical) everything.
 
-Steps 2–7 are mechanically identical regardless of scope; the scope set here narrows only the Step 4/5 triage (a diff-scoped run narrows to the `Design/rtl-design/result.json` diff; a first delivery covers everything).
+Steps 2–7 are mechanically identical regardless of scope; the scope set here narrows only the Step 4/5 triage (a scoped run narrows to the `changed-inputs.md` set; a first delivery covers everything).
 
 ### Step 2: Bootstrap
 
