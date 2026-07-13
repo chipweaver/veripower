@@ -3,7 +3,7 @@
 
 Pure read + hash. Trigger-agnostic: the verdict depends ONLY on the plan inputs
 (verification-plan.md + scaffold-specification.json) and the baseline TB-validity, never on
-{rework_trigger} -- the TB's sole upstream truth is the sim-plan exit docs. A baseline that failed
+{failing_result} -- the TB's sole upstream truth is the sim-plan exit docs. A baseline that failed
 in {regress, coverage} still carries a complete, conformance-passed TB (the failure was
 RTL/stimulus), so it is freeze-eligible. All other non-freeze cases yield patch: the prior TB is
 copied into the run workdir and edited in-place (delta-only), rather than rebuilt from blank.

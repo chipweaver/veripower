@@ -31,7 +31,7 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, its `stage_specific.violations[]` supplies this round's fix scope (Step 1). |
+| `{failing_result}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, its `stage_specific.violations[]` supplies this round's fix scope (Step 1). |
 | `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content. |
 
 ### External reference inputs
@@ -45,7 +45,7 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 | `Design/specification/constraints/<TOP>.sdc` | SDC | SDC source of truth (optional) — bootstrap seeds the working `constraints.sdc` from it, else the template placeholder. |
 | `LIB_DB` (env) | std cell Liberty `.db` path | Set before any run (Step 3) — `env.sh` / Makefile fail loudly when unset. |
 
-When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file; field names come from the triggering stage's own `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. PPA targets (`area_um2` / `timing_slack_ns` dimensions) are read by `synthesis finalize` itself from `Design/specification/ppa.json` — nothing is injected in the prompt.
+When `{failing_result}` is injected, read additional context from the same directory as the trigger file; field names come from the triggering stage's own `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. PPA targets (`area_um2` / `timing_slack_ns` dimensions) are read by `synthesis finalize` itself from `Design/specification/ppa.json` — nothing is injected in the prompt.
 
 ## Output Artifacts
 
@@ -69,7 +69,7 @@ Pre-check the external references: `Design/rtl-design/filelist.txt` (containing 
 
 Determine this round's fix scope from the first available source:
 1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
-2. Else, on a `{rework_trigger}`, its `stage_specific.violations[]` — if the trigger is unreadable, write `result.json` with `status=fail` + `stage_specific.fail_reason="rework_trigger not readable"` and exit.
+2. Else, on a `{failing_result}`, its `stage_specific.violations[]` — if the trigger is unreadable, write `result.json` with `status=fail` + `stage_specific.fail_reason="failing_result not readable"` and exit.
 3. Else the diff of `Design/lint-cdc/result.json` / `Design/rtl-design/result.json` vs the promoted baseline.
 4. Else (a first delivery) the full flow.
 

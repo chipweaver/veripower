@@ -22,7 +22,7 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 - **No child RTL in the main thread:** every child (including the top-integration child) is dispatched in the fan-out wave. The main thread consumes each sub-Task's `files[]` paths only (the scripts aggregate them into `filelist.txt`) and **MUST NOT read the dispatched child's** `.v`/`.sv` content back into the main-thread context — child RTL would otherwise compound across the long-lived main thread. There is no main-thread TOP authoring: even a single child is written by a sub-Task, never by the main thread.
 - **No whole-design elaboration in any child sub-Task:** per `references/child-task-contract.md`, no child may whole-design elaborate/compile, read sibling RTL bodies, or reverse-read an external verification harness; integration/elaboration correctness is verified by downstream verification. A unit child may best-effort `verilator --lint-only` its own module only.
 - **`<child>.md §2 Interface` incomplete:** if the interface spec is missing or underspecified, write `status=fail` + `fail_reason="<child>.md §2 Interface incomplete"`; do not invent interfaces.
-- **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's task actually requires: scope comes from Step 1's ladder — `{directive_path}`'s `fix_locus` when injected, else a `{rework_trigger}`'s `violations[]`, else the `specification` diff. Every file outside that scope MUST stay byte-identical to the prior run — a full rewrite on a narrow fix defeats the incremental kernel's per-file cascade.
+- **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's task actually requires: scope comes from Step 1's ladder — `{directive_path}`'s `fix_locus` when injected, else a `{failing_result}`'s `violations[]`, else the `specification` diff. Every file outside that scope MUST stay byte-identical to the prior run — a full rewrite on a narrow fix defeats the incremental kernel's per-file cascade.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -33,7 +33,7 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, its `stage_specific.violations[]` supplies this round's fix scope (Step 1). |
+| `{failing_result}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, its `stage_specific.violations[]` supplies this round's fix scope (Step 1). |
 | `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content and the incremental diff. |
 
 ### External reference inputs
@@ -44,7 +44,7 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 | `Design/specification/manifest.json` | JSON (`{module, children:[{name, doc, rtl_modules, brainstorm_anchor, role}]}`) | Child roster — drives the fan-out `N = len(children[])` (every child, incl. the top-integration child). |
 | `Design/specification/<child>.md` × N | Custom markdown (frontmatter + §1–§5) | Per-child sub-design: frontmatter (`ports` / `clocks` / `features` / `file_path`) + §2 Interface / §3 Internal Behavior drive per-child RTL derivation. |
 
-When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file: when the trigger carries `violations[]` / `ppa_actual[]`, they are the primary inputs (a trigger without them — e.g. coverage-rooted — falls back to Step 2's module-wide mapping). When a PPA dimension is present (`ppa_actual` non-empty), also read the sibling `reports/` or `reports_*/` subdirectory (`timing_*.rpt` / `area.rpt` / `power_*.rpt`) to locate the bottleneck down to the RTL module. The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
+When `{failing_result}` is injected, read additional context from the same directory as the trigger file: when the trigger carries `violations[]` / `ppa_actual[]`, they are the primary inputs (a trigger without them — e.g. coverage-rooted — falls back to Step 2's module-wide mapping). When a PPA dimension is present (`ppa_actual` non-empty), also read the sibling `reports/` or `reports_*/` subdirectory (`timing_*.rpt` / `area.rpt` / `power_*.rpt`) to locate the bottleneck down to the RTL module. The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
 
 ## Output Artifacts
 
@@ -101,10 +101,10 @@ the ledger's `files` entries list — children's non-HDL support files are produ
 
 Determine this round's edit scope from the first available source:
 1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
-2. Else, on a `{rework_trigger}`, its `stage_specific.violations[]` (+ `ppa_actual[]` if present) —
+2. Else, on a `{failing_result}`, its `stage_specific.violations[]` (+ `ppa_actual[]` if present) —
    modify only the listed files; modifying anything outside is prohibited (see Red Flags). If the
    trigger is unreadable, write `result.json` with `status=fail` +
-   `stage_specific.fail_reason="rework_trigger not readable"` and exit. When `ppa_actual` is
+   `stage_specific.fail_reason="failing_result not readable"` and exit. When `ppa_actual` is
    non-empty, also read the trigger's sibling `reports/` or `reports_*/` subdirectory to locate the
    bottleneck RTL module.
 3. Else the `Design/specification/result.json` diff vs the seeded baseline.
@@ -130,7 +130,7 @@ emits `artifacts`.)
 
 ### Step 2: map_to_child (when scope is narrower than all children)
 
-(Applies whenever Step 1 narrowed the scope — a directive, a `{rework_trigger}`, or a spec diff. On
+(Applies whenever Step 1 narrowed the scope — a directive, a `{failing_result}`, or a spec diff. On
 a first delivery the scope is ALL children and this step is skipped.)
 
 1. Read `manifest.json` and the frontmatter of each `<child>.md` listed under

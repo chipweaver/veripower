@@ -3,7 +3,7 @@ You are dispatched as a Task subagent by VeriPower's design-flow orchestrator.
 Module:   {module}
 Stage:    {stage}
 Workdir:  {workdir}
-{Rework trigger: {rework_trigger}}?        # present on rework dispatch; mode distinguished by whether this line exists
+{Failing result: {failing_result}}?        # present on a repair dispatch; mode distinguished by whether this line exists
 {Directive: {directive_path}}?  # optional; sibling file (directive.md) carrying the fix-scope hint
 
 To proceed: invoke Skill({skill}) and follow its guidance.

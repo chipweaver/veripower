@@ -19,7 +19,7 @@ Your boundary:
 
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
 - **Do not read RTL source, do not invoke EDA tools, and do not write `tb/uvm/` / `Makefile` / `vcd/`.** These belong to the TB-materialization stage.
-- **Minimal edit on any re-dispatch with a prior valid `verification-plan.md` / `scaffold-specification.json` on disk.** Edit only what this round's task requires: scope comes from Step 1's ladder — `{directive_path}`'s `fix_locus` when injected, else a `{rework_trigger}`'s violation-type targeting table (Decision Rules), else the spec-vs-baseline comparison (already binding — see Step 1/Step 3: "unaffected parts... preserved verbatim"). Every section outside that scope MUST stay byte-identical to the prior run.
+- **Minimal edit on any re-dispatch with a prior valid `verification-plan.md` / `scaffold-specification.json` on disk.** Edit only what this round's task requires: scope comes from Step 1's ladder — `{directive_path}`'s `fix_locus` when injected, else a `{failing_result}`'s violation-type targeting table (Decision Rules), else the spec-vs-baseline comparison (already binding — see Step 1/Step 3: "unaffected parts... preserved verbatim"). Every section outside that scope MUST stay byte-identical to the prior run.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Fan-out Dispatch Contract
@@ -39,7 +39,7 @@ Your boundary:
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (field names per that stage's schema); when present, supplies this round's fix scope (Step 1). |
+| `{failing_result}` | Optional. The failed stage's canonical `result.json` path (field names per that stage's schema); when present, supplies this round's fix scope (Step 1). |
 | `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger's attribution fields. |
 
 ### External reference inputs
@@ -51,7 +51,7 @@ Your boundary:
 | `Design/specification/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; child roster — drives per-child `§5` consumption by `simplan derive-plan-data`. |
 | `Design/specification/<child>.md × N` | Custom markdown | Only `§5 Verification Hints` is consumed (via `simplan derive-plan-data`, tagging `check_hints[]` with `child`). |
 
-When `{rework_trigger}` is injected, read additional context from the same directory as the trigger file (e.g., `failure_phase` / `failing_cases` / `coverage_gaps` / `gaps_not_in_testpoints` / `failures[]` / corresponding log and summary files). The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
+When `{failing_result}` is injected, read additional context from the same directory as the trigger file (e.g., `failure_phase` / `failing_cases` / `coverage_gaps` / `gaps_not_in_testpoints` / `failures[]` / corresponding log and summary files). The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
 
 ## Output Artifacts
 
@@ -124,7 +124,7 @@ Run `simplan seed --workdir {workdir}` (whitelist no-clobber carry of the prior 
 
 Determine this round's edit scope from the first available source:
 1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
-2. Else, on a `{rework_trigger}`, the attribution structure + this round's revision context read from the trigger file (field names come from the triggering stage's own `result.schema.json`), amended per the violation-type targeting table in Decision Rules. If the trigger is unreadable, close the run with the early-fail exit (`fail_reason="rework_trigger not readable: <path>"`).
+2. Else, on a `{failing_result}`, the attribution structure + this round's revision context read from the trigger file (field names come from the triggering stage's own `result.schema.json`), amended per the violation-type targeting table in Decision Rules. If the trigger is unreadable, close the run with the early-fail exit (`fail_reason="failing_result not readable: <path>"`).
 3. Else compare the current specification content (`design.md` / `<child>.md`) against the seeded plan baseline to determine the affected sections.
 4. Else (a first delivery, no prior canonical) full generation of plan + scaffold.
 
@@ -137,7 +137,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
   --workdir {workdir} --module {module} --status fail --fail-reason "<one-line reason>"
 ```
 
-Reasons used by this skill: `external reference missing: <path>`; `rework_trigger not readable: <path>`; `specification minimum field completeness: <one-line missing-field summary>` (Step 2). finalize enumerates `artifacts[]` present-only, so the seeded carried product set all promotes — an early fail never shrinks canonical (the judged `plan-review.json` is the one exception: deliberately never carried on rework, per invalidate-on-rework).
+Reasons used by this skill: `external reference missing: <path>`; `failing_result not readable: <path>`; `specification minimum field completeness: <one-line missing-field summary>` (Step 2). finalize enumerates `artifacts[]` present-only, so the seeded carried product set all promotes — an early fail never shrinks canonical (the judged `plan-review.json` is the one exception: deliberately never carried on rework, per invalidate-on-rework).
 
 ### Step 2: Minimum field completeness self-check
 
@@ -145,7 +145,7 @@ Per `references/spec-input-contract.md`, validate the required columns of `desig
 
 ### Step 3: Generate / update artifacts
 
-Scope: a first delivery fully generates both artifacts; a narrowed scope (directive / `{rework_trigger}` / spec diff, per Step 1) amends only the targeted sections, with unaffected parts — and their testpoint IDs / sequence names / `sequence_ref` — preserved verbatim as stable anchors.
+Scope: a first delivery fully generates both artifacts; a narrowed scope (directive / `{failing_result}` / spec diff, per Step 1) amends only the targeted sections, with unaffected parts — and their testpoint IDs / sequence names / `sequence_ref` — preserved verbatim as stable anchors.
 
 - Derive plan-data (run on every run that reaches this step):
 
