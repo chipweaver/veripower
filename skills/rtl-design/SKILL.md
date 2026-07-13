@@ -323,6 +323,10 @@ Each dispatched per-child sub-Task ends with a harness-level `STATUS: DONE` + a 
 
 These signals are consumed by the rtl-design main thread (translated into `fresh_reports.json` for the finalize scripts), not by the caller. The caller only reads this skill's `result.json` envelope (`status ∈ {pass, fail}`).
 
+### Re-entry and completion
+
+Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`; a missing `result.json` is treated as incomplete (no cross-session "already complete" flag). `rtl seed` never clobbers workdir residue but never carries the gate review (`semantic-review.json`) forward — invalidate-on-rework. Every re-entry re-runs the semantic gate (Step 4.4) on the current RTL before finalize — the affected children re-dispatch and the gate runs on every clean-exit-gate finalize — so a compaction resumes without losing work and a stale `clear` cannot survive to finalize. There is no human review loop: control returns to the caller, which decides on `result.json`.
+
 ## Bundled References
 
 - [`references/child-task-contract.md`](references/child-task-contract.md) — the per-child sub-Task prompt + returned annotation schema (dispatched in Step 3).
