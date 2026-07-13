@@ -19,7 +19,7 @@ Your boundary:
 
 - **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
 - **Do not read RTL source, do not invoke EDA tools, and do not write `tb/uvm/` / `Makefile` / `vcd/`.** These belong to the TB-materialization stage.
-- **Minimal edit on any re-dispatch with a prior valid `verification-plan.md` / `scaffold-specification.json` on disk.** Edit only what this round's task requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise the violation-type targeting table (Decision Rules) or the incremental-update branch's spec-vs-baseline comparison sets the scope (already binding — see Step 1/Step 3: "unaffected parts... preserved verbatim"). Every section outside that scope MUST stay byte-identical to the prior run.
+- **Minimal edit on any re-dispatch with a prior valid `verification-plan.md` / `scaffold-specification.json` on disk.** Edit only what this round's task requires: scope comes from Step 1's ladder — `{directive_path}`'s `fix_locus` when injected, else a `{rework_trigger}`'s violation-type targeting table (Decision Rules), else the spec-vs-baseline comparison (already binding — see Step 1/Step 3: "unaffected parts... preserved verbatim"). Every section outside that scope MUST stay byte-identical to the prior run.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Fan-out Dispatch Contract
@@ -39,7 +39,7 @@ Your boundary:
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (field names per that stage's schema); absent → Step 1 selects session-resume / incremental-update / first-run. |
+| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (field names per that stage's schema); when present, supplies this round's fix scope (Step 1). |
 | `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger's attribution fields. |
 
 ### External reference inputs
@@ -116,16 +116,21 @@ Authoring judgment the schema/validator cannot express:
 
 ## Workflow
 
-### Step 1: Read inputs and select routing branch
+### Step 1: Read inputs, seed, determine scope
 
-Read `Design/specification/result.json` + `design.md` + `manifest.json`; if any required input is missing, close the run with the early-fail exit below (`fail_reason="external reference missing: <path>"`). When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint (priority per the Input Artifacts variable description). Select among four branches in this order:
+Read `Design/specification/result.json` + `design.md` + `manifest.json`; if any required input is missing, close the run with the early-fail exit below (`fail_reason="external reference missing: <path>"`).
 
-- **Trigger-driven rework** (`{rework_trigger}` injected): first run `simplan seed --workdir {workdir}` (whitelist no-clobber carry of the prior canonical plan + scaffold; the judged `plan-review.json` is deliberately NOT carried — invalidate-on-rework). Then read the attribution structure and the context for this round's revision from the trigger file (field names come from the triggering stage's own `result.schema.json`); use the seeded baseline (when `{workdir}` already holds an updated version, prefer the `{workdir}` copy) and amend per the violation-type targeting table in Decision Rules. If the trigger is unreadable, close the run with the early-fail exit (`fail_reason="rework_trigger not readable: <path>"`). A rework that amends the plan voids any prior gate `clear`; Step 4 re-runs before the Step-5 user loop.
-- **Session-resume branch** (no trigger + `{workdir}/verification-plan.md` present + `{workdir}/result.json` absent): use the residual `{workdir}` artifacts as the baseline; depending on how complete the residue is, return to Step 3 or Step 5 to continue (preserve already-written sections verbatim; only fill in the missing parts). **Before continuing, if the plan-adequacy gate is not `clear`-or-all-`waived` (`plan-review.json` absent / `trip` / written before the latest plan edit), route to Step 4 first — not straight to Step 3 or Step 5.**
-- **Incremental-update branch** (no trigger + `{workdir}` empty + canonical `Verification/simulation-plan/verification-plan.md` present): first run `simplan seed --workdir {workdir}` (same whitelist carry as the trigger branch). Compare the current specification content (`design.md` / `<child>.md`) against the seeded plan baseline to determine the affected sections, and amend only those. **Sections not affected — together with their testpoint IDs / sequence names / `power_scenarios.sequence_ref` — are preserved verbatim** (keep ID / naming as stable anchors so coverage data / scaffold / SAIF caches do not drift on ID changes). An incremental update that amends the plan likewise voids any prior gate `clear`; Step 4 re-runs before the Step-5 user loop.
-- **First-run branch** (no trigger + `{workdir}` empty + canonical absent): full generation of plan + scaffold.
+Run `simplan seed --workdir {workdir}` (whitelist no-clobber carry of the prior canonical plan + scaffold; **no-clobber**, so any freshly-authored workdir residue from an interrupted run is kept, and with no canonical it is a no-op — a first delivery. The judged `plan-review.json` is deliberately NOT carried — invalidate-on-rework).
 
-**Early-fail exit (all branches).** Whenever a documented failure cannot be resolved in-branch, first run `simplan seed --workdir {workdir}` (no-clobber; a no-op when no canonical exists — this covers fails that fire before any branch seeded, e.g. a missing external reference), then close the run with the finalize early-fail entry — never hand-assemble the envelope:
+Determine this round's edit scope from the first available source:
+1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
+2. Else, on a `{rework_trigger}`, the attribution structure + this round's revision context read from the trigger file (field names come from the triggering stage's own `result.schema.json`), amended per the violation-type targeting table in Decision Rules. If the trigger is unreadable, close the run with the early-fail exit (`fail_reason="rework_trigger not readable: <path>"`).
+3. Else compare the current specification content (`design.md` / `<child>.md`) against the seeded plan baseline to determine the affected sections.
+4. Else (a first delivery, no prior canonical) full generation of plan + scaffold.
+
+Amend only the in-scope sections. **Sections outside scope — together with their testpoint IDs / sequence names / `power_scenarios.sequence_ref` — are preserved verbatim** (stable anchors so coverage data / scaffold / SAIF caches do not drift on ID changes). When the seeded workdir already holds an updated version, that residue is the baseline. Any amendment to the plan voids any prior gate `clear`; Step 4 re-runs before the Step-5 user loop.
+
+**Early-fail exit.** Whenever a documented failure cannot be resolved, first run `simplan seed --workdir {workdir}` (no-clobber; a no-op when no canonical exists — this covers a fail that fires before Step 1's seed ran, e.g. a missing external reference), then close the run with the finalize early-fail entry — never hand-assemble the envelope:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
@@ -140,9 +145,9 @@ Per `references/spec-input-contract.md`, validate the required columns of `desig
 
 ### Step 3: Generate / update artifacts
 
-Branch scope: **first-run** fully generates both artifacts; **trigger-driven rework** / **incremental-update** amend only the sections targeted by the violation-type targeting table in Decision Rules / specification diff, with unaffected parts — and their testpoint IDs / sequence names / `sequence_ref` — preserved verbatim as stable anchors; **session-resume** reuses the `{workdir}` residue and fills only the missing parts.
+Scope: a first delivery fully generates both artifacts; a narrowed scope (directive / `{rework_trigger}` / spec diff, per Step 1) amends only the targeted sections, with unaffected parts — and their testpoint IDs / sequence names / `sequence_ref` — preserved verbatim as stable anchors.
 
-- Derive plan-data (run on every branch that reaches this step):
+- Derive plan-data (run on every run that reaches this step):
 
   ```bash
   python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workdir <spec-workdir> --output {workdir}/plan-data.json
@@ -164,13 +169,13 @@ Branch scope: **first-run** fully generates both artifacts; **trigger-driven rew
   python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py check-scaffold --scaffold {workdir}/scaffold-specification.json --plan-data {workdir}/plan-data.json
   ```
 
-  Structural + semantic + coverage-matrix (every check_id covered-or-skipped; every `covers[]` resolves). Fix and re-run on non-zero exit. Runs on every branch.
+  Structural + semantic + coverage-matrix (every check_id covered-or-skipped; every `covers[]` resolves). Fix and re-run on non-zero exit. Runs on every run.
 - **Cross-stage contract:** every `power_scenarios[].sequence_ref` MUST appear in `sequences[].name` (`sequence_ref` is a reference into `sequences[]`, not an independent namespace — an unregistered ref has no backing sequence to materialize into an SV class, so the downstream power-scenario emit cannot resolve it and fails closed). When a power scenario needs independent stimulus (typical: clock-off / sustained idle / DVFS switching), first add a new entry to `sequences[]` (with `name` + `agent`), then have `power_scenarios[].sequence_ref` reference that `name`. See the final section "sequence_ref naming rules and sequences[] sync" in `references/power-scenarios-template.md`.
 
 ### Step 4: Plan-adequacy review (self-dispatched Level-1 reviewer) — gating
 
 Runs after `simplan check-scaffold` is green (Step 3) and before the Step-5 user review loop, on
-every branch that reaches it.
+every run that reaches it.
 Dispatch ONE Level-1 reviewer per `references/plan-review-task-contract.md` (paths only — you
 read no body): it judges testpoints vs spec (lens `coverage`) and check-strategy soundness
 (lens `adequacy`).
@@ -271,7 +276,7 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 ## Completion Gate
 
 - [ ] result.json was written by `simplan finalize` (it owns status / the derived counts / `plan_adequacy_gate` / `artifacts[]`; you supply only `--waived` / `--status` / `--fail-reason` / `--revision` from Steps 1 and 5).
-- [ ] `simplan check-scaffold` passes — structural schema + semantic cross-refs; authoritative gate, runs on every branch.
+- [ ] `simplan check-scaffold` passes — structural schema + semantic cross-refs; authoritative gate, runs on every run.
 - [ ] When `status=fail`, `stage_specific.fail_reason` records the missing item / user-rejection reason.
 - [ ] `artifacts[]` has at least 2 entries (`verification-plan.md` + `scaffold-specification.json`); both files exist inside `{workdir}`.
 - [ ] No Iron Rule or Red Flag was triggered.
@@ -288,11 +293,9 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 
 **Do not decide what happens after you complete** — control returns directly to the caller; the caller decides based on `result.json`.
 
-### Session-resume semantics
+### Re-entry and completion
 
-Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, Workflow Step 1's four branches run again in order (trigger still injected → trigger-driven; otherwise `{workdir}` has residue → session-resume; otherwise incremental update / first-run by their conditions). Step 5 (the user review loop) **always re-runs**: it is idempotent with "ask the user again," re-presenting the current state of `verification-plan.md` for the user to reconfirm. There is no cross-session "already complete" flag.
-
-> **Adequacy-gate resume-guard:** the Step-4 verdict lives in `{workdir}` scratch + the promoted canonical `plan-review.json`. The guard is enforced in Step 1's session-resume branch and at Step 5's approve precondition, so a compaction between review and finalize, or a stale `clear`, cannot yield an unreviewed/unre-reviewed pass.
+Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`; a missing `result.json` is treated as incomplete (there is no cross-session "already complete" flag). Re-entry restarts at Step 1 and flows through Step 4's plan-adequacy gate before finalize; `simplan seed` never clobbers workdir residue — so a compaction resumes without losing work, and because the gate always re-runs on the current plan, a stale `clear` cannot survive to finalize. Step 5 (the user review loop) **always re-runs**: it is idempotent with "ask the user again," re-presenting the current `verification-plan.md` for the user to reconfirm.
 
 ## Bundled References
 

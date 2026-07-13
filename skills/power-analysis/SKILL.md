@@ -10,7 +10,7 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 ## When to Use
 
 - First-time setup of the GLS power simulation + PT-PX averaged power-analysis environment.
-- End-to-end run: bootstrap (first-run only) → `make all` (tb-shim + refresh-tests → gls-compile → gls-run → ptpx) → write `result.json`.
+- End-to-end run: bootstrap (deploys the fresh workdir; aborts if already deployed) → `make all` (tb-shim + refresh-tests → gls-compile → gls-run → ptpx) → write `result.json`.
 - Re-run after a dependency artifact change: any change to the synthesized netlist / SDF / `power_scenarios[]` / TB infrastructure.
 - Multi-scenario sweep: per-scenario SAIF per `power_scenarios[]` entry, each with its own `reports_ptpx/<id>/`.
 
@@ -66,13 +66,13 @@ you interact with it only through the `make` targets.
 
 ## Workflow
 
-`{workdir}` is provided empty; bootstrap is mandatory on first run. `make refresh-tests` re-renders power tests from the current plan before every `gls-compile`.
+`{workdir}` is provided empty each dispatch; bootstrap deploys it (and aborts on a within-run re-entry where a `Makefile` already exists). `make refresh-tests` re-renders power tests from the current plan before every `gls-compile`.
 
 ### Step 1: Pre-check external references
 
 Confirm `Verification/simulation/filelist.f` / `scaffold-specification.json` (non-empty `power_scenarios[]`) / the synthesis trio (`<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"` and exit. When `{directive_path}` is injected, Read it first as a fix-scope hint.
 
-### Step 2: Bootstrap (first-run only)
+### Step 2: Bootstrap
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]

@@ -10,7 +10,7 @@ Your sole responsibility: derive a frozen design source of truth from an approve
 ## When to Use
 
 - First-time design.md derivation from an approved brainstorm.md.
-- Specification modification on an existing module (trigger-driven rework amends design.md only — brainstorm.md is frozen and read-only; session-resume continues within the same run).
+- Specification modification on an existing module (a repair round amends design.md only — brainstorm.md is frozen and read-only).
 - Reviewing or modifying an existing design.md.
 - Creating or updating SDC/SGDC constraint files.
 
@@ -24,7 +24,7 @@ Your boundary:
 - **`design.md` must not contain by-reference jumps.** `design.md` is the unique source of truth; downstream stages do not read `brainstorm.md`. Any `see brainstorm`, `see spec D`, etc. = information loss; the referenced passage must be inlined verbatim.
 - **`design.md` and every `<child>.md` MUST reference the PPA targets by pointing at `ppa.json`, never restate the numeric target values in prose** (carrier line in `design-template.md` §1.1). `ppa.json` is the single home of PPA numbers — synthesis and power-analysis bind to it directly as their acceptance standard, so a restated number can silently drift from the value they actually gate on. This is the one sanctioned by-reference pointer; brainstorm content still must be inlined verbatim.
 - **`manifest.json` is read-only after the partition gate.** Changes to N require a fresh specification run (or re-dispatching Wave 1 with new grouping before the partition gate is reconfirmed).
-- **Minimal edit on any re-dispatch with a prior valid `design.md` on disk.** Edit only what this round's task requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise a trigger-driven rework amends `design.md` only. Every file outside that scope — `manifest.json`, the `<child>.md` set, `ppa.json`, the constraint files — MUST stay byte-identical to the prior run.
+- **Minimal edit on any re-dispatch with a prior valid `design.md` on disk.** Edit only what this round's task requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise a repair round amends `design.md` only. Every file outside that scope — `manifest.json`, the `<child>.md` set, `ppa.json`, the constraint files — MUST stay byte-identical to the prior run.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -35,7 +35,7 @@ Your boundary:
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); absent → session-resume or first-run by on-disk artifacts. |
+| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, supplies this round's repair scope (Step 1). |
 | `{directive_path}` | Optional. Fix-scope hint file (Orchestrator reasoning, or forwarded triage `result.json`); when present, Read it first. |
 
 ### External reference inputs
@@ -44,7 +44,7 @@ Your boundary:
 |---|---|---|
 | `asic/{module}/brainstorm.md` | Custom markdown; frontmatter `Status: approved` | The frozen module-root input (approval already gate-verified). Read only inside sub-Tasks and passed by path to `check-coverage --brainstorm`; the main thread never loads its body. |
 
-When `{rework_trigger}` is provided, read it once at its path as reference; the first-run and session-resume branches depend only on existing artifacts under `{workdir}`.
+When `{rework_trigger}` is provided, read it once at its path as reference; a first delivery depends only on existing artifacts under `{workdir}`.
 
 ## Output Artifacts
 
@@ -72,21 +72,18 @@ Framework-mechanism rules (dispatch-and-wait below is the main-thread lifecycle)
 - **No Level 2 dispatch:** this skill dispatches only Level-1 sub-Tasks for the three Workflow waves (Wave 1 decompose / Wave 2 per-child sub-designs / Wave 3 semantic reviewers) — the audit boundary.
 - **Dispatch-and-wait:** after dispatching a wave's sub-Task(s), send a brief status and end the turn; the harness wakes the main thread per completion. Reap each, and finalize only after all dispatched sub-Tasks have reported — never against a partial set.
 - **No `kernel.py`:** this skill does not call `kernel.py`.
-- **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a harness-level signal, distinct from the `result.json.status` enum; the main thread maps it to `status=fail` + `fail_reason` listing failed children (via the finalize early-fail entry) and defers per-child re-dispatch to trigger-driven rework. Edge: if Wave 1 blocked **before `manifest.json` exists** (first-run only), finalize exits 2 — the run is reaped `blocked`, which is correct: with no manifest there is nothing to enumerate, a blocked run never promotes, and the kernel's forward path re-dispatches.
+- **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a harness-level signal, distinct from the `result.json.status` enum; the main thread maps it to `status=fail` + `fail_reason` listing failed children (via the finalize early-fail entry) and defers per-child re-dispatch to a later repair dispatch. Edge: if Wave 1 blocked **before `manifest.json` exists** (a first delivery only), finalize exits 2 — the run is reaped `blocked`, which is correct: with no manifest there is nothing to enumerate, a blocked run never promotes, and the kernel's forward path re-dispatches.
 
-### Step 1: Entry branches
+### Step 1: Entry — seed, determine scope, pick the entry point
 
-When `{directive_path}` is injected, Read it first — its `fix_locus` narrows whichever branch applies. Then select the first matching row:
+When `{directive_path}` is injected, Read it first — its `fix_locus` narrows the scope. Run `spec seed --workdir {workdir}` (no-clobber carry of the prior canonical; a no-op when no canonical exists — so any freshly-authored workdir residue is kept). Then:
 
-| # | Condition (test in order) | Seeding | Enters at | Ends with |
-|---|---|---|---|---|
-| 1 | `{rework_trigger}` injected | `spec seed --workdir {workdir}` | Read the trigger's `stage_specific` once, dispatch one design.md-level rework sub-Task (body stays off the main thread; `brainstorm.md` read-only), then **re-enter the main chain at Step 6 and flow through Steps 7–9** | Step 9 |
-| 2 | No trigger + `{workdir}` holds partial wave products (`manifest.json` / `design.md`) | — (residue is the baseline) | The last incomplete wave; gates re-ask idempotently. Resume-guard: if `stage_specific.spec_gate` is not `clear`-or-all-`waived` (absent / `trip` / predates the latest design.md edit), re-run Step 7 before Step 8 | Step 9 |
-| 3 | Otherwise (first-run; brainstorm-level rework recovery also lands here — fresh empty workdir, full re-derivation, no version compare) | — | Step 2 | Step 9 |
+- **A prior run was promoted** (`spec seed` carried a canonical) — a repair round. Scope = `{directive_path}`'s `fix_locus` when injected, else a `{rework_trigger}`'s `stage_specific` attribution (Read the trigger once; body stays off the main thread; `brainstorm.md` read-only). Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6 and flow through Steps 7–9**: Steps 2–5 (the partition) are skipped — `manifest.json` is immutable after the partition gate — and Step 7 (the semantic gate) re-runs this pass, so the promoted gate is always fresh. Ends at Step 9.
+- **No canonical** (`spec seed` was a no-op) — a first delivery, or an interrupted first delivery whose residue is kept no-clobber: full re-derivation from Step 2 (fresh partition; brainstorm-level rework recovery also lands here). Ends at Step 9.
 
-Legacy note (row 1): if `ppa.json` is absent after seeding (a canonical from before the ppa.json migration), pass finalize `--ppa-targets` **verbatim** from the canonical `result.json` `stage_specific.ppa_targets` — a one-time migration; every later pass writes the file.
+Legacy note (repair round): if `ppa.json` is absent after seeding (a canonical from before the ppa.json migration), pass finalize `--ppa-targets` **verbatim** from the canonical `result.json` `stage_specific.ppa_targets` — a one-time migration; every later pass writes the file.
 
-**Early-fail exit (all branches).** Whenever a documented failure below cannot be resolved in-branch, close the run with the finalize early-fail entry — never hand-assemble the envelope:
+**Early-fail exit.** Whenever a documented failure below cannot be resolved, close the run with the finalize early-fail entry — never hand-assemble the envelope:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
@@ -238,9 +235,9 @@ Downstream consumption note: synthesis and power-analysis read `ppa.json` direct
 
 **Do not decide what happens after you complete** — control returns directly to the caller; the caller decides based on `result.json`.
 
-### Session-resume semantics
+### Re-entry and completion
 
-Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`. A missing `result.json` is treated as incomplete; on re-entry, Step 1's entry table selects again. The two path-handoff gates always re-ask idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** The Step-7 verdict is not itself a completion marker; the resume-guard (Step 1 row 2) and the Step-8 approve precondition together ensure a mid-wave compaction or a stale `clear` cannot yield an unreviewed pass. `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before you run; you never approve or re-approve it.
+Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`; a missing `result.json` is treated as incomplete (Step 1's entry re-selects on re-entry). `spec seed` never clobbers workdir residue, and every re-entry flows through Step 7's semantic gate before the Step-8 approve precondition and Step-9 finalize — so a compaction resumes without losing work and cannot promote an unreviewed or stale-`clear` pass. The two path-handoff gates always re-ask idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before you run; you never approve or re-approve it.
 
 ## Bundled References
 

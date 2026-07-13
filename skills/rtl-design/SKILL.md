@@ -22,7 +22,7 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 - **No child RTL in the main thread:** every child (including the top-integration child) is dispatched in the fan-out wave. The main thread consumes each sub-Task's `files[]` paths only (the scripts aggregate them into `filelist.txt`) and **MUST NOT read the dispatched child's** `.v`/`.sv` content back into the main-thread context — child RTL would otherwise compound across the long-lived main thread. There is no main-thread TOP authoring: even a single child is written by a sub-Task, never by the main thread.
 - **No whole-design elaboration in any child sub-Task:** per `references/child-task-contract.md`, no child may whole-design elaborate/compile, read sibling RTL bodies, or reverse-read an external verification harness; integration/elaboration correctness is verified by downstream verification. A unit child may best-effort `verilator --lint-only` its own module only.
 - **`<child>.md §2 Interface` incomplete:** if the interface spec is missing or underspecified, write `status=fail` + `fail_reason="<child>.md §2 Interface incomplete"`; do not invent interfaces.
-- **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's task actually requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise a trigger-driven rework's `violations[]` list is the scope (already binding — see the Trigger-driven rework branch); otherwise the incremental-update branch's `specification` diff is the scope. Every file outside that scope MUST stay byte-identical to the prior run — a full rewrite on a narrow fix defeats the incremental kernel's per-file cascade.
+- **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's task actually requires: scope comes from Step 1's ladder — `{directive_path}`'s `fix_locus` when injected, else a `{rework_trigger}`'s `violations[]`, else the `specification` diff. Every file outside that scope MUST stay byte-identical to the prior run — a full rewrite on a narrow fix defeats the incremental kernel's per-file cascade.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -33,7 +33,7 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); presence selects the rework branch. |
+| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, its `stage_specific.violations[]` supplies this round's fix scope (Step 1). |
 | `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content and the incremental diff. |
 
 ### External reference inputs
@@ -76,33 +76,17 @@ Completion Gate.
 - **No `kernel.py`:** this skill does not call `kernel.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a
   harness-level signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the
-  main thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to trigger-driven
-  rework.
+  main thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to a later repair
+  dispatch.
 
-### Step 1: Read inputs, select branch, seed if needed
+### Step 1: Read inputs, seed, determine scope
 
 Read `Design/specification/result.json` (envelope) and `manifest.json` (`.module` =
-`<top_module>`; the `children[]` dispatch roster: `name` + `doc` + `rtl_modules[]`). On first-run
-the main thread reads nothing else — no `design.md`, no `<child>.md` body, no RTL.
+`<top_module>`; the `children[]` dispatch roster: `name` + `doc` + `rtl_modules[]`). Nothing else is
+read up front — no `design.md`, no `<child>.md` body, no RTL; the per-child sub-Tasks read their own
+docs.
 
-Based on whether `{rework_trigger}` is injected and whether the canonical path
-`Design/rtl-design/{*.v,*.sv,filelist.txt}` already holds prior RTL artifacts, choose one of three
-branches:
-
-- **Trigger-driven rework** (`{rework_trigger}` injected): see Step 2 for the `map_to_child` sketch.
-  - Read the trigger's `stage_specific.violations[]` and `ppa_actual[]` (if present); modify only the
-    files listed in `violations`. Modifying anything outside the violations list is a prohibited
-    operation (see Red Flags). If the trigger file is unreadable, write `result.json` with
-    `status=fail` and `stage_specific.fail_reason="rework_trigger not readable"`, then exit.
-  - PPA dimension: when `ppa_actual` is non-empty, also read the trigger's sibling `reports/` or
-    `reports_*/` subdirectory to locate the bottleneck RTL module.
-  - The module-level `design.md` + per-child `<child>.md` set are an immovable boundary, not modified.
-    If the rework plan would violate either layer, stop this round (see Red Flags).
-- **Incremental-update branch** (no trigger; canonical path already has prior RTL artifacts): read the
-  `Design/specification/result.json` diff to determine the incremental scope, then proceed to Step 3 with the identified scope.
-- **First-run branch** (no trigger; canonical path has no prior RTL artifacts): proceed to Step 3.
-
-On the incremental/rework branches (canonical holds prior artifacts), run:
+Run `seed` (it internally handles both the canonical-present and first-delivery cases):
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py seed --workdir {workdir}
@@ -112,12 +96,23 @@ The `seed` verb derives the canonical dir as `{workdir}/../..` (no hardcoded per
 and carries unchanged children's RTL + `filelist.txt` / `README.md` + the prior
 `.child_reports.json` ledger forward (whitelist = HDL suffixes at any depth ∪ every file
 the ledger's `files` entries list — children's non-HDL support files are products too;
-no-clobber — never `result.json` or `semantic-review.json`; Step 4.4 re-judges here).
-First-run skips it.
+**no-clobber**, so any freshly-authored workdir residue is kept — never `result.json` or
+`semantic-review.json`; Step 4.4 re-judges here). With no canonical (a first delivery) it is a no-op.
 
-When `{directive_path}` is injected, Read that sibling file first as a fix-scope hint. It
-takes priority over both the trigger content (trigger-driven path) and the external-reference diff
-(incremental-update path) to further narrow the modification scope.
+Determine this round's edit scope from the first available source:
+1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
+2. Else, on a `{rework_trigger}`, its `stage_specific.violations[]` (+ `ppa_actual[]` if present) —
+   modify only the listed files; modifying anything outside is prohibited (see Red Flags). If the
+   trigger is unreadable, write `result.json` with `status=fail` +
+   `stage_specific.fail_reason="rework_trigger not readable"` and exit. When `ppa_actual` is
+   non-empty, also read the trigger's sibling `reports/` or `reports_*/` subdirectory to locate the
+   bottleneck RTL module.
+3. Else the `Design/specification/result.json` diff vs the seeded baseline.
+4. Else (a first delivery, no prior canonical) ALL children.
+
+Map the scope to affected children per Step 2. The module-level `design.md` + per-child `<child>.md`
+set are an immovable boundary, never modified — if a fix would need either, stop this round (see Red
+Flags).
 
 **Pre-dispatch purity gate (fail-fast).** After reading `manifest.json` and before the Step 3
 fan-out, run:
@@ -133,13 +128,14 @@ top-integration child never pays authoring cost. (Step 4's `assemble` verb re-ru
 exit-gate as the backstop, where it also folds in the blocked-child precedence and
 emits `artifacts`.)
 
-### Step 2: (Rework only) map_to_child
+### Step 2: map_to_child (when scope is narrower than all children)
 
-(Only applies when `{rework_trigger}` is injected.)
+(Applies whenever Step 1 narrowed the scope — a directive, a `{rework_trigger}`, or a spec diff. On
+a first delivery the scope is ALL children and this step is skipped.)
 
 1. Read `manifest.json` and the frontmatter of each `<child>.md` listed under
    `manifest.children[].doc` (Grep `^---` block only — ~15 lines per child). This frontmatter read is
-   the only read the rework branch adds — not RTL, not `design.md`.
+   the only extra read scope-mapping adds — not RTL, not `design.md`.
 2. For each `violations[]` entry, map to `affected_children[]` via the most specific available key:
    - `frontmatter.file_path` matches the trigger's `file` field → that child;
    - `frontmatter.features[]` contains a feature mentioned in the violation message → that child;
@@ -153,7 +149,7 @@ emits `artifacts`.)
 ### Step 3: Fan-out wave
 
 Dispatch the to-dispatch set as `Task(run_in_background=True)`, one sub-Task per child — **all
-`len(manifest.children[])` children on first-run; the affected subset on rework/incremental**. Every
+`len(manifest.children[])` children on a first delivery (scope=ALL); the affected subset when scope is narrowed**. Every
 child (including the top-integration child) is dispatched here — no `name=="top"` special-casing, no
 N==1 inline exemption (even a single child is one sub-Task). The per-child sub-Task prompt + the
 returned annotation schema are in [`references/child-task-contract.md`](references/child-task-contract.md).
@@ -179,7 +175,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py assemble --workdir {workdir}
 (malformed reports/ledger) yields a non-zero exit with a stderr message and **no stdout verdict**, so write `status=fail`
 (stderr as `fail_reason`), stop. Otherwise it prints the exit-gate verdict JSON on stdout; exit code = truth
 (topology + blocked-child); a fail verdict stops the stage — Step 4.5's `finalize` writes it into
-`result.json`. (`--seeded` only on incremental/rework, never first-run's initial build.)
+`result.json`. (`--seeded` whenever `seed` carried a prior baseline — canonical existed — never on a first delivery's initial build.)
 
 **4.3 Conformance gate + bounded self-converge loop** (deterministic; runs EVERY invocation):
 
@@ -217,9 +213,9 @@ also carries `owner_child`). These are child-authoring defects (fix-locus = the 
   `assemble --seeded` over it + the converged ledger to refresh `artifacts[]`. Round-0 files a
   re-dispatched child later superseded remain in the run's scratch workdir only — not in the ledger, so never promoted.
 
-**4.4 Semantic gate (gating)** — runs on EVERY finalize that reaches a clean 4.3 gate (NOT
-first-run-only; closes the gap where a module that failed C on attempt 1 — promoted-on-fail, then
-retried incrementally — would otherwise never be semantically reviewed):
+**4.4 Semantic gate (gating)** — runs on EVERY finalize that reaches a clean 4.3 gate (not only on
+a first delivery; closes the gap where a module that failed C on attempt 1 — promoted-on-fail, then
+re-authored on a later pass — would otherwise never be semantically reviewed):
 
 Dispatch N `Task(run_in_background=True)`, one per `manifest.children[]`, per
 `references/rtl-review-task-contract.md` (paths only: child `files[]` + the child's per-child doc resolved
