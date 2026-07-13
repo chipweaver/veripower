@@ -2,99 +2,97 @@
 
 ## 1. Scope
 
-This document governs how every skill's Workflow field expresses its Step 1 routing without exposing a `mode` parameter. Audience: skill authors writing Workflow Step 1. Companion: `skill-field-contract-design.md` §4.3.7 (Workflow field rule).
+This document governs how every skill's Workflow field expresses its Step 1 without exposing a `mode` parameter. Audience: skill authors writing Workflow Step 1. Companion: `skill-field-contract-design.md` §4.3.7 (Workflow field rule).
 
 ## 2. Background
 
-Every stage faces three logical paths: (1) **first-run** — initial dispatch, no prior artifacts on disk; (2) **explicit rework** — caller injects `{rework_trigger}` pointing at a failed downstream `result.json` with a `violations[]` payload; (3) **cascade rework** — caller re-dispatches without a trigger; the stage detects prior artifacts on disk and updates incrementally.
+Step 1 is **not** a branch selection. It is one linear flow — **seed/bootstrap → determine scope → minimal-edit** — because the fork that was once modelled as branches (first-run vs a re-run that carries prior products) lives *inside* the `seed` verb (whitelist no-clobber carry; a no-op when no canonical exists) or, for the tool stages, the `bootstrap` verb (deploy the workdir; abort if already deployed). What differs between runs is only the **scope** of the edit, which Step 1 reads from a fallback ladder.
 
-The design problem is to express all three paths without a `mode` parameter that would require per-form branching from the caller. The solution is a two-signal read performed entirely inside Step 1. For the English field-title convention see `skill-field-contract-design.md` §3.5 (F5).
+Compaction-safe resume is a kernel/architecture property (`ARCHITECTURE.md`, "Compaction-safe resume"), not a per-skill feature: a fresh `runs/N` workdir per dispatch + no-clobber `seed`/`bootstrap` + `result.json` as the sole completion signal make re-entry automatic. No skill needs "session-resume" prose.
 
 ## 3. Principles
 
-### 3.1 P1 — Two-signal routing
+### 3.1 P1 — Scope from a ladder, no `mode` parameter
 
-Step 1 routing uses exactly two signals: `{rework_trigger}` injection (yes / no) × disk-prev-artifact existence (yes / no). No other signals. Skills do NOT self-scan disk beyond prev-artifact presence, and do NOT consult `events.jsonl` or any external state.
+Step 1 determines this round's edit scope from the first available source:
 
-### 3.2 P2 — Step-1-only routing
+```
+scope = {directive_path}.fix_locus       # Orchestrator's fix-scope hint — authoritative
+      ?? {failing_result}.attribution    # a repair dispatch's violations[] / attribution
+      ?? diff(inputs, seeded baseline)    # a re-run whose upstream inputs changed
+      ?? ALL                             # a first delivery (nothing narrows it)
+```
 
-The branch decision happens once, in Step 1. Subsequent steps describe a single flow with scope-limiting language (e.g., *"trigger-driven path: scope limited to files listed in `trigger.violations[]`"*). Multi-step branching is a code smell — collapse into Step 1.
+Each skill lists only the sources it actually has (see §4/§6). No skill self-scans `events.jsonl` or any external state; the only disk reads are the declared inputs plus the seed's own canonical check.
 
-### 3.3 P3 — Branch coverage = step coverage
+### 3.2 P2 — Scope decided once, in Step 1
 
-If Step 1 produces N branches, downstream steps MUST address how each branch threads through them, OR state *"Steps 2–N are identical across branches; they differ only in scope."* Linear downstream after a multi-branch Step 1 is a bug — the implementer cannot reconstruct what each branch does.
+The scope is fixed once, in Step 1. Subsequent steps describe a single flow with scope-limiting language (e.g. *"the SDC edits stay confined to the scope set in Step 1"*), never a re-branch. Multi-step branching is a code smell.
+
+### 3.3 P3 — Scope threads as scope, not as branches
+
+Downstream steps run in the same order regardless of scope and differ only in *what* they touch. State this explicitly (*"Steps 2–N are identical regardless of scope; a narrowed scope limits the edit, a first delivery covers everything"*) so an implementer cannot mistake scope for control flow.
 
 ### 3.4 P4 — Idempotency by design
 
-The disk is the source of truth for artifacts, not for progress. Do NOT track partial completion via custom disk markers. Trust `result.json` presence and the canonical-vs-`runs/` promotion owned by `framework/scripts/kernel.py`.
+The disk is the source of truth for artifacts, not for progress. Do NOT track partial completion via custom disk markers. `result.json` presence is the sole completion signal; the fresh-workdir-per-dispatch and canonical-vs-`runs/` promotion are owned by `framework/scripts/kernel.py`. `seed`/`bootstrap` are no-clobber, so a re-entry keeps freshly-authored residue automatically.
 
-### 3.5 P5 — Fail-closed semantics
+### 3.5 P5 — Fail-closed on an unreadable repair input
 
-If `{rework_trigger}` is injected but unreadable or malformed, write `result.json` with `status=fail` and a `fail_reason` identifying the unreadable path. Do NOT silently fall back to first-run.
+If `{failing_result}` is injected but unreadable or malformed, write `result.json` with `status=fail` and a `fail_reason` identifying the path (`"failing_result not readable: <path>"`). Do NOT silently fall back to a first delivery.
 
-**Rationale:** Silent fallback masks caller-side bugs as completed first-runs.
+**Rationale:** Silent fallback masks caller-side bugs as completed first deliveries.
 
-## 4. Two-signal table and walk-throughs
+## 4. The scope ladder in practice
 
-| `{rework_trigger}` | Disk prev artifacts | Path | Step-1 behavior |
-|---|---|---|---|
-| not injected | not present | first-run | full generation from spec |
-| not injected | present | cascade rework | incremental update; diff against prev artifacts, re-run affected scope |
-| injected | present (typical) | explicit rework | scope limited to `trigger.violations[]`; non-listed files untouched |
-| injected | not present | rare; treat as explicit rework | scope limited to `trigger.violations[]`; full generation for non-listed files if absent |
+| Live scope-sources | Stages | Notes |
+|---|---|---|
+| directive · failing_result · diff · ALL | rtl-design, synthesis | full ladder — route-DAG fix targets with a diffable upstream |
+| directive · failing_result · ALL | specification | no diff arm — `brainstorm.md` is frozen; a repair round enters at the post-partition step (§6.3) |
+| directive · diff · ALL | lint-cdc, power-analysis | no `failing_result` arm — never a route-DAG fix target (§6.1) |
+| ALL only | timing-analysis, frontend-signoff | read-only re-verifier / aggregator; no product seed, scope is always everything (§6.2) |
 
-**Worked walk-through: standard worker (3-branch)** — lint-cdc archetype:
+**Worked walk-through — a route-DAG worker** (rtl-design / synthesis archetype):
 
 ```text
-Step 1: Read inputs.
-  if {rework_trigger} injected:
-    open trigger.path — if unreadable → result.json status=fail,
-      fail_reason="rework_trigger not readable: <path>"; STATUS: DONE
-    read trigger.stage_specific.violations[]; build fix list → explicit rework
-  elif prev-artifact present in {workdir}:
-    diff against upstream result.json → cascade rework
-  else: first-run
-
-Step 2: make <target>
-  explicit rework: limit to fix-list files
-  cascade rework:  limit to diff scope
-  first-run:       full generation
-
-Step 3: write result.json (status/artifacts/metrics); STATUS: DONE
+Step 1: Read inputs. Run seed/bootstrap (canonical-present vs first-delivery is
+        internal to the verb; no-clobber keeps any residue).
+        scope = directive.fix_locus
+             ?? failing_result.violations[]   (if unreadable → result.json
+                status=fail, fail_reason="failing_result not readable: <path>")
+             ?? upstream diff
+             ?? ALL
+Step 2..N: run in the same order; edits stay confined to scope
+           (a first delivery covers everything).
+Last step: finalize → result.json; STATUS: DONE
 ```
 
-`simulation-plan` extends the three worker branches with a fourth, session-resume, giving: trigger-driven / session-resume / cascade rework / first-run. That fourth branch — its trigger condition, resume-from-last-gate mechanism, and why dialogue stages use it — is the §6.3 carve-out.
-
-**Note:** §5 (Examples) is intentionally absent. The walk-through above absorbs that role within §4. Section numbers are preserved to match the template positions used across the design-doc set.
+**Note:** §5 (Examples) is intentionally absent; the walk-through above absorbs that role. Section numbers are preserved to match the design-doc set.
 
 ## 6. Carve-out catalog
 
-Six skills deviate from the standard 3-branch worker pattern. Each must reference its carve-out in the Workflow rationale.
+Most stages are the scope-ladder worker of §4. These deviate:
 
-### 6.1 Never-trigger-target (power-analysis)
+### 6.1 Never-a-fix-target (power-analysis, lint-cdc)
 
-`power-analysis` is never a rework-DAG fix target; callers never inject `{rework_trigger}`. Fix-scope context arrives via `{directive_path}` (read-only hint). Step 1 has no trigger-driven branch — first-run and cascade rework only. (`skills/power-analysis/SKILL.md` Workflow rationale.)
+Never a rework-DAG fix target — `route.py` never returns them, so callers never inject `{failing_result}`. Fix-scope context, when any, arrives via `{directive_path}`; the ladder drops the `failing_result` arm (`directive ?? diff ?? ALL`). (Workflow rationale in each skill.)
 
-### 6.2 Terminal stage (frontend-signoff)
+### 6.2 Terminal / read-only re-verifier (frontend-signoff, timing-analysis)
 
-`frontend-signoff` has no rework path. All predecessors must be `pass`; any non-pass aborts with `status=fail`. Step 1 is linear — a pre-flight check, not a branch. (`skills/frontend-signoff/SKILL.md` Workflow rationale.)
+Read-only — cannot author or fix anything, so there is nothing to seed and no scope to narrow: Step 1 is a linear pre-flight check and every run re-verifies everything (`scope ≡ ALL`). `route.py` never returns them; P5 does not apply (no `{failing_result}` is ever delivered). (Workflow rationale in each skill.)
 
-### 6.3 Dialogue 4-branch (simulation-plan)
+### 6.3 Post-partition entry point (specification)
 
-`simulation-plan` adds session-resume as a fourth branch: `{workdir}/verification-plan.md` present but `result.json` absent signals a paused multi-turn review; the stage resumes from the last gate rather than re-deriving incrementally. (`skills/simulation-plan/SKILL.md` Workflow rationale.)
+`specification` has no diff arm (`brainstorm.md` is frozen). A repair round (a `{failing_result}` or a `{directive_path}` fix) re-enters at the post-partition step, **skipping the human partition gate** — `manifest.json` is immutable after it — and always flows through the semantic gate, so the promoted gate stays fresh. A first delivery runs the full partition from the top. (`skills/specification/SKILL.md` Step 1.)
 
-### 6.4 Session-resume replaces incremental (specification)
+### 6.4 Content-hash fork (simulation)
 
-`specification` uses session-resume on the disk-prev-artifact-present branch instead of incremental update. No external reference diff exists to anchor re-derivation; the only meaningful action is to continue the dialogue from its last gate. (`skills/specification/SKILL.md` Workflow rationale.)
+`simulation` is the one stage with a genuine Step-1 fork, and it is **not** the scope ladder: `sim classify-delta` hashes the plan + scaffold against the promoted baseline and returns `first-run` / `freeze` / `patch`. `freeze` (inputs byte-identical) dispatches a distinct child that copies the prior TB verbatim and byte-carries its judged `conformance-review.json` for `pin` survival; `patch` reconciles only what the plan changed. The classifier is trigger-agnostic — `{failing_result}` never selects the fork, it only narrows scope within `patch`. (`skills/simulation/SKILL.md` Step 1.)
 
 ### 6.5 Analyzer exception (simulation-triage)
 
-`simulation-triage` receives only identifying coordinates in the dispatch prompt (`{module}` + the failed run number) and self-reads everything else from canonical disk. It has no `{workdir}`, no `{rework_trigger}`, no disk-prev-artifact concept. The two-signal model does not apply. (`skills/simulation-triage/SKILL.md` Input Artifacts.)
-
-### 6.6 Never-trigger-target / read-only re-verifier (timing-analysis)
-
-`timing-analysis` is never a rework-DAG fix target: `route.py` never returns it (on a `ppa` failure it routes away to rtl-design/specification; `_PPA_STAGES`), and the orchestrator attaches `{rework_trigger}` only on an auto-rebuild (repair) `DISPATCH` to its target. It runs only by forward `DISPATCH`, which carries no trigger — the same archetype as §6.1 (power-analysis), but simpler: it consumes no `{directive_path}` hint either, because it is read-only w.r.t. `Design/synthesis/` and cannot fix anything. Step 1 is a single linear pre-flight check (synthesis `status=pass` + netlist/SDC present); no trigger / incremental / first-run fork. P5 (fail-closed on unreadable trigger) does not apply — no trigger is ever delivered. (`skills/timing-analysis/SKILL.md` Workflow rationale.)
+`simulation-triage` receives only identifying coordinates (`{module}` + the failed run number) and self-reads everything else from canonical disk. It has no `{workdir}`, no `{failing_result}`, no scope ladder. (`skills/simulation-triage/SKILL.md` Input Artifacts.)
 
 ## 8. Process for changing
 
-When a stage's branching shape evolves, coordinate with `framework/scripts/rules.py` (the dependency graph is derived from each rule's input/output artifact selectors) if input vectors change. If the new shape does not fit an existing §6 carve-out, add a new subsection and reference it from the affected skill's Workflow rationale before merging.
+When a stage's Step-1 shape evolves, coordinate with `framework/scripts/rules.py` (the dependency graph is derived from each rule's input/output artifact selectors) if input vectors change. If the new shape does not fit §4 or an existing §6 carve-out, add a subsection and reference it from the affected skill's Workflow rationale before merging.
