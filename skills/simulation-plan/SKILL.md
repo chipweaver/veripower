@@ -10,7 +10,7 @@ Your sole responsibility: from `specification`, generate or evolve two artifacts
 ## When to Use
 
 - First-time generation of plan + scaffold spec for a module.
-- Incremental update triggered by a `specification` change.
+- A repair round after a `specification` change — amend the plan/scaffold incrementally.
 - Plan / scaffold revisions from review feedback.
 
 ## Iron Rule
@@ -118,7 +118,7 @@ Authoring judgment the schema/validator cannot express:
 
 ### Step 1: Read inputs, seed, determine scope
 
-Read `Design/specification/result.json` + `design.md` + `manifest.json`; if any required input is missing, close the run with the early-fail exit below (`fail_reason="external reference missing: <path>"`).
+Read `design.md` + `manifest.json` (simulation-plan's declared inputs); if any required input is missing, close the run with the early-fail exit below (`fail_reason="external reference missing: <path>"`).
 
 Run `simplan seed --workdir {workdir}` (whitelist no-clobber carry of the prior canonical plan + scaffold; **no-clobber**, so any freshly-authored workdir residue from an interrupted run is kept, and with no canonical it is a no-op — a first delivery. The judged `plan-review.json` is deliberately NOT carried — invalidate-on-rework).
 

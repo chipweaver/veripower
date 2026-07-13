@@ -73,7 +73,7 @@ Orchestrator Agent 做决策；`kernel.py` 和 skills 负责执行；磁盘负�
 │ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent       │
 │ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)           │
 │  kernel.py:        │  │   main thread)               │  │                               │
-│   10 verbs; sole   │  │                              │  │  Stage: executes rule         │
+│   9 verbs; sole    │  │                              │  │  Stage: executes rule         │
 │   writer of the    │  │  specification / sim-plan /  │  │    → writes result.json       │
 │   event log        │  │  rtl-design / simulation:    │  │  Debug (triage): canon. RO,   │
 │  schedule.py:      │  │    self-driven fan-out /     │  │    scratch RW builder         │
@@ -114,7 +114,7 @@ Orchestrator 的三条派发路径：
 | `route.py` | 纯确定性返工目标选择——静态失败→目标映射表的**唯一居所**（`PA_CATEGORY`、`FIXED_TARGET`、`LINT_CATEGORY`、`TRIAGE_ROOT_CAUSE`）。不持有状态；原样组合进 `schedule.py` 与 `kernel.py`。 |
 | `store.py` | 文件系统产物生命周期助手（`promote`、`_mirror_subagent_trace`）。由 `kernel.py` 的收割路径导入；从不直接调用。 |
 
-事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（7 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
+事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（6 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
 
 > **黑箱纪律。** Orchestrator 按文档化的命令行调用 `kernel.py`（标志经 `<verb> --help`，每个动词打印 JSON 信封），从不读框架脚本源码。遇到非零退出或 `ok:false` 信封，按文档化的失败协议处理（修正目标、升级该 `ok:false`），绝不绕过。
 
@@ -456,7 +456,7 @@ flowchart TD
 
 ```
 asic/<module>/
-├── events.jsonl               # 唯一持久状态（只追加，7 类事件）
+├── events.jsonl               # 唯一持久状态（只追加，6 类事件）
 ├── .fingerprint-cache.json    # 纯 mtime/size 加速缓存——从不作为事实来源
 ├── brainstorm.md              # 流水线前外部输入（模块根；由 brainstorm skill 写出）
 ├── Design/

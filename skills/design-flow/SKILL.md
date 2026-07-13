@@ -207,6 +207,6 @@ that `decide` will escalate again rather than auto-rebuild.
 
 ## Bundled References
 
-- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/kernel.py` — the state tool + decider (10 verbs). Invocation contract: this file + `<verb> --help` (each verb prints a JSON envelope).
+- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/kernel.py` — the state tool + decider (9 verbs). Invocation contract: this file + `<verb> --help` (each verb prints a JSON envelope).
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/prompts/stage-subagent.md.tpl`](../../framework/references/prompts/stage-subagent.md.tpl) — Task-dispatch prompt template.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common result envelope schema.

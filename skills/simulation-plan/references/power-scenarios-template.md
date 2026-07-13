@@ -1,6 +1,6 @@
 # Standard 9-Power-Scenarios Template
 
-Load this template under **first-run** and **incremental-update** (specification field change) modes, materialize it per the module, and write the result into the `verification-plan.md` power section and `scaffold-specification.json.power_scenarios`.
+Load this template, materialize it per the module, and write the result into the `verification-plan.md` power section and `scaffold-specification.json.power_scenarios`.
 
 ## Standard 9-scenarios table
 

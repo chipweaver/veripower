@@ -3,28 +3,28 @@
 
 Behavior-preserving deploy built from focused, unit-testable steps (campaign design
 §3.3): shutil.copytree + str.replace do the `cp -a` + `sed -i` work (str.replace has
-no sed-delimiter hazard on '/'-containing paths); json.loads reads the synthesis
-result.json status inline. Far simpler than synthesis's bootstrap: no filelist, no
-rtl_load generation, no relpath — timing substitutes only absolute paths.
+no sed-delimiter hazard on '/'-containing paths). Far simpler than synthesis's
+bootstrap: no filelist, no rtl_load generation, no relpath — timing substitutes only
+absolute paths.
 
 Deploys templates/ into the caller-provided workdir
-(asic/<module>/Design/timing-analysis/runs/<N>/), verifies the synthesis
-prerequisite (result.json status=pass) and the netlist+SDC the TCL reads, resolves
-TOP, and substitutes the MY_MODULE_ROOT / MY_WORKDIR (run_sta.tcl) and MY_TOP /
-FILL_IN_LIB_DB_PATH (config.tcl) placeholders. Fail-closed on a missing/non-pass
-synthesis, an un-inferrable top, or a missing external reference. Idempotency
-guard: aborts when the workdir is already deployed.
+(asic/<module>/Design/timing-analysis/runs/<N>/), verifies the netlist+SDC the TCL
+reads, resolves TOP, and substitutes the MY_MODULE_ROOT / MY_WORKDIR (run_sta.tcl)
+and MY_TOP / FILL_IN_LIB_DB_PATH (config.tcl) placeholders. Fail-closed on an
+un-inferrable top or a missing external reference. Idempotency guard: aborts when
+the workdir is already deployed. The kernel only dispatches timing once synthesis's
+proof is valid, so no upstream result.json status is re-checked here (matching the
+synthesis/power/lint-cdc bootstraps).
 
 Exit codes (returned as int; __main__ does sys.exit):
   0  deployed
-  1  fail-closed guard (missing template dir / synthesis result missing or not pass
-     / cannot infer top / missing netlist or SDC / already deployed)
+  1  fail-closed guard (missing template dir / cannot infer top / missing netlist or
+     SDC / already deployed)
   (2 = usage is owned by argparse in __main__.py)
 """
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import sys
@@ -53,15 +53,6 @@ def infer_top(syn_dir: Path) -> str | None:
     return cands[0].name[: -len("_syn.v")]
 
 
-def _read_status(syn_result: Path) -> str:
-    """The synthesis result.json status (read via json.loads). Any read/parse
-    failure -> '' -> the caller fails closed (non-pass)."""
-    try:
-        return json.loads(syn_result.read_text()).get("status", "")
-    except (OSError, json.JSONDecodeError):
-        return ""
-
-
 def _sub(path: Path, placeholder: str, value: str) -> None:
     """In-place placeholder substitution (str.replace — no sed-delimiter hazard)."""
     path.write_text(path.read_text().replace(placeholder, value))
@@ -80,16 +71,6 @@ def run(module: str, workdir, top: str | None = None) -> int:
         workdir = tree_root / workdir
     module_root_abs = tree_root / "asic" / module
     syn_dir = tree_root / "asic" / module / "Design" / "synthesis"
-
-    # Prerequisite: synthesis result.json present and status=pass (fail-closed).
-    syn_result = syn_dir / "result.json"
-    if not syn_result.is_file():
-        _err(f"missing {syn_result}")
-        return 1
-    status = _read_status(syn_result)
-    if status != "pass":
-        _err(f"synthesis result.json status={status} (need pass)")
-        return 1
 
     # Resolve TOP from the single out/<TOP>_syn.v when not given.
     if top is None:

@@ -73,7 +73,7 @@ The Orchestrator agent decides; `kernel.py` and the skills execute; disk persist
 │ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent       │
 │ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)           │
 │  kernel.py:        │  │   main thread)               │  │                               │
-│   10 verbs; sole   │  │                              │  │  Stage: executes rule         │
+│   9 verbs; sole    │  │                              │  │  Stage: executes rule         │
 │   writer of the    │  │  specification / sim-plan /  │  │    → writes result.json       │
 │   event log        │  │  rtl-design / simulation:    │  │  Debug (triage): canon. RO,   │
 │  schedule.py:      │  │    self-driven fan-out /     │  │    scratch RW builder         │
@@ -114,7 +114,7 @@ The three dispatch paths from the Orchestrator:
 | `route.py` | Pure deterministic rework-target selection — the **single home** of the static failure→target maps (`PA_CATEGORY`, `FIXED_TARGET`, `LINT_CATEGORY`, `TRIAGE_ROOT_CAUSE`). Holds no state; composed unchanged inside `schedule.py` and `kernel.py`. |
 | `store.py` | Filesystem artifact-lifecycle helpers (`promote`, `_mirror_subagent_trace`). Imported by `kernel.py`'s reap path; never invoked directly. |
 
-The event schemas at `framework/references/schemas/events/<type>.schema.json` (7 of them, §4.2) and the result envelope at `framework/references/schemas/envelope.schema.json` complete the core.
+The event schemas at `framework/references/schemas/events/<type>.schema.json` (6 of them, §4.2) and the result envelope at `framework/references/schemas/envelope.schema.json` complete the core.
 
 > **Black-box discipline.** The Orchestrator invokes `kernel.py` by its documented command lines (flags via `<verb> --help`, each verb prints a JSON envelope) and never reads the framework scripts' source. On a non-zero exit or an `ok:false` envelope it follows the documented failure protocol (fix the objective, escalate the `ok:false`), never patches around it.
 
@@ -241,7 +241,7 @@ Everything under `asic/<module>/` that matters to the kernel is derived from one
 
 Because the log is the state, in-flight is derived too: `facts.in_flight` = every `dispatch` with no matching `outcome` (keyed by `(rule, run)`). Crash recovery is thus intrinsic — a run whose executor died left a `dispatch` with no `outcome`, so it still shows in-flight and `decide` will reap it (§5.6).
 
-### 4.2 The seven event types
+### 4.2 The six event types
 
 `events.jsonl` carries **6 event types**, each validated by `framework/references/schemas/events/<type>.schema.json`. `kernel.py` is the sole writer of all six — there is no channel by which an agent prompt can inject a raw event.
 
@@ -456,7 +456,7 @@ Each module's working state lives under `asic/<module>/`. Each rule's canonical 
 
 ```
 asic/<module>/
-├── events.jsonl               # the ONLY durable state (append-only, 7 event types)
+├── events.jsonl               # the ONLY durable state (append-only, 6 event types)
 ├── .fingerprint-cache.json    # pure mtime/size speed cache — never a fact source
 ├── brainstorm.md              # pre-pipeline external input (module root; written by the brainstorm skill)
 ├── Design/
