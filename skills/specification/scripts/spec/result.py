@@ -111,6 +111,8 @@ def compute_spec_gate(workdir: Path, waived: list) -> dict:
     """Re-derive the Step-7 gate verdict in-process from the on-disk spec-review.json
     (already schema-gated when Step 7 wrote it -> call the pure fold, not the CLI),
     then merge the human waiver classification relayed via --waived."""
+    # Read as-is: review-vs-content freshness is a process invariant — the skill re-runs its
+    # gate on the current design.md before finalize (SKILL.md "Re-entry and completion"), not enforced here.
     doc = json.loads((Path(workdir) / "spec-review.json").read_text(encoding="utf-8"))
     g = gate_verdict(doc)
     g["waived"] = waived

@@ -92,6 +92,8 @@ def build_result(workdir, module, top, manifest) -> int:
         return 0
 
     # exit verdict passed -> fold in the semantic gate via the pure fn (already-validated doc).
+    # Read as-is: review-vs-content freshness is a process invariant — the skill re-runs its
+    # gate on the current RTL before finalize (SKILL.md "Re-entry and completion"), not enforced here.
     review = json.loads((workdir / "semantic-review.json").read_text(encoding="utf-8"))
     gate = compute_gate(review)
     artifacts.append({"path": "semantic-review.json"})

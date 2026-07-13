@@ -295,7 +295,7 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 
 ### Re-entry and completion
 
-Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`; a missing `result.json` is treated as incomplete (there is no cross-session "already complete" flag). Re-entry restarts at Step 1 and flows through Step 4's plan-adequacy gate before finalize; `simplan seed` never clobbers workdir residue — so a compaction resumes without losing work, and because the gate always re-runs on the current plan, a stale `clear` cannot survive to finalize. Step 5 (the user review loop) **always re-runs**: it is idempotent with "ask the user again," re-presenting the current `verification-plan.md` for the user to reconfirm.
+Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`; a missing `result.json` is treated as incomplete (no cross-session "already complete" flag). `simplan seed` never clobbers workdir residue but never carries the gate review (`plan-review.json`) forward — invalidate-on-rework. Every re-entry re-runs the plan-adequacy gate (Step 4) on the current plan before finalize, so a compaction resumes without losing work and a stale `clear` cannot survive to finalize. Step 5 (the user review loop) **always re-runs**: it is idempotent with "ask the user again," re-presenting the current `verification-plan.md` for the user to reconfirm.
 
 ## Bundled References
 

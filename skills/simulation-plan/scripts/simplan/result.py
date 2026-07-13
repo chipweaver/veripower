@@ -127,6 +127,8 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
         (workdir / "scaffold-specification.json").read_text(encoding="utf-8")
     )
     plan_md = (workdir / "verification-plan.md").read_text(encoding="utf-8")
+    # Read as-is: review-vs-content freshness is a process invariant — the skill re-runs its
+    # gate on the current plan before finalize (SKILL.md "Re-entry and completion"), not enforced here.
     review = json.loads((workdir / "plan-review.json").read_text(encoding="utf-8"))
 
     gate = gate_verdict(review)
