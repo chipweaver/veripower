@@ -81,8 +81,6 @@ When `{directive_path}` is injected, Read it first — its `fix_locus` narrows t
 - **A prior run was promoted** (`spec seed` carried a canonical) — a repair round. Scope = `{directive_path}`'s `fix_locus` when injected, else a `{failing_result}`'s `stage_specific` attribution (Read the trigger once; body stays off the main thread; `brainstorm.md` read-only). Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6 and flow through Steps 7–9**: Steps 2–5 (the partition) are skipped — `manifest.json` is immutable after the partition gate — and Step 7 (the semantic gate) re-runs this pass, so the promoted gate is always fresh. Ends at Step 9.
 - **No canonical** (`spec seed` was a no-op) — a first delivery, or an interrupted first delivery whose residue is kept no-clobber: full re-derivation from Step 2 (fresh partition; brainstorm-level rework recovery also lands here). Ends at Step 9.
 
-Legacy note (repair round): if `ppa.json` is absent after seeding (a canonical from before the ppa.json migration), pass finalize `--ppa-targets` **verbatim** from the canonical `result.json` `stage_specific.ppa_targets` — a one-time migration; every later pass writes the file.
-
 **Early-fail exit.** Whenever a documented failure below cannot be resolved, close the run with the finalize early-fail entry — never hand-assemble the envelope:
 
 ```bash

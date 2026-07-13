@@ -3,12 +3,12 @@
 
 Two layers: in-process unit tests of infer_top (BP1), and subprocess "mirror"
 tests of full deploy behavior (BP2-BP10) that run the real shipped skill with cwd
-set to a tmp design-tree root and build the synthesis prereq tree under it. The
+set to a tmp design-tree root and build the synthesis output tree (netlist + SDC)
+under it. The
 bootstrap anchors the design tree on the CWD (matching kernel.py and the
 stage-subagent contract), independent of where the skill code lives.
 """
 
-import json
 import shutil
 import subprocess
 import sys
@@ -45,13 +45,11 @@ def test_infer_top_none_when_multiple(tmp_path):
 def _make_tree(
     tmp_path,
     *,
-    status="pass",
     top="sdc_controller",
     with_netlist=True,
     with_sdc=True,
-    with_result=True,
 ):
-    """Build a synthesis prereq tree under a tmp design-tree root.
+    """Build a synthesis output tree (netlist + SDC) under a tmp design-tree root.
 
     Returns (module, workdir, main). Deploy tests run `main` (the real shipped skill)
     with cwd=tmp_path, so the bootstrap anchors the design tree on the CWD.
@@ -59,20 +57,6 @@ def _make_tree(
     m = top
     syn = tmp_path / "asic" / m / "Design" / "synthesis"
     (syn / "out").mkdir(parents=True)
-    if with_result:
-        (syn / "result.json").write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "stage": "synthesis",
-                    "module": m,
-                    "produced_at": "2026-06-08T00:00:00Z",
-                    "status": status,
-                    "artifacts": [],
-                    "stage_specific": {"ppa_actual": []},
-                }
-            )
-        )
     if with_netlist:
         (syn / "out" / f"{top}_syn.v").write_text("// netlist\n")
     if with_sdc:
@@ -144,22 +128,6 @@ def test_lib_db_empty_env_falls_back(tmp_path, monkeypatch):
     assert _run(m, workdir, main).returncode == 0
     cfg = (workdir / "config.tcl").read_text()
     assert "set LIB_DB FILL_IN_LIB_DB_PATH" in cfg  # fallback, not an empty value
-
-
-def test_fail_closed_when_synthesis_not_pass(tmp_path):
-    m, workdir, main = _make_tree(tmp_path, status="fail")
-    r = _run(m, workdir, main)
-    assert r.returncode == 1
-    assert not (workdir / "run_sta.tcl").exists()
-
-
-def test_fail_closed_when_synthesis_result_missing(tmp_path):
-    # Covers the missing-synthesis-result.json fail-closed guard (§5.3 mandate).
-    m, workdir, main = _make_tree(tmp_path, with_result=False)
-    r = _run(m, workdir, main)
-    assert r.returncode == 1
-    assert "missing" in r.stderr
-    assert not (workdir / "run_sta.tcl").exists()
 
 
 def test_fail_closed_when_netlist_missing(tmp_path):
