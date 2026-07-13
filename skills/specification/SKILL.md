@@ -35,7 +35,7 @@ Your boundary:
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{rework_trigger}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, supplies this round's repair scope (Step 1). |
+| `{failing_result}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, supplies this round's repair scope (Step 1). |
 | `{directive_path}` | Optional. Fix-scope hint file (Orchestrator reasoning, or forwarded triage `result.json`); when present, Read it first. |
 
 ### External reference inputs
@@ -44,7 +44,7 @@ Your boundary:
 |---|---|---|
 | `asic/{module}/brainstorm.md` | Custom markdown; frontmatter `Status: approved` | The frozen module-root input (approval already gate-verified). Read only inside sub-Tasks and passed by path to `check-coverage --brainstorm`; the main thread never loads its body. |
 
-When `{rework_trigger}` is provided, read it once at its path as reference; a first delivery depends only on existing artifacts under `{workdir}`.
+When `{failing_result}` is provided, read it once at its path as reference; a first delivery depends only on existing artifacts under `{workdir}`.
 
 ## Output Artifacts
 
@@ -78,7 +78,7 @@ Framework-mechanism rules (dispatch-and-wait below is the main-thread lifecycle)
 
 When `{directive_path}` is injected, Read it first — its `fix_locus` narrows the scope. Run `spec seed --workdir {workdir}` (no-clobber carry of the prior canonical; a no-op when no canonical exists — so any freshly-authored workdir residue is kept). Then:
 
-- **A prior run was promoted** (`spec seed` carried a canonical) — a repair round. Scope = `{directive_path}`'s `fix_locus` when injected, else a `{rework_trigger}`'s `stage_specific` attribution (Read the trigger once; body stays off the main thread; `brainstorm.md` read-only). Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6 and flow through Steps 7–9**: Steps 2–5 (the partition) are skipped — `manifest.json` is immutable after the partition gate — and Step 7 (the semantic gate) re-runs this pass, so the promoted gate is always fresh. Ends at Step 9.
+- **A prior run was promoted** (`spec seed` carried a canonical) — a repair round. Scope = `{directive_path}`'s `fix_locus` when injected, else a `{failing_result}`'s `stage_specific` attribution (Read the trigger once; body stays off the main thread; `brainstorm.md` read-only). Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6 and flow through Steps 7–9**: Steps 2–5 (the partition) are skipped — `manifest.json` is immutable after the partition gate — and Step 7 (the semantic gate) re-runs this pass, so the promoted gate is always fresh. Ends at Step 9.
 - **No canonical** (`spec seed` was a no-op) — a first delivery, or an interrupted first delivery whose residue is kept no-clobber: full re-derivation from Step 2 (fresh partition; brainstorm-level rework recovery also lands here). Ends at Step 9.
 
 Legacy note (repair round): if `ppa.json` is absent after seeding (a canonical from before the ppa.json migration), pass finalize `--ppa-targets` **verbatim** from the canonical `result.json` `stage_specific.ppa_targets` — a one-time migration; every later pass writes the file.
@@ -90,7 +90,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
   --workdir {workdir} --module {module} --status fail --fail-reason "<one-line reason>"
 ```
 
-Reasons used by this skill: `rework_trigger not readable: <path>`; `requirements need revision: <D-dim>` (a contradiction unfixable without changing the frozen brainstorm — routes to ESCALATE; recovery is out-of-band); `manifest child missing rtl_modules`; `constraint derivation: <table> defect`. finalize enumerates `artifacts[]` present-only, so a seeded workdir's carried **product** set all promotes — an early fail never shrinks it (the judged `spec-review.json` is the one exception: deliberately never carried on rework, per invalidate-on-rework).
+Reasons used by this skill: `failing_result not readable: <path>`; `requirements need revision: <D-dim>` (a contradiction unfixable without changing the frozen brainstorm — routes to ESCALATE; recovery is out-of-band); `manifest child missing rtl_modules`; `constraint derivation: <table> defect`. finalize enumerates `artifacts[]` present-only, so a seeded workdir's carried **product** set all promotes — an early fail never shrinks it (the judged `spec-review.json` is the one exception: deliberately never carried on rework, per invalidate-on-rework).
 
 ### Main chain at a glance
 

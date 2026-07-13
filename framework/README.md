@@ -33,7 +33,7 @@ writer.
 
 The prompt template the orchestrator renders when dispatching a stage subagent.
 Defines the canonical injection points (`{workdir}`, `{module}`,
-`{rework_trigger}`, `{directive_path}`) that every stage skill
+`{failing_result}`, `{directive_path}`) that every stage skill
 documents in its SKILL.md input table.
 
 ### `scripts/kernel.py` — the kernel CLI

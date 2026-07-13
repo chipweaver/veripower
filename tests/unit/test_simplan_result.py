@@ -371,7 +371,7 @@ def test_finalize_earlyfail_seeded_workdir_carries_products(tmp_path):
         waived_json=None,
         status="fail",
         revision=None,
-        fail_reason="rework_trigger not readable: /x/result.json",
+        fail_reason="failing_result not readable: /x/result.json",
     )
     assert rc == 0
     env = json.loads((tmp_path / "result.json").read_text())

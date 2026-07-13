@@ -16,7 +16,7 @@ declarable but no longer requires.
 ANY SKILL.md must exist in SOME stage's schema. Checked against the union
 of all stage schemas rather than each skill's own — because the SKILL.md
 of stage X legitimately cites `stage_specific.violations` etc. when
-describing the `{rework_trigger}` channel, which carries another stage's
+describing the `{failing_result}` channel, which carries another stage's
 result.json. Self-citation vs. cross-stage citation isn't recoverable
 from text alone without section-aware parsing. The looser bar still
 catches "field renamed/removed everywhere" drift — a token that vanished

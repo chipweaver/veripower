@@ -2,7 +2,7 @@
 
 Rules:
   - The `{var}` placeholders appearing in SKILL.md ⊆ canonical 4:
-    `{workdir}` / `{module}` / `{rework_trigger}` / `{directive_path}`.
+    `{workdir}` / `{module}` / `{failing_result}` / `{directive_path}`.
   - SKILL.md must not hardcode `asic/<M>` / `asic/<module>` / `runs/<N>`
     paths; always use `{workdir}` and the other context variables.
   - Variables injected by the dispatcher template
@@ -20,7 +20,7 @@ from _skills_sot import PLUGIN_ROOT, SKILL_DIRS
 CANONICAL_VARS: set[str] = {
     "workdir",
     "module",
-    "rework_trigger",
+    "failing_result",
     "directive_path",
 }
 

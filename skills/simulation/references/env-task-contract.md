@@ -16,7 +16,7 @@ the UVM scaffold, compile, and run the smoke suite.
   wave.
 - verification-plan path: `Verification/simulation-plan/verification-plan.md` — the human-readable
   plan (review anchor for filling intent).
-- (rework only) `{rework_trigger}` — the failed stage's canonical `result.json` path; read its
+- (rework only) `{failing_result}` — the failed stage's canonical `result.json` path; read its
   `stage_specific` (field names per that stage's result schema) to narrow this round's rewrite scope.
   The orchestrator has already pre-gated this path's readability (an unreadable trigger fails fast as
   `failure_phase="prerequisite"` before you are dispatched), so you receive the path for
