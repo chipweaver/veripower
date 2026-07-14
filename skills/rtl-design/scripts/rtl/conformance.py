@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""rtl check-conformance — spec↔RTL presence-level checks.
+"""rtl check-conformance — spec↔RTL presence-level checks + strict Verilog-2001 dialect gate.
 
 Emits a one-line JSON verdict on stdout the main thread reads:
   {"status": "pass|fail", "violations": [...], "fail_reason"?: str}
 Status truth = exit code (0 pass / 1 fail). Presence-level identifier scan only
-(NOT elaboration — that is lint-cdc's job via SpyGlass). Each violation names a
-`child` so the main thread's self-converge loop can re-dispatch it.
+(NOT elaboration — that is lint-cdc's job via SpyGlass); the dialect gate is likewise a
+presence-level scan (file extension + SystemVerilog-only keywords), not elaboration. Each
+violation names a `child` so the main thread's self-converge loop can re-dispatch it.
 """
 
 from __future__ import annotations
@@ -253,6 +254,85 @@ def check_module_presence(workdir, manifest, ledger) -> list:
     return v
 
 
+# SystemVerilog-only reserved words that are NOT legal Verilog-2001 — a synthesizable-RTL
+# subset (SVA / class / TB-only constructs are omitted: this gate sees only DUT RTL from the
+# ledger, never the testbench). coding-rules already forbids using any reserved word as an
+# identifier, so a whole-word hit (comments/strings masked) is a genuine SV construct, not a
+# collision with a legitimately-named V2001 signal.
+_SV_ONLY_KEYWORDS = (
+    "logic",
+    "bit",
+    "byte",
+    "shortint",
+    "int",
+    "longint",
+    "packed",
+    "always_ff",
+    "always_comb",
+    "always_latch",
+    "typedef",
+    "enum",
+    "struct",
+    "union",
+    "interface",
+    "endinterface",
+    "modport",
+    "package",
+    "endpackage",
+    "program",
+    "endprogram",
+    "class",
+    "endclass",
+    "import",
+    "export",
+    "unique",
+    "priority",
+)
+
+
+def check_dialect(workdir, ledger) -> list:
+    """Strict Verilog-2001 producer gate (rtl-design only). Every child RTL source in the ledger
+    must be a `.v` file (or `.vh` header) — NOT `.sv`/`.svh` — and carry no SystemVerilog-only
+    construct. Rationale: the kernel's downstream `rtl` selectors match `*.v` ALONE, so a `.sv`
+    artifact silently drops out of the derived dependency graph (it did — the run-1 pipeline
+    deadlock), and coding-rules mandates V2001. Scans the ledger's OWN files only, so the sim TB
+    `.sv` is never in scope; non-HDL support files (.mem/.h/…) are ignored. Comment/string content
+    is masked (shared `_strip_comments`), so a `logic` inside a comment is not a violation. A
+    violation names its `child`, so 4.3's self-converge loop re-dispatches that child to fix it."""
+    v = []
+    for name, rec in ledger.items():
+        for f in rec.get("files", []):
+            suffix = Path(f).suffix.lower()
+            if suffix in (".sv", ".svh"):
+                v.append(
+                    {
+                        "child": name,
+                        "kind": "dialect",
+                        "file": f,
+                        "reason": f"SystemVerilog file extension '{suffix}' — RTL must be Verilog-2001 (.v / .vh)",
+                    }
+                )
+                continue  # extension already disqualifies; skip the token scan
+            if suffix not in (".v", ".vh"):
+                continue  # non-HDL support file (.mem/.h/…) — out of the dialect gate's scope
+            p = workdir / f
+            if not p.exists():
+                continue  # a missing file surfaces as a module_presence violation, not here
+            text = _strip_comments(p.read_text(encoding="utf-8", errors="replace"))
+            for kw in _SV_ONLY_KEYWORDS:
+                if _has_token(text, kw):
+                    v.append(
+                        {
+                            "child": name,
+                            "kind": "dialect",
+                            "file": f,
+                            "sv_construct": kw,
+                            "reason": f"SystemVerilog-only construct '{kw}' — RTL must be Verilog-2001",
+                        }
+                    )
+    return v
+
+
 def run(workdir, manifest, top, ledger, design) -> int:
     workdir, manifest, ledger, design = (
         Path(workdir),
@@ -281,6 +361,7 @@ def run(workdir, manifest, top, ledger, design) -> int:
         check_module_presence(workdir, manifest_data, ledger_data)
         + check_annotation_reality(workdir, ledger_data)
         + check_top_integration(workdir, manifest_data, top, ledger_data, design_text)
+        + check_dialect(workdir, ledger_data)
     )
 
     verdict = {"status": "pass" if not violations else "fail", "violations": violations}

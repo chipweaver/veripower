@@ -31,13 +31,16 @@ below. Do not call the Task tool (no Level-2 dispatch).
 
 ## Output
 
-Write your `rtl_modules[]` into one or more `.v`/`.sv` files of your choosing (one file
-may hold multiple modules). End the response with `STATUS: DONE` + a single JSON line, or
+Write your `rtl_modules[]` into one or more `.v` files of your choosing (one file
+may hold multiple modules). **STRICT Verilog-2001** — no SystemVerilog: not the `.sv`/`.svh`
+extension, and not SV-only constructs (`logic`/`always_ff`/`always_comb`/`typedef`/`enum`/
+`struct`/`interface`/`package`/…); `check-conformance`'s dialect gate rejects them and
+re-dispatches you to fix it. End the response with `STATUS: DONE` + a single JSON line, or
 `STATUS: BLOCKED <reason>` (e.g. `<child>.md §2 Interface incomplete`).
 
 ```json
 {
-  "files":   ["<rel-path>.sv"],
+  "files":   ["<rel-path>.v"],
   "incdirs": ["<rel-dir>"],
   "annotations": {
     "sgdc": { "sync_cell": ["<mod>"], "reset_synchronizer": ["<mod>"],
