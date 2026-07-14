@@ -45,8 +45,8 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 | Path (relative to `{workdir}`) | Schema / Format | Use |
 |---|---|---|
 | `result.json` | `references/result.schema.json` + `envelope.schema.json` | This stage's status contract (includes `violations[]`). |
-| `lint-report.txt` | SpyGlass text report | Lint summary report (frontend-signoff evidence). |
-| `cdc-report.txt` | SpyGlass text report | CDC summary report (frontend-signoff evidence; missing = fail, `collect_report.py` exits 1). |
+| `lint-report.txt` | SpyGlass text report | Lint summary report — a human deliverable; no downstream stage reads it. |
+| `cdc-report.txt` | SpyGlass text report | CDC summary report — a human deliverable; no downstream stage reads it (missing = fail, `collect_report.py` exits 1). |
 | `scripts/constraints.sgdc` | SGDC | Depth-annotation iteration site, edited by you. On `status=pass` list it in `artifacts[]` — promotion enables the next run's warm-start (Iron Rule). |
 | `scripts/waiver.tcl` | TCL | Reviewed waivers, written by you (Step 6); promoted, and the bootstrap warm-start carries the canonical copy into each new run verbatim — that carry is what makes waivers survive across runs. |
 

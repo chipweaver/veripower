@@ -40,7 +40,6 @@ identity / coordinate absorbed by another tracked input) that legitimately is no
 | **timing-analysis** | `pt-shell` (tool) — timing closure | `*_syn.v` + `*_syn.sdc` (synthesis outputs) ✓ declared. PPA targets are NOT a dep (fixed zero-slack judge — reverified by counterfactual). `LIB_DB` = tool identity. **PASS.** |
 | **simulation** | `tb-refmodel` (proposed) — TB pass vs refmodel | RTL fileset, `verification-plan.md`, `scaffold-specification.json` ✓ declared. **README removed this pass (D6/G4):** simulation's only README use was top inference, now read from `manifest.module` — a **coordinate lookup** whose freshness is absorbed by the tracked RTL fileset (§2⑦: a real top change necessarily changes RTL bytes), so the manifest read is NOT a tracked input, and README prose was never a verdict-dependency (binding it only caused README-only edits to falsely invalidate). ROM/whitebox golden = frozen identity. coverage threshold ∈ skill `defaults.yaml` = skill identity. freeze baseline = self cache. **PASS (over-declaration removed).** |
 | **power-analysis** | `pt-shell` (tool) — power + PPA acceptance | `*_syn.{v,sdc,sdf}`, TB env (`env.sh`/`filelist.f`/`rtl_filelist.f`/`tb/uvm/*`), `scaffold-specification.json`, `ppa.json` ✓ declared. run-dir hex images = frozen operator externals. `LIB_V`/`LIB_DB`/`UVM_HOME` = tool identity. **PASS.** |
-| **frontend-signoff** | `signoff-aggregator` (tool) — aggregate signoff | Fixed evidence reports (`design.md`, lint/cdc reports, sim summary, timing report, `qor.rpt`, `power_hier.rpt`) + `manifest.json` ✓ declared. The 6 upstream canonical `result.json` are aggregation objects, not inputs — their freshness is the signoff gate's job (envelope changes every run). Child-doc **bodies** enter only the traceability matrix, not the verdict; their freshness is held by the "已签核" predicate (all-proofs-valid). **PASS.** |
 | **simulation-triage** | none (`proof=None`) | No proof → closure obligation is empty. Analysis quality is an oracle-side concern, carried by the disposition reliability gate + human diagnosis (§3.4). **N/A.** |
 
 ## Findings this pass surfaced
@@ -56,6 +55,9 @@ identity / coordinate absorbed by another tracked input) that legitimately is no
   crossings by default); the emission makes the relationship explicit, not the verdict.
 - **Never-ran availability (fixed):** an input whose producer never ran is now `unavailable`
   (matches the §2 availability definition), closing a manual-dispatch vacuous-proof hole (F7).
+- **Re-derived after `frontend-signoff` left the registry — no delta.** A pure sink: no rule
+  declared its outputs as an input, so it sat in no other rule's `input_closure` and its
+  removal cannot move any surviving rule's necessary-input set. Every row above re-checked.
 - Relations 1 and 2 are held by the mechanical tests cited above; this document is the
   auditable record for relation 3. Re-run it whenever a `Rule` in `rules.py` gains/loses an
-  input or output selector.
+  input or output selector — or is added or removed.

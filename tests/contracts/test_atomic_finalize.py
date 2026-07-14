@@ -12,7 +12,6 @@ FINALIZERS = [
     "synthesis/scripts/synthesis/result.py",
     "timing-analysis/scripts/timing/result.py",
     "power-analysis/scripts/power/result.py",
-    "frontend-signoff/scripts/signoff/result.py",
     "simulation-triage/scripts/simtriage/result.py",  # triage also writes result.json
 ]
 

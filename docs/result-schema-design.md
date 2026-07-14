@@ -96,8 +96,8 @@ They are three distinct axes, not renamings of one:
 The per-stage `failure_kind` obligation and its `{infra, tooling, ppa}` enum semantics live in
 `ARCHITECTURE.md §6.2`; this section classifies the family, it does not restate the obligation.
 The remaining stages carry no classifier: `lint-cdc` and `simulation-plan` route to a fixed
-target, and `specification` / `rtl-design` / `frontend-signoff` have no rework target — with a
-constant or absent target there is nothing to classify, so `fail_reason` alone suffices.
+target, and `specification` / `rtl-design` have no rework target — with a constant or absent
+target there is nothing to classify, so `fail_reason` alone suffices.
 
 The failure-**detail** payload (`violations[]`, `failures[]` beyond `.category`,
 `failing_cases[]` / `coverage_gaps[]`) is a separate concern: consumed by the rework target to

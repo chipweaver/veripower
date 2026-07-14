@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/schemas/events/signoff.schema.json",
+  "type": "object",
+  "required": ["ts", "type", "provenance", "reason"],
+  "additionalProperties": true,
+  "properties": {
+    "ts": {"type": "string"},
+    "type": {"const": "signoff"},
+    "provenance": {"type": "string"},
+    "reason": {"type": "string", "pattern": ".*\\S.*"}
+  }
+}

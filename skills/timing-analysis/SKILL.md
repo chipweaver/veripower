@@ -48,7 +48,7 @@ Only `{workdir}` / `{module}` are delivered. (See the Workflow rationale.)
 |---|---|---|
 | `result.json` | `references/result.schema.json` + envelope.schema.json | Status contract (`stage_specific.timing{}` + `violations[]`). |
 | `config.tcl` | Tcl | Edit to fill `LIB_DB` (Step 3 alternative to the env var). |
-| `timing-report.txt` | PrimeTime text report | setup / hold / check_timing output — the deliverable (frontend-signoff evidence). |
+| `timing-report.txt` | PrimeTime text report | setup / hold / check_timing output — the deliverable; a human artifact, no downstream stage reads it. |
 
 The promoted full set (including `timing-actual.json` and the deployed `run_sta.tcl`) is enumerated by `timing finalize` — this table is the contract surface, not a mirror of it.
 

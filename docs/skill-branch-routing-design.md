@@ -50,7 +50,7 @@ If `{failing_result}` is injected but unreadable or malformed, write `result.jso
 | directive · failing_result · diff · ALL | rtl-design, synthesis | full ladder — route-DAG fix targets with a diffable upstream |
 | directive · failing_result · ALL | specification | no diff arm — `brainstorm.md` is frozen; a repair round enters at the post-partition step (§6.3) |
 | directive · diff · ALL | lint-cdc, power-analysis | no `failing_result` arm — never a route-DAG fix target (§6.1) |
-| ALL only | timing-analysis, frontend-signoff | read-only re-verifier / aggregator; no product seed, scope is always everything (§6.2) |
+| ALL only | timing-analysis | read-only re-verifier; no product seed, scope is always everything (§6.2) |
 
 **Worked walk-through — a route-DAG worker** (rtl-design / synthesis archetype):
 
@@ -77,7 +77,7 @@ Most stages are the scope-ladder worker of §4. These deviate:
 
 Never a rework-DAG fix target — `route.py` never returns them, so callers never inject `{failing_result}`. Fix-scope context, when any, arrives via `{directive_path}`; the ladder drops the `failing_result` arm (`directive ?? diff ?? ALL`). (Workflow rationale in each skill.)
 
-### 6.2 Terminal / read-only re-verifier (frontend-signoff, timing-analysis)
+### 6.2 Read-only re-verifier (timing-analysis)
 
 Read-only — cannot author or fix anything, so there is nothing to seed and no scope to narrow: Step 1 is a linear pre-flight check and every run re-verifies everything (`scope ≡ ALL`). `route.py` never returns them; P5 does not apply (no `{failing_result}` is ever delivered). (Workflow rationale in each skill.)
 

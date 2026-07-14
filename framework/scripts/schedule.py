@@ -12,22 +12,23 @@ import facts  # noqa: E402
 import route  # noqa: E402
 import rules  # noqa: E402
 
-# The signoff obligation set = proof-producing rules, in FORWARD_PRIORITY order. Filtering on
-# .proof (not just aliasing FORWARD_PRIORITY) keeps a future non-proof rule that slips into
-# FORWARD_PRIORITY from being treated as a signoff obligation (test_rules anchors the invariant).
+# The stage-proof set, in FORWARD_PRIORITY order. Filtering on .proof (not just aliasing
+# FORWARD_PRIORITY) keeps a future non-proof rule that slips into FORWARD_PRIORITY from being
+# treated as a stage proof (test_rules anchors the invariant).
 _STAGE_PROOFS = [r for r in rules.FORWARD_PRIORITY if rules.RULES[r].proof]
 
 
 def required_proofs(module: str, events: list[dict], objective: str) -> set[str]:
-    if objective == "delivery":
-        return set(_STAGE_PROOFS) - {"frontend-signoff"}
-    if objective == "signoff":
+    if objective in ("delivery", "signoff"):
+        # Identical sets, deliberately: signoff does not require MORE proofs than delivery,
+        # it requires the SAME proofs to clear a stricter bar — facts.signoff_gate, applied
+        # at decide's DONE point (step 3).
         return set(_STAGE_PROOFS)
     if objective == "repair":
         # Scan newest-first: the first outcome seen per rule IS that rule's latest;
         # if it is a fail, that's the repair target. Position by scan order — never
         # events.index (duplicate event lines collide, and it's O(n) per call).
-        # Only the 9 stage proofs are repair targets: a non-proof rule (simulation-triage)
+        # Only the 8 stage proofs are repair targets: a non-proof rule (simulation-triage)
         # has no proof to repair and would crash step-2's FORWARD_PRIORITY.index (spec §2/§3.2).
         seen_rules: set[str] = set()
         for e in reversed(events):
@@ -305,11 +306,6 @@ def decide(
     for rule in sorted(work, key=rules.FORWARD_PRIORITY.index):
         if any(f["rule"] == rule for f in inflight):
             continue
-        if rule == "frontend-signoff" and objective != "signoff":
-            # frontend-signoff dispatches ONLY under objective=signoff (cmd_dispatch enforces
-            # it, §3.2). Mirror that here: a stale signoff fail under repair/delivery must not
-            # be emitted as a DISPATCH cmd_dispatch would reject every round (F4 activelock).
-            continue
         if not facts.rule_available(module, events, rule):
             continue
         if objective == "delivery":
@@ -322,10 +318,6 @@ def decide(
         candidates.append(rule)
     if candidates:
         rule = min(candidates, key=lambda r: rules.FORWARD_PRIORITY.index(r))
-        if objective == "signoff" and rule == "frontend-signoff":
-            gate = _signoff_gate(module, events)
-            if gate is not None:
-                return gate  # ESCALATE with the failing gate reason
         return {
             "action": "DISPATCH",
             "rule": rule,
@@ -337,76 +329,16 @@ def decide(
     if inflight:
         return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
     if all(facts.proof_valid(module, events, p) for p in required):
+        if objective == "signoff":
+            # The gate is what `signoff` MEANS: required_proofs is identical to delivery's,
+            # so drop this and the objective degrades to a delivery alias reporting DONE with
+            # the trust boundary never consulted. DONE here means "the gate is clear, go
+            # stamp" — the Orchestrator then proposes the ask-gated `signoff` verb.
+            reason = facts.signoff_gate(module, events)
+            if reason is not None:
+                return {"action": "ESCALATE", "reason": reason}
         return {"action": "DONE"}
     return {
         "action": "ESCALATE",
         "reason": "no eligible rule, none in-flight, not done",
     }
-
-
-def _added_inputs(module: str, rule_name: str, proof: dict) -> list[str]:
-    """Files on disk matching rule_name's input selectors but NOT in the proof's recorded
-    inputs — i.e. added out-of-band AFTER the proof landed. proof_valid conditions 2/4 only
-    check RECORDED paths, so an out-of-band ADD (unlike an edit/delete) escapes them; the
-    signoff gate uses this so a smuggled-in source can't ship unverified. Self-produced
-    (in∩out) selectors are excluded — those are covered by output binding, not a fresh
-    out-of-band add."""
-    root = facts.module_root(module)
-    recorded = set(proof.get("inputs", {}))
-    extra: list[str] = []
-    for globs in rules.RULES[rule_name].inputs.values():
-        for g in globs:
-            if g in rules.PIPELINE_INPUTS or rules.producer_of(g) == rule_name:
-                continue
-            for p in sorted((root).glob(g)):
-                rel = str(p.relative_to(root))
-                if p.is_file() and rel not in recorded:
-                    extra.append(rel)
-    return extra
-
-
-def _signoff_gate(module: str, events: list[dict]) -> dict | None:
-    """Signoff dispatchability: every other proof valid, oracle grade ∈ {tool, human},
-    no unknown recorded version, no out-of-band added input. Returns an ESCALATE action
-    if the gate fails, else None. Iterates FORWARD_PRIORITY in order — a set here would
-    make the ESCALATE reason vary with the hash seed when >1 proof fails the gate,
-    breaching decide's purity invariant."""
-    for proof in rules.FORWARD_PRIORITY:
-        if proof == "frontend-signoff":
-            continue
-        if not facts.proof_valid(module, events, proof):
-            return {
-                "action": "ESCALATE",
-                "reason": f"signoff blocked: {proof} not valid",
-            }
-        _, outcome = facts._proof_outcome(events, proof)
-        p = next(x for x in outcome["proofs"] if x["name"] == proof)
-        # Live grade over the current event log — NOT the reap-time snapshot in
-        # p["oracle"]["grade"] — so a post-reap pin takes effect at the signoff gate at
-        # once (no re-reap) and a reopen blocks signoff immediately.
-        if facts.oracle_grade(module, events, rules.RULES[proof]) not in (
-            "tool",
-            "human",
-        ):
-            return {
-                "action": "ESCALATE",
-                "reason": f"signoff blocked: {proof} oracle is proposed (pin it)",
-            }
-        if (
-            facts.UNKNOWN in p.get("inputs", {}).values()
-            or facts.UNKNOWN in outcome.get("outputs", {}).values()
-        ):
-            return {
-                "action": "ESCALATE",
-                "reason": f"signoff blocked: {proof} carries an unknown version",
-            }
-        added = _added_inputs(module, proof, p)
-        if added:
-            # A new file matching this rule's selectors appeared out-of-band after the
-            # proof landed — it was never verified. Only enforced here at the signoff
-            # trust boundary (the daily delivery/repair path keeps the cheap recorded-set check).
-            return {
-                "action": "ESCALATE",
-                "reason": f"signoff blocked: {proof} has unverified new input(s) {added}",
-            }
-    return None

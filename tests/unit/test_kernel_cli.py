@@ -79,7 +79,6 @@ _STAGE_SPECIFIC = {
         "violations": [],
         "power_by_corner": [],
     },
-    "frontend-signoff": {},
 }
 
 
@@ -118,7 +117,7 @@ def _dispatch_write_reap(tmp_path, module, rule, files, *, objective="delivery")
 
 # Minimal declared-output set per stage: exactly the files downstream rules' own
 # `inputs` selectors reference (per rules.RULES), so the chain stays available/valid
-# all the way to frontend-signoff eligibility.
+# all the way to a clear signoff gate.
 _STAGE_FILES = {
     "specification": {
         "design.md": "design v1",
@@ -162,14 +161,25 @@ _STAGE_FILES = {
 }
 
 
+# Content each proposed-oracle rule's oracle_selector points at. Kept out of _STAGE_FILES
+# (which other tests share) and folded in only by _build_full_chain: without it a pin has
+# nothing to endorse — oracle_content_fp reads UNKNOWN and cmd_pin refuses. The oracles stay
+# `proposed` until someone actually pins them; writing the record is not endorsing it.
+_ORACLE_CONTENT = {
+    "specification": {"spec-review.json": "spec review v1"},
+    "simulation-plan": {"plan-review.json": "plan review v1"},
+    "rtl-design": {"semantic-review.json": "semantic review v1"},
+    "simulation": {"tb/uvm/refmodel/ref.sv": "// refmodel v1"},
+}
+
+
 def _build_full_chain(tmp_path, module):
-    """Dispatch+write+reap every stage but frontend-signoff, in FORWARD_PRIORITY
-    order, leaving every oracle unpinned (proposed)."""
+    """Dispatch+write+reap every stage, in FORWARD_PRIORITY order, leaving every
+    oracle unpinned (proposed) but pinnable."""
     _write_file(module, "brainstorm.md", "b1")
     for rule in rules.FORWARD_PRIORITY:
-        if rule == "frontend-signoff":
-            continue
-        outcome = _dispatch_write_reap(tmp_path, module, rule, _STAGE_FILES[rule])
+        files = {**_STAGE_FILES[rule], **_ORACLE_CONTENT.get(rule, {})}
+        outcome = _dispatch_write_reap(tmp_path, module, rule, files)
         assert outcome["ok"] is True and outcome["verdict"] == "pass", outcome
 
 
@@ -252,6 +262,82 @@ def test_signoff_decide_gates_on_proposed_oracle(tmp_path, monkeypatch):
     }
 
 
+def _pin_every_proposed_oracle(tmp_path, module):
+    for rule in rules.FORWARD_PRIORITY:
+        if rules.RULES[rule].oracle[1] == "proposed":
+            p = _run_json(
+                tmp_path,
+                "pin",
+                "--module",
+                module,
+                "--rule",
+                rule,
+                "--provenance",
+                "reviewer",
+                "--reason",
+                "endorsed",
+            )
+            assert p["ok"] is True, p
+
+
+def test_signoff_close_end_to_end(tmp_path, monkeypatch):
+    # The whole trust boundary in one pass, through the real CLI: a delivered chain is NOT
+    # signed off; decide refuses while any oracle is merely proposed; pinning each one lifts
+    # the gate to DONE ("go stamp"); the verb lands the human act; only then does status say
+    # signed_off. Each step is the reason the next one is allowed.
+    monkeypatch.chdir(tmp_path)
+    _build_full_chain(tmp_path, "close")
+    assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is False
+    _pin_every_proposed_oracle(tmp_path, "close")
+    a = _run_json(tmp_path, "decide", "--module", "close", "--objective", "signoff")
+    assert a["action"] == "DONE"  # gate clear — but nothing is signed off yet
+    assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is False
+    s = _run_json(
+        tmp_path,
+        "signoff",
+        "--module",
+        "close",
+        "--provenance",
+        "owner",
+        "--reason",
+        "tapeout rc1",
+    )
+    assert s["ok"] is True
+    assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is True
+
+
+def test_reopen_drops_a_landed_signoff(tmp_path, monkeypatch):
+    # §3.6: a signoff is only as good as the proofs beneath it. The signoff event is
+    # permanent and there is no unsign verb — reopening any pin invalidates that proof
+    # (cond 3), which drops the predicate's second conjunct. No ceremony required.
+    monkeypatch.chdir(tmp_path)
+    _build_full_chain(tmp_path, "revoke")
+    _pin_every_proposed_oracle(tmp_path, "revoke")
+    _run_json(
+        tmp_path,
+        "signoff",
+        "--module",
+        "revoke",
+        "--provenance",
+        "owner",
+        "--reason",
+        "tapeout rc1",
+    )
+    assert _run_json(tmp_path, "status", "--module", "revoke")["signed_off"] is True
+    r = _run_json(
+        tmp_path,
+        "reopen",
+        "--module",
+        "revoke",
+        "--pin-ref",
+        "spec-review",
+        "--reason",
+        "found a hole",
+    )
+    assert r["ok"] is True
+    assert _run_json(tmp_path, "status", "--module", "revoke")["signed_off"] is False
+
+
 def test_unknown_rule_argparse_exits_cleanly(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     r = _run(tmp_path, "dispatch", "--module", "m", "--rule", "bogus-rule")
@@ -261,20 +347,24 @@ def test_unknown_rule_argparse_exits_cleanly(tmp_path, monkeypatch):
 
 
 def test_signoff_bypass_blocked_proposed_oracle(tmp_path, monkeypatch):
+    # §6: the gate must not be bypassable. The verb is now its ONLY surface, so calling
+    # `signoff` directly — never going near `decide` — must still hit the gate and refuse.
+    # No signoff event may land behind a refusal.
     monkeypatch.chdir(tmp_path)
     _build_full_chain(tmp_path, "gate3")
     d = _run_json(
         tmp_path,
-        "dispatch",
+        "signoff",
         "--module",
         "gate3",
-        "--rule",
-        "frontend-signoff",
-        "--objective",
-        "signoff",
+        "--provenance",
+        "someone",
+        "--reason",
+        "ship it",
     )
     assert d["ok"] is False
     assert "oracle is proposed (pin it)" in d["error"]
+    assert not any(e["type"] == "signoff" for e in facts.read_events("gate3"))
 
 
 def _latest_grade(module, proof_name="specification"):

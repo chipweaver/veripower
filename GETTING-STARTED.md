@@ -1,6 +1,6 @@
 # Getting Started with VeriPower
 
-> Drive one module from idea to frontend-signoff. This guide walks the whole
+> Drive one module from idea to a closed signoff. This guide walks the whole
 > flow once, end to end, using a placeholder module name `{module}` —
 > substitute your own. It is the *how*; for *why* VeriPower is built this way,
 > see [`ARCHITECTURE.md`](ARCHITECTURE.md).
@@ -8,7 +8,7 @@
 ## How it runs, in one minute
 
 VeriPower turns an approved idea into a signed-off frontend design through a
-10-stage pipeline. Two things shape how you'll experience it:
+9-stage pipeline. Two things shape how you'll experience it:
 
 - **Brainstorm comes first, in its own session.** Before the pipeline, you run
   the `brainstorm` skill to settle requirements and architecture; it produces a
@@ -42,9 +42,9 @@ time.
   `timing-analysis` → PrimeTime, `simulation` → VCS + UVM, `power-analysis` →
   PrimeTime PX) and need the environment described in
   [`docs/eda-env.md`](docs/eda-env.md) — tools on `PATH`, a license server, and
-  the `LIB_DB` / `LIB_V` / `UVM_HOME` variables. The other five stages
-  (`brainstorm`, `specification`, `simulation-plan`, `rtl-design`,
-  `frontend-signoff`) run on Claude Code + Python alone.
+  the `LIB_DB` / `LIB_V` / `UVM_HOME` variables. The other four stages
+  (`brainstorm`, `specification`, `simulation-plan`, `rtl-design`) run on
+  Claude Code + Python alone.
 
 ## The pipeline
 
@@ -68,7 +68,7 @@ time.
                                     [power-analysis]
                                             │
                                             ↓
-                                    [frontend-signoff]
+                                 kernel.py signoff  (you, Step 5)
 ```
 
 ## Step 1 — Brainstorm the module
@@ -114,7 +114,8 @@ differ in how much they involve you:
 After that, the remaining stages run autonomously and report their results:
 `rtl-design` runs, then the graph forks into the implementation-signoff branch
 (`lint-cdc` → `synthesis` → `timing-analysis`) and the `simulation` branch;
-the branches rejoin at `power-analysis`, then `frontend-signoff`.
+the branches rejoin at `power-analysis`, which ends the pipeline. Closing signoff
+is a separate act you request (Step 5).
 
 **Checking progress at any time** — just ask the agent:
 
@@ -151,10 +152,25 @@ revision: …"*. To recover:
 
 > **[Captured run — coming soon]** A real rework example here.
 
-## Step 5 — Read the signoff
+## Step 5 — Close the signoff
 
-`frontend-signoff` aggregates a checklist and cross-stage traceability into
-`asic/{module}/frontend-signoff/result.json` — the terminal verdict for the run.
+Delivery gets every stage to a valid proof. Signoff is a separate, deliberate act:
+ask for it, and the flow loops `decide --objective signoff`, which requires the same
+proofs to clear a stricter gate — every proof valid, no unverified file smuggled in,
+and **every LLM-authored judge pinned by you**. Anything short of that comes back as
+`ESCALATE` naming what blocks it (usually "pin it").
+
+When the gate is clear, nothing is signed off yet — you are. With your approval the
+flow runs:
+
+```bash
+kernel.py signoff --module {module} --provenance <you> --reason "<why>"
+```
+
+That records who closed the module and why. `kernel.py status` then reports
+`signed_off: true` — but only for as long as every proof beneath it stays valid. Edit
+a design file or `reopen` a pin and it drops back on its own; a signoff is only as
+good as the proofs beneath it.
 
 Behind it sits the audit trail every run produces:
 
@@ -164,7 +180,7 @@ Behind it sits the audit trail every run produces:
   demand from the event log and disk fingerprints, so it can never drift from
   what's on disk.
 
-> **[Captured run — coming soon]** A real signoff result here.
+> **[Captured run — coming soon]** A real signoff close here.
 
 ## Where to go next
 

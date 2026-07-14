@@ -53,7 +53,7 @@ When `{failing_result}` is injected, read additional context from the same direc
 | `out/<TOP>_syn.v` | Verilog | Synthesized gate-level netlist (consumed by timing-analysis + power-analysis). |
 | `out/<TOP>_syn.sdc` | SDC | Post-synthesis SDC (consumed by timing-analysis + power-analysis). |
 | `out/<TOP>_syn.sdf` | SDF v3.0 | SDF back-annotation file, includes state-dependent leakage data (consumed by power-analysis). |
-| `reports/qor.rpt` / `area.rpt` / `timing_setup.rpt` / `timing_hold.rpt` / `power.rpt` / `check_design.rpt` | text reports | DC synthesis report set (`qor.rpt` is frontend-signoff evidence; the set is read by rtl-design during a PPA rework). |
+| `reports/qor.rpt` / `area.rpt` / `timing_setup.rpt` / `timing_hold.rpt` / `power.rpt` / `check_design.rpt` | text reports | DC synthesis report set (read by rtl-design during a PPA rework). |
 | `constraints.sdc` | SDC | Timing-exception iteration site, edited by you (Steps 4/6). |
 | `scripts/config.tcl` | TCL | Edit to fill `LIB_DB` (Step 3 alternative to the env var). |
 

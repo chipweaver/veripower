@@ -11,10 +11,6 @@ simulation-plan, and power-analysis SKILL.md). A skill re-introducing the gate
 under new phrasing would not be caught by this static grep — this locks the
 specific regression class, not the general principle.
 
-frontend-signoff is deliberately NOT a false positive here: its `signoff
-finalize` verb aggregates every upstream envelope into the sign-off verdict —
-that IS the stage's deliverable, not a redundant pre-check duplicating the
-kernel's dispatchability guarantee — and it carries none of the patterns below.
 """
 
 import re

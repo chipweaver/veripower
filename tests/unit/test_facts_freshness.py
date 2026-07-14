@@ -303,17 +303,14 @@ def test_self_produced_inout_input_never_self_locks(tmp_path, monkeypatch):
 
 
 def _sign_off_everything(module):
-    """Construct: for every rule in FORWARD_PRIORITY (the 9 stages), one
+    """Construct: for every rule in FORWARD_PRIORITY (the 8 stages), one
     dispatch+outcome pair carrying a passing same-name proof with empty
     inputs/outputs (so proof_valid has nothing on disk to falsify) and an
-    oracle matching that rule's declared rules.RULES[rule].oracle (ref, grade).
-    frontend-signoff's dispatch objective is "signoff" (not "delivery") so
-    _signoff_dispatch_was_signoff holds — everything else is objective=delivery.
-    Asserts (via the two projection() calls in the caller) that this is enough
-    to make every stage cell, and the signoff cell, read "valid"."""
+    oracle matching that rule's declared rules.RULES[rule].oracle (ref, grade);
+    then the human `signoff` event that is the predicate's first conjunct.
+    Enough to make every stage cell read "valid" and signed_off hold."""
     for rule_name in rules.FORWARD_PRIORITY:
         rule = rules.RULES[rule_name]
-        objective = "signoff" if rule_name == "frontend-signoff" else "delivery"
         facts.append_event(
             module,
             {
@@ -323,7 +320,7 @@ def _sign_off_everything(module):
                 "workdir": "w",
                 "inputs": {},
                 "params": {},
-                "objective": objective,
+                "objective": "delivery",
             },
             TS,
         )
@@ -347,24 +344,23 @@ def _sign_off_everything(module):
             },
             TS,
         )
+    facts.append_event(
+        module, {"type": "signoff", "provenance": "u", "reason": "ship it"}, TS
+    )
 
 
-def test_projection_signoff_cell_regresses_on_reopen(tmp_path, monkeypatch):
-    # §3.6/§6: reopen of any pin flips the signoff cell back. (The hand-edit half of the
-    # §3.6 invariant needs on-disk outputs this empty-outputs fixture cannot carry — it is
-    # covered by test_schedule.py::test_projection_signoff_cell_regresses_on_hand_edit.)
-    # Build: all 9 proofs valid + a signoff-objective frontend-signoff proof (helper
-    # follows the test_facts_freshness dispatch/outcome pattern per rule — mechanical).
+def test_signed_off_regresses_on_reopen(tmp_path, monkeypatch):
+    # §3.6/§6: reopen of any pin flips signed_off back. (The hand-edit half of the §3.6
+    # invariant needs on-disk outputs this empty-outputs fixture cannot carry — it is
+    # covered by test_schedule.py::test_signed_off_regresses_on_hand_edit.)
     monkeypatch.chdir(tmp_path)
-    _sign_off_everything(
-        "m"
-    )  # helper: 9 pass proofs + signoff dispatch objective=signoff
+    _sign_off_everything("m")  # helper: 8 pass proofs + the human signoff event
     evs = facts.read_events("m")
-    assert facts.projection("m", evs)["frontend-signoff"] == "valid"
+    assert facts.signed_off("m", evs) is True
     facts.append_event(
         "m", {"type": "reopen", "pin_ref": "spec-review", "reason": "revoke"}, TS
     )
-    assert facts.projection("m", facts.read_events("m"))["frontend-signoff"] == "stale"
+    assert facts.signed_off("m", facts.read_events("m")) is False
 
 
 def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypatch):

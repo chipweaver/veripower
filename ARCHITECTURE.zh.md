@@ -26,7 +26,7 @@
 | **Orchestrator**（编排器） | 主会话中的 `design-flow` Agent；系统中唯一有权调用 `kernel.py`、派发 `Task()`、与用户交互的角色（§2.4）。 |
 | **kernel**（内核） | `python3 framework/scripts/kernel.py`——`events.jsonl` 的唯一写者，也是唯一的决策者。它的动词就是全部状态/决策界面（§2.2）。 |
 | **decide / 调度器** | `kernel.py decide`（实现在 `schedule.py`）——读取事件日志 + 磁盘，每次调用返回恰好一个动作；Orchestrator 是其薄执行器（§5）。 |
-| **rule**（规则） | 一个内核调度单元，定义于 `rules.py:RULES`。九条流水线规则外加 `simulation-triage`。依赖图从规则的输入/输出选择子*派生*，不单独声明（§3）。 |
+| **rule**（规则） | 一个内核调度单元，定义于 `rules.py:RULES`。八条流水线规则外加 `simulation-triage`。依赖图从规则的输入/输出选择子*派生*，不单独声明（§3）。 |
 | **proof**（证明） | 产证明规则在收割时落账的 pass/fail 断言：`{name, verdict, inputs, oracle, evidence}`，内嵌于其 `outcome` 事件（§4.4）。 |
 | **证明有效性** | 一个*查询*——不是存下来的标志位。一个证明*此刻*有效，当且仅当其裁决为 `pass`、落账的输入/输出指纹仍与磁盘一致、且其 oracle 此后未被 reopen。陈旧与否在每次读取时重算（§4.4）。 |
 | **oracle 与 grade** | 裁决一个证明的裁判，`(ref, grade)`，`grade ∈ {tool, human, proposed}`。tool oracle 自身即权威；`proposed`（LLM 自撰）oracle 只能经人工 `pin` 棘轮升格为 `human`（§4.5）。 |
@@ -64,7 +64,7 @@ Orchestrator Agent 做决策；`kernel.py` 和 skills 负责执行；磁盘负�
 └──┬───────────────────────────┬────────────────────────────────┬────────────────────┘
    │ Bash                      │ Skill()                        │ Task()
    │ kernel.py CLI             │ veripower:specification        │ general-purpose
-   │                           │ veripower:simulation-plan      │ (the 5 task rules +
+   │                           │ veripower:simulation-plan      │ (the 4 task rules +
    │                           │ veripower:rtl-design           │  simulation-triage)
    │                           │ veripower:simulation           │
    │                           │ (main-thread loaded)           │
@@ -73,7 +73,7 @@ Orchestrator Agent 做决策；`kernel.py` 和 skills 负责执行；磁盘负�
 │ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent       │
 │ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)           │
 │  kernel.py:        │  │   main thread)               │  │                               │
-│   9 verbs; sole    │  │                              │  │  Stage: executes rule         │
+│   10 verbs; sole   │  │                              │  │  Stage: executes rule         │
 │   writer of the    │  │  specification / sim-plan /  │  │    → writes result.json       │
 │   event log        │  │  rtl-design / simulation:    │  │  Debug (triage): canon. RO,   │
 │  schedule.py:      │  │    self-driven fan-out /     │  │    scratch RW builder         │
@@ -90,7 +90,6 @@ Orchestrator Agent 做决策；`kernel.py` 和 skills 负责执行；磁盘负�
 │   Design/<rule>/result.json          specification / rtl-design / lint-cdc /       │
 │                                      synthesis / timing-analysis                   │
 │   Verification/<rule>/result.json    simulation-plan / simulation / power-analysis │
-│   frontend-signoff/result.json       terminal signoff                             │
 │   (status is DERIVED from events.jsonl + disk fingerprints — never stored)         │
 └────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -99,7 +98,7 @@ Orchestrator 的三条派发路径：
 
 - **Bash** → `kernel.py` CLI（动词见 §4.2 / §5）。它在进程内组合其余框架脚本；Orchestrator 从不直接调用它们。
 - **Skill()** → 四个主线程 skills（`specification`、`simulation-plan`、`rtl-design`、`simulation`）。
-- **Task()** → 五个 task 派发的阶段子 Agent 和 `simulation-triage` 调试子 Agent。
+- **Task()** → 四个 task 派发的阶段子 Agent 和 `simulation-triage` 调试子 Agent。
 
 ### 2.2 内核界面
 
@@ -107,14 +106,14 @@ Orchestrator 的三条派发路径：
 
 | 模块 | 职责 |
 |---|---|
-| `kernel.py` | CLI，且是 `events.jsonl` 的**唯一写者**。九个动词：`decide`、`dispatch`、`reap`、`diagnose`、`escalate`、`pin`、`reopen`、`status`、`consequences`。每个动词打印一个 JSON 信封。 |
+| `kernel.py` | CLI，且是 `events.jsonl` 的**唯一写者**。十个动词：`decide`、`dispatch`、`reap`、`diagnose`、`escalate`、`pin`、`reopen`、`signoff`、`status`、`consequences`。每个动词打印一个 JSON 信封。 |
 | `rules.py` | 规则注册表（`RULES`）——内核调度对象的单一真相源，也是依赖图的*来源*（§3）。另有 `FORWARD_PRIORITY`、`PIPELINE_INPUTS`、`ADVISORY_ORDER`，以及派生助手 `producer_of` / `input_producers` / `input_closure` / `sort_prereqs`。依赖极轻的叶子模块。 |
-| `facts.py` | 事件日志 I/O（`read_events` / `append_event`，写入即校验 schema）、内容指纹（`fingerprint`），以及建立在其上的新鲜度查询——`proof_valid`、`input_available`、`projection`。不持有任何可变状态；一切从日志 + 磁盘计算。 |
-| `schedule.py` | 调度器：`decide(objective) → 恰好一个动作`。对 (磁盘, 日志, 参数) 纯函数；组合 `route.py`。持有目标→所需证明集映射、新鲜失败处置、签核门。 |
+| `facts.py` | 事件日志 I/O（`read_events` / `append_event`，写入即校验 schema）、内容指纹（`fingerprint`），以及建立在其上的新鲜度查询——`proof_valid`、`input_available`、`projection`，外加其中最严的 `signoff_gate` / `signed_off`（§5.5）。不持有任何可变状态；一切从日志 + 磁盘计算。 |
+| `schedule.py` | 调度器：`decide(objective) → 恰好一个动作`。对 (磁盘, 日志, 参数) 纯函数；组合 `route.py` 与 `facts.signoff_gate`。持有目标→所需证明集映射与新鲜失败处置。 |
 | `route.py` | 纯确定性返工目标选择——静态失败→目标映射表的**唯一居所**（`PA_CATEGORY`、`FIXED_TARGET`、`LINT_CATEGORY`、`TRIAGE_ROOT_CAUSE`）。不持有状态；原样组合进 `schedule.py` 与 `kernel.py`。 |
 | `store.py` | 文件系统产物生命周期助手（`promote`、`_mirror_subagent_trace`）。由 `kernel.py` 的收割路径导入；从不直接调用。 |
 
-事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（6 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
+事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（7 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
 
 > **黑箱纪律。** Orchestrator 按文档化的命令行调用 `kernel.py`（标志经 `<verb> --help`，每个动词打印 JSON 信封），从不读框架脚本源码。遇到非零退出或 `ok:false` 信封，按文档化的失败协议处理（修正目标、升级该 `ok:false`），绝不绕过。
 
@@ -131,7 +130,7 @@ Orchestrator 的三条派发路径：
 - **rtl-design** — 只扇出，无对话：每个 child 派一个一级子 Task，一个有界的合规门自收敛循环，一个门控性语义审查波次，末尾再加一个 finalize 子 Task。
 - **simulation** — 只扇出，无对话：Wave 1 派发 env-build child（首次 run / patch）或 freeze child；非 freeze run 再运行 smoke gate、LLM conformance review-gate 和 verify child（Wave 2）。freeze/patch 分支由 `sim classify-delta` 动词确定性选择。
 
-> **警告：** 如果 `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis|frontend-signoff)` 出现在 Orchestrator 的工具历史中，这是个 bug——那五条规则必须走 `Task()` 派发。
+> **警告：** 如果 `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis)` 出现在 Orchestrator 的工具历史中，这是个 bug——那四条规则必须走 `Task()` 派发。
 
 **流水线前的 `brainstorm` skill（不由内核派发）。** 重量级 D0–D7 需求对话在自己的独立会话中运行，是一个单独的 `brainstorm` skill——不属于上述四个主线程阶段，Orchestrator 永远不派发它。它产出流水线启动所需的已批准 `asic/<module>/brainstorm.md`（模块根目录）；不写 `result.json`，不调 `kernel.py`。`brainstorm.md` 是流水线唯一的外部输入——`rules.PIPELINE_INPUTS`——只需存在且为 `Status: approved`（Orchestrator 的会话启动门），`specification` 即可调度。
 
@@ -141,7 +140,7 @@ Orchestrator 的三条派发路径：
 |---|---|---|---|
 | **Orchestrator Agent** | `design-flow` skill，主会话 | 执行每次 `decide` 返回的那一个动作；撰写按派发的 `directive`（它唯一的判断通道）；仅在用户明确意图下提议 `pin` / `reopen` / 人工 `diagnose`；升级；与用户协作。同时作为四条主线程规则的主线程执行器。 | 系统中唯一有权调用 `kernel.py`、使用 Task 工具、与用户交互的角色。不手写任何事件——每个事件都由 `kernel.py` 写入。 |
 | **主线程 skill** | 四条主线程规则之一，经 `Skill()` 加载 | 在 Orchestrator 线程中自驱动工作：sub-Task 扇出（生产者规则、simulation）、多轮对话（simulation-plan）、或单次审查派发。各自写入自己的产物和 `result.json`。 | 可派发一级 sub-Task（生产者规则 / simulation）或与用户交互（simulation-plan；specification 限其两次路径交接门）。禁 `kernel.py`、禁路由。靠 SKILL.md 条文纪律约束，不靠工具门控。 |
-| **阶段子 Agent** | 五条 Task 派发的规则（`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis` / `frontend-signoff`） | 执行单条规则：读上游 → 做工作 → 写 `result.json` → 返回 STATUS 行 | 不准调 `kernel.py`，不准做路由决策（§6.1） |
+| **阶段子 Agent** | 四条 Task 派发的规则（`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis`） | 执行单条规则：读上游 → 做工作 → 写 `result.json` → 返回 STATUS 行 | 不准调 `kernel.py`，不准做路由决策（§6.1） |
 | **调试子 Agent** | `simulation-triage`，经 Task 派发 | 对仿真失败做分级（L1 日志+代码+FSDB 推理 → L2 受控实验）根因分析；写出的 `result.json` 其 `stage_specific` 携带归因，由内核在收割时转成 `diagnosis`（§6.4） | canonical 只读、自身 workdir 可写；绝不编辑其它规则的 `result.json`、RTL 或测试；非幂等（重复运行重跑 L2） |
 | **`kernel.py`** | Python CLI | 状态转换（以事件形式）、调度、证明推导、promote、尽力而为的转录镜像 | 持有调度逻辑但不做*判断*：它从不撰写 directive，也从不代人铸造人工诊断。 |
 | **`route.py`** | 纯函数（同级脚本） | 将失败的封闭枚举字段映射为目标 / `ESCALATE` / `NEED_INPUT` | 不持有状态；对输入全域（未知枚举值落入具名 `unrouted*` ESCALATE，绝不 KeyError）。 |
@@ -154,7 +153,7 @@ Orchestrator 的三条派发路径：
 - **压缩安全的续跑。** 因为文件即数据库、Orchestrator 在轮次之间持有*零*持久控制状态，会话中途的上下文压缩或进程崩溃都可幸存：每一轮都经 `decide` 从磁盘重新推导下一个动作。唯一驻留会话的状态是为下一次派发撰写的 `directive` 文本——可重derive，且一经传给 `dispatch` 即落盘为 `directive.md`。
 - **单向通信 + 上下文隔离。** Orchestrator → 提示词 → 子 Agent → `result.json` + STATUS。没有子 Agent 发起的回调，没有子 Agent 之间的通信；子 Agent 不继承父会话历史，所有输入以显式文件路径传入。
 
-**信任边界——proposed 与权威 oracle。** VeriPower 让 LLM 自撰的裁判（spec 意图评审、计划充分性评审、RTL 语义评审、TB refmodel）与确定性 EDA 工具 oracle 并肩运行。二者可信度并不等同，内核把这一点编码进了系统：oracle 带有 `grade`（§4.5）。`tool` 级 oracle（SpyGlass、DC、PT、签核汇聚器）自身即权威。`proposed` 级 oracle 是 LLM 在为自己的正确性背书——足以把门一次常规 *delivery* 构建，但**不足以**闭合 *signoff*。proposed oracle 获得权威（`human`）信任的唯一途径是人工 `kernel.py pin`：它记下 oracle 内容当前的指纹；只在该内容原封不动期间 grade 升为 `human`，内容一漂移或 pin 被 `reopen`，即刻跌回 `proposed`（§4.5）。因此 `pin` 和 `reopen` 是**问必批的判断动词（ask-gated）**：Orchestrator 只在用户明确意图下提议，且 harness 权限门在每次调用时都会向用户请示。这就是那道接缝——只有人、且必须是人，才能把 LLM 的自我评估转换为签核级信任。
+**信任边界——proposed 与权威 oracle。** VeriPower 让 LLM 自撰的裁判（spec 意图评审、计划充分性评审、RTL 语义评审、TB refmodel）与确定性 EDA 工具 oracle 并肩运行。二者可信度并不等同，内核把这一点编码进了系统：oracle 带有 `grade`（§4.5）。`tool` 级 oracle（SpyGlass、DC、PT）自身即权威。`proposed` 级 oracle 是 LLM 在为自己的正确性背书——足以把门一次常规 *delivery* 构建，但**不足以**闭合 *signoff*。proposed oracle 获得权威（`human`）信任的唯一途径是人工 `kernel.py pin`：它记下 oracle 内容当前的指纹；只在该内容原封不动期间 grade 升为 `human`，内容一漂移或 pin 被 `reopen`，即刻跌回 `proposed`（§4.5）。因此 `pin`、`reopen` 和 `signoff` 是**问必批的判断动词（ask-gated）**：Orchestrator 只在用户明确意图下提议，且 harness 权限门在每次调用时都会向用户请示。这就是那道接缝——只有人、且必须是人，才能把 LLM 的自我评估转换为签核级信任：`pin` 按 oracle 逐个转换，`signoff` 对整个模块整体转换（§5.5）。
 
 ## 3. 规则注册表与派生依赖图
 
@@ -176,9 +175,9 @@ Orchestrator 的三条派发路径：
 | `oracle_selector` | 对 `proposed` oracle，`pin` 所指纹的 workdir 相对 glob。 |
 | `params` | 规则期望的自由参数（如 `simulation-triage` 的 `sim_run`）。 |
 
-### 3.2 九条流水线规则
+### 3.2 八条流水线规则
 
-`FORWARD_PRIORITY` 固定多规则同时可调度时的平局顺序：`specification → simulation-plan → rtl-design → lint-cdc → synthesis → timing-analysis → simulation → power-analysis → frontend-signoff`。`simulation-triage` 是第十条规则，不在此序中——它只作为失败处置被派发（§5.3）。
+`FORWARD_PRIORITY` 固定多规则同时可调度时的平局顺序：`specification → simulation-plan → rtl-design → lint-cdc → synthesis → timing-analysis → simulation → power-analysis`。`simulation-triage` 是第九条规则，不在此序中——它只作为失败处置被派发（§5.3）。
 
 | **规则** | **消费（输入生产者）** | **Skill** | **Oracle（grade）** | **规范目录** |
 |---|---|---|---|---|
@@ -190,7 +189,6 @@ Orchestrator 的三条派发路径：
 | timing-analysis | synthesis | `veripower:timing-analysis` | pt-shell（tool） | `Design/timing-analysis/` |
 | simulation | rtl-design、simulation-plan | `veripower:simulation`（主线程） | tb-refmodel（proposed） | `Verification/simulation/` |
 | power-analysis | synthesis、simulation、simulation-plan、specification（`ppa.json`） | `veripower:power-analysis` | pt-shell（tool） | `Verification/power-analysis/` |
-| frontend-signoff | specification、lint-cdc、synthesis、timing-analysis、simulation、power-analysis | `veripower:frontend-signoff` | signoff-aggregator（tool） | `frontend-signoff/` |
 
 上表的生产者→消费者边就是 `rules.input_producers(rule)`——把每条规则的输入 glob 与所有规则的输出 glob 匹配（`producer_of`）算出。画出来即是流水线：
 
@@ -210,9 +208,6 @@ Orchestrator 的三条派发路径：
                           └─────────────────┬──────────────────┘
                                             ↓
                                     [power-analysis]
-                                            │
-                                            ↓
-                                    [frontend-signoff]
 ```
 
 隐式并行从这张图自然得出：`decide` 每次调用派发一条规则并再询，因此输入全部就绪的规则并行运行。流水线中段即双链并行——`{lint-cdc → synthesis → timing-analysis}` 与 `{simulation}` 并行，同时在途至多两条不同规则——由 `power-analysis` 汇合。Orchestrator 不写任何并发上限；它从派生边的有无中涌现。
@@ -241,9 +236,9 @@ Orchestrator 的三条派发路径：
 
 因为日志即状态，在途也是派生的：`facts.in_flight` = 每个没有匹配 `outcome` 的 `dispatch`（按 `(rule, run)` 键）。崩溃恢复因此是内生的——执行器死掉的 run 留下一个没有 `outcome` 的 `dispatch`，所以它仍显示在途，`decide` 会去收割它（§5.6）。
 
-### 4.2 六类事件
+### 4.2 七类事件
 
-`events.jsonl` 携带 **6 类事件**，各由 `framework/references/schemas/events/<type>.schema.json` 校验。`kernel.py` 是全部六类的唯一写者——不存在任何让 Agent 提示词注入原始事件的通道。
+`events.jsonl` 携带 **7 类事件**，各由 `framework/references/schemas/events/<type>.schema.json` 校验。`kernel.py` 是全部七类的唯一写者——不存在任何让 Agent 提示词注入原始事件的通道。
 
 | **type** | **写入方（动词）** | **用途 / 关键字段** |
 |---|---|---|
@@ -252,9 +247,10 @@ Orchestrator 的三条派发路径：
 | `diagnosis` | triage 自动（`reap`）；人工经 `diagnose` | 一条失败归因。必填（按 `diagnosis.schema.json`）：`id`、`subject {proof, outcome_run}`、`attribution`、`evidence`、`source ∈ {triage, human}`。可选：`fix_owner`、`fix_locus`、`confidence`、`supersedes`；`provenance`（`human` 必填，由 `diagnose` 强制）。 |
 | `pin` | `pin` | 把 `proposed` oracle 向 `human` 棘轮：`oracle_ref`、`content_fingerprint`（pin 时记录）、`provenance`、`reason`。 |
 | `reopen` | `reopen` | 撤销一个 pin：`pin_ref`、`reason`。使 oracle 在其落账后被 reopen 的证明失效（§4.4）。 |
+| `signoff` | `signoff` | 闭合签核：`provenance`、`reason`。仅在 `facts.signoff_gate` 干净时写入（§5.5）。不携带指纹，也从不被撤销——有效性由 `facts.signed_off` 实时重新推导。 |
 | `escalation` | `escalate` | 记录流程把决定交给用户：`reason`、`open_question`、可选 `candidates`。 |
 
-`dispatch` / `outcome` 是执行工作的纯副作用。triage 的 `diagnosis` 在收割时从 triage run 的 `result.json` 派生（§5.3）。另外四个动词（人工 `diagnose`、`pin`、`reopen`、`escalate`）承载 Orchestrator/用户的判断——但仍然经过 `kernel.py`，由它校验并（对 `diagnose`/`pin`）执行 schema 无法表达的结构性关联约束（§5.3、§4.5）。所有事件携带 UTC ISO8601 的 `ts`，写在记录首位。
+`dispatch` / `outcome` 是执行工作的纯副作用。triage 的 `diagnosis` 在收割时从 triage run 的 `result.json` 派生（§5.3）。另外五个动词（人工 `diagnose`、`pin`、`reopen`、`signoff`、`escalate`）承载 Orchestrator/用户的判断——但仍然经过 `kernel.py`，由它校验并（对 `diagnose`/`pin`）执行 schema 无法表达的结构性关联约束（§5.3、§4.5）。所有事件携带 UTC ISO8601 的 `ts`，写在记录首位。
 
 ### 4.3 内容指纹
 
@@ -284,7 +280,7 @@ Orchestrator 的三条派发路径：
 
 每条证明的 `oracle` 是 `(ref, grade)`。grade 由 `kernel._graded` *在收割时派生*：
 
-- 注册 oracle 等级为 `tool` 的规则（SpyGlass / DC / PT / 签核汇聚器）始终落账 `tool`——EDA 工具即权威。
+- 注册 oracle 等级为 `tool` 的规则（SpyGlass / DC / PT）始终落账 `tool`——EDA 工具即权威。
 - 注册等级为 `proposed` 的规则（LLM 自撰裁判）落账 `proposed`——**除非**存在一个*存活的* `pin`，其对该 `oracle_ref` 记录的 `content_fingerprint` 等于 oracle 内容*当前*的指纹，此时落账 `human`。
 
 一个 pin **存活**，当且仅当事件序中它之后没有指名其 `oracle_ref` 的 `reopen`（按事件逐个判断，因此 `pin → reopen → pin` 正确地再次产生存活 pin）。pin 指纹的 oracle 内容是该规则的 `oracle_selector` glob（如 `simulation` 的 `tb/uvm/refmodel/*`——pin 背书的是*裁判本身*，它跨 run 存续；LLM 重新生成 refmodel 时内容指纹随之分叉，下一次收割即跌回 `proposed`）。不可读的 oracle 内容（`UNKNOWN`）永远不继承信任。
@@ -304,7 +300,7 @@ Orchestrator 的三条派发路径：
 | `valid` | 最新 outcome 通过且 `proof_valid` 此刻成立。 |
 | `stale` | 最新 outcome 通过但 `proof_valid` 此刻不成立（脚下有输入/输出/oracle 变了）。 |
 
-`frontend-signoff` 按更严格的*已签核*判定语渲染：仅当其通过证明产自 `objective=signoff` 的派发**且**所有阶段证明当前均有效时才是 `valid`；否则 `stale`。签核的成色只等于其脚下的证明。
+签核没有格子——它不是阶段。`kernel.py status` 把它作为一个独立的 `signed_off` 布尔值与各格子并列渲染，判定语见 §5.5：存在人工 `signoff` 事件**且**所有阶段证明当前均有效。签核的成色只等于其脚下的证明。
 
 ### 4.7 结果信封与 schema 校验
 
@@ -327,8 +323,8 @@ loop:
 
 Orchestrator 作为会话值携带的 `objective` 决定 `decide` 向什么调度（`schedule.required_proofs`）：
 
-- **`delivery`**（默认）— 前向构建整个 DAG，*除去* `frontend-signoff`（八个非签核证明）。
-- **`signoff`**（仅限用户明确请求）— 全部九个证明，并武装签核门（§5.5）。
+- **`delivery`**（默认）— 前向构建整个 DAG（全部八个证明）。
+- **`signoff`**（仅限用户明确请求）— *同样*这八个证明，但它在 `DONE` 处武装签核门（§5.5）。证明集与 `delivery` 完全相同是刻意设计：签核是让同一批证明去过更高的门槛，而不是要求更多证明。
 - **`repair`** — 最新失败那一条规则的证明。当 `delivery` 下的 `decide` 返回自动重建的 `DISPATCH`（`needs_directive: true`）时，Orchestrator 切到 `repair`，把后续 `decide` 收窄到只重建能让失败证明重新验证的闭包；`repair` 返回 `DONE` 后切回 `delivery`。
 
 ### 5.2 五个动作与决策步骤
@@ -351,10 +347,10 @@ flowchart TD
 
 - **第 0 步——先收割。** 若 `--wake <rule>:<run>` 指名一个在途 run → `REAP` 之。否则，若任何在途 run 的 workdir 已有 `result.json`（已完成但未收割），按 `FORWARD_PRIORITY` 收割最早的一个。先收割再决策，保持日志与现实同步。
 - **第 1 步——新鲜失败处置。** 按 `FORWARD_PRIORITY` 找最新 outcome 为 `fail` *且*该失败*新鲜*（§5.3）的规则，运行 `_disposition`。最早的新鲜失败胜出；`_defer_to_forward` 的结果落到第 2 步。
-- **第 2 步——前向派发。** 计算当前不可复用的所需证明，扩展到*重建闭包*（沿不可用输入的 `input_producers` 行走，让修复先重建正确的上游），然后按 `FORWARD_PRIORITY` 派发最早的、不在途且输入可用的候选。仅在 `delivery` 下，候选还需其全部 `sort_prereqs` 证明有效才放行——不超车门（§3.3）。在 `signoff` 下，派发 `frontend-signoff` 前先跑完整签核门（§5.5）。
+- **第 2 步——前向派发。** 计算当前不可复用的所需证明，扩展到*重建闭包*（沿不可用输入的 `input_producers` 行走，让修复先重建正确的上游），然后按 `FORWARD_PRIORITY` 派发最早的、不在途且输入可用的候选。仅在 `delivery` 下，候选还需其全部 `sort_prereqs` 证明有效才放行——不超车门（§3.3）。
 - **第 3 步——收束。** 有工作在途 → `YIELD`（返回 `in_flight[]` 视图）。否则所需证明全部可复用 → `DONE`。否则 → `ESCALATE`（"无可派发规则、无在途、未完成"）。
 
-`cmd_dispatch` 是可派发性真相的唯一来源：它在*写入时刻*复查在途前提、输入可用性以及（对 `frontend-signoff`）完整签核门，若可派发性在扫描与写入之间发生了漂移则返回 `ok:false`——因此越过 `decide` 的 `dispatch --rule frontend-signoff` 无法绕门铸造签核证明。
+`cmd_dispatch` 是可派发性真相的唯一来源：它在*写入时刻*复查在途前提与输入可用性，若可派发性在扫描与写入之间发生了漂移则返回 `ok:false`。签核门不在这些检查之列——签核不可派发，也就没有派发可把门。它的防绕过职责移交给 `cmd_signoff`：后者自己跑门，而不是信任先前的一次 `decide`——该动词是门的唯一界面，因此越过流程的 `kernel.py signoff` 无法铸造一个门已拒绝的签核（§5.5）。
 
 ### 5.3 新鲜失败处置与可靠性门
 
@@ -382,14 +378,18 @@ flowchart TD
 
 ### 5.5 签核闭合
 
-闭合签核是系统里最严的门（`schedule._signoff_gate`，派发时刻复查）。`frontend-signoff` 在 `objective=signoff` 下获准派发之前，*其余每一个*证明必须：
+闭合签核是系统里最严的门（`facts.signoff_gate`）。**每一个**阶段证明都必须：
 
 1. 当前有效（§4.4），
 2. oracle 等级为 `tool` 或 `human`——`proposed` oracle 阻塞签核（"pin it"），
 3. 不携带任何 `UNKNOWN` 落账版本，且
 4. 没有带外**新增**输入：磁盘上匹配该规则输入选择器、却不在该证明落账输入集里的文件，从未被任何 run 验证过。已落账文件的改与删本就使证明失效（§4.4）；唯独"加"能逃过落账集比对，所以签核门在此对选择器重新 glob 一遍——日常 delivery/repair 路径仍用便宜的落账集比对。
 
-任何一条不满足即返回指名违规证明的 `ESCALATE`；Orchestrator 呈给用户（典型动作是"把 proposed oracle pin 掉"——一次人工 `pin`，§2.5）。该门按 `FORWARD_PRIORITY` 顺序迭代，使升级理由确定。这就是信任边界咬合之处：流水线可以*交付*在 LLM proposed oracle 之上，但在人把每个 proposed 裁判 pin 到 `human` 等级之前，它无法*签核*。
+该门按 `FORWARD_PRIORITY` 顺序迭代，使它返回的理由确定。不满足时按调用方分两条路浮现：`decide --objective signoff` 把它包成指名违规证明的 `ESCALATE`（典型动作是"把 proposed oracle pin 掉"——一次人工 `pin`，§2.5）；`kernel.py signoff` 把它包成 `ok:false`。这就是信任边界咬合之处：流水线可以*交付*在 LLM proposed oracle 之上，但在人把每个 proposed 裁判 pin 到 `human` 等级之前，它无法*签核*。
+
+**签核是一个动作，不是一个阶段。** 该门只裁定*是否够格*；真正闭合签核的，是人调用 `kernel.py signoff --provenance … --reason …`——`pin`/`reopen` 之外的第三个问必批判断动词（§2.5）。它自己跑门，而不是信任先前的一次 `decide`，因为该动词是门唯一的可绕过面——无论调用方在环内还是环外，都无法铸造一个门已拒绝的签核。一个模块**已签核**，当且仅当该事件存在*且*所有阶段证明当前均有效（`facts.signed_off`）——第二个合取项是实时重新推导的，因此事后某条证明变陈旧，签核就悄无声息地随之失效。刻意没有 `unsign` 动词：`reopen` 使其证明失效（§4.4 条件 3），合取项自然落空。
+
+在 `objective=signoff` 下，所需证明集与 `delivery` **完全相同**——签核不要求更多证明，它要求同一批证明去过更高的门槛。那道门槛就是本门，施加在 `decide` 的 `DONE` 处（§5.2 第 3 步）；没有它，这个目标就只是 `delivery` 的别名，报成功而从未过问信任边界。因此 `signoff` 下的 `DONE` 意味着"门已干净，去盖章"，由 Orchestrator 提议该动词。
 
 ### 5.6 派发、收割与 directive 通道
 
@@ -406,7 +406,7 @@ flowchart TD
 
 ## 6. 子 Agent 契约
 
-子 Agent 经 Task 工具派发，带新鲜上下文、受限提示词和按派发的 workdir。三个契约族：（1）**阶段子 Agent**——五条 Task 派发规则；（2）**主线程 skill**——四条 `Skill()` 加载规则（§2.3）；（3）**调试子 Agent**——`simulation-triage`。共享提示词模板为 `framework/references/prompts/stage-subagent.md.tpl`；其禁止行为条文就是执行机制——不使用 `allowed-tools` frontmatter。
+子 Agent 经 Task 工具派发，带新鲜上下文、受限提示词和按派发的 workdir。三个契约族：（1）**阶段子 Agent**——四条 Task 派发规则；（2）**主线程 skill**——四条 `Skill()` 加载规则（§2.3）；（3）**调试子 Agent**——`simulation-triage`。共享提示词模板为 `framework/references/prompts/stage-subagent.md.tpl`；其禁止行为条文就是执行机制——不使用 `allowed-tools` frontmatter。
 
 ### 6.1 阶段子 Agent
 
@@ -422,7 +422,7 @@ flowchart TD
 
 ### 6.2 `failure_kind` 信封义务
 
-`synthesis`、`power-analysis`、`timing-analysis` 多一条义务：`status == "fail"` 时必填 `stage_specific.failure_kind ∈ {infra, tooling, ppa}`。`infra`（工具压根没起来）与无法路由的 `tooling` 走升级；`ppa`（超出 PPA 门限）路由到 `rtl-design`；`power-analysis` 的 `tooling` 失败还可以填 `failures[]`，其 `failures[0].category` 由 `route.py` 映射到拥有该输入的生产者（§5.4）。`failure_kind` 缺失或枚举值不对会在收割时挂在 schema 校验上，落为 `blocked`，绝不是 `fail`。`frontend-signoff` 是流水线唯一由脚本撰写信封的规则（其 `signoff finalize` 动词写出），经同一收割 schema 校验。
+`synthesis`、`power-analysis`、`timing-analysis` 多一条义务：`status == "fail"` 时必填 `stage_specific.failure_kind ∈ {infra, tooling, ppa}`。`infra`（工具压根没起来）与无法路由的 `tooling` 走升级；`ppa`（超出 PPA 门限）路由到 `rtl-design`；`power-analysis` 的 `tooling` 失败还可以填 `failures[]`，其 `failures[0].category` 由 `route.py` 映射到拥有该输入的生产者（§5.4）。`failure_kind` 缺失或枚举值不对会在收割时挂在 schema 校验上，落为 `blocked`，绝不是 `fail`。
 
 ### 6.3 主线程 skill
 
@@ -446,7 +446,7 @@ flowchart TD
 
 ### 6.5 异步子 Agent 转录镜像
 
-异步 Task 子 Agent（五条 Task 派发规则加 `simulation-triage`）在 harness 的 `/tmp` 路径产出 JSONL 转录，Claude Code 会在会话结束时回收它。Orchestrator 的收割传入 `--subagent-output-file <output-file>`（`<task-notification>` 的 `<output-file>` 标签值）时，`store._mirror_subagent_trace` 尽力将其复制到 `<workdir>/.subagent_traces/<rule>-<agent_id>.output`，使外部分析工具能按阶段归属行为。这是纯写出的副作用，失败绝不中止收割。四个主线程 skill 同步运行，没有阶段级转录可镜像；阶段内扇出 sub-Task 不是 DAG 阶段，落在阶段级转录接口之外。`<stage>-<agent_id>.output` 命名与 `.subagent_traces/` 目录是稳定接口——改名或搬家都是破坏性变更。
+异步 Task 子 Agent（四条 Task 派发规则加 `simulation-triage`）在 harness 的 `/tmp` 路径产出 JSONL 转录，Claude Code 会在会话结束时回收它。Orchestrator 的收割传入 `--subagent-output-file <output-file>`（`<task-notification>` 的 `<output-file>` 标签值）时，`store._mirror_subagent_trace` 尽力将其复制到 `<workdir>/.subagent_traces/<rule>-<agent_id>.output`，使外部分析工具能按阶段归属行为。这是纯写出的副作用，失败绝不中止收割。四个主线程 skill 同步运行，没有阶段级转录可镜像；阶段内扇出 sub-Task 不是 DAG 阶段，落在阶段级转录接口之外。`<stage>-<agent_id>.output` 命名与 `.subagent_traces/` 目录是稳定接口——改名或搬家都是破坏性变更。
 
 ## 7. 工作空间布局
 
@@ -456,7 +456,7 @@ flowchart TD
 
 ```
 asic/<module>/
-├── events.jsonl               # 唯一持久状态（只追加，6 类事件）
+├── events.jsonl               # 唯一持久状态（只追加，7 类事件）
 ├── .fingerprint-cache.json    # 纯 mtime/size 加速缓存——从不作为事实来源
 ├── brainstorm.md              # 流水线前外部输入（模块根；由 brainstorm skill 写出）
 ├── Design/
@@ -470,13 +470,12 @@ asic/<module>/
 │   ├── lint-cdc/             { result.json + 报告 / *-violations.json / scripts/{constraints.sgdc,waiver.tcl} + runs/<N>/ }
 │   ├── synthesis/            { result.json + out/*_syn.{v,sdc,sdf} / reports/qor.rpt + runs/<N>/ }
 │   └── timing-analysis/      { result.json + timing-report.txt / timing-actual.json + runs/<N>/ }
-├── Verification/
+└── Verification/
 │   ├── simulation-plan/      { result.json + verification-plan.md / scaffold-specification.json / plan-review.json + runs/<N>/ }
 │   ├── simulation/           { result.json + env.sh / rtl_filelist.f / tb/uvm/* / case-results-summary.md /
 │   │                           conformance-review.json + runs/<N>/（失败 test 的 <test_id>.fsdb——pass 即回收，§7.3）}
 │   ├── simulation-triage/    { result.json + runs/<sim_run>/（分析；L2 时另有 experiment/）——proof=None }
 │   └── power-analysis/       { result.json + reports_ptpx/*/power_hier.rpt + runs/<N>/ }
-└── frontend-signoff/         { result.json + checklist.md / traceability.md + runs/<N>/ }
 ```
 
 没有 `task.json`——状态按需从 `events.jsonl` 派生（§4）。

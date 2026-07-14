@@ -1,12 +1,12 @@
 # VeriPower 上手指南
 
-> 把一个模块从想法一路推进到前端签核（frontend-signoff）。本指南完整走一遍流程，
+> 把一个模块从想法一路推进到签核闭合。本指南完整走一遍流程，
 > 用占位模块名 `{module}` 演示，请替换成你自己的模块名。这是「怎么做」；想了解
 > VeriPower「为什么这样设计」，见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
 ## 一分钟看懂它怎么跑
 
-VeriPower 通过一条 10 个阶段的流水线，把一个已批准的想法变成完成前端签核的设计。
+VeriPower 通过一条 9 个阶段的流水线，把一个已批准的想法变成完成前端签核的设计。
 有两点决定了你的使用体验：
 
 - **头脑风暴（brainstorm）先行，且在独立会话中进行。** 进入流水线之前，你先运行
@@ -37,9 +37,9 @@ VeriPower 通过一条 10 个阶段的流水线，把一个已批准的想法变
   （`lint-cdc` → SpyGlass、`synthesis` → Design Compiler、`timing-analysis` →
   PrimeTime、`simulation` → VCS + UVM、`power-analysis` → PrimeTime PX），需要
   [`docs/eda-env.md`](docs/eda-env.md) 中描述的环境——工具在 `PATH` 上、一个 license
-  服务器，以及 `LIB_DB` / `LIB_V` / `UVM_HOME` 变量。其余五个阶段（`brainstorm`、
-  `specification`、`simulation-plan`、`rtl-design`、`frontend-signoff`）仅靠
-  Claude Code + Python 即可运行。
+  服务器，以及 `LIB_DB` / `LIB_V` / `UVM_HOME` 变量。其余四个阶段（`brainstorm`、
+  `specification`、`simulation-plan`、`rtl-design`）仅靠 Claude Code + Python
+  即可运行。
 
 ## 流水线
 
@@ -63,7 +63,7 @@ VeriPower 通过一条 10 个阶段的流水线，把一个已批准的想法变
                                     [power-analysis]
                                             │
                                             ↓
-                                    [frontend-signoff]
+                                 kernel.py signoff  (you, Step 5)
 ```
 
 ## 第 1 步 —— 头脑风暴你的模块
@@ -102,7 +102,7 @@ VeriPower 通过一条 10 个阶段的流水线，把一个已批准的想法变
 
 之后，其余阶段自主运行并汇报结果：`rtl-design` 先跑，然后图分叉为实现签核分支
 （`lint-cdc` → `synthesis` → `timing-analysis`）与 `simulation` 分支；两条分支在
-`power-analysis` 汇合，再到 `frontend-signoff`。
+`power-analysis` 汇合，流水线到此为止。闭合签核是另一件由你开口要的事（第 5 步）。
 
 **随时查看进度**——直接问 agent：
 
@@ -132,10 +132,23 @@ VeriPower 通过一条 10 个阶段的流水线，把一个已批准的想法变
 
 > **【真实运行记录——即将补充】** 这里放一个真实的返工示例。
 
-## 第 5 步 —— 阅读签核结果
+## 第 5 步 —— 闭合签核
 
-`frontend-signoff` 把一份检查清单与跨阶段可追溯性汇总进
-`asic/{module}/frontend-signoff/result.json`——这是本次运行的最终裁决。
+交付（delivery）只把每个阶段推到证明有效为止。签核是另一件事，一次刻意的动作：
+你开口要它，流程就循环 `decide --objective signoff`——它要求同一批证明去过一道更严的
+门：每个证明当前有效、没有未经验证的文件带外混入，且**每一个 LLM 自撰的裁判都由你
+pin 过**。但凡差一点，都会以 `ESCALATE` 回来，并指名是什么卡住了它（通常是「去把它
+pin 掉」）。
+
+门干净时，签核还没有闭合——闭合它的是你。经你批准后，流程执行：
+
+```bash
+kernel.py signoff --module {module} --provenance <you> --reason "<why>"
+```
+
+这会记下是谁闭合了该模块、以及为什么。此后 `kernel.py status` 会报告
+`signed_off: true`——但这只在它脚下每个证明持续有效期间成立。改动一个设计文件，或
+`reopen` 掉一个 pin，它就自行跌回；签核的成色，不会超过它脚下那批证明。
 
 它背后是每次运行都会产生的审计轨迹：
 
@@ -143,7 +156,7 @@ VeriPower 通过一条 10 个阶段的流水线，把一个已批准的想法变
 - 每个阶段的状态 —— **不**存储在任何地方；`kernel.py status` 按需从事件日志与磁盘指纹
   计算得出，因此它绝不会与磁盘上的真实内容发生漂移。
 
-> **【真实运行记录——即将补充】** 这里放一份真实的签核结果。
+> **【真实运行记录——即将补充】** 这里放一次真实的签核闭合。
 
 ## 接下来去哪
 

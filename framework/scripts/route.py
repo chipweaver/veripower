@@ -85,11 +85,7 @@ def route(
     never a silent drop). Every routing key is a closed enum. `failed_rule ==
     "simulation"` never reaches route() (schedule dispatches triage first).
     """
-    # 1. Terminal stage — no DAG-internal target.
-    if failed_rule == "frontend-signoff":
-        return _decision(ESCALATE, "terminal_frontend_signoff", reason_hint=fail_reason)
-
-    # 2. lint-cdc — input-provenance (U4). Category names which input class
+    # 1. lint-cdc — input-provenance (U4). Category names which input class
     # failed; route to that input's producer. Unroutable/tooling -> escalate.
     if failed_rule == "lint-cdc":
         if not failures:
@@ -104,14 +100,14 @@ def route(
             target, f"lint_category:{cat}->{target}", reason_hint=fail_reason
         )
 
-    # 3. Fixed-target stages.
+    # 2. Fixed-target stages.
     if failed_rule in FIXED_TARGET:
         target = FIXED_TARGET[failed_rule]
         return _decision(
             target, f"fixed:{failed_rule}->{target}", reason_hint=fail_reason
         )
 
-    # 4. PPA-class stages — failure_kind dispatch.
+    # 3. PPA-class stages — failure_kind dispatch.
     if failed_rule in _PPA_STAGES:
         if failure_kind == "infra":
             return _decision(ESCALATE, "failure_kind_infra", reason_hint=fail_reason)
