@@ -239,6 +239,25 @@ def test_signoff_gate_blocks_on_proposed_oracle(tmp_path, monkeypatch):
     assert a["reason"] == "signoff blocked: specification oracle is proposed (pin it)"
 
 
+def test_signoff_gate_reads_live_pin_without_rereap(tmp_path, monkeypatch):
+    # A pin recorded AFTER a proof's reap (its outcome snapshot still reads "proposed")
+    # lifts the signoff gate immediately, with NO re-reap: the gate reads the live grade
+    # (facts.oracle_grade over the current event log), not the reap-time snapshot.
+    monkeypatch.chdir(tmp_path)
+    _build_all_valid(
+        "m", 1, include=rules.FORWARD_PRIORITY[:8]
+    )  # default (proposed) grades
+    assert schedule._signoff_gate("m", facts.read_events("m")) == {
+        "action": "ESCALATE",
+        "reason": "signoff blocked: specification oracle is proposed (pin it)",
+    }
+    # Pin every proposed oracle after the fact; no proof is re-reaped.
+    for rule in rules.FORWARD_PRIORITY[:8]:
+        if rules.RULES[rule].oracle[1] == "proposed":
+            _pin("m", rule)
+    assert schedule._signoff_gate("m", facts.read_events("m")) is None
+
+
 # --- §6-mandated coverage (each maps to a spec §6 bullet) ---
 
 
@@ -500,6 +519,31 @@ def _valid(
             }
         ],
     )
+    # A "human" grade on a proposed oracle is now earned by a REAL live pin, not a recorded
+    # snapshot: the signoff gate reads the live grade (facts.oracle_grade), so a post-reap pin
+    # takes effect without a re-reap.
+    if oracle_grade == "human" and r.oracle[1] == "proposed":
+        _pin(module, rule)
+
+
+def _pin(module, rule):
+    """Materialise the oracle-selector content + emit a real live pin whose fingerprint
+    matches, so facts.oracle_grade grades the proposed oracle human."""
+    r = rules.RULES[rule]
+    sel = r.oracle_selector
+    rel = sel.replace("*", "oracle_stub.sv") if "*" in sel else sel
+    _mk(module, "/".join((*rules.workdir_root(rule), rel)), f"oracle:{rule}")
+    facts.append_event(
+        module,
+        {
+            "type": "pin",
+            "oracle_ref": r.oracle[0],
+            "content_fingerprint": facts.oracle_content_fp(module, r),
+            "provenance": "test",
+            "reason": "test signoff pin",
+        },
+        TS,
+    )
 
 
 def _fail(module, rule, run):
@@ -671,6 +715,10 @@ def test_signoff_gate_flags_valid_proof_carrying_unknown_version(tmp_path, monke
             }
         ],
     )
+    _pin(
+        "m", "specification"
+    )  # live-pin the oracle so the gate clears grade and reaches
+    # the unknown-version branch (the check under test, downstream of the grade check).
     gate = schedule._signoff_gate("m", facts.read_events("m"))
     assert gate is not None
     assert gate["action"] == "ESCALATE" and "unknown version" in gate["reason"]

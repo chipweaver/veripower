@@ -381,7 +381,13 @@ def _signoff_gate(module: str, events: list[dict]) -> dict | None:
             }
         _, outcome = facts._proof_outcome(events, proof)
         p = next(x for x in outcome["proofs"] if x["name"] == proof)
-        if p["oracle"]["grade"] not in ("tool", "human"):
+        # Live grade over the current event log — NOT the reap-time snapshot in
+        # p["oracle"]["grade"] — so a post-reap pin takes effect at the signoff gate at
+        # once (no re-reap) and a reopen blocks signoff immediately.
+        if facts.oracle_grade(module, events, rules.RULES[proof]) not in (
+            "tool",
+            "human",
+        ):
             return {
                 "action": "ESCALATE",
                 "reason": f"signoff blocked: {proof} oracle is proposed (pin it)",

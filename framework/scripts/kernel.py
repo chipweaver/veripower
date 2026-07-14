@@ -220,25 +220,6 @@ def _tool_versions():
     return ids
 
 
-def _oracle_content_fp(module, rule):
-    """Current content fingerprint of a proposed oracle, per its Rule.oracle_selector
-    (workdir-root-relative glob). Multiple matches merge deterministically (sorted)."""
-    root = facts.module_root(module)
-    base = root / Path(*rules.workdir_root(rule.name))
-    paths = sorted(base.glob(rule.oracle_selector))
-    if not paths:
-        return facts.UNKNOWN
-    if len(paths) == 1 and paths[0].is_file():
-        return facts.fingerprint(paths[0])
-    import hashlib
-
-    h = hashlib.sha256()
-    for p in paths:
-        h.update(str(p.relative_to(base)).encode() + b"\0")
-        h.update(facts.fingerprint(p).encode() + b"\0")
-    return "merkle:" + h.hexdigest()
-
-
 def _stale_result_reason(produced_at, dispatch_ts) -> str | None:
     """Temporal integrity of a reaped verdict (§5.6): result.json must have been authored
     by THIS run's executor, so its produced_at must not predate the run's own dispatch —
@@ -313,7 +294,10 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
         "name": rule.proof,
         "verdict": status,
         "inputs": dispatch.get("inputs", {}),
-        "oracle": {"ref": rule.oracle[0], "grade": _graded(module, events, rule)},
+        "oracle": {
+            "ref": rule.oracle[0],
+            "grade": facts.oracle_grade(module, events, rule),
+        },
         "evidence": evidence,
     }
     return status, None, [proof], None
@@ -371,31 +355,9 @@ def _derive_triage(module, env, dispatch):
     return "pass", None, [], diagnosis
 
 
-def _graded(module, events, rule):
-    """Oracle grade at reap (§5.4 ratchet): proposed unless a LIVE pin's recorded content
-    fingerprint matches the oracle's CURRENT content. A pin is live iff NO reopen naming
-    its oracle_ref appears AFTER it in event order — set-membership over refs would kill
-    re-pinning forever (pin→reopen→pin must yield a live pin again)."""
-    if rule.oracle[1] != "proposed":
-        return rule.oracle[1]
-    live = []
-    for i, e in enumerate(events):
-        if e["type"] == "pin" and e["oracle_ref"] == rule.oracle[0]:
-            reopened_later = any(
-                r["type"] == "reopen" and r["pin_ref"] == rule.oracle[0]
-                for r in events[i + 1 :]
-            )
-            if not reopened_later:
-                live.append(e)
-    if not live:
-        return "proposed"
-    current = _oracle_content_fp(module, rule)
-    if current == facts.UNKNOWN:
-        return "proposed"  # unreadable oracle content never inherits trust
-    # Compare against the LATEST live pin only (spec §5.4 "与最新 pin 记录比对"). `live` is in
-    # event order, so live[-1] is the newest; an OLDER live pin matching current content must
-    # not resurrect trust the newer endorsement moved on from.
-    return "human" if live[-1]["content_fingerprint"] == current else "proposed"
+# Oracle grade derivation (proposed/human ratchet) lives in facts.oracle_grade /
+# facts.oracle_content_fp — read LIVE by both the reap-time outcome record and the signoff
+# gate, so a post-reap pin/reopen takes effect without a re-reap.
 
 
 def cmd_diagnose(
@@ -464,7 +426,7 @@ def cmd_pin(module, rule, provenance, reason):
             "ok": False,
             "error": f"{rule} has no oracle_selector (grade={grade!r}, not pinnable)",
         }
-    fp = _oracle_content_fp(module, r)
+    fp = facts.oracle_content_fp(module, r)
     if fp == facts.UNKNOWN:
         # A pin must endorse REAL content (§5.4). A zero-match selector records
         # content_fingerprint="unknown" — an inert pin that can never grade human — yet
