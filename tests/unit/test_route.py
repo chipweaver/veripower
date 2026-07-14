@@ -10,13 +10,6 @@ from framework.scripts import route
 from framework.scripts.route import ESCALATE
 
 
-def test_frontend_signoff_terminal():
-    r = route.route("frontend-signoff", fail_reason="x")
-    assert r["decision"] == ESCALATE
-    assert r["rule"] == "terminal_frontend_signoff"
-    assert r["reason_hint"] == "x"
-
-
 def test_fixed_target_simulation_plan_only():
     # lint-cdc is NO LONGER fixed-target (moved to input-provenance).
     r = route.route("simulation-plan", fail_reason="v")

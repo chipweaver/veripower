@@ -80,15 +80,13 @@ kernel.py dispatch --module {module} --rule <action.rule> \
 
 It re-checks dispatchability at this instant, records the dispatch event, and returns
 `{ok, rule, run, workdir, skill, execution}` — read `workdir` / `skill` / `execution` from
-there. `--objective` matters for `frontend-signoff`, which `dispatch` refuses outside
-objective `signoff` and its full gate. Branch the executor on `execution`, never on a
-hardcoded stage list.
+there. Branch the executor on `execution`, never on a hardcoded stage list.
 
 ## Objective policy
 
 You carry the current `objective` as a session value and pass it to every `decide`.
 
-- **Default `delivery`.** Forward-build the whole DAG except `frontend-signoff`.
+- **Default `delivery`.** Forward-build the whole DAG.
 - **`repair`.** When `decide` (under `delivery`) returns a `DISPATCH` with
   `needs_directive: true` (an auto-rebuild — a fix targeting an upstream producer, whether
   triage-forwarded, diagnosis-backed, or self-describing-route), execute that dispatch, then
@@ -97,18 +95,20 @@ You carry the current `objective` as a session value and pass it to every `decid
   `decide` under `repair` returns `DONE` (the failing proof re-verified — or nothing
   repairable remains, e.g. the re-verify was reaped `blocked`), switch back to `delivery`
   and continue.
-- **`signoff` — only on explicit user request.** Loop with `--objective signoff`. It adds
-  `frontend-signoff` to the required set and arms the signoff gate: every other proof must
-  be valid, every oracle pinned (`grade ∈ {tool, human}`), no unknown recorded version, no
-  out-of-band added input. Inside a signoff episode, stay in `signoff` even across
-  auto-rebuild episodes — repair episodes do NOT switch the objective here.
+- **`signoff` — only on explicit user request.** Loop with `--objective signoff`. It
+  requires the *same* proofs as `delivery` but arms the signoff gate at `DONE`: every proof
+  must be valid, every oracle pinned (`grade ∈ {tool, human}`), no unknown recorded version,
+  no out-of-band added input. A gate failure comes back as `ESCALATE`. `DONE` under
+  `signoff` does NOT mean the module is signed off — it means the gate is clear; you must
+  then propose the `signoff` verb (below). Inside a signoff episode, stay in `signoff` even
+  across auto-rebuild episodes — repair episodes do NOT switch the objective here.
 - The user may change the objective at any time; honor it on the next `decide`.
 
-## Pin and reopen
+## Pin, reopen, and signoff
 
-- **`pin` / `reopen` are ask-gated judgment verbs — never autonomous.** You propose them
-  only on explicit human intent, and the harness permission gate prompts the user on every
-  call. Do NOT wrap them to slip past the gate.
+- **`pin` / `reopen` / `signoff` are ask-gated judgment verbs — never autonomous.** You
+  propose them only on explicit human intent, and the harness permission gate prompts the
+  user on every call. Do NOT wrap them to slip past the gate.
   - When `decide` returns `ESCALATE` "signoff blocked: <proof> oracle is proposed (pin it)",
     a proposed-oracle proof (specification / simulation-plan / rtl-design / simulation) is
     blocking signoff. Present the option to the user; only with their approval run
@@ -117,6 +117,12 @@ You carry the current `objective` as a session value and pass it to every `decid
     while that content is unchanged).
   - `kernel.py reopen --module {module} --pin-ref <oracle_ref> --reason "<…>"` retires a pin
     — same ask-gate, same explicit-approval rule.
+  - When `decide` under `--objective signoff` returns `DONE`, the gate is clear and the
+    module is ready to close — but nothing is signed off until a human says so. Present
+    that to the user; only with their approval run
+    `kernel.py signoff --module {module} --provenance <user> --reason "<…>"`, which re-runs
+    the gate itself and lands the `signoff` event. Never run it on a `DONE` you got under
+    `delivery` — that DONE never consulted the gate.
 
 ## Directive authoring
 
@@ -185,12 +191,12 @@ that `decide` will escalate again rather than auto-rebuild.
 
 ## Red Flags
 
-> **Red Flag:** `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis|frontend-signoff)` in your tool history is a bug — those five stages run ONLY inside a `Task(subagent_type="general-purpose", …)`. Branch on the `DISPATCH` action's `execution` field: `main-thread` → `Skill()`; `task` → `Task()`.
+> **Red Flag:** `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis)` in your tool history is a bug — those four stages run ONLY inside a `Task(subagent_type="general-purpose", …)`. Branch on the `DISPATCH` action's `execution` field: `main-thread` → `Skill()`; `task` → `Task()`.
 
 | Excuse | Reality |
 |---|---|
 | "reap returned `ok:false: promote failed …` — I'll Edit `result.json` (or the RTL/UVM/netlist) so it promotes" | That Edit **is** the isolation violation — the main thread must never write stage artifacts. Do not work around any `ok:false`; surface it via `escalate`. The only legal writers are the dispatched executor and `kernel.py`. |
-| "Let me Read the Task-dispatched stage's SKILL.md so I understand it" | Reading the five Task-dispatched stages' SKILL.md invites inlining their work into the main thread. Only the four main-thread skills (`veripower:specification`, `veripower:simulation-plan`, `veripower:rtl-design`, `veripower:simulation`) are `Skill()`-loaded; their SKILL.md auto-loads normally. |
+| "Let me Read the Task-dispatched stage's SKILL.md so I understand it" | Reading the four Task-dispatched stages' SKILL.md invites inlining their work into the main thread. Only the four main-thread skills (`veripower:specification`, `veripower:simulation-plan`, `veripower:rtl-design`, `veripower:simulation`) are `Skill()`-loaded; their SKILL.md auto-loads normally. |
 | "This `pin`/`reopen`/dispatch hits an approval gate — I'll wrap it in `bash -c '…'` to get past it" | An approval trigger is a contract-violation signal, not an annoyance. `pin`/`reopen` are user-approved by design; never rewrite around the gate. |
 | "I'll dump everything into the directive to be safe" | The directive carries only reasoned content that helps the target — never a dump, never data already in files the subagent reads. For a triage forward it is a byte-for-byte copy, never a hand-written summary. |
 | "Let me re-warm the stage skill / tidy the subagent's wording before escalating" | Never pre-run `Skill(stage)` after dispatch; forward subagent text **verbatim** on escalation. |
@@ -207,6 +213,6 @@ that `decide` will escalate again rather than auto-rebuild.
 
 ## Bundled References
 
-- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/kernel.py` — the state tool + decider (9 verbs). Invocation contract: this file + `<verb> --help` (each verb prints a JSON envelope).
+- `${CLAUDE_PLUGIN_ROOT}/framework/scripts/kernel.py` — the state tool + decider (10 verbs). Invocation contract: this file + `<verb> --help` (each verb prints a JSON envelope).
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/prompts/stage-subagent.md.tpl`](../../framework/references/prompts/stage-subagent.md.tpl) — Task-dispatch prompt template.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common result envelope schema.

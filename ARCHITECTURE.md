@@ -26,7 +26,7 @@ Core coined terms, each defined once here and elaborated in the linked section. 
 | **Orchestrator** | The `design-flow` agent in the main conversation; the only role that calls `kernel.py`, dispatches `Task()`s, and talks to the user. (§2.4) |
 | **kernel** | `python3 framework/scripts/kernel.py` — the sole writer of `events.jsonl` and the sole decider. Its verbs are the whole state/decision surface. (§2.2) |
 | **decide / scheduler** | `kernel.py decide` (implemented in `schedule.py`) — reads the event log + disk and returns exactly one action per call; the Orchestrator is its thin executor. (§5) |
-| **rule** | One kernel-scheduled unit of work, defined in `rules.py:RULES`. Nine pipeline rules plus `simulation-triage`. The dependency graph is *derived* from rules' input/output selectors, not declared separately. (§3) |
+| **rule** | One kernel-scheduled unit of work, defined in `rules.py:RULES`. Eight pipeline rules plus `simulation-triage`. The dependency graph is *derived* from rules' input/output selectors, not declared separately. (§3) |
 | **proof** | The pass/fail assertion a proof-producing rule records at reap: `{name, verdict, inputs, oracle, evidence}`, embedded in its `outcome` event. (§4.4) |
 | **proof validity** | A *query* — not a stored flag. A proof is valid *now* iff its verdict is `pass`, its recorded input and output fingerprints still match disk, and its oracle was not reopened since. Staleness is recomputed on every read. (§4.4) |
 | **oracle & grade** | The judge that decided a proof, `(ref, grade)` with `grade ∈ {tool, human, proposed}`. A tool oracle is authoritative; a `proposed` (LLM-authored) oracle can be ratcheted to `human` only by a `pin`. (§4.5) |
@@ -64,7 +64,7 @@ The Orchestrator agent decides; `kernel.py` and the skills execute; disk persist
 └──┬───────────────────────────┬────────────────────────────────┬────────────────────┘
    │ Bash                      │ Skill()                        │ Task()
    │ kernel.py CLI             │ veripower:specification        │ general-purpose
-   │                           │ veripower:simulation-plan      │ (the 5 task rules +
+   │                           │ veripower:simulation-plan      │ (the 4 task rules +
    │                           │ veripower:rtl-design           │  simulation-triage)
    │                           │ veripower:simulation           │
    │                           │ (main-thread loaded)           │
@@ -73,7 +73,7 @@ The Orchestrator agent decides; `kernel.py` and the skills execute; disk persist
 │ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent       │
 │ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)           │
 │  kernel.py:        │  │   main thread)               │  │                               │
-│   9 verbs; sole    │  │                              │  │  Stage: executes rule         │
+│   10 verbs; sole   │  │                              │  │  Stage: executes rule         │
 │   writer of the    │  │  specification / sim-plan /  │  │    → writes result.json       │
 │   event log        │  │  rtl-design / simulation:    │  │  Debug (triage): canon. RO,   │
 │  schedule.py:      │  │    self-driven fan-out /     │  │    scratch RW builder         │
@@ -90,7 +90,6 @@ The Orchestrator agent decides; `kernel.py` and the skills execute; disk persist
 │   Design/<rule>/result.json          specification / rtl-design / lint-cdc /       │
 │                                      synthesis / timing-analysis                   │
 │   Verification/<rule>/result.json    simulation-plan / simulation / power-analysis │
-│   frontend-signoff/result.json       terminal signoff                             │
 │   (status is DERIVED from events.jsonl + disk fingerprints — never stored)         │
 └────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -99,7 +98,7 @@ The three dispatch paths from the Orchestrator:
 
 - **Bash** → the `kernel.py` CLI (verbs in §4.2 / §5). It composes the other framework scripts in-process; the Orchestrator never invokes them directly.
 - **Skill()** → the four main-thread skills (`specification`, `simulation-plan`, `rtl-design`, `simulation`).
-- **Task()** → the five task-dispatched stage subagents and the `simulation-triage` debug subagent.
+- **Task()** → the four task-dispatched stage subagents and the `simulation-triage` debug subagent.
 
 ### 2.2 The kernel surface
 
@@ -107,14 +106,14 @@ The three dispatch paths from the Orchestrator:
 
 | Module | Responsibility |
 |---|---|
-| `kernel.py` | The CLI and the **sole writer** of `events.jsonl`. Nine verbs: `decide`, `dispatch`, `reap`, `diagnose`, `escalate`, `pin`, `reopen`, `status`, `consequences`. Every verb prints a JSON envelope. |
+| `kernel.py` | The CLI and the **sole writer** of `events.jsonl`. Ten verbs: `decide`, `dispatch`, `reap`, `diagnose`, `escalate`, `pin`, `reopen`, `signoff`, `status`, `consequences`. Every verb prints a JSON envelope. |
 | `rules.py` | The rule registry (`RULES`) — the SSoT for what the kernel schedules and the *source* of the dependency graph (§3). Also `FORWARD_PRIORITY`, `PIPELINE_INPUTS`, `ADVISORY_ORDER`, and the derivation helpers `producer_of` / `input_producers` / `input_closure` / `sort_prereqs`. Dependency-light leaf. |
-| `facts.py` | Event-log I/O (`read_events` / `append_event`, schema-validating), content fingerprints (`fingerprint`), and the freshness queries built on them — `proof_valid`, `input_available`, `projection`. Owns nothing mutable; everything is computed from the log + disk. |
-| `schedule.py` | The scheduler: `decide(objective) → exactly one action`. Pure over (disk, log, args); composes `route.py`. Owns the objective→required-proof map, the fresh-failure disposition, and the signoff gate. |
+| `facts.py` | Event-log I/O (`read_events` / `append_event`, schema-validating), content fingerprints (`fingerprint`), and the freshness queries built on them — `proof_valid`, `input_available`, `projection`, plus the strictest of them, `signoff_gate` / `signed_off` (§5.5). Owns nothing mutable; everything is computed from the log + disk. |
+| `schedule.py` | The scheduler: `decide(objective) → exactly one action`. Pure over (disk, log, args); composes `route.py` and `facts.signoff_gate`. Owns the objective→required-proof map and the fresh-failure disposition. |
 | `route.py` | Pure deterministic rework-target selection — the **single home** of the static failure→target maps (`PA_CATEGORY`, `FIXED_TARGET`, `LINT_CATEGORY`, `TRIAGE_ROOT_CAUSE`). Holds no state; composed unchanged inside `schedule.py` and `kernel.py`. |
 | `store.py` | Filesystem artifact-lifecycle helpers (`promote`, `_mirror_subagent_trace`). Imported by `kernel.py`'s reap path; never invoked directly. |
 
-The event schemas at `framework/references/schemas/events/<type>.schema.json` (6 of them, §4.2) and the result envelope at `framework/references/schemas/envelope.schema.json` complete the core.
+The event schemas at `framework/references/schemas/events/<type>.schema.json` (7 of them, §4.2) and the result envelope at `framework/references/schemas/envelope.schema.json` complete the core.
 
 > **Black-box discipline.** The Orchestrator invokes `kernel.py` by its documented command lines (flags via `<verb> --help`, each verb prints a JSON envelope) and never reads the framework scripts' source. On a non-zero exit or an `ok:false` envelope it follows the documented failure protocol (fix the objective, escalate the `ok:false`), never patches around it.
 
@@ -131,7 +130,7 @@ The `execution` field on each `Rule` (`"main-thread"` or `"task"`) is what the O
 - **rtl-design** — fan-out only, no dialogue: one Level-1 sub-Task per child, a bounded conformance-gate self-converge loop, a gating semantic-review wave, then a finalize sub-Task.
 - **simulation** — fan-out only, no dialogue: Wave 1 dispatches the env-build child (first-run/patch) or the freeze child; a non-freeze run then runs the smoke gate, the LLM conformance review-gate, and the verify child (Wave 2). The freeze/patch branch is selected deterministically by the `sim classify-delta` verb.
 
-> **Red Flag:** If `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis|frontend-signoff)` appears in the Orchestrator's tool history, it is a bug — those five rules must dispatch via `Task()`.
+> **Red Flag:** If `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis)` appears in the Orchestrator's tool history, it is a bug — those four rules must dispatch via `Task()`.
 
 **Pre-pipeline `brainstorm` skill (not kernel-dispatched).** The heavy D0–D7 requirements dialogue runs in a separate `brainstorm` skill in its own session — it is NOT one of the four main-thread stages above and is never dispatched by the Orchestrator. It produces the approved `asic/<module>/brainstorm.md` (module root) that the pipeline starts from; it writes no `result.json` and calls no `kernel.py`. `brainstorm.md` is the pipeline's sole external input — `rules.PIPELINE_INPUTS` — needing only to exist and be `Status: approved` (the Orchestrator's session-start gate) for `specification` to become schedulable.
 
@@ -141,7 +140,7 @@ The `execution` field on each `Rule` (`"main-thread"` or `"task"`) is what the O
 |---|---|---|---|
 | **Orchestrator agent** | `design-flow` skill, main conversation | Execute the one action each `decide` returns; author the per-dispatch `directive` (its one judgment channel); propose `pin` / `reopen` / human `diagnose` on explicit user intent; escalate; collaborate with the user. Also acts as the main-thread executor for the four main-thread rules. | The only role that may call `kernel.py`, use the Task tool, and interact with the user. Authors NO event by hand — every event is written by `kernel.py`. |
 | **Main-thread skill** | one of the four main-thread rules, loaded via `Skill()` | Self-driven work in the Orchestrator's thread: sub-Task fan-out (producers, simulation), multi-turn dialogue (simulation-plan), or a single review dispatch. Each writes its own artifacts + `result.json`. | May dispatch Level-1 sub-Tasks (producers / simulation) or interact with the user (simulation-plan; specification at its two path-handoff gates). No `kernel.py`, no routing. Held by SKILL.md prose discipline, not tool gating. |
-| **Stage subagent** | the five Task-dispatched rules (`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis` / `frontend-signoff`) | Execute one rule: read upstream → do the work → write `result.json` → return a STATUS line | Must NOT call `kernel.py` or make routing decisions (§6.1) |
+| **Stage subagent** | the four Task-dispatched rules (`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis`) | Execute one rule: read upstream → do the work → write `result.json` → return a STATUS line | Must NOT call `kernel.py` or make routing decisions (§6.1) |
 | **Debug subagent** | `simulation-triage`, dispatched via Task | Graduated (L1 log+code+FSDB reasoning → L2 controlled experiment) root-cause analysis on a simulation failure; writes a `result.json` whose `stage_specific` carries the attribution the kernel turns into a `diagnosis` at reap (§6.4) | Canonical read-only, scratch-writable under its own workdir; never edits any other rule's `result.json`, RTL, or tests; NOT idempotent (a repeat re-runs L2) |
 | **`kernel.py`** | Python CLI | State transitions (as events), scheduling, proof derivation, promote, best-effort transcript mirroring | Contains the scheduling logic but makes no *judgment*: it never authors a directive and never mints a human diagnosis. |
 | **`route.py`** | pure function (sibling script) | Maps a failure's closed-enum fields to a target / `ESCALATE` / `NEED_INPUT` | Holds no state; total over its inputs (unknown enum values fall through to a named `unrouted*` ESCALATE, never a KeyError). |
@@ -154,7 +153,7 @@ The `execution` field on each `Rule` (`"main-thread"` or `"task"`) is what the O
 - **Compaction-safe resume.** Because files are the database and the Orchestrator holds *zero* durable control state between turns, a mid-session context compaction or process crash is survivable: every turn re-derives the next action from disk via `decide`. The only conversation-resident state is the `directive` text authored for the next dispatch — re-derivable, and once passed to `dispatch` it is disk-backed as `directive.md`.
 - **One-way communication + context isolation.** Orchestrator → prompt → subagent → `result.json` + STATUS. No subagent-initiated callback, no subagent-to-subagent communication; subagents inherit no parent history and receive all inputs as explicit file paths.
 
-**The trust boundary — proposed vs. authoritative oracles.** VeriPower runs LLM-authored judges (a spec-intent review, a plan-adequacy review, an RTL semantic review, a TB refmodel) alongside deterministic EDA-tool oracles. The two are not equally trustworthy, and the kernel encodes that: an oracle carries a `grade` (§4.5). A `tool`-graded oracle (SpyGlass, DC, PT, the signoff aggregator) is authoritative on its own. A `proposed`-graded oracle is an LLM proposing its own correctness — trusted enough to gate a normal *delivery* build, but NOT enough to close *signoff*. The only way a proposed oracle earns authoritative (`human`) trust is a human `kernel.py pin`, which records the oracle content's current fingerprint; the grade upgrades to `human` only while that exact content is unchanged, and drops back to `proposed` the moment the content drifts or the pin is `reopen`ed (§4.5). `pin` and `reopen` are therefore **ask-gated judgment verbs**: the Orchestrator proposes them only on explicit human intent, and the harness permission gate prompts the user on every call. This is the seam where a human, and only a human, converts an LLM's self-assessment into signoff-grade trust.
+**The trust boundary — proposed vs. authoritative oracles.** VeriPower runs LLM-authored judges (a spec-intent review, a plan-adequacy review, an RTL semantic review, a TB refmodel) alongside deterministic EDA-tool oracles. The two are not equally trustworthy, and the kernel encodes that: an oracle carries a `grade` (§4.5). A `tool`-graded oracle (SpyGlass, DC, PT) is authoritative on its own. A `proposed`-graded oracle is an LLM proposing its own correctness — trusted enough to gate a normal *delivery* build, but NOT enough to close *signoff*. The only way a proposed oracle earns authoritative (`human`) trust is a human `kernel.py pin`, which records the oracle content's current fingerprint; the grade upgrades to `human` only while that exact content is unchanged, and drops back to `proposed` the moment the content drifts or the pin is `reopen`ed (§4.5). `pin`, `reopen`, and `signoff` are therefore **ask-gated judgment verbs**: the Orchestrator proposes them only on explicit human intent, and the harness permission gate prompts the user on every call. This is the seam where a human, and only a human, converts an LLM's self-assessment into signoff-grade trust — per-oracle with `pin`, and for the module as a whole with `signoff` (§5.5).
 
 ## 3. Rule registry and the derived dependency graph
 
@@ -176,9 +175,9 @@ Each rule is a frozen dataclass:
 | `oracle_selector` | For a `proposed` oracle, the workdir-relative glob whose content a `pin` fingerprints. |
 | `params` | Free params the rule expects (e.g. `simulation-triage`'s `sim_run`). |
 
-### 3.2 The nine pipeline rules
+### 3.2 The eight pipeline rules
 
-`FORWARD_PRIORITY` fixes the tie-break order when several rules are eligible: `specification → simulation-plan → rtl-design → lint-cdc → synthesis → timing-analysis → simulation → power-analysis → frontend-signoff`. `simulation-triage` is a tenth rule, not in that order — it is dispatched only as a failure disposition (§5.3).
+`FORWARD_PRIORITY` fixes the tie-break order when several rules are eligible: `specification → simulation-plan → rtl-design → lint-cdc → synthesis → timing-analysis → simulation → power-analysis`. `simulation-triage` is a ninth rule, not in that order — it is dispatched only as a failure disposition (§5.3).
 
 | **Rule** | **Consumes (input producers)** | **Skill** | **Oracle (grade)** | **Canonical dir** |
 |---|---|---|---|---|
@@ -190,7 +189,6 @@ Each rule is a frozen dataclass:
 | timing-analysis | synthesis | `veripower:timing-analysis` | pt-shell (tool) | `Design/timing-analysis/` |
 | simulation | rtl-design, simulation-plan | `veripower:simulation` (main-thread) | tb-refmodel (proposed) | `Verification/simulation/` |
 | power-analysis | synthesis, simulation, simulation-plan, specification (`ppa.json`) | `veripower:power-analysis` | pt-shell (tool) | `Verification/power-analysis/` |
-| frontend-signoff | specification, lint-cdc, synthesis, timing-analysis, simulation, power-analysis | `veripower:frontend-signoff` | signoff-aggregator (tool) | `frontend-signoff/` |
 
 The producer→consumer edges above are exactly `rules.input_producers(rule)` — computed by matching each input glob against every rule's output globs (`producer_of`). Drawn out, they form the pipeline:
 
@@ -210,9 +208,6 @@ The producer→consumer edges above are exactly `rules.input_producers(rule)` �
                           └─────────────────┬──────────────────┘
                                             ↓
                                     [power-analysis]
-                                            │
-                                            ↓
-                                    [frontend-signoff]
 ```
 
 Implicit parallelism falls out of this graph: `decide` dispatches one rule per call and re-queries, so any rules whose inputs are all available run concurrently. In the middle of the pipeline that is the dual chain `{lint-cdc → synthesis → timing-analysis}` alongside `{simulation}` — at most two distinct rules in flight — with `power-analysis` merging both. The Orchestrator writes no concurrency cap; it emerges from where the derived edges do and do not exist.
@@ -241,9 +236,9 @@ Everything under `asic/<module>/` that matters to the kernel is derived from one
 
 Because the log is the state, in-flight is derived too: `facts.in_flight` = every `dispatch` with no matching `outcome` (keyed by `(rule, run)`). Crash recovery is thus intrinsic — a run whose executor died left a `dispatch` with no `outcome`, so it still shows in-flight and `decide` will reap it (§5.6).
 
-### 4.2 The six event types
+### 4.2 The seven event types
 
-`events.jsonl` carries **6 event types**, each validated by `framework/references/schemas/events/<type>.schema.json`. `kernel.py` is the sole writer of all six — there is no channel by which an agent prompt can inject a raw event.
+`events.jsonl` carries **7 event types**, each validated by `framework/references/schemas/events/<type>.schema.json`. `kernel.py` is the sole writer of all seven — there is no channel by which an agent prompt can inject a raw event.
 
 | **type** | **Written by (verb)** | **Purpose / key fields** |
 |---|---|---|
@@ -252,9 +247,10 @@ Because the log is the state, in-flight is derived too: `facts.in_flight` = ever
 | `diagnosis` | auto for triage (`reap`); human via `diagnose` | A failure attribution. Required (per `diagnosis.schema.json`): `id`, `subject {proof, outcome_run}`, `attribution`, `evidence`, `source ∈ {triage, human}`. Optional: `fix_owner`, `fix_locus`, `confidence`, `supersedes`; `provenance` (required for `human`, enforced by `diagnose`). |
 | `pin` | `pin` | Ratchets a `proposed` oracle toward `human`: `oracle_ref`, `content_fingerprint` (recorded at pin time), `provenance`, `reason`. |
 | `reopen` | `reopen` | Retires a pin: `pin_ref`, `reason`. Invalidates any proof whose oracle was reopened after it landed (§4.4). |
+| `signoff` | `signoff` | Closes signoff: `provenance`, `reason`. Written only if `facts.signoff_gate` is clear (§5.5). Carries no fingerprint and is never retired — validity is re-derived live by `facts.signed_off`. |
 | `escalation` | `escalate` | Records that the flow handed a decision to the user: `reason`, `open_question`, optional `candidates`. |
 
-`dispatch` / `outcome` are pure side-effects of running work. The triage `diagnosis` is derived at reap from the triage run's `result.json` (§5.3). The other four verbs (`diagnose`-human, `pin`, `reopen`, `escalate`) carry the Orchestrator's/user's judgment — but they still go through `kernel.py`, which validates and (for `diagnose`/`pin`) enforces structural correlates the schema alone cannot express (§5.3, §4.5). All events carry a UTC ISO8601 `ts` written first in the record.
+`dispatch` / `outcome` are pure side-effects of running work. The triage `diagnosis` is derived at reap from the triage run's `result.json` (§5.3). The other five verbs (`diagnose`-human, `pin`, `reopen`, `signoff`, `escalate`) carry the Orchestrator's/user's judgment — but they still go through `kernel.py`, which validates and (for `diagnose`/`pin`) enforces structural correlates the schema alone cannot express (§5.3, §4.5). All events carry a UTC ISO8601 `ts` written first in the record.
 
 ### 4.3 Content fingerprints
 
@@ -284,7 +280,7 @@ The consequence: editing any file a proof touched — an input, an output, or th
 
 Each proof's `oracle` is `(ref, grade)`. The grade is *derived at reap* by `kernel._graded`:
 
-- A rule whose registered oracle grade is `tool` (SpyGlass / DC / PT / signoff-aggregator) always records `tool` — the EDA tool is authoritative.
+- A rule whose registered oracle grade is `tool` (SpyGlass / DC / PT) always records `tool` — the EDA tool is authoritative.
 - A rule whose registered grade is `proposed` (an LLM-authored judge) records `proposed` **unless** a *live* `pin` for its `oracle_ref` recorded a `content_fingerprint` equal to the oracle content's *current* fingerprint — in which case it records `human`.
 
 A pin is **live** iff no `reopen` naming its `oracle_ref` appears after it in event order (membership tracked per-event, so `pin → reopen → pin` correctly yields a live pin again). The oracle content a pin fingerprints is the rule's `oracle_selector` glob (e.g. `simulation`'s `tb/uvm/refmodel/*` — the pin endorses the *judge* itself, which survives runs; when the LLM regenerates the refmodel, the content fingerprint diverges and the grade drops back to `proposed` at the next reap). An unreadable oracle content (`UNKNOWN`) never inherits trust.
@@ -304,7 +300,7 @@ This is the machinery behind the trust boundary (§2.5): `pin`/`reopen` are the 
 | `valid` | latest outcome passed and `proof_valid` holds now. |
 | `stale` | latest outcome passed but `proof_valid` is false now (an input/output/oracle changed under it). |
 
-`frontend-signoff` renders by a stricter *signed-off* predicate: `valid` only if its passing proof was produced under an `objective=signoff` dispatch **and** every stage proof is currently valid; otherwise `stale`. A signoff is only as good as the proofs beneath it.
+Signoff gets no cell — it is not a stage. `kernel.py status` renders it alongside the cells as a separate `signed_off` boolean, per the §5.5 predicate: a human `signoff` event exists **and** every stage proof is currently valid. A signoff is only as good as the proofs beneath it.
 
 ### 4.7 Result envelope and schema validation
 
@@ -327,8 +323,8 @@ loop:
 
 The `objective` the Orchestrator carries as a session value picks what `decide` schedules toward (`schedule.required_proofs`):
 
-- **`delivery`** (default) — forward-build the whole DAG *except* `frontend-signoff` (the eight non-signoff proofs).
-- **`signoff`** (only on explicit user request) — all nine proofs, and it arms the signoff gate (§5.5).
+- **`delivery`** (default) — forward-build the whole DAG (all eight proofs).
+- **`signoff`** (only on explicit user request) — the *same* eight proofs, but it arms the signoff gate at `DONE` (§5.5). The proof set is identical to `delivery`'s by design: signoff is a higher bar over the same proofs, not more of them.
 - **`repair`** — the single latest-failing rule's proof. The Orchestrator switches to `repair` when a `delivery` `decide` returns an auto-rebuild `DISPATCH` (`needs_directive: true`), narrowing subsequent `decide`s to rebuilding just the closure that re-verifies the failing proof, then switches back to `delivery` when `repair` returns `DONE`.
 
 ### 5.2 The five actions and the decision steps
@@ -351,10 +347,10 @@ flowchart TD
 
 - **Step 0 — reap first.** If `--wake <rule>:<run>` names an in-flight run → `REAP` it. Otherwise, if any in-flight run's workdir already holds a `result.json` (a completed but un-reaped run), reap the earliest by `FORWARD_PRIORITY`. Reaping before deciding keeps the log current.
 - **Step 1 — fresh-failure disposition.** For each rule in `FORWARD_PRIORITY` whose latest outcome is a `fail` *and* that failure is *fresh* (§5.3), run `_disposition`. The earliest fresh failure wins; a `_defer_to_forward` result falls through to step 2.
-- **Step 2 — forward dispatch.** Compute the required proofs not currently reusable, expand them to the *rebuild closure* (walk `input_producers` of any unavailable input so a repair rebuilds the right upstream first), and dispatch the earliest candidate by `FORWARD_PRIORITY` that is not in-flight and whose inputs are available. Under `delivery` only, a candidate is additionally held back unless all of its `sort_prereqs` proofs are valid — the no-overtake gate (§3.3). Under `signoff`, dispatching `frontend-signoff` first runs the full signoff gate (§5.5).
+- **Step 2 — forward dispatch.** Compute the required proofs not currently reusable, expand them to the *rebuild closure* (walk `input_producers` of any unavailable input so a repair rebuilds the right upstream first), and dispatch the earliest candidate by `FORWARD_PRIORITY` that is not in-flight and whose inputs are available. Under `delivery` only, a candidate is additionally held back unless all of its `sort_prereqs` proofs are valid — the no-overtake gate (§3.3).
 - **Step 3 — settle.** If work is in flight → `YIELD` (returning the `in_flight[]` view). Else if every required proof is reusable → `DONE`. Else → `ESCALATE` ("no eligible rule, none in-flight, not done").
 
-`cmd_dispatch` is the single source of eligibility truth: it re-checks the in-flight premise, input availability, and (for `frontend-signoff`) the full signoff gate *at write time*, returning `ok:false` if eligibility shifted between the scan and the write — so an out-of-band `dispatch --rule frontend-signoff` cannot bypass `decide` and mint a signoff proof.
+`cmd_dispatch` is the single source of eligibility truth: it re-checks the in-flight premise and input availability *at write time*, returning `ok:false` if eligibility shifted between the scan and the write. The signoff gate is not among those checks — signoff is not dispatchable, so there is no dispatch to gate. Its anti-bypass duty moved to `cmd_signoff`, which runs the gate itself rather than trusting a prior `decide`: the verb is the gate's only surface, so an out-of-band `kernel.py signoff` cannot mint a signoff the gate refused (§5.5).
 
 ### 5.3 Fresh-failure disposition and the reliability gate
 
@@ -382,14 +378,18 @@ All static failure→target selection lives in `route.py` — a pure, stateless 
 
 ### 5.5 Signoff closure
 
-Closing signoff is the strictest gate in the system (`schedule._signoff_gate`, re-checked at dispatch time). Before `frontend-signoff` may dispatch under `objective=signoff`, *every other* proof must:
+Closing signoff is the strictest gate in the system (`facts.signoff_gate`). **Every** stage proof must:
 
 1. be currently valid (§4.4),
 2. carry an oracle grade of `tool` or `human` — a `proposed` oracle blocks signoff ("pin it"),
 3. carry no `UNKNOWN` recorded version, and
 4. have no out-of-band **added** input: a file on disk that matches the rule's input selectors but is absent from the proof's recorded inputs was never verified by any run. Edits and deletes of recorded files already invalidate the proof (§4.4); an add escapes the recorded-set checks, so the gate re-globs the selectors here — the daily delivery/repair path keeps the cheap recorded-set check.
 
-Any failure returns an `ESCALATE` naming the offending proof; the Orchestrator surfaces it (typically "pin the proposed oracle" — a human `pin`, §2.5). The gate iterates `FORWARD_PRIORITY` in order so the escalation reason is deterministic. This is where the trust boundary bites: a pipeline can *deliver* on LLM-proposed oracles, but it cannot *sign off* until a human has pinned each proposed judge to `human` grade.
+The gate iterates `FORWARD_PRIORITY` in order so the reason it returns is deterministic. Failure surfaces two ways, per caller: `decide --objective signoff` wraps it as an `ESCALATE` naming the offending proof (typically "pin the proposed oracle" — a human `pin`, §2.5); `kernel.py signoff` wraps it as an `ok:false`. This is where the trust boundary bites: a pipeline can *deliver* on LLM-proposed oracles, but it cannot *sign off* until a human has pinned each proposed judge to `human` grade.
+
+**Signoff is an act, not a stage.** The gate decides only *admissibility*; closing signoff is a human calling `kernel.py signoff --provenance … --reason …`, the third ask-gated judgment verb beside `pin`/`reopen` (§2.5). It runs the gate itself rather than trusting a prior `decide`, because the verb is the gate's only bypass surface — no caller, in-loop or out, can mint a signoff the gate refused. A module is **signed off** iff that event exists *and* every stage proof is currently valid (`facts.signed_off`) — the second conjunct re-derived live, so a proof going stale afterwards drops the signoff with no ceremony. There is deliberately no `unsign` verb: `reopen` invalidates its proof (§4.4 condition 3), which drops the conjunct.
+
+Under `objective=signoff` the required proof set is **identical to `delivery`'s** — signoff does not demand more proofs, it demands the same proofs clear a higher bar. That bar is the gate, applied at `decide`'s `DONE` point (§5.2 step 3); without it the objective would be a `delivery` alias reporting success with the trust boundary never consulted. `DONE` under `signoff` therefore means "the gate is clear, go stamp", and the Orchestrator proposes the verb.
 
 ### 5.6 Dispatch, reap, and the directive channel
 
@@ -406,7 +406,7 @@ Any failure returns an `ESCALATE` naming the offending proof; the Orchestrator s
 
 ## 6. Subagent contracts
 
-Subagents are dispatched via the Task tool with fresh context, a restricted prompt, and a per-dispatch workdir. Three contract families: (1) **Stage subagent** — the five Task-dispatched rules; (2) **Main-thread skill** — the four `Skill()`-loaded rules (§2.3); (3) **Debug subagent** — `simulation-triage`. The shared prompt template is `framework/references/prompts/stage-subagent.md.tpl`; its forbidden-actions prose is the enforcement mechanism — `allowed-tools` frontmatter is not used.
+Subagents are dispatched via the Task tool with fresh context, a restricted prompt, and a per-dispatch workdir. Three contract families: (1) **Stage subagent** — the four Task-dispatched rules; (2) **Main-thread skill** — the four `Skill()`-loaded rules (§2.3); (3) **Debug subagent** — `simulation-triage`. The shared prompt template is `framework/references/prompts/stage-subagent.md.tpl`; its forbidden-actions prose is the enforcement mechanism — `allowed-tools` frontmatter is not used.
 
 ### 6.1 Stage subagent
 
@@ -422,7 +422,7 @@ Subagents are dispatched via the Task tool with fresh context, a restricted prom
 
 ### 6.2 `failure_kind` envelope obligation
 
-`synthesis`, `power-analysis`, and `timing-analysis` carry one extra obligation: on `status == "fail"`, `stage_specific.failure_kind ∈ {infra, tooling, ppa}` is required. `infra` (tool never started) and unroutable `tooling` escalate; `ppa` (a PPA gate exceeded) routes to `rtl-design`; a `power-analysis` `tooling` failure may additionally populate `failures[]` whose `failures[0].category` `route.py` maps to the owning producer (§5.4). An absent or wrong-enum `failure_kind` fails schema validation at reap and lands `blocked`, never `fail`. `frontend-signoff` is the pipeline's one script-authored envelope (its `signoff finalize` verb writes it), validated by the same reap schema check.
+`synthesis`, `power-analysis`, and `timing-analysis` carry one extra obligation: on `status == "fail"`, `stage_specific.failure_kind ∈ {infra, tooling, ppa}` is required. `infra` (tool never started) and unroutable `tooling` escalate; `ppa` (a PPA gate exceeded) routes to `rtl-design`; a `power-analysis` `tooling` failure may additionally populate `failures[]` whose `failures[0].category` `route.py` maps to the owning producer (§5.4). An absent or wrong-enum `failure_kind` fails schema validation at reap and lands `blocked`, never `fail`.
 
 ### 6.3 Main-thread skill
 
@@ -446,7 +446,7 @@ The four `Skill()`-loaded rules share the stage-subagent contract — **no `kern
 
 ### 6.5 Async subagent transcript mirroring
 
-Async Task subagents (all five Task-dispatched rules and `simulation-triage`) produce a JSONL transcript at a harness `/tmp` path that Claude Code garbage-collects at session end. When the Orchestrator's reap passes `--subagent-output-file <output-file>` (the value on the `<task-notification>`'s `<output-file>` tag), `store._mirror_subagent_trace` best-effort copies it to `<workdir>/.subagent_traces/<rule>-<agent_id>.output` so external analysis tooling can attribute per-stage behavior. It is a write-only side-effect that never aborts the reap on failure. The four main-thread skills run synchronously and produce no stage-level transcript to mirror; intra-stage fan-out sub-Tasks are not DAG stages and fall outside the stage-level trace interface. The `<stage>-<agent_id>.output` naming and `.subagent_traces/` directory are a stable interface — renaming either is a breaking change.
+Async Task subagents (all four Task-dispatched rules and `simulation-triage`) produce a JSONL transcript at a harness `/tmp` path that Claude Code garbage-collects at session end. When the Orchestrator's reap passes `--subagent-output-file <output-file>` (the value on the `<task-notification>`'s `<output-file>` tag), `store._mirror_subagent_trace` best-effort copies it to `<workdir>/.subagent_traces/<rule>-<agent_id>.output` so external analysis tooling can attribute per-stage behavior. It is a write-only side-effect that never aborts the reap on failure. The four main-thread skills run synchronously and produce no stage-level transcript to mirror; intra-stage fan-out sub-Tasks are not DAG stages and fall outside the stage-level trace interface. The `<stage>-<agent_id>.output` naming and `.subagent_traces/` directory are a stable interface — renaming either is a breaking change.
 
 ## 7. Workspace layout
 
@@ -456,7 +456,7 @@ Each module's working state lives under `asic/<module>/`. Each rule's canonical 
 
 ```
 asic/<module>/
-├── events.jsonl               # the ONLY durable state (append-only, 6 event types)
+├── events.jsonl               # the ONLY durable state (append-only, 7 event types)
 ├── .fingerprint-cache.json    # pure mtime/size speed cache — never a fact source
 ├── brainstorm.md              # pre-pipeline external input (module root; written by the brainstorm skill)
 ├── Design/
@@ -470,13 +470,12 @@ asic/<module>/
 │   ├── lint-cdc/             { result.json + reports / *-violations.json / scripts/{constraints.sgdc,waiver.tcl} + runs/<N>/ }
 │   ├── synthesis/            { result.json + out/*_syn.{v,sdc,sdf} / reports/qor.rpt + runs/<N>/ }
 │   └── timing-analysis/      { result.json + timing-report.txt / timing-actual.json + runs/<N>/ }
-├── Verification/
+└── Verification/
 │   ├── simulation-plan/      { result.json + verification-plan.md / scaffold-specification.json / plan-review.json + runs/<N>/ }
 │   ├── simulation/           { result.json + env.sh / rtl_filelist.f / tb/uvm/* / case-results-summary.md /
 │   │                           conformance-review.json + runs/<N>/ (<test_id>.fsdb per failing test — gc-on-pass, §7.3) }
 │   ├── simulation-triage/    { result.json + runs/<sim_run>/ (analysis; L2: experiment/) — proof=None }
 │   └── power-analysis/       { result.json + reports_ptpx/*/power_hier.rpt + runs/<N>/ }
-└── frontend-signoff/         { result.json + checklist.md / traceability.md + runs/<N>/ }
 ```
 
 There is no `task.json` — status is derived from `events.jsonl` on demand (§4).

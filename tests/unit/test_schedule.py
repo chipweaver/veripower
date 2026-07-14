@@ -221,19 +221,33 @@ def test_delivery_no_overtake_but_repair_direct(tmp_path, monkeypatch):
 
 
 def test_signoff_all_valid_pinned_done(tmp_path, monkeypatch):
-    # all 9 proofs valid with every oracle pinned -> objective=signoff is DONE.
+    # all 8 stage proofs valid with every oracle pinned -> objective=signoff is DONE,
+    # meaning "the gate is clear, go stamp".
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
     assert schedule.decide("m", objective="signoff")["action"] == "DONE"
 
 
-def test_signoff_gate_blocks_on_proposed_oracle(tmp_path, monkeypatch):
-    # 8 upstream proofs valid, frontend-signoff the sole candidate that hits the gate;
-    # default oracle grades leave several proofs "proposed". The reason must name the
-    # FIRST offender in FORWARD_PRIORITY order (specification) — deterministic, never
-    # hash-seed-dependent set order.
+def test_signoff_objective_is_not_a_delivery_alias(tmp_path, monkeypatch):
+    # required_proofs is IDENTICAL for delivery and signoff, so the gate at decide's DONE
+    # point is the only thing that distinguishes them. Without it, signoff would silently
+    # degrade to a delivery alias and report DONE with the trust boundary never consulted.
+    # Same log, same proofs, opposite verdicts — that delta IS the objective.
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("proposed", 1, include=rules.FORWARD_PRIORITY[:8])
+    _build_all_valid("m", 1)  # default (proposed) grades — gate must refuse
+    assert schedule.required_proofs(
+        "m", facts.read_events("m"), "delivery"
+    ) == schedule.required_proofs("m", facts.read_events("m"), "signoff")
+    assert schedule.decide("m", objective="delivery")["action"] == "DONE"
+    assert schedule.decide("m", objective="signoff")["action"] == "ESCALATE"
+
+
+def test_signoff_gate_blocks_on_proposed_oracle(tmp_path, monkeypatch):
+    # Every stage proof valid; default oracle grades leave several "proposed". The reason
+    # must name the FIRST offender in FORWARD_PRIORITY order (specification) —
+    # deterministic, never hash-seed-dependent set order.
+    monkeypatch.chdir(tmp_path)
+    _build_all_valid("proposed", 1)
     a = schedule.decide("proposed", objective="signoff")
     assert a["action"] == "ESCALATE"
     assert a["reason"] == "signoff blocked: specification oracle is proposed (pin it)"
@@ -244,18 +258,16 @@ def test_signoff_gate_reads_live_pin_without_rereap(tmp_path, monkeypatch):
     # lifts the signoff gate immediately, with NO re-reap: the gate reads the live grade
     # (facts.oracle_grade over the current event log), not the reap-time snapshot.
     monkeypatch.chdir(tmp_path)
-    _build_all_valid(
-        "m", 1, include=rules.FORWARD_PRIORITY[:8]
-    )  # default (proposed) grades
-    assert schedule._signoff_gate("m", facts.read_events("m")) == {
-        "action": "ESCALATE",
-        "reason": "signoff blocked: specification oracle is proposed (pin it)",
-    }
+    _build_all_valid("m", 1)  # default (proposed) grades
+    assert (
+        facts.signoff_gate("m", facts.read_events("m"))
+        == "signoff blocked: specification oracle is proposed (pin it)"
+    )
     # Pin every proposed oracle after the fact; no proof is re-reaped.
-    for rule in rules.FORWARD_PRIORITY[:8]:
+    for rule in rules.FORWARD_PRIORITY:
         if rules.RULES[rule].oracle[1] == "proposed":
             _pin("m", rule)
-    assert schedule._signoff_gate("m", facts.read_events("m")) is None
+    assert facts.signoff_gate("m", facts.read_events("m")) is None
 
 
 # --- §6-mandated coverage (each maps to a spec §6 bullet) ---
@@ -445,10 +457,6 @@ _OUTPUTS = {
         "Verification/simulation/tb/uvm/agent.sv",
     ],
     "power-analysis": ["Verification/power-analysis/reports_ptpx/run1/power_hier.rpt"],
-    "frontend-signoff": [
-        "frontend-signoff/checklist.md",
-        "frontend-signoff/traceability.md",
-    ],
 }
 
 # Grades that pin every proposed oracle to human — needed for a passing signoff gate.
@@ -612,7 +620,7 @@ def _invalidate_proof(module, rule):
 
 
 def _build_all_valid(module, run, *, include=None, oracle_grades=None):
-    """Dispatch+pass every rule in `include` (default all 9), FORWARD order so each
+    """Dispatch+pass every rule in `include` (default all 8), FORWARD order so each
     rule's upstream outputs already exist on disk when its inputs are recorded."""
     _mk(module, "brainstorm.md", "b1")
     include = include if include is not None else rules.FORWARD_PRIORITY
@@ -620,13 +628,12 @@ def _build_all_valid(module, run, *, include=None, oracle_grades=None):
     for rule in rules.FORWARD_PRIORITY:
         if rule not in include:
             continue
-        objective = "signoff" if rule == "frontend-signoff" else "delivery"
-        _valid(module, rule, run, oracle_grade=grades.get(rule), objective=objective)
+        _valid(module, rule, run, oracle_grade=grades.get(rule), objective="delivery")
 
 
 def test_required_proofs_repair_only_targets_stage_proofs(tmp_path, monkeypatch):
     # F3: repair targets a failed PROOF; simulation-triage produces none. Even if a triage
-    # outcome ever carries verdict=fail, required_proofs(repair) must stay within the 9
+    # outcome ever carries verdict=fail, required_proofs(repair) must stay within the 8
     # stage proofs — else step-2's sorted(work, key=FORWARD_PRIORITY.index) raises ValueError.
     monkeypatch.chdir(tmp_path)
     _outcome(
@@ -642,46 +649,22 @@ def test_decide_repair_survives_triage_fail_outcome(tmp_path, monkeypatch):
     # outcome, decide(repair) must not crash — before the fix, required_proofs returns
     # {"simulation-triage"} and step 2 hits FORWARD_PRIORITY.index("simulation-triage").
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1, include=rules.FORWARD_PRIORITY[:8])
+    _build_all_valid("m", 1)
     _outcome("m", "simulation-triage", 1, "fail", {}, [])
     a = schedule.decide("m", objective="repair")  # must not raise ValueError
     assert a["action"] in ("DONE", "YIELD", "DISPATCH", "ESCALATE")
     assert a.get("rule") != "simulation-triage"
 
 
-def test_repair_stale_signoff_fail_does_not_dispatch_signoff(tmp_path, monkeypatch):
-    # F4: frontend-signoff is dispatchable ONLY under objective=signoff (cmd_dispatch
-    # rejects it otherwise). decide must mirror that invariant: a STALE frontend-signoff
-    # failure under objective=repair must NOT emit DISPATCH frontend-signoff — cmd_dispatch
-    # would reject it every round, an activelock (safety holds, liveness breaks).
+def test_unregistered_rule_in_flight_is_not_reapable_forever(tmp_path, monkeypatch):
+    # An in-flight dispatch naming a rule the registry does not know is unreapable —
+    # `reap --rule` argparse-rejects it — so surfacing it would wedge the module behind a
+    # `REAP` decide keeps returning and no one can execute. in_flight drops it instead.
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1, include=rules.FORWARD_PRIORITY[:8])  # all upstream valid
-    # frontend-signoff failed, but its recorded inputs are STALE (reports since changed)
-    # -> the fail is not fresh (step 1 skips it) yet it is the newest fail.
-    _dispatch(
-        "m",
-        "frontend-signoff",
-        1,
-        {"Design/specification/design.md": "sha256:STALEVERSION"},
-        objective="signoff",
-    )
-    _outcome(
-        "m",
-        "frontend-signoff",
-        1,
-        "fail",
-        {},
-        [
-            {
-                "name": "frontend-signoff",
-                "verdict": "fail",
-                "inputs": {"Design/specification/design.md": "sha256:STALEVERSION"},
-                "oracle": {"ref": "signoff-aggregator", "grade": "tool"},
-            }
-        ],
-    )
-    a = schedule.decide("m", objective="repair")
-    assert not (a["action"] == "DISPATCH" and a["rule"] == "frontend-signoff")
+    _build_all_valid("m", 1)
+    _dispatch("m", "not-a-rule", 1, {}, objective="delivery")  # never reaped
+    assert facts.in_flight(facts.read_events("m")) == []
+    assert schedule.decide("m", objective="delivery")["action"] == "DONE"
 
 
 def test_signoff_gate_flags_valid_proof_carrying_unknown_version(tmp_path, monkeypatch):
@@ -690,13 +673,13 @@ def test_signoff_gate_flags_valid_proof_carrying_unknown_version(tmp_path, monke
     # so the proof validates while its recorded INPUT table still holds an unknown. (The
     # outputs-side of the gate check is defensively unreachable: an unknown output already
     # fails cond 4.) Crafted ledger: specification valid with a design.md input recorded
-    # unknown but its output real -> _signoff_gate fires the unknown-version branch on it.
+    # unknown but its output real -> signoff_gate fires the unknown-version branch on it.
     monkeypatch.chdir(tmp_path)
     _mk("m", "brainstorm.md", "b1")
     _mk("m", "Design/specification/design.md", "dm")
     bm = _fp("m", "brainstorm.md")
     dm = _fp("m", "Design/specification/design.md")
-    _dispatch("m", "specification", 1, {"brainstorm.md": bm}, objective="signoff")
+    _dispatch("m", "specification", 1, {"brainstorm.md": bm}, objective="delivery")
     _outcome(
         "m",
         "specification",
@@ -719,10 +702,9 @@ def test_signoff_gate_flags_valid_proof_carrying_unknown_version(tmp_path, monke
         "m", "specification"
     )  # live-pin the oracle so the gate clears grade and reaches
     # the unknown-version branch (the check under test, downstream of the grade check).
-    gate = schedule._signoff_gate("m", facts.read_events("m"))
+    gate = facts.signoff_gate("m", facts.read_events("m"))
     assert gate is not None
-    assert gate["action"] == "ESCALATE" and "unknown version" in gate["reason"]
-    assert "specification" in gate["reason"]
+    assert "unknown version" in gate and "specification" in gate
 
 
 def test_fresh_fail_fix_owner_in_flight_yields(tmp_path, monkeypatch):
@@ -759,17 +741,36 @@ def test_sim_fail_triage_in_flight_yields(tmp_path, monkeypatch):
     assert schedule.decide("m", objective="repair")["action"] == "YIELD"
 
 
-def test_projection_signoff_cell_regresses_on_hand_edit(tmp_path, monkeypatch):
+def test_signed_off_regresses_on_hand_edit(tmp_path, monkeypatch):
     # E3: the reopen-named freshness test's fixture (empty outputs) structurally cannot
-    # exercise a hand-edit. Build a real signoff-valid chain (on-disk artifacts) and hand-edit
-    # one -> its proof invalidates (cond 4) -> the signoff cell regresses to stale.
+    # exercise a hand-edit. Build a real signed-off chain (on-disk artifacts) and hand-edit
+    # one -> its proof invalidates (cond 4) -> signed_off drops. This is the second conjunct
+    # of the predicate: the signoff event stays, but a signoff is only as good as the proofs
+    # beneath it.
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1)
-    assert facts.projection("m", facts.read_events("m"))["frontend-signoff"] == "valid"
+    _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
+    facts.append_event(
+        "m",
+        {"type": "signoff", "provenance": "u", "reason": "ship it"},
+        "2026-01-01T00:00:00Z",
+    )
+    assert facts.signed_off("m", facts.read_events("m")) is True
     _mk(
         "m", "Design/specification/design.md", "HAND-EDITED"
     )  # tamper a promoted artifact
-    assert facts.projection("m", facts.read_events("m"))["frontend-signoff"] == "stale"
+    assert facts.signed_off("m", facts.read_events("m")) is False
+
+
+def test_signed_off_requires_the_human_act(tmp_path, monkeypatch):
+    # First conjunct: every proof valid and every oracle pinned is NOT signed off. Pins are
+    # per-oracle judgments made for delivery's sake; the module-level "ship it" is a separate
+    # act, and without it nothing may claim signoff.
+    monkeypatch.chdir(tmp_path)
+    _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
+    assert facts.signoff_gate("m", facts.read_events("m")) is None  # gate is clear...
+    assert (
+        facts.signed_off("m", facts.read_events("m")) is False
+    )  # ...but nobody signed
 
 
 def test_signoff_gate_blocks_on_out_of_band_added_input(tmp_path, monkeypatch):
@@ -778,12 +779,10 @@ def test_signoff_gate_blocks_on_out_of_band_added_input(tmp_path, monkeypatch):
     # paths). The signoff gate rejects it so a smuggled-in source can't ship unverified —
     # enforced ONLY at the signoff trust boundary (daily path keeps the cheap check).
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1, include=rules.FORWARD_PRIORITY[:8], oracle_grades=_PIN_ALL)
-    assert (
-        schedule._signoff_gate("m", facts.read_events("m")) is None
-    )  # clean, gate passes
+    _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
+    assert facts.signoff_gate("m", facts.read_events("m")) is None  # clean, gate passes
     # a new .v appears in rtl-design/ out-of-band — matches lint/synth/sim `*.v` selectors
     _mk("m", "Design/rtl-design/sneaky.v", "module sneaky; endmodule")
-    gate = schedule._signoff_gate("m", facts.read_events("m"))
-    assert gate is not None and gate["action"] == "ESCALATE"
-    assert "new input" in gate["reason"].lower() and "sneaky.v" in gate["reason"]
+    gate = facts.signoff_gate("m", facts.read_events("m"))
+    assert gate is not None
+    assert "new input" in gate.lower() and "sneaky.v" in gate

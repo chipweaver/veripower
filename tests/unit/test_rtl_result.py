@@ -152,8 +152,8 @@ _ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
 
 
 def _validate_envelope(env: dict) -> None:
-    # INLINE Registry (not the frontend-signoff-bound helper): the rtl-design stage schema
-    # $ref's the envelope by $id, so resolve it via a local Registry.
+    # INLINE Registry: the rtl-design stage schema $ref's the envelope by $id, so
+    # resolve it via a local Registry.
     env_schema = json.loads(
         (ROOT / "framework/references/schemas/envelope.schema.json").read_text()
     )

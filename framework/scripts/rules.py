@@ -207,29 +207,6 @@ RULES: dict[str, Rule] = {
         oracle=("pt-shell", "tool"),
         params=("directive",),
     ),
-    "frontend-signoff": Rule(
-        name="frontend-signoff",
-        stage="frontend-signoff",
-        skill="veripower:frontend-signoff",
-        execution="task",
-        workdir_root=("frontend-signoff",),
-        inputs={
-            "design": ("Design/specification/design.md",),
-            "lint": (
-                "Design/lint-cdc/lint-report.txt",
-                "Design/lint-cdc/cdc-report.txt",
-            ),
-            "sim": ("Verification/simulation/case-results-summary.md",),
-            "timing": ("Design/timing-analysis/timing-report.txt",),
-            "qor": ("Design/synthesis/reports/qor.rpt",),
-            "power": ("Verification/power-analysis/reports_ptpx/*/power_hier.rpt",),
-            "manifest": ("Design/specification/manifest.json",),
-        },
-        outputs=("checklist.md", "traceability.md"),
-        proof="frontend-signoff",
-        oracle=("signoff-aggregator", "tool"),
-        params=("directive",),
-    ),
     "simulation-triage": Rule(
         name="simulation-triage",
         stage="simulation-triage",
@@ -253,7 +230,6 @@ FORWARD_PRIORITY: list[str] = [
     "timing-analysis",
     "simulation",
     "power-analysis",
-    "frontend-signoff",
 ]
 
 PIPELINE_INPUTS: tuple[str, ...] = ("brainstorm.md",)

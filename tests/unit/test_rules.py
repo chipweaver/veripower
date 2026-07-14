@@ -10,12 +10,12 @@ import rules  # noqa: E402
 SKILLS_DIR = ROOT / "skills"
 
 
-def test_ten_rules_nine_stages_plus_triage():
-    assert len(rules.RULES) == 10
-    # FORWARD_PRIORITY doubles as the signoff obligation set (_STAGE_PROOFS / _signoff_gate),
-    # so anchor it to the SEMANTIC property — proof-producing rules — not a hardcoded name
-    # exclusion. A future proof-rule added to RULES but not FORWARD_PRIORITY would otherwise
-    # be silently exempt from the signoff gate (F-5).
+def test_nine_rules_eight_stages_plus_triage():
+    assert len(rules.RULES) == 9
+    # FORWARD_PRIORITY doubles as the signoff obligation set (_STAGE_PROOFS /
+    # facts.signoff_gate, which iterates it whole), so anchor it to the SEMANTIC property —
+    # proof-producing rules — not a hardcoded name exclusion. A future proof-rule added to
+    # RULES but not FORWARD_PRIORITY would otherwise be silently exempt from the gate (F-5).
     assert set(rules.FORWARD_PRIORITY) == {
         n for n, r in rules.RULES.items() if r.proof is not None
     }

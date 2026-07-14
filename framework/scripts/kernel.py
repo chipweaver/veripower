@@ -42,9 +42,10 @@ def cmd_dispatch(
     extra_params=None,
 ):
     """Re-checks dispatchability AT THIS INSTANT (decide→dispatch drift guard, §4.2):
-    in-flight premise, input availability, and — for frontend-signoff — the FULL signoff
-    gate, so an explicit `dispatch --rule frontend-signoff` cannot bypass decide and mint
-    a signoff proof (§3.6; §6 mandates the bypass-blocked test).
+    in-flight premise and input availability.
+
+    The signoff gate is not among these checks — signoff is not dispatchable. `cmd_signoff`
+    runs it (§5.5).
 
     extra_params (parsed --params JSON object, e.g. {"sim_run": 5} for simulation-triage
     per rules.RULES[rule].params) is merged into the recorded dispatch event's `params`
@@ -68,15 +69,6 @@ def cmd_dispatch(
             "error": f"{rule} dispatch missing required --params {missing} "
             f"(Rule.params={list(rules.RULES[rule].params)})",
         }
-    if rule == "frontend-signoff":
-        if objective != "signoff":
-            return {
-                "ok": False,
-                "error": "frontend-signoff dispatches only under objective=signoff (§3.2)",
-            }
-        gate = schedule._signoff_gate(module, events)
-        if gate is not None:
-            return {"ok": False, "error": gate["reason"]}
     run = facts.runs_of(events, rule) + 1
     workdir = str(Path(*rules.workdir_root(rule), "runs", str(run)))
     (facts.module_root(module) / workdir).mkdir(parents=True, exist_ok=True)
@@ -462,9 +454,29 @@ def cmd_reopen(module, pin_ref, reason):
     return {"ok": True, "pin_ref": pin_ref}
 
 
+def cmd_signoff(module, provenance, reason):
+    """Close signoff: run the gate, and only if it is clear record the human act (§5.5).
+
+    The third ask-gated judgment verb, beside pin/reopen — and the only bypass surface the
+    gate has, which is why the gate runs HERE rather than being trusted from a prior
+    `decide`. A caller that skips decide entirely still cannot mint a signoff (§6's
+    bypass-blocked test targets exactly this)."""
+    events = facts.read_events(module)
+    reason_blocked = facts.signoff_gate(module, events)
+    if reason_blocked is not None:
+        return {"ok": False, "error": reason_blocked}
+    ev = {"type": "signoff", "provenance": provenance, "reason": reason}
+    facts.append_event(module, ev, _now())
+    return {"ok": True, "module": module, "provenance": provenance}
+
+
 def cmd_status(module):
     events = facts.read_events(module)
-    return {"module": module, "stages": facts.projection(module, events)}
+    return {
+        "module": module,
+        "stages": facts.projection(module, events),
+        "signed_off": facts.signed_off(module, events),
+    }
 
 
 def cmd_consequences(module, paths):
@@ -553,6 +565,10 @@ def main():
     ro.add_argument("--module", required=True)
     ro.add_argument("--pin-ref", required=True)
     ro.add_argument("--reason", required=True)
+    so = sub.add_parser("signoff")
+    so.add_argument("--module", required=True)
+    so.add_argument("--provenance", required=True)
+    so.add_argument("--reason", required=True)
     st = sub.add_parser("status")
     st.add_argument("--module", required=True)
     st.add_argument(
@@ -631,6 +647,7 @@ def main():
         ),
         "pin": lambda: cmd_pin(args.module, args.rule, args.provenance, args.reason),
         "reopen": lambda: cmd_reopen(args.module, args.pin_ref, args.reason),
+        "signoff": lambda: cmd_signoff(args.module, args.provenance, args.reason),
         "status": lambda: cmd_status(args.module),
         "consequences": lambda: cmd_consequences(args.module, args.paths),
     }

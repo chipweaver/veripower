@@ -5,8 +5,8 @@ The ONE new module in the skill-elegance cure (cure-spec §3.1 explicit exceptio
 lint-cdc's gate engine `collect_report.py` is `templates/`-deployed (run by `make lint`
 / `make cdc`, never invoked by the agent by path) and runs ONCE PER KIND, each writing
 its own `*-violations.json`. There is no single host tool to grow, so this thin combiner
-ANDs the two already-written sidecars and writes the envelope. Model: frontend-signoff signoff/result.py
-(a pure file-reader that hand-writes the envelope).
+ANDs the two already-written sidecars and writes the envelope — a pure file-reader that
+hand-writes the envelope.
 
 Pure file-reader: it does NOT import or subprocess collect_report.py and writes ZERO new
 sidecar. It reads the two collect_report.py outputs (lint-violations.json /

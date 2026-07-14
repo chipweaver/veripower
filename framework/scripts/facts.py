@@ -224,7 +224,16 @@ def runs_of(events: list[dict], rule: str) -> int:
 
 
 def in_flight(events: list[dict]) -> list[dict]:
-    dispatched = [(e["rule"], e["run"]) for e in events if e["type"] == "dispatch"]
+    """Dispatched-but-not-reaped runs, restricted to rules the registry still knows.
+
+    A dispatch for an unregistered rule is unreapable — `kernel.py reap --rule` argparse-
+    rejects it — so surfacing it would have `decide` return a `REAP` no one can execute,
+    every round, forever. An unreapable run is not in flight."""
+    dispatched = [
+        (e["rule"], e["run"])
+        for e in events
+        if e["type"] == "dispatch" and e["rule"] in rules.RULES
+    ]
     reaped = {(e["rule"], e["run"]) for e in events if e["type"] == "outcome"}
     return [{"rule": r, "run": n} for (r, n) in dispatched if (r, n) not in reaped]
 
@@ -459,7 +468,7 @@ def rule_available(module: str, events: list[dict], rule_name: str) -> bool:
 
 def projection(module: str, events: list[dict]) -> dict[str, str]:
     """Per-stage cell per §4.4: valid | stale | failed | blocked | in-flight | missing.
-    frontend-signoff renders by the §3.6 '已签核' predicate instead of its bare proof."""
+    Stage cells only — signoff is not a stage and gets no cell; `signed_off` renders it."""
     flying = {f["rule"] for f in in_flight(events)}
     cells: dict[str, str] = {}
     for rule_name in rules.FORWARD_PRIORITY:
@@ -479,27 +488,70 @@ def projection(module: str, events: list[dict]) -> dict[str, str]:
         cells[rule_name] = (
             "valid" if proof_valid(module, events, rule_name) else "stale"
         )
-    # signoff cell override: valid iff a signoff-objective frontend-signoff proof is
-    # currently valid AND every stage proof is currently valid (§3.6 判定语).
-    if cells["frontend-signoff"] == "valid":
-        signed = _signoff_dispatch_was_signoff(events) and all(
-            proof_valid(module, events, r) for r in rules.FORWARD_PRIORITY
-        )
-        if not signed:
-            cells["frontend-signoff"] = "stale"
     return cells
 
 
-def _signoff_dispatch_was_signoff(events: list[dict]) -> bool:
-    hit = _proof_outcome(events, "frontend-signoff")
-    if hit is None:
+def signed_off(module: str, events: list[dict]) -> bool:
+    """§3.6 判定语: a human landed a `signoff` event AND every stage proof is CURRENTLY
+    valid. Both conjuncts are load-bearing — the event carries the human act, and validity
+    is re-derived live so that a proof going stale afterwards drops the signoff on its own.
+
+    There is deliberately no unsign verb: `reopen` invalidates its proof via proof_valid
+    condition 3, which drops the second conjunct at once. The signoff event is permanent."""
+    if not any(e["type"] == "signoff" for e in events):
         return False
-    _, outcome = hit
-    for e in events:
+    return all(proof_valid(module, events, r) for r in rules.FORWARD_PRIORITY)
+
+
+def _added_inputs(module: str, rule_name: str, proof: dict) -> list[str]:
+    """Files on disk matching rule_name's input selectors but NOT in the proof's recorded
+    inputs — i.e. added out-of-band AFTER the proof landed. proof_valid conditions 2/4 only
+    check RECORDED paths, so an out-of-band ADD (unlike an edit/delete) escapes them; the
+    signoff gate uses this so a smuggled-in source can't ship unverified. Self-produced
+    (in∩out) selectors are excluded — those are covered by output binding, not a fresh
+    out-of-band add. Gate-private: `signoff_gate` is the sole caller."""
+    root = module_root(module)
+    recorded = set(proof.get("inputs", {}))
+    extra: list[str] = []
+    for globs in rules.RULES[rule_name].inputs.values():
+        for g in globs:
+            if g in rules.PIPELINE_INPUTS or rules.producer_of(g) == rule_name:
+                continue
+            for p in sorted((root).glob(g)):
+                rel = str(p.relative_to(root))
+                if p.is_file() and rel not in recorded:
+                    extra.append(rel)
+    return extra
+
+
+def signoff_gate(module: str, events: list[dict]) -> str | None:
+    """Signoff admissibility: EVERY stage proof valid, oracle grade ∈ {tool, human}, no
+    unknown recorded version, no out-of-band added input. Returns a one-line reason when the
+    gate fails, else None. Callers wrap it in their own vocabulary — `decide` into an
+    ESCALATE action, `kernel signoff` into an `ok:false` — because a reason string is
+    neither's dialect to own.
+
+    Iterates FORWARD_PRIORITY in order (never a set): with >1 proof failing the gate, a set
+    would make the reason vary with the hash seed, breaching decide's purity invariant."""
+    for proof in rules.FORWARD_PRIORITY:
+        if not proof_valid(module, events, proof):
+            return f"signoff blocked: {proof} not valid"
+        _, outcome = _proof_outcome(events, proof)
+        p = next(x for x in outcome["proofs"] if x["name"] == proof)
+        # Live grade over the current event log — NOT the reap-time snapshot in
+        # p["oracle"]["grade"] — so a post-reap pin takes effect at the signoff gate at
+        # once (no re-reap) and a reopen blocks signoff immediately.
+        if oracle_grade(module, events, rules.RULES[proof]) not in ("tool", "human"):
+            return f"signoff blocked: {proof} oracle is proposed (pin it)"
         if (
-            e["type"] == "dispatch"
-            and e["rule"] == "frontend-signoff"
-            and e["run"] == outcome["run"]
+            UNKNOWN in p.get("inputs", {}).values()
+            or UNKNOWN in outcome.get("outputs", {}).values()
         ):
-            return e.get("objective") == "signoff"
-    return False
+            return f"signoff blocked: {proof} carries an unknown version"
+        added = _added_inputs(module, proof, p)
+        if added:
+            # A new file matching this rule's selectors appeared out-of-band after the
+            # proof landed — it was never verified. Only enforced here at the signoff
+            # trust boundary (the daily delivery/repair path keeps the cheap recorded-set check).
+            return f"signoff blocked: {proof} has unverified new input(s) {added}"
+    return None

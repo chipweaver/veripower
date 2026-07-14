@@ -20,7 +20,7 @@
 
 Chip-design teams trying to put LLMs in their EDA flow hit three structural failures:
 
-- **Context loss across multi-hour flows.** A one-shot prompt cannot orchestrate a real specification → frontend-signoff pipeline; somewhere mid-flow, the model forgets a constraint or a prior failure and corrupts downstream work.
+- **Context loss across multi-hour flows.** A one-shot prompt cannot orchestrate a real specification → signoff pipeline; somewhere mid-flow, the model forgets a constraint or a prior failure and corrupts downstream work.
 - **Manual stage gating doesn't scale.** Tracking which module is at which stage, which reworks are pending, and which results are stale across a portfolio of designs is a full-time human job.
 - **AI-driven decisions leave no audit trail.** Production EDA tape-out review demands traceability for every decision; black-box agents fail this bar on day one.
 
@@ -36,7 +36,7 @@ The `design-flow` Orchestrator bootstraps the module's state and walks the pipel
 
 - `asic/{module}/events.jsonl` — append-only, schema-validated event log; the **sole** durable state file (the audit trail).
 - per-stage status is **not** persisted — it is computed on demand from the event log + disk fingerprints (`kernel.py status`), so it can never drift from what's on disk.
-- per-stage `result.json` artifacts under `Design/` and `Verification/`, plus the terminal `frontend-signoff/result.json`.
+- per-stage `result.json` artifacts under `Design/` and `Verification/`.
 
 Full step-by-step walkthrough: [`GETTING-STARTED.md`](GETTING-STARTED.md).
 
@@ -64,9 +64,6 @@ VeriPower covers the full ASIC frontend — spec through signoff, no point-tool 
                           └─────────────────┬──────────────────┘
                                             ↓
                                     [power-analysis]
-                                            │
-                                            ↓
-                                    [frontend-signoff]
 ```
 
 | Stage | Purpose | Primary tool |
@@ -80,7 +77,10 @@ VeriPower covers the full ASIC frontend — spec through signoff, no point-tool 
 | `timing-analysis` | Static timing — setup/hold/slack | Synopsys PrimeTime |
 | `simulation` | UVM TB materialization + regression + coverage closure | Synopsys VCS + UVM |
 | `power-analysis` | GLS + SAIF + PT-PX averaged power, with PPA self-judgment | Synopsys VCS + PrimeTime PX |
-| `frontend-signoff` | Aggregate checklist + traceability across all stages | (LLM) |
+
+Signoff is not a stage. Once every proof is valid and a human has pinned each LLM-proposed
+judge, `kernel.py signoff` closes the module — the third ask-gated judgment verb beside
+`pin`/`reopen`. See [`ARCHITECTURE.md §5.5`](ARCHITECTURE.md#55-signoff-closure).
 
 Full dependency-graph semantics live in [`ARCHITECTURE.md §3`](ARCHITECTURE.md#3-rule-registry-and-the-derived-dependency-graph).
 
@@ -90,7 +90,7 @@ Full dependency-graph semantics live in [`ARCHITECTURE.md §3`](ARCHITECTURE.md#
 
 ### 1. Determinism boundary: judgment in the agent, state in Python
 
-> A deterministic Python CLI (`framework/scripts/kernel.py`, 9 verbs) is the sole writer of all state and `kernel.py decide` (implemented in `schedule.py`) owns all control-loop decisions; the Orchestrator agent is a thin executor. Every state-mutating call is bracketed by a `decide` — two consecutive mutating calls with no `decide` between them is a bug.
+> A deterministic Python CLI (`framework/scripts/kernel.py`, 10 verbs) is the sole writer of all state and `kernel.py decide` (implemented in `schedule.py`) owns all control-loop decisions; the Orchestrator agent is a thin executor. Every state-mutating call is bracketed by a `decide` — two consecutive mutating calls with no `decide` between them is a bug.
 
 **For chip-design teams.** State is replayable from disk and unit-testable in Python. The bookkeeping cannot drift even when the agent does — the same property regulated EDA flows demand from their existing toolchains.
 

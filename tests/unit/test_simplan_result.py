@@ -258,8 +258,8 @@ _ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
 
 
 def _validate_envelope(env: dict) -> None:
-    # Inline Registry (NOT the frontend-signoff-bound _validate_envelope): validate the
-    # in-memory envelope against {envelope schema + simulation-plan result.schema} via Registry.
+    # Inline Registry: validate the in-memory envelope against
+    # {envelope schema + simulation-plan result.schema} via Registry.
     env_schema = json.loads(
         (ROOT / "framework/references/schemas/envelope.schema.json").read_text()
     )
