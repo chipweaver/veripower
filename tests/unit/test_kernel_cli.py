@@ -833,7 +833,7 @@ def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
         TS,
     )
     rev.write_text("REVIEW-A")  # oracle back to A; latest pin (B) no longer matches
-    grade = kernel._graded(
+    grade = facts.oracle_grade(
         module, facts.read_events(module), rules.RULES["specification"]
     )
     assert grade == "proposed"

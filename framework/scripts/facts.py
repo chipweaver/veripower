@@ -281,6 +281,53 @@ def _live_pin_exists(events: list[dict], oracle_ref: str) -> bool:
     return False
 
 
+def oracle_content_fp(module: str, rule) -> str:
+    """Current content fingerprint of a proposed oracle, per its Rule.oracle_selector
+    (workdir-root-relative glob). Multiple matches merge deterministically (sorted)."""
+    root = module_root(module)
+    base = root / Path(*rules.workdir_root(rule.name))
+    paths = sorted(base.glob(rule.oracle_selector))
+    if not paths:
+        return UNKNOWN
+    if len(paths) == 1 and paths[0].is_file():
+        return fingerprint(paths[0])
+    h = hashlib.sha256()
+    for p in paths:
+        h.update(str(p.relative_to(base)).encode() + b"\0")
+        h.update(fingerprint(p).encode() + b"\0")
+    return "merkle:" + h.hexdigest()
+
+
+def oracle_grade(module: str, events: list[dict], rule) -> str:
+    """LIVE oracle grade (§5.4 ratchet): proposed unless the LATEST live pin's recorded
+    content fingerprint matches the oracle's CURRENT content. A pin is live iff NO reopen
+    naming its oracle_ref appears AFTER it in event order — set-membership over refs would
+    kill re-pinning forever (pin→reopen→pin must yield a live pin again). Derived live over
+    the current event log (not a reap-time snapshot in the outcome event) so a pin/reopen
+    takes effect immediately — the signoff gate reads this so an endorsement need not wait
+    for a re-reap, and a reopen blocks signoff at once."""
+    if rule.oracle[1] != "proposed":
+        return rule.oracle[1]
+    live = []
+    for i, e in enumerate(events):
+        if e["type"] == "pin" and e["oracle_ref"] == rule.oracle[0]:
+            reopened_later = any(
+                r["type"] == "reopen" and r["pin_ref"] == rule.oracle[0]
+                for r in events[i + 1 :]
+            )
+            if not reopened_later:
+                live.append(e)
+    if not live:
+        return "proposed"
+    current = oracle_content_fp(module, rule)
+    if current == UNKNOWN:
+        return "proposed"  # unreadable oracle content never inherits trust
+    # Compare against the LATEST live pin only (spec §5.4 "与最新 pin 记录比对"). `live` is in
+    # event order, so live[-1] is the newest; an OLDER live pin matching current content must
+    # not resurrect trust the newer endorsement moved on from.
+    return "human" if live[-1]["content_fingerprint"] == current else "proposed"
+
+
 def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:
     """spec §1.3: a proof is currently valid iff verdict==pass AND every recorded input
     version matches disk AND its oracle ref was not reopened after the proof landed AND
