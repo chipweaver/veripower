@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""rtl exit gate — R-1 top-module coverage + purity (pre) and blocked-child precedence +
+"""rtl exit gate — top-module coverage + purity (pre) and blocked-child precedence +
 artifacts enumeration (post).
 
 Two verdicts, one cohesive module (they were adjacent and coupled in the source):
@@ -47,6 +47,12 @@ def post_verdict(manifest: Path, top: str, fresh: Path, ledger: Path):
     enumeration from the ledger. Returns (verdict_dict, rc). The single copy assemble's run()
     and result's build_result both reuse — no behavior change, only factored out."""
     status, reason = coverage_verdict(manifest, top)
+    if status == "fail" and not ledger.exists():
+        # Pre-dispatch coverage fail (no fan-out yet, so no ledger): surface the real coverage
+        # reason (never None on a fail) so `finalize` can write it, instead of the generic
+        # "requires fresh + ledger" message below. In assemble.run the ledger is always written
+        # before this call, so this branch is reached only from the pre-dispatch finalize path.
+        return {"status": "fail", "artifacts": [], "fail_reason": reason}, 1
     if not (fresh.exists() and ledger.exists()):
         return (
             {

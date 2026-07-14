@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""rtl check-conformance — spec↔RTL presence-level checks (Tier 2).
+"""rtl check-conformance — spec↔RTL presence-level checks.
 
 Emits a one-line JSON verdict on stdout the main thread reads:
   {"status": "pass|fail", "violations": [...], "fail_reason"?: str}
 Status truth = exit code (0 pass / 1 fail). Presence-level identifier scan only
 (NOT elaboration — that is lint-cdc's job via SpyGlass). Each violation names a
-`child` so the main thread's bounded self-converge loop can re-dispatch it.
+`child` so the main thread's self-converge loop can re-dispatch it.
 """
 
 from __future__ import annotations

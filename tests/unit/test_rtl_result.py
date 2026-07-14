@@ -204,6 +204,34 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     _validate_envelope(env)
 
 
+def test_build_result_pre_dispatch_coverage_fail_routes_through_finalize(tmp_path):
+    # F-A: a pre-dispatch check-partition coverage fail (no fan-out yet -> no ledger, no
+    # fresh_reports.json) routes through finalize and surfaces the REAL coverage reason, not
+    # the generic "requires fresh_reports.json and the ledger" pre-guard message. This exercises
+    # partition.post_verdict's coverage short-circuit (status=fail AND no ledger).
+    wd = tmp_path / "rtl-design"
+    wd.mkdir()  # empty: no ledger, no fresh_reports.json (pre-dispatch state)
+    man = {  # top module covered by 0 children -> coverage fail
+        "module": "tpu_top",
+        "children": [{"name": "mac", "doc": "mac.md", "rtl_modules": ["mac"]}],
+    }
+    spec = tmp_path / "Design" / "specification"
+    spec.mkdir(parents=True)
+    manifest = spec / "manifest.json"
+    manifest.write_text(json.dumps(man))
+
+    assert ve.build_result(wd, module="tpu_top", top="tpu_top", manifest=manifest) == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    fr = env["stage_specific"]["fail_reason"]
+    assert "covered by 0 children" in fr  # the real coverage reason, surfaced
+    assert "requires fresh_reports.json" not in fr  # NOT the generic pre-guard message
+    assert (
+        "semantic_gate" not in env["stage_specific"]
+    )  # never reached the semantic gate
+    _validate_envelope(env)  # schema-valid status=fail envelope
+
+
 # ── New: finalize() BLOCKED wrapper + CLI dispatch ───────────────────────────
 def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
     # finalize() wraps build_result(): any internal raise -> exit 2 (BLOCKED), never
