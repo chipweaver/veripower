@@ -110,7 +110,7 @@ Dispatch one sub-Task that, in its own context, reads `asic/{module}/brainstorm.
    - `design.md` §1.1–1.6 overview (incl. §1.4.1 Top-Level IO + §1.4.2 Inter-module Interconnects) + §1.7 submodule index.
    - `ppa.json` — the D6 `ppa_targets` **verbatim** as a JSON array of `{dim, target}` (`[]` when D6 declares none or was not reached). This is the only step that transcribes PPA numbers; everything downstream reads the file.
 
-Child partition follows the interface graph, NOT line counts: each child is one or more whole RTL modules forming a coupling cluster, cut along the narrowest interfaces; strongly-coupled modules stay together so their shared interface is internalized (small leaf modules join their cluster — no line-count floor / size class).
+Child partition follows the interface graph's clean/dirty edges, NOT line counts: cut ONLY at clean elastic-handshake boundaries (`valid/ready` or `req/ack`); skew- or phase-locked couplings are NOT cut points — the modules they bind stay in one child, internalizing that coupling. Each child is thus one or more whole RTL modules forming a coupling cluster bounded by clean handshakes; a tightly-coupled fabric with no clean internal handshake is monolithic (N=1 — only the top boundary is clean). Small leaf modules join their cluster — no line-count floor / size class.
 
 **top-integration carve-out (best-effort hint):** `<TOP>` (= `manifest.module`) should form its own child whose `rtl_modules == [<TOP>]` — do not bundle any logic module into the top child. This is a soft hint; the hard guarantee is `check-coverage`'s purity gate.
 

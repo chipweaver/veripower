@@ -63,12 +63,12 @@ def test_module_presence_pass(tmp_path):
             {"name": "topc", "rtl_modules": ["top"]},
         ],
         {
-            "leaf": {"files": ["leaf.sv"], "annotations": _ANN},
-            "topc": {"files": ["top.sv"], "annotations": _ANN},
+            "leaf": {"files": ["leaf.v"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ANN},
         },
         {
-            "leaf.sv": "module leaf_m(input a); endmodule\n",
-            "top.sv": "module top(input a); leaf_m u_leaf(.a(a)); endmodule\n",
+            "leaf.v": "module leaf_m(input a); endmodule\n",
+            "top.v": "module top(input a); leaf_m u_leaf(.a(a)); endmodule\n",
         },
     )
     r = _run(tmp_path)
@@ -84,12 +84,12 @@ def test_module_presence_missing_fails(tmp_path):
             {"name": "topc", "rtl_modules": ["top"]},
         ],
         {
-            "leaf": {"files": ["leaf.sv"], "annotations": _ANN},
-            "topc": {"files": ["top.sv"], "annotations": _ANN},
+            "leaf": {"files": ["leaf.v"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ANN},
         },
         {
-            "leaf.sv": "module WRONG_NAME(input a); endmodule\n",
-            "top.sv": "module top(input a); endmodule\n",
+            "leaf.v": "module WRONG_NAME(input a); endmodule\n",
+            "top.v": "module top(input a); endmodule\n",
         },
     )
     r = _run(tmp_path)
@@ -114,14 +114,14 @@ def test_string_embedded_comment_markers_do_not_swallow_real_decl(tmp_path):
             {"name": "topc", "rtl_modules": ["top"]},
         ],
         {
-            "leaf": {"files": ["leaf.sv"], "annotations": _ANN},
-            "topc": {"files": ["top.sv"], "annotations": _ANN},
+            "leaf": {"files": ["leaf.v"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ANN},
         },
         {
-            "leaf.sv": 'module pre; initial $display("/* %d", x); endmodule\n'
+            "leaf.v": 'module pre; initial $display("/* %d", x); endmodule\n'
             "module clkdiv; endmodule\n"
             'module post; initial $display("end */ y"); endmodule\n',
-            "top.sv": "module top; clkdiv u0(); endmodule\n",
+            "top.v": "module top; clkdiv u0(); endmodule\n",
         },
     )
     r = _run(tmp_path)
@@ -152,14 +152,14 @@ def test_annotation_reality_pass(tmp_path):
         ],
         {
             "leaf": {
-                "files": ["leaf.sv"],
+                "files": ["leaf.v"],
                 "annotations": {"sgdc": {"sync_cell": ["sync2"]}, "sdc": {}},
             },
-            "topc": {"files": ["top.sv"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ANN},
         },
         {
-            "leaf.sv": "module leaf_m; endmodule\nmodule sync2; endmodule\n",
-            "top.sv": "module top; leaf_m u0(); sync2 u1(); endmodule\n",
+            "leaf.v": "module leaf_m; endmodule\nmodule sync2; endmodule\n",
+            "top.v": "module top; leaf_m u0(); sync2 u1(); endmodule\n",
         },
     )  # instantiate siblings so check_top_integration is clean once Task 3 lands
     r = _run(tmp_path)
@@ -176,12 +176,12 @@ def test_annotation_reality_phantom_name_fails(tmp_path):
         ],
         {
             "leaf": {
-                "files": ["leaf.sv"],
+                "files": ["leaf.v"],
                 "annotations": {"sgdc": {"sync_cell": ["sync_GHOST"]}, "sdc": {}},
             },
-            "topc": {"files": ["top.sv"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ANN},
         },
-        {"leaf.sv": "module leaf_m; endmodule\n", "top.sv": "module top; endmodule\n"},
+        {"leaf.v": "module leaf_m; endmodule\n", "top.v": "module top; endmodule\n"},
     )
     r = _run(tmp_path)
     assert r.returncode == 1
@@ -203,7 +203,7 @@ def test_annotation_reality_create_generated_clock_phantom_fails(tmp_path):
         ],
         {
             "leaf": {
-                "files": ["leaf.sv"],
+                "files": ["leaf.v"],
                 "annotations": {
                     "sgdc": {},
                     "sdc": {
@@ -213,9 +213,9 @@ def test_annotation_reality_create_generated_clock_phantom_fails(tmp_path):
                     },
                 },
             },
-            "topc": {"files": ["top.sv"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ANN},
         },
-        {"leaf.sv": "module leaf_m; endmodule\n", "top.sv": "module top; endmodule\n"},
+        {"leaf.v": "module leaf_m; endmodule\n", "top.v": "module top; endmodule\n"},
     )
     r = _run(tmp_path)
     assert r.returncode == 1
@@ -234,14 +234,14 @@ def test_annotation_reality_commented_decl_does_not_satisfy(tmp_path):
         ],
         {
             "leaf": {
-                "files": ["leaf.sv"],
+                "files": ["leaf.v"],
                 "annotations": {"sgdc": {"sync_cell": ["sync2"]}, "sdc": {}},
             },
-            "topc": {"files": ["top.sv"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ANN},
         },
         {
-            "leaf.sv": "module leaf_m; endmodule\n// module sync2; endmodule\n",
-            "top.sv": "module top; endmodule\n",
+            "leaf.v": "module leaf_m; endmodule\n// module sync2; endmodule\n",
+            "top.v": "module top; endmodule\n",
         },
     )
     r = _run(tmp_path)
@@ -261,15 +261,15 @@ def test_annotation_reality_reset_synchronizer_phantom_fails(tmp_path):
         ],
         {
             "leaf": {
-                "files": ["leaf.sv"],
+                "files": ["leaf.v"],
                 "annotations": {
                     "sgdc": {"reset_synchronizer": ["rsync_GHOST"]},
                     "sdc": {},
                 },
             },
-            "topc": {"files": ["top.sv"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ANN},
         },
-        {"leaf.sv": "module leaf_m; endmodule\n", "top.sv": "module top; endmodule\n"},
+        {"leaf.v": "module leaf_m; endmodule\n", "top.v": "module top; endmodule\n"},
     )
     r = _run(tmp_path)
     assert r.returncode == 1
@@ -295,12 +295,12 @@ def test_top_integration_pass(tmp_path):
             {"name": "topc", "rtl_modules": ["top"]},
         ],
         {
-            "leaf": {"files": ["leaf.sv"], "annotations": _ANN},
-            "topc": {"files": ["top.sv"], "annotations": _ANN},
+            "leaf": {"files": ["leaf.v"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ANN},
         },
         {
-            "leaf.sv": "module leaf_m(output bus_ready); endmodule\n",
-            "top.sv": "module top; wire bus_ready; leaf_m u_leaf(.bus_ready(bus_ready)); endmodule\n",
+            "leaf.v": "module leaf_m(output bus_ready); endmodule\n",
+            "top.v": "module top; wire bus_ready; leaf_m u_leaf(.bus_ready(bus_ready)); endmodule\n",
         },
         design=_DESIGN_WITH_WIRE,
     )
@@ -316,12 +316,12 @@ def test_top_integration_missing_instance_and_wire_fails(tmp_path):
             {"name": "topc", "rtl_modules": ["top"]},
         ],
         {
-            "leaf": {"files": ["leaf.sv"], "annotations": _ANN},
-            "topc": {"files": ["top.sv"], "annotations": _ANN},
+            "leaf": {"files": ["leaf.v"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ANN},
         },
         {
-            "leaf.sv": "module leaf_m(output bus_ready); endmodule\n",
-            "top.sv": "module top; endmodule\n",
+            "leaf.v": "module leaf_m(output bus_ready); endmodule\n",
+            "top.v": "module top; endmodule\n",
         },  # neither instantiates leaf_m nor has bus_ready net
         design=_DESIGN_WITH_WIRE,
     )
@@ -354,14 +354,14 @@ def test_top_integration_reachability_is_child_grained(tmp_path):
             {"name": "c2", "rtl_modules": ["modZ"]},
         ],
         {
-            "topc": {"files": ["top.sv"], "annotations": _ANN},
-            "c1": {"files": ["c1.sv"], "annotations": _ANN},
-            "c2": {"files": ["c2.sv"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ANN},
+            "c1": {"files": ["c1.v"], "annotations": _ANN},
+            "c2": {"files": ["c2.v"], "annotations": _ANN},
         },
         {
-            "top.sv": "module top; modA a(); endmodule\n",
-            "c1.sv": "module modA; endmodule\nmodule modB; modZ z(); endmodule\n",
-            "c2.sv": "module modZ; endmodule\n",
+            "top.v": "module top; modA a(); endmodule\n",
+            "c1.v": "module modA; endmodule\nmodule modB; modZ z(); endmodule\n",
+            "c2.v": "module modZ; endmodule\n",
         },
     )
     r = _run(tmp_path)
@@ -381,8 +381,8 @@ def test_single_child_is_top_no_violations(tmp_path):
     _setup(
         tmp_path,
         [{"name": "only", "rtl_modules": ["top"]}],
-        {"only": {"files": ["top.sv"], "annotations": _ANN}},
-        {"top.sv": "module top(input a); endmodule\n"},
+        {"only": {"files": ["top.v"], "annotations": _ANN}},
+        {"top.v": "module top(input a); endmodule\n"},
         design=(
             "## §1.4.2 Inter-module Interconnects\n\n| Wire | Producer | Consumer | Width |\n"
             "|---|---|---|---|\n| (none — N=1 module has no inter-module wires) | - | - | - |\n"
@@ -391,3 +391,82 @@ def test_single_child_is_top_no_violations(tmp_path):
     r = _run(tmp_path)
     assert r.returncode == 0
     assert json.loads(r.stdout)["violations"] == []
+
+
+# --- strict Verilog-2001 dialect gate (check_dialect) ---
+
+
+def test_dialect_sv_extension_fails(tmp_path):
+    # A .sv artifact passes presence/integration, but the kernel's downstream `*.v` selectors
+    # cannot match it (the run-1 pipeline deadlock); the dialect gate rejects the extension.
+    _setup(
+        tmp_path,
+        [{"name": "only", "rtl_modules": ["top"]}],
+        {"only": {"files": ["top.sv"], "annotations": _ANN}},
+        {"top.sv": "module top(input a); endmodule\n"},
+    )
+    r = _run(tmp_path)
+    assert r.returncode == 1
+    v = json.loads(r.stdout)
+    assert v["status"] == "fail"
+    assert any(
+        x["kind"] == "dialect" and x["file"] == "top.sv" and x["child"] == "only"
+        for x in v["violations"]
+    )
+
+
+def test_dialect_sv_keyword_in_v_file_fails(tmp_path):
+    # A .v extension does not make the content Verilog-2001: SystemVerilog-only constructs
+    # (`logic`, `always_ff`, …) inside a .v file must still be rejected.
+    _setup(
+        tmp_path,
+        [{"name": "only", "rtl_modules": ["top"]}],
+        {"only": {"files": ["top.v"], "annotations": _ANN}},
+        {
+            "top.v": "module top(input clk); logic q; always_ff @(posedge clk) q <= 1'b0; endmodule\n"
+        },
+    )
+    r = _run(tmp_path)
+    assert r.returncode == 1
+    constructs = {
+        x.get("sv_construct")
+        for x in json.loads(r.stdout)["violations"]
+        if x["kind"] == "dialect"
+    }
+    assert "logic" in constructs and "always_ff" in constructs
+
+
+def test_dialect_sv_keyword_in_comment_is_not_flagged(tmp_path):
+    # False-positive guard: an SV keyword appearing ONLY in a comment (comments/strings are
+    # masked by the shared _strip_comments) must NOT trip the dialect gate — real RTL
+    # legitimately says "logic partitions" in prose.
+    _setup(
+        tmp_path,
+        [{"name": "only", "rtl_modules": ["top"]}],
+        {"only": {"files": ["top.v"], "annotations": _ANN}},
+        {
+            "top.v": "// internal logic partitions, always_comb-style; typedef note\n"
+            "module top(input a); reg r; endmodule\n"
+        },
+    )
+    r = _run(tmp_path)
+    assert r.returncode == 0
+    assert not any(x["kind"] == "dialect" for x in json.loads(r.stdout)["violations"])
+
+
+def test_dialect_v_vh_and_support_files_pass(tmp_path):
+    # Clean V2001: a .v source + a .vh header + a non-HDL support file (.mem) — the header is
+    # allowed and the support file is out of scope, so none is flagged.
+    _setup(
+        tmp_path,
+        [{"name": "only", "rtl_modules": ["top"]}],
+        {"only": {"files": ["top.v", "defs.vh", "rom.mem"], "annotations": _ANN}},
+        {
+            "top.v": '`include "defs.vh"\nmodule top(input a); reg [7:0] r; endmodule\n',
+            "defs.vh": "`define W 8\n",
+            "rom.mem": "DEADBEEF\n",
+        },
+    )
+    r = _run(tmp_path)
+    assert r.returncode == 0
+    assert not any(x["kind"] == "dialect" for x in json.loads(r.stdout)["violations"])

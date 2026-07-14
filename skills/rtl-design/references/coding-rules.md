@@ -1,10 +1,10 @@
 # RTL coding rules
 
-Applies to: `**/*.sv` / `**/*.v` / `**/*.svh` / `**/*.vh`
+Applies to: `**/*.v` / `**/*.vh`
 
 ## General Constraints
 
-- Use Verilog-2001 syntax; do not use non-standard extensions unsupported by the toolchain
+- **Strict Verilog-2001 only — no SystemVerilog.** Do not use SV types (`logic`/`bit`/`byte`/`int` → use `wire`/`reg`/`integer`), SV always-blocks (`always_ff`/`always_comb`/`always_latch` → use `always @(posedge …)` / `always @*`), or SV constructs (`typedef`/`enum`/`struct`/`union`/`interface`/`package`/`modport`/`import`/`unique`/`priority`). RTL files are `.v` (headers `.vh`), never `.sv`/`.svh`. `check-conformance`'s dialect gate enforces this, and the kernel's downstream `rtl` selectors match `*.v` alone. Do not use non-standard extensions unsupported by the toolchain
 - Do not use Verilog/VHDL/SV reserved words as signal, module, or parameter names
 - Code must be synthesizable: no `#delay`, `initial` blocks driving synthesizable logic, or simulation-only statements (`$display`, etc.) in synthesizable RTL
 
@@ -18,8 +18,8 @@ Applies to: `**/*.sv` / `**/*.v` / `**/*.svh` / `**/*.vh`
 ## Module Partitioning
 
 - Single responsibility per module/interface; avoid deep nesting, break complex combinational logic into named intermediate signals
-- Separate sequential and combinational logic clearly; avoid mixing unrelated logic in the same `always`/`always_ff` block
-- Header files (`*.svh`/`*.vh`): centralize macros and parameters; avoid circular includes
+- Separate sequential and combinational logic clearly; avoid mixing unrelated logic in the same `always` block
+- Header files (`*.vh`): centralize macros and parameters; avoid circular includes
 - Cross-clock domain synchronizers, tri-state drivers, and other special structures must be encapsulated as separate modules/files
 
 ## Coding Constraints
@@ -61,7 +61,7 @@ Applies to: `**/*.sv` / `**/*.v` / `**/*.svh` / `**/*.vh`
 - `case` is non-priority — use for mutually exclusive conditions; use `if-else` when priority is needed
 - **Combinational logic** must have a `default` branch, or assign default values to all outputs at the top of the `always` block, to prevent latch inference
 - **Sequential logic** may omit `default` (register-hold)
-- No mixing of `x`/`z` masks in `casex`/`casez` (obscures design intent); prefer `unique case`/`priority case` (SV) for explicit semantics
+- No mixing of `x`/`z` masks in `casex`/`casez` (obscures design intent); make intent explicit with a `default` branch and mutually-exclusive conditions (`unique`/`priority` are SystemVerilog — not available in Verilog-2001)
 
 ### Loop Statements
 
@@ -85,7 +85,7 @@ end
 
 ### FSM Coding
 
-- **Separate combinational and sequential logic**: next-state logic (`always_comb`/`always @*`) and state register (`always_ff`) in separate blocks
+- **Separate combinational and sequential logic**: next-state logic (`always @*`) and state register (`always @(posedge clk or negedge rst_n)`) in separate blocks
 - Use `case` for state transitions; state encoding via `parameter`/`localparam` — no hardcoded numbers
 - FSM must have a `default` branch pointing to a safe state (prevent runaway)
 - Low-power: prefer Gray code for frequently transitioning states; one-hot/one-cold for small FSMs; minimize encoding bits
