@@ -5,9 +5,9 @@ description: Use when writing or modifying Verilog/SystemVerilog RTL, maintainin
 
 # RTL Design
 
-Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatcher. The main thread reads only `manifest.json`, runs one fan-out wave (one sub-Task per child unit, including the top-integration child), then runs deterministic finalize scripts over the reaped reports and writes `result.json`. Per-child RTL (one or more `.v`/`.sv` per child) is produced by the sub-Tasks; `filelist.txt`, `README.md` (top-module declaration + SGDC/SDC constraint-annotation notes), and the `.child_reports.json` ledger are produced by scripts. The main thread never authors RTL, never reads `design.md`, and never reads child RTL.
+Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatcher over `manifest.json`'s child roster: the per-child sub-Tasks author the RTL; deterministic finalize scripts then produce `filelist.txt`, `README.md` (top-module declaration + SGDC/SDC constraint-annotation notes), the `.child_reports.json` ledger, and `result.json` from their reaped reports. You never author or read RTL yourself.
 
-**Load mode:** this skill runs main-thread, invoked via `Skill(veripower:rtl-design)` by its caller (not dispatched as a Task subagent). It uses the Task tool for one fan-out wave (one Level-1 sub-Task per child unit, including the top-integration child); finalize is then deterministic main-thread scripts, not a sub-Task. The main thread never authors RTL inline.
+**Load mode:** this skill runs main-thread, invoked via `Skill(veripower:rtl-design)` by its caller (not dispatched as a Task subagent). It uses the Task tool for one fan-out wave (one Level-1 sub-Task per child unit, including the top-integration child); finalize is then deterministic main-thread scripts, not a sub-Task. You never author RTL inline.
 
 ## When to Use
 
@@ -19,8 +19,8 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 ## Iron Rule
 
 - Every RTL file on disk MUST appear in `filelist.txt` (contract violation — a missing `filelist.txt` entry hides source files from consumers).
-- **No child RTL in the main thread:** every child (including the top-integration child) is dispatched in the fan-out wave. The main thread consumes each sub-Task's `files[]` paths only (the scripts aggregate them into `filelist.txt`) and **MUST NOT read the dispatched child's** `.v`/`.sv` content back into the main-thread context — child RTL would otherwise compound across the long-lived main thread. There is no main-thread TOP authoring: even a single child is written by a sub-Task, never by the main thread.
-- **No whole-design elaboration in any child sub-Task:** per `references/child-task-contract.md`, no child may whole-design elaborate/compile, read sibling RTL bodies, or reverse-read an external verification harness; integration/elaboration correctness is verified by downstream verification. A unit child may best-effort `verilator --lint-only` its own module only.
+- **No child RTL in the main thread:** every child (including the top-integration child) is dispatched in the fan-out wave. You consume each sub-Task's `files[]` paths only (the scripts aggregate them into `filelist.txt`) and **MUST NOT read the dispatched child's** `.v`/`.sv` content back into your context — child RTL would otherwise compound across the long-lived main thread. There is no inline TOP authoring: even a single child is written by a sub-Task.
+- **No whole-design elaboration in any child sub-Task:** child sub-Tasks obey the elaboration / anti-reverse-read prohibitions in `references/child-task-contract.md` (a unit child may best-effort self-lint its own module only); integration/elaboration correctness is verified by downstream verification.
 - **`<child>.md §2 Interface` incomplete:** if the interface spec is missing or underspecified, write `status=fail` + `fail_reason="<child>.md §2 Interface incomplete"`; do not invent interfaces.
 - **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's task actually requires (scope is determined in Step 1); every file outside that scope MUST stay byte-identical to the prior run — a full rewrite on a narrow fix defeats the incremental kernel's per-file cascade.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
@@ -119,19 +119,17 @@ Map the scope to affected children per Step 2. The module-level `design.md` + pe
 set are an immovable boundary, never modified — if a fix would need either, stop this round (see Red
 Flags).
 
-**Pre-dispatch purity gate (fail-fast).** After reading `manifest.json` and before the Step 3
+**Pre-dispatch check (fail-fast).** After reading `manifest.json` and before the Step 3
 fan-out, run:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py check-partition --manifest <manifest> --top <top_module>
 ```
 
-Its exit code is the truth (0 ok / 1 fail). On a non-zero exit, **assemble `{workdir}/result.json`
-as a full envelope (schema `references/result.schema.json`, exactly as Step 4.5 does) with `status=fail`
-+ the verdict's `fail_reason`**, and return without dispatching — a bundled or miscovered
-top-integration child never pays authoring cost. (Step 4's `assemble` verb re-runs the post
-exit-gate as the backstop, where it also folds in the blocked-child precedence and
-emits `artifacts`.)
+Its exit code is the truth (0 ok / 1 fail). On a non-zero exit, run `finalize` (Step 4.5) — it surfaces
+the coverage `fail_reason` directly into a `status=fail` `result.json` — and return without dispatching, so
+a bundled or miscovered top-integration child never pays authoring cost. (This is the same coverage/purity
+check the Step 4.2 exit gate re-runs; the pre-dispatch run only spares a doomed fan-out.)
 
 ### Step 2: map_to_child (when scope is narrower than all children)
 
@@ -166,10 +164,12 @@ than dispatched, keep waiting (do not finalize against a partial report set).
 
 ### Step 4: Finalize (scripts + gates + semantic gate) + result.json
 
-**4.1 Translate reaped reports → `{workdir}/fresh_reports.json`** (unchanged: `STATUS: DONE`+JSON →
-`{"status":"done",...}`; `STATUS: BLOCKED <r>` → `{"status":"blocked","reason":"<r>"}`).
+**4.1 Serialize reaped reports → `{workdir}/fresh_reports.json`** — your single transcription act: the
+finalize scripts read only disk, not your reap context, so dump each reaped child's `STATUS` + JSON to this
+one file for them (`STATUS: DONE`+JSON → `{"status":"done",...}`; `STATUS: BLOCKED <r>` →
+`{"status":"blocked","reason":"<r>"}`). A straight copy, no judgment.
 
-**4.2 Build + topology gate** (`<manifest>` = `Design/specification/manifest.json`; `<top_module>` =
+**4.2 Build + exit gate** (`<manifest>` = `Design/specification/manifest.json`; `<top_module>` =
 `manifest.module`; `<design>` = `Design/specification/design.md`):
 
 ```bash
@@ -177,12 +177,13 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py assemble --workdir {workdir}
 ```
 
 `assemble` builds the ledger/filelist/README and runs the post exit-gate in one step. A **build error**
-(malformed reports/ledger) yields a non-zero exit with a stderr message and **no stdout verdict**, so write `status=fail`
-(stderr as `fail_reason`), stop. Otherwise it prints the exit-gate verdict JSON on stdout; exit code = truth
+(malformed reports/ledger) yields a non-zero exit with a stderr message and **no stdout verdict** (distinct
+from a gate-fail verdict); hand-write `{workdir}/result.json` as a `status=fail` envelope with the stderr as
+`fail_reason`, and stop. Otherwise it prints the exit-gate verdict JSON on stdout; exit code = truth
 (topology + blocked-child); a fail verdict stops the stage — Step 4.5's `finalize` writes it into
 `result.json`. (`--seeded` whenever `seed` carried a prior baseline — canonical existed — never on a first delivery's initial build.)
 
-**4.3 Conformance gate + bounded self-converge loop** (deterministic; runs EVERY invocation):
+**4.3 Conformance gate + self-converge loop** (deterministic; runs EVERY invocation):
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py check-conformance --workdir {workdir} --manifest <manifest> --top <top_module> --ledger {workdir}/.child_reports.json --design <design>
@@ -192,31 +193,24 @@ On exit 0, go to 4.4. Exit 1 = spec↔RTL presence violations (each names a `chi
 also carries `owner_child`). These are child-authoring defects (fix-locus = the child), so self-converge:
 
 - Re-dispatch set = `{v.child} ∪ {v.owner_child}` over all violations — the `owner_child` union lets a
-  `top_instantiation` violation reach the sibling that renamed the module, not only the top child. The
-  main thread reads the **verdict only — never the RTL**.
+  `top_instantiation` violation reach the sibling that renamed the module, not only the top child. You
+  read the **verdict only — never the RTL**.
 - Re-dispatch ONLY those children (reduced fan-out, `references/child-task-contract.md`), injecting the
-  conformance verdict slice as fix-scope feedback. **Dispatch-and-wait holds per round** — the per-cycle dispatch→reap-on-wake primitive is the same one this skill's fan-out wave already uses,
-  but the sequential depth here is greater than any existing skill (a rework finalize
-  chains Step-3 dispatch → ≤2 loop rounds → the 4.4 review wave = up to 4 dispatch-reap cycles in one
-  invocation); confirm the harness reaps across that depth at runtime.
-- **Mid-loop `STATUS: BLOCKED`**: if a re-dispatched child returns `BLOCKED` in any round, do NOT let it
-  fall through to the unconverged-authoring fail (`assemble`'s non-`done` filter would drop it and the
-  stale failing entry survives via `--seeded`). After each round's reap, if any re-dispatched child is
-  `BLOCKED`, stop with `status=fail` + `fail_reason` carrying the BLOCKED reason verbatim (an
-  upstream-locus signal, routed like 4.2's blocked-child precedence — NOT authoring-convergence).
-- **manifest name is authoritative**: a child MUST author its `manifest.children[].rtl_modules[]` name
-  verbatim (renaming is itself a violation `check #1` catches).
-- Re-run `assemble` **WITH `--seeded`** (CRITICAL — without it the
-  round's subset-only `fresh_reports.json` evicts every already-passing child via `merge_filter`'s
-  roster∩fresh), then `check-conformance`.
-- **Bounded: at most 2 re-dispatch rounds** (presence defects typically converge in 1 round; 2 gives one
-  retry margin). Still failing after round 2, write `status=fail`, `fail_reason="rtl conformance unconverged
-  after 2 rounds: <children+items>"`, stop. The loop is intra-stage fan-out — skill-internal scratch; the stage produces a single result at exit and the re-dispatches are not externally visible; no persistent "pending finalize" state.
+  conformance verdict slice as fix-scope feedback (dispatch-and-wait per round, the same primitive as the
+  fan-out wave). **manifest name is authoritative**: a child MUST author its
+  `manifest.children[].rtl_modules[]` name verbatim (renaming is itself a violation `check #1` catches).
+- Re-run `assemble` **WITH `--seeded`** (CRITICAL — without it the round's subset-only
+  `fresh_reports.json` evicts every already-passing child via `merge_filter`'s roster∩fresh), then
+  `check-conformance`. `assemble`'s verdict is authoritative every round exactly as in 4.2 — a non-zero
+  `assemble` (blocked-child or topology) stops the stage with `status=fail` and does not fall through to
+  `check-conformance`; otherwise loop until `check-conformance` passes. The loop is intra-stage scratch —
+  the stage produces one result at exit, the re-dispatches are not externally visible, and no persistent
+  "pending finalize" state carries across.
 - On convergence, rebuild a full-roster `fresh_reports.json` (all children `status=done`,
   reconstructing each already-passing child's `files`/`annotations` entry from the current
   `.child_reports.json` ledger — a `done` child without them fails `assemble` loud) and re-run
-  `assemble --seeded` over it + the converged ledger to refresh `artifacts[]`. Round-0 files a
-  re-dispatched child later superseded remain in the run's scratch workdir only — not in the ledger, so never promoted.
+  `assemble --seeded` over it + the converged ledger to refresh `artifacts[]`. Files a re-dispatched
+  child later superseded remain in the run's scratch workdir only — not in the ledger, so never promoted.
 
 **4.4 Semantic gate (gating)** — runs on EVERY finalize that reaches a clean 4.3 gate (not only on
 a first delivery; closes the gap where a module that failed C on attempt 1 — promoted-on-fail, then
@@ -224,7 +218,7 @@ re-authored on a later pass — would otherwise never be semantically reviewed):
 
 Dispatch N `Task(run_in_background=True)`, one per `manifest.children[]`, per
 `references/rtl-review-task-contract.md` (paths only: child `files[]` + the child's per-child doc resolved
-via `manifest.children[].doc` + design.md §1.4 slice; the main thread reads no RTL). Dispatch, then reap on wake.
+via `manifest.children[].doc` + design.md §1.4 slice; you read no RTL). Dispatch, then reap on wake.
 Aggregate into `{workdir}/semantic-review.json` (schema `references/semantic-review.schema.json`):
 - `STATUS: DONE` + valid finding JSON → fold its findings in (each carries reviewer-assigned
   `fix_locus ∈ {rtl, spec}`).
@@ -257,7 +251,7 @@ verdict:
   `"semantic gate: rtl-local intent defect — <child>"` (the first `flagged[]` child; if more than one is
   flagged, ` (+N more)` is appended).
 - **Review unavailable** (the whole wave is unusable — no `semantic-review.json` assemblable at all, e.g. total dispatch failure; per-child `BLOCKED`/malformed is already handled by the aggregation above) → do NOT gate; write the minimal `semantic-review.json` with one `unavailable` finding (validator reports `gate=clear`), note it in the completion summary, and proceed to 4.5.
-- **Verdict integrity:** the main thread MUST NOT override a `gate=trip` to pass.
+- **Verdict integrity:** you MUST NOT override a `gate=trip` to pass.
 
 **4.5 Build `result.json`** (`{workdir}/result.json`; schema `references/result.schema.json` + envelope):
 
@@ -277,23 +271,19 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir}
 narration is NOT in result.json (it belongs in events.jsonl). Exit 0 = result.json written (status pass
 or fail). A non-zero finalize exit is a program exception (BLOCKED).
 
-A 4.2/4.3 gate that already failed writes its own `status=fail` and stops there (4.2 copies
-the `assemble` exit-gate verdict; 4.3 writes the unconverged/blocked fail) — finalize is reached only when
-the exit gate passes through to the semantic gate. In the completion summary, emit one line
+A 4.2 exit gate that already failed writes its own `status=fail` and stops there (it copies the
+`assemble` exit-gate verdict — including a mid-loop round's blocked-child or topology fail) — finalize is
+reached only when the exit gate passes through to the semantic gate. In the completion summary, emit one line
 `semantic-gate: <clear | trip | unavailable>; see semantic-review.json`; if `has_critical` (possible on a
 cleared gate when the critical finding is a non-gating category, e.g. `over-engineering`), add `⚠ <child>
 critical <category> finding — recommend operator review before downstream`.
 
-rtl-design failures route by fix-locus. **(1) Upstream / architecture / intent** (the `assemble`/`check-partition` exit-gate
-topology, `<child>.md §2` incomplete, PPA, `build_*` unexpected error, or any semantic-gate trip) yields `status=fail` + a locus-tagged
-`fail_reason`; **no internal loop, operator-driven** (the main thread stays a pure dispatcher and does not
-self-loop). **(2) Child-authoring presence defect**
-(`check-conformance` spec↔RTL presence violations, or a mid-loop child `BLOCKED`) means fix-locus is the
-child itself, so it runs the **bounded body-blind self-converge loop** (Step 4.3: hold the verdict,
-re-dispatch the failing children, re-run the scripts, ≤2 rounds); exhausting the bound (or a mid-loop
-BLOCKED) falls back to (1)'s `status=fail`. The loop is intra-stage fan-out (skill-internal; re-dispatches
-are not externally visible); finalize keeps no persistent "pending finalize" state — bound exhaustion is
-terminal fail.
+rtl-design failures route by fix-locus: **upstream / architecture / intent** defects (exit-gate topology,
+`<child>.md §2` incomplete, PPA, `build_*` error, or any semantic-gate trip) yield `status=fail` + a
+locus-tagged `fail_reason`, operator-driven — you stay a pure dispatcher and do not self-loop; a
+**child-authoring presence defect** (`check-conformance` violations) is fix-locus=child and self-converges
+in Step 4.3's loop, while a blocked re-dispatched child fails that round's `assemble` (blocked-child
+precedence) → `status=fail`.
 
 ## Red Flags
 
@@ -317,7 +307,7 @@ terminal fail.
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] **Exit gate:** the `assemble` exit-gate exited 0 (or its fail verdict was written); `finalize` wrote the envelope from it (it owns `status` / `artifacts[]`; this gate does not restate the formula).
 - [ ] `{workdir}/.child_reports.json`, `{workdir}/filelist.txt`, and `{workdir}/README.md` were generated by the scripts (ledger / filelist / README respectively).
-- [ ] **Conformance gate:** `check-conformance` exited 0 (or self-converged within 2 rounds); on unconverged / mid-loop BLOCKED the verdict was copied to `result.json` `status=fail`.
+- [ ] **Conformance gate:** `check-conformance` exited 0 (or self-converged); a blocked re-dispatched child fails that round's `assemble` (blocked-child precedence) → the verdict was copied to `result.json` `status=fail`.
 - [ ] **Semantic gate (every clean-gate finalize):** the review wave ran, `semantic-review.json` was written + self-validated, the gate verdict was applied (clear → proceed; trip → `status=fail` + locus-tagged `fail_reason`, **no in-skill autofix**), and the `finalize` verb wrote `semantic_gate` + `semantic-review.json` into the envelope; BLOCKED/malformed reviewers recorded as "review unavailable" (not silently ok), so do NOT gate; a `gate=trip` was never overridden to pass.
 
 ## Return Contract
