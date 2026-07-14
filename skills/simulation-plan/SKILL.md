@@ -5,7 +5,7 @@ description: Use when generating or evolving the verification plan, scaffold spe
 
 # Verification Planning
 
-Your sole responsibility: from `specification`, generate or evolve two artifacts — `verification-plan.md` (human-readable review anchor, with a testpoints section and a power-scenarios section) and `scaffold-specification.json` (machine-read contract, with `agents` / `sequences` / `tests` / `testpoints[]` / `power_scenarios[]`). **Do not read RTL source; do not invoke EDA tools.**
+Your sole responsibility: from `specification`, generate or evolve two artifacts — `verification-plan.md` (human-readable review anchor, with a testpoints section and a power-scenarios section) and `scaffold-specification.json` (machine-read contract, with `agents` / `sequences` / `tests` / `testpoints[]` / `power_scenarios[]`).
 
 ## When to Use
 
@@ -17,9 +17,9 @@ Your sole responsibility: from `specification`, generate or evolve two artifacts
 
 Your boundary:
 
-- **Do not modify any file outside this run's workspace.** Only write artifacts under `{workdir}` and `result.json`.
-- **Do not read RTL source, do not invoke EDA tools, and do not write `tb/uvm/` / `Makefile` / `vcd/`.** These belong to the TB-materialization stage.
-- **Minimal edit on any re-dispatch with a prior valid `verification-plan.md` / `scaffold-specification.json` on disk.** Edit only the sections this round's task requires (scope is determined in Step 1); every section outside that scope MUST stay byte-identical to the prior run.
+- **Do not modify any file outside this run's workspace (`{workdir}`).**
+- **Do not read RTL source, do not invoke EDA tools.**
+- **Minimal edit on any re-dispatch with a prior valid `verification-plan.md` / `scaffold-specification.json` on disk.** Every section outside this round's scope (determined in Step 1) MUST stay byte-identical to the prior run.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Fan-out Dispatch Contract
