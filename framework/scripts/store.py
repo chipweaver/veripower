@@ -35,6 +35,53 @@ def _is_safe_rel(rel: str) -> bool:
     return not (norm == ".." or norm.startswith(".." + os.sep))
 
 
+def _resolve_sim_run(root: Path, sim_run) -> str:
+    """Absolute location of a specific past simulation run: <sim-stage>/runs/<N>.
+    Dedicated runtime guard (NOT _is_safe_rel, which rejects absolute paths): N must
+    be a positive integer and the resolved runs/<N> must sit directly under the
+    simulation stage's runs/ directory."""
+    try:
+        n = int(str(sim_run))
+    except (TypeError, ValueError):
+        raise ValueError(f"sim_run not an integer: {sim_run!r}")
+    if n < 1:
+        raise ValueError(f"sim_run must be a positive integer: {n}")
+    sim_root = (root / Path(*rules.workdir_root("simulation"))).resolve()
+    runs = sim_root / "runs"
+    run_dir = (runs / str(n)).resolve()
+    if run_dir.parent != runs:
+        raise ValueError(f"sim_run escapes simulation runs/: {run_dir}")
+    return str(run_dir)
+
+
+def inject_inputs(module: str, rule: str, workdir, params=None) -> None:
+    """dispatch-time dual of promote: resolve each read-only input's location and write
+    it to <workdir>/inputs.json = {key: producer-canonical-stage-root (absolute)}.
+
+    Each key resolves to exactly one producer's canonical stage root; the consumer keeps
+    the producer-output subpath literal (out/, tb/uvm/, constraints/). PIPELINE_INPUTS
+    (external, no producer) resolve to the module root. A rule declaring 'sim_run' gets
+    an extra 'sim_run' key = <simulation-stage>/runs/<N> (triage)."""
+    r = rules.RULES[rule]
+    root = Path("asic", module)
+    module_root_abs = str(root.resolve())
+    table: dict[str, str] = {}
+    for key, globs in r.inputs.items():
+        g0 = globs[0]
+        if g0 in rules.PIPELINE_INPUTS:
+            table[key] = module_root_abs
+            continue
+        prod = rules.producer_of(g0)
+        if prod is None:
+            raise ValueError(f"{rule}: input key {key!r} glob {g0!r} has no producer")
+        table[key] = str((root / Path(*rules.workdir_root(prod))).resolve())
+    if params and "sim_run" in r.params and "sim_run" in params:
+        table["sim_run"] = _resolve_sim_run(root, params["sim_run"])
+    (Path(workdir) / "inputs.json").write_text(
+        json.dumps(table, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+
 def _cp_al(src: Path, dst: Path) -> None:
     """Tree hardlink (cp -al equivalent). Recreates dir structure with hardlinks.
 
