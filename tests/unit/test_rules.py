@@ -127,3 +127,29 @@ def test_simulation_does_not_bind_rtl_readme():
     for r in ("lint-cdc", "synthesis"):
         globs = [g for gs in rules.RULES[r].inputs.values() for g in gs]
         assert "Design/rtl-design/README.md" in globs, f"{r} should still bind README"
+
+
+def test_carry_no_carry_fields_and_values():
+    import rules
+
+    # authors carry everything, drop their review record
+    assert rules.RULES["specification"].carry == ("**",)
+    assert rules.RULES["specification"].no_carry == ("spec-review.json",)
+    assert rules.RULES["simulation-plan"].carry == ("**",)
+    assert rules.RULES["simulation-plan"].no_carry == ("plan-review.json",)
+    assert rules.RULES["rtl-design"].carry == ("**",)
+    assert rules.RULES["rtl-design"].no_carry == ("semantic-review.json",)
+    assert rules.RULES["simulation"].carry == ("**",)
+    assert rules.RULES["simulation"].no_carry == ("conformance-review.json",)
+    # lint carries exactly its two human-audited scripts
+    assert rules.RULES["lint-cdc"].carry == (
+        "scripts/waiver.tcl",
+        "scripts/constraints.sgdc",
+    )
+    assert rules.RULES["lint-cdc"].no_carry == ()
+    # pure transformers + triage carry nothing
+    for r in ("synthesis", "timing-analysis", "power-analysis", "simulation-triage"):
+        assert rules.RULES[r].carry == ()
+        assert rules.RULES[r].no_carry == ()
+    # frozen dataclass still rejects mutation
+    assert getattr(rules.Rule, "__dataclass_params__").frozen

@@ -26,6 +26,12 @@ class Rule:
         None  # proposed-oracle content selector (workdir-root-relative glob)
     )
     params: tuple[str, ...] = ()
+    carry: tuple[
+        str, ...
+    ] = ()  # self-products to copy into a fresh workdir (self-carry)
+    no_carry: tuple[
+        str, ...
+    ] = ()  # globs excluded from carry (per-round review records)
 
 
 RULES: dict[str, Rule] = {
@@ -51,6 +57,8 @@ RULES: dict[str, Rule] = {
         oracle=("spec-review", "proposed"),
         oracle_selector="spec-review.json",
         params=("directive",),
+        carry=("**",),
+        no_carry=("spec-review.json",),
     ),
     "simulation-plan": Rule(
         name="simulation-plan",
@@ -72,6 +80,8 @@ RULES: dict[str, Rule] = {
         oracle=("plan-review", "proposed"),
         oracle_selector="plan-review.json",
         params=("directive",),
+        carry=("**",),
+        no_carry=("plan-review.json",),
     ),
     "rtl-design": Rule(
         name="rtl-design",
@@ -89,6 +99,8 @@ RULES: dict[str, Rule] = {
         oracle=("semantic-review", "proposed"),
         oracle_selector="semantic-review.json",
         params=("directive",),
+        carry=("**",),
+        no_carry=("semantic-review.json",),
     ),
     "lint-cdc": Rule(
         name="lint-cdc",
@@ -113,6 +125,7 @@ RULES: dict[str, Rule] = {
         proof="lint-cdc",
         oracle=("spyglass-ruleset", "tool"),
         params=("directive",),
+        carry=("scripts/waiver.tcl", "scripts/constraints.sgdc"),
     ),
     "synthesis": Rule(
         name="synthesis",
@@ -180,6 +193,8 @@ RULES: dict[str, Rule] = {
         oracle_selector="tb/uvm/refmodel/*",  # pin endorses the JUDGE itself (spec §2) —
         # survives runs; content drift (LLM regenerates refmodel) drops the pin at reap
         params=("directive",),
+        carry=("**",),
+        no_carry=("conformance-review.json",),
     ),
     "power-analysis": Rule(
         name="power-analysis",
