@@ -10,6 +10,7 @@ Imported by kernel.py: its reap path calls `store.promote` /
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import shutil
@@ -80,6 +81,51 @@ def inject_inputs(module: str, rule: str, workdir, params=None) -> None:
     (Path(workdir) / "inputs.json").write_text(
         json.dumps(table, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+
+
+_CARRY_EXCLUDE = (
+    "result.json",
+    "runs",
+    ".promote-tmp",
+    ".subagent_traces",
+    "inputs.json",
+    "directive.md",
+    "changed-inputs.md",
+)
+
+
+def carry_self(module: str, rule: str, workdir) -> None:
+    """dispatch-time: copy the author's own previous round into the fresh workdir so it
+    edits incrementally. Source = the canonical stage root (the GC'd clean product set,
+    parent of runs/), NOT runs/N-1. copy2 (NOT hardlink — canonical shares inodes with the
+    producing run; a hardlink would let the author corrupt both), 0644 writable.
+
+    Copies files whose stage-root-relative path matches a Rule.carry glob, minus Rule.no_carry
+    (per-round review records), minus the framework-wide _CARRY_EXCLUDE top-level entries.
+    No-op when Rule.carry is empty (pure transformers) or canonical does not exist (first run).
+    Fresh empty workdir per dispatch → carry runs exactly once; session-resume does not re-dispatch."""
+    r = rules.RULES[rule]
+    if not r.carry:
+        return
+    stage_dir = _result_path(module, rule).parent
+    if not stage_dir.is_dir():
+        return
+    dest = Path(workdir)
+    for src in stage_dir.rglob("*"):
+        if not src.is_file() or src.is_symlink():
+            continue
+        rel = src.relative_to(stage_dir)
+        if rel.parts[0] in _CARRY_EXCLUDE:
+            continue
+        rel_str = rel.as_posix()
+        if not any(fnmatch.fnmatch(rel_str, g) for g in r.carry):
+            continue
+        if any(fnmatch.fnmatch(rel_str, ng) for ng in r.no_carry):
+            continue
+        d = dest / rel
+        d.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, d)
+        os.chmod(d, 0o644)
 
 
 def _cp_al(src: Path, dst: Path) -> None:
