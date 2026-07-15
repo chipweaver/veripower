@@ -741,6 +741,50 @@ def test_sim_fail_triage_in_flight_yields(tmp_path, monkeypatch):
     assert schedule.decide("m", objective="repair")["action"] == "YIELD"
 
 
+def test_option_c_defers_producer_with_inflight_consumer(tmp_path, monkeypatch):
+    # step-2 forward path: rtl-design has a fresh-but-invalid proof, lint-cdc in-flight.
+    # rtl-design's own fail is made STALE (oracle reopened after) so step 1 does not
+    # grab it first -> the guard under test is step 2's candidate filter.
+    monkeypatch.chdir(tmp_path)
+    _valid("m", "specification", 1)
+    _valid("m", "rtl-design", 1)
+    _fail("m", "rtl-design", 2)
+    _reopen("m", "semantic-review")  # stale-ifies the fail (cond 3) -> step 1 skips it
+    _dispatch("m", "lint-cdc", 1, {})  # in-flight consumer of Design/rtl-design/*.v
+    d = schedule.decide("m", objective="repair")
+    assert not (d["action"] == "DISPATCH" and d["rule"] == "rtl-design")
+    assert d["action"] in ("YIELD", "DISPATCH")  # YIELD, or a different safe candidate
+
+
+def test_option_c_defers_fix_owner_rebuild_step1(tmp_path, monkeypatch):
+    # step-1 disposition path (spec §4 typical torn-read): a fresh sim failure attributed to
+    # rtl-design would DISPATCH the rtl rebuild via _disposition, but lint-cdc (a consumer of
+    # rtl-design) is in-flight -> must YIELD, not rebuild rtl under the background read.
+    monkeypatch.chdir(tmp_path)
+    _valid_chain_through_simulation("m")
+    _sim_fail("m", run=1)
+    facts.append_event(
+        "m",
+        {
+            "type": "diagnosis",
+            "id": "d1",
+            "subject": {"proof": "simulation", "outcome_run": 1},
+            "attribution": "rtl-design",
+            "fix_owner": "rtl-design",
+            "evidence": ["Verification/simulation-triage/runs/1/result.json"],
+            "confidence": "high",
+            "source": "triage",
+        },
+        TS,
+    )
+    _dispatch(
+        "m", "lint-cdc", 1, {}
+    )  # in-flight consumer of rtl-design, NOT the fix_owner
+    d = schedule.decide("m", objective="repair")
+    assert not (d["action"] == "DISPATCH" and d["rule"] == "rtl-design")
+    assert d["action"] == "YIELD"
+
+
 def test_signed_off_regresses_on_hand_edit(tmp_path, monkeypatch):
     # E3: the reopen-named freshness test's fixture (empty outputs) structurally cannot
     # exercise a hand-edit. Build a real signed-off chain (on-disk artifacts) and hand-edit

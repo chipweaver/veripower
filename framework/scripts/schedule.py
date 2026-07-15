@@ -229,6 +229,14 @@ def _workdir_of(events, rule, run):
     return None
 
 
+def _has_inflight_consumer(rule_name: str, inflight: list[dict]) -> bool:
+    """Option C torn-read guard: True iff some in-flight run consumes rule_name's output
+    (rule_name ∈ input_producers(that consumer)). Deferring rule_name's (re)dispatch means its
+    new round never starts → no concurrent re-promote to tear the consumer's canonical read.
+    Covers file- and dir-type tears; the consumer's next reap frees rule_name. Pure, no I/O."""
+    return any(rule_name in rules.input_producers(f["rule"]) for f in inflight)
+
+
 def decide(
     module: str,
     *,
@@ -274,8 +282,11 @@ def decide(
         if disp["action"] == "_defer_to_forward":
             pass  # fall through to step 2
         elif disp["action"] == "DISPATCH":
-            # public premise: target already in-flight -> do not double-dispatch
-            if any(f["rule"] == disp["rule"] for f in inflight):
+            # target already in-flight, OR its output has an in-flight consumer (Option C:
+            # repair's fix_owner rebuild would re-promote under a background consumer's read)
+            if any(
+                f["rule"] == disp["rule"] for f in inflight
+            ) or _has_inflight_consumer(disp["rule"], inflight):
                 return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
             return {**disp, "objective": objective}
         else:
@@ -307,6 +318,8 @@ def decide(
         if any(f["rule"] == rule for f in inflight):
             continue
         if not facts.rule_available(module, events, rule):
+            continue
+        if _has_inflight_consumer(rule, inflight):  # Option C torn-read guard
             continue
         if objective == "delivery":
             if not all(
