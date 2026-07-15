@@ -72,6 +72,9 @@ def cmd_dispatch(
     run = facts.runs_of(events, rule) + 1
     workdir = str(Path(*rules.workdir_root(rule), "runs", str(run)))
     (facts.module_root(module) / workdir).mkdir(parents=True, exist_ok=True)
+    abs_workdir = facts.module_root(module) / workdir
+    store.inject_inputs(module, rule, abs_workdir, extra_params)  # WHERE injection
+    store.carry_self(module, rule, abs_workdir)  # self-carry (no-op unless Rule.carry)
     # Forward scope signal: the kernel already computes which recorded inputs drifted from
     # disk (that drift is what marks the proof stale and triggers this re-dispatch). Surface
     # that set as a scope hint the skill's forward fallback reads — instead of the skill

@@ -1133,6 +1133,106 @@ def test_stale_result_reason_boundaries():
     assert f(None, "2026-07-10T00:00:00.000000Z") == "produced_at_unparseable"
 
 
+def test_dispatch_writes_inputs_json(tmp_path, monkeypatch):
+    # cold specification dispatch → workdir has inputs.json with the brainstorm location
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "asic" / "m").mkdir(parents=True)
+    (tmp_path / "asic" / "m" / "brainstorm.md").write_text("bs")
+    r = _run_json(
+        tmp_path,
+        "dispatch",
+        "--module",
+        "m",
+        "--rule",
+        "specification",
+        "--objective",
+        "delivery",
+    )
+    wd = tmp_path / "asic" / "m" / r["workdir"]
+    table = json.loads((wd / "inputs.json").read_text())
+    assert table["brainstorm"] == str((tmp_path / "asic" / "m").resolve())
+
+
+def test_dispatch_carries_author_previous_round(tmp_path, monkeypatch):
+    # seed a canonical specification product, then re-dispatch → carried into new workdir
+    monkeypatch.chdir(tmp_path)
+    canon = tmp_path / "asic" / "m" / "Design" / "specification"
+    canon.mkdir(parents=True)
+    (canon / "design.md").write_text("prev")
+    (tmp_path / "asic" / "m" / "brainstorm.md").write_text("bs")
+    r = _run_json(
+        tmp_path,
+        "dispatch",
+        "--module",
+        "m",
+        "--rule",
+        "specification",
+        "--objective",
+        "delivery",
+    )
+    wd = tmp_path / "asic" / "m" / r["workdir"]
+    assert (wd / "design.md").read_text() == "prev"
+
+
+def test_dispatch_injects_no_upstream_byte_copy(tmp_path, monkeypatch):
+    # §10 #2 (half a): a transformer dispatch writes ONLY inputs.json — the upstream RTL is
+    # injected as a location, never copied into the workdir. (Half b — editing canonical
+    # invalidates the proof — is covered by test_facts_freshness input-change tests.)
+    monkeypatch.chdir(tmp_path)
+    rtl = tmp_path / "asic" / "m" / "Design" / "rtl-design"
+    rtl.mkdir(parents=True)
+    (rtl / "top.v").write_text("module top; endmodule")
+    (rtl / "filelist.txt").write_text("top.v\n")
+    # seed enough upstream so synthesis is dispatchable: specification then rtl-design,
+    # each taken through a real dispatch+result+reap (mirrors _dispatch_write_reap /
+    # _build_full_chain) so their outcomes are recorded and rule_available sees them.
+    _write_file("m", "brainstorm.md", "bs")
+    _dispatch_write_reap(tmp_path, "m", "specification", _STAGE_FILES["specification"])
+    _dispatch_write_reap(tmp_path, "m", "rtl-design", _STAGE_FILES["rtl-design"])
+    r = _run_json(
+        tmp_path,
+        "dispatch",
+        "--module",
+        "m",
+        "--rule",
+        "synthesis",
+        "--objective",
+        "delivery",
+    )
+    wd = tmp_path / "asic" / "m" / r["workdir"]
+    assert (wd / "inputs.json").is_file()
+    assert not (wd / "top.v").exists()  # upstream RTL injected, not copied
+
+
+def test_dispatch_proof_inputs_excludes_self_carry(tmp_path, monkeypatch):
+    # §10 #4: an author's carried self-products are NOT in Rule.inputs, so the dispatch event's
+    # recorded input table (proof.inputs source) never contains them — dropping/editing a
+    # carried product cannot stale the author's fresh proof.
+    monkeypatch.chdir(tmp_path)
+    canon = tmp_path / "asic" / "m" / "Design" / "specification"
+    canon.mkdir(parents=True)
+    (canon / "design.md").write_text(
+        "prev"
+    )  # a self-PRODUCT (output), carried, not an input
+    (tmp_path / "asic" / "m" / "brainstorm.md").write_text("bs")
+    _run_json(
+        tmp_path,
+        "dispatch",
+        "--module",
+        "m",
+        "--rule",
+        "specification",
+        "--objective",
+        "delivery",
+    )
+    events = [
+        json.loads(ln)
+        for ln in (tmp_path / "asic" / "m" / "events.jsonl").read_text().splitlines()
+    ]
+    disp = [e for e in events if e["type"] == "dispatch"][-1]
+    assert set(disp["inputs"]) == {"brainstorm.md"}  # design.md (self-product) absent
+
+
 def test_bare_import_single_module_identity():
     # Cross-module SSoT identity (CONTRIBUTING "Modifying the kernel"): kernel/schedule/facts
     # import the shared leaf modules the bare way off the same sys.path, so each resolves to
