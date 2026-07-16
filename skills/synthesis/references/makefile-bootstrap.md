@@ -12,16 +12,16 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap \
 - Deploys into the directory given by `--workdir` (typically `asic/<module>/Design/synthesis/runs/<N>/`, supplied by the caller). A relative `--workdir` resolves against the working tree root (the CWD, i.e. the directory containing `asic/`).
 - Replaces the `MY_TOP` placeholder in: `env.sh`, `constraints.sdc` (when no source of truth is present).
 - Replaces the `MY_RTL_DIR` placeholder in `scripts/dc_run.tcl` with the ABSOLUTE rtl-design stage root, read from the injected `<workdir>/inputs.json` `"rtl"` key (no self-navigation, no relpath).
-- Generates `scripts/rtl_load.tcl` from `Design/rtl-design/filelist.txt` (each entry wrapped as `analyze -format sverilog -define SYNTHESIS [list <RTL_DIR>/<entry>]`, `<RTL_DIR>` being that same absolute root).
+- Generates `scripts/rtl_load.tcl` from `<rtl>/filelist.txt` (each entry wrapped as `analyze -format sverilog -define SYNTHESIS [list <RTL_DIR>/<entry>]`, `<RTL_DIR>` being that same absolute root).
 - Expands each `+incdir+<dir>` entry in `filelist.txt` (emitted by rtl-design's `assemble` verb) onto `search_path` in `scripts/rtl_load.tcl`, rebased `<RTL_DIR>/<dir>`. `+define+` / `-f` directives are skipped (`-define SYNTHESIS` is passed per `analyze`; nested `-f` is out of scope).
 - Generates `scripts/config.tcl` injecting `::env(TOP)` + `::env(LIB_DB)` (LIB_DB starts as the `FILL_IN_LIB_DB_PATH` placeholder).
 - The script aborts when the target directory is already deployed (detected by an existing `Makefile`).
-- When `--top` is omitted, it is inferred from `Design/rtl-design/README.md` / `filelist.txt`.
-- When `Design/rtl-design/filelist.txt` is missing or contains no usable RTL entries, the script fails closed (avoiding a fallback to `${TOP}.v` that would mis-name a `.sv` top).
+- When `--top` is omitted, it is inferred from `<rtl>/README.md` / `filelist.txt`.
+- When `<rtl>/filelist.txt` is missing or contains no usable RTL entries, the script fails closed (avoiding a fallback to `${TOP}.v` that would mis-name a `.sv` top).
 
 ## SDC source-of-truth decision
 
-`synthesis bootstrap` looks up the source of truth `Design/specification/constraints/<TOP>.sdc` at deploy time:
+`synthesis bootstrap` looks up the source of truth `<sdc>/constraints/<TOP>.sdc` at deploy time (`<sdc>` = the injected `"sdc"` location, `inputs.json`):
 
 | Source of truth present | Behaviour |
 |---|---|
@@ -75,7 +75,8 @@ It extracts `area_um2` (`area.rpt` "Total cell area") and `timing_slack_ns` (the
 **min** `Critical Path Slack` across all `qor.rpt` clock-group blocks — never the
 first listed), cross-checks the worst slack against the design `WNS` /
 violating-path summary, judges the gate against the targets it reads from
-`Design/specification/ppa.json` (`area_um2` <= target; `timing_slack_ns` >= target;
+`<ppa>/ppa.json` (`<ppa>` = the injected `"ppa"` location, `inputs.json`)
+(`area_um2` <= target; `timing_slack_ns` >= target;
 each optional — an absent file or dim leaves that dimension ungated), and writes the lean
 `result.json`. Command exit is **0 = result.json written** (status pass or fail)
 / **2 = BLOCKED** (program exception). How a missing/unparseable report folds into

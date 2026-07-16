@@ -36,14 +36,16 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 
 ### External reference inputs
 
+Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
+
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/rtl-design/filelist.txt` | text | RTL file list. |
-| `Design/rtl-design/README.md` | Custom markdown | Constraint-annotation note (SDC: generated clock / multicycle / false path). |
-| `Design/specification/constraints/<TOP>.sdc` | SDC | SDC source of truth (optional) — bootstrap seeds the working `constraints.sdc` from it, else the template placeholder. |
+| `<rtl>/filelist.txt` | text | RTL file list. |
+| `<rtl_doc>/README.md` | Custom markdown | Constraint-annotation note (SDC: generated clock / multicycle / false path). |
+| `<sdc>/constraints/<TOP>.sdc` | SDC | SDC source of truth (optional) — bootstrap seeds the working `constraints.sdc` from it, else the template placeholder. |
 | `LIB_DB` (env) | std cell Liberty `.db` path | Set before any run (Step 3) — `env.sh` / Makefile fail loudly when unset. |
 
-When `{failing_result}` is injected, read additional context from the same directory as the trigger file; field names come from the triggering stage's own `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. PPA targets (`area_um2` / `timing_slack_ns` dimensions) are read by `synthesis finalize` itself from `Design/specification/ppa.json` — nothing is injected in the prompt.
+When `{failing_result}` is injected, read additional context from the same directory as the trigger file; field names come from the triggering stage's own `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. PPA targets (`area_um2` / `timing_slack_ns` dimensions) are read by `synthesis finalize` itself from the injected `ppa` location (`inputs.json`) — nothing is injected in the prompt.
 
 ## Output Artifacts
 
@@ -63,7 +65,7 @@ The promoted full set (including `ppa-actual.json`, `run.log`, and the remaining
 
 ### Step 1: Read inputs and determine scope
 
-Pre-check the external references: `Design/rtl-design/filelist.txt` (containing ≥1 RTL entry — not a comment, not a `+` / `-` directive) and `README.md` all present. If any file is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if filelist exists but has no usable RTL entries, write `fail_reason="external reference missing: Design/rtl-design/filelist.txt (no RTL entries)"` and exit.
+Pre-check the external references: `<rtl>/filelist.txt` (containing ≥1 RTL entry — not a comment, not a `+` / `-` directive) and `<rtl_doc>/README.md` all present. If any file is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if filelist exists but has no usable RTL entries, write `fail_reason="external reference missing: <rtl>/filelist.txt (no RTL entries)"` and exit.
 
 Determine this round's fix scope from the first available source:
 1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
@@ -87,7 +89,7 @@ Deploys the templates into `{workdir}`, generates `scripts/rtl_load.tcl` + `scri
 
 ### Step 4: Edit `{workdir}/constraints.sdc`
 
-- Read the SDC portion of the "constraint-annotation note" in `Design/rtl-design/README.md`; add `create_generated_clock` entries (if any).
+- Read the SDC portion of the "constraint-annotation note" in `<rtl_doc>/README.md`; add `create_generated_clock` entries (if any).
 - Replace the `set_clock_uncertainty -setup` / `-hold` placeholder values with the values from the process library (when undocumented, keep setup=`0.2 ns` / hold=`0.0 ns` and add a note; pre-CTS hold = 0 — see `specification/references/sdc-template.md`).
 - Fill `set_drive` / `set_load` per the IO cell library (when there is no spec, keep the placeholders and add a note).
 - Confirm `set_input_delay` / `set_output_delay` (replace from the interface spec when available).
@@ -111,14 +113,14 @@ Extract the violated paths from `reports/timing_setup.rpt`, keeping each path's 
 
 ### Step 7: Build `{workdir}/result.json` (mandatory)
 
-Run the parser's finalize subcommand; do not hand-assemble the envelope or extract/compare by hand. It reads the PPA targets itself from `Design/specification/ppa.json` (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream; an absent file or dim leaves that dimension ungated) — you pass no target flags:
+Run the parser's finalize subcommand; do not hand-assemble the envelope or extract/compare by hand. It reads the PPA targets itself from the injected `ppa` location (`inputs.json`) (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream; an absent file or dim leaves that dimension ungated) — you pass no target flags:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
   --workdir {workdir} --module <module> --top <top_module>
 ```
 
-`finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`) against the `Design/specification/ppa.json` targets, derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+`finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`) against the targets at the injected `ppa` location (`inputs.json`), derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
 `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); you write `failure_kind=infra` on the pre-checks of Steps 1–5 (DC never ran — external ref / license / trigger) before finalize runs.
 
@@ -146,9 +148,9 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept blocked); on `fail`, `stage_specific.{fail_reason, failure_kind}` are required.
 - [ ] result.json was written by `synthesis finalize` (it owns status / ppa_actual / artifacts / failure_kind / the reproducibility header).
-- [ ] `scripts/rtl_load.tcl` matches `Design/rtl-design/filelist.txt`.
-- [ ] `create_generated_clock` covers every generated clock in the RTL (or the SDC remarks in `Design/rtl-design/README.md` confirm there are none).
-- [ ] `set_false_path` / `set_multicycle_path` cover the exception paths annotated in the RTL `README.md`.
+- [ ] `scripts/rtl_load.tcl` matches `<rtl>/filelist.txt`.
+- [ ] `create_generated_clock` covers every generated clock in the RTL (or the SDC remarks in `<rtl_doc>/README.md` confirm there are none).
+- [ ] `set_false_path` / `set_multicycle_path` cover the exception paths annotated in `<rtl_doc>/README.md`.
 - [ ] Remaining timing violations have been classified (real violations have been recorded in `violations[]`).
 - [ ] `out/<TOP>_syn.v` / `out/<TOP>_syn.sdc` / `out/<TOP>_syn.sdf` exist.
 
