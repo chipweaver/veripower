@@ -124,6 +124,16 @@ def _mainthread_cost(session_transcripts: list[str]) -> dict:
 
 
 def _wallclock_sec(events: list[dict]) -> float:
+    """Sum dispatch -> outcome deltas, one dispatch per outcome.
+
+    Events are append-only / chronological. A dispatch is retired the moment
+    it is consumed by a matching outcome, so a later re-reap outcome for the
+    same (rule, run) key — with no intervening fresh dispatch (the
+    crash-mid-promote repair path and the pin/regrade path both produce this;
+    kernel.py cmd_reap documents that re-reaping an already-outcome'd run is
+    deliberately allowed) — finds no dispatch to pair with and contributes
+    nothing, instead of re-matching the stale original dispatch.
+    """
     dispatches = {}
     total = 0.0
     for e in events:
@@ -132,6 +142,7 @@ def _wallclock_sec(events: list[dict]) -> float:
             dispatches[key] = e["ts"]
         elif e.get("type") == "outcome" and key in dispatches:
             total += (_parse_ts(e["ts"]) - _parse_ts(dispatches[key])).total_seconds()
+            del dispatches[key]
     return total
 
 
