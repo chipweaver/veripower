@@ -228,7 +228,11 @@ RULES: dict[str, Rule] = {
         skill="veripower:simulation-triage",
         execution="task",
         workdir_root=("Verification", "simulation-triage"),
-        inputs={},
+        inputs={
+            "design": ("Design/specification/design.md",),
+            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/filelist.txt"),
+            "plan": ("Verification/simulation-plan/verification-plan.md",),
+        },
         outputs=(),
         proof=None,
         oracle=None,

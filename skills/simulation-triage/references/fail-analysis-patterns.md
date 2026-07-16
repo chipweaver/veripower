@@ -96,9 +96,9 @@ The Symptom table above is the observed-symptom lens; the same four buckets are 
 
 ## L1 waveform query
 
-Step 2 queries the failing run's own FSDB (`Verification/simulation/runs/<sim_run>/<test_id>.fsdb`)
-once the log/spec/refmodel evidence forms a hypothesis about which signal and cycle window is
-suspect — not on every case, and never as a substitute for that evidence.
+Step 2 queries the failing run's own FSDB (`<test_id>.fsdb`, inside the `sim_run` directory
+`inputs.json` names) once the log/spec/refmodel evidence forms a hypothesis about which signal
+and cycle window is suspect — not on every case, and never as a substitute for that evidence.
 
 - **When to query:** the log-anchor path (`regress` / `compile` / `smoke` / `prerequisite`) is
   the common case — a `data_mismatch` or `timeout` anchor names or implies a signal; query it to

@@ -675,3 +675,14 @@ def test_stale_inputs_excludes_self_produced_inout(tmp_path, monkeypatch):
 def test_stale_inputs_empty_without_prior_outcome(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert facts.stale_inputs("m", [], "rtl-design") == []
+
+
+def test_proof_none_rule_available_despite_invalid_upstream(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    # no upstream outcomes at all → normal rules unavailable, but a proof=None rule is available
+    evs = (
+        facts.read_events("m")
+        if (facts.module_root("m") / "events.jsonl").exists()
+        else []
+    )
+    assert facts.rule_available("m", evs, "simulation-triage") is True

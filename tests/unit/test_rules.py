@@ -153,3 +153,11 @@ def test_carry_no_carry_fields_and_values():
         assert rules.RULES[r].no_carry == ()
     # frozen dataclass still rejects mutation
     assert getattr(rules.Rule, "__dataclass_params__").frozen
+
+
+def test_triage_has_upstream_inputs_and_no_proof():
+    import rules
+
+    r = rules.RULES["simulation-triage"]
+    assert r.proof is None
+    assert set(r.inputs) >= {"design", "rtl", "plan"}

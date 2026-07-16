@@ -1,7 +1,7 @@
 """simtriage.result — schema-gate the analysis judgment, then atomically write result.json.
 
 Task C7: simulation-triage is now an ordinary kernel-scheduled rule (rules.py: proof=None) —
-the old runs/<sim_run>/analysis.json + top-level analysis.json pointer double-file mechanism
+the old per-run analysis.json + top-level analysis.json pointer double-file mechanism
 is retired; the single output surface is Verification/simulation-triage/runs/<N>/result.json
 (kernel-issued workdir, atomic temp+rename per Task C1).
 

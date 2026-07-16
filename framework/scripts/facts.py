@@ -459,6 +459,10 @@ def input_available(
 
 def rule_available(module: str, events: list[dict], rule_name: str) -> bool:
     rule = rules.RULES[rule_name]
+    if rule.proof is None:
+        # No proof ⇒ no freshness contract ⇒ inputs are injected as locations, never gated.
+        # A diagnostic (triage) must be dispatchable exactly when upstream proofs are invalid.
+        return True
     for globs in rule.inputs.values():
         for g in globs:
             if not input_available(module, events, g, consumer=rule_name):

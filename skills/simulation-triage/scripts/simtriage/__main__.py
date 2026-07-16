@@ -8,7 +8,7 @@ Verbs (one stage = one tool; see skills/simulation-triage/SKILL.md for usage):
 Task C7: simulation-triage is now an ordinary kernel-scheduled rule (rules.py:
 proof=None) — its result.json lands under its own kernel-issued {workdir}
 (Verification/simulation-triage/runs/<N>/), written by this CLI's `finalize` verb
-(the old runs/<sim_run>/analysis.json + top-level pointer double-file mechanism is
+(the old per-run analysis.json + top-level pointer double-file mechanism is
 retired). Thin dispatcher: the subcommand parses its own flags and calls into the
 simtriage.* library. The library import is deferred into the handler (NOT top-level)
 so --help and verb dispatch run during incremental per-task TDD before the sibling
