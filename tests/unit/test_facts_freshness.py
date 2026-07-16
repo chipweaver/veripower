@@ -201,53 +201,6 @@ def test_reopen_after_proof_invalidates(tmp_path, monkeypatch):
     assert not facts.proof_valid("m", facts.read_events("m"), "specification")
 
 
-def test_inout_artifact_compared_against_same_run_output_no_false_staleness(
-    tmp_path, monkeypatch
-):
-    # §1.3 in∩out: a run that UPDATES its own input (lint waiver) must not make its
-    # proof born-stale — condition 2 compares the same-run OUTPUT version for such paths.
-    monkeypatch.chdir(tmp_path)
-    w = _write("m", "Design/lint-cdc/scripts/waiver.tcl", "waive-v1")
-    v1 = _fp("m", "Design/lint-cdc/scripts/waiver.tcl")
-    facts.append_event(
-        "m",
-        {
-            "type": "dispatch",
-            "rule": "lint-cdc",
-            "run": 1,
-            "workdir": "w",
-            "inputs": {"Design/lint-cdc/scripts/waiver.tcl": v1},
-            "params": {},
-            "objective": "delivery",
-        },
-        TS,
-    )
-    w.write_text("waive-v2-updated-during-run")  # run rewrites its own input
-    v2 = _fp("m", "Design/lint-cdc/scripts/waiver.tcl")
-    facts.append_event(
-        "m",
-        {
-            "type": "outcome",
-            "rule": "lint-cdc",
-            "run": 1,
-            "verdict": "pass",
-            "outputs": {"Design/lint-cdc/scripts/waiver.tcl": v2},
-            "proofs": [
-                {
-                    "name": "lint-cdc",
-                    "verdict": "pass",
-                    "inputs": {"Design/lint-cdc/scripts/waiver.tcl": v1},
-                    "oracle": {"ref": "spyglass-ruleset", "grade": "tool"},
-                }
-            ],
-            "tool_versions": {},
-        },
-        TS,
-    )
-    # v1 != disk(v2), but the path is in this outcome's outputs -> compared against v2 -> valid
-    assert facts.proof_valid("m", facts.read_events("m"), "lint-cdc")
-
-
 def _sign_off_everything(module):
     """Construct: for every rule in FORWARD_PRIORITY (the 8 stages), one
     dispatch+outcome pair carrying a passing same-name proof with empty

@@ -340,8 +340,7 @@ def oracle_grade(module: str, events: list[dict], rule) -> str:
 def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:
     """spec §1.3: a proof is currently valid iff verdict==pass AND every recorded input
     version matches disk AND its oracle ref was not reopened after the proof landed AND
-    every recorded output version matches disk (condition 4). in∩out inputs are compared
-    against the same-run OUTPUT version, not the dispatch-time input version."""
+    every recorded output version matches disk (condition 4)."""
     hit = _proof_outcome(events, proof_name)
     if hit is None:
         return False
@@ -351,13 +350,9 @@ def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:
         return False
     root = module_root(module)
     rule = rules.RULES[proof_name]
-    own_outputs = set(outcome.get("outputs", {}))
-    # condition 2 (inputs) — in∩out handled by preferring the recorded output version
+    # condition 2 (inputs) — every recorded input version must match disk
     for path, recorded in proof.get("inputs", {}).items():
-        ref = (
-            outcome["outputs"].get(path, recorded) if path in own_outputs else recorded
-        )
-        if not versions_match(ref, fingerprint_cached(root / path, root)):
+        if not versions_match(recorded, fingerprint_cached(root / path, root)):
             return False
     # condition 4 (own outputs, incl. canonical result.json)
     for path, recorded in outcome.get("outputs", {}).items():
@@ -383,12 +378,11 @@ def stale_inputs(module: str, events: list[dict], rule: str) -> list[str]:
     disk — the kernel-computed "what changed since the last run" set a forward re-run
     consumes for scope (written to `<workdir>/changed-inputs.md` at dispatch, see
     kernel.cmd_dispatch). Reuses proof_valid's per-input comparison but COLLECTS the
-    mismatches instead of short-circuiting on the first. Self-produced in∩out inputs
-    (e.g. lint-cdc's own `scripts/waiver.tcl`) and PIPELINE_INPUTS are excluded — a
-    hand-edited own-output is not an upstream scope change (mirrors schedule._added_inputs).
-    Empty when the rule never produced an outcome (a first delivery) — the caller then
-    falls to full scope. Read-only; stores nothing (NOT the retired per-skill classify-delta
-    input_digest — this is a query over the input versions already recorded in the log)."""
+    mismatches instead of short-circuiting on the first. PIPELINE_INPUTS are excluded
+    (mirrors schedule._added_inputs). Empty when the rule never produced an outcome (a first
+    delivery) — the caller then falls to full scope. Read-only; stores nothing (NOT the
+    retired per-skill classify-delta input_digest — this is a query over the input versions
+    already recorded in the log)."""
     hit = _proof_outcome(events, rule)
     if hit is None:
         return []
@@ -397,10 +391,9 @@ def stale_inputs(module: str, events: list[dict], rule: str) -> list[str]:
     if proof is None:
         return []
     root = module_root(module)
-    own_outputs = set(outcome.get("outputs", {}))
     changed: list[str] = []
     for path, recorded in proof.get("inputs", {}).items():
-        if path in own_outputs or path in rules.PIPELINE_INPUTS:
+        if path in rules.PIPELINE_INPUTS:
             continue
         if not versions_match(recorded, fingerprint_cached(root / path, root)):
             changed.append(path)
@@ -422,15 +415,6 @@ def input_available(
     prod = rules.producer_of(glob)
     if prod is None:
         return False
-    if prod == consumer:
-        # self-produced in∩out input (e.g. lint-cdc waiver.tcl): ALWAYS available (spec §2
-        # 自产输入豁免). The rule regenerates it; a cold start has none; and it must NEVER
-        # gate the rule's own dispatch. Editing or deleting it invalidates THIS rule's proof
-        # via condition 4 (§1.3) — which is exactly what schedules the re-run. Requiring the
-        # on-disk file to match the last recorded output here would re-lock the rule the
-        # instant that proof invalidates: the self-lock the exemption exists to forbid
-        # ("无 outcome 或文件缺失 = 冷启动，照常可派发", and an edited file no differently).
-        return True
     outcome = latest_outcome(events, prod)
     if outcome is None:
         # Producer never ran -> no output version exists -> input UNAVAILABLE (spec §2:
@@ -511,15 +495,14 @@ def _added_inputs(module: str, rule_name: str, proof: dict) -> list[str]:
     """Files on disk matching rule_name's input selectors but NOT in the proof's recorded
     inputs — i.e. added out-of-band AFTER the proof landed. proof_valid conditions 2/4 only
     check RECORDED paths, so an out-of-band ADD (unlike an edit/delete) escapes them; the
-    signoff gate uses this so a smuggled-in source can't ship unverified. Self-produced
-    (in∩out) selectors are excluded — those are covered by output binding, not a fresh
-    out-of-band add. Gate-private: `signoff_gate` is the sole caller."""
+    signoff gate uses this so a smuggled-in source can't ship unverified. Gate-private:
+    `signoff_gate` is the sole caller."""
     root = module_root(module)
     recorded = set(proof.get("inputs", {}))
     extra: list[str] = []
     for globs in rules.RULES[rule_name].inputs.values():
         for g in globs:
-            if g in rules.PIPELINE_INPUTS or rules.producer_of(g) == rule_name:
+            if g in rules.PIPELINE_INPUTS:
                 continue
             for p in sorted((root).glob(g)):
                 rel = str(p.relative_to(root))
@@ -530,10 +513,9 @@ def _added_inputs(module: str, rule_name: str, proof: dict) -> list[str]:
 
 def signoff_gate(module: str, events: list[dict]) -> str | None:
     """Signoff admissibility: EVERY stage proof valid, oracle grade ∈ {tool, human}, no
-    unknown recorded version, no out-of-band added input. Returns a one-line reason when the
-    gate fails, else None. Callers wrap it in their own vocabulary — `decide` into an
-    ESCALATE action, `kernel signoff` into an `ok:false` — because a reason string is
-    neither's dialect to own.
+    out-of-band added input. Returns a one-line reason when the gate fails, else None.
+    Callers wrap it in their own vocabulary — `decide` into an ESCALATE action, `kernel
+    signoff` into an `ok:false` — because a reason string is neither's dialect to own.
 
     Iterates FORWARD_PRIORITY in order (never a set): with >1 proof failing the gate, a set
     would make the reason vary with the hash seed, breaching decide's purity invariant."""
@@ -547,11 +529,6 @@ def signoff_gate(module: str, events: list[dict]) -> str | None:
         # once (no re-reap) and a reopen blocks signoff immediately.
         if oracle_grade(module, events, rules.RULES[proof]) not in ("tool", "human"):
             return f"signoff blocked: {proof} oracle is proposed (pin it)"
-        if (
-            UNKNOWN in p.get("inputs", {}).values()
-            or UNKNOWN in outcome.get("outputs", {}).values()
-        ):
-            return f"signoff blocked: {proof} carries an unknown version"
         added = _added_inputs(module, proof, p)
         if added:
             # A new file matching this rule's selectors appeared out-of-band after the

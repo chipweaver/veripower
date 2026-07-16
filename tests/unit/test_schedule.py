@@ -667,46 +667,6 @@ def test_unregistered_rule_in_flight_is_not_reapable_forever(tmp_path, monkeypat
     assert schedule.decide("m", objective="delivery")["action"] == "DONE"
 
 
-def test_signoff_gate_flags_valid_proof_carrying_unknown_version(tmp_path, monkeypatch):
-    # a proof that is VALID yet carries an `unknown` recorded version must block
-    # signoff. Reachable for in∩out inputs — cond 2 substitutes the same-run OUTPUT version,
-    # so the proof validates while its recorded INPUT table still holds an unknown. (The
-    # outputs-side of the gate check is defensively unreachable: an unknown output already
-    # fails cond 4.) Crafted ledger: specification valid with a design.md input recorded
-    # unknown but its output real -> signoff_gate fires the unknown-version branch on it.
-    monkeypatch.chdir(tmp_path)
-    _mk("m", "brainstorm.md", "b1")
-    _mk("m", "Design/specification/design.md", "dm")
-    bm = _fp("m", "brainstorm.md")
-    dm = _fp("m", "Design/specification/design.md")
-    _dispatch("m", "specification", 1, {"brainstorm.md": bm}, objective="delivery")
-    _outcome(
-        "m",
-        "specification",
-        1,
-        "pass",
-        {"Design/specification/design.md": dm},
-        [
-            {
-                "name": "specification",
-                "verdict": "pass",
-                "inputs": {
-                    "brainstorm.md": bm,
-                    "Design/specification/design.md": facts.UNKNOWN,
-                },
-                "oracle": {"ref": "spec-review", "grade": "human"},
-            }
-        ],
-    )
-    _pin(
-        "m", "specification"
-    )  # live-pin the oracle so the gate clears grade and reaches
-    # the unknown-version branch (the check under test, downstream of the grade check).
-    gate = facts.signoff_gate("m", facts.read_events("m"))
-    assert gate is not None
-    assert "unknown version" in gate and "specification" in gate
-
-
 def test_fresh_fail_fix_owner_in_flight_yields(tmp_path, monkeypatch):
     # E5 / §6 in-flight public premise: when the disposition's fix_owner is already in flight,
     # decide YIELDs — never a double-dispatch.
