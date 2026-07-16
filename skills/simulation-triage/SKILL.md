@@ -59,15 +59,15 @@ The landed `result.json`'s `stage_specific` carries two tiers:
 
 Read `{workdir}/inputs.json` first — the kernel writes it at dispatch. It maps four keys to
 absolute cross-stage locations; read those directly and never construct a module-root-relative
-`Verification/…` or `Design/…` path yourself. Throughout this skill, `sim_run` (and `$sim_run`
-in command examples) is shorthand for the failed-run directory named by that key.
+`Verification/…` or `Design/…` path yourself. Throughout this skill, `<sim_run>` is shorthand
+for the failed-run directory named by that key (and likewise `<design>` / `<rtl>` / `<plan>`).
 
 | Key | Absolute location it names |
 |---|---|
-| `sim_run` | The failed `simulation` run directory you are triaging (this round's target). Its **stage root** — the directory that holds the `runs/` folder `sim_run` sits in — carries the sim-stage `result.json` envelope; the failing test's `<test_id>.fsdb` lives inside `sim_run` itself. |
-| `design` | The `specification` stage root — holds `design.md`, the per-child `<child>.md`, and `manifest.json`. |
-| `rtl` | The `rtl-design` stage root — holds `filelist.txt` and the `*.v` sources. |
-| `plan` | The `simulation-plan` stage root — holds `verification-plan.md` and `scaffold-specification.json`. |
+| `<sim_run>` | The failed `simulation` run directory you are triaging (this round's target). Its **stage root** — the directory that holds the `runs/` folder `<sim_run>` sits in — carries the sim-stage `result.json` envelope; the failing test's `<test_id>.fsdb` lives inside `<sim_run>` itself. |
+| `<design>` | The `specification` stage root — holds `design.md`, the per-child `<child>.md`, and `manifest.json`. |
+| `<rtl>` | The `rtl-design` stage root — holds `filelist.txt` and the `*.v` sources. |
+| `<plan>` | The `simulation-plan` stage root — holds `verification-plan.md` and `scaffold-specification.json`. |
 
 ### Read from the injected locations
 
@@ -75,12 +75,12 @@ Everything below is read relative to the injected keys above — nothing is self
 
 | Source | Use |
 |---|---|
-| the sim-stage `result.json` (in `sim_run`'s stage root, beside the `runs/` folder) | Envelope: `stage_specific.failure_phase` / `fail_reason` / `failing_cases[]` / `coverage_gaps[]` + `gaps_not_in_testpoints` / `conformance_findings[]`. |
-| `sim_run` (the failed-run directory) | The failed run's full working area — regression log, per-case UVM logs, coverage DB, KDB. |
-| `sim_run/<test_id>.fsdb` | The failing test's full-hierarchy FSDB (dumped by the sim stage; not promoted, gc'd on pass — only failing tests retain one). Query it read-only with `fsdbreport` (slash signal paths, `-bt`/`-et` window) for L1's waveform reinforcement (Step 2); if it is absent, empty, or truncated, degrade to log+code reasoning. |
-| `design/design.md` + `design/<child>.md` (via `design/manifest.json`) | Spec intent, to judge a spec-vague / RTL / plan discrepancy. |
-| RTL sources (via `rtl/filelist.txt`) | The DUT under test — read for L1 tracing (incl. FSDB signal-hierarchy discovery) and, read-only via `` `include``, for L2's experiment leaves. |
-| `plan/verification-plan.md` + `plan/scaffold-specification.json` | The refmodel/scoreboard's behavioral intent (golden reference) and the testpoints list — for classifying coverage gaps and keeping an L2 golden model semantically consistent with the UVM refmodel. |
+| the sim-stage `result.json` (in `<sim_run>`'s stage root, beside the `runs/` folder) | Envelope: `stage_specific.failure_phase` / `fail_reason` / `failing_cases[]` / `coverage_gaps[]` + `gaps_not_in_testpoints` / `conformance_findings[]`. |
+| `<sim_run>` (the failed-run directory) | The failed run's full working area — regression log, per-case UVM logs, coverage DB, KDB. |
+| `<sim_run>/<test_id>.fsdb` | The failing test's full-hierarchy FSDB (dumped by the sim stage; not promoted, gc'd on pass — only failing tests retain one). Query it read-only with `fsdbreport` (slash signal paths, `-bt`/`-et` window) for L1's waveform reinforcement (Step 2); if it is absent, empty, or truncated, degrade to log+code reasoning. |
+| `<design>/design.md` + `<design>/<child>.md` (via `<design>/manifest.json`) | Spec intent, to judge a spec-vague / RTL / plan discrepancy. |
+| RTL sources (via `<rtl>/filelist.txt`) | The DUT under test — read for L1 tracing (incl. FSDB signal-hierarchy discovery) and, read-only via `` `include``, for L2's experiment leaves. |
+| `<plan>/verification-plan.md` + `<plan>/scaffold-specification.json` | The refmodel/scoreboard's behavioral intent (golden reference) and the testpoints list — for classifying coverage gaps and keeping an L2 golden model semantically consistent with the UVM refmodel. |
 
 ## Output Artifacts
 
@@ -100,11 +100,11 @@ no separate publish step.
 Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 
 - **Skip classification** (any condition triggers `analysis_state: "skipped"` + `skipped_reason`; jump to Step 5):
-  - the sim-stage `result.json` (in `sim_run`'s stage root) is unreadable or omits `failure_phase` / the phase-appropriate failure signal → `skipped_reason: "input incomplete: <field>"`.
+  - the sim-stage `result.json` (in `<sim_run>`'s stage root) is unreadable or omits `failure_phase` / the phase-appropriate failure signal → `skipped_reason: "input incomplete: <field>"`.
   - The self-read inputs show no fail case (e.g., a mistakenly-dispatched scenario where regress / smoke is fully pass or coverage already 100%) → `skipped_reason: "no fail case to analyze"`.
 - **Complete classification** (`analysis_state: "complete"`): per `failure_phase`, take cases from one of three input shapes:
-  - `regress` / `smoke` → cases = `failing_cases[]` (both run UVM test cases; `failing_cases[]` carries `error_message` / `log_snippet` per failing case; cross-reference the full per-case log under `sim_run` when the envelope's snippet isn't enough).
-  - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail (from `sim_run`) as a single synthetic case. Land the `root_cause` from it directly, AND emit it as **one** `advisory.findings[]` entry (`fault_type` = the compile/prerequisite failure class, `anchor` = the compile-error location from the log tail, else the `fail_reason`; `cases` = the synthetic case) — like the coverage/conformance branches below, one case is one finding, so a high-confidence verdict always carries a concrete locus (schema-enforced: `high` ⇒ non-empty `findings[]` each with an `anchor`).
+  - `regress` / `smoke` → cases = `failing_cases[]` (both run UVM test cases; `failing_cases[]` carries `error_message` / `log_snippet` per failing case; cross-reference the full per-case log under `<sim_run>` when the envelope's snippet isn't enough).
+  - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail (from `<sim_run>`) as a single synthetic case. Land the `root_cause` from it directly, AND emit it as **one** `advisory.findings[]` entry (`fault_type` = the compile/prerequisite failure class, `anchor` = the compile-error location from the log tail, else the `fail_reason`; `cases` = the synthetic case) — like the coverage/conformance branches below, one case is one finding, so a high-confidence verdict always carries a concrete locus (schema-enforced: `high` ⇒ non-empty `findings[]` each with an `anchor`).
   - `coverage` → no `failing_cases[]` (regress already passed; only coverage is below target). cases = each gap bin in `coverage_gaps[]` (split by `gaps_in_testpoints` / `gaps_not_in_testpoints`); each gap bin is one case and becomes one `advisory.findings[]` entry (a lone gap bin is a single case — as in the degenerate path above).
   - `conformance` → no `failing_cases[]` and no log tail (compile + smoke both passed). cases = each gating finding in `conformance_findings[]`; each finding is one case. Its `category` is the reasoning key for Step 2 — there is no log to anchor on.
 
@@ -113,10 +113,10 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 (**analyze only, do not fix**; self-read inputs per the tables above):
 
 - Take evidence along the Step 1 branch path:
-  - Log-anchor path (`regress` / `compile` / `smoke` / `prerequisite`): locate the first occurrence of `UVM_ERROR` / `UVM_FATAL` / timeout from `failing_cases[i].error_message` / `log_snippet` or `fail_reason` (falling back to the full log under `sim_run` when the envelope snippet is truncated).
+  - Log-anchor path (`regress` / `compile` / `smoke` / `prerequisite`): locate the first occurrence of `UVM_ERROR` / `UVM_FATAL` / timeout from `failing_cases[i].error_message` / `log_snippet` or `fail_reason` (falling back to the full log under `<sim_run>` when the envelope snippet is truncated).
   - Coverage path (`coverage`): classify each gap bin by whether it falls inside the scaffold testpoints (`gaps_in_testpoints` is pre-split; cross-reference the testpoints list in `scaffold-specification.json`).
   - Conformance path (`conformance`): there is no UVM_ERROR / gap-bin to anchor. Map each finding's `category` to a `root_cause_direction` via the "Conformance category → `root_cause_direction`" table in `references/fail-analysis-patterns.md`, then cluster + land one top-level `root_cause` per the existing attribution + tiebreak rule.
-- **Query the failing run's FSDB waveform** once the evidence above forms a hypothesis about which signal and cycle window is suspect: bare-call `fsdbreport $sim_run/<test_id>.fsdb -s /<hier>/<signal> -bt <t0> -et <t1> -of h -o <out>` (slash-form hierarchical signal paths; discover the hierarchy from the RTL, or fall back to `fsdb2vcd <fsdb> -o x.vcd` and grep its `$scope`/`$var` lines for the scope list). Fold the resulting `Time | value` text into the forward analysis as fact — this is L1's own factual reinforcement (observing the real run), the same class as reading logs/code, not a new tier. On a missing, empty, or truncated FSDB (a failing run can truncate at the `$fatal` that ended it), degrade to log+code reasoning and do not escalate for that reason alone — but when the failing run's FSDB was expected yet is absent or unreadable, record `expected FSDB absent/unreadable — degraded to log+code` in `advisory.waveform.observation` (Step 5) so a systemic FSDB-dump failure stays observable instead of silently degrading forever.
+- **Query the failing run's FSDB waveform** once the evidence above forms a hypothesis about which signal and cycle window is suspect: bare-call `fsdbreport <sim_run>/<test_id>.fsdb -s /<hier>/<signal> -bt <t0> -et <t1> -of h -o <out>` (slash-form hierarchical signal paths; discover the hierarchy from the RTL, or fall back to `fsdb2vcd <fsdb> -o x.vcd` and grep its `$scope`/`$var` lines for the scope list). Fold the resulting `Time | value` text into the forward analysis as fact — this is L1's own factual reinforcement (observing the real run), the same class as reading logs/code, not a new tier. On a missing, empty, or truncated FSDB (a failing run can truncate at the `$fatal` that ended it), degrade to log+code reasoning and do not escalate for that reason alone — but when the failing run's FSDB was expected yet is absent or unreadable, record `expected FSDB absent/unreadable — degraded to log+code` in `advisory.waveform.observation` (Step 5) so a systemic FSDB-dump failure stays observable instead of silently degrading forever.
 - Classify the fault type and `root_cause_direction` per the classification table in `references/fail-analysis-patterns.md` (including the coverage-gap row).
 - Compare the expected behavior in `verification-plan.md` / `design.md` against the observed evidence to trace the discrepancy (only when both carry enough context).
 - Cluster cases by root cause (per the clustering guide in `references/fail-analysis-patterns.md`): apply the clustering signals (same file / line, same anomalous signal, same TB component, same trigger condition); when same-origin cannot be established, leave each case on its own. A cluster's cases must share fault type and `root_cause_direction` (disagreement → separate clusters).
@@ -126,7 +126,7 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 ### Step 3: L2 gate — controlled experiment when L1 (including its FSDB waveform) can't reach high confidence
 
 - **Trigger:** enter L2 only when Step 2 — including its FSDB waveform query — cannot land `confidence: "high"` — per the "L2-trigger judgment" in `references/fail-analysis-patterns.md` (competing hypotheses / cannot localize / locus in doubt). A single case with a clean log anchor and no plausible alternative explanation skips L2 entirely.
-- **Run a controlled experiment** under `{workdir}/experiment/` to verify the uncertain conjecture Step 2 left standing — not a rebuild of the real run to characterize it (that characterization-by-observation now lives in L1, via its FSDB; see Step 2). Drive stimulus the real run never exercised: a hand-chosen input (not a regression vector), an isolation micro-harness that re-instantiates the DUT's leaf modules and taps internals via SV hierarchical references to pin the fault to a specific function or cell, a hand-built golden model kept semantically consistent with the `plan`-root (simulation-plan) UVM refmodel/scoreboard (a small standalone golden is fine as long as its behavior matches; it need not embed UVM components), or a parametric sweep. Pick a tool yourself (Verilator has worked well — fast, cycle-accurate, and hierarchical references make internal taps easy) or a controlled re-run. **Keep observing your own controlled run**: drive a per-cycle **TEXT** dump of it (or another self-owned dump) — the failing run's own FSDB (`$sim_run/<test_id>.fsdb`, L1's read-only `fsdbreport` evidence from Step 2) cannot see stimulus your controlled run alone drives, so L2 keeps observing its own run rather than relying on it. Canonical RTL is read-only `` `include`` material throughout — never copy-and-edit it.
+- **Run a controlled experiment** under `{workdir}/experiment/` to verify the uncertain conjecture Step 2 left standing — not a rebuild of the real run to characterize it (that characterization-by-observation now lives in L1, via its FSDB; see Step 2). Drive stimulus the real run never exercised: a hand-chosen input (not a regression vector), an isolation micro-harness that re-instantiates the DUT's leaf modules and taps internals via SV hierarchical references to pin the fault to a specific function or cell, a hand-built golden model kept semantically consistent with the `<plan>`-root (simulation-plan) UVM refmodel/scoreboard (a small standalone golden is fine as long as its behavior matches; it need not embed UVM components), or a parametric sweep. Pick a tool yourself (Verilator has worked well — fast, cycle-accurate, and hierarchical references make internal taps easy) or a controlled re-run. **Keep observing your own controlled run**: drive a per-cycle **TEXT** dump of it (or another self-owned dump) — the failing run's own FSDB (`<sim_run>/<test_id>.fsdb`, L1's read-only `fsdbreport` evidence from Step 2) cannot see stimulus your controlled run alone drives, so L2 keeps observing its own run rather than relying on it. Canonical RTL is read-only `` `include`` material throughout — never copy-and-edit it.
 - **Budget:** ≤ `defaults.yaml:l2_experiment_max_rounds` iteration rounds.
 - **Optional:** a single-session blind/adversarial self-check (reason the same evidence twice, once trying to confirm and once trying to refute) to harden the verdict before landing it — never spawn a sub-Task for this; triage stays a leaf.
 - Persist every experiment artifact (harness, golden model, run log, isolation harnesses) — never clean up, even after landing the verdict.
@@ -151,7 +151,7 @@ Assemble the analysis judgment (shape below):
     "fix_direction": "<waveform- or experiment-backed fix direction: file:line + what to change>",
     "findings": [ { "fault_type": "…", "anchor": "file:line", "cases": ["…"] } ],
     "waveform": {                  // present when Step 2's fsdbreport query ran (incl. a degrade note)
-      "commands": ["fsdbreport $sim_run/<test_id>.fsdb -s /tb_top/u_dut/sig -bt 40ns -et 80ns -of h"],
+      "commands": ["fsdbreport <sim_run>/<test_id>.fsdb -s /tb_top/u_dut/sig -bt 40ns -et 80ns -of h"],
       "signals": ["/tb_top/u_dut/sig"],
       "observation": "<what the queried Time|value text showed, or the FSDB-absent degrade note>"
     },
