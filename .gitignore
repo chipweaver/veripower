@@ -37,3 +37,7 @@ docs/adr/
 /*.svf
 /*.pvl
 /svf.txt
+
+# B1 wrapper smoke-test scratch copy (repo-internal tmpdir; see
+# tests/unit/test_b1_wrapper.py::test_smoke_synth_on_demo)
+eval/.b1-smoke-*/
