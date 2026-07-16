@@ -29,6 +29,21 @@
       }
     },
     "tool_versions": {"type": "object"},
-    "reason": {"type": "string", "description": "blocked sub-class (free string): schema_violation / skipped_reason / unparseable / malformed / crash / missing / stale_result / produced_at_unparseable"}
+    "reason": {"type": "string", "description": "blocked sub-class (free string): schema_violation / skipped_reason / unparseable / malformed / crash / missing / stale_result / produced_at_unparseable"},
+    "cost_tokens": {
+      "type": "object",
+      "description": "audit-only token usage of THIS run's Task subagent, summed at reap from its mirrored .subagent_traces trace (usage.parse_trace_usage), deduped by message.id. Absent on main-thread stages (no per-stage trace; their cost comes from the orchestrator session transcript, read by eval/aggregate). NEVER enters validity/verdict/re-run (like tool_versions). total_tokens = sum of the four token classes (pre-registered primary cost metric).",
+      "additionalProperties": true,
+      "properties": {
+        "input_tokens": {"type": "integer"},
+        "output_tokens": {"type": "integer"},
+        "cache_creation_input_tokens": {"type": "integer"},
+        "cache_read_input_tokens": {"type": "integer"},
+        "total_tokens": {"type": "integer"},
+        "message_count": {"type": "integer"},
+        "models": {"type": "array", "items": {"type": "string"}},
+        "source": {"type": "string"}
+      }
+    }
   }
 }

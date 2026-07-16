@@ -13,6 +13,7 @@ import facts  # noqa: E402
 import rules  # noqa: E402
 import schedule  # noqa: E402
 import store  # noqa: E402
+import usage  # noqa: E402
 
 
 def _now() -> str:
@@ -139,8 +140,16 @@ def cmd_reap(module, rule, run, subagent_output_file=None):
     if workdir is None:
         return {"ok": False, "error": f"no dispatch event for {rule} run {run}"}
     root = facts.module_root(module)
+    cost_tokens = None
     if subagent_output_file:
-        store._mirror_subagent_trace(root / workdir, rule, subagent_output_file)
+        dst = store._mirror_subagent_trace(root / workdir, rule, subagent_output_file)
+        if dst is not None:
+            try:  # cost is audit-only — a parse failure must never block the reap
+                ct = usage.parse_trace_usage(dst)
+                ct["source"] = "subagent_trace"
+                cost_tokens = ct
+            except Exception:  # noqa: BLE001
+                cost_tokens = None
     rj = root / workdir / "result.json"
     # UNIFORM 4-tuple across proof rules AND triage — never a shape-shifting return.
     verdict, reason, proofs, diagnosis = _derive_verdict(module, rule, run, rj, events)
@@ -161,6 +170,8 @@ def cmd_reap(module, rule, run, subagent_output_file=None):
     }
     if reason:
         ev["reason"] = reason
+    if cost_tokens is not None:
+        ev["cost_tokens"] = cost_tokens
     facts.append_event(module, ev, _now())
     if diagnosis is not None:  # triage complete -> land the attribution (Task C7)
         facts.append_event(module, diagnosis, _now())
