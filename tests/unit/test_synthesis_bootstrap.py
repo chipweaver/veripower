@@ -9,6 +9,7 @@ root. The bootstrap anchors the design tree on the CWD (matching kernel.py and
 the stage-subagent contract), independent of where the skill code lives.
 """
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -75,11 +76,20 @@ def test_infer_top_from_filelist_does_not_skip_double_slash(tmp_path):
 def _mirror(tmp_path):
     """Build the upstream asic/M/... refs under a tmp design-tree root; return
     (skill_dir, rtl_dir, workdir). skill_dir is the real shipped skill — deploy
-    tests run it with cwd=tmp_path, so the bootstrap anchors the tree on the CWD."""
+    tests run it with cwd=tmp_path, so the bootstrap anchors the tree on the CWD.
+
+    Pre-populates workdir/inputs.json (rtl/sdc/ppa keys) the way kernel.py dispatch
+    injects it at dispatch time — bootstrap now reads upstream locations from
+    inputs.json instead of self-navigating tree_root/asic/<module>/Design/... ."""
     skill_dst = REPO_ROOT / "skills" / "synthesis"
     rtl = tmp_path / "asic" / "M" / "Design" / "rtl-design"
     rtl.mkdir(parents=True)
+    spec = tmp_path / "asic" / "M" / "Design" / "specification"
     workdir = tmp_path / "asic" / "M" / "Design" / "synthesis" / "runs" / "1"
+    workdir.mkdir(parents=True)
+    (workdir / "inputs.json").write_text(
+        json.dumps({"rtl": str(rtl), "sdc": str(spec), "ppa": str(spec)})
+    )
     return skill_dst, rtl, workdir
 
 
@@ -218,7 +228,7 @@ def test_rtl_load_skips_double_slash_comment(tmp_path):
 
 def test_relative_workdir_with_trailing_slash(tmp_path):
     # BP12: a relative --workdir resolves against the CWD (the design-tree root), and
-    # a trailing slash is stripped before relpath math.
+    # a trailing slash is stripped before path resolution.
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "filelist.txt").write_text("top.v\n")
     proc = subprocess.run(
@@ -240,3 +250,16 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
     assert proc.returncode == 0, proc.stderr
     assert (workdir / "Makefile").is_file()  # resolved to the absolute location
     assert (workdir / "scripts" / "config.tcl").is_file()
+
+
+def test_bootstrap_reanchors_rtl_load_to_absolute_from_inputs_json(tmp_path):
+    # BP13: bootstrap reads the upstream rtl-design location from the injected
+    # inputs.json "rtl" key — not by self-navigating tree_root/asic/<module>/....
+    # rtl_load.tcl must bake the ABSOLUTE rtl root, never a relative "../.." climb.
+    skill_dst, rtl_root, workdir = _mirror(tmp_path)
+    (rtl_root / "filelist.txt").write_text("top.v\n")
+    proc = _run(skill_dst, workdir, "--top", "top")
+    assert proc.returncode == 0, proc.stderr
+    tcl = (workdir / "scripts" / "rtl_load.tcl").read_text()
+    assert str(rtl_root) in tcl
+    assert "../../../rtl-design" not in tcl and "relpath" not in tcl
