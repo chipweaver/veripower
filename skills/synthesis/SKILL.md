@@ -17,7 +17,7 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 
 ## Iron Rule
 
-- Do not modify any file under `Design/rtl-design/` or `Design/specification/` — these are read-only external references for synthesis.
+- The injected input locations (`<rtl>`, `<rtl_doc>`, `<sdc>`, `<ppa>` — from `inputs.json`) are read-only canonical: never modify anything under them (or any other stage's canonical output); the only files you write live under `{workdir}`.
 - Timing exceptions MUST be supplemented iteratively after RTL becomes visible; they cannot be pre-written at the specification stage (contract violation — RTL port names cannot be known in advance).
 - Do not claim synthesis is complete when the DC license is missing — without a license, write `status=fail` + `fail_reason="DC license missing"`.
 - Do not claim synthesis is complete when the netlist (`out/<TOP>_syn.v`) does not exist — the netlist must land on disk.
