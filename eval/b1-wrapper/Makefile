@@ -6,6 +6,7 @@
 #   make lint | cdc | synth | sta | sim-compile | sim-run TEST=<name> | coverage
 # ==============================================================================
 SHELL := /bin/bash
+.SHELLFLAGS := -o pipefail -c
 FILELIST ?= filelist.f
 SIMV ?= ./simv
 

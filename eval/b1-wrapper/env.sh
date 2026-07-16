@@ -10,11 +10,15 @@
 export TOP="${TOP:-accum}"
 
 # Standard-cell library (.db for DC/PT, .v models for gate-level sim).
-export LIB_DB="${LIB_DB:?ERROR: LIB_DB (std-cell .db) not set. Export it before make.}"
+# Optional here: only synth/sta actually read it, and each fails on its own
+# (dc_run.tcl / run_sta.tcl) if left unset — not every target needs it.
+export LIB_DB="${LIB_DB:-}"
 export LIB_V="${LIB_V:-}"
 
 # UVM install (for vcs UVM DPI compile).
-export UVM_HOME="${UVM_HOME:?ERROR: UVM_HOME not set. Export it before make.}"
+# Optional here: only sim-compile actually needs it (vcs fails on the bad
+# $UVM_HOME/src/dpi/uvm_dpi.cc path if left unset) — not every target does.
+export UVM_HOME="${UVM_HOME:-}"
 
 # Post-synthesis products consumed by STA (produced by `make synth` into ./out/).
 export NETLIST="${NETLIST:-out/${TOP}_syn.v}"

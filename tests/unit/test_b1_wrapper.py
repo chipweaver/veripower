@@ -151,10 +151,8 @@ def test_readme_public_disclosure_and_provisions():
 
 
 @pytest.mark.skipif(
-    shutil.which("dc_shell") is None
-    or not os.environ.get("LIB_DB")
-    or not os.environ.get("UVM_HOME"),
-    reason="no dc_shell / LIB_DB / UVM_HOME (EDA env absent)",
+    shutil.which("dc_shell") is None or not os.environ.get("LIB_DB"),
+    reason="no dc_shell / LIB_DB (EDA env absent)",
 )
 def test_smoke_synth_on_demo():
     """Opportunistic: if DC is installed, the demo must synthesize with the
@@ -162,8 +160,9 @@ def test_smoke_synth_on_demo():
     FILELIST must be a manifest (one RTL path per line, dc_run.tcl's own
     contract) — demo/filelist.txt (RTL-only), not the bare RTL path.
 
-    UVM_HOME is required here even though synthesis doesn't use UVM: `make
-    synth` sources eval/b1-wrapper/env.sh, which hard-fails without it.
+    UVM_HOME is not required here: synthesis doesn't use UVM, and env.sh
+    treats UVM_HOME as optional (only sim-compile needs it), so `make synth`
+    no longer hard-fails without it.
 
     Runs in a repo-internal tmpdir: some environments execute the EDA tools
     through a container that only allows a cwd under the repo root, so a
