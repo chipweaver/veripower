@@ -21,6 +21,10 @@ docs/retrospective/
 # Local test outputs
 tests/scenarios/results/
 
+# Eval aggregator run outputs (acceptance/regen artifacts); .gitkeep stays tracked
+eval/runs/*.json
+eval/runs/*.csv
+
 # grill-with-docs outputs — glossary/ADRs kept out of VCS by convention
 CONTEXT.md
 CONTEXT-MAP.md
