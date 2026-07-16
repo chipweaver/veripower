@@ -285,7 +285,9 @@ def run(module: str, workdir, top: str | None = None) -> int:
     if rc != 0:
         return rc
 
-    spec_con = tree_root / "asic" / module / "Design" / "specification" / "constraints"
+    # The specification stage root is injected into inputs.json (dispatch-time), not
+    # self-navigated via tree_root/asic/<module>/Design/specification.
+    spec_con = Path(inputs["sgdc_seed"]) / "constraints"
     _check_period(spec_con / f"{top}.sgdc", spec_con / f"{top}.sdc")
 
     print(f"[lintcdc bootstrap] deployed {dest}")
