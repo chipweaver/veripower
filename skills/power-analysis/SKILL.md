@@ -16,7 +16,7 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 
 ## Iron Rule
 
-- Do not modify any file under `Verification/simulation/` / `Verification/simulation-plan/` / `Design/synthesis/` / `Design/rtl-design/` — these are read-only external references for power-analysis (contract violation — source-of-truth corruption).
+- The injected read-only input locations `<netlist>`/`<tb_env>`/`<scaffold>`/`<ppa>` — never modify them; write only under `{workdir}`.
 - Power test classes (`power_<seq>_test.sv`) are **auto-generated** by this stage — do not hand-write them or reuse power tests from any other source. Internally, each test reuses the `{module}_<seq>_seq` class already compiled by simulation (the plan's `power_scenarios[].sequence_ref` and `sequences[].name` share a namespace); this stage does NOT render an independent sequence class (contract violation — multi-source power tests cause naming / semantic drift).
 - The TB emits SAIF directly via `$set_gate_level_monitoring + $toggle_*` — `$dumpfile / $dumpvars` are **forbidden** (architectural violation — the SAIF path does not go through VCD; direct toggle dump avoids intermediate-format loss).
 - `ptpx.tcl` locks `power_analysis_mode averaged` + `read_saif`.
@@ -36,19 +36,21 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 
 ### External reference inputs
 
+Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
+
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Verification/simulation/filelist.f` | UVM filelist | TB infrastructure compile list (read-only). |
-| `Verification/simulation/tb/uvm/**/*.sv` | UVM SystemVerilog | TB infrastructure, referenced by `filelist.f` (read indirectly). |
-| `Verification/simulation-plan/scaffold-specification.json` | simulation-plan schema | `power_scenarios[]` list (drives `emit_power_tests` + `run_gls_power`). |
-| `Design/synthesis/out/<TOP>_syn.v` | structural Verilog | Synthesized netlist (VCS GLS compile + PT-PX `read_verilog`). |
-| `Design/synthesis/out/<TOP>_syn.sdc` | SDC | PT-PX `read_sdc` (constraint propagation). |
-| `Design/synthesis/out/<TOP>_syn.sdf` | SDF v3.0 | VCS SDF back-annotation delay + PT-PX `read_sdf` (state-dependent leakage). |
+| `<tb_env>/filelist.f` | UVM filelist | TB infrastructure compile list (read-only). |
+| `<tb_env>/tb/uvm/**/*.sv` | UVM SystemVerilog | TB infrastructure, referenced by `filelist.f` (read indirectly). |
+| `<scaffold>/scaffold-specification.json` | simulation-plan schema | `power_scenarios[]` list (drives `emit_power_tests` + `run_gls_power`). |
+| `<netlist>/out/<TOP>_syn.v` | structural Verilog | Synthesized netlist (VCS GLS compile + PT-PX `read_verilog`). |
+| `<netlist>/out/<TOP>_syn.sdc` | SDC | PT-PX `read_sdc` (constraint propagation). |
+| `<netlist>/out/<TOP>_syn.sdf` | SDF v3.0 | VCS SDF back-annotation delay + PT-PX `read_sdf` (state-dependent leakage). |
 | `LIB_V` (env) | std cell Verilog model path | linked against the netlist at VCS compile time. |
 | `LIB_DB` (env) | std cell Liberty `.db`/`.lib` | PT-PX activity→power mapping (MUST match what was used at synthesis). |
 | `UVM_HOME` (env) | UVM library path | matches what TB infrastructure was built against. |
 
-PPA targets (entries on the `power_mw` dimension only) are read by `power finalize` itself from `Design/specification/ppa.json` — nothing is injected in the prompt.
+PPA targets (entries on the `power_mw` dimension only) are read by `power finalize` itself from the injected `ppa` location (`inputs.json`) — nothing is injected in the prompt.
 
 ## Output Artifacts
 
@@ -70,7 +72,7 @@ you interact with it only through the `make` targets.
 
 ### Step 1: Pre-check external references
 
-Confirm `Verification/simulation/filelist.f` / `scaffold-specification.json` (non-empty `power_scenarios[]`) / the synthesis trio (`<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"` and exit. When `{directive_path}` is injected, Read it first as a fix-scope hint.
+Confirm `<tb_env>/filelist.f` / `<scaffold>/scaffold-specification.json` (non-empty `power_scenarios[]`) / the synthesis trio (`<netlist>/out/<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"` and exit. When `{directive_path}` is injected, Read it first as a fix-scope hint.
 
 ### Step 2: Bootstrap
 
@@ -90,9 +92,9 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 
   | error names a file under… | category |
   |---|---|
-  | `Design/synthesis/out/*.v` | `netlist` |
-  | `Design/synthesis/out/*.sdf` | `sdf` |
-  | TB filelist roots (`Verification/simulation/...`) or local `power_filelist.f` | `tb_uvm` |
+  | `<netlist>/out/*.v` | `netlist` |
+  | `<netlist>/out/*.sdf` | `sdf` |
+  | TB filelist roots (`<tb_env>/...`) or local `power_filelist.f` | `tb_uvm` |
   | no named file / VCS flag / `UVM_HOME` / license error | `tooling` |
 
   Write `status=fail` + `failure_kind` (`infra` for missing-reference/license; else `tooling`) + `failures[].{phase, category, error_summary}` + `fail_reason`. **Write only the failure facts (`phase` / `category`); do NOT assign any rework or routing target — target selection is owned downstream, outside this stage.**
@@ -102,10 +104,10 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
   ```bash
   python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
     --workdir {workdir} --module <module> \
-    --scaffold Verification/simulation-plan/scaffold-specification.json
+    --scaffold <scaffold>/scaffold-specification.json
   ```
 
-  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against the targets it reads itself from `Design/specification/ppa.json` — an absent file skips the gate), writes `power-actual.json`, folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against the targets it reads itself from the injected `ppa` location (`inputs.json`) — an absent file skips the gate), writes `power-actual.json`, folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
   `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); `infra` (external reference / license missing) is written by the Step-1 pre-check before finalize runs, and on the `make`-non-zero VCS-compile triage above you also write the `failures[]`/`failure_kind` directly (the gate never runs there).
 

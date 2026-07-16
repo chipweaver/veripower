@@ -29,13 +29,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def _read_ppa_targets(workdir, dims: set[str]) -> list:
-    """PPA targets from the sibling asic/<module>/Design/specification/ppa.json
-    sidecar (spec §4.3) — filtered to `dims` — replacing the old injected
-    --ppa-targets CLI arg (power-analysis binds to this file as its acceptance
-    standard). `workdir` is .../Verification/power-analysis/runs/<N>; parents[3]
-    is the module root, same fixed-depth convention as
-    timing.result.parse_clock's Design/synthesis/out lookup."""
-    p = Path(workdir).parents[3] / "Design" / "specification" / "ppa.json"
+    """PPA targets from the specification stage root's ppa.json sidecar (spec
+    §4.3) — filtered to `dims` — replacing the old injected --ppa-targets CLI arg
+    (power-analysis binds to this file as its acceptance standard). The stage root
+    comes from the injected `<workdir>/inputs.json` "ppa" key, not self-navigation."""
+    inputs = json.loads((Path(workdir) / "inputs.json").read_text(encoding="utf-8"))
+    p = Path(inputs["ppa"]) / "ppa.json"
     if not p.is_file():
         return []
     return [t for t in json.loads(p.read_text()) if t.get("dim") in dims]
@@ -66,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--top",
         default=None,
-        help="top module; inferred from Design/rtl-design/filelist.txt when omitted",
+        help="top module; inferred from the injected synthesis netlist's out/<TOP>_syn.v when omitted",
     )
     sp.set_defaults(func=_cmd_bootstrap)
 

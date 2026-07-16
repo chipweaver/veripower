@@ -1,47 +1,26 @@
 # tests/unit/test_power_bootstrap.py
 """power bootstrap verb — deploy-into-workdir behavior.
 
-Two layers: in-process unit tests of infer_top_from_filelist (BP1), and subprocess
-"mirror" tests of full deploy behavior (BP2-BP11 + the §8 cross-stage contract CS1).
-The mirror runs the real shipped skill with cwd set to a tmp design-tree root and builds
-the upstream asic/<module>/... references under it. The bootstrap anchors the design tree
-on the CWD (matching kernel.py and the stage-subagent contract), independent of where the
-skill code lives. The bootstrap shells out to the DEPLOYED emit_power_tests.py (Tier-2)
-to render the initial power tests; a §8 violation there propagates as exit 1.
+Subprocess "mirror" tests of full deploy behavior (BP2-BP11 + the §8 cross-stage
+contract CS1). The mirror runs the real shipped skill with cwd set to a tmp
+design-tree root and builds the upstream asic/<module>/... references under it,
+pre-populating workdir/inputs.json (netlist/tb_env/scaffold/ppa keys) the way
+kernel.py dispatch injects it at dispatch time — bootstrap reads the upstream
+stage-root locations from inputs.json instead of self-navigating
+tree_root/asic/<module>/Design|Verification/<stage>. Power has no rtl key (it
+never consumes rtl-design; TOP is inferred from the injected netlist's
+out/*_syn.v, same mechanism as timing.infer_top). The bootstrap shells out to the
+DEPLOYED emit_power_tests.py (Tier-2) to render the initial power tests; a §8
+violation there propagates as exit 1.
 """
 
 import json
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _MAIN = REPO_ROOT / "skills" / "power-analysis" / "scripts" / "power" / "__main__.py"
-sys.path.insert(0, str(REPO_ROOT / "skills" / "power-analysis" / "scripts"))
-from power import bootstrap  # noqa: E402
-
-
-# ── BP1: infer_top_from_filelist (in-process, precise) ────────────────────────
-def test_infer_top_from_filelist_basename(tmp_path):
-    (tmp_path / "filelist.txt").write_text("rtl/foo.sv\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) == "foo"
-
-
-def test_infer_top_from_filelist_skips_directives_and_comments(tmp_path):
-    (tmp_path / "filelist.txt").write_text("# header\n+incdir+inc\ntop.v\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) == "top"
-
-
-def test_infer_top_from_filelist_sequential_ext_strip(tmp_path):
-    # chained .v/.sv/.vh strip, no break (a name ending '.sv.v' loses both):
-    # foo.sv.v -> (strip .v) foo.sv -> (strip .sv) foo
-    (tmp_path / "filelist.txt").write_text("foo.sv.v\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) == "foo"
-
-
-def test_infer_top_from_filelist_none_when_absent(tmp_path):
-    assert bootstrap.infer_top_from_filelist(tmp_path) is None
 
 
 # ── BP2-BP11 + CS1: full deploy (subprocess mirror) ───────────────────────────
@@ -62,22 +41,25 @@ def _make_tree(
     tmp_path,
     *,
     top="dut",
-    with_rtl_filelist=True,
     with_netlist=True,
     with_sim_filelist=True,
     with_scaffold=True,
     scaffold=None,
 ):
-    """Build the upstream asic/<module>/... references under a tmp design-tree root.
-    Returns (module, workdir, main). Deploy tests run `main` (the real shipped skill)
-    with cwd=tmp_path, so the bootstrap anchors the design tree on the CWD."""
+    """Build the upstream synthesis/tb_env/scaffold trees under a tmp design-tree
+    root, and pre-populate workdir/inputs.json (netlist/tb_env/scaffold/ppa keys)
+    the way kernel.py dispatch injects it at dispatch time. Bootstrap reads the
+    upstream stage-root locations from inputs.json instead of self-navigating
+    tree_root/asic/<module>/Design|Verification/<stage> — power has no rtl key
+    (it never consumes rtl-design; TOP is inferred from the injected netlist).
+
+    Returns (module, workdir, main). Deploy tests run `main` (the real shipped
+    skill) with cwd=tmp_path, so the bootstrap anchors the design tree on the CWD.
+    """
     m = "M"
     base = tmp_path / "asic" / m
-    rtl = base / "Design" / "rtl-design"
-    rtl.mkdir(parents=True)
-    if with_rtl_filelist:
-        (rtl / "filelist.txt").write_text(f"rtl/{top}.v\n")
-    syn_out = base / "Design" / "synthesis" / "out"
+    syn = base / "Design" / "synthesis"
+    syn_out = syn / "out"
     syn_out.mkdir(parents=True)
     if with_netlist:
         (syn_out / f"{top}_syn.v").write_text("// netlist\n")
@@ -92,6 +74,17 @@ def _make_tree(
             json.dumps(_VALID_SCAFFOLD if scaffold is None else scaffold)
         )
     workdir = base / "Verification" / "power-analysis" / "runs" / "1"
+    workdir.mkdir(parents=True)
+    (workdir / "inputs.json").write_text(
+        json.dumps(
+            {
+                "netlist": str(syn),
+                "tb_env": str(sim),
+                "scaffold": str(plan),
+                "ppa": str(base / "Design" / "specification"),
+            }
+        )
+    )
     return m, workdir, _MAIN
 
 
@@ -128,35 +121,36 @@ def test_deploys_and_substitutes(tmp_path):
     assert 'TB_TOP="${TOP}_tb_top"' in env_sh
 
 
-def test_relpath_substituted_for_external_dirs(tmp_path):
-    # BP6: MY_SYN_OUT / MY_SIM_DIR / MY_PLAN_DIR -> relpath(target, workdir), which
-    # from runs/1/ climbs out with '..' segments. (The placeholder must be gone and a
-    # relative path to the external dir present.)
+def test_env_sh_uses_absolute_dirs_from_inputs_json(tmp_path):
+    # MY_SYN_OUT / MY_SIM_DIR / MY_PLAN_DIR now come straight from the injected
+    # inputs.json stage roots (absolute) — no os.path.relpath, no '/../' hop,
+    # regardless of workdir depth.
     m, workdir, main = _make_tree(tmp_path)
-    assert _run(m, workdir, main, extra=["--top", "dut"]).returncode == 0
-    env_sh = (workdir / "env.sh").read_text()
-    assert "MY_SIM_DIR" not in env_sh and "MY_PLAN_DIR" not in env_sh
-    assert "../" in env_sh  # relpath climbs out of runs/<N>/
-    # NB: assert the BARE dir name, not "Verification/simulation-plan". relpath from
-    # runs/<N>/ to a sibling under the shared Verification/ ancestor is
-    # "../../../simulation-plan" — the "Verification/" segment is consumed by the
-    # "../" climb, so it is NOT in the string. (Design/synthesis/out survives whole
-    # below only because Design is a *different* top-level subtree than Verification.)
-    assert "../../../simulation-plan" in env_sh  # MY_PLAN_DIR -> relpath
-    assert (
-        "Design/synthesis/out" in env_sh
-    )  # MY_SYN_OUT -> relpath (climbs to asic/<m>)
-
-
-def test_infer_top_used_when_top_omitted(tmp_path):
-    # No --top: TOP inferred from rtl-design/filelist.txt first entry ('dut').
-    m, workdir, main = _make_tree(
-        tmp_path
-    )  # filelist.txt -> rtl/dut.v, netlist dut_syn.v
-    r = _run(m, workdir, main)  # no --top
+    netlist_root = tmp_path / "asic" / m / "Design" / "synthesis"
+    tb_env_root = tmp_path / "asic" / m / "Verification" / "simulation"
+    r = _run(m, workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
+    env = (workdir / "env.sh").read_text()
+    assert f'export NETLIST="{netlist_root}/out/' in env
+    assert f'export TB_DIR="{tb_env_root}"' in env
+    assert "os.path.relpath" not in env  # (sanity: no relpath token leaked)
+    # and the bootstrap emitted no '..' relative hop
+    assert "/../" not in env
+
+
+def test_top_inferred_from_netlist_not_rtl_design(tmp_path):
+    # no --top, no rtl key in inputs.json → TOP comes from synthesis out/<TOP>_syn.v
+    # (F4/O2(b)): assert bootstrap succeeds and never touches Design/rtl-design.
+    m, workdir, main = _make_tree(tmp_path, top="dut")  # netlist -> dut_syn.v
+    r = _run(m, workdir, main)  # no --top
+    assert r.returncode == 0, r.stderr  # inferred TOP from the injected netlist
+    assert "rtl" not in json.loads(
+        (workdir / "inputs.json").read_text()
+    )  # power has no rtl key
     env_sh = (workdir / "env.sh").read_text()
     assert 'export TOP="${TOP:-dut}"' in env_sh
+    # power never self-navigates to (nor even requires) Design/rtl-design
+    assert not (tmp_path / "asic" / m / "Design" / "rtl-design").exists()
 
 
 def test_renders_power_tests(tmp_path):
@@ -185,8 +179,8 @@ def test_emit_failure_propagates_exit1(tmp_path):
 
 
 def test_cant_infer_top_fail_closed(tmp_path):
-    # No --top and no usable RTL entry in filelist.txt -> inference None -> exit 1.
-    m, workdir, main = _make_tree(tmp_path, with_rtl_filelist=False)
+    # No --top and no synthesis netlist (out/*_syn.v) -> inference None -> exit 1.
+    m, workdir, main = _make_tree(tmp_path, with_netlist=False)
     r = _run(m, workdir, main)  # no --top
     assert r.returncode == 1
     assert "cannot infer" in r.stderr

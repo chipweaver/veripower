@@ -3,20 +3,25 @@
 
 Behavior-preserving deploy built from focused, unit-testable steps (campaign design
 §3.3): shutil.copytree + str.replace do the `cp -R` + `sed -i` work (str.replace has
-no sed-delimiter hazard on the '..'-containing relpaths); os.path.relpath computes the
-three relpath values inline.
+no sed-delimiter hazard on '/'-containing paths).
 
 Deploys templates/ into the caller-provided workdir
-(asic/<module>/Verification/power-analysis/runs/<N>/), infers TOP from the
-rtl-design filelist, substitutes the MY_TOP / MY_MODULE / MY_SYN_OUT / MY_SIM_DIR
-/ MY_PLAN_DIR placeholders in env.sh (the three *_DIR values are relpath(target,
-workdir) so env.sh stays correct regardless of workdir depth), then renders the
-initial UVM power tests by shelling out to the DEPLOYED emit_power_tests.py
-(Tier-2 asset — shell-out-to-deployed, NOT a python->python subprocess-main; it
-enforces the sim-plan->power cross-stage contract and fails closed). Fail-closed
-on a missing template dir, an un-inferrable top, a missing synthesis netlist /
-simulation TB filelist / scaffold-specification.json, or an emit failure.
-Idempotency guard: aborts when the workdir already has a Makefile.
+(asic/<module>/Verification/power-analysis/runs/<N>/). The upstream synthesis /
+simulation / simulation-plan stage-root locations come from the injected
+`<workdir>/inputs.json` "netlist" / "tb_env" / "scaffold" keys, not by
+self-navigating tree_root/asic/<module>/Design|Verification/<stage> — power has no
+"rtl" key (it never consumes rtl-design). TOP is inferred from the injected
+netlist's out/*_syn.v (suffix '_syn.v' stripped, same mechanism as
+timing.infer_top) when not given. Substitutes the MY_TOP / MY_MODULE / MY_SYN_OUT
+/ MY_SIM_DIR / MY_PLAN_DIR placeholders in env.sh (the three *_DIR values are now
+absolute — kernel dispatch injects absolute locations, so no relpath climb is
+needed), then renders the initial UVM power tests by shelling out to the
+DEPLOYED emit_power_tests.py (Tier-2 asset — shell-out-to-deployed, NOT a
+python->python subprocess-main; it enforces the sim-plan->power cross-stage
+contract and fails closed). Fail-closed on a missing template dir, an
+un-inferrable top, a missing synthesis netlist / simulation TB filelist /
+scaffold-specification.json, or an emit failure. Idempotency guard: aborts when
+the workdir already has a Makefile.
 
 Exit codes (returned as int; __main__ does sys.exit):
   0  deployed
@@ -27,8 +32,7 @@ Exit codes (returned as int; __main__ does sys.exit):
 
 from __future__ import annotations
 
-import os
-import re
+import json
 import shutil
 import subprocess
 import sys
@@ -42,32 +46,9 @@ from pathlib import Path
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
 
-_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
 
 def _err(msg: str) -> None:
     print(f"[power bootstrap] {msg}", file=sys.stderr)
-
-
-def infer_top_from_filelist(rtl_dir: Path) -> str | None:
-    """First true RTL path entry's basename (.v/.sv/.vh stripped) -> top, when an
-    identifier. Skips comments (#), blanks, and +/- directives (the skip set is
-    {#, blank, +/-} — NO '//' skip). Extensions are stripped sequentially (a name
-    ending '.sv.v' loses both). This is the same filelist inference the synthesis
-    stage uses."""
-    f = rtl_dir / "filelist.txt"
-    if not f.is_file():
-        return None
-    for raw in f.read_text(errors="replace").splitlines():
-        line = raw.replace("\r", "")
-        if re.match(r"^\s*#", line) or not line.strip() or re.match(r"^\s*[+\-]", line):
-            continue
-        base = os.path.basename(line)
-        for ext in (".v", ".sv", ".vh"):
-            if base.endswith(ext):
-                base = base[: -len(ext)]
-        return base if _IDENT_RE.match(base) else None
-    return None
 
 
 def _sub(path: Path, mapping: dict[str, str]) -> None:
@@ -102,18 +83,24 @@ def run(module: str, workdir, top: str | None = None) -> int:
         _err(f"already deployed (detected {dest / 'Makefile'})")
         return 1
 
-    # Infer TOP from the rtl-design filelist when not given (fail-closed if unknown).
-    if top is None:
-        top = infer_top_from_filelist(
-            tree_root / "asic" / module / "Design" / "rtl-design"
-        )
-        if top is None:
-            _err("cannot infer --top; pass explicitly")
-            return 1
+    # The synthesis / simulation / simulation-plan stage roots are injected into
+    # inputs.json (dispatch-time), not self-navigated via
+    # tree_root/asic/<module>/Design|Verification/<stage>. No "rtl" key — power
+    # never consumes rtl-design.
+    inputs = json.loads((dest / "inputs.json").read_text(encoding="utf-8"))
+    syn_out_dir = Path(inputs["netlist"]) / "out"
+    sim_dir = Path(inputs["tb_env"])
+    plan_dir = Path(inputs["scaffold"])
 
-    syn_out_dir = tree_root / "asic" / module / "Design" / "synthesis" / "out"
-    sim_dir = tree_root / "asic" / module / "Verification" / "simulation"
-    plan_dir = tree_root / "asic" / module / "Verification" / "simulation-plan"
+    # Infer TOP from the injected synthesis netlist when not given (fail-closed if
+    # unknown) — the synthesized netlist filename out/<TOP>_syn.v already encodes
+    # TOP (same mechanism as timing.infer_top); power stays off rtl-design entirely.
+    if top is None:
+        cands = sorted(syn_out_dir.glob("*_syn.v"))
+        if not cands:
+            _err("cannot infer --top from synthesis netlist; pass explicitly")
+            return 1
+        top = cands[0].name[: -len("_syn.v")]
 
     # Pre-flight: upstream stages must have produced their canonical artifacts before
     # we deploy anything. Run it BEFORE copytree so a missing upstream ref fails fast
@@ -136,16 +123,17 @@ def run(module: str, workdir, top: str | None = None) -> int:
     # cp -R templates/. dest  (copy template CONTENTS into the workdir).
     shutil.copytree(_TEMPLATE_DIR, dest, dirs_exist_ok=True)
 
-    # env.sh relpaths: relpath(target, workdir) so the env vars stay correct
-    # regardless of workdir depth (canonical Verification/power-analysis/ vs runs/<N>/).
+    # env.sh gets the injected stage roots as absolute paths — kernel dispatch
+    # injects absolute locations, so env.sh stays correct regardless of workdir
+    # depth without any relpath computation.
     _sub(
         dest / "env.sh",
         {
             "MY_TOP": top,
             "MY_MODULE": module,
-            "MY_SYN_OUT": os.path.relpath(syn_out_dir, dest),
-            "MY_SIM_DIR": os.path.relpath(sim_dir, dest),
-            "MY_PLAN_DIR": os.path.relpath(plan_dir, dest),
+            "MY_SYN_OUT": str(syn_out_dir),
+            "MY_SIM_DIR": str(sim_dir),
+            "MY_PLAN_DIR": str(plan_dir),
         },
     )
 
