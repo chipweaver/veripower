@@ -43,3 +43,8 @@ def test_classify_and_copy_baseline_verbs_removed(tmp_path):
             cwd=str(tmp_path),
         )
         assert r.returncode != 0
+        # A true RED->GREEN discriminator: argparse's unknown-subcommand message
+        # (not merely "missing a required argument", which a still-existing verb
+        # could also produce), tolerant of the quoting style around the verb name.
+        assert "invalid choice" in r.stderr
+        assert verb in r.stderr

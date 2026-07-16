@@ -75,6 +75,10 @@ def test_no_cross_stage_parents3_climb():
 # This is the SSoT registry — inject_inputs() itself reads it to compute the
 # absolute stage roots written into inputs.json. It is not a consumer
 # bypassing injection; it is the declarative source injection is built from.
+# The whole-file exclusion below is sound only because rules.py's tuples are
+# DECLARATIVE data, not procedural path construction — if a future edit adds a
+# procedural `"Design"` build (e.g. a helper that joins the segment itself)
+# inside rules.py, this exclusion needs revisiting.
 _RULES_PY = "framework/scripts/rules.py"
 
 

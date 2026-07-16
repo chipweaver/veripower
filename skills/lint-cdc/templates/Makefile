@@ -1,8 +1,9 @@
 # ==============================================================================
 # IPD lint-cdc — SpyGlass lint + CDC checks.
 # Workdir:    asic/<module>/Design/lint-cdc/runs/<N>/
-# RTL path:   ../../../rtl-design/ (relative to this directory:
-#             runs/<N>/ → lint-cdc/ → Design/ → rtl-design/)
+# RTL path:   the absolute rtl-design stage root injected via inputs.json's
+#             "rtl" key; scripts/filelist.txt is regenerated from it every
+#             round by the bootstrap verb's _sync_filelist (no relpath climb).
 # Top module: the lint-cdc bootstrap verb substitutes MY_TOP at deploy time.
 # Targets:
 #   make lint         lint/lint_rtl goal only → lint-report.txt

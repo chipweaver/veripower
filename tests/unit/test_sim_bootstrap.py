@@ -145,13 +145,12 @@ def test_bootstrap_deploys_infra_and_dirs(tmp_path):
 
 def test_bootstrap_substitutes_my_placeholders(tmp_path):
     main, wd, module = _mirror(tmp_path)
-    rtl_root = tmp_path / "asic" / module / "Design" / "rtl-design"
     _run(main, module, wd)
     env = (wd / "env.sh").read_text()
     assert "MY_TOP" not in env and "MY_MODULE" not in env
-    assert "MY_RTL_DIR" not in env
-    # RTL_DIR is now the absolute injected rtl root (re-anchor), no relpath climb.
-    assert str(rtl_root) in env
+    # RTL_DIR was dropped as a vestigial export (unconsumed anywhere in the stage;
+    # rtl_filelist.f, always regenerated absolute, is the load-bearing RTL reference).
+    assert "RTL_DIR" not in env
 
 
 def test_bootstrap_writes_rtl_filelist_rebased(tmp_path):

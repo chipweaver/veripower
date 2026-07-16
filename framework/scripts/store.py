@@ -72,6 +72,8 @@ def inject_inputs(module: str, rule: str, workdir, params=None) -> None:
         if g0 in rules.PIPELINE_INPUTS:
             table[key] = module_root_abs
             continue
+        # Every glob under one input key shares a single producer, so globs[0]'s
+        # producer represents the whole key.
         prod = rules.producer_of(g0)
         if prod is None:
             raise ValueError(f"{rule}: input key {key!r} glob {g0!r} has no producer")

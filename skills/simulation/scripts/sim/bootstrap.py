@@ -2,12 +2,12 @@
 """sim bootstrap — deploy the simulation templates into a run workdir, then optionally render the UVM scaffold.
 
 Behavior-preserving port of the former bootstrap shell (campaign §3.3): a NO-CLOBBER
-deploy (`_deploy_no_clobber`) + str.replace do the `cp -a` + `sed -i` work (str.replace
-has no sed-delimiter hazard for the absolute MY_RTL_DIR value). Collapses the former
-three-script pipeline into one verb: deploy infra, substitute the MY_* placeholders,
-infer TOP, rewrite rtl_filelist.f (sim._filelist), and — when --scaffold is given —
-render the full UVM scaffold via sim.scaffold.render (the same code path the standalone
-render-scaffold verb uses).
+deploy (`_deploy_no_clobber`) + str.replace do the `cp -a` + `sed -i` work. Collapses
+the former three-script pipeline into one verb: deploy infra, substitute the MY_TOP /
+MY_MODULE placeholders, infer TOP, rewrite rtl_filelist.f (sim._filelist) from the
+injected absolute rtl-design root, and — when --scaffold is given — render the full
+UVM scaffold via sim.scaffold.render (the same code path the standalone render-scaffold
+verb uses).
 
 Exit codes (returned as int; __main__ does sys.exit):
   0  deployed (infra only, or infra + scaffold; rework when a carried Makefile is
@@ -48,7 +48,7 @@ _UVM_SUBDIRS = (
     "pkg",
     "top",
 )
-_PLACEHOLDERS = ("MY_TOP", "MY_MODULE", "MY_RTL_DIR")
+_PLACEHOLDERS = ("MY_TOP", "MY_MODULE")
 
 
 def _err(msg: str) -> None:
@@ -160,12 +160,10 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         (dest / "tb" / "uvm" / d).mkdir(parents=True, exist_ok=True)
     (dest / "tests").mkdir(parents=True, exist_ok=True)
 
-    # Substitute MY_* across every deployed file carrying one (str.replace — no sed-delimiter
-    # hazard for the absolute MY_RTL_DIR value).
+    # Substitute MY_TOP / MY_MODULE across every deployed file carrying one (str.replace).
     repl = {
         "MY_TOP": top,
         "MY_MODULE": module,
-        "MY_RTL_DIR": str(rtl_dir),
     }
     for path in dest.rglob("*"):
         if not path.is_file():

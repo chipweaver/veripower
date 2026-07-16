@@ -2,9 +2,10 @@
 """sim rtl-filelist rebase: rewrite Design/rtl-design/filelist.txt -> workdir rtl_filelist.f.
 
 Converts relative RTL paths and +incdir+ / -f directives to paths anchored at rtl_rel
-(workdir -> Design/rtl-design relpath). Absolute paths ($ or /) pass through unchanged; other
-+/- directives (+define+, -define) pass through unchanged. Private lib for the bootstrap verb
-(the caller verifies the source exists). Per-stage copy (campaign §3)."""
+(the absolute rtl-design stage root injected via inputs.json, not a relpath). Absolute
+paths ($ or /) pass through unchanged; other +/- directives (+define+, -define) pass
+through unchanged. Private lib for the bootstrap verb (the caller verifies the source
+exists). Per-stage copy (campaign §3)."""
 
 from __future__ import annotations
 
