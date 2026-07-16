@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -153,20 +154,31 @@ def test_readme_public_disclosure_and_provisions():
     shutil.which("dc_shell") is None or not os.environ.get("LIB_DB"),
     reason="no dc_shell or LIB_DB (EDA env absent)",
 )
-def test_smoke_synth_on_demo(tmp_path):
+def test_smoke_synth_on_demo():
     """Opportunistic: if DC is installed, the demo must synthesize with the
     wrapper's own dc_run.tcl — proves the recipe actually drives the tool.
     FILELIST must be a manifest (one RTL path per line, dc_run.tcl's own
-    contract) — demo/filelist.txt (RTL-only), not the bare RTL path."""
-    work = tmp_path / "b1"
-    shutil.copytree(WRAP, work)
-    env = {**os.environ, "TOP": "accum"}
-    r = subprocess.run(
-        ["make", "synth", "FILELIST=demo/filelist.txt"],
-        cwd=work,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=1200,
-    )
-    assert (work / "out" / "accum_syn.v").is_file(), r.stdout[-2000:] + r.stderr[-2000:]
+    contract) — demo/filelist.txt (RTL-only), not the bare RTL path.
+
+    Runs in a repo-internal tmpdir: some environments execute the EDA tools
+    through a container that only allows a cwd under the repo root, so a
+    /tmp workdir (pytest tmp_path) would never let the tool run."""
+    parent = WRAP.parent  # eval/ — inside the repo
+    work_root = tempfile.mkdtemp(prefix=".b1-smoke-", dir=str(parent))
+    try:
+        work = Path(work_root) / "b1"
+        shutil.copytree(WRAP, work)
+        env = {**os.environ, "TOP": "accum"}
+        r = subprocess.run(
+            ["make", "synth", "FILELIST=demo/filelist.txt"],
+            cwd=work,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=1200,
+        )
+        assert (work / "out" / "accum_syn.v").is_file(), (
+            r.stdout[-2000:] + r.stderr[-2000:]
+        )
+    finally:
+        shutil.rmtree(work_root, ignore_errors=True)
