@@ -7,8 +7,6 @@ Verbs (one stage = one tool; see skills/simulation/SKILL.md for usage):
   check-materialization thin-D1 presence gate (env-exit self-gate)            (stdout verdict; exit 0/1)
   validate-review       conformance-review.json schema + gate                 (stdout gate JSON; exit 0/1)
   finalize              assemble the lean result.json at the exit phase        (exit 0 written / 2 BLOCKED)
-  classify-delta        select the Wave-1 branch (first-run|freeze|patch)    (stdout verdict; exit 0)
-  copy-baseline         seed workdir from prior canonical TB (freeze|patch mode)  (exit 0 / 1)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the sim.*
 library. Library imports are deferred into each handler (NOT top-level) so --help
@@ -55,18 +53,6 @@ def _cmd_validate_review(a: argparse.Namespace) -> int:
     return review.validate(a.review)
 
 
-def _cmd_classify_delta(a: argparse.Namespace) -> int:
-    from sim import classify
-
-    return classify.run(a.canonical_result, a.scaffold, a.plan)
-
-
-def _cmd_copy_baseline(a: argparse.Namespace) -> int:
-    from sim import freeze
-
-    return freeze.run(a.module, a.workdir, a.canonical, mode=a.mode)
-
-
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from sim import result
 
@@ -86,7 +72,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         verify_verdict=a.verify_verdict,
         fail_reason=a.fail_reason,
         observed_phase=a.failure_phase,
-        plan=a.plan,
     )
 
 
@@ -130,34 +115,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("validate-review", help="conformance-review.json schema + gate")
     sp.add_argument("--review", required=True, type=Path)
     sp.set_defaults(func=_cmd_validate_review)
-
-    sp = sub.add_parser(
-        "classify-delta", help="select the Wave-1 branch: first-run|freeze|patch"
-    )
-    sp.add_argument("--scaffold", required=True, type=Path)
-    sp.add_argument("--plan", required=True, type=Path)
-    sp.add_argument(
-        "--canonical-result",
-        type=Path,
-        default=None,
-        help="canonical Verification/simulation/result.json (absent => first-run)",
-    )
-    sp.set_defaults(func=_cmd_classify_delta)
-
-    sp = sub.add_parser(
-        "copy-baseline",
-        help="seed a fresh workdir from the prior canonical TB (freeze: +judged artifacts; patch: TB code only)",
-    )
-    sp.add_argument("--module", required=True)
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
-        "--canonical",
-        required=True,
-        type=Path,
-        help="canonical Verification/simulation dir",
-    )
-    sp.add_argument("--mode", choices=["freeze", "patch"], default="freeze")
-    sp.set_defaults(func=_cmd_copy_baseline)
 
     sp = sub.add_parser(
         "finalize", help="assemble the lean result.json at the exit phase"
@@ -208,12 +165,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "--fail-reason", default=None, help="one-line reason for an early-exit phase"
-    )
-    sp.add_argument(
-        "--plan",
-        type=Path,
-        default=None,
-        help="verification-plan.md (with --scaffold => writes plan_digest)",
     )
     sp.set_defaults(func=_cmd_finalize)
 

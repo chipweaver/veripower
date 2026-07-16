@@ -7,14 +7,16 @@ the UVM scaffold, compile, and run the smoke suite.
 ## Inputs (paths only — the main thread does not read these bodies)
 
 - `{workdir}` — the shared simulation stage workdir (you are the first writer; the
-  verify child runs in the same directory in wave 3).
+  verify child runs in the same directory in wave 3). On a rework it already holds your previous
+  round's carried TB (the framework's `carry_self` ran before you were dispatched, before this
+  workdir was ever handed to you); on a genuine first run it is empty.
 - `{module}` — module name.
-- scaffold-specification path: `Verification/simulation-plan/scaffold-specification.json` — the TB
+- scaffold-specification path: `<scaffold>/scaffold-specification.json` — the TB
   scaffold contract. `agents` / `sequences` / `tests` are materialized into SV here;
   `testpoints[].inlined_check_hints[]` triggers cycle-accurate refmodel / scoreboard checks (see
   `inlined-check-hints.md`); `testpoints[].bins[]` and `power_scenarios[]` are not consumed in this
   wave.
-- verification-plan path: `Verification/simulation-plan/verification-plan.md` — the human-readable
+- verification-plan path: `<plan>/verification-plan.md` — the human-readable
   plan (review anchor for filling intent).
 - (rework only) `{failing_result}` — the failed stage's canonical `result.json` path; read its
   `stage_specific` (field names per that stage's result schema) to narrow this round's rewrite scope.
@@ -22,42 +24,32 @@ the UVM scaffold, compile, and run the smoke suite.
   `failure_phase="prerequisite"` before you are dispatched), so you receive the path for
   CONTENT only — do not re-classify readability.
   If `{directive_path}` is also injected, read that sibling fix-scope hint first; it takes
-  priority over the trigger content. On the **first-run** branch (the workdir is freshly bootstrapped
-  with no prior canonical TB), the only reference is the plan.
-- (patch branch only) `{canonical}` — the canonical `Verification/simulation/` directory from the
-  prior promoted run; read-only copy source for `copy-baseline --mode patch` (step 0 below).
-  The `first-run` branch never receives this path.
+  priority over the trigger content. On a genuine first run (the workdir is freshly bootstrapped
+  with no carried TB), the only reference is the plan.
 
 ## Work
 
-0. **(patch branch only) Seed from the prior TB**: run
-   `python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py copy-baseline --module {module} --workdir {workdir} --canonical {canonical} --mode patch`,
-   then bring the seeded TB into agreement with the current plan
-   (`verification-plan.md` + `scaffold-specification.json`, paths in Inputs), changing only what
-   the plan requires. Checks / RM / scoreboard already matching the current plan are left
-   byte-identical to the seeded baseline. (`first-run` skips this step and starts from
-   `bootstrap` per step 1.)
-
-1. **(first-run only) Bootstrap + scaffold**:
+1. **Bootstrap + scaffold**:
 
    ```bash
    python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>] --scaffold scaffold-specification.json
    ```
 
    Deploys infrastructure + scaffold to `{workdir}`, including functional sequence placeholders. All
-   subsequent `make` targets run with `cd {workdir}`.
-   **Patch branch: skip this step entirely.** The step-0 `copy-baseline --mode patch` seed already
-   provides the full scaffold (Makefile, env.sh, filelist.f, tb/uvm, scripts, tests,
-   rtl_filelist.f). Running `bootstrap` here would hit its abort-on-existing-Makefile guard and
-   fail — proceed directly to step 2.
+   subsequent `make` targets run with `cd {workdir}`. Always run this step, whether this round is a
+   rework or a first run: `bootstrap` is no-clobber — it never overwrites a file already present
+   (a carried Makefile / env.sh / filelist.f / tb/uvm / scripts / tests, brought forward by
+   `carry_self`), so on a rework it is a no-op over the carried TB, and on a genuinely empty workdir
+   it deploys the complete pristine template.
 2. **Fill / reconcile scaffold** (bound by **Rule A**, see `repair-boundaries.md`): inside
    `{workdir}`, fill or reconcile every `TODO(` across driver / monitor / checker / RM / functional
    seq / top against the current plan (`verification-plan.md` + `scaffold-specification.json`).
-   - **First-run:** fill every rendered `TODO(` stub in the freshly bootstrapped tree.
-   - **Patch:** reconcile the seeded TB to the current plan — change only what the plan requires;
-     checks / RM / scoreboard already matching the current plan are left byte-identical to the seed.
-   All writes happen only in `{workdir}`; the prior canonical TB (patch branch) is read-only source,
-   consumed entirely by step 0.
+   - **First run:** fill every rendered `TODO(` stub in the freshly bootstrapped tree.
+   - **Rework (carried TB):** reconcile the carried TB to the current plan, confined to the
+     orchestrator's resolved edit scope (a directive, a `{failing_result}`, or a
+     `changed-inputs.md` change-set) — change only what that scope requires; checks / RM /
+     scoreboard already matching the current plan are left byte-identical to the carried baseline.
+   All writes happen only in `{workdir}`.
    **Trust the rendered tree (U4):** the bootstrap verb (with `--scaffold`) renders an atomic, complete, self-describing
    stub tree. Learn structure and fill-conventions from the **rendered stubs and their TODO/header
    comments** (e.g. each stub's `// TODO(...)` states its config_db key, sequencer type, and intent),
@@ -122,17 +114,17 @@ smoke gate still decides smoke pass/fail.
   - "Let me open the DUT RTL to see what this signal does so my refmodel matches it" -- authoring the
     golden model from the implementation is circular verification; derive it from the spec/plan
     formula, not the RTL.
-  - "Rewrite from scratch a check / RM that the plan change did not modify" — the seeded baseline is
+  - "Rewrite from scratch a check / RM that the plan change did not modify" — the carried baseline is
     byte-identical for testpoints the plan delta did not touch; gratuitously re-authoring a
-    still-plan-matching check breaks the RTL-variable-isolation the copy-first seed exists to
+    still-plan-matching check breaks the RTL-variable-isolation the carried baseline exists to
     preserve (Rule A semantic violation).
 
 ## Prohibitions
 
 - **No Level-2 dispatch:** do not call the Task tool.
 - **No `kernel.py`:** do not call `kernel.py` — the parent session owns state transitions.
-- Stay inside `{workdir}`: all writes confined to `{workdir}` (reading the upstream plan + any prior
-  canonical TB as read-only reference is allowed). Do not modify the plan, and do not read or modify
+- Stay inside `{workdir}`: all writes confined to `{workdir}` (reading the upstream plan as
+  read-only reference is allowed). Do not modify the plan, and do not read or modify
   the RTL source (see the no-RTL-source-read prohibition below; RTL enters only mechanically via the
   compile filelist) — RTL-class issues belong to the RTL editing stage; do not exceed your authority.
 - **No RTL-source reads for authoring.** The behavioral reference for every refmodel / scoreboard /
@@ -147,7 +139,7 @@ smoke gate still decides smoke pass/fail.
 
 | Mistake | Fix |
 |---|---|
-| Bootstrap aborts: existing `Makefile` detected | The bootstrap verb refuses to overwrite a deployed workdir. The orchestrator hands a fresh empty `runs/<N>/` for every run (including rework), so this should not occur; if it does, the workdir was not fresh — stop and report it. |
+| Treating a carried TB as untouched boilerplate | A `Makefile` already present in `{workdir}` on entry means `carry_self` warmed it from the prior round — reconcile it per Work step 2's resolved edit scope, not a full rewrite; `bootstrap` (step 1) never overwrites it. |
 | Reporting a mismatch with `$fatal` | MUST use `` `uvm_error `` (see `uvm-rules.md`); `$fatal` bypasses the UVM report server, so the regression runner misses the count and the scoreboard terminates early. |
 
 ## Output

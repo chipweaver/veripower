@@ -27,10 +27,11 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
 
 ## Iron Rule
 
-- Do not modify `verification-plan.md` / `scaffold-specification.json` (the plan is a read-only
-  external reference for simulation). Shared by both sub-Tasks — see each contract's Prohibitions.
-- Do not modify RTL (RTL-class issues belong to the RTL editing stage; do not exceed your
-  authority). Shared by both sub-Tasks.
+- The injected input locations (`<rtl>`, `<plan>`, `<scaffold>` — from `inputs.json`) are read-only
+  canonical: never modify anything under them (or any other stage's canonical output); the only
+  files you write live under `{workdir}`. Shared by both sub-Tasks — see each contract's
+  Prohibitions. RTL-class issues in particular belong to the RTL editing stage — do not exceed
+  your authority by fixing them here.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 - **Never read RTL source to author the TB.** The TB / refmodel / checker derive their behavior solely
   from the sim-plan exit docs (`verification-plan.md` + `scaffold-specification.json`); the DUT RTL is
@@ -46,18 +47,19 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
 |---|---|
 | `{workdir}` | Current run workspace root (shared by all sub-Tasks). |
 | `{module}` | Module name. |
-| `{failing_result}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema). It does NOT select the branch (Step 1 classifier is TRIGGER-AGNOSTIC); on `patch` it is passed to the env-build child to narrow the rewrite scope. |
-| `{directive_path}` | Optional. Fix-scope hint file — passed through to the env-build child (patch branch). |
+| `{failing_result}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, it is one of Step 1's edit-scope sources — passed to the env-build child to narrow this round's rewrite scope. |
+| `{directive_path}` | Optional. Fix-scope hint file — takes priority over `{failing_result}`; passed through to the env-build child. |
 
 ### External reference inputs
 
+Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`;
+below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
+
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/rtl-design/filelist.txt` | text | DUT RTL compile list — bootstrap rebases it into `rtl_filelist.f` (fails when missing); RTL enters only mechanically via this list (Iron Rule). |
-| `Design/rtl-design/README.md` | Custom markdown | `<TOP>` inference source for `sim bootstrap` (falls back to `filelist.txt`). |
-| `Verification/simulation-plan/verification-plan.md` | Custom markdown | env-build sub-Task input — passed by path; the main thread never reads the body. |
-| `Verification/simulation-plan/scaffold-specification.json` | Custom JSON | TB scaffold contract — sub-Task input; the main thread asserts existence only. |
-| canonical `Verification/simulation/` directory | promoted TB baseline | Patch/freeze branches only — passed to the Wave-1 child for `copy-baseline` seeding. |
+| `<rtl>/filelist.txt` | text | DUT RTL compile list — bootstrap rebases it into `rtl_filelist.f` (fails when missing); RTL enters only mechanically via this list (Iron Rule). |
+| `<plan>/verification-plan.md` | Custom markdown | env-build sub-Task input — passed by path; the main thread never reads the body. |
+| `<scaffold>/scaffold-specification.json` | Custom JSON | TB scaffold contract — sub-Task input; the main thread asserts existence only; also the `top` inference source for `sim bootstrap` (falls back to the `<rtl>` filelist). |
 
 When `{failing_result}` is injected, you pass its path (and any
 `{directive_path}`) to the env-build sub-Task, which reads the failed stage's
@@ -75,7 +77,7 @@ finalize. The env / verify phase split of the workdir artifacts is in
 | `result.json` | `references/result.schema.json` + envelope | main thread | This stage's status contract (`failure_phase` / `coverage_gaps`, etc.). |
 | `Makefile` / `env.sh` / `filelist.f` / `rtl_filelist.f` / `tb/uvm/` / `scripts/` / `tests/testlist.json` | per `artifact-contract.md` | env-build | TB infra + materialized UVM (bound by Rule A). |
 | `regression-log.txt` / `structural-coverage.json` / `coverage-summary.txt` / `case-results-summary.md` | per `artifact-contract.md` | verify | Regression log + machine-readable structural coverage (gate source for `sim finalize`) + summaries. |
-| `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest for the verify phase; the freeze branch copies it verbatim. |
+| `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest for the verify phase, written fresh every round. |
 | `conformance-review.json` | per `references/conformance-review.schema.json` | conformance gate (main thread) | Per-testpoint check-adequacy findings (gate source for Step 4); promoted advisory artifact. |
 
 > Every promoted path MUST appear in `result.json.artifacts[]`, otherwise it will not be promoted to
@@ -105,59 +107,56 @@ Completion Gate.
   harness-level signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the main
   thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to a later repair dispatch.
 
-### Step 1: Prerequisite + branch select
+### Step 1: Prerequisite + scope
 
-Assert the plan artifacts (`verification-plan.md` + `scaffold-specification.json`) exist. If
-either is missing, run `sim finalize --workdir {workdir} --module <module> --phase prerequisite
---fail-reason "external reference missing: <path>"` and return without dispatching. The
+Assert the plan artifacts (`<plan>/verification-plan.md` + `<scaffold>/scaffold-specification.json`)
+exist. If either is missing, run `sim finalize --workdir {workdir} --module <module> --phase
+prerequisite --fail-reason "external reference missing: <path>"` and return without dispatching. The
 main thread does not read the scaffold-spec / verification-plan body — only path existence.
-
-Select the branch by running the classifier (before dispatching any wave):
-
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py classify-delta \
-  --scaffold Verification/simulation-plan/scaffold-specification.json \
-  --plan Verification/simulation-plan/verification-plan.md \
-  --canonical-result Verification/simulation/result.json
-```
-
-This exits 0 and emits `{"verdict": "first-run|freeze|patch", "reason": "..."}`. The main thread
-consumes only the `verdict` field (the verb hashes internally; do not read the plan body). Surface
-the classifier `reason` in the completion summary every run.
-
-**TRIGGER-AGNOSTIC:** `{failing_result}` does **not** force a branch — the verdict is decided
-solely by whether the plan + scaffold match the canonical baseline. A freeze verdict stands even
-when `{failing_result}` is injected. On the `patch` branch only, the trigger (+ any `{directive_path}`) is still passed to the env-build child to narrow the rewrite scope.
 
 Pre-gate `{failing_result}` readability before dispatching any wave: if the trigger path is
 unreadable, run `sim finalize --workdir {workdir} --module <module> --phase prerequisite
---fail-reason "failing_result not readable"` and return without dispatching. This pre-gate
-applies regardless of the classifier verdict.
+--fail-reason "failing_result not readable"` and return without dispatching.
 
-**Fresh empty workdir on rework.** The bootstrap verb aborts if a `Makefile` already exists in
-the workdir, so a re-run needs a fresh, empty workdir. The caller provides a fresh `{workdir}` per run,
-which is exactly that — you dispatch the env-build sub-Task into this fresh
-`{workdir}`; you never reuse a workdir that already holds a deployed infra.
+**Every round is homogeneous — there is no branch to select.** The framework's
+`carry_self` has already carried your previous round's TB (`Makefile` / `env.sh` / `filelist.f` /
+`tb/uvm/**` / `scripts/**` / `tests/testlist.json` / `regression-log.txt` / `verify-handoff.json` —
+everything except `conformance-review.json`, which is deliberately never carried and is always
+re-derived) into `{workdir}` before you were dispatched, whenever a prior canonical run exists.
+Whether a TB was carried is a disk fact, not a verdict you compute: a carried `Makefile` means this
+round is a rework, its absence means a genuine first run — the `bootstrap` verb (Step 2) tests for
+this itself via its no-clobber deploy, so you never branch on it here. Every round runs the same
+sequence: dispatch env-build (Step 2) → smoke gate (Step 3) → **re-judge conformance** (Step 4 —
+dispatched every round, never skipped) → verify (Step 5) → finalize (Step 6).
+
+Determine this round's edit scope for the env-build child (Step 2) from the first available source:
+1. `{directive_path}`'s fix-scope hint when injected — takes priority.
+2. Else, on a `{failing_result}`, its `stage_specific` fields (per that stage's result schema).
+3. Else, if `{workdir}/changed-inputs.md` is present, it lists the input files that changed since
+   this stage's last run — confine the env-build child's edits to what it implies. **Scope
+   discipline:** when `changed-inputs.md` shows only RTL changed and the plan did not drift, the
+   testbench is out of scope — preserve it byte-for-byte; conformance re-judges regardless, so
+   correctness never rests on this.
+4. Else (a first delivery, no prior canonical) the full TB — fill every rendered `TODO(`.
+
+**Workdir on entry.** `{workdir}` may already hold your previous round's carried TB (rework —
+`carry_self` ran before you were dispatched) or be genuinely empty (first run); either way the
+caller hands you the same directory to dispatch env-build into. The `bootstrap` verb (Step 2) is
+no-clobber: it deploys the template only where a file is missing, so a carried TB is never
+overwritten and a first run gets the complete pristine template.
 
 **Internal scripts.** The `bootstrap` verb performs the rtl_filelist rewrite + scaffold render in-process (the former three-script pipeline collapsed into one verb); the standalone re-render entry is `sim render-scaffold`. The deployed `infra/scripts/` (`run_vcs_regression.sh` /
 `parse_coverage.py` / `write_summary.py`) are make-internal. The interfaces are
 the `bootstrap` verb and the `make` targets (`simv` / `smoke` / `regress` / `coverage` /
 `summary`) — none of these internal scripts is invoked or read directly.
 
-### Step 2: Wave 1 — dispatch env-build or freeze
-
-Branch on the classifier verdict from Step 1:
-
-- **`first-run`** → dispatch the **env-build child** (bootstrap render + fill, behavior unchanged).
-- **`patch`** → dispatch the **env-build child** (copy-first preamble: first run `sim copy-baseline --mode patch` to seed the canonical TB into `{workdir}`, then reconcile the seeded TB to the current plan changing only what the plan requires; see `env-task-contract.md`). Pass the canonical `Verification/simulation/` directory path to the child alongside `{workdir}` and `{module}` (so it can run `copy-baseline --mode patch`).
-- **`freeze`** → dispatch the **freeze child** (see below).
-
-**`first-run` / `patch` — env-build child:**
+### Step 2: Wave 1 — dispatch env-build
 
 Dispatch one `Task(run_in_background=True)` — the env-build child — whose prompt points to
 [`references/env-task-contract.md`](references/env-task-contract.md) and hands over paths only
-(`{workdir}`, `{module}`, scaffold-spec path, verification-plan path, and on `patch` the canonical
-`Verification/simulation/` directory path + the trigger / context paths).
+(`{workdir}`, `{module}`, the scaffold-spec path, the verification-plan path, and Step 1's resolved
+scope — whichever of `{failing_result}` / `{directive_path}` / the `changed-inputs.md` change-set
+applied).
 
 The env-build child self-gates its `STATUS: DONE` on a presence-only thin-D1 check
 (`sim check-materialization`: no surviving TODO, all required scaffold files present) so a
@@ -171,33 +170,10 @@ On wake-up, reap the env-build child's harness `STATUS:` last line + its JSON li
 (`--failure-phase` per the reason — `compile` / `smoke` for a Rule A semantic block, `prerequisite`
 for an incomplete `inlined_check_hints[]` block) and return; do not dispatch the downstream waves.
 
-**`freeze` — freeze child:**
-
-Dispatch one `Task(run_in_background=True)` — the freeze child — whose prompt points to
-[`references/freeze-task-contract.md`](references/freeze-task-contract.md) and hands over:
-`{workdir}`, `{module}`, the canonical `Verification/simulation/` directory path (the child's
-`canonical` input), and the scaffold path
-`Verification/simulation-plan/scaffold-specification.json` (the child's `scaffold` input; required
-by the child's `sim check-materialization --scaffold` self-gate).
-
-After dispatching, end the turn and wait for the harness wake.
-On wake-up, reap the freeze child's harness `STATUS:` last line + its JSON line. The freeze child
-reports exactly two distinct `BLOCKED` forms; map them to finalize as follows:
-
-- `STATUS: BLOCKED <reason>` (**no** `compile` qualifier — `sim copy-baseline` setup failure: missing
-  canonical / filelist / dirty workdir) → `sim finalize --workdir {workdir} --module <module>
-  --phase env-blocked --failure-phase prerequisite --fail-reason "<reason>"` and return.
-- `STATUS: BLOCKED compile <locus>` (`make simv` interface-mismatch failure — frozen TB no longer
-  compiles against current RTL) → `sim finalize --workdir {workdir} --module <module>
-  --phase env-blocked --failure-phase compile --fail-reason "freeze child BLOCKED compile: <locus>"`
-  and return.
-
-In both cases do not dispatch the downstream waves.
-
 ### Step 3: Smoke gate (deterministic; main thread)
 
 Gate on the smoke result emitted by the smoke run's own tooling in `{workdir}`, NOT on the
-Wave-1 child's (env-build or freeze) self-reported `STATUS:` prose. This is cheap and deterministic — the main thread
+env-build child's self-reported `STATUS:` prose. This is cheap and deterministic — the main thread
 reads a small status file and does NOT re-run heavy EDA. Do NOT use
 the `sim` exit gate here — its coverage gate hard-fails pre-regress (no `structural-coverage.json`
 exists yet).
@@ -213,15 +189,12 @@ exists yet).
 
 ### Step 4: Wave 2 — conformance gate (LLM check-adequacy review; gating)
 
-**Skipped on `freeze`.** When the classifier verdict is `freeze`, do NOT dispatch the conformance
-reviewer. The freeze child already copied the prior (already-promoted) `conformance-review.json`
-from the canonical directory into `{workdir}`; `sim finalize` re-lists it automatically via
-`enumerate_artifacts`. Surface `⚠ conformance carried forward (TB frozen)` in the completion
-summary and proceed directly to Step 5. Rationale: the conformance review judges checks-vs-intent;
-an unchanged TB + plan cannot flip that verdict; P1-A ensures freeze only occurs when the baseline
-has a real (non-unavailable) promoted review.
+**Re-judged every round — never skipped.** `conformance-review.json` is deliberately never carried
+forward (the framework's `carry_self` excludes it), so there is no stale prior verdict to reuse: on
+every smoke pass, dispatch the conformance reviewer and gate on its fresh finding set, whether or
+not the testbench itself changed this round.
 
-On a smoke pass (non-freeze — `first-run` or `patch`), dispatch one `Task(run_in_background=True)` — the conformance reviewer —
+On a smoke pass, dispatch one `Task(run_in_background=True)` — the conformance reviewer —
 whose prompt points to [`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md)
 and hands over paths only: the `{workdir}` (filled `tb/uvm/**`), the scaffold-spec path
 (`testpoints[].inlined_check_hints[]`), the `verification-plan.md` path (§3 intent source),
@@ -271,17 +244,13 @@ then branch on its verdict and write `status=fail` via finalize, **skipping Step
 
 - a `make regress` case failed → `sim finalize --phase regress --failure-phase regress
   --fail-reason "<…>" --verify-verdict <reaped, carries failing_cases>
-  --scaffold Verification/simulation-plan/scaffold-specification.json
-  --plan Verification/simulation-plan/verification-plan.md`;
+  --scaffold <scaffold>/scaffold-specification.json`;
 - Rule-B uncovered bins (`failure_phase=coverage` from the verify child) → `sim finalize
   --phase regress --failure-phase coverage --fail-reason "<…>" --verify-verdict <reaped,
   carries coverage_gaps + gaps_not_in_testpoints ∨ gaps_in_testpoints>
-  --scaffold Verification/simulation-plan/scaffold-specification.json
-  --plan Verification/simulation-plan/verification-plan.md`;
+  --scaffold <scaffold>/scaffold-specification.json`;
 - `STATUS: BLOCKED <reason>` → `sim finalize --phase verify-blocked --fail-reason
-  "verify child BLOCKED: <reason>"` (**no `--plan`** — deliberate: verify-blocked classifies
-  **patch** next run via copy-first — the TB passed smoke+conformance and full conformance re-runs;
-  withholding `plan_digest` makes the classifier fall through to patch, not freeze).
+  "verify child BLOCKED: <reason>"`.
 
 Only a **clean** verify verdict (no `failure_phase`, not BLOCKED) proceeds to Step 6.
 
@@ -295,15 +264,14 @@ compile/coverage gate, the assembled `conformance-review.json`, and the reaped v
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize \
   --workdir {workdir} --module <module> --phase final \
-  --scaffold Verification/simulation-plan/scaffold-specification.json \
-  --plan Verification/simulation-plan/verification-plan.md \
+  --scaffold <scaffold>/scaffold-specification.json \
   --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml \
   --conformance-review {workdir}/conformance-review.json \
   --verify-verdict {workdir}/<reaped-verify-verdict>.json
 ```
 
 `finalize` enumerates `conformance-review.json` + `verify-handoff.json` in `artifacts[]` automatically
-via `enumerate_artifacts` — on a freeze run these are the carried-forward copies placed by `sim copy-baseline`.
+via `enumerate_artifacts` — both are written fresh every round (Step 4 / Step 2), never carried.
 
 `finalize --phase final` reuses the host's own `thin_d1` + `coverage_gate` in-process for the
 exit-code gate (thin-D1 fail → `failure_phase=compile`, coverage fail → `failure_phase=coverage`,
@@ -328,7 +296,7 @@ The `failure_phase` value table below documents which step decides each phase; f
 
 | failure_phase | First-failing phase | Companion fields (besides `fail_reason`) | Decided in |
 |---|---|---|---|
-| `prerequisite` | Step 1 reference missing, or `{failing_result}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]`; or freeze `STATUS: BLOCKED <reason>` (sim copy-baseline setup failure) | — | main thread |
+| `prerequisite` | Step 1 reference missing, or `{failing_result}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | main thread |
 | `compile` | `make simv` failed (no smoke status); or `sim finalize` thin-D1 file missing / `TODO(` residue | — | smoke gate (Step 3) / finalize (Step 6) |
 | `smoke` | `make smoke` ran but a `RESULT` line is not `PASS` | `failing_cases` | smoke gate (Step 3) |
 | `conformance` | Conformance gate (Step 4): a finding `category ∈ {missing,wrong-behavior,fake-green,intent-defect}` at `critical`/`important` | `conformance_findings` | conformance gate (Step 4) |
@@ -357,32 +325,26 @@ sub-Task.
 | Excuse | Reality |
 |---|---|
 | "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `sim finalize` exited non-zero) | You record the most-failing verdict, never a more-optimistic one. `status=pass` is written only when the smoke gate, the conformance gate, the verify verdict, and `sim finalize` all agree (Step 6); you MUST NOT override a `gate=trip` to pass (Step 4). |
-| "The Wave-1 child's (env-build or freeze) `STATUS:` line says smoke passed — that's my smoke gate" | The smoke gate reads the smoke run's own tooling (`regression-log.txt` `RESULT` lines / per-test `logs/<test>.status`), never the child's self-reported prose (Step 3). |
+| "The env-build child's `STATUS:` line says smoke passed — that's my smoke gate" | The smoke gate reads the smoke run's own tooling (`regression-log.txt` `RESULT` lines / per-test `logs/<test>.status`), never the child's self-reported prose (Step 3). |
 | "A case is failing — I'll open the TB to see why" | The main thread NEVER reads the TB body or re-runs heavy EDA; it consumes envelopes / status files / paths only and routes the failure out for the caller to decide (Iron Rule). |
 | "I'll peek at the DUT RTL to write the refmodel for this signal" | The TB's golden model derives from the sim-plan docs only; a model read off the RTL mirrors it and verifies nothing (circular). Author from `implementation_detail` / §3 intent; if insufficient, BLOCK to simulation-plan (Iron Rule). |
 
 ## Completion Gate (main thread)
 
 - [ ] No Iron Rule was triggered.
-- [ ] The `classify-delta` classifier was run and its `verdict` + `reason` consumed; the `reason` is
-      surfaced in the completion summary.
-- [ ] Wave-1 dispatch was verdict-driven: `first-run`/`patch` → env-build child (`patch` via copy-baseline seed); `freeze` →
-      freeze child (handed `{workdir}`, `{module}`, canonical dir, scaffold path).
-- [ ] On `freeze`: conformance reviewer was NOT dispatched; the carried-forward `conformance-review.json`
-      was listed via `enumerate_artifacts`; `⚠ conformance carried forward (TB frozen)` appears in
-      the completion summary.
+- [ ] Every round ran the same homogeneous sequence — no branch was taken; Step 2's env-build child
+      was dispatched unconditionally, and Step 1's edit scope (directive / `{failing_result}` /
+      `changed-inputs.md`) was resolved and handed to it.
 - [ ] The smoke gate (Step 3) was evaluated against the smoke run's own status (`regression-log.txt`
       `RESULT` lines / per-test `.status`), not the child's prose; the verify wave was dispatched only
       on a smoke pass.
-- [ ] On a smoke pass (non-freeze — `first-run` or `patch`), the conformance reviewer (Step 4) was dispatched and reaped;
-      `conformance-review.json` was written + schema-validated; the verify wave was dispatched only
-      when the gate did not trip (or a review-unavailable fall-through).
+- [ ] On a smoke pass, the conformance reviewer (Step 4) was dispatched and reaped **every round,
+      never skipped** — `conformance-review.json` was written fresh + schema-validated; the verify
+      wave was dispatched only when the gate did not trip (or a review-unavailable fall-through).
 - [ ] On a smoke pass, the verify sub-Task was dispatched and reaped.
 - [ ] `result.json` was written by `sim finalize` (it reuses `thin_d1`/`coverage_gate`
       for the exit-code gate and owns status / failure_phase / the pass-summary / artifacts[]; every
       exit path calls it via `--phase`).
-- [ ] `plan_digest` was written: `--scaffold` + `--plan` were passed on `--phase final` and all
-      `--phase regress` calls; `--phase verify-blocked` was called without `--plan` (deliberate: no-digest → patch on next run).
 
 ## Return Contract
 
@@ -398,7 +360,6 @@ Each dispatched sub-Task ends with a harness-level `STATUS: DONE` + a single JSO
 ## Bundled References
 
 - [`references/env-task-contract.md`](references/env-task-contract.md) — Wave-1 env-build sub-Task contract (bootstrap + fill + compile + smoke; defines `verify-handoff.json`).
-- [`references/freeze-task-contract.md`](references/freeze-task-contract.md) — Wave-1 freeze sub-Task contract (TB-freeze branch: deterministic copy + recompile; no fill, no RTL read).
 - [`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md) — Step 4 (Wave 2) conformance reviewer sub-Task contract (gating; check-adequacy intent review).
 - [`references/conformance-review.schema.json`](references/conformance-review.schema.json) — schema for `conformance-review.json` (the gate source).
 - [`references/verify-task-contract.md`](references/verify-task-contract.md) — Wave-3 verify sub-Task contract (regress + coverage iterate + summary).

@@ -33,7 +33,7 @@ share it).
 | `tests/testlist.json` | same | Testcase list (the verify phase may **append** stimulus-iterate entries). |
 | `regression-log.txt` | same | `make smoke` writes the smoke-suite `RESULT` lines (the verify phase **appends** the full-regress `RESULT` lines). |
 | `logs/<test>.status` | same | Per-test `PASS`/`FAIL` status file written by each smoke `simv` run (the smoke gate reads these). |
-| `verify-handoff.json` | same | Per-testpoint check-intent digest handed to the verify phase (schema in `env-task-contract.md`). Promoted artifact; the TB-freeze branch copies it verbatim for deterministic reuse. |
+| `verify-handoff.json` | same | Per-testpoint check-intent digest handed to the verify phase (schema in `env-task-contract.md`). Promoted artifact; written fresh by env-build every round. |
 
 ### conformance gate phase (wave 2, Step 4 — `conformance-review-task-contract.md`; main-thread aggregated)
 
@@ -103,23 +103,19 @@ share it).
 > `artifacts[]` per the envelope schema is an array of objects (`{path, kind}`), not a bare string
 > array. Every path above MUST appear in `result.json.artifacts[]`, otherwise it is not promoted to
 > canonical (external read-only consumption of canonical `filelist.f` / `tb/uvm/`, etc. would fail).
-> `verify-handoff.json` IS promoted (it is in `sim finalize`'s `enumerate_artifacts` candidates): the
-> TB-freeze branch is a same-stage cross-run consumer that copies the frozen handoff for deterministic
-> reuse.
+> `verify-handoff.json` IS promoted (it is in `sim finalize`'s `enumerate_artifacts` candidates), so
+> the framework's `carry_self` carries it forward into the next round's workdir along with the rest
+> of the TB; env-build overwrites it fresh every round regardless.
 
-## TB-freeze branch reuse (Wave 1 = freeze)
+## Cross-round carry (framework-level, not run by this skill)
 
-On `verdict=freeze` (the Step-1 classify-delta verb; see `freeze-task-contract.md`) the env-phase TB
-artifacts are NOT re-authored -- the `copy-baseline --mode freeze` verb copies them verbatim from the prior canonical run,
-except `rtl_filelist.f` (regenerated against the current RTL). `conformance-review.json` (carried
-forward; the conformance gate is skipped, SKILL.md Step 4) and `verify-handoff.json` (the frozen
-bin->seq map, reused as-is) are both copied -- both are promoted, so both sit in canonical. Per-run
-outputs (`regression-log.txt` / `logs/` / `structural-coverage.json` / `coverage-summary.txt` /
-`case-results-summary.md`) are NOT copied. `plan_digest` is written by `sim finalize`.
-
-On `verdict=patch`, `copy-baseline --mode patch` copies only the TB code whitelist from canonical
-into `{workdir}` to seed the env-build child; it does NOT carry `conformance-review.json` or
-`verify-handoff.json` — those are regenerated this run by the authoring + full conformance review.
+Every round is homogeneous: the framework's `carry_self` copies the prior canonical run's whole TB
+(`Makefile` / `env.sh` / `filelist.f` / `tb/uvm/**` / `scripts/**` / `tests/testlist.json` /
+`regression-log.txt` / `verify-handoff.json`) into `{workdir}` before env-build is dispatched, except
+`rtl_filelist.f` (env-build always regenerates it against the current RTL) and
+`conformance-review.json` (deliberately never carried — the conformance gate re-judges every round,
+SKILL.md Step 4). When no prior canonical run exists, `{workdir}` starts empty and env-build's
+no-clobber `bootstrap` deploys the full pristine template.
 
 ## Forbidden outputs
 

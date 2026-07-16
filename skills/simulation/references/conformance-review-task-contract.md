@@ -5,13 +5,10 @@ conformance reviewer — as Wave 2 (Step 4) AFTER the deterministic smoke gate p
 and BEFORE the verify wave. This review is **gating**: findings above the threshold in
 `SKILL.md` Step 4 set the stage `status=fail` (`failure_phase=conformance`). Do not call the Task tool (no Level-2 dispatch) and do not call `kernel.py`.
 
-**Not dispatched on a TB-freeze re-run.** When the Step-1 classify-delta verb returns `verdict=freeze`
-(the TB is copied byte-identical and the plan is unchanged), the main thread does NOT dispatch this
-reviewer -- it carries the prior (already-promoted) `conformance-review.json` forward and `sim finalize`
-re-lists it in `artifacts[]`. This review judges checks-vs-intent (explicitly NOT RTL correctness), so
-an unchanged TB + unchanged plan cannot change the verdict for that dimension. (A baseline whose review
-was 'unavailable' is excluded from freeze by the classifier -- P1-A -- so the carried review is always
-a real one.) See SKILL.md Step 4.
+**Dispatched every round — never skipped.** `conformance-review.json` is deliberately never carried
+forward by the framework's `carry_self` (it is always regenerated), so even a round whose TB and plan
+are both unchanged still gets a fresh review: this judges checks-vs-intent, not RTL correctness, and
+correctness never rests on the TB/plan having been untouched. See SKILL.md Step 4.
 
 Mechanism = a hybrid of rtl-design's deterministic conformance gate and its advisory
 semantic review: an LLM intent reviewer whose output is used as a gate.
@@ -24,9 +21,9 @@ semantic review: an LLM intent reviewer whose output is used as a gate.
   the drive path; the rendered `tb_top` carries the actual `.{{RST}}(...)`/`.{{CLK}}(...)`
   wiring.
 - Immutable plan:
-  - `Verification/simulation-plan/scaffold-specification.json` → `testpoints[].inlined_check_hints[]`
+  - `<scaffold>/scaffold-specification.json` → `testpoints[].inlined_check_hints[]`
     (cycle-accurate check semantics; see `inlined-check-hints.md`).
-  - `Verification/simulation-plan/verification-plan.md` §3 Testpoints table, the single
+  - `<plan>/verification-plan.md` §3 Testpoints table, the single
     `Stimulus / Intent` column keyed by testpoint id — this is the authoritative intent
     source for testpoints whose `inlined_check_hints[]` is EMPTY. (`testpoints[].intent` is
     NOT a guaranteed schema field — `scaffold-specification.schema.json` testpoints item

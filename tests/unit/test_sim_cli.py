@@ -1,5 +1,6 @@
 # tests/unit/test_sim_cli.py
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -11,8 +12,6 @@ _VERBS = (
     "check-materialization",
     "validate-review",
     "finalize",
-    "classify-delta",
-    "copy-baseline",
 )
 
 
@@ -33,3 +32,14 @@ def test_cli_unknown_verb_exits_2():
 
 def test_cli_no_verb_exits_2():
     assert _run().returncode == 2
+
+
+def test_classify_and_copy_baseline_verbs_removed(tmp_path):
+    for verb in ("classify-delta", "copy-baseline"):
+        r = subprocess.run(
+            [sys.executable, str(MAIN), verb, "--workdir", str(tmp_path)],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+        )
+        assert r.returncode != 0

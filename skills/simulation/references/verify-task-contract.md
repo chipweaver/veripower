@@ -9,7 +9,7 @@ review summary.
 - `{workdir}` — the **same** shared workdir the env-build child wrote in wave 1. It already holds the
   built TB (`tb/uvm/**`), the compiled `simv`, the env-phase artifacts, and
   `{workdir}/verify-handoff.json`.
-- scaffold-specification testpoints path: `Verification/simulation-plan/scaffold-specification.json` —
+- scaffold-specification testpoints path: `<scaffold>/scaffold-specification.json` —
   read `testpoints[].bins[]` for coverage-gap classification (Rule B) and `testpoints[].id` to
   cross-reference `verify-handoff.json`. (`agents` / `sequences` / `tests` are already materialized;
   do not re-materialize.)
