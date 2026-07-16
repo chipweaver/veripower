@@ -61,9 +61,14 @@ def _mirror(
     filelist="rtl/dut.v\n+incdir+inc\n",
     manifest=None,
 ):
-    """Seed the upstream rtl-design references under a tmp design-tree root. Returns
+    """Seed the upstream rtl-design references under a tmp design-tree root, and
+    pre-populate workdir/inputs.json (rtl/plan/scaffold keys) the way kernel.py
+    dispatch injects it at dispatch time (+ carry_self, which would already have
+    placed any carried TB directly into workdir before this verb runs). Returns
     (main, workdir, module); deploy tests run `main` (the real shipped skill) with
-    cwd=tmp_path, so the bootstrap anchors the design tree on the CWD."""
+    cwd=tmp_path, so the bootstrap anchors the design tree (and a relative --workdir)
+    on the CWD. bootstrap reads the rtl-design stage root from inputs.json, not by
+    self-navigating tree_root/asic/<module>/Design/rtl-design."""
     module = "tpu_top"
     rtl = tmp_path / "asic" / module / "Design" / "rtl-design"
     rtl.mkdir(parents=True)
@@ -78,7 +83,14 @@ def _mirror(
             manifest if manifest is not None else {"module": "dut", "children": []}
         )
     )
+    plan_root = tmp_path / "asic" / module / "Verification" / "simulation-plan"
     workdir = tmp_path / "asic" / module / "Verification" / "simulation" / "runs" / "1"
+    workdir.mkdir(parents=True)
+    (workdir / "inputs.json").write_text(
+        json.dumps(
+            {"rtl": str(rtl), "plan": str(plan_root), "scaffold": str(plan_root)}
+        )
+    )
     return _MAIN, workdir, module
 
 
@@ -129,12 +141,13 @@ def test_bootstrap_deploys_infra_and_dirs(tmp_path):
 
 def test_bootstrap_substitutes_my_placeholders(tmp_path):
     main, wd, module = _mirror(tmp_path)
+    rtl_root = tmp_path / "asic" / module / "Design" / "rtl-design"
     _run(main, module, wd)
     env = (wd / "env.sh").read_text()
     assert "MY_TOP" not in env and "MY_MODULE" not in env
     assert "MY_RTL_DIR" not in env and "MY_SPEC_DIR" not in env
-    # relpath workdir -> rtl-design carries '..' segments (str.replace, no sed hazard)
-    assert "../../../../Design/rtl-design" in env or "../" in env
+    # RTL_DIR is now the absolute injected rtl root (re-anchor), no relpath climb.
+    assert str(rtl_root) in env
 
 
 def test_bootstrap_writes_rtl_filelist_rebased(tmp_path):
@@ -142,6 +155,17 @@ def test_bootstrap_writes_rtl_filelist_rebased(tmp_path):
     _run(main, module, wd)
     fl = (wd / "rtl_filelist.f").read_text()
     assert "Design/rtl-design/rtl/dut.v" in fl
+
+
+def test_rtl_filelist_reanchors_to_absolute(tmp_path):
+    # bootstrap reads the upstream rtl-design location from the injected inputs.json
+    # "rtl" key — not by self-navigating tree_root/asic/<module>/.... rtl_filelist.f
+    # must bake the ABSOLUTE rtl root, never a relative climb.
+    main, wd, module = _mirror(tmp_path)
+    rtl_root = tmp_path / "asic" / module / "Design" / "rtl-design"
+    _run(main, module, wd)
+    f = (wd / "rtl_filelist.f").read_text()
+    assert str(rtl_root) in f and "../../../rtl-design" not in f
 
 
 def test_bootstrap_infra_only_without_scaffold(tmp_path):
@@ -178,17 +202,18 @@ def test_bootstrap_renders_scaffold_when_given(tmp_path):
     assert (wd / f"tb/uvm/interface/{module}_drv_if.sv").is_file()
 
 
-def test_bootstrap_aborts_on_existing_makefile(tmp_path):
+def test_makefile_present_is_rework_not_abort(tmp_path):
+    # pre-place a carried Makefile (as kernel.py's carry_self would, BEFORE this verb
+    # runs) -> existence, not abort: rc==0 (rework), and no-clobber preserves it.
     main, wd, module = _mirror(tmp_path)
-    wd.mkdir(parents=True)
-    (wd / "Makefile").write_text("# pre-existing\n")
+    (wd / "Makefile").write_text("carried")
     r = _run(main, module, wd)
-    assert r.returncode == 1 and "already deployed" in r.stderr
+    assert r.returncode == 0, r.stderr
+    assert (wd / "Makefile").read_text() == "carried"
 
 
 def test_bootstrap_allows_hint_only_workdir(tmp_path):
     main, wd, module = _mirror(tmp_path)
-    wd.mkdir(parents=True)
     (wd / "orchestrator-context.md").write_text("hints\n")  # not a Makefile
     r = _run(main, module, wd)
     assert r.returncode == 0, r.stderr

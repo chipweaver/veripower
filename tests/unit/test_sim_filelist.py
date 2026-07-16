@@ -7,7 +7,7 @@ sys.path.insert(0, str(ROOT / "skills" / "simulation" / "scripts"))
 from sim import _filelist  # noqa: E402
 
 
-def _run(tmp_path, text, rtl_rel="../../../rtl-design"):
+def _run(tmp_path, text, rtl_rel="/abs/injected/rtl-design"):
     src = tmp_path / "filelist.txt"
     dst = tmp_path / "rtl_filelist.f"
     src.write_text(text)
@@ -17,26 +17,27 @@ def _run(tmp_path, text, rtl_rel="../../../rtl-design"):
 
 def test_filelist_rebases_relative(tmp_path):
     out = _run(tmp_path, "rtl/core.v\nsub/mod.sv\n")
-    assert "../../../rtl-design/rtl/core.v" in out
-    assert "../../../rtl-design/sub/mod.sv" in out
+    assert "/abs/injected/rtl-design/rtl/core.v" in out
+    assert "/abs/injected/rtl-design/sub/mod.sv" in out
+    assert "../" not in out  # absolute rtl root -> no relpath climb
 
 
 def test_filelist_passes_absolute(tmp_path):
     out = _run(tmp_path, "/abs/path.v\n$ENV/x.sv\n")
     assert "/abs/path.v" in out
     assert "$ENV/x.sv" in out
-    assert "../../../rtl-design//abs" not in out
+    assert "/abs/injected/rtl-design//abs" not in out
 
 
 def test_filelist_incdir_rebase(tmp_path):
     out = _run(tmp_path, "+incdir+include\n+incdir+/abs/inc\n")
-    assert "+incdir+../../../rtl-design/include" in out
+    assert "+incdir+/abs/injected/rtl-design/include" in out
     assert "+incdir+/abs/inc" in out
 
 
 def test_filelist_dashf_rebase(tmp_path):
     out = _run(tmp_path, "-f sub.f\n-f /abs/sub.f\n")
-    assert "-f ../../../rtl-design/sub.f" in out
+    assert "-f /abs/injected/rtl-design/sub.f" in out
     assert "-f /abs/sub.f" in out
 
 
@@ -49,4 +50,4 @@ def test_filelist_other_directives_passthrough(tmp_path):
 def test_filelist_preserves_comments_blanks(tmp_path):
     out = _run(tmp_path, "# header comment\n\nrtl/a.v\n")
     assert "# header comment" in out
-    assert "../../../rtl-design/rtl/a.v" in out
+    assert "/abs/injected/rtl-design/rtl/a.v" in out

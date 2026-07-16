@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """sim bootstrap — deploy the simulation templates into a run workdir, then optionally render the UVM scaffold.
 
-Behavior-preserving port of the former bootstrap shell (campaign §3.3): shutil.copytree +
-str.replace do the `cp -a` + `sed -i` work (str.replace has no sed-delimiter hazard — the
-MY_RTL_DIR / MY_SPEC_DIR values carry '..' path segments). Collapses the former three-script
-pipeline into one verb: deploy infra, substitute the MY_* placeholders, infer TOP, rewrite
-rtl_filelist.f (sim._filelist), and — when --scaffold is given — render the full UVM scaffold
-via sim.scaffold.render (the same code path the standalone render-scaffold verb uses).
+Behavior-preserving port of the former bootstrap shell (campaign §3.3): a NO-CLOBBER
+deploy (`_deploy_no_clobber`) + str.replace do the `cp -a` + `sed -i` work (str.replace
+has no sed-delimiter hazard — the MY_RTL_DIR / MY_SPEC_DIR values carry '..' path
+segments). Collapses the former three-script pipeline into one verb: deploy infra,
+substitute the MY_* placeholders, infer TOP, rewrite rtl_filelist.f (sim._filelist), and
+— when --scaffold is given — render the full UVM scaffold via sim.scaffold.render (the
+same code path the standalone render-scaffold verb uses).
 
 Exit codes (returned as int; __main__ does sys.exit):
-  0  deployed (infra only, or infra + scaffold)
-  1  fail-closed guard (missing infra template dir / cannot infer top / missing RTL filelist /
-     already-deployed workdir / missing --scaffold file)
+  0  deployed (infra only, or infra + scaffold; rework when a carried Makefile is
+     already present in workdir, first run otherwise — the no-clobber deploy never
+     overwrites a carried TB)
+  1  fail-closed guard (missing infra template dir / cannot infer top / missing RTL
+     filelist / missing --scaffold file)
   (2 = usage is owned by argparse in __main__.py)
 """
 
@@ -87,6 +90,20 @@ def infer_top_from_filelist(rtl_dir: Path) -> str | None:
     return None
 
 
+def _deploy_no_clobber(src_root: Path, dest: Path) -> None:
+    """Copy every template file into dest UNLESS dest already has one at that path —
+    a carried file (brought forward by kernel.py's carry_self before this verb runs,
+    e.g. a prior round's TB) always wins over the pristine template."""
+    for p in src_root.rglob("*"):
+        if p.is_dir():
+            continue
+        d = dest / p.relative_to(src_root)
+        if d.exists():
+            continue  # carried file — never overwrite
+        d.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(p, d)
+
+
 def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
     infra = _TEMPLATE_DIR / "infra"
     if not infra.is_dir():
@@ -101,13 +118,19 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         dest = tree_root / dest
     dest = Path(str(dest).rstrip("/"))
 
-    rtl_dir = tree_root / "asic" / module / "Design" / "rtl-design"
+    # The rtl-design stage root is injected into inputs.json (dispatch-time), not
+    # self-navigated via tree_root/asic/<module>/Design/rtl-design.
+    inputs = json.loads((dest / "inputs.json").read_text(encoding="utf-8"))
+    rtl_dir = Path(inputs["rtl"])
     spec_dir = tree_root / "asic" / module / "Design" / "specification"
     rtl_filelist = rtl_dir / "filelist.txt"
 
-    # workdir -> rtl-design / specification relpaths so env.sh / rtl_filelist.f stay portable
-    # regardless of workdir depth (os.path.relpath matches the shell's python3 -c relpath).
-    rtl_rel = os.path.relpath(rtl_dir, dest)
+    # workdir -> specification relpath so env.sh's SPEC_DIR stays portable regardless
+    # of workdir depth (os.path.relpath matches the shell's python3 -c relpath).
+    # specification is NOT a declared input (rules.RULES["simulation"].inputs has no
+    # "spec" key — manifest.module is read only for TOP inference, never a verdict-
+    # dependency, see infer_top_from_manifest); RTL_DIR below is the absolute injected
+    # rtl root instead.
     spec_rel = os.path.relpath(spec_dir, dest)
 
     # Infer TOP (manifest.module first — authoritative, spec §4.3 — then filelist) BEFORE
@@ -127,18 +150,17 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         _err(f"missing RTL filelist: {rtl_filelist}")
         return 1
 
-    # Overwrite guard: a caller may pre-create the workdir with hint files
-    # (directive.md etc.); only treat it as already-deployed when Makefile is present.
+    # Existence check: a caller may pre-create the workdir with hint files
+    # (directive.md etc.). A Makefile present means carry_self already brought a
+    # prior round's TB forward — treat as REWORK (the no-clobber deploy below never
+    # overwrites it), not an abort; absent means a genuine first run.
     dest.mkdir(parents=True, exist_ok=True)
     if (dest / "Makefile").is_file():
-        _err(f"infra already deployed (detected {dest / 'Makefile'})")
-        _err(
-            "  To re-render the scaffold, use the render-scaffold verb, or hand a fresh empty workdir."
-        )
-        return 1
+        print(f"[sim bootstrap] rework — carried TB detected ({dest / 'Makefile'})")
 
-    # Step 1: deploy infra (cp -a templates/infra/. DEST) -> copytree into existing dir.
-    shutil.copytree(infra, dest, dirs_exist_ok=True)
+    # Step 1: deploy infra NO-CLOBBER — a carried TB (carry_self, before this verb
+    # runs) always wins over the empty infra template.
+    _deploy_no_clobber(infra, dest)
     for d in _UVM_SUBDIRS:
         (dest / "tb" / "uvm" / d).mkdir(parents=True, exist_ok=True)
     (dest / "tests").mkdir(parents=True, exist_ok=True)
@@ -148,7 +170,7 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
     repl = {
         "MY_TOP": top,
         "MY_MODULE": module,
-        "MY_RTL_DIR": rtl_rel,
+        "MY_RTL_DIR": str(rtl_dir),
         "MY_SPEC_DIR": spec_rel,
     }
     for path in dest.rglob("*"):
@@ -170,10 +192,12 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         except OSError:
             pass
 
-    # Step 2: rewrite rtl_filelist.f from Design/rtl-design/filelist.txt (paths rebased to rtl_rel).
+    # Step 2: rewrite rtl_filelist.f from the injected rtl-design filelist.txt (paths
+    # rebased to the ABSOLUTE rtl root). ALWAYS overwrites — a cross-stage-derived
+    # filelist must re-anchor every round, so this is never no-clobbered.
     from sim._filelist import rewrite_rtl_filelist
 
-    rewrite_rtl_filelist(rtl_filelist, dest / "rtl_filelist.f", rtl_rel)
+    rewrite_rtl_filelist(rtl_filelist, dest / "rtl_filelist.f", str(rtl_dir))
 
     # Step 3: render the UVM scaffold when --scaffold is provided (same path as render-scaffold).
     if scaffold:
