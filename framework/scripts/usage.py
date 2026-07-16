@@ -16,6 +16,11 @@ skipped, a missing/empty file yields an all-zero breakdown. Consumed by
 kernel.py (reap-time, per Task subagent trace) and
 eval/aggregate/aggregate.py (session transcript). cost is audit-only and
 never enters validity.
+
+Invariant note: aggregate.py's total = task + mainthread relies on a
+manifest contract — session_transcripts point at the orchestrator's own
+<sessionId>.jsonl, which carries no sidechain (subagent) turns; those
+live in separate mirrored files parsed only via the task-cost path.
 """
 
 from __future__ import annotations

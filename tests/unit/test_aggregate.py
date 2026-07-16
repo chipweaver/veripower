@@ -264,6 +264,56 @@ def test_wallclock_does_not_multicount_on_re_reap(tmp_path):
     assert m["wallclock_sec"] == 10.0
 
 
+def test_task_cost_does_not_multicount_on_re_reap(tmp_path):
+    """Symmetric to test_wallclock_does_not_multicount_on_re_reap: a (rule, run)
+    key with dispatch -> outcome (cost_tokens=500), then a SECOND outcome for the
+    same key with no new dispatch (regrade — kernel.py cmd_reap explicitly allows
+    re-reaping an already-outcome'd run), also carrying cost_tokens. task_tokens
+    must count the run once (the latest outcome), not sum both outcomes."""
+    repo = tmp_path
+    _events_module(
+        repo,
+        "m",
+        [
+            _dispatch("synthesis", 1, ts="2026-07-16T00:00:00Z"),
+            _outcome(
+                "synthesis",
+                1,
+                cost={
+                    "total_tokens": 500,
+                    "input_tokens": 100,
+                    "output_tokens": 400,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                },
+                ts="2026-07-16T00:00:10Z",
+            ),
+            # re-reap / regrade: another outcome for the same key, no new dispatch
+            _outcome(
+                "synthesis",
+                1,
+                cost={
+                    "total_tokens": 500,
+                    "input_tokens": 100,
+                    "output_tokens": 400,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                },
+                ts="2026-07-17T00:00:00Z",
+            ),
+        ],
+    )
+    run = {
+        "arm": "full",
+        "design": "d",
+        "seed": 1,
+        "module": "m",
+        "session_transcripts": [],
+    }
+    m = aggregate.aggregate_run(run, repo)
+    assert m["task_tokens"] == 500
+
+
 def test_real_fa_core_fsa_acceptance():
     """Acceptance: run against the real in-repo module (old run, no
     cost_tokens on outcomes -> pure re-scan). Proves the pipe works."""

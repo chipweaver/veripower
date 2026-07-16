@@ -82,10 +82,20 @@ def _rescan_task_trace(repo_root: Path, module: str, rule: str, run: int) -> dic
 
 def _task_cost(repo_root: Path, module: str, events: list[dict]) -> dict:
     """Sum Task-execution stage cost; per outcome prefer cost_tokens, else
-    re-scan the trace. Returns {usage breakdown, partial}."""
+    re-scan the trace. Returns {usage breakdown, partial}.
+
+    Dedup by (rule, run): a second outcome for the same key with no
+    intervening dispatch (crash-mid-promote repair, or a pin/regrade —
+    kernel.py cmd_reap explicitly allows re-reaping an already-outcome'd
+    run) is a REGRADE of that run, not a second run. Events are
+    append-only / chronological, so the last outcome per key is the
+    current one; only it is costed, matching _wallclock_sec's retirement
+    of the matched dispatch for the same re-reap case.
+    """
     agg = {k: 0 for k in _TOKEN_KEYS}
     agg["total_tokens"] = 0
     partial = False
+    latest: dict[tuple, dict] = {}
     for e in events:
         if e.get("type") != "outcome":
             continue
@@ -93,6 +103,9 @@ def _task_cost(repo_root: Path, module: str, events: list[dict]) -> dict:
         r = rules.RULES.get(rule)
         if r is None or getattr(r, "execution", None) != "task":
             continue  # main-thread cost lives in the session transcript
+        latest[(rule, e.get("run"))] = e
+    for e in latest.values():
+        rule = e.get("rule")
         ct = e.get("cost_tokens")
         if ct and isinstance(ct.get("total_tokens"), int):
             src = ct
