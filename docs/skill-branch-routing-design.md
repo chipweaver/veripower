@@ -6,9 +6,9 @@ This document governs how every skill's Workflow field expresses its Step 1 with
 
 ## 2. Background
 
-Step 1 is **not** a branch selection. It is one linear flow — **seed/bootstrap → determine scope → minimal-edit** — because the fork that was once modelled as branches (first-run vs a re-run that carries prior products) lives *inside* the `seed` verb (whitelist no-clobber carry; a no-op when no canonical exists) or, for the tool stages, the `bootstrap` verb (deploy the workdir; abort if already deployed). What differs between runs is only the **scope** of the edit, which Step 1 reads from a fallback ladder.
+Step 1 is **not** a branch selection. It is one linear flow — **bootstrap → determine scope → minimal-edit** — because the fork that was once modelled as branches (first-run vs a re-run that carries prior products) is resolved before Step 1 ever runs: the kernel's `store.carry_self` copies the author's own previous canonical products into the fresh workdir at dispatch (a no-op on a genuine first run, when no canonical exists yet). For the tool stages, the `bootstrap` verb separately deploys the workdir no-clobber (abort if already deployed) within Step 1, preserving whatever `carry_self` already placed there. What differs between runs is only the **scope** of the edit, which Step 1 reads from a fallback ladder.
 
-Compaction-safe resume is a kernel/architecture property (`ARCHITECTURE.md`, "Compaction-safe resume"), not a per-skill feature: a fresh `runs/N` workdir per dispatch + no-clobber `seed`/`bootstrap` + `result.json` as the sole completion signal make re-entry automatic. No skill needs "session-resume" prose.
+Compaction-safe resume is a kernel/architecture property (`ARCHITECTURE.md`, "Compaction-safe resume"), not a per-skill feature: a fresh `runs/N` workdir per dispatch + the kernel's `carry_self` before Step 1 + a no-clobber `bootstrap` deploy within Step 1 (for the tool stages) + `result.json` as the sole completion signal make re-entry automatic. No skill needs "session-resume" prose.
 
 ## 3. Principles
 
@@ -19,11 +19,11 @@ Step 1 determines this round's edit scope from the first available source:
 ```
 scope = {directive_path}.fix_locus       # Orchestrator's fix-scope hint — authoritative
       ?? {failing_result}.attribution    # a repair dispatch's violations[] / attribution
-      ?? diff(inputs, seeded baseline)    # a re-run whose upstream inputs changed
+      ?? diff(inputs, prior baseline)    # a re-run whose upstream inputs changed
       ?? ALL                             # a first delivery (nothing narrows it)
 ```
 
-Each skill lists only the sources it actually has (see §4/§6). No skill self-scans `events.jsonl` or any external state; the only disk reads are the declared inputs plus the seed's own canonical check.
+Each skill lists only the sources it actually has (see §4/§6). No skill self-scans `events.jsonl` or any external state; the only disk reads are the declared inputs (at their `inputs.json`-injected locations), `{workdir}/changed-inputs.md` when the kernel wrote one, and a `bootstrap`-style deploy verb's own probe of `{workdir}` for already-carried residue.
 
 ### 3.2 P2 — Scope decided once, in Step 1
 
@@ -35,7 +35,7 @@ Downstream steps run in the same order regardless of scope and differ only in *w
 
 ### 3.4 P4 — Idempotency by design
 
-The disk is the source of truth for artifacts, not for progress. Do NOT track partial completion via custom disk markers. `result.json` presence is the sole completion signal; the fresh-workdir-per-dispatch and canonical-vs-`runs/` promotion are owned by `framework/scripts/kernel.py`. `seed`/`bootstrap` are no-clobber, so a re-entry keeps freshly-authored residue automatically.
+The disk is the source of truth for artifacts, not for progress. Do NOT track partial completion via custom disk markers. `result.json` presence is the sole completion signal; the fresh-workdir-per-dispatch and canonical-vs-`runs/` promotion are owned by `framework/scripts/kernel.py`. The kernel's `carry_self` runs once, before Step 1, and `bootstrap`-style deploy verbs are no-clobber, so a re-entry keeps freshly-authored residue automatically.
 
 ### 3.5 P5 — Fail-closed on an unreadable repair input
 
@@ -50,13 +50,15 @@ If `{failing_result}` is injected but unreadable or malformed, write `result.jso
 | directive · failing_result · diff · ALL | rtl-design, synthesis, simulation | full ladder — route-DAG fix targets with a diffable upstream |
 | directive · failing_result · ALL | specification | no diff arm — `brainstorm.md` is frozen; a repair round enters at the post-partition step (§6.3) |
 | directive · diff · ALL | lint-cdc, power-analysis | no `failing_result` arm — never a route-DAG fix target (§6.1) |
-| ALL only | timing-analysis | read-only re-verifier; no product seed, scope is always everything (§6.2) |
+| ALL only | timing-analysis | read-only re-verifier; nothing to carry forward, scope is always everything (§6.2) |
 
 **Worked walk-through — a route-DAG worker** (rtl-design / synthesis archetype):
 
 ```text
-Step 1: Read inputs. Run seed/bootstrap (canonical-present vs first-delivery is
-        internal to the verb; no-clobber keeps any residue).
+Step 1: Read inputs (already carried in by the kernel's `carry_self` before
+        dispatch, or genuinely absent on a first delivery). Run bootstrap where
+        the archetype has one (no-clobber — deploys only what's missing, so
+        carried residue survives).
         scope = directive.fix_locus
              ?? failing_result.violations[]   (if unreadable → result.json
                 status=fail, fail_reason="failing_result not readable: <path>")
@@ -79,7 +81,7 @@ Never a rework-DAG fix target — `route.py` never returns them, so callers neve
 
 ### 6.2 Read-only re-verifier (timing-analysis)
 
-Read-only — cannot author or fix anything, so there is nothing to seed and no scope to narrow: Step 1 is a linear pre-flight check and every run re-verifies everything (`scope ≡ ALL`). `route.py` never returns them; P5 does not apply (no `{failing_result}` is ever delivered). (Workflow rationale in each skill.)
+Read-only — cannot author or fix anything, so there is nothing to carry forward and no scope to narrow: Step 1 is a linear pre-flight check and every run re-verifies everything (`scope ≡ ALL`). `route.py` never returns them; P5 does not apply (no `{failing_result}` is ever delivered). (Workflow rationale in each skill.)
 
 ### 6.3 Post-partition entry point (specification)
 
@@ -91,7 +93,7 @@ Read-only — cannot author or fix anything, so there is nothing to seed and no 
 
 ### 6.5 Analyzer exception (simulation-triage)
 
-`simulation-triage` receives only identifying coordinates (`{module}` + the failed run number) and self-reads everything else from canonical disk. It has no `{workdir}`, no `{failing_result}`, no scope ladder. (`skills/simulation-triage/SKILL.md` Input Artifacts.)
+`simulation-triage` receives identifying coordinates (`{module}` + `sim_run`, the failed run number) as dispatch params. The kernel resolves `sim_run` and every declared input (`design`, `rtl`, `plan`) to their absolute canonical stage roots and writes them to `{workdir}/inputs.json` at dispatch — triage reads from those injected locations and never self-navigates a module-relative path. It DOES have a `{workdir}` (for its own `result.json` and, on L2, `experiment/`); it has no `{failing_result}` and no scope ladder — every dispatch is a full graduated (L1 → L2) analysis of its one target run. (`skills/simulation-triage/SKILL.md` Input Artifacts.)
 
 ## 8. Process for changing
 
