@@ -44,12 +44,14 @@ Your boundary:
 
 ### External reference inputs
 
+Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>` (`design`/`manifest`/`children` all resolve to the specification stage root).
+
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/specification/result.json` | `skills/specification/references/result.schema.json` | `specification` envelope — existence-checked at Step 1. You do not consume `ppa_targets`. |
-| `Design/specification/design.md` | Custom markdown | Module-level design (§1.1–1.6: features / IO / interconnects / timing scenarios / clocks). Per-submodule content lives in each `<child>.md`. |
-| `Design/specification/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; child roster — drives per-child `§5` consumption by `simplan derive-plan-data`. |
-| `Design/specification/<child>.md × N` | Custom markdown | Only `§5 Verification Hints` is consumed (via `simplan derive-plan-data`, tagging `check_hints[]` with `child`). |
+| `<design>/result.json` | `skills/specification/references/result.schema.json` | `specification` envelope — existence-checked at Step 1. You do not consume `ppa_targets`. |
+| `<design>/design.md` | Custom markdown | Module-level design (§1.1–1.6: features / IO / interconnects / timing scenarios / clocks). Per-submodule content lives in each `<child>.md`. |
+| `<manifest>/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; child roster — drives per-child `§5` consumption by `simplan derive-plan-data`. |
+| `<children>/<child>.md` × N | Custom markdown | Only `§5 Verification Hints` is consumed (via `simplan derive-plan-data`, tagging `check_hints[]` with `child`). |
 
 When `{failing_result}` is injected, read additional context from the same directory as the trigger file (e.g., `failure_phase` / `failing_cases` / `coverage_gaps` / `gaps_not_in_testpoints` / `failures[]` / corresponding log and summary files). The specific read scope is driven by the trigger's content; do not enumerate it ahead of time.
 
@@ -116,28 +118,26 @@ Authoring judgment the schema/validator cannot express:
 
 ## Workflow
 
-### Step 1: Read inputs, seed, determine scope
+### Step 1: Read inputs, determine scope
 
-Read `design.md` + `manifest.json` (simulation-plan's declared inputs); if any required input is missing, close the run with the early-fail exit below (`fail_reason="external reference missing: <path>"`).
-
-Run `simplan seed --workdir {workdir}` (whitelist no-clobber carry of the prior canonical plan + scaffold; **no-clobber**, so any freshly-authored workdir residue from an interrupted run is kept, and with no canonical it is a no-op — a first delivery. The judged `plan-review.json` is deliberately NOT carried — invalidate-on-rework).
+Your previous round, if any, is already carried into `{workdir}` by the framework (kernel `carry_self`) — edit it in place. Read `<design>/design.md` + `<manifest>/manifest.json` (simulation-plan's declared inputs); if any required input is missing, close the run with the early-fail exit below (`fail_reason="external reference missing: <path>"`).
 
 Determine this round's edit scope from the first available source:
 1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
 2. Else, on a `{failing_result}`, the attribution structure + this round's revision context read from the trigger file (field names come from the triggering stage's own `result.schema.json`), amended per the violation-type targeting table in Decision Rules. If the trigger is unreadable, close the run with the early-fail exit (`fail_reason="failing_result not readable: <path>"`).
-3. Else, if `{workdir}/changed-inputs.md` is present, it lists the input files that changed since this stage's last run — amend only the plan sections its `design.md` / `<child>.md` paths map to. If it is absent or empty but `seed` carried a prior canonical (a re-verify, not a first delivery), amend no section — re-run Step 4's gate on the seeded plan and finalize; every section outside scope stays byte-identical.
-4. Else (a first delivery, no prior canonical) full generation of plan + scaffold.
+3. Else, if `{workdir}/changed-inputs.md` is present, it lists the input files that changed since this stage's last run — amend only the plan sections its `design.md` / `<child>.md` paths map to. If it is absent or empty but `{workdir}/verification-plan.md` is already present (carried forward — a re-verify, not a first delivery), amend no section — re-run Step 4's gate on the carried plan and finalize; every section outside scope stays byte-identical.
+4. Else (a first delivery, no `verification-plan.md` carried in) full generation of plan + scaffold.
 
-Amend only the in-scope sections. **Sections outside scope — together with their testpoint IDs / sequence names / `power_scenarios.sequence_ref` — are preserved verbatim** (stable anchors so coverage data / scaffold / SAIF caches do not drift on ID changes). When the seeded workdir already holds an updated version, that residue is the baseline. Any amendment to the plan voids any prior gate `clear`; Step 4 re-runs before the Step-5 user loop.
+Amend only the in-scope sections. **Sections outside scope — together with their testpoint IDs / sequence names / `power_scenarios.sequence_ref` — are preserved verbatim** (stable anchors so coverage data / scaffold / SAIF caches do not drift on ID changes). When the carried workdir already holds an updated version, that residue is the baseline. Any amendment to the plan voids any prior gate `clear`; Step 4 re-runs before the Step-5 user loop.
 
-**Early-fail exit.** Whenever a documented failure cannot be resolved, first run `simplan seed --workdir {workdir}` (no-clobber; a no-op when no canonical exists — this covers a fail that fires before Step 1's seed ran, e.g. a missing external reference), then close the run with the finalize early-fail entry — never hand-assemble the envelope:
+**Early-fail exit.** Whenever a documented failure cannot be resolved, close the run with the finalize early-fail entry — never hand-assemble the envelope:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
   --workdir {workdir} --module {module} --status fail --fail-reason "<one-line reason>"
 ```
 
-Reasons used by this skill: `external reference missing: <path>`; `failing_result not readable: <path>`; `specification minimum field completeness: <one-line missing-field summary>` (Step 2). finalize enumerates `artifacts[]` present-only, so the seeded carried product set all promotes — an early fail never shrinks canonical (the judged `plan-review.json` is the one exception: deliberately never carried on rework, per invalidate-on-rework).
+Reasons used by this skill: `external reference missing: <path>`; `failing_result not readable: <path>`; `specification minimum field completeness: <one-line missing-field summary>` (Step 2). finalize enumerates `artifacts[]` present-only, so the carried workdir's product set all promotes — an early fail never shrinks canonical (the judged `plan-review.json` is the one exception: deliberately never carried on rework, per invalidate-on-rework).
 
 ### Step 2: Minimum field completeness self-check
 
@@ -150,7 +150,7 @@ Scope: a first delivery fully generates both artifacts; a narrowed scope (direct
 - Derive plan-data (run on every run that reaches this step):
 
   ```bash
-  python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workdir <spec-workdir> --output {workdir}/plan-data.json
+  python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workdir <design> --output {workdir}/plan-data.json
   ```
 
   Writes `{workdir}/plan-data.json`; reads `manifest.json` + `design.md` + each `<child>.md §5`; cheap, deterministic, idempotent.
@@ -292,7 +292,7 @@ The plan's canonical revision history lives in `verification-plan.md` §5; `--re
 
 ### Re-entry and completion
 
-Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`; a missing `result.json` is treated as incomplete (no cross-session "already complete" flag). `simplan seed` never clobbers workdir residue but never carries the gate review (`plan-review.json`) forward — invalidate-on-rework. Every re-entry re-runs the plan-adequacy gate (Step 4) on the current plan before finalize, so a compaction resumes without losing work and a stale `clear` cannot survive to finalize. Step 5 (the user review loop) **always re-runs**: it is idempotent with "ask the user again," re-presenting the current `verification-plan.md` for the user to reconfirm.
+Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`; a missing `result.json` is treated as incomplete (no cross-session "already complete" flag). The framework's `carry_self` never carries the gate review (`plan-review.json`) forward on a repair — invalidate-on-rework. Every re-entry re-runs the plan-adequacy gate (Step 4) on the current plan before finalize, so a compaction resumes without losing work and a stale `clear` cannot survive to finalize. Step 5 (the user review loop) **always re-runs**: it is idempotent with "ask the user again," re-presenting the current `verification-plan.md` for the user to reconfirm.
 
 ## Bundled References
 

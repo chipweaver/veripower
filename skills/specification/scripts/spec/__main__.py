@@ -6,7 +6,6 @@ Verbs (one stage = one tool; see skills/specification/SKILL.md for usage):
   check-coverage      manifest-driven coverage gate         (writes coverage.json; exit 0/1)
   derive-constraints  generate SDC/SGDC from §1.6 + §1.4.1  (stdout: JSON; fail-loud)
   validate-review     spec-review.json schema + gate        (stdout: gate JSON; exit 0/1)
-  seed                carry prior canonical products fwd    (stdout: seeded JSON)
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the
@@ -59,12 +58,6 @@ def _cmd_derive_constraints(a: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_seed(a: argparse.Namespace) -> int:
-    from spec import seed
-
-    return seed.run(a.workdir, a.canonical)
-
-
 def _cmd_validate_review(a: argparse.Namespace) -> int:
     from spec import review
 
@@ -109,20 +102,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("validate-review", help="spec-review.json schema + gate")
     sp.add_argument("--review", required=True, type=Path)
     sp.set_defaults(func=_cmd_validate_review)
-
-    sp = sub.add_parser(
-        "seed",
-        help="carry prior canonical PRODUCTS forward (whitelist, no-clobber; "
-        "never result.json)",
-    )
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
-        "--canonical",
-        type=Path,
-        default=None,
-        help="prior canonical dir; default = {workdir}/../..",
-    )
-    sp.set_defaults(func=_cmd_seed)
 
     sp = sub.add_parser("finalize", help="assemble the lean result.json")
     sp.add_argument("--workdir", required=True, type=Path)

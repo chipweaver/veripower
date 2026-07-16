@@ -31,3 +31,8 @@ def test_cli_unknown_verb_exits_2():
 
 def test_cli_no_verb_exits_2():
     assert _run().returncode == 2
+
+
+def test_seed_verb_removed(tmp_path):
+    r = _run("seed", "--workdir", str(tmp_path))
+    assert r.returncode != 0  # argparse rejects an unknown subcommand

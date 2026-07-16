@@ -5,7 +5,7 @@ description: Use when writing or reviewing design specification (design.md), def
 
 # Requirements and Specification Freeze
 
-Your sole responsibility: derive a frozen design source of truth from an approved `asic/{module}/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `coverage.json` + `ppa.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). You are a thin Level-0 dispatcher: three sub-agent waves, two path-handoff gates, deterministic main-thread scripts in between; the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
+Your sole responsibility: derive a frozen design source of truth from an approved `<brainstorm>/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `coverage.json` + `ppa.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). You are a thin Level-0 dispatcher: three sub-agent waves, two path-handoff gates, deterministic main-thread scripts in between; the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
 
 ## When to Use
 
@@ -19,7 +19,7 @@ Your sole responsibility: derive a frozen design source of truth from an approve
 Your boundary:
 
 - **Write only under `{workdir}`** (artifacts + `result.json`); never read or write other modules' artifacts. Reading reference material outside `{workdir}` (plugin-internal templates, upstream canonical inputs) is allowed.
-- **No brainstorm here.** Consume a frozen `asic/{module}/brainstorm.md` (produced by the pre-pipeline `brainstorm` skill; `design-flow`'s entry gate already verified `Status: approved` — a missing/draft brainstorm means the user must run `Skill(veripower:brainstorm)` first). Run the two path-handoff gates but hold no document body and drive no D0–D7 dialogue.
+- **No brainstorm here.** Consume a frozen `<brainstorm>/brainstorm.md` (produced by the pre-pipeline `brainstorm` skill; `design-flow`'s entry gate already verified `Status: approved` — a missing/draft brainstorm means the user must run `Skill(veripower:brainstorm)` first). Run the two path-handoff gates but hold no document body and drive no D0–D7 dialogue.
 - **Constraint correctness** (periods consistent, IO delays / `abstract_port`s present) is generated and self-checked by `derive-constraints` — there is no LLM constraint overlay and no separate constraint checker.
 - **`design.md` must not contain by-reference jumps.** `design.md` is the unique source of truth; downstream stages do not read `brainstorm.md`. Any `see brainstorm`, `see spec D`, etc. = information loss; the referenced passage must be inlined verbatim.
 - **`design.md` and every `<child>.md` MUST reference the PPA targets by pointing at `ppa.json`, never restate the numeric target values in prose** (carrier line in `design-template.md` §1.1). `ppa.json` is the single home of PPA numbers — synthesis and power-analysis bind to it directly as their acceptance standard, so a restated number can silently drift from the value they actually gate on. This is the one sanctioned by-reference pointer; brainstorm content still must be inlined verbatim.
@@ -40,9 +40,11 @@ Your boundary:
 
 ### External reference inputs
 
+Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>`. `brainstorm` is a PIPELINE_INPUT, so `<brainstorm>` resolves to the module root.
+
 | Path | Schema / Format | Use |
 |---|---|---|
-| `asic/{module}/brainstorm.md` | Custom markdown; frontmatter `Status: approved` | The frozen module-root input (approval already gate-verified). Read only inside sub-Tasks and passed by path to `check-coverage --brainstorm`; the main thread never loads its body. |
+| `<brainstorm>/brainstorm.md` | Custom markdown; frontmatter `Status: approved` | The frozen module-root input (approval already gate-verified). Read only inside sub-Tasks and passed by path to `check-coverage --brainstorm`; the main thread never loads its body. |
 
 When `{failing_result}` is provided, read it once at its path as reference; a first delivery depends only on existing artifacts under `{workdir}`.
 
@@ -74,12 +76,12 @@ Framework-mechanism rules (dispatch-and-wait below is the main-thread lifecycle)
 - **No `kernel.py`:** this skill does not call `kernel.py`.
 - **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a harness-level signal, distinct from the `result.json.status` enum; the main thread maps it to `status=fail` + `fail_reason` listing failed children (via the finalize early-fail entry) and defers per-child re-dispatch to a later repair dispatch. Edge: if Wave 1 blocked **before `manifest.json` exists** (a first delivery only), finalize exits 2 — the run is reaped `blocked`, which is correct: with no manifest there is nothing to enumerate, a blocked run never promotes, and the kernel's forward path re-dispatches.
 
-### Step 1: Entry — seed, determine scope, pick the entry point
+### Step 1: Entry — determine scope, pick the entry point
 
-When `{directive_path}` is injected, Read it first — its `fix_locus` narrows the scope. Run `spec seed --workdir {workdir}` (no-clobber carry of the prior canonical; a no-op when no canonical exists — so any freshly-authored workdir residue is kept). Then:
+Your previous round, if any, is already carried into `{workdir}` by the framework (kernel `carry_self`) — edit it in place. Read your upstream `<brainstorm>/brainstorm.md`. When `{directive_path}` is injected, Read it first — its `fix_locus` narrows the scope. Then:
 
-- **A prior run was promoted** (`spec seed` carried a canonical) — a repair round. Scope = `{directive_path}`'s `fix_locus` when injected, else a `{failing_result}`'s `stage_specific` attribution (Read the trigger once; body stays off the main thread; `brainstorm.md` read-only). Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6 and flow through Steps 7–9**: Steps 2–5 (the partition) are skipped — `manifest.json` is immutable after the partition gate — and Step 7 (the semantic gate) re-runs this pass, so the promoted gate is always fresh. Ends at Step 9.
-- **No canonical** (`spec seed` was a no-op) — a first delivery, or an interrupted first delivery whose residue is kept no-clobber: full re-derivation from Step 2 (fresh partition; brainstorm-level rework recovery also lands here). Ends at Step 9.
+- **`{workdir}/design.md` is already present** (carried forward) — a repair round. Scope = `{directive_path}`'s `fix_locus` when injected, else a `{failing_result}`'s `stage_specific` attribution (Read the trigger once; body stays off the main thread; `brainstorm.md` read-only). Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6 and flow through Steps 7–9**: Steps 2–5 (the partition) are skipped — `manifest.json` is immutable after the partition gate — and Step 7 (the semantic gate) re-runs this pass, so the promoted gate is always fresh. Ends at Step 9.
+- **No `design.md` in `{workdir}`** — a first delivery, or a brainstorm-level rework recovery: full re-derivation from Step 2 (fresh partition). Ends at Step 9.
 
 **Early-fail exit.** Whenever a documented failure below cannot be resolved, close the run with the finalize early-fail entry — never hand-assemble the envelope:
 
@@ -88,7 +90,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
   --workdir {workdir} --module {module} --status fail --fail-reason "<one-line reason>"
 ```
 
-Reasons used by this skill: `failing_result not readable: <path>`; `requirements need revision: <D-dim>` (a contradiction unfixable without changing the frozen brainstorm — routes to ESCALATE; recovery is out-of-band); `manifest child missing rtl_modules`; `constraint derivation: <table> defect`. finalize enumerates `artifacts[]` present-only, so a seeded workdir's carried **product** set all promotes — an early fail never shrinks it (the judged `spec-review.json` is the one exception: deliberately never carried on rework, per invalidate-on-rework).
+Reasons used by this skill: `failing_result not readable: <path>`; `requirements need revision: <D-dim>` (a contradiction unfixable without changing the frozen brainstorm — routes to ESCALATE; recovery is out-of-band); `manifest child missing rtl_modules`; `constraint derivation: <table> defect`. finalize enumerates `artifacts[]` present-only, so the carried workdir's **product** set all promotes — an early fail never shrinks it (the judged `spec-review.json` is the one exception: deliberately never carried on rework, per invalidate-on-rework).
 
 ### Main chain at a glance
 
@@ -105,7 +107,7 @@ Reasons used by this skill: `failing_result not readable: <path>`; `requirements
 
 ### Step 2: Wave 1 — decompose (Level-1 sub-Task)
 
-Dispatch one sub-Task that, in its own context, reads `asic/{module}/brainstorm.md` and writes:
+Dispatch one sub-Task that, in its own context, reads `<brainstorm>/brainstorm.md` and writes:
    - `manifest.json` — `module`, `children[]` with `name` / `doc` / `rtl_modules[]` (REQUIRED, ≥1) / `brainstorm_anchor` / `role`; optional `shared_subsections[]`.
    - `design.md` §1.1–1.6 overview (incl. §1.4.1 Top-Level IO + §1.4.2 Inter-module Interconnects) + §1.7 submodule index.
    - `ppa.json` — the D6 `ppa_targets` **verbatim** as a JSON array of `{dim, target}` (`[]` when D6 declares none or was not reached). This is the only step that transcribes PPA numbers; everything downstream reads the file.
@@ -135,7 +137,7 @@ Dispatch N sub-Tasks (one per child), each writing `{workdir}/<child>.md` per `r
 ### Step 6: Coverage gate + constraint derivation (script)
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py check-coverage --workdir {workdir} --brainstorm asic/{module}/brainstorm.md
+python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py check-coverage --workdir {workdir} --brainstorm <brainstorm>/brainstorm.md
 ```
 
 It reads brainstorm/children/design in-process and writes `coverage.json` (sub-blocks: `brainstorm_coverage` / `frontmatter_subset` / `token_survival` / `self_containment` / `structure`); exit 0 = pass.
@@ -235,7 +237,7 @@ Downstream consumption note: synthesis and power-analysis read `ppa.json` direct
 
 ### Re-entry and completion
 
-Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`; a missing `result.json` is treated as incomplete (no cross-session "already complete" flag). `spec seed` never clobbers workdir residue but never carries the gate review (`spec-review.json`) forward — invalidate-on-rework. Every re-entry re-runs the semantic gate (Step 7) on the current `design.md` (+ per-child) before the Step-8 approve precondition and Step-9 finalize, so a compaction resumes without losing work and a stale `clear` cannot survive to finalize. The two path-handoff gates always re-ask idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before you run; you never approve or re-approve it.
+Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`; a missing `result.json` is treated as incomplete (no cross-session "already complete" flag). The framework's `carry_self` never carries the gate review (`spec-review.json`) forward on a repair — invalidate-on-rework. Every re-entry re-runs the semantic gate (Step 7) on the current `design.md` (+ per-child) before the Step-8 approve precondition and Step-9 finalize, so a compaction resumes without losing work and a stale `clear` cannot survive to finalize. The two path-handoff gates always re-ask idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before you run; you never approve or re-approve it.
 
 ## Bundled References
 
