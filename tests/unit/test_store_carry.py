@@ -87,3 +87,21 @@ def test_transformer_carry_is_noop(tmp_path, monkeypatch):
     wd.mkdir(parents=True)
     store.carry_self("m", "synthesis", wd)  # carry=()
     assert list(wd.iterdir()) == []
+
+
+def test_rtl_carry_starstar_includes_nested_and_ledger_files(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    c = tmp_path / "asic" / "m" / "Design" / "rtl-design"
+    (c / "rtl").mkdir(parents=True)
+    (c / "rtl" / "core.sv").write_text("s")  # nested HDL
+    (c / ".child_reports.json").write_text("{}")  # ledger index
+    (c / "notes").mkdir(parents=True)
+    (c / "notes" / "fsm.md").write_text("n")  # LLM-named support file
+    (c / "semantic-review.json").write_text("{}")  # no_carry
+    wd = c / "runs" / "1"
+    wd.mkdir(parents=True)
+    store.carry_self("m", "rtl-design", wd)
+    assert (wd / "rtl" / "core.sv").exists()
+    assert (wd / ".child_reports.json").exists()
+    assert (wd / "notes" / "fsm.md").exists()
+    assert not (wd / "semantic-review.json").exists()

@@ -2,7 +2,6 @@
 """rtl — rtl-design-stage CLI.
 
 Verbs (one stage = one tool; see skills/rtl-design/SKILL.md for usage):
-  seed              carry prior canonical RTL products fwd (whitelist)  (stdout: JSON; exit 0)
   check-partition   pre-dispatch coverage+purity gate (manifest+top)    (stdout: verdict; exit 0/1)
   assemble          build ledger/filelist/README + post exit-gate       (stdout: verdict; exit 0/1)
   check-conformance spec<->RTL presence gate                            (stdout: verdict; exit 0/1)
@@ -12,7 +11,7 @@ Verbs (one stage = one tool; see skills/rtl-design/SKILL.md for usage):
 Thin dispatcher: each subcommand parses its own flags and calls into the rtl.*
 library. Library imports are deferred into each handler (NOT top-level) so --help
 and verb dispatch run during incremental per-task TDD, before the sibling modules
-exist. A top-level `from rtl import seed, partition, …` would ImportError until
+exist. A top-level `from rtl import partition, assemble, …` would ImportError until
 every verb is built. Keep them lazy. (Library modules themselves use top-level
 absolute imports; only this thin dispatcher defers.)
 """
@@ -28,12 +27,6 @@ from pathlib import Path
 # the double dirname climbs rtl/ -> scripts/. NEVER `import _ledger` bare inside
 # this package — only `from rtl import …`.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-
-def _cmd_seed(a: argparse.Namespace) -> int:
-    from rtl import seed
-
-    return seed.run(a.workdir, a.canonical)
 
 
 def _cmd_check_partition(a: argparse.Namespace) -> int:
@@ -69,20 +62,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="rtl", description="rtl-design-stage CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
-
-    sp = sub.add_parser(
-        "seed",
-        help="carry prior canonical RTL products forward (whitelist, no-clobber; "
-        "never result.json)",
-    )
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
-        "--canonical",
-        type=Path,
-        default=None,
-        help="prior canonical dir; default = {workdir}/../..",
-    )
-    sp.set_defaults(func=_cmd_seed)
 
     sp = sub.add_parser(
         "check-partition", help="pre-dispatch coverage+purity gate (manifest+top)"
