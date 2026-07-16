@@ -489,9 +489,17 @@ def test_auto_derive_missing_session_file_marks_partial(tmp_path):
     assert m["session_ids"] == ["S-missing"]
 
 
-def test_real_fa_core_fsa_acceptance():
+def test_real_fa_core_fsa_acceptance(tmp_path):
     """Acceptance: run against the real in-repo module (old run, no
-    cost_tokens on outcomes -> pure re-scan). Proves the pipe works."""
+    cost_tokens on outcomes -> pure re-scan). Proves the TASK-side pipe
+    works on the real fa_core_fsa module.
+
+    Must stay hermetic: an explicit, empty/nonexistent claude_projects_dir
+    is injected so the auto-derive mainthread lookup finds nothing here —
+    without it this test would silently fall back to the real
+    ~/.claude/projects/... default and parse this developer's private,
+    multi-MB session transcript(s), making mainthread_tokens (and hence
+    total_tokens) wildly machine-dependent."""
     repo = ROOT
     if not (repo / "asic" / "fa_core_fsa" / "events.jsonl").exists():
         import pytest
@@ -504,6 +512,14 @@ def test_real_fa_core_fsa_acceptance():
         "module": "fa_core_fsa",
         "session_transcripts": [],
     }
-    m = aggregate.aggregate_run(run, repo)
-    assert m["task_tokens"] > 0  # re-scanned from real .subagent_traces
+    no_claude_dir = tmp_path / "no-claude"
+    m = aggregate.aggregate_run(run, repo, claude_projects_dir=no_claude_dir)
+    # Exact re-scan total for the real fa_core_fsa module's .subagent_traces/
+    # — locks the task-side pipe precisely, not just "> 0".
+    assert m["task_tokens"] == 5898797
+    # No mainthread: the injected projects dir is empty, so the harvested
+    # sessionId's <sid>.jsonl is absent.
+    assert m["mainthread_tokens"] == 0
+    assert m["total_tokens"] == 5898797
     assert m["total_tokens"] == m["task_tokens"] + m["mainthread_tokens"]
+    assert m["cost_partial"] is True

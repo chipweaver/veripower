@@ -228,7 +228,9 @@ def _wallclock_sec(events: list[dict]) -> float:
     return total
 
 
-def aggregate_run(run: dict, repo_root: Path, claude_projects_dir: Path = None) -> dict:
+def aggregate_run(
+    run: dict, repo_root: Path, claude_projects_dir: Path | None = None
+) -> dict:
     if claude_projects_dir is None:
         claude_projects_dir = _claude_projects_dir(repo_root)
     module = run.get("module")
@@ -287,7 +289,7 @@ def aggregate_run(run: dict, repo_root: Path, claude_projects_dir: Path = None) 
 
 
 def run_manifest(
-    manifest_path: Path, repo_root: Path, claude_projects_dir: Path = None
+    manifest_path: Path, repo_root: Path, claude_projects_dir: Path | None = None
 ) -> list[dict]:
     manifest = json.loads(Path(manifest_path).read_text())
     return [
