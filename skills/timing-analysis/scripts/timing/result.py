@@ -233,9 +233,14 @@ def read_lib_db(workdir: Path):
 
 
 def parse_clock(workdir: Path, top: str):
-    # The STA reads the synthesis SDC; workdir is .../Design/timing-analysis/runs/<N>.
-    # parents[0]=runs, [1]=timing-analysis, [2]=Design, [3]=module root
-    sdc = Path(workdir).parents[3] / "Design" / "synthesis" / "out" / f"{top}_syn.sdc"
+    # The STA reads the synthesis SDC; its location is injected into inputs.json
+    # (key "netlist" -> the synthesis stage root) rather than derived by climbing
+    # workdir's ancestors.
+    inputs_path = Path(workdir) / "inputs.json"
+    if not inputs_path.is_file():
+        return None
+    inputs = json.loads(inputs_path.read_text(encoding="utf-8"))
+    sdc = Path(inputs["netlist"]) / "out" / f"{top}_syn.sdc"
     if not sdc.is_file():
         return None
     m = _CLOCK_RE.search(sdc.read_text(errors="replace"))

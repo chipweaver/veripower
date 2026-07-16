@@ -16,7 +16,7 @@ Your sole responsibility: run independent PrimeTime STA on the post-synthesis ne
 
 ## Iron Rule
 
-- Do not modify any file under `Design/synthesis/`. Synthesis products (netlist / SDC) are read-only external references.
+- The injected read-only input locations `<netlist>`/`<sdc>` — never modify them; write only under `{workdir}`.
 - An independent STA tool (PrimeTime) MUST be used, not the synthesis tool's built-in timing engine (contract violation — the in-synthesis engine uses estimated delays and cannot meet signoff accuracy).
 - When no PT license is available, write `status=fail` + `fail_reason="PT license missing"`; do not claim STA is complete.
 - If synthesis products (netlist / SDC) do not exist, write `status=fail` + `fail_reason="external reference missing: <path>"`; do not bypass.
@@ -36,10 +36,12 @@ Only `{workdir}` / `{module}` are delivered. (See the Workflow rationale.)
 
 ### External reference inputs
 
+Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
+
 | Path | Schema / Format | Use |
 |---|---|---|
-| `Design/synthesis/out/<TOP>_syn.v` | Verilog gate-level netlist | STA input netlist. |
-| `Design/synthesis/out/<TOP>_syn.sdc` | SDC | Post-synthesis constraints. |
+| `<netlist>/out/<TOP>_syn.v` | Verilog gate-level netlist | STA input netlist. |
+| `<sdc>/out/<TOP>_syn.sdc` | SDC | Post-synthesis constraints. |
 | `LIB_DB` (env) | std cell Liberty `.db` path (same `.db` as synthesis) | Set before the STA run (Step 3) — `run_sta.tcl` errors when unset (or edit `config.tcl`). |
 
 ## Output Artifacts
@@ -58,7 +60,7 @@ This is a single linear flow (no branch fork — see rationale below).
 
 ### Step 1: Pre-check external references
 
-Confirm `Design/synthesis/out/<TOP>_syn.{v,sdc}` are present. If the netlist/SDC are missing, write `status=fail`, `failure_kind="infra"`, `fail_reason="external reference missing: <path>"` and exit.
+Confirm `<netlist>/out/<TOP>_syn.v` and `<sdc>/out/<TOP>_syn.sdc` are present. If the netlist/SDC are missing, write `status=fail`, `failure_kind="infra"`, `fail_reason="external reference missing: <path>"` and exit.
 
 ### Step 2: Bootstrap
 
@@ -105,7 +107,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
 
 | Mistake | Fix |
 |---|---|
-| SDC constraints out of sync with synthesis | The TCL reads `Design/synthesis/out/<TOP>_syn.sdc` (exported from synthesis); never rewrite by hand. |
+| SDC constraints out of sync with synthesis | The TCL reads `<sdc>/out/<TOP>_syn.sdc` (exported from synthesis); never rewrite by hand. |
 | Editing `run_sta.tcl` by hand per run | The bootstrap deploys the vetted template; re-bootstrap a fresh `runs/N` rather than improvising flags. |
 
 ## Completion Gate

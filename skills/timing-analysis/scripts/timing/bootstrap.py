@@ -7,9 +7,13 @@ no sed-delimiter hazard on '/'-containing paths). Far simpler than synthesis's
 bootstrap: no filelist, no rtl_load generation, no relpath — timing substitutes only
 absolute paths.
 
+The upstream synthesis-stage-root location comes from the injected
+`<workdir>/inputs.json` "netlist" key, not by self-navigating
+tree_root/asic/<module>/Design/synthesis.
+
 Deploys templates/ into the caller-provided workdir
 (asic/<module>/Design/timing-analysis/runs/<N>/), verifies the netlist+SDC the TCL
-reads, resolves TOP, and substitutes the MY_MODULE_ROOT / MY_WORKDIR (run_sta.tcl)
+reads, resolves TOP, and substitutes the MY_NETLIST_DIR / MY_WORKDIR (run_sta.tcl)
 and MY_TOP / FILL_IN_LIB_DB_PATH (config.tcl) placeholders. Fail-closed on an
 un-inferrable top or a missing external reference. Idempotency guard: aborts when
 the workdir is already deployed. The kernel only dispatches timing once synthesis's
@@ -25,6 +29,7 @@ Exit codes (returned as int; __main__ does sys.exit):
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -69,8 +74,11 @@ def run(module: str, workdir, top: str | None = None) -> int:
     workdir = Path(workdir)
     if not workdir.is_absolute():
         workdir = tree_root / workdir
-    module_root_abs = tree_root / "asic" / module
-    syn_dir = tree_root / "asic" / module / "Design" / "synthesis"
+
+    # The synthesis stage root is injected into inputs.json (dispatch-time), not
+    # self-navigated via tree_root/asic/<module>/Design/synthesis.
+    inputs = json.loads((workdir / "inputs.json").read_text(encoding="utf-8"))
+    syn_dir = Path(inputs["netlist"])  # synthesis stage root
 
     # Resolve TOP from the single out/<TOP>_syn.v when not given.
     if top is None:
@@ -94,7 +102,7 @@ def run(module: str, workdir, top: str | None = None) -> int:
     shutil.copytree(_TEMPLATE_DIR, workdir, dirs_exist_ok=True)
 
     # Substitute placeholders (str.replace — paths contain '/', no sed hazard).
-    _sub(workdir / "run_sta.tcl", "MY_MODULE_ROOT", str(module_root_abs))
+    _sub(workdir / "run_sta.tcl", "MY_NETLIST_DIR", str(syn_dir))
     _sub(workdir / "run_sta.tcl", "MY_WORKDIR", str(workdir))
 
     # `... or X` (NOT `.get(k, X)`) falls back on unset OR empty. An

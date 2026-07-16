@@ -7,8 +7,14 @@ set to a tmp design-tree root and build the synthesis output tree (netlist + SDC
 under it. The
 bootstrap anchors the design tree on the CWD (matching kernel.py and the
 stage-subagent contract), independent of where the skill code lives.
+
+`_make_tree` pre-populates workdir/inputs.json (netlist/sdc keys) the way
+kernel.py dispatch injects it at dispatch time — bootstrap reads the upstream
+synthesis-stage-root location from inputs.json instead of self-navigating
+tree_root/asic/<module>/Design/synthesis.
 """
 
+import json
 import shutil
 import subprocess
 import sys
@@ -49,7 +55,9 @@ def _make_tree(
     with_netlist=True,
     with_sdc=True,
 ):
-    """Build a synthesis output tree (netlist + SDC) under a tmp design-tree root.
+    """Build a synthesis output tree (netlist + SDC) under a tmp design-tree root,
+    and pre-populate workdir/inputs.json (netlist/sdc keys) the way kernel.py
+    dispatch injects it at dispatch time.
 
     Returns (module, workdir, main). Deploy tests run `main` (the real shipped skill)
     with cwd=tmp_path, so the bootstrap anchors the design tree on the CWD.
@@ -62,6 +70,10 @@ def _make_tree(
     if with_sdc:
         (syn / "out" / f"{top}_syn.sdc").write_text("# sdc\n")
     workdir = tmp_path / "asic" / m / "Design" / "timing-analysis" / "runs" / "1"
+    workdir.mkdir(parents=True)
+    (workdir / "inputs.json").write_text(
+        json.dumps({"netlist": str(syn), "sdc": str(syn)})
+    )
     return m, workdir, _MAIN
 
 
@@ -92,22 +104,46 @@ def test_deploys_and_substitutes(tmp_path):
     tcl = (workdir / "run_sta.tcl").read_text()
     assert (
         "asic/sdc_controller" in tcl
-    )  # MODULE_ROOT substituted (abs, contains asic/<m>)
-    assert "MY_MODULE" not in tcl and "MY_WORKDIR" not in tcl
+    )  # NETLIST_DIR substituted (abs, contains asic/<m>)
+    assert (
+        "MY_MODULE" not in tcl and "MY_NETLIST" not in tcl and "MY_WORKDIR" not in tcl
+    )
     cfg = (workdir / "config.tcl").read_text()
     assert "set TOP    sdc_controller" in cfg  # MY_TOP substituted
     assert "MY_TOP" not in cfg
 
 
-def test_workdir_and_module_root_are_absolute(tmp_path):
+def test_workdir_and_netlist_dir_are_absolute(tmp_path):
     m, workdir, main = _make_tree(tmp_path)
     assert _run(m, workdir, main).returncode == 0
     tcl = (workdir / "run_sta.tcl").read_text()
-    # pt_shell runs from the workdir; MODULE_ROOT/WORKDIR are absolute so reads resolve
+    # pt_shell runs from the workdir; NETLIST_DIR/WORKDIR are absolute so reads resolve
     # from any CWD and PT's auto-logs land inside the gitignored workdir.
     assert f"set WORKDIR     {workdir}" in tcl
-    assert str(tmp_path / "asic" / m) in tcl  # MODULE_ROOT is absolute
+    # module root is a path-prefix of the (absolute) synthesis stage root NETLIST_DIR
+    assert str(tmp_path / "asic" / m) in tcl
     assert "set WORKDIR     asic/" not in tcl  # the old tree-root-relative form is gone
+
+
+def test_run_sta_reads_absolute_netlist_from_inputs_json(tmp_path):
+    # Bootstrap reads the upstream synthesis-stage-root location from the injected
+    # inputs.json "netlist" key — not by self-navigating
+    # tree_root/asic/<module>/Design/synthesis. run_sta.tcl must bake the ABSOLUTE
+    # netlist dir (NETLIST_DIR), never a MY_MODULE_ROOT placeholder or a baked
+    # "Design/synthesis" self-nav path. $WORKDIR (a same-stage self-ref, F2) must
+    # survive.
+    m, workdir, main = _make_tree(tmp_path)
+    synth_root = tmp_path / "asic" / m / "Design" / "synthesis"
+    r = _run(m, workdir, main)
+    assert r.returncode == 0, r.stderr
+    sta = (workdir / "run_sta.tcl").read_text()
+    assert f"set NETLIST_DIR {synth_root}" in sta
+    assert (
+        "MY_MODULE_ROOT" not in sta
+        and "MY_NETLIST_DIR" not in sta
+        and "$MODULE_ROOT/Design/synthesis" not in sta
+    )
+    assert "set WORKDIR" in sta  # F2: same-stage $WORKDIR self-ref must survive
 
 
 def test_lib_db_captured_when_exported(tmp_path, monkeypatch):
