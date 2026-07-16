@@ -151,14 +151,19 @@ def test_readme_public_disclosure_and_provisions():
 
 
 @pytest.mark.skipif(
-    shutil.which("dc_shell") is None or not os.environ.get("LIB_DB"),
-    reason="no dc_shell or LIB_DB (EDA env absent)",
+    shutil.which("dc_shell") is None
+    or not os.environ.get("LIB_DB")
+    or not os.environ.get("UVM_HOME"),
+    reason="no dc_shell / LIB_DB / UVM_HOME (EDA env absent)",
 )
 def test_smoke_synth_on_demo():
     """Opportunistic: if DC is installed, the demo must synthesize with the
     wrapper's own dc_run.tcl — proves the recipe actually drives the tool.
     FILELIST must be a manifest (one RTL path per line, dc_run.tcl's own
     contract) — demo/filelist.txt (RTL-only), not the bare RTL path.
+
+    UVM_HOME is required here even though synthesis doesn't use UVM: `make
+    synth` sources eval/b1-wrapper/env.sh, which hard-fails without it.
 
     Runs in a repo-internal tmpdir: some environments execute the EDA tools
     through a container that only allows a cwd under the repo root, so a
@@ -167,7 +172,26 @@ def test_smoke_synth_on_demo():
     work_root = tempfile.mkdtemp(prefix=".b1-smoke-", dir=str(parent))
     try:
         work = Path(work_root) / "b1"
-        shutil.copytree(WRAP, work)
+        # Exclude build byproducts: a leftover out/accum_syn.v from a manual
+        # `make synth` run inside WRAP (out/ is not gitignored) would
+        # otherwise get carried into the fresh work copy and let the
+        # existence assertion below pass even if this run's synth failed.
+        shutil.copytree(
+            WRAP,
+            work,
+            ignore=shutil.ignore_patterns(
+                "out",
+                "reports",
+                "work",
+                "spyglass_work",
+                "cov_test*",
+                "simv*",
+                "csrc",
+                "*.log",
+                "*.vdb",
+                "*.daidir",
+            ),
+        )
         env = {**os.environ, "TOP": "accum"}
         r = subprocess.run(
             ["make", "synth", "FILELIST=demo/filelist.txt"],
@@ -176,6 +200,9 @@ def test_smoke_synth_on_demo():
             capture_output=True,
             text=True,
             timeout=1200,
+        )
+        assert r.returncode == 0, (
+            "make synth failed:\n" + r.stdout[-2000:] + r.stderr[-2000:]
         )
         assert (work / "out" / "accum_syn.v").is_file(), (
             r.stdout[-2000:] + r.stderr[-2000:]
