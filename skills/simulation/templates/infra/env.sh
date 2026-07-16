@@ -9,7 +9,6 @@ PYTHON="${PYTHON:-python3}"
 # Example: export UVM_HOME=/home/eda/UVM/uvm-1.1d
 UVM_HOME="${UVM_HOME:?ERROR: UVM_HOME not set. Export it before running make.}"
 
-SPEC_DIR="${SPEC_DIR:-MY_SPEC_DIR}"
 RTL_DIR="${RTL_DIR:-MY_RTL_DIR}"
 TESTLIST_JSON="${TESTLIST_JSON:-tests/testlist.json}"
 SIMV="${SIMV:-simv}"
@@ -19,5 +18,5 @@ VCS_COV="${VCS_COV:--cm line+cond+branch+tgl+fsm}"
 SEED="${SEED:-$($PYTHON -c 'from random import randint; print(randint(0,99999999))')}"
 
 export MODULE TOP TB_TOP SIM_TOOL PYTHON UVM_HOME
-export SPEC_DIR RTL_DIR TESTLIST_JSON
+export RTL_DIR TESTLIST_JSON
 export SIMV COMPILE_LOG RUN_LOG_DIR VCS_COV SEED

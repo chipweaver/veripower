@@ -3,11 +3,11 @@
 
 Behavior-preserving port of the former bootstrap shell (campaign §3.3): a NO-CLOBBER
 deploy (`_deploy_no_clobber`) + str.replace do the `cp -a` + `sed -i` work (str.replace
-has no sed-delimiter hazard — the MY_RTL_DIR / MY_SPEC_DIR values carry '..' path
-segments). Collapses the former three-script pipeline into one verb: deploy infra,
-substitute the MY_* placeholders, infer TOP, rewrite rtl_filelist.f (sim._filelist), and
-— when --scaffold is given — render the full UVM scaffold via sim.scaffold.render (the
-same code path the standalone render-scaffold verb uses).
+has no sed-delimiter hazard for the absolute MY_RTL_DIR value). Collapses the former
+three-script pipeline into one verb: deploy infra, substitute the MY_* placeholders,
+infer TOP, rewrite rtl_filelist.f (sim._filelist), and — when --scaffold is given —
+render the full UVM scaffold via sim.scaffold.render (the same code path the standalone
+render-scaffold verb uses).
 
 Exit codes (returned as int; __main__ does sys.exit):
   0  deployed (infra only, or infra + scaffold; rework when a carried Makefile is
@@ -48,25 +48,26 @@ _UVM_SUBDIRS = (
     "pkg",
     "top",
 )
-_PLACEHOLDERS = ("MY_TOP", "MY_MODULE", "MY_RTL_DIR", "MY_SPEC_DIR")
+_PLACEHOLDERS = ("MY_TOP", "MY_MODULE", "MY_RTL_DIR")
 
 
 def _err(msg: str) -> None:
     print(f"[sim bootstrap] {msg}", file=sys.stderr)
 
 
-def infer_top_from_manifest(spec_dir: Path) -> str | None:
-    """Top module name from the specification manifest (`manifest.module` — the authoritative
-    structured source, spec §4.3; rtl-design / simulation-plan read the same field). Absent /
-    unreadable / no `module` / non-identifier -> None (fall back to the RTL filelist). The
-    manifest is read only for this coordinate — the top's freshness is absorbed by the tracked
-    RTL fileset (§2⑦: a real top change necessarily changes RTL bytes), so simulation does NOT
-    declare the manifest as an input."""
-    f = spec_dir / "manifest.json"
+def infer_top_from_scaffold(scaffold_dir: Path) -> str | None:
+    """Top module name from the injected `scaffold` input's scaffold-specification.json
+    (`top` — a REQUIRED field per its schema, skills/simulation-plan/references/
+    scaffold-specification.schema.json). Absent / unreadable / no `top` / non-identifier
+    -> None (fall back to the RTL filelist). Unlike the former specification/manifest.json
+    read, `scaffold` IS a declared Rule.input (rules.RULES["simulation"].inputs["scaffold"]),
+    so this coordinate's freshness is already covered by the kernel's own input-staleness
+    check — no separate declaration needed."""
+    f = scaffold_dir / "scaffold-specification.json"
     if not f.is_file():
         return None
     try:
-        top = json.loads(f.read_text()).get("module")
+        top = json.loads(f.read_text()).get("top")
     except (OSError, ValueError):
         return None
     return top if isinstance(top, str) and _IDENT_RE.match(top) else None
@@ -118,27 +119,21 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         dest = tree_root / dest
     dest = Path(str(dest).rstrip("/"))
 
-    # The rtl-design stage root is injected into inputs.json (dispatch-time), not
-    # self-navigated via tree_root/asic/<module>/Design/rtl-design.
+    # The rtl-design / scaffold (simulation-plan) stage roots are injected into
+    # inputs.json (dispatch-time), not self-navigated via tree_root/asic/<module>/....
     inputs = json.loads((dest / "inputs.json").read_text(encoding="utf-8"))
     rtl_dir = Path(inputs["rtl"])
-    spec_dir = tree_root / "asic" / module / "Design" / "specification"
     rtl_filelist = rtl_dir / "filelist.txt"
 
-    # workdir -> specification relpath so env.sh's SPEC_DIR stays portable regardless
-    # of workdir depth (os.path.relpath matches the shell's python3 -c relpath).
-    # specification is NOT a declared input (rules.RULES["simulation"].inputs has no
-    # "spec" key — manifest.module is read only for TOP inference, never a verdict-
-    # dependency, see infer_top_from_manifest); RTL_DIR below is the absolute injected
-    # rtl root instead.
-    spec_rel = os.path.relpath(spec_dir, dest)
-
-    # Infer TOP (manifest.module first — authoritative, spec §4.3 — then filelist) BEFORE
-    # the prereq/guard. README is no longer consulted: manifest.module is the structured
-    # source, and dropping the README read lets simulation stop declaring README as an input
-    # (it was never a verdict-dependency — D6/G4).
+    # Infer TOP (the declared `scaffold` input's scaffold-specification.json `top` field
+    # first — a REQUIRED field, spec-input-contract — then the RTL filelist) BEFORE the
+    # prereq/guard. README is no longer consulted (D6/G4), and specification/manifest.json
+    # is no longer consulted either: simulation does not declare specification as an
+    # input, and `scaffold` already IS a declared one, so TOP now comes from a coordinate
+    # simulation genuinely tracks (mirrors power-analysis inferring TOP from its injected
+    # netlist rather than a non-declared specification read).
     if not top:
-        top = infer_top_from_manifest(spec_dir)
+        top = infer_top_from_scaffold(Path(inputs["scaffold"]))
     if not top:
         top = infer_top_from_filelist(rtl_dir)
     if not top:
@@ -166,12 +161,11 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
     (dest / "tests").mkdir(parents=True, exist_ok=True)
 
     # Substitute MY_* across every deployed file carrying one (str.replace — no sed-delimiter
-    # hazard for the '..'-bearing relpaths).
+    # hazard for the absolute MY_RTL_DIR value).
     repl = {
         "MY_TOP": top,
         "MY_MODULE": module,
         "MY_RTL_DIR": str(rtl_dir),
-        "MY_SPEC_DIR": spec_rel,
     }
     for path in dest.rglob("*"):
         if not path.is_file():

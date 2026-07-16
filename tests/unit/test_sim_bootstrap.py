@@ -21,18 +21,24 @@ from sim import bootstrap  # noqa: E402
 
 
 # ── B1: TOP-inference helpers (in-process) ─────────────────────────────────────
-def test_top_from_manifest_module_field(tmp_path):
-    # D6/G4: top is read from manifest.module (authoritative, spec §4.3), not README prose.
-    (tmp_path / "manifest.json").write_text(
-        json.dumps({"module": "my_top", "children": []})
+def test_top_from_scaffold_top_field(tmp_path):
+    # top is read from the declared `scaffold` input's scaffold-specification.json
+    # `top` field (a REQUIRED field per its schema), not README prose or manifest.json
+    # (specification is not a declared simulation input).
+    (tmp_path / "scaffold-specification.json").write_text(
+        json.dumps({"top": "my_top", "module": "m"})
     )
-    assert bootstrap.infer_top_from_manifest(tmp_path) == "my_top"
+    assert bootstrap.infer_top_from_scaffold(tmp_path) == "my_top"
 
 
-def test_top_from_manifest_absent_or_no_module(tmp_path):
-    assert bootstrap.infer_top_from_manifest(tmp_path) is None  # no manifest
-    (tmp_path / "manifest.json").write_text(json.dumps({"children": []}))  # no module
-    assert bootstrap.infer_top_from_manifest(tmp_path) is None
+def test_top_from_scaffold_absent_or_no_top(tmp_path):
+    assert (
+        bootstrap.infer_top_from_scaffold(tmp_path) is None
+    )  # no scaffold-specification.json
+    (tmp_path / "scaffold-specification.json").write_text(
+        json.dumps({"module": "m"})
+    )  # no top
+    assert bootstrap.infer_top_from_scaffold(tmp_path) is None
 
 
 def test_top_from_filelist_first_rtl_basename(tmp_path):
@@ -59,31 +65,29 @@ def _mirror(
     *,
     readme="**Top module**: dut\n",
     filelist="rtl/dut.v\n+incdir+inc\n",
-    manifest=None,
+    scaffold_top="dut",
 ):
-    """Seed the upstream rtl-design references under a tmp design-tree root, and
-    pre-populate workdir/inputs.json (rtl/plan/scaffold keys) the way kernel.py
-    dispatch injects it at dispatch time (+ carry_self, which would already have
-    placed any carried TB directly into workdir before this verb runs). Returns
+    """Seed the upstream rtl-design references + a scaffold-specification.json (`top`
+    field) under a tmp design-tree root, and pre-populate workdir/inputs.json
+    (rtl/plan/scaffold keys) the way kernel.py dispatch injects it at dispatch time
+    (+ carry_self, which would already have placed any carried TB directly into
+    workdir before this verb runs). `scaffold_top=None` omits scaffold-specification.json
+    entirely (models a TOP not inferrable from the declared `scaffold` input). Returns
     (main, workdir, module); deploy tests run `main` (the real shipped skill) with
     cwd=tmp_path, so the bootstrap anchors the design tree (and a relative --workdir)
-    on the CWD. bootstrap reads the rtl-design stage root from inputs.json, not by
-    self-navigating tree_root/asic/<module>/Design/rtl-design."""
+    on the CWD. bootstrap reads the rtl-design / scaffold stage roots from inputs.json,
+    not by self-navigating tree_root/asic/<module>/Design/... or .../specification."""
     module = "tpu_top"
     rtl = tmp_path / "asic" / module / "Design" / "rtl-design"
     rtl.mkdir(parents=True)
     (rtl / "README.md").write_text(readme)
     (rtl / "filelist.txt").write_text(filelist)
-    spec = tmp_path / "asic" / module / "Design" / "specification"
-    spec.mkdir(parents=True)
-    # top now comes from manifest.module (D6); seed it (matches the "dut" the fixtures expect).
-    # Pass manifest={"children": []} (no module) to model an uninferrable top.
-    (spec / "manifest.json").write_text(
-        json.dumps(
-            manifest if manifest is not None else {"module": "dut", "children": []}
-        )
-    )
     plan_root = tmp_path / "asic" / module / "Verification" / "simulation-plan"
+    plan_root.mkdir(parents=True)
+    if scaffold_top is not None:
+        (plan_root / "scaffold-specification.json").write_text(
+            json.dumps({"top": scaffold_top})
+        )
     workdir = tmp_path / "asic" / module / "Verification" / "simulation" / "runs" / "1"
     workdir.mkdir(parents=True)
     (workdir / "inputs.json").write_text(
@@ -145,7 +149,7 @@ def test_bootstrap_substitutes_my_placeholders(tmp_path):
     _run(main, module, wd)
     env = (wd / "env.sh").read_text()
     assert "MY_TOP" not in env and "MY_MODULE" not in env
-    assert "MY_RTL_DIR" not in env and "MY_SPEC_DIR" not in env
+    assert "MY_RTL_DIR" not in env
     # RTL_DIR is now the absolute injected rtl root (re-anchor), no relpath climb.
     assert str(rtl_root) in env
 
@@ -223,9 +227,8 @@ def test_bootstrap_allows_hint_only_workdir(tmp_path):
 def test_bootstrap_uninferrable_top_exit_1(tmp_path):
     main, wd, module = _mirror(
         tmp_path,
-        readme="no top here\n",
         filelist="+incdir+inc\n",
-        manifest={"children": []},  # no module -> manifest can't infer either
+        scaffold_top=None,  # no scaffold-specification.json -> can't infer from scaffold
     )
     r = _run(main, module, wd)
     assert r.returncode == 1 and "infer top" in r.stderr.lower()
