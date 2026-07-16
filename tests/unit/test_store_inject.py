@@ -9,13 +9,6 @@ sys.path.insert(0, str(ROOT / "framework" / "scripts"))
 import store  # noqa: E402
 
 
-def _mk(tmp_path, rel):
-    p = tmp_path / "asic" / "m" / rel
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("x")
-    return p
-
-
 def test_inject_upstream_keys_are_producer_stage_roots(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     wd = tmp_path / "asic" / "m" / "Design" / "synthesis" / "runs" / "1"

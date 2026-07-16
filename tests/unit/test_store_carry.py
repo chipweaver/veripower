@@ -89,6 +89,31 @@ def test_transformer_carry_is_noop(tmp_path, monkeypatch):
     assert list(wd.iterdir()) == []
 
 
+def test_no_canonical_stage_dir_is_noop(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "asic" / "m").mkdir(
+        parents=True
+    )  # module exists, Design/specification does not
+    wd = tmp_path / "wd"
+    wd.mkdir()
+    store.carry_self(
+        "m", "specification", wd
+    )  # drives `not stage_dir.is_dir()` early return
+    assert list(wd.iterdir()) == []
+
+
+def test_symlink_under_canonical_is_skipped(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    c = _canon(tmp_path, "Design/specification")
+    real = tmp_path / "external.md"
+    real.write_text("external content")
+    os.symlink(real, c / "linked.md")  # real symlink to a file, matches carry=("**",)
+    wd = c / "runs" / "1"
+    wd.mkdir(parents=True)
+    store.carry_self("m", "specification", wd)  # drives the `src.is_symlink()` skip
+    assert not (wd / "linked.md").exists()
+
+
 def test_rtl_carry_starstar_includes_nested_and_ledger_files(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     c = tmp_path / "asic" / "m" / "Design" / "rtl-design"

@@ -1179,10 +1179,6 @@ def test_dispatch_injects_no_upstream_byte_copy(tmp_path, monkeypatch):
     # injected as a location, never copied into the workdir. (Half b — editing canonical
     # invalidates the proof — is covered by test_facts_freshness input-change tests.)
     monkeypatch.chdir(tmp_path)
-    rtl = tmp_path / "asic" / "m" / "Design" / "rtl-design"
-    rtl.mkdir(parents=True)
-    (rtl / "top.v").write_text("module top; endmodule")
-    (rtl / "filelist.txt").write_text("top.v\n")
     # seed enough upstream so synthesis is dispatchable: specification then rtl-design,
     # each taken through a real dispatch+result+reap (mirrors _dispatch_write_reap /
     # _build_full_chain) so their outcomes are recorded and rule_available sees them.
