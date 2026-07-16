@@ -6,8 +6,13 @@ fingerprints. These checks enforce that boundary without needing real EDA
 tools (a smoke test that does need them is opportunistic, see Task 2).
 """
 
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 WRAP = ROOT / "eval" / "b1-wrapper"
@@ -120,3 +125,48 @@ def test_each_stage_recipe_invokes_a_bare_tool():
         assert any(tool.lower() in body for tool in _BARE_TOOLS), (
             f"stage {t} recipe invokes no bare EDA tool"
         )
+
+
+def test_demo_design_present():
+    for rel in [
+        "demo/rtl/accum.v",
+        "demo/filelist.f",
+        "demo/filelist.txt",
+        "demo/tb/demo_tb.sv",
+    ]:
+        assert (WRAP / rel).is_file(), f"missing {rel}"
+
+
+def test_readme_public_disclosure_and_provisions():
+    readme = (WRAP / "README.md").read_text()
+    low = readme.lower()
+    # public-disclosure statement (manual-level, no VeriPower / no design)
+    assert "manual" in low and ("public" in low or "no veripower" in low)
+    # B1-provides checklist keywords
+    for kw in ["rtl", "testbench", "constraint", "filelist"]:
+        assert kw in low, f"README missing B1-provides item: {kw}"
+    # explicit no-orchestration statement
+    assert "orchestrat" in low or "you decide" in low or "no gate" in low
+
+
+@pytest.mark.skipif(
+    shutil.which("dc_shell") is None or not os.environ.get("LIB_DB"),
+    reason="no dc_shell or LIB_DB (EDA env absent)",
+)
+def test_smoke_synth_on_demo(tmp_path):
+    """Opportunistic: if DC is installed, the demo must synthesize with the
+    wrapper's own dc_run.tcl — proves the recipe actually drives the tool.
+    FILELIST must be a manifest (one RTL path per line, dc_run.tcl's own
+    contract) — demo/filelist.txt (RTL-only), not the bare RTL path."""
+    work = tmp_path / "b1"
+    shutil.copytree(WRAP, work)
+    env = {**os.environ, "TOP": "accum"}
+    r = subprocess.run(
+        ["make", "synth", "FILELIST=demo/filelist.txt"],
+        cwd=work,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=1200,
+    )
+    assert (work / "out" / "accum_syn.v").is_file(), r.stdout[-2000:] + r.stderr[-2000:]
