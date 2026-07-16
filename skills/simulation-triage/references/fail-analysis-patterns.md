@@ -106,7 +106,8 @@ and cycle window is suspect — not on every case, and never as a substitute for
   usually has nothing to query.
 - **How:** `fsdbreport <fsdb> -s /<hier>/<signal> -bt <t0> -et <t1> -of h -o <out>` — hierarchical
   signal paths are **slash-form** (`/tb_top/u_dut/sig`, not dotted); the time window is
-  `-bt`/`-et`. Discover the signal hierarchy from the RTL (`Design/rtl-design`), or fall back to
+  `-bt`/`-et`. Discover the signal hierarchy from the RTL — the sources under the injected `rtl`
+  stage root — or fall back to
   `fsdb2vcd <fsdb> -o x.vcd` and grep its `$scope`/`$var` lines for the scope list.
 - **Treat the result as (A) fact:** the returned `Time | value` text is a direct observation of
   the real failing run — weigh it the same as a log line or a line of RTL, not as a secondary or
