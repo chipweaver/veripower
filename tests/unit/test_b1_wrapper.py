@@ -101,8 +101,10 @@ def test_makefile_stage_targets_are_flat():
 
 
 def test_each_stage_recipe_invokes_a_bare_tool():
-    """Every stage target's recipe (its lines + any script it calls) must
-    invoke a real EDA tool, not VeriPower plumbing."""
+    """Every stage target's OWN recipe lines must invoke a real EDA tool, not
+    VeriPower plumbing. Checked against the target's own recipe only — not
+    the whole scripts/ directory, whose comment headers name every tool and
+    would make this vacuous for targets that merely dispatch to a script."""
     mk = (WRAP / "Makefile").read_text()
     # crude recipe extraction: lines after `target:` indented with a tab
     recipes, cur = {}, None
@@ -113,11 +115,8 @@ def test_each_stage_recipe_invokes_a_bare_tool():
             recipes[cur] = []
         elif cur and (line.startswith("\t")):
             recipes[cur].append(line)
-    scripts_blob = " ".join(
-        p.read_text() for p in (WRAP / "scripts").glob("*") if p.is_file()
-    )
     for t in _STAGE_TARGETS:
-        body = " ".join(recipes.get(t, [])) + " " + scripts_blob
-        assert any(tool in body for tool in _BARE_TOOLS), (
+        body = " ".join(recipes.get(t, [])).lower()
+        assert any(tool.lower() in body for tool in _BARE_TOOLS), (
             f"stage {t} recipe invokes no bare EDA tool"
         )

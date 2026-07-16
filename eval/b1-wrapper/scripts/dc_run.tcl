@@ -34,7 +34,9 @@ current_design $top
 link
 check_design > reports/check_design.rpt
 
-source [file join [pwd] constraints.sdc]
+# Synthesis input (timing-intent) SDC — distinct from env.sh's SDC (output netlist SDC read by STA).
+set sdc_in [expr {[info exists ::env(SDC_IN)] ? $::env(SDC_IN) : "constraints/example.sdc"}]
+source $sdc_in
 if {![compile]} { puts stderr "ERROR: compile failed"; exit 1 }
 
 report_qor                                       > reports/qor.rpt
