@@ -320,6 +320,8 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 2
+    # Same-stage self-location: this script is deployed INTO the run's own workdir
+    # and locates its OWN root, not another stage's — allowed per §8.
     root = Path(__file__).resolve().parent.parent  # runs/<N>/ (scripts/ -> runs/<N>/)
     return run(argv[1], root)
 

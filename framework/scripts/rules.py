@@ -112,7 +112,6 @@ RULES: dict[str, Rule] = {
             "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/filelist.txt"),
             "rtl_doc": ("Design/rtl-design/README.md",),
             "sgdc_seed": ("Design/specification/constraints/*.sgdc",),
-            "waiver": ("Design/lint-cdc/scripts/waiver.tcl",),
         },
         outputs=(
             "lint-report.txt",

@@ -2,7 +2,7 @@
 """lintcdc — lint-cdc-stage CLI.
 
 Verbs (one stage = one tool; see skills/lint-cdc/SKILL.md for usage):
-  bootstrap   deploy templates + seed SGDC (warm/cold/template) + sync filelist   (exit 0 / 1 / 2)
+  bootstrap   deploy templates + seed SGDC (carried/cold/template) + sync filelist (exit 0 / 1 / 2)
   finalize    AND the two *-violations.json sidecars, assemble result.json        (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the lintcdc.*
@@ -44,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "bootstrap",
-        help="deploy templates + seed SGDC (warm/cold/template) + sync filelist",
+        help="deploy templates + seed SGDC (carried/cold/template) + sync filelist",
     )
     sp.add_argument("--module", required=True)
     sp.add_argument("--workdir", required=True, type=Path)

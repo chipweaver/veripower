@@ -248,60 +248,6 @@ def test_inout_artifact_compared_against_same_run_output_no_false_staleness(
     assert facts.proof_valid("m", facts.read_events("m"), "lint-cdc")
 
 
-def test_self_produced_inout_input_never_self_locks(tmp_path, monkeypatch):
-    # F1 / spec §2 自产输入豁免: a rule's self-produced in∩out input (lint-cdc waiver.tcl)
-    # must NEVER make the rule un-dispatchable. After a passing lint run recorded waiver.tcl
-    # as an output, condition 4 invalidates that proof if the waiver is EDITED or DELETED
-    # out-of-band — so lint must be re-dispatched, which requires it stay `input_available`.
-    # "无 outcome 或文件缺失 = 冷启动，照常可派发" — and the same holds for an edited waiver,
-    # else the proof-invalidation immediately locks the rule (exactly the self-lock forbidden).
-    monkeypatch.chdir(tmp_path)
-    w = "Design/lint-cdc/scripts/waiver.tcl"
-    _write("m", w, "waive-v1")
-    v1 = _fp("m", w)
-    facts.append_event(
-        "m",
-        {
-            "type": "dispatch",
-            "rule": "lint-cdc",
-            "run": 1,
-            "workdir": "w",
-            "inputs": {w: v1},
-            "params": {},
-            "objective": "delivery",
-        },
-        TS,
-    )
-    facts.append_event(
-        "m",
-        {
-            "type": "outcome",
-            "rule": "lint-cdc",
-            "run": 1,
-            "verdict": "pass",
-            "outputs": {w: v1},
-            "proofs": [
-                {
-                    "name": "lint-cdc",
-                    "verdict": "pass",
-                    "inputs": {w: v1},
-                    "oracle": {"ref": "spyglass-ruleset", "grade": "tool"},
-                }
-            ],
-            "tool_versions": {},
-        },
-        TS,
-    )
-    E = facts.read_events("m")
-    assert facts.input_available(
-        "m", E, w, consumer="lint-cdc"
-    )  # present, matches recorded
-    _write("m", w, "waive-v2-edited")  # edited out-of-band
-    assert facts.input_available("m", facts.read_events("m"), w, consumer="lint-cdc")
-    (facts.module_root("m") / w).unlink()  # deleted (spec: file missing = cold start)
-    assert facts.input_available("m", facts.read_events("m"), w, consumer="lint-cdc")
-
-
 def _sign_off_everything(module):
     """Construct: for every rule in FORWARD_PRIORITY (the 8 stages), one
     dispatch+outcome pair carrying a passing same-name proof with empty
@@ -613,63 +559,6 @@ def test_stale_inputs_returns_changed_declared_inputs(tmp_path, monkeypatch):
     assert facts.stale_inputs("m", evs, "rtl-design") == [
         "Design/specification/child_a.md"
     ]
-
-
-def test_stale_inputs_excludes_self_produced_inout(tmp_path, monkeypatch):
-    # lint-cdc's scripts/waiver.tcl is both input and output (in∩out): hand-editing it
-    # invalidates the proof (cond-4) but is the stage's OWN product, not an upstream change.
-    monkeypatch.chdir(tmp_path)
-    _write("m", "Design/rtl-design/mac.v", "v1")
-    _write("m", "Design/lint-cdc/scripts/waiver.tcl", "w1")
-    recorded = {
-        "Design/rtl-design/mac.v": _fp("m", "Design/rtl-design/mac.v"),
-        "Design/lint-cdc/scripts/waiver.tcl": _fp(
-            "m", "Design/lint-cdc/scripts/waiver.tcl"
-        ),
-    }
-    facts.append_event(
-        "m",
-        {
-            "type": "dispatch",
-            "rule": "lint-cdc",
-            "run": 1,
-            "workdir": "w",
-            "inputs": recorded,
-            "params": {},
-            "objective": "delivery",
-        },
-        TS,
-    )
-    facts.append_event(
-        "m",
-        {
-            "type": "outcome",
-            "rule": "lint-cdc",
-            "run": 1,
-            "verdict": "pass",
-            "outputs": {
-                "Design/lint-cdc/scripts/waiver.tcl": recorded[
-                    "Design/lint-cdc/scripts/waiver.tcl"
-                ]
-            },
-            "proofs": [
-                {
-                    "name": "lint-cdc",
-                    "verdict": "pass",
-                    "inputs": recorded,
-                    "oracle": {"ref": "spyglass-ruleset", "grade": "tool"},
-                }
-            ],
-            "tool_versions": {},
-        },
-        TS,
-    )
-    evs = facts.read_events("m")
-    _write("m", "Design/rtl-design/mac.v", "v2")  # upstream RTL drifts
-    _write("m", "Design/lint-cdc/scripts/waiver.tcl", "w2")  # own in∩out product drifts
-    result = facts.stale_inputs("m", evs, "lint-cdc")
-    assert "Design/rtl-design/mac.v" in result  # upstream change surfaces
-    assert "Design/lint-cdc/scripts/waiver.tcl" not in result  # self-produced excluded
 
 
 def test_stale_inputs_empty_without_prior_outcome(tmp_path, monkeypatch):

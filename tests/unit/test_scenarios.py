@@ -574,15 +574,14 @@ def test_step5_cold_regenerated_seed_byte_identical(tmp_path, monkeypatch):
 
 def test_step5_lintcdc_dispatchable_and_waiver_never_cached(tmp_path, monkeypatch):
     """lint-cdc stays dispatchable after its warm SGDC seed is deleted (the seed is a
-    derived warm-start, not a hard input), and the waiver is a declared in∩out input —
-    its self-lock exemption is derived from producer_of==consumer, with no separate
-    cache declaration (the old Rule.cache field had no machine consumer and was removed)."""
+    derived warm-start, not a hard input). waiver.tcl is a promoted output whose
+    producer_of==consumer self-reference still holds, but it is now carried
+    (Rule.carry), not a declared input — no in∩out self-lock exemption applies to it
+    anymore, with no separate cache declaration (the old Rule.cache field had no
+    machine consumer and was removed)."""
     lint = rules.RULES["lint-cdc"]
     assert "scripts/waiver.tcl" in lint.outputs  # it IS a real promoted product
-    # waiver.tcl is also a declared input of lint-cdc itself — the in∩out shape whose
-    # availability exemption facts.input_available derives from producer_of==consumer.
     input_globs = [g for gs in lint.inputs.values() for g in gs]
-    assert "Design/lint-cdc/scripts/waiver.tcl" in input_globs
     assert rules.producer_of("Design/lint-cdc/scripts/waiver.tcl") == "lint-cdc"
     # the warm SGDC seed is NOT among lint-cdc's declared inputs — absence cannot gate.
     assert "Design/lint-cdc/scripts/constraints.sgdc" not in input_globs
