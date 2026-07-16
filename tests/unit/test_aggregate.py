@@ -314,6 +314,181 @@ def test_task_cost_does_not_multicount_on_re_reap(tmp_path):
     assert m["task_tokens"] == 500
 
 
+def _write_subagent_trace(repo, module, rule, run, session_id, trace_name="a1"):
+    """Place a mirrored .subagent_traces/*.output whose first line carries
+    sessionId = the parent orchestrator session (verified fact: every
+    subagent trace line records the PARENT session's id, not its own)."""
+    import rules
+
+    tdir = (
+        repo
+        / "asic"
+        / module
+        / Path(*rules.workdir_root(rule))
+        / "runs"
+        / str(run)
+        / ".subagent_traces"
+    )
+    tdir.mkdir(parents=True, exist_ok=True)
+    (tdir / f"{rule}-{trace_name}.output").write_text(
+        json.dumps({"sessionId": session_id, "type": "user"}) + "\n"
+    )
+
+
+def _write_session_transcript(projects_dir, session_id, input_tokens, output_tokens):
+    projects_dir.mkdir(parents=True, exist_ok=True)
+    (projects_dir / f"{session_id}.jsonl").write_text(
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "id": f"msg-{session_id}",
+                    "role": "assistant",
+                    "model": "claude-x",
+                    "usage": {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                    },
+                },
+            }
+        )
+        + "\n"
+    )
+
+
+def test_auto_derive_single_session(tmp_path):
+    """No manifest session_transcripts + one task-execution outcome whose
+    trace carries sessionId=S1 -> mainthread auto-derived from S1.jsonl,
+    session_ids == ["S1"], source == auto-from-traces, clean is True."""
+    repo = tmp_path
+    _events_module(
+        repo,
+        "m",
+        [
+            _dispatch("synthesis", 1),
+            _outcome("synthesis", 1, cost=None),  # no cost_tokens -> re-scan too
+        ],
+    )
+    _write_subagent_trace(repo, "m", "synthesis", 1, session_id="S1")
+    projects_dir = tmp_path / "fake_projects"
+    _write_session_transcript(projects_dir, "S1", input_tokens=70, output_tokens=30)
+
+    run = {"arm": "full", "design": "d", "seed": 1, "module": "m"}
+    m = aggregate.aggregate_run(run, repo, claude_projects_dir=projects_dir)
+    assert m["mainthread_tokens"] == 100
+    assert m["session_ids"] == ["S1"]
+    assert m["mainthread_source"] == "auto-from-traces"
+    assert m["mainthread_clean"] is True
+    assert m["total_tokens"] == m["task_tokens"] + m["mainthread_tokens"]
+
+
+def test_auto_derive_multi_session_not_clean(tmp_path):
+    """Two task outcomes whose traces carry distinct sessionIds -> both are
+    harvested, value is still summed, but mainthread_clean is False (the
+    caveat: session granularity != module granularity, and any orchestrator
+    session that dispatched no task stage stays invisible)."""
+    repo = tmp_path
+    _events_module(
+        repo,
+        "m",
+        [
+            _dispatch("synthesis", 1),
+            _outcome("synthesis", 1, cost=None),
+            _dispatch("lint-cdc", 1),
+            _outcome("lint-cdc", 1, cost=None),
+        ],
+    )
+    _write_subagent_trace(repo, "m", "synthesis", 1, session_id="S1")
+    _write_subagent_trace(repo, "m", "lint-cdc", 1, session_id="S2")
+    projects_dir = tmp_path / "fake_projects"
+    _write_session_transcript(projects_dir, "S1", input_tokens=70, output_tokens=30)
+    _write_session_transcript(projects_dir, "S2", input_tokens=5, output_tokens=5)
+
+    run = {"arm": "full", "design": "d", "seed": 1, "module": "m"}
+    m = aggregate.aggregate_run(run, repo, claude_projects_dir=projects_dir)
+    assert m["session_ids"] == ["S1", "S2"]
+    assert m["mainthread_source"] == "auto-from-traces"
+    assert m["mainthread_clean"] is False
+    assert m["mainthread_tokens"] == 110  # still best-effort summed
+
+
+def test_manifest_session_transcripts_take_precedence(tmp_path):
+    """A manifest-supplied session_transcripts list is used as-is (today's
+    path); the auto-derive path must not run, and the operator-vouched
+    transcript is treated as clean."""
+    repo = tmp_path
+    _events_module(
+        repo,
+        "m",
+        [
+            _dispatch("synthesis", 1),
+            _outcome("synthesis", 1, cost=None),
+        ],
+    )
+    # trace carries a DIFFERENT sessionId than the manifest transcript, to
+    # prove the auto path is not consulted when the manifest wins.
+    _write_subagent_trace(repo, "m", "synthesis", 1, session_id="S-ignored")
+    sess = repo / "sess.jsonl"
+    sess.write_text(
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "s1",
+                    "role": "assistant",
+                    "model": "claude-x",
+                    "usage": {
+                        "input_tokens": 70,
+                        "output_tokens": 30,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                    },
+                },
+            }
+        )
+        + "\n"
+    )
+    projects_dir = tmp_path / "fake_projects"  # deliberately never populated
+
+    run = {
+        "arm": "full",
+        "design": "d",
+        "seed": 1,
+        "module": "m",
+        "session_transcripts": [str(sess)],
+    }
+    m = aggregate.aggregate_run(run, repo, claude_projects_dir=projects_dir)
+    assert m["mainthread_source"] == "manifest"
+    assert m["session_ids"] == []
+    assert m["mainthread_clean"] is True
+    assert m["mainthread_tokens"] == 100
+
+
+def test_auto_derive_missing_session_file_marks_partial(tmp_path):
+    """A harvested sessionId whose <sid>.jsonl is absent from the fake
+    projects dir must mark cost_partial without crashing (existing
+    _mainthread_cost missing-file handling, reused as-is)."""
+    repo = tmp_path
+    _events_module(
+        repo,
+        "m",
+        [
+            _dispatch("synthesis", 1),
+            _outcome("synthesis", 1, cost=None),
+        ],
+    )
+    _write_subagent_trace(repo, "m", "synthesis", 1, session_id="S-missing")
+    projects_dir = tmp_path / "fake_projects"
+    projects_dir.mkdir(parents=True)  # exists, but S-missing.jsonl does not
+
+    run = {"arm": "full", "design": "d", "seed": 1, "module": "m"}
+    m = aggregate.aggregate_run(run, repo, claude_projects_dir=projects_dir)
+    assert m["cost_partial"] is True
+    assert m["session_ids"] == ["S-missing"]
+
+
 def test_real_fa_core_fsa_acceptance():
     """Acceptance: run against the real in-repo module (old run, no
     cost_tokens on outcomes -> pure re-scan). Proves the pipe works."""
