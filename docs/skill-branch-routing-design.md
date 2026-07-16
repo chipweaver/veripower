@@ -47,7 +47,7 @@ If `{failing_result}` is injected but unreadable or malformed, write `result.jso
 
 | Live scope-sources | Stages | Notes |
 |---|---|---|
-| directive · failing_result · diff · ALL | rtl-design, synthesis | full ladder — route-DAG fix targets with a diffable upstream |
+| directive · failing_result · diff · ALL | rtl-design, synthesis, simulation | full ladder — route-DAG fix targets with a diffable upstream |
 | directive · failing_result · ALL | specification | no diff arm — `brainstorm.md` is frozen; a repair round enters at the post-partition step (§6.3) |
 | directive · diff · ALL | lint-cdc, power-analysis | no `failing_result` arm — never a route-DAG fix target (§6.1) |
 | ALL only | timing-analysis | read-only re-verifier; no product seed, scope is always everything (§6.2) |
@@ -85,9 +85,9 @@ Read-only — cannot author or fix anything, so there is nothing to seed and no 
 
 `specification` has no diff arm (`brainstorm.md` is frozen). A repair round (a `{failing_result}` or a `{directive_path}` fix) re-enters at the post-partition step, **skipping the human partition gate** — `manifest.json` is immutable after it — and always flows through the semantic gate, so the promoted gate stays fresh. A first delivery runs the full partition from the top. (`skills/specification/SKILL.md` Step 1.)
 
-### 6.4 Content-hash fork (simulation)
+### 6.4 Content-hash fork (simulation) — retired
 
-`simulation` is the one stage with a genuine Step-1 fork, and it is **not** the scope ladder: `sim classify-delta` hashes the plan + scaffold against the promoted baseline and returns `first-run` / `freeze` / `patch`. `freeze` (inputs byte-identical) dispatches a distinct child that copies the prior TB verbatim and byte-carries its judged `conformance-review.json` for `pin` survival; `patch` reconciles only what the plan changed. The classifier is trigger-agnostic — `{failing_result}` never selects the fork, it only narrows scope within `patch`. (`skills/simulation/SKILL.md` Step 1.)
+`simulation` no longer forks on content hash. The `sim classify-delta` verb and its `first-run`/`freeze`/`patch` branches were retired when self-carry became kernel-performed: `store.carry_self` copies the author's previous TB into the fresh workdir at dispatch, before Step 1 runs, so every round is homogeneous and the skill never branches on whether a TB was carried. `simulation` is now an ordinary scope-ladder worker (§4, full-ladder row) — `{failing_result}` narrows scope exactly as it does for rtl-design/synthesis. (`skills/simulation/SKILL.md` Step 1.)
 
 ### 6.5 Analyzer exception (simulation-triage)
 
