@@ -24,7 +24,8 @@
           "category": {"enum": ["missing", "wrong-behavior", "over-engineering", "unavailable"]},
           "location": {"type": "string"},
           "summary": {"type": "string"},
-          "fix_locus": {"enum": ["rtl", "spec"]}
+          "fix_locus": {"enum": ["rtl", "spec"]},
+          "confidence": {"enum": ["high", "medium", "low"]}
         },
         "allOf": [
           {

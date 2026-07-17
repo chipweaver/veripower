@@ -232,19 +232,22 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py validate-review --review {wo
 
 On a non-zero exit, re-assemble the JSON and re-run (this is a main-thread fix, NOT a re-dispatch). On
 exit 0 it prints a one-line gate verdict `{"gate":"trip"|"clear","flagged":[{child,category,severity,
-fix_locus}…],"loci":{"rtl":[…],"spec":[…]}}` — the mechanical `category × severity` reduction
-partitioned by `fix_locus`, computed by the script, not judged by eye (the same reduction Step 4.5's
-`finalize` re-computes in-process and writes verbatim as `stage_specific.semantic_gate`). Then apply the
-verdict:
+fix_locus}…],"loci":{"rtl":[…],"spec":[…]},"spec_confidence":"high"|"medium"|"low"|null}` — the
+mechanical `category × severity` reduction partitioned by `fix_locus`, computed by the script, not
+judged by eye (the same reduction Step 4.5's `finalize` re-computes in-process and writes verbatim as
+`stage_specific.semantic_gate`). `spec_confidence` is the **minimum** `confidence` over every
+`fix_locus=spec` finding (reviewer-reported, defaulting to `low` if omitted; `null` when `loci.spec` is
+empty) — rtl-design has no triage re-check, so this is the sole trust signal the kernel's upstream
+route reads on a spec-locus trip. Then apply the verdict:
 
 - **`gate=clear`** → proceed to 4.5 (pass path); `finalize` lists `semantic-review.json` in `artifacts[]`.
   Advisory findings (`over-engineering` any severity, `minor`, `unavailable`) never trip — recorded,
   with a `⚠ <child> <category>` line in the completion summary.
-- **`gate=trip`** → proceed to 4.5: `finalize` folds the trip into `status=fail` with a locus-tagged
-  `fail_reason` (a gate trip stops the stage out, exactly as the 4.2/4.3 gate fails do) —
-  `"semantic gate: spec-rooted intent defect — <child>"` when `loci.spec` is non-empty, else
-  `"semantic gate: rtl-local intent defect — <child>"` (the first `flagged[]` child; if more than one is
-  flagged, ` (+N more)` is appended).
+- **`gate=trip`** → disposition by locus (mirroring the 4.3 self-converge loop):
+  - **`loci.rtl` non-empty (rtl-local intent defect) → self-converge in-stage** (same mechanic as 4.3): re-dispatch only the flagged children (reduced fan-out, `references/child-task-contract.md` — the same authoring contract 4.3 re-dispatches, injecting that child's semantic findings as fix-scope feedback), re-run `assemble --seeded`, then **re-run the 4.4 semantic-review wave** (`references/rtl-review-task-contract.md`) and re-apply the verdict. The fixer edits only its own child's RTL — `design.md` / `<child>.md` are the immovable intent boundary (Iron Rule), so the intent source is never touched. **Exit:** the re-run gate reaches `clear` (converged) or a re-dispatched child returns `STATUS: BLOCKED` (it judges the fix needs upstream / exceeds its authority) → that round's `assemble` blocked-child precedence stops the stage `status=fail`. **No round cap** (exactly as 4.3).
+  - **`loci.spec` non-empty (spec-rooted — this child's RTL cannot fix it) → fail-out**: proceed to 4.5; `finalize` folds the trip into `status=fail` with `fail_reason` `"semantic gate: spec-rooted intent defect — <child>"`, carrying `stage_specific.semantic_gate.{loci.spec, spec_confidence}` so the kernel routes it upstream (to `specification` on high confidence, else escalate).
+  - **both non-empty** → self-converge the rtl-locus children first; any `loci.spec` findings remaining after convergence then fail-out per the spec-locus rule.
+  (the first `flagged[]` child names the `fail_reason`; if more than one is flagged, ` (+N more)` is appended.)
 - **Review unavailable** (the whole wave is unusable — no `semantic-review.json` assemblable at all, e.g. total dispatch failure; per-child `BLOCKED`/malformed is already handled by the aggregation above) → do NOT gate; write the minimal `semantic-review.json` with one `unavailable` finding (validator reports `gate=clear`), note it in the completion summary, and proceed to 4.5.
 - **Verdict integrity:** you MUST NOT override a `gate=trip` to pass.
 
@@ -260,8 +263,9 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir}
 
 `finalize` re-derives the exit verdict in-process over the converged ledger (`status` + `fail_reason` +
 `artifacts[]`, verbatim) and folds in the semantic gate from `semantic-review.json` (its verdict =
-`stage_specific.semantic_gate`, verbatim); a `semantic_gate=trip` flips a passing exit-verdict to
-`status=fail` with a locus-tagged `fail_reason` (spec-rooted named first, else rtl-local). It adds
+`stage_specific.semantic_gate`, verbatim — including `spec_confidence`, folded through unchanged); a
+`semantic_gate=trip` flips a passing exit-verdict to
+`status=fail` with a locus-tagged `fail_reason` (spec-rooted named first, else the rtl-local fallback — after §4.4's rtl-locus self-converge loop a pure rtl-locus trip has already converged to `clear` or failed via `assemble` blocked-child precedence before reaching this fold, so the reason folded here is normally spec-rooted). It adds
 `top_module` (= `manifest.module`, audit-only) and writes the complete envelope; the free-text run
 narration is NOT in result.json (it belongs in events.jsonl). Exit 0 = result.json written (status pass
 or fail). A non-zero finalize exit is a program exception (BLOCKED).
@@ -274,11 +278,14 @@ cleared gate when the critical finding is a non-gating category, e.g. `over-engi
 critical <category> finding — recommend operator review before downstream`.
 
 rtl-design failures route by fix-locus: **upstream / architecture / intent** defects (exit-gate topology,
-`<child>.md §2` incomplete, PPA, `build_*` error, or any semantic-gate trip) yield `status=fail` + a
-locus-tagged `fail_reason`, operator-driven — you stay a pure dispatcher and do not self-loop; a
-**child-authoring presence defect** (`check-conformance` violations) is fix-locus=child and self-converges
-in Step 4.3's loop, while a blocked re-dispatched child fails that round's `assemble` (blocked-child
-precedence) → `status=fail`.
+`<child>.md §2` incomplete, PPA, `build_*` error, or a **spec-locus** semantic-gate trip) yield
+`status=fail` + a locus-tagged `fail_reason` — a spec-locus semantic trip additionally carries
+`semantic_gate.{loci.spec, spec_confidence}` for the kernel's upstream route. **Child-authoring** defects
+self-converge in-stage by re-dispatch: a presence defect (`check-conformance` violations, fix-locus=child)
+in Step 4.3's loop, and an **rtl-locus semantic-gate trip** in Step 4.4's self-converge loop — in both, a
+re-dispatched child that returns `BLOCKED` fails that round's `assemble` (blocked-child precedence) →
+`status=fail`. You remain a pure dispatcher: every fix lands through a child re-dispatch, never a
+main-thread edit of RTL or intent.
 
 ## Red Flags
 
@@ -303,7 +310,7 @@ precedence) → `status=fail`.
 - [ ] **Exit gate:** the `assemble` exit-gate exited 0 (or its fail verdict was written); `finalize` wrote the envelope from it (it owns `status` / `artifacts[]`; this gate does not restate the formula).
 - [ ] `{workdir}/.child_reports.json`, `{workdir}/filelist.txt`, and `{workdir}/README.md` were generated by the scripts (ledger / filelist / README respectively).
 - [ ] **Conformance gate:** `check-conformance` exited 0 (or self-converged); a blocked re-dispatched child fails that round's `assemble` (blocked-child precedence) → the verdict was copied to `result.json` `status=fail`.
-- [ ] **Semantic gate (every clean-gate finalize):** the review wave ran, `semantic-review.json` was written + self-validated, the gate verdict was applied (clear → proceed; trip → `status=fail` + locus-tagged `fail_reason`, **no in-skill autofix**), and the `finalize` verb wrote `semantic_gate` + `semantic-review.json` into the envelope; BLOCKED/malformed reviewers recorded as "review unavailable" (not silently ok), so do NOT gate; a `gate=trip` was never overridden to pass.
+- [ ] **Semantic gate (every clean-gate finalize):** the review wave ran, `semantic-review.json` was written + self-validated, the gate verdict was applied (clear → proceed; trip → locus-split per §4.4: an rtl-locus trip self-converges via child re-dispatch, a spec-locus / exhausted-BLOCKED trip → `status=fail` + locus-tagged `fail_reason` carrying `semantic_gate.{loci.spec, spec_confidence}`), and the `finalize` verb wrote `semantic_gate` + `semantic-review.json` into the envelope; BLOCKED/malformed reviewers recorded as "review unavailable" (not silently ok), so do NOT gate; a `gate=trip` was never overridden to pass.
 
 ## Return Contract
 

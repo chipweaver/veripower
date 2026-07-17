@@ -36,7 +36,7 @@ the other phases.
 
 | `category` | `root_cause_direction` | Rationale |
 |---|---|---|
-| `missing` / `wrong-behavior` / `fake-green` | `tb` (scaffold mistake) → stage `simulation` | env authored an inadequate check; there is no in-skill fix-loop. |
+| `missing` / `wrong-behavior` / `fake-green` | `tb` (plan problem) → stage `simulation-plan` | The simulation stage self-heals these check defects in-stage (its Step-4 conformance-fix loop); a self-locus finding reaches triage only after that in-stage fixer returned `STATUS: BLOCKED` — i.e. it judged the check cannot be made adequate without an upstream/plan change. Route upstream (`simulation-plan`), never back to `simulation` (that is the self-pointing loop the in-stage self-heal exists to avoid). |
 | `intent-defect` | `tb` (plan problem) → stage `simulation-plan` | the `inlined_check_hints[]` itself is wrong; fix the plan. |
 
 > `unverifiable-arch` / `unavailable` are advisory and never reach triage (the gate does not

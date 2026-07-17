@@ -80,6 +80,7 @@ def test_build_result_pass_lean_shape(tmp_path):
         "gate": "clear",
         "flagged": [],
         "loci": {"rtl": [], "spec": []},
+        "spec_confidence": None,
     }
     assert (
         "note" not in ss and "fail_reason" not in ss
@@ -184,6 +185,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "gate": "clear",
         "flagged": [],
         "loci": {"rtl": [], "spec": []},
+        "spec_confidence": None,
     }
     # artifacts — the real 8-entry set: 4 .v + filelist + README + ledger + semantic-review
     paths = {a["path"] for a in env["artifacts"]}

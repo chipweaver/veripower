@@ -138,6 +138,34 @@ def test_power_analysis_unknown_category_escalates():
     assert r["rule"] == "unrouted:unknown_category"
 
 
+def test_rtl_spec_locus_high_confidence_routes_to_spec():
+    r = route.route(
+        "rtl-design",
+        semantic_gate={"loci": {"spec": ["c1"], "rtl": []}, "spec_confidence": "high"},
+    )
+    assert r["decision"] == "specification"
+    assert r["rule"] == "rtl_spec_locus->specification"
+
+
+def test_rtl_spec_locus_low_confidence_escalates():
+    r = route.route(
+        "rtl-design",
+        semantic_gate={"loci": {"spec": ["c1"], "rtl": []}, "spec_confidence": "low"},
+    )
+    assert r["decision"] == ESCALATE and r["rule"] == "rtl_spec_locus:low_confidence"
+
+
+def test_rtl_no_spec_locus_escalates():
+    # 纯 rtl-locus（self-heal 耗尽 fail-out）或 topology/build fail → 无 spec-locus → escalate
+    r = route.route("rtl-design", semantic_gate={"loci": {"spec": [], "rtl": ["c1"]}})
+    assert r["decision"] == ESCALATE and r["rule"] == "rtl_unrouted"
+
+
+def test_rtl_no_semantic_gate_escalates():
+    r = route.route("rtl-design")
+    assert r["decision"] == ESCALATE and r["rule"] == "rtl_unrouted"
+
+
 def test_route_maps_targets_are_within_failed_rule_input_closure():
     # E6 / §3.4 fix_owner legality: every static failure->target map must only name targets
     # inside the failed rule's TRANSITIVE input closure (kernel.py asserts this in a COMMENT

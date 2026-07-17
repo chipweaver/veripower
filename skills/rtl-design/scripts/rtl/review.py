@@ -30,6 +30,11 @@ _SCHEMA = (
 _GATING_CATEGORIES = {"missing", "wrong-behavior"}
 _GATING_SEVERITIES = {"critical", "important"}
 
+# confidence ordering for the spec_confidence reduction below (low < medium < high). rtl-design
+# has no triage, so this self-reported confidence is the only upstream-route trust signal the
+# kernel gets on a spec-locus trip -- missing confidence defaults to the conservative "low".
+_CONFIDENCE_RANK = {"low": 0, "medium": 1, "high": 2}
+
 
 def compute_gate(doc: dict) -> dict:
     """Pure gate reduction over an already-valid semantic-review doc: the mechanical
@@ -59,7 +64,28 @@ def compute_gate(doc: dict) -> dict:
             {f.get("child") for f in gating if f.get("fix_locus") == "spec"}
         ),
     }
-    return {"gate": "trip" if gating else "clear", "flagged": flagged, "loci": loci}
+    # spec_confidence: the MINIMUM confidence over every spec-locus finding (not just the
+    # gating subset above) -- conservative, since any low-confidence spec attribution anywhere
+    # should pull down trust in the "this is truly spec-rooted" call the downstream route makes.
+    spec_findings = [
+        f
+        for f in findings
+        if f.get("fix_locus") == "spec" and f.get("category") != "unavailable"
+    ]
+    spec_confidence = (
+        min(
+            (f.get("confidence", "low") for f in spec_findings),
+            key=lambda c: _CONFIDENCE_RANK[c],
+        )
+        if spec_findings
+        else None
+    )
+    return {
+        "gate": "trip" if gating else "clear",
+        "flagged": flagged,
+        "loci": loci,
+        "spec_confidence": spec_confidence,
+    }
 
 
 def validate(review_path) -> int:
