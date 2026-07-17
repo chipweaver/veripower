@@ -232,10 +232,13 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py validate-review --review {wo
 
 On a non-zero exit, re-assemble the JSON and re-run (this is a main-thread fix, NOT a re-dispatch). On
 exit 0 it prints a one-line gate verdict `{"gate":"trip"|"clear","flagged":[{child,category,severity,
-fix_locus}…],"loci":{"rtl":[…],"spec":[…]}}` — the mechanical `category × severity` reduction
-partitioned by `fix_locus`, computed by the script, not judged by eye (the same reduction Step 4.5's
-`finalize` re-computes in-process and writes verbatim as `stage_specific.semantic_gate`). Then apply the
-verdict:
+fix_locus}…],"loci":{"rtl":[…],"spec":[…]},"spec_confidence":"high"|"medium"|"low"|null}` — the
+mechanical `category × severity` reduction partitioned by `fix_locus`, computed by the script, not
+judged by eye (the same reduction Step 4.5's `finalize` re-computes in-process and writes verbatim as
+`stage_specific.semantic_gate`). `spec_confidence` is the **minimum** `confidence` over every
+`fix_locus=spec` finding (reviewer-reported, defaulting to `low` if omitted; `null` when `loci.spec` is
+empty) — rtl-design has no triage re-check, so this is the sole trust signal the kernel's upstream
+route reads on a spec-locus trip. Then apply the verdict:
 
 - **`gate=clear`** → proceed to 4.5 (pass path); `finalize` lists `semantic-review.json` in `artifacts[]`.
   Advisory findings (`over-engineering` any severity, `minor`, `unavailable`) never trip — recorded,
@@ -260,7 +263,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir}
 
 `finalize` re-derives the exit verdict in-process over the converged ledger (`status` + `fail_reason` +
 `artifacts[]`, verbatim) and folds in the semantic gate from `semantic-review.json` (its verdict =
-`stage_specific.semantic_gate`, verbatim); a `semantic_gate=trip` flips a passing exit-verdict to
+`stage_specific.semantic_gate`, verbatim — including `spec_confidence`, folded through unchanged); a
+`semantic_gate=trip` flips a passing exit-verdict to
 `status=fail` with a locus-tagged `fail_reason` (spec-rooted named first, else rtl-local). It adds
 `top_module` (= `manifest.module`, audit-only) and writes the complete envelope; the free-text run
 narration is NOT in result.json (it belongs in events.jsonl). Exit 0 = result.json written (status pass

@@ -195,6 +195,7 @@ def test_gate_trips_rtl_locus(tmp_path):
             }
         ],
         "loci": {"rtl": ["c"], "spec": []},
+        "spec_confidence": None,
     }
 
 
@@ -327,6 +328,7 @@ def test_compute_gate_pure_trip():
             }
         ],
         "loci": {"rtl": ["c"], "spec": []},
+        "spec_confidence": None,
     }
 
 
@@ -345,6 +347,7 @@ def test_compute_gate_pure_clear_on_over_engineering():
         "gate": "clear",
         "flagged": [],
         "loci": {"rtl": [], "spec": []},
+        "spec_confidence": None,
     }
 
 

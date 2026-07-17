@@ -35,6 +35,11 @@ so the operator knows where to fix, and routes future automation):
   itself, which this child cannot fix from RTL (e.g. an interface width that cannot hold the value §2
   requires). Do not flag `spec` for something the RTL alone can fix.
 
+- **`confidence` (fix_locus=spec 时 REQUIRED，其它可省)** — 你对"这确实是 spec/`<child>.md` 的意图缺陷、
+  需上游修"这一归因的把握：`high` = 接口/意图矛盾是硬证据（如宽度装不下 §2 要求的值）；`medium`/`low` = 也可能
+  RTL 侧还能补救。**rtl-design 无 triage 复核，这个 confidence 是上游路由前唯一的可信度闸** —— 不确定就给
+  `low`，让 kernel 转人工，而不是硬把一次 spec 重建赌出去。
+
 **Out of scope (do NOT report):** synthesizability / timing / area / power (downstream stages);
 lint / CDC rule violations (lint-cdc); pure syntax (the child self-lints); spec↔RTL *presence*
 mismatches (the deterministic `check-conformance` gate already covers these).
@@ -48,6 +53,7 @@ End the response with `STATUS: DONE` + a single JSON line, or `STATUS: BLOCKED <
  "findings": [{"severity": "critical|important|minor",
                "category": "missing|wrong-behavior|over-engineering",
                "fix_locus": "rtl|spec",
+               "confidence": "high|medium|low",
                "location": "<file:line or <child>.md §2 ref>", "summary": "<one line>"}]}
 ```
 
@@ -56,3 +62,6 @@ End the response with `STATUS: DONE` + a single JSON line, or `STATUS: BLOCKED <
   `important` = real concern worth a look; `minor` = nit. Calibrate — not everything is critical.
 - **`fix_locus` is required on every finding you emit** (`rtl` or `spec`). The main thread cannot route a
   finding without it; any finding you emit without `fix_locus` is rejected by the schema.
+- **`confidence` is required whenever `fix_locus: "spec"`** (omit it otherwise) — see the confidence
+  guidance above. The main thread folds the minimum `confidence` across your spec-locus findings into
+  `semantic_gate.spec_confidence` for the kernel's upstream-route gate.
