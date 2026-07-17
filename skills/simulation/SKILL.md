@@ -227,7 +227,7 @@ contract's "Severity & gating"), computed by the script, not judged by eye. Appl
     reviewer (nothing changed to re-judge). Otherwise (`STATUS: DONE`) **re-run this Step-4
     conformance reviewer wave**
     ([`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md))
-    and re-apply the verdict: `clear` → converged, proceed to Step 5; still `trip` → loop again.
+    and re-apply the verdict: `clear` → converged, proceed to Step 5; still `trip` → re-apply this category disposition (loop the self-heal only while self-locus findings persist; a residual `intent-defect` then fails out per the upstream / `both`-present rule).
     There is no build step in this loop — the reviewer is a static check-adequacy review; a
     compile-breaking fix surfaces at the Step-5 verify wave. **No round cap** (exit is fixer-BLOCKED /
     convergence). The fix Task only tightens `tb/uvm/**` check logic — `verification-plan.md` /
