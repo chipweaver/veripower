@@ -221,13 +221,15 @@ contract's "Severity & gating"), computed by the script, not judged by eye. Appl
     dispatch one conformance-fix `Task(run_in_background=True)` per
     [`references/conformance-fix-task-contract.md`](references/conformance-fix-task-contract.md),
     injecting the self-locus gating findings (`tp_id` / `category` / `location` from
-    `conformance-review.json`) as fix-scope; on wake, **re-run this Step-4 conformance reviewer
-    wave** ([`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md))
-    and re-apply the verdict. There is no build step in this loop — the reviewer is a static
-    check-adequacy review; a compile-breaking fix surfaces at the Step-5 verify wave. **Exit:** the
-    re-run gate reaches `clear` (converged → proceed to Step 5) or the conformance-fix Task returns
-    `STATUS: BLOCKED` (it judges the defect is a plan/intent gap beyond the check implementation) →
-    fail-out via the `intent-defect` path below. **No round cap** (exit is fixer-BLOCKED /
+    `conformance-review.json`) as fix-scope. On wake, **check the conformance-fix Task's `STATUS`
+    first**: a `STATUS: BLOCKED` (it judges the defect is a plan/intent gap beyond the check
+    implementation) → **fail-out** via the `intent-defect` path below, without re-running the
+    reviewer (nothing changed to re-judge). Otherwise (`STATUS: DONE`) **re-run this Step-4
+    conformance reviewer wave**
+    ([`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md))
+    and re-apply the verdict: `clear` → converged, proceed to Step 5; still `trip` → loop again.
+    There is no build step in this loop — the reviewer is a static check-adequacy review; a
+    compile-breaking fix surfaces at the Step-5 verify wave. **No round cap** (exit is fixer-BLOCKED /
     convergence). The fix Task only tightens `tb/uvm/**` check logic — `verification-plan.md` /
     `scaffold-specification.json` are the read-only intent source (Iron Rule), and a check is never
     loosened to pass the gate.
@@ -324,7 +326,7 @@ The `failure_phase` value table below documents which step decides each phase; f
 | `prerequisite` | Step 1 reference missing, or `{failing_result}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | main thread |
 | `compile` | `make simv` failed (no smoke status); or `sim finalize` thin-D1 file missing / `TODO(` residue | — | smoke gate (Step 3) / finalize (Step 6) |
 | `smoke` | `make smoke` ran but a `RESULT` line is not `PASS` | `failing_cases` | smoke gate (Step 3) |
-| `conformance` | Conformance gate (Step 4): a finding `category ∈ {missing,wrong-behavior,fake-green,intent-defect}` at `critical`/`important` | `conformance_findings` | conformance gate (Step 4) |
+| `conformance` | Conformance gate (Step 4): an `intent-defect` finding at `critical`/`important`, or a self-locus (`missing`/`wrong-behavior`/`fake-green`) finding whose in-stage conformance-fix Task `BLOCKED`s — self-locus otherwise self-heals in-stage | `conformance_findings` | conformance gate (Step 4) |
 | `regress` | Any case fails in `make regress` | `failing_cases` | verify child |
 | `coverage` | Rule-B uncovered bins, or `sim finalize` coverage gate (dim below threshold / not extractable) | `coverage_gaps` + `gaps_not_in_testpoints` or `gaps_in_testpoints` (Rule B); `coverage_extractable` + `dims` (sim finalize) | verify child / finalize (Step 6) |
 
@@ -365,7 +367,8 @@ sub-Task.
       on a smoke pass.
 - [ ] On a smoke pass, the conformance reviewer (Step 4) was dispatched and reaped **every round,
       never skipped** — `conformance-review.json` was written fresh + schema-validated; the verify
-      wave was dispatched only when the gate did not trip (or a review-unavailable fall-through).
+      wave was dispatched only when the final gate did not trip — the gate cleared outright, a
+      self-locus trip self-healed to `clear` in-stage, or a review-unavailable fall-through.
 - [ ] On a smoke pass, the verify sub-Task was dispatched and reaped.
 - [ ] `result.json` was written by `sim finalize` (it reuses `thin_d1`/`coverage_gate`
       for the exit-code gate and owns status / failure_phase / the pass-summary / artifacts[]; every

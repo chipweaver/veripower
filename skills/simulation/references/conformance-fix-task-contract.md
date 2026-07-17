@@ -1,7 +1,8 @@
 # Conformance-fix sub-Task contract (self-heal; dispatched by Step 4 on a self-locus conformance trip)
 
 The simulation main thread dispatches this Level-1 `Task(run_in_background=True)` when the Step-4
-conformance gate trips with self-locus findings. Do not call the Task tool (no Level-2 dispatch).
+conformance gate trips with self-locus findings. Do not call the Task tool (no Level-2 dispatch) and
+do not call `kernel.py` — the parent session owns state transitions.
 
 **Job:** Fix the self-locus check defects the conformance gate flagged (`category ∈ {missing,
 wrong-behavior, fake-green}`) so the TB checks adequately cover the testpoint intent. You change
@@ -29,7 +30,7 @@ wrong-behavior, fake-green}`) so the TB checks adequately cover the testpoint in
 A flagged finding means the check is too weak, missing, or fake-green. Every fix **tightens** — add
 the missing check, correct the wrong check, remove the fake-green — never relax.
 
-## Exit (return STATUS)
+## Output
 
 - Fixed → `STATUS: DONE`.
 - You judge a flagged finding is actually a plan/intent error or needs upstream (beyond what a check
