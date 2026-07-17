@@ -102,7 +102,7 @@ Orchestrator 的三条派发路径：
 
 ### 2.2 内核界面
 
-`framework/scripts/` 是一个确定性核心，拆成五个可裸导入、各司一职的模块外加 CLI。`kernel.py` 是 Orchestrator 调用的唯一入口；其余由它导入。
+`framework/scripts/` 是一个确定性核心，拆成六个可裸导入、各司一职的模块外加 CLI。`kernel.py` 是 Orchestrator 调用的唯一入口；其余由它导入。
 
 | 模块 | 职责 |
 |---|---|
@@ -112,6 +112,7 @@ Orchestrator 的三条派发路径：
 | `schedule.py` | 调度器：`decide(objective) → 恰好一个动作`。对 (磁盘, 日志, 参数) 纯函数；组合 `route.py` 与 `facts.signoff_gate`。持有目标→所需证明集映射与新鲜失败处置。 |
 | `route.py` | 纯确定性返工目标选择——静态失败→目标映射表的**唯一居所**（`PA_CATEGORY`、`FIXED_TARGET`、`LINT_CATEGORY`、`TRIAGE_ROOT_CAUSE`）。不持有状态；原样组合进 `schedule.py` 与 `kernel.py`。 |
 | `store.py` | 文件系统产物生命周期助手：派发时的 `inject_inputs`（写 `<workdir>/inputs.json`）与 `carry_self`（把作者自己上一轮的规范产物拷进新 workdir）、收割时的 `promote` 与 `_mirror_subagent_trace`。由 `kernel.py` 导入；从不直接调用。 |
+| `usage.py` | 解析一份 Claude Code JSONL 转录——一个 Task 子 Agent 镜像下来的 `.subagent_traces/<rule>-<id>.output`，或一份 orchestrator 会话转录——归并成一份 token 用量明细（`parse_trace_usage`，按 message id 去重）。纯函数/只读，仅用标准库，从不抛异常。`kernel.py` 在收割时对 Task 子 Agent 镜像下来的转录调用它，填入 outcome 事件的 `cost_tokens`。 |
 
 事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（7 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
 
@@ -174,6 +175,8 @@ Orchestrator 的三条派发路径：
 | `oracle` | `(ref, grade)`——裁判及其信任等级（§4.5）。 |
 | `oracle_selector` | 对 `proposed` oracle，`pin` 所指纹的 workdir 相对 glob。 |
 | `params` | 规则期望的自由参数（如 `simulation-triage` 的 `sim_run`）。 |
+| `carry` | 派发时 `store.carry_self` 拷进新 workdir 的自产物 glob（§5.6/§7.2），减去 `no_carry`；对没有自我携带的规则（纯变换器）为空。 |
+| `no_carry` | 从 `carry` 中排除的 glob——如必须每轮重新生成、而非携带下去的逐轮评审记录。 |
 
 ### 3.2 八条流水线规则
 
@@ -243,7 +246,7 @@ Orchestrator 的三条派发路径：
 | **type** | **写入方（动词）** | **用途 / 关键字段** |
 |---|---|---|
 | `dispatch` | 自动（`dispatch`） | 开启一个 run：`rule`、`run`、`workdir`、`params`（含 `directive` 的路径+摘要）、`objective`、`diagnosis_refs`，以及——仅产证明规则——消费的 `inputs` 版本表（`proof.inputs` 的唯一来源）。 |
-| `outcome` | 自动（`reap`） | 关闭一个 run：`verdict ∈ {pass, fail, blocked}`、产出的 `outputs` 版本表（含规范 `result.json`）、`proofs[]`、`tool_versions`、可选 `reason`（blocked 子类）。 |
+| `outcome` | 自动（`reap`） | 关闭一个 run：`verdict ∈ {pass, fail, blocked}`、产出的 `outputs` 版本表（含规范 `result.json`）、`proofs[]`、`tool_versions`、可选 `reason`（blocked 子类）、可选 `cost_tokens`（该 run Task 子 Agent 转录的仅供审计的 token 用量——主线程阶段没有此字段，且从不进入有效性判定）。 |
 | `diagnosis` | triage 自动（`reap`）；人工经 `diagnose` | 一条失败归因。必填（按 `diagnosis.schema.json`）：`id`、`subject {proof, outcome_run}`、`attribution`、`evidence`、`source ∈ {triage, human}`。可选：`fix_owner`、`fix_locus`、`confidence`、`supersedes`；`provenance`（`human` 必填，由 `diagnose` 强制）。 |
 | `pin` | `pin` | 把 `proposed` oracle 向 `human` 棘轮：`oracle_ref`、`content_fingerprint`（pin 时记录）、`provenance`、`reason`。 |
 | `reopen` | `reopen` | 撤销一个 pin：`pin_ref`、`reason`。使 oracle 在其落账后被 reopen 的证明失效（§4.4）。 |
@@ -268,13 +271,13 @@ Orchestrator 的三条派发路径：
 产证明规则在收割时把一条 `proof` 落进其 `outcome` 事件：`{name, verdict, inputs, oracle, evidence}`。`inputs` 是该 run 消费一切的版本表（取自 `dispatch` 事件）；`outputs`（在 outcome 上）是它产出一切的版本表。证明不是存储的"有效"位——`facts.proof_valid(module, proof)` 每次调用都重算。它*此刻*有效，当且仅当**全部四个**条件成立：
 
 1. **裁决** — 携带该证明的最新 outcome 有 `verdict == pass`。
-2. **输入未变** — 每个落账的输入指纹仍与磁盘一致。对该规则*同时也产出*的输入（in∩out，如自产的约束文件），比对基准是同一 run 落账的*输出*版本，而非派发时的输入版本。
+2. **输入未变** — 每个落账的输入指纹仍与磁盘一致。
 3. **oracle 未被 reopen** — 该证明 `oracle.ref` 的 `reopen` 没有出现在证明落账位置或其后。
 4. **输出未变** — 每个落账的输出指纹（包括规范 `result.json` 本身）仍与磁盘一致。
 
 推论：编辑证明触碰过的任何文件——输入、输出、或结果信封——都会在下一次查询时静默使该证明失效，并传递性地使消费它的下游证明失效。没有任何东西需要去*标记*陈旧；陈旧就是"不再有匹配的指纹"这一事实本身。`kernel.py consequences --paths <p…>` 让这一点可以事先查询：一个只读的 what-if，对每个路径报告若其内容改变、哪些当前有效的证明会翻转为无效。
 
-**输入可用性**（`facts.input_available`）是派发时刻的对应物：消费者的某个输入 glob 可用，当且仅当它是外部的 `brainstorm.md`（只需存在），或其生产者从未运行过（真冷启动——前向调度会先运行生产者），或生产者最新 outcome 落账了匹配且仍新鲜的输出**且**该生产者的证明当前有效。生产者运行过却无一匹配（落账或磁盘上都没有）= 输入确实缺失 → 不可用（保守方向——绝不让消费者对着静默缺失的输入派发）。自产输入（in∩out——按推导图其生产者就是消费规则自身的输入 glob，如 `lint-cdc` 自己的 `scripts/waiver.tcl`）豁免自锁：没有先前 outcome 时可派发（冷启动），否则与该规则自己落账的输出比对。该豁免由 `inputs`/`outputs` 选择器推导（`producer_of(glob) == consumer`），没有单独的声明字段。
+**输入可用性**（`facts.input_available`）是派发时刻的对应物：消费者的某个输入 glob 可用，当且仅当它是外部的 `brainstorm.md`（只需存在），或其生产者从未运行过（真冷启动——前向调度会先运行生产者），或生产者最新 outcome 落账了匹配且仍新鲜的输出**且**该生产者的证明当前有效。生产者运行过却无一匹配（落账或磁盘上都没有）= 输入确实缺失 → 不可用（保守方向——绝不让消费者对着静默缺失的输入派发）。
 
 ### 4.5 oracle 等级与 pin
 
@@ -380,10 +383,9 @@ flowchart TD
 
 闭合签核是系统里最严的门（`facts.signoff_gate`）。**每一个**阶段证明都必须：
 
-1. 当前有效（§4.4），
-2. oracle 等级为 `tool` 或 `human`——`proposed` oracle 阻塞签核（"pin it"），
-3. 不携带任何 `UNKNOWN` 落账版本，且
-4. 没有带外**新增**输入：磁盘上匹配该规则输入选择器、却不在该证明落账输入集里的文件，从未被任何 run 验证过。已落账文件的改与删本就使证明失效（§4.4）；唯独"加"能逃过落账集比对，所以签核门在此对选择器重新 glob 一遍——日常 delivery/repair 路径仍用便宜的落账集比对。
+1. 当前有效（§4.4）——这本身就要求每个落账的输入与输出指纹都已知且与磁盘一致，因此没有任何携带 `UNKNOWN` 落账版本的证明能算有效，
+2. oracle 等级为 `tool` 或 `human`——`proposed` oracle 阻塞签核（"pin it"），且
+3. 没有带外**新增**输入：磁盘上匹配该规则输入选择器、却不在该证明落账输入集里的文件，从未被任何 run 验证过。已落账文件的改与删本就使证明失效（§4.4）；唯独"加"能逃过落账集比对，所以签核门在此对选择器重新 glob 一遍——日常 delivery/repair 路径仍用便宜的落账集比对。
 
 该门按 `FORWARD_PRIORITY` 顺序迭代，使它返回的理由确定。不满足时按调用方分两条路浮现：`decide --objective signoff` 把它包成指名违规证明的 `ESCALATE`（典型动作是"把 proposed oracle pin 掉"——一次人工 `pin`，§2.5）；`kernel.py signoff` 把它包成 `ok:false`。这就是信任边界咬合之处：流水线可以*交付*在 LLM proposed oracle 之上，但在人把每个 proposed 裁判 pin 到 `human` 等级之前，它无法*签核*。
 
@@ -405,7 +407,7 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 - **PPA 目标 → `rtl-design` directive。** `specification` 产出 `Design/specification/ppa.json`。`synthesis` 与 `power-analysis` *直接*消费它——它是二者的声明输入（`Rule.inputs["ppa"]`），目标由它们自己从文件读取，提示词里不注入任何东西。`rtl-design` 没有 `ppa.json` 输入边，故 Orchestrator 撰写 rtl-design 的 directive 时把每个 PPA 目标的 `dim` 与数值转录进去——directive 是 rtl-design 唯一的 PPA 通道。PPA 目标就此只经文件和 directive 传递；内核不向任何提示词注入 PPA 字段。
 - **triage 转发（逐字节）。** 携带 `triage_forward: true` 的自动重建，其 directive *就是* triage 的 `result.json`，逐字节转发（`--directive <triage result.json>`）——`dispatch` 复制字节，禁止 LLM 转述。多诊断合并把每个来源按诊断归属标题串接。
 
-**收割。** `kernel.py reap --rule <r> --run <n> [--subagent-output-file <f>]` 不接受裁决标志——一切由 `cmd_reap` 派生（§4.7），包括时间完整性检查：`produced_at` 早于本 run dispatch 的 `result.json` 是被携带进来的陈旧信封，派生为 `blocked` / `stale_result`（§4.7）。它尽力镜像异步转录（§6.5），派生 `(verdict, reason, proofs, diagnosis)` 四元组，在 `pass` *与* `fail` 上（`blocked` 除外）`store.promote` 产物到规范目录，按实际 promote 集把指纹记入 outcome 的 `outputs`，追加 `outcome`，并——对完成的 triage——追加派生的 `diagnosis`。promote 幂等（§7.2），promote 中途崩溃由下一次收割修复。
+**收割。** `kernel.py reap --rule <r> --run <n> [--subagent-output-file <f>]` 不接受裁决标志——一切由 `cmd_reap` 派生（§4.7），包括时间完整性检查：`produced_at` 早于本 run dispatch 的 `result.json` 是被携带进来的陈旧信封，派生为 `blocked` / `stale_result`（§4.7）。它尽力镜像异步转录（§6.5），若镜像成功则解析该转录（`usage.parse_trace_usage`）算出 outcome 的 `cost_tokens`——一个仅供审计、从不进入证明有效性或 verdict 判定的 token 用量数字。它派生 `(verdict, reason, proofs, diagnosis)` 四元组，在 `pass` *与* `fail` 上（`blocked` 除外）`store.promote` 产物到规范目录，按实际 promote 集把指纹记入 outcome 的 `outputs`，追加 `outcome`，并——对完成的 triage——追加派生的 `diagnosis`。promote 幂等（§7.2），promote 中途崩溃由下一次收割修复。
 
 **崩溃恢复折叠进循环。** 没有单独的初始化或恢复阶段：第一次 `dispatch` 创建日志；已完成但未收割的 run 由 `decide` 第 0 步接住。执行器*没写* `result.json` 就死掉的 run 仍在途，在 `YIELD` 的 `in_flight[]` 视图中以 `has_result: false` 现身；Orchestrator 确认执行器已死后，发出显式 `reap`，派生 `blocked`，为重路由解锁账本（`skills/design-flow/SKILL.md` 的 Dead-in-flight 规则）。
 

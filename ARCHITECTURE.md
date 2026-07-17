@@ -102,7 +102,7 @@ The three dispatch paths from the Orchestrator:
 
 ### 2.2 The kernel surface
 
-`framework/scripts/` is one deterministic core split into five bare-importable, single-responsibility modules plus the CLI. `kernel.py` is the only entry point the Orchestrator calls; it imports the rest.
+`framework/scripts/` is one deterministic core split into six bare-importable, single-responsibility modules plus the CLI. `kernel.py` is the only entry point the Orchestrator calls; it imports the rest.
 
 | Module | Responsibility |
 |---|---|
@@ -112,6 +112,7 @@ The three dispatch paths from the Orchestrator:
 | `schedule.py` | The scheduler: `decide(objective) → exactly one action`. Pure over (disk, log, args); composes `route.py` and `facts.signoff_gate`. Owns the objective→required-proof map and the fresh-failure disposition. |
 | `route.py` | Pure deterministic rework-target selection — the **single home** of the static failure→target maps (`PA_CATEGORY`, `FIXED_TARGET`, `LINT_CATEGORY`, `TRIAGE_ROOT_CAUSE`). Holds no state; composed unchanged inside `schedule.py` and `kernel.py`. |
 | `store.py` | Filesystem artifact-lifecycle helpers: dispatch-time `inject_inputs` (writes `<workdir>/inputs.json`) and `carry_self` (copies the author's own previous canonical products into the fresh workdir), reap-time `promote` and `_mirror_subagent_trace`. Imported by `kernel.py`; never invoked directly. |
+| `usage.py` | Parses a Claude Code JSONL trace — a Task subagent's mirrored `.subagent_traces/<rule>-<id>.output`, or an orchestrator session transcript — into a token-usage breakdown (`parse_trace_usage`, deduped by message id). Pure / read-only, stdlib only, never raises. `kernel.py` calls it at reap on a Task subagent's mirrored trace to populate the outcome event's `cost_tokens`. |
 
 The event schemas at `framework/references/schemas/events/<type>.schema.json` (7 of them, §4.2) and the result envelope at `framework/references/schemas/envelope.schema.json` complete the core.
 
@@ -174,6 +175,8 @@ Each rule is a frozen dataclass:
 | `oracle` | `(ref, grade)` — the judge and its trust grade (§4.5). |
 | `oracle_selector` | For a `proposed` oracle, the workdir-relative glob whose content a `pin` fingerprints. |
 | `params` | Free params the rule expects (e.g. `simulation-triage`'s `sim_run`). |
+| `carry` | Self-product globs `store.carry_self` copies into a fresh workdir at dispatch (§5.6/§7.2), minus `no_carry`; empty for a rule with no self-carry (a pure transformer). |
+| `no_carry` | Globs excluded from `carry` — e.g. a per-round review record that must be re-derived fresh every round rather than carried forward. |
 
 ### 3.2 The eight pipeline rules
 
@@ -243,7 +246,7 @@ Because the log is the state, in-flight is derived too: `facts.in_flight` = ever
 | **type** | **Written by (verb)** | **Purpose / key fields** |
 |---|---|---|
 | `dispatch` | auto (`dispatch`) | Opens a run: `rule`, `run`, `workdir`, `params` (incl. the `directive` path+digest), `objective`, `diagnosis_refs`, and — for proof-producing rules only — the consumed `inputs` version table (the sole source of `proof.inputs`). |
-| `outcome` | auto (`reap`) | Closes a run: `verdict ∈ {pass, fail, blocked}`, the produced `outputs` version table (incl. the canonical `result.json`), `proofs[]`, `tool_versions`, optional `reason` (the blocked sub-class). |
+| `outcome` | auto (`reap`) | Closes a run: `verdict ∈ {pass, fail, blocked}`, the produced `outputs` version table (incl. the canonical `result.json`), `proofs[]`, `tool_versions`, optional `reason` (the blocked sub-class), optional `cost_tokens` (audit-only token usage of the run's Task subagent trace — absent on main-thread stages, never entering validity). |
 | `diagnosis` | auto for triage (`reap`); human via `diagnose` | A failure attribution. Required (per `diagnosis.schema.json`): `id`, `subject {proof, outcome_run}`, `attribution`, `evidence`, `source ∈ {triage, human}`. Optional: `fix_owner`, `fix_locus`, `confidence`, `supersedes`; `provenance` (required for `human`, enforced by `diagnose`). |
 | `pin` | `pin` | Ratchets a `proposed` oracle toward `human`: `oracle_ref`, `content_fingerprint` (recorded at pin time), `provenance`, `reason`. |
 | `reopen` | `reopen` | Retires a pin: `pin_ref`, `reason`. Invalidates any proof whose oracle was reopened after it landed (§4.4). |
@@ -268,13 +271,13 @@ Freshness is decided by comparing content, so the atom of the whole model is a c
 A proof-producing rule records a `proof` inside its `outcome` event at reap: `{name, verdict, inputs, oracle, evidence}`. `inputs` is the version table of everything the run consumed (from the `dispatch` event); `outputs` (on the outcome) is the version table of everything it produced. A proof is not a stored "valid" bit — `facts.proof_valid(module, proof)` recomputes it on every call. It is valid *now* iff **all four** conditions hold:
 
 1. **Verdict** — the latest outcome carrying this proof has `verdict == pass`.
-2. **Inputs unchanged** — every recorded input fingerprint still matches disk. For an input that the rule *also* produces (in∩out, e.g. a self-seeded constraint file), the comparison is against the same run's recorded *output* version, not the dispatch-time input version.
+2. **Inputs unchanged** — every recorded input fingerprint still matches disk.
 3. **Oracle un-reopened** — no `reopen` of this proof's `oracle.ref` appears at or after the proof's position in the log.
 4. **Outputs unchanged** — every recorded output fingerprint (including the canonical `result.json` itself) still matches disk.
 
 The consequence: editing any file a proof touched — an input, an output, or the result envelope — silently invalidates that proof on the next query, and transitively any downstream proof that consumed it. Nothing has to *mark* anything stale; staleness is the absence of a still-matching fingerprint. `kernel.py consequences --paths <p…>` makes this queryable ahead of time: a read-only what-if that reports, for each path, which currently-valid proofs would flip to invalid if that path's content changed.
 
-**Input availability** (`facts.input_available`) is the dispatch-time counterpart: a consumer's input glob is available iff it is the external `brainstorm.md` (need only exist), OR its producer never ran (true cold start — forward scheduling will run the producer first), OR the producer's latest outcome recorded a matching, still-fresh output AND that producer's proof is currently valid. A producer that has run but matches nothing (recorded or on disk) is genuinely absent → unavailable (the conservative direction — never dispatch a consumer against a silently missing input). A self-produced input (in∩out — an input glob whose producer, per the derived graph, is the consuming rule itself, e.g. `lint-cdc`'s own `scripts/waiver.tcl`) is exempt from self-locking: with no prior outcome it is dispatchable (cold start), otherwise compared against the rule's own recorded outputs. The exemption is derived from the `inputs`/`outputs` selectors (`producer_of(glob) == consumer`); there is no separate declaration for it.
+**Input availability** (`facts.input_available`) is the dispatch-time counterpart: a consumer's input glob is available iff it is the external `brainstorm.md` (need only exist), OR its producer never ran (true cold start — forward scheduling will run the producer first), OR the producer's latest outcome recorded a matching, still-fresh output AND that producer's proof is currently valid. A producer that has run but matches nothing (recorded or on disk) is genuinely absent → unavailable (the conservative direction — never dispatch a consumer against a silently missing input).
 
 ### 4.5 Oracle grades and pins
 
@@ -380,10 +383,9 @@ All static failure→target selection lives in `route.py` — a pure, stateless 
 
 Closing signoff is the strictest gate in the system (`facts.signoff_gate`). **Every** stage proof must:
 
-1. be currently valid (§4.4),
-2. carry an oracle grade of `tool` or `human` — a `proposed` oracle blocks signoff ("pin it"),
-3. carry no `UNKNOWN` recorded version, and
-4. have no out-of-band **added** input: a file on disk that matches the rule's input selectors but is absent from the proof's recorded inputs was never verified by any run. Edits and deletes of recorded files already invalidate the proof (§4.4); an add escapes the recorded-set checks, so the gate re-globs the selectors here — the daily delivery/repair path keeps the cheap recorded-set check.
+1. be currently valid (§4.4) — which itself requires every recorded input and output fingerprint to be known and match disk, so no proof carrying an `UNKNOWN` recorded version can be valid,
+2. carry an oracle grade of `tool` or `human` — a `proposed` oracle blocks signoff ("pin it"), and
+3. have no out-of-band **added** input: a file on disk that matches the rule's input selectors but is absent from the proof's recorded inputs was never verified by any run. Edits and deletes of recorded files already invalidate the proof (§4.4); an add escapes the recorded-set checks, so the gate re-globs the selectors here — the daily delivery/repair path keeps the cheap recorded-set check.
 
 The gate iterates `FORWARD_PRIORITY` in order so the reason it returns is deterministic. Failure surfaces two ways, per caller: `decide --objective signoff` wraps it as an `ESCALATE` naming the offending proof (typically "pin the proposed oracle" — a human `pin`, §2.5); `kernel.py signoff` wraps it as an `ok:false`. This is where the trust boundary bites: a pipeline can *deliver* on LLM-proposed oracles, but it cannot *sign off* until a human has pinned each proposed judge to `human` grade.
 
@@ -405,7 +407,7 @@ The Orchestrator branches on the returned `execution`: `main-thread` → `Skill(
 - **PPA targets → `rtl-design` directive.** `specification` emits `Design/specification/ppa.json`. `synthesis` and `power-analysis` consume it *directly* — it is a declared input of both (`Rule.inputs["ppa"]`), so they read the targets from the file themselves and nothing is injected into their prompts. `rtl-design` has no `ppa.json` input edge, so when the Orchestrator authors rtl-design's directive it transcribes each PPA target's `dim` and numeric value in — the directive is rtl-design's only PPA channel. PPA targets thus travel by file and directive; the kernel injects no PPA field into any prompt.
 - **Triage forward (verbatim).** For an auto-rebuild carrying `triage_forward: true`, the directive *is* the triage `result.json`, forwarded byte-for-byte (`--directive <triage result.json>`) — `dispatch` copies the bytes, no LLM rewording. A multi-diagnosis merge concatenates each source under a per-diagnosis header.
 
-**Reap.** `kernel.py reap --rule <r> --run <n> [--subagent-output-file <f>]` takes no verdict flag — `cmd_reap` derives everything (§4.7), including the temporal-integrity check: a `result.json` whose `produced_at` predates this run's dispatch is a carried-in stale envelope and is derived `blocked` / `stale_result` (§4.7). It best-effort mirrors the async transcript (§6.5), derives the `(verdict, reason, proofs, diagnosis)` 4-tuple, `store.promote`s the produced artifacts into canonical on `pass` *and* `fail` (never on `blocked`), fingerprints the actual promote set into the outcome's `outputs`, appends the `outcome`, and — for a completed triage — appends the derived `diagnosis`. Promote is idempotent (§7.2), so a crash mid-promote is repaired by the next reap.
+**Reap.** `kernel.py reap --rule <r> --run <n> [--subagent-output-file <f>]` takes no verdict flag — `cmd_reap` derives everything (§4.7), including the temporal-integrity check: a `result.json` whose `produced_at` predates this run's dispatch is a carried-in stale envelope and is derived `blocked` / `stale_result` (§4.7). It best-effort mirrors the async transcript (§6.5) and, when a trace was mirrored, parses it (`usage.parse_trace_usage`) into the outcome's `cost_tokens` — an audit-only token-usage figure that never enters proof validity or the verdict. It derives the `(verdict, reason, proofs, diagnosis)` 4-tuple, `store.promote`s the produced artifacts into canonical on `pass` *and* `fail` (never on `blocked`), fingerprints the actual promote set into the outcome's `outputs`, appends the `outcome`, and — for a completed triage — appends the derived `diagnosis`. Promote is idempotent (§7.2), so a crash mid-promote is repaired by the next reap.
 
 **Crash recovery folds into the loop.** There is no separate init or recovery phase: the first `dispatch` creates the log; a completed-but-unreaped run is picked up by `decide` step 0. A run whose executor died *without* writing `result.json` stays in-flight and surfaces in `YIELD`'s `in_flight[]` view as `has_result: false`; the Orchestrator, after confirming the executor is dead, issues an explicit `reap` that derives `blocked`, unblocking the ledger for re-routing (the Dead-in-flight rule in `skills/design-flow/SKILL.md`).
 
