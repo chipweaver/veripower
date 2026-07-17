@@ -21,6 +21,10 @@ docs/retrospective/
 # Local test outputs
 tests/scenarios/results/
 
+# Eval aggregator run outputs (acceptance/regen artifacts); .gitkeep stays tracked
+eval/runs/*.json
+eval/runs/*.csv
+
 # grill-with-docs outputs — glossary/ADRs kept out of VCS by convention
 CONTEXT.md
 CONTEXT-MAP.md
@@ -33,3 +37,7 @@ docs/adr/
 /*.svf
 /*.pvl
 /svf.txt
+
+# B1 wrapper smoke-test scratch copy (repo-internal tmpdir; see
+# tests/unit/test_b1_wrapper.py::test_smoke_synth_on_demo)
+eval/.b1-smoke-*/
