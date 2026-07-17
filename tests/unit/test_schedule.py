@@ -194,6 +194,41 @@ def test_fresh_lintcdc_self_describing_failure_routes_by_category(
     assert a["needs_directive"] is True
 
 
+def test_fresh_rtldesign_spec_locus_high_dispatches_specification(
+    tmp_path, monkeypatch
+):
+    # D4: _route_kwargs now feeds stage_specific.semantic_gate (D2's write) into
+    # route.route (D3's rtl-design branch) — a fresh rtl-design fail whose semantic
+    # gate pins a high-confidence spec-locus intent defect routes upstream to
+    # specification instead of falling into the unrouted escalate.
+    monkeypatch.chdir(tmp_path)
+    _mk("m", "brainstorm.md", "b1")
+    _valid("m", "specification", 1)
+    _fail("m", "rtl-design", 1)  # fresh: input closure (specification) valid
+    # before the canonical result.json carries semantic_gate, route sees loci=None ->
+    # ESCALATE (proves the branch genuinely reads the file, not a vacuous pass)
+    pre = schedule.decide("m")
+    assert pre["action"] == "ESCALATE" and pre["reason"] == "rtl-design: rtl_unrouted"
+    _mk(
+        "m",
+        "Design/rtl-design/result.json",
+        json.dumps(
+            {
+                "stage_specific": {
+                    "semantic_gate": {
+                        "loci": {"spec": ["c1"], "rtl": []},
+                        "spec_confidence": "high",
+                    },
+                    "fail_reason": "semantic gate: spec-rooted intent defect — c1",
+                }
+            }
+        ),
+    )
+    a = schedule.decide("m")
+    assert a["action"] == "DISPATCH" and a["rule"] == "specification"
+    assert a["needs_directive"] is True
+
+
 def test_delivery_no_overtake_but_repair_direct(tmp_path, monkeypatch):
     # same disk+ledger: delivery does not dispatch synthesis while lint-cdc in flight
     # (advisory prereq); repair dispatches synthesis even if lint-cdc stale.

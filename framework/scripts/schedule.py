@@ -209,6 +209,7 @@ def _route_kwargs(module: str, rule: str) -> dict:
         "failure_kind": ss.get("failure_kind"),
         "failures": ss.get("failures"),
         "fail_reason": ss.get("fail_reason"),
+        "semantic_gate": ss.get("semantic_gate"),
     }
 
 
