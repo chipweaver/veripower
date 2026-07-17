@@ -212,11 +212,35 @@ On exit 0 it prints a one-line gate verdict `{"gate": "trip"|"clear", "flagged":
 "dominant_category": ...}` — the mechanical category × severity reduction (per the reviewer
 contract's "Severity & gating"), computed by the script, not judged by eye. Apply it:
 
-- **`gate=trip`:** run `sim finalize --workdir {workdir} --module <module> --phase
-  conformance --fail-reason "<built from flagged + dominant_category>" --conformance-review
-  {workdir}/conformance-review.json` (finalize re-derives the gating `conformance_findings` subset
-  in-process via `compute_gate`, carried to triage as `failure_signal`, and enumerates
-  `conformance-review.json` in `artifacts[]`); **skip Step 5** (do not dispatch the verify wave).
+- **`gate=trip`:** disposition the gating findings by category (the `conformance_findings` subset
+  `compute_gate` identifies — category ∈ {`missing`, `wrong-behavior`, `fake-green`, `intent-defect`}
+  at `critical`/`important`; the gate verdict's `flagged` list carries only `tp_id`s, so read each
+  gating finding's category from `conformance-review.json`'s `findings[]`):
+  - **self-locus** (`missing` / `wrong-behavior` / `fake-green` — the check itself is inadequate, and
+    this stage owns the check) **→ self-heal loop in-stage** (mirroring rtl-design's self-converge):
+    dispatch one conformance-fix `Task(run_in_background=True)` per
+    [`references/conformance-fix-task-contract.md`](references/conformance-fix-task-contract.md),
+    injecting the self-locus gating findings (`tp_id` / `category` / `location` from
+    `conformance-review.json`) as fix-scope; on wake, **re-run this Step-4 conformance reviewer
+    wave** ([`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md))
+    and re-apply the verdict. There is no build step in this loop — the reviewer is a static
+    check-adequacy review; a compile-breaking fix surfaces at the Step-5 verify wave. **Exit:** the
+    re-run gate reaches `clear` (converged → proceed to Step 5) or the conformance-fix Task returns
+    `STATUS: BLOCKED` (it judges the defect is a plan/intent gap beyond the check implementation) →
+    fail-out via the `intent-defect` path below. **No round cap** (exit is fixer-BLOCKED /
+    convergence). The fix Task only tightens `tb/uvm/**` check logic — `verification-plan.md` /
+    `scaffold-specification.json` are the read-only intent source (Iron Rule), and a check is never
+    loosened to pass the gate.
+  - **upstream** (`intent-defect` — the testpoint intent itself is wrong; no check change can fix
+    it) **→ fail-out** (unchanged): run `sim finalize --workdir {workdir} --module <module> --phase
+    conformance --fail-reason "<built from flagged + dominant_category>" --conformance-review
+    {workdir}/conformance-review.json` (finalize re-derives the gating `conformance_findings` subset
+    in-process via `compute_gate`, carried to triage as `failure_signal`, and enumerates
+    `conformance-review.json` in `artifacts[]`); **skip Step 5** (do not dispatch the verify wave).
+    The existing `failure_phase=conformance` → simulation-triage → route path applies (triage
+    supplies the confidence, so no in-skill confidence gate is needed here).
+  - **both present** → self-heal the self-locus findings first; any `intent-defect` finding
+    remaining after convergence then fails out per the upstream rule.
 - **`gate=clear`:** proceed to Step 5. Advisory findings (`unverifiable-arch` any severity, `minor`,
   `unavailable`) never trip the gate — record them in `conformance-review.json` and surface a
   `⚠ <tp> <category>` line in the completion summary.
@@ -227,8 +251,9 @@ contract's "Severity & gating"), computed by the script, not judged by eye. Appl
   `gate=clear` for it), note it in the completion summary, and proceed to Step 5.
 - **Verdict integrity:** you MUST NOT override a `gate=trip` to pass.
 
-Run **no in-skill fix-loop** — a conformance trip exits to the existing
-`failure_phase=conformance` → simulation-triage → route path. (Self-heal is deferred.)
+A self-locus conformance defect self-heals in-stage (above); only an `intent-defect` trip — or a
+conformance-fix Task that `BLOCKED`s — takes the fail-out to the existing
+`failure_phase=conformance` → simulation-triage → route path.
 
 ### Step 5: Wave 3 — dispatch verify
 
