@@ -36,3 +36,31 @@ def test_cli_no_verb_exits_2():
 def test_seed_verb_removed(tmp_path):
     r = _run("seed", "--workdir", str(tmp_path))
     assert r.returncode != 0
+
+
+def test_semantic_review_accepts_confidence(tmp_path):
+    import json
+
+    review = {
+        "schema_version": 1,
+        "stage": "rtl-design",
+        "module": "m",
+        "reviewed_children": ["c1"],
+        "verdict": "concerns",
+        "has_critical": True,
+        "findings": [
+            {
+                "child": "c1",
+                "severity": "critical",
+                "category": "wrong-behavior",
+                "location": "c1.v:10",
+                "summary": "arb is fixed-prio, §2 wants round-robin",
+                "fix_locus": "spec",
+                "confidence": "high",
+            }
+        ],
+    }
+    p = tmp_path / "semantic-review.json"
+    p.write_text(json.dumps(review))
+    r = _run("validate-review", "--review", str(p))
+    assert r.returncode == 0, r.stderr
