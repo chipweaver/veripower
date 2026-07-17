@@ -77,6 +77,7 @@ def route(
     failure_kind: str | None = None,
     failures: list[dict] | None = None,
     fail_reason: str | None = None,
+    semantic_gate: dict | None = None,
 ) -> dict:
     """Return {decision, rule, [reason_hint]} for a self-describing failure.
 
@@ -99,6 +100,24 @@ def route(
         return _decision(
             target, f"lint_category:{cat}->{target}", reason_hint=fail_reason
         )
+
+    # 1b. rtl-design — semantic-gate fix_locus routing (rtl-design has no triage).
+    # spec-locus intent defect → upstream specification, gated on the reviewer's
+    # self-reported spec_confidence (no triage to re-derive it). No spec-locus
+    # (pure rtl-locus self-heal exhausted, or topology/build fail) → escalate.
+    if failed_rule == "rtl-design":
+        loci = (semantic_gate or {}).get("loci") or {}
+        if loci.get("spec"):
+            if (semantic_gate or {}).get("spec_confidence") == "high":
+                return _decision(
+                    "specification",
+                    "rtl_spec_locus->specification",
+                    reason_hint=fail_reason,
+                )
+            return _decision(
+                ESCALATE, "rtl_spec_locus:low_confidence", reason_hint=fail_reason
+            )
+        return _decision(ESCALATE, "rtl_unrouted", reason_hint=fail_reason)
 
     # 2. Fixed-target stages.
     if failed_rule in FIXED_TARGET:
