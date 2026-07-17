@@ -17,8 +17,7 @@
             "coverage_gaps": {"type": "array", "items": {"type": "string"}},
             "gaps_not_in_testpoints": {"type": "array", "items": {"type": "string"}},
             "gaps_in_testpoints": {"type": "array", "items": {"type": "string"}},
-            "conformance_findings": {"type": "array", "items": {"type": "object"}},
-            "plan_digest": {"type": "string", "description": "Historical field, no longer written: sim finalize used to write a SHA256 digest here for a now-removed TB-freeze classifier. Every simulation round now re-judges conformance unconditionally. The property stays declared only because stage_specific is additionalProperties and this field is not required; it is otherwise inert."}
+            "conformance_findings": {"type": "array", "items": {"type": "object"}}
           },
           "additionalProperties": true
         }
