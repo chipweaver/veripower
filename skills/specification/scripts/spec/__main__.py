@@ -2,7 +2,7 @@
 """spec — specification-stage CLI.
 
 Verbs (one stage = one tool; see skills/specification/SKILL.md for usage):
-  derive-ports        cut-edge §1.4.2 ports per child       (stdout: JSON)
+  derive-ports        per-child §1.4.2 inter-module ports   (stdout: JSON)
   check-coverage      manifest-driven coverage gate         (writes coverage.json; exit 0/1)
   derive-constraints  generate SDC/SGDC from §1.6 + §1.4.1  (stdout: JSON; fail-loud)
   validate-review     spec-review.json schema + gate        (stdout: gate JSON; exit 0/1)
@@ -81,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="spec", description="specification-stage CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sp = sub.add_parser("derive-ports", help="cut-edge §1.4.2 ports per child")
+    sp = sub.add_parser("derive-ports", help="per-child §1.4.2 inter-module ports")
     sp.add_argument("--workdir", required=True, type=Path)
     sp.set_defaults(func=_cmd_derive_ports)
 

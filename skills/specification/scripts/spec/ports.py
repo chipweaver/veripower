@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""derive-ports — deterministic cut-edge port derivation.
+"""derive-ports — deterministic inter-module port derivation.
 
 Given a run workdir with manifest.json (children[].rtl_modules) and design.md
 (§1.4.2 Inter-module Interconnects wire table), compute each child's inter-module
@@ -41,18 +41,22 @@ def derive_ports(workdir: Path) -> dict:
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
     design_text = (workdir / "design.md").read_text(encoding="utf-8")
     rows = parse_markdown_table(extract_section(design_text, _SEC_142))
-    if rows and "Wire" not in rows[0]:
-        sys.exit(
-            "design.md §1.4.2 table must use the canonical 'Wire' column "
-            f"(found {list(rows[0])}); see design-template.md."
+    if rows:
+        missing = {"Wire", "Producer (RTL module)", "Consumer (RTL module)"} - set(
+            rows[0]
         )
+        if missing:
+            sys.exit(
+                f"design.md §1.4.2 table missing canonical column(s) {sorted(missing)} "
+                f"(found {list(rows[0])}); see design-template.md."
+            )
     out: dict[str, list[str]] = {}
     for child in manifest["children"]:
         rtl_modules = child.get("rtl_modules")
         if not rtl_modules:
             sys.exit(
                 f"derive-ports: child {child.get('name')!r} has no rtl_modules[] — "
-                f"required to derive cut-edge ports. manifest.children[].rtl_modules is a "
+                f"required to derive inter-module ports. manifest.children[].rtl_modules is a "
                 f"hard requirement (specification Completion Gate)."
             )
         owned = set(rtl_modules)

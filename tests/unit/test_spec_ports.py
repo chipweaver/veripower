@@ -1,4 +1,4 @@
-"""Tests for derive-ports — cut-edge port derivation from §1.4.2."""
+"""Tests for derive-ports — inter-module port derivation from §1.4.2."""
 
 import json
 import subprocess
@@ -100,3 +100,26 @@ def test_142_drifted_header_fails_loud(tmp_path):
     assert proc.returncode != 0
     assert "1.4.2" in proc.stderr
     assert "Wire" in proc.stderr
+
+
+def test_142_missing_endpoint_column_fails_loud(tmp_path):
+    """§1.4.2 table missing a Producer/Consumer column must fail loud, not silently
+    yield empty ports (same class of drift as a mis-named Wire column)."""
+    drifted_design = (
+        "# m Design\n\n"
+        "#### 1.4.2 Inter-module Interconnects\n\n"
+        "| Wire | Producer | Consumer | Protocol |\n"
+        "|------|----------|----------|----------|\n"
+        "| cmd_valid | ctrl | dp | vr |\n"
+    )
+    _write_workdir(
+        tmp_path,
+        {
+            "module": "m",
+            "children": [{"name": "ctrl", "doc": "ctrl.md", "rtl_modules": ["ctrl"]}],
+        },
+        drifted_design,
+    )
+    proc = _run(tmp_path, check=False)
+    assert proc.returncode != 0
+    assert "1.4.2" in proc.stderr

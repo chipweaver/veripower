@@ -73,10 +73,10 @@ You are loaded on the main thread as a thin Level-0 dispatcher. You hold no docu
 
 ### Step 1: Entry — determine scope, pick the entry point
 
-Your previous round, if any, is already carried into `{workdir}` by the framework (kernel `carry_self`) — edit it in place. Read your upstream `<brainstorm>/brainstorm.md`. When `{directive_path}` is injected, Read it first — its `fix_locus` narrows the scope. Then:
+Your previous round, if any, is already present in `{workdir}` — edit it in place. When `{directive_path}` is injected, Read it first — its `fix_locus` narrows the scope. Then:
 
-- **Any `<child>.md` is already present in `{workdir}`** (carried forward — Wave-2 output, written only *after* the Step-4 partition gate, so its presence proves the partition was gate-confirmed in a prior round) — a repair round. Scope = `{directive_path}`'s `fix_locus` when injected, else a `{failing_result}`'s `stage_specific` attribution (Read the trigger once; body stays off the main thread; `brainstorm.md` read-only). Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6 and flow through Steps 7–9**: Steps 2–5 (the partition) are skipped — `manifest.json` is immutable after the partition gate — and Step 7 (the semantic gate) re-runs this pass, so the promoted gate is always fresh. Ends at Step 9.
-- **No `<child>.md` in `{workdir}`** (`design.md`/`manifest.json` alone do not qualify — they are Wave-1 output, written *before* the gate) — a first delivery, a first delivery interrupted before the partition gate, or a brainstorm-level rework recovery: full re-derivation from Step 2 (fresh partition, incl. the human partition gate). Ends at Step 9.
+- **Any `<child>.md` is already present in `{workdir}`** — a repair round: `<child>.md` is Wave-2 output, written only *after* the Step-4 partition gate, so its presence proves the partition was gate-confirmed in a prior round. Scope = `{directive_path}`'s `fix_locus` when injected, else a `{failing_result}`'s `stage_specific` attribution — Read the trigger once, and early-fail with `failing_result not readable: <path>` if it cannot be read. Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6 and flow through Steps 7–9**: Steps 2–5 (the partition) are skipped — `manifest.json` is immutable after the partition gate — and Step 7 (the semantic gate) re-runs this pass, so the promoted gate is always fresh. Ends at Step 9.
+- **No `<child>.md` in `{workdir}`** — no partition has been gate-confirmed yet (a first delivery, or a run interrupted or reset before that gate): full re-derivation from Step 2 — a fresh partition, including the human partition gate. `design.md`/`manifest.json` alone do not qualify — they are Wave-1 output, written *before* the gate. Ends at Step 9.
 
 **Early-fail exit.** Whenever a documented failure below cannot be resolved, close the run with the finalize early-fail entry — never hand-assemble the envelope:
 
@@ -85,49 +85,40 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
   --workdir {workdir} --module {module} --status fail --fail-reason "<one-line reason>"
 ```
 
-Reasons used by this skill: `failing_result not readable: <path>`; `requirements need revision: <D-dim>` (a contradiction unfixable without changing the frozen brainstorm — routes to ESCALATE; recovery is out-of-band); `manifest child missing rtl_modules`; `constraint derivation: <table> defect`. finalize enumerates `artifacts[]` present-only, so the carried workdir's **product** set all promotes — an early fail never shrinks it (the judged `spec-review.json` is the one exception: deliberately never carried on rework, per invalidate-on-rework).
-
 ### Main chain at a glance
 
 | Step | Executor | Does → produces | On failure |
 |---|---|---|---|
-| 2 | Wave 1 (sub-Task ×1) | Decompose: `manifest.json` + `design.md` §1.1–1.7 + `ppa.json` | `STATUS: BLOCKED` → Fan-out Contract |
-| 3 | script | `derive-ports` → per-child cut-edge port JSON | missing `rtl_modules` → Wave-1 rework; unresolvable → early-fail |
-| 4 | human | Partition gate (metadata summary only) | merge feedback → re-dispatch Step 2, re-run Step 3 |
-| 5 | Wave 2 (sub-Task ×N) | One `<child>.md` per child | `STATUS: BLOCKED` → Fan-out Contract |
-| 6 | script | `check-coverage`; on pass `derive-constraints` (generate + self-check SDC/SGDC) | coverage violations → rework by category, loop until clean; derivation table defect → Wave-1 rework, re-run this step; unresolvable → early-fail |
-| 7 | Wave 3 (reviewers ×N) + script | `spec-review.json` + `validate-review` → `{gate, flagged, must_ack}` | `trip` → blocks in place into Step 8 |
-| 8 | human | design.md gate (approve precondition lives here) | reject → rework sub-Task → **re-enter Step 6** (flows through 6→7→8 again) |
-| 9 | script | `finalize` → `result.json` | non-zero exit = program exception (BLOCKED) |
+| 2 | Wave 1 (sub-Task) | decompose → `manifest.json` + `design.md` overview + `ppa.json` | `STATUS: BLOCKED` → Fan-out Contract |
+| 3 | script | `derive-ports` (per-child inter-module wires) | → Wave-1 rework / early-fail |
+| 4 | human | partition gate | merge → Step 2 |
+| 5 | Wave 2 (sub-Task ×N) | one `<child>.md` per child | `STATUS: BLOCKED` → Fan-out Contract |
+| 6 | script | coverage gate + constraint derivation | → rework / early-fail |
+| 7 | Wave 3 (reviewers ×N) + script | semantic review → gate verdict | `trip` → Step 8 |
+| 8 | human | `design.md` gate | reject → Step 6 |
+| 9 | script | `finalize` → `result.json` | non-zero → BLOCKED |
 
-### Step 2: Wave 1 — decompose (Level-1 sub-Task)
+### Step 2: Wave 1 — decompose
 
-Dispatch one sub-Task that, in its own context, reads `<brainstorm>/brainstorm.md` and writes:
-   - `manifest.json` — `module`, `children[]` with `name` / `doc` / `rtl_modules[]` (REQUIRED, ≥1) / `brainstorm_anchor` / `role`; optional `shared_subsections[]`.
-   - `design.md` §1.1–1.6 overview (incl. §1.4.1 Top-Level IO + §1.4.2 Inter-module Interconnects) + §1.7 submodule index.
-   - `ppa.json` — the D6 `ppa_targets` **verbatim** as a JSON array of `{dim, target}` (`[]` when D6 declares none or was not reached). This is the only step that transcribes PPA numbers; everything downstream reads the file.
+Dispatch one Level-1 sub-Task per `references/decompose-task-contract.md`: in its own context it reads `<brainstorm>/brainstorm.md` and writes `manifest.json` + the `design.md` overview (§1.1–1.7) + `ppa.json`. The partition strategy, field schemas, and the `STATUS` return protocol live in that contract — do not restate or reinterpret them here. After dispatching, end the turn; reap and proceed to Step 3 only after it reports.
 
-Child partition follows the interface graph's clean/dirty edges, NOT line counts: cut ONLY at clean elastic-handshake boundaries (`valid/ready` or `req/ack`); skew- or phase-locked couplings are NOT cut points — the modules they bind stay in one child, internalizing that coupling. Each child is thus one or more whole RTL modules forming a coupling cluster bounded by clean handshakes; a tightly-coupled fabric with no clean internal handshake is monolithic (N=1 — only the top boundary is clean). Small leaf modules join their cluster — no line-count floor / size class.
+### Step 3: Derive inter-module ports
 
-**top-integration carve-out (best-effort hint):** `<TOP>` (= `manifest.module`) should form its own child whose `rtl_modules == [<TOP>]` — do not bundle any logic module into the top child. This is a soft hint; the hard guarantee is `check-coverage`'s purity gate.
-
-The module set (D4) + inter-module wire table (D2b → §1.4.2) come from the frozen brainstorm. Last line: `STATUS: DONE` + paths, or `STATUS: BLOCKED <reason>`.
-
-### Step 3: Derive cut-edge ports (script)
+Run `derive-ports` to compute each child's inter-module ports — the §1.4.2 wires whose Producer/Consumer RTL module is in that child's `rtl_modules`:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py derive-ports --workdir {workdir}
 ```
 
-Its small JSON output (`{child: [wire,...]}`) is each child's inter-module ports — the §1.4.2 wires whose Producer/Consumer RTL module is in that child's `rtl_modules`. It is the partition gate's cut-edge summary AND each child's Wave-2 port injection (children never guess inter-module ports; top-level IO ports stay child-authored from §1.4.1, backstopped by `check-coverage`'s `ports ⊆ §1.4.1∪§1.4.2` subset check). On a non-zero exit (stderr names the defect), do NOT gate: route a Wave-1 rework sub-Task to add the missing `rtl_modules[]`, or close via early-fail (`manifest child missing rtl_modules`).
+On a non-zero exit, stderr names the defect: do NOT gate — route a Wave-1 rework sub-Task to fix it, or close via early-fail if it is unresolvable.
 
 ### Step 4: Partition gate (human) — no body read
 
-Present an N-child summary built from `Grep manifest.children[].{name,role}` + the `derive-ports` JSON (cut-edge wires per child). **Do NOT read `design.md` §1.4.x into the main thread** — point the user to §1.4 to inspect themselves. Include an oversize-cluster advisory flag computed from manifest metadata only (`rtl_modules` count + `brainstorm_anchor` line-span as a size proxy) — a sub-Task context-budget hint, NOT a partition criterion (do not let it re-seed size-class thinking). Never auto-split. Confirm, or take merge feedback → re-dispatch Wave 1 with the new grouping → re-run `spec derive-ports`.
+Present an N-child summary built from `Grep manifest.children[].{name,role}` + the `derive-ports` JSON (inter-module wires per child). **Do NOT read `design.md` §1.4.x into the main thread** — point the user to §1.4 to inspect themselves. Include an oversize-cluster advisory flag computed from manifest metadata only (`rtl_modules` count + `brainstorm_anchor` line-span as a size proxy) — a sub-Task context-budget hint, NOT a partition criterion (do not let it re-seed size-class thinking). Never auto-split. Confirm, or take merge feedback → re-dispatch Wave 1 with the new grouping → re-run `spec derive-ports`.
 
-### Step 5: Wave 2 — child sub-designs (Level-1 sub-Task ×N)
+### Step 5: Wave 2 — child sub-designs (×N)
 
-Dispatch N sub-Tasks (one per child), each writing `{workdir}/<child>.md` per `references/child-design-template.md`. `frontmatter.ports` = the derived cut-edge list (Step 3) for inter-module wires + any child-authored top-IO ports. **Wave 2 is ALWAYS dispatched (N=1 → ×1 sub-Task); a child body never lives on the main thread.** After dispatching all N, end the turn; reap each child and proceed only after all N have reported.
+Dispatch N sub-Tasks (one per child), each writing `{workdir}/<child>.md` per `references/child-design-template.md`. `frontmatter.ports` = the derived inter-module wire list (Step 3) + any child-authored top-IO ports. **Wave 2 is ALWAYS dispatched (N=1 → ×1 sub-Task); a child body never lives on the main thread.** After dispatching all N, end the turn; reap each child and proceed only after all N have reported.
 
 ### Step 6: Coverage gate + constraint derivation (script)
 
@@ -241,4 +232,5 @@ Your sole on-disk completion signal is `{workdir}/result.json` present with `sta
 - [`references/sgdc-template.md`](references/sgdc-template.md) — SGDC generated-output reference (what `derive-constraints` emits).
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema (`schema_version: 1`).
 - [`references/spec-review.schema.json`](references/spec-review.schema.json) — gating semantic-review schema (Wave 3, Step 7).
+- [`references/decompose-task-contract.md`](references/decompose-task-contract.md) — Wave-1 decompose sub-Task contract (Step 2).
 - [`references/spec-review-task-contract.md`](references/spec-review-task-contract.md) — per-child reviewer sub-Task contract (Step 7).
