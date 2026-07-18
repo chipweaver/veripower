@@ -59,8 +59,6 @@ When `{failing_result}` is injected, read additional context from the same direc
 | `constraints.sdc` | SDC | Timing-exception iteration site, edited by you (Steps 4/6). |
 | `scripts/config.tcl` | TCL | Edit to fill `LIB_DB` (Step 3 alternative to the env var). |
 
-The promoted full set (including `ppa-actual.json`, `run.log`, and the remaining deployed scripts) is enumerated by `synthesis finalize` — this table is the contract surface, not a mirror of it.
-
 ## Workflow
 
 ### Step 1: Read inputs and determine scope

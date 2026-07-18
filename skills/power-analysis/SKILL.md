@@ -60,10 +60,7 @@ PPA targets (entries on the `power_mw` dimension only) are read by `power finali
 | `saif/<id>.saif` (+ `saif/_dedup/<sequence_ref>.saif`) | SAIF | Per-scenario gate-level SAIF (dedup-hardlinked); each path referenced by `result.json.saif_artifacts[]`. |
 | `reports_ptpx/<id>/` (`power_hier.rpt` / `power_flat.rpt` / `switching_activity.rpt` / `ptpx.log`) | PT text + log | Per-scenario PT-PX report set (`power_hier.rpt` is read by rtl-design on a PPA rework); one `<id>/` per SAIF. |
 
-The promoted full set (the deployed `scripts/` + `scaffold/` infrastructure, `simv` + `simv.daidir/`,
-the `gls-compile-log.txt` / `gls-run-log.txt` / `ptpx.log` / `make.out` logs, and `power-actual.json`)
-is enumerated by `power finalize` — this table is the contract surface, not a mirror of it. The
-deployed infrastructure is `bootstrap`'s business (Step 2; per-file notes in Bundled References);
+The deployed infrastructure is `bootstrap`'s business (Step 2; per-file notes in Bundled References);
 you interact with it only through the `make` targets.
 
 ## Workflow

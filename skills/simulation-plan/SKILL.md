@@ -24,12 +24,11 @@ Your boundary:
 
 ## Fan-out Dispatch Contract
 
-- **One Level-1 review sub-Task only:** dispatches the Step-4 plan-adequacy reviewer via
-  `Task(run_in_background=True)`, reaps it, and folds the result into `plan-review.json`
-  (Level-2 forbidden — the audit boundary).
-- **Dispatch-and-wait:** after dispatching, end the turn; reap on the harness wake; aggregate the
-  reviewer's report and proceed only after it reports (DONE or BLOCKED).
-- **No `kernel.py`:** this skill does not call `kernel.py`.
+- **One Level-1 review sub-Task only:** dispatch the Step-4 plan-adequacy reviewer via
+  `Task(run_in_background=True)`, reap it, and fold the result into `plan-review.json`; it
+  dispatches nothing of its own.
+- **Dispatch-and-wait:** after dispatching, end the turn; reap and aggregate the
+  reviewer's report, and proceed only after it reports (DONE or BLOCKED).
 
 ## Input Artifacts
 
@@ -64,8 +63,6 @@ When `{failing_result}` is injected, read additional context from the same direc
 | `scaffold-specification.json` | Custom JSON (field convention below); written after the Plan Gate | Machine-read contract (drives TB-materialization bootstrap + scaffold generation). |
 | `plan-review.json` | `references/plan-review.schema.json` | Gating plan-adequacy review (Step 4 aggregate); promoted — the resume-guard re-reads the promoted copy. |
 | `plan-data.json` | Custom JSON (derived by `simplan derive-plan-data`) | Intermediate cache, re-derived on every Step-3 pass; **not** placed in `result.json.artifacts[]`. |
-
-The promoted full set is enumerated by `simplan finalize` — this table is the contract surface, not a mirror of it.
 
 ### `verification-plan.md` section outline
 

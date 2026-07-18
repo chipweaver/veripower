@@ -52,8 +52,6 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 | `config.tcl` | Tcl | Edit to fill `LIB_DB` (Step 3 alternative to the env var). |
 | `timing-report.txt` | PrimeTime text report | setup / hold / check_timing output — the deliverable; a human artifact, no downstream stage reads it. |
 
-The promoted full set (including `timing-actual.json` and the deployed `run_sta.tcl`) is enumerated by `timing finalize` — this table is the contract surface, not a mirror of it.
-
 ## Workflow
 
 This is a single linear flow (no branch fork — see rationale below).

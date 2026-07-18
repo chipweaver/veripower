@@ -87,25 +87,13 @@ finalize. The env / verify phase split of the workdir artifacts is in
 > `$fsdbDumpvars`) at the run-dir root for `simulation-triage`'s L1 waveform query — per-run, **not
 > promoted**, and gc-on-pass keeps one only for failing tests (see `references/artifact-contract.md`).
 
-The promoted full set is enumerated by `sim finalize` (`enumerate_artifacts`) — this table is the contract surface; the per-phase inventory lives in `artifact-contract.md`.
-
 ## Workflow (thin dispatcher; three sequential waves + smoke gate + scripted finalize)
 
 ### Fan-out Dispatch Contract
 
-Framework-mechanism rules (dispatch-and-wait below is the main-thread lifecycle); enforced at the
-framework / harness layer (the wake protocol; writes confined to `runs/N/`, promoted on reap), not by this skill's
-Completion Gate.
-
-- **No Level 2 dispatch:** this skill dispatches only Level-1 sub-Tasks (env-build, conformance reviewer,
-  then verify) — the audit boundary.
-- **Dispatch-and-wait:** after dispatching a wave's sub-Task, send a brief status and end the turn;
-  the harness wakes the main thread per completion (the wake is to the harness, not back to the
-  caller). Reap the sub-Task on its wake before the downstream gate/wave.
-- **No `kernel.py`:** this skill does not call `kernel.py`.
-- **Sub-Task `STATUS: BLOCKED` carve-out:** a sub-Task's last-line `STATUS: BLOCKED <reason>` is a
-  harness-level signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the main
-  thread maps it to `status=fail` + `fail_reason` and defers re-dispatch to a later repair dispatch.
+- **No Level 2 dispatch:** dispatch only Level-1 sub-Tasks; none dispatches a sub-Task of its own.
+- **Dispatch-and-wait:** after dispatching, send a brief status and end the turn. Reap the sub-Task before the downstream gate/wave.
+- **Sub-Task `STATUS: BLOCKED`:** if a dispatched sub-Task comes back blocked (no usable result — a crash, not a `fail` verdict), map it to `status=fail` + `fail_reason` and defer re-dispatch to a repair round.
 
 ### Step 1: Prerequisite + scope
 
@@ -163,7 +151,7 @@ The env-build child self-gates its `STATUS: DONE` on a presence-only thin-D1 che
 hollow TB never reaches the Wave-3 verify run; semantic TB↔plan conformance is out of scope for this
 presence-only check (it is the conformance gate's job).
 
-After dispatching, end the turn and wait for the harness wake.
+After dispatching, end the turn.
 On wake-up, reap the env-build child's harness `STATUS:` last line + its JSON line. If
 `STATUS: BLOCKED <reason>`, run `sim finalize --workdir {workdir} --module <module>
 --phase env-blocked --failure-phase <compile|smoke|prerequisite> --fail-reason "<reason>"`
@@ -198,7 +186,7 @@ On a smoke pass, dispatch one `Task(run_in_background=True)` — the conformance
 whose prompt points to [`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md)
 and hands over paths only: the `{workdir}` (filled `tb/uvm/**`), the scaffold-spec path
 (`testpoints[].inlined_check_hints[]`), the `verification-plan.md` path (§3 intent source),
-the DUT RTL filelist, and `{module}`. After dispatching, end the turn and wait for the harness wake.
+the DUT RTL filelist, and `{module}`. After dispatching, end the turn.
 
 On wake-up, reap the reviewer's `STATUS:` last line + its JSON line, assemble
 `{workdir}/conformance-review.json` (schema `references/conformance-review.schema.json`), and run:
@@ -264,7 +252,7 @@ Dispatch one `Task(run_in_background=True)` — the verify child — whose promp
 `{workdir}` (already holding the built TB + compiled `simv` + `verify-handoff.json`), the
 scaffold-spec testpoints path, and `{module}`.
 
-After dispatching, end the turn and wait for the harness wake.
+After dispatching, end the turn.
 On wake-up, reap the verify child's `STATUS:` last line + its JSON line (the `stage_specific` fields),
 then branch on its verdict and write `status=fail` via finalize, **skipping Step 6** (do NOT call
 `--phase final`):

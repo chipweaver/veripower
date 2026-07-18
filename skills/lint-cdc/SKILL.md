@@ -51,8 +51,6 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 | `scripts/constraints.sgdc` | SGDC | Depth-annotation iteration site, edited by you; your own carried file — `carry_self` brings the canonical copy forward into each new run's workdir verbatim before you start, so it survives across runs. On `status=pass` list it in `artifacts[]` — promotion is what `carry_self` carries forward next time (Iron Rule). |
 | `scripts/waiver.tcl` | TCL | Reviewed waivers, written by you (Step 6); your own carried file — same `carry_self` mechanism carries the canonical copy into each new run verbatim, which is what makes waivers survive across runs. Promoted on `status=pass`. |
 
-The promoted full set (including the `*-violations.json` gate sources read in Steps 4/5/7) is enumerated by `lintcdc finalize` — this table is the contract surface, not a mirror of it.
-
 ## Workflow
 
 ### Step 1: Read inputs and determine scope
