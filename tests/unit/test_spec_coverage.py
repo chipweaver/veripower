@@ -498,7 +498,7 @@ def test_end_to_end_multi_child_clean_workdir(tmp_path):
         text=True,
     )
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
-    cov = json.loads((tmp_path / "coverage.json").read_text())
+    cov = json.loads(proc.stdout)
     assert cov["status"] == "pass"
     assert set(cov) >= {
         "brainstorm_coverage",
@@ -555,7 +555,7 @@ def test_end_to_end_impure_top_child_fails(tmp_path):
         text=True,
     )
     assert proc.returncode == 1, (proc.stdout, proc.stderr)
-    cov = json.loads((tmp_path / "coverage.json").read_text())
+    cov = json.loads(proc.stdout)
     assert cov["status"] == "fail"
     assert cov["structure"]["purity_violations"], cov["structure"]
     assert cov["structure"]["purity_violations"][0]["child"] == "core_top"

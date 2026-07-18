@@ -127,7 +127,6 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
     fixed = [
         ("design.md", "design"),
         ("manifest.json", "manifest"),
-        ("coverage.json", "coverage"),
         ("spec-review.json", "spec-review"),
         (f"constraints/{top}.sdc", "sdc"),
         (f"constraints/{top}.sgdc", "sgdc"),

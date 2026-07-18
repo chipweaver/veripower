@@ -1,6 +1,6 @@
 # child-design template
 
-Every sub-design file `{workdir}/<child>.md` follows this structure (Surface 1 contract, English canonical section headings; prose body is Surface 2 — bilingual allowed).
+Every sub-design file `{workdir}/<child>.md` follows this structure (Surface 1 contract, English canonical section headings; prose body is Surface 2, bilingual allowed).
 
 ## Frontmatter (required)
 
@@ -24,7 +24,14 @@ features:                          # required (may be empty)
 
 ## §2 Interface
 
-Detailed port table (covers frontmatter `ports` with detailed signal direction / width / clock domain / protocol / timing semantics). Child-internal-only boundary ports (test-mode strobe / debug tap / internal handshake) appear here too but are NOT in frontmatter `ports`. For an inter-module port (a §1.4.2 wire), its width and clock domain MUST match the §1.4.2 row verbatim — §1.4.2 is the single source of truth; do not introduce a divergent value here. A top-IO **output** is owned by exactly one child (listed in that child's frontmatter `ports`); a leaf child passed through the pure top is preferred. For a control/status inter-module port, its **Encoding** (bit/field→symbol meaning + per-code consumer obligation) MUST match the §1.4.x row verbatim — the §1.4.x row is the single source; restate, do not introduce a divergent decode here. Where this child participates in an **inter-module behavior contract** declared in the §1.4.2.1 companion (a shared operating-phase / sequencing / co-assertion contract), reference its declared names verbatim — the §1.4.2.1 companion is the single source; restate, do not redefine the phase set / sequencing here.
+A detailed port table covering the frontmatter `ports` (per-signal direction, width, clock domain, protocol, timing semantics). Child-internal-only boundary ports (test-mode strobe, debug tap, internal handshake) also appear here, though they are not in the frontmatter `ports`.
+
+Each of the following **restates its single source verbatim; never introduce a divergent value**:
+- **Inter-module port** (a §1.4.2 wire): width and clock domain match the §1.4.2 row.
+- **Control/status inter-module port**: its **Encoding** (bit/field→symbol meaning plus per-code consumer obligation) matches the §1.4.x row.
+- **Inter-module behavior contract** (a shared operating-phase / sequencing / co-assertion contract, declared in the §1.4.2.1 companion): reference the companion's declared names; do not redefine the phase set or sequencing.
+
+A top-IO **output** is owned by exactly one child (listed in that child's frontmatter `ports`); a leaf child passed through the pure top is preferred.
 
 ## §3 Internal Behavior
 

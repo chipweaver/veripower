@@ -47,7 +47,6 @@ RULES: dict[str, Rule] = {
             "*.md",  # *.md = the per-child <child>.md docs (N>=1) — real
             # promoted products; sim-plan/rtl-design consume them as inputs
             "manifest.json",
-            "coverage.json",
             "ppa.json",
             "spec-review.json",
             "constraints/*.sdc",

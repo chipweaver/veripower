@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """check-coverage — manifest-driven coverage + token-survival verifier.
 
-Writes `{workdir}/coverage.json` containing the `brainstorm_coverage`,
+Prints the coverage verdict (JSON) to stdout, containing the `brainstorm_coverage`,
 `frontmatter_subset`, and `token_survival` sub-blocks. (The former §3/§4
 self-certification `fidelity_coverage` block is removed — those design.md sections
 had no downstream consumer and were LLM-self-attested; token-survival replaces them
@@ -681,8 +681,5 @@ def run(workdir: str, brainstorm: str) -> int:
         "self_containment": self_c,
         "structure": struct,
     }
-    (workdir_p / "coverage.json").write_text(
-        json.dumps(coverage, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    print(json.dumps(coverage, ensure_ascii=False, indent=2))
     return 0 if coverage["status"] == "pass" else 1

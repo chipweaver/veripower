@@ -240,8 +240,7 @@ Before `design.md` is approved, the **gated** checks below must pass `check-cove
 ## Fidelity (objective gate — no self-certification section)
 
 `design.md` carries **no** §3 Derivation Notes or §4 Internal Consistency Self-Check
-table. Fidelity is verified objectively by `check-coverage`, which writes
-`{workdir}/coverage.json`:
+table. Fidelity is verified objectively by `check-coverage`, whose stdout verdict covers:
 
 - `token_survival` — every hard token in the **whole** brainstorm (a fenced code block /
   `assign …;` / `always @(…) …;` / `parameter`/`localparam` numeric def / sized literals

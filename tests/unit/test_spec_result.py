@@ -54,7 +54,6 @@ def _spec_workdir(tmp_path):
             }
         )
     )
-    (wd / "coverage.json").write_text(json.dumps({"status": "pass"}))
     (wd / "mac.md").write_text("# child\n")
     (wd / "spec-review.json").write_text(json.dumps(_CLEAR_REVIEW))
     return wd
@@ -147,7 +146,6 @@ def test_enumerate_artifacts_present_only_with_kinds(tmp_path):
     by_path = {a["path"]: a.get("kind") for a in arts}
     assert by_path["design.md"] == "design"
     assert by_path["manifest.json"] == "manifest"
-    assert by_path["coverage.json"] == "coverage"
     assert by_path["spec-review.json"] == "spec-review"
     assert by_path["mac.md"] == "child-design" and by_path["fifo.md"] == "child-design"
     assert by_path["constraints/tpu_top.sdc"] == "sdc"
@@ -185,7 +183,6 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     assert paths == {
         "design.md",
         "manifest.json",
-        "coverage.json",
         "spec-review.json",
         "mac.md",
         "systolic_reg.md",
@@ -419,7 +416,6 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
     assert {
         "design.md",
         "manifest.json",
-        "coverage.json",
         "spec-review.json",
         "mac.md",
         "ppa.json",

@@ -5,7 +5,7 @@ description: Use when writing or reviewing design specification (design.md), def
 
 # Requirements and Specification Freeze
 
-Your sole responsibility: derive a frozen design source of truth from an approved `<brainstorm>/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `coverage.json` + `ppa.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). You are a thin Level-0 dispatcher: three sub-agent waves, two path-handoff gates, deterministic main-thread scripts in between; the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
+Your sole responsibility: derive a frozen design source of truth from an approved `<brainstorm>/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `ppa.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). You are a thin Level-0 dispatcher: three sub-agent waves, two path-handoff gates, deterministic main-thread scripts in between; the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
 
 ## When to Use
 
@@ -68,17 +68,17 @@ You are loaded on the main thread as a thin Level-0 dispatcher. You hold no docu
 ### Fan-out Dispatch Contract
 
 - **No Level 2 dispatch:** dispatch only Level-1 sub-Tasks; none dispatches a sub-Task of its own.
-- **Dispatch-and-wait:** after dispatching, send a brief status and end the turn. Reap each, and finalize only after all dispatched sub-Tasks have reported — never against a partial set.
-- **Sub-Task `STATUS: BLOCKED`:** if a dispatched sub-Task comes back blocked (no usable result — a crash, not a `fail` verdict), finalize this stage `status=fail` + `fail_reason` listing the failed children (via the finalize early-fail entry) and defer per-child re-dispatch to a repair round.
+- **Dispatch-and-wait:** after dispatching, send a brief status and end the turn. Reap each, and finalize only after all dispatched sub-Tasks have reported, never against a partial set.
+- **Sub-Task `STATUS: BLOCKED`:** if a dispatched sub-Task comes back blocked (no usable result: a crash, not a `fail` verdict), finalize this stage `status=fail` + `fail_reason` listing the failed children (via the finalize early-fail entry) and defer per-child re-dispatch to a repair round.
 
 ### Step 1: Entry — determine scope, pick the entry point
 
-Your previous round, if any, is already present in `{workdir}` — edit it in place. When `{directive_path}` is injected, Read it first — its `fix_locus` narrows the scope. Then:
+Your previous round, if any, is already present in `{workdir}`; edit it in place. When `{directive_path}` is injected, Read it first: its `fix_locus` narrows the scope. Then branch on whether a `<child>.md` is already in `{workdir}`:
 
-- **Any `<child>.md` is already present in `{workdir}`** — a repair round: `<child>.md` is Wave-2 output, written only *after* the Step-4 partition gate, so its presence proves the partition was gate-confirmed in a prior round. Scope = `{directive_path}`'s `fix_locus` when injected, else a `{failing_result}`'s `stage_specific` attribution — Read the trigger once, and early-fail with `failing_result not readable: <path>` if it cannot be read. Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6 and flow through Steps 7–9**: Steps 2–5 (the partition) are skipped — `manifest.json` is immutable after the partition gate — and Step 7 (the semantic gate) re-runs this pass, so the promoted gate is always fresh. Ends at Step 9.
-- **No `<child>.md` in `{workdir}`** — no partition has been gate-confirmed yet (a first delivery, or a run interrupted or reset before that gate): full re-derivation from Step 2 — a fresh partition, including the human partition gate. `design.md`/`manifest.json` alone do not qualify — they are Wave-1 output, written *before* the gate. Ends at Step 9.
+- **A `<child>.md` is present:** a repair round. A `<child>.md` is Wave-2 output, written only *after* the Step-4 partition gate, so its presence proves the partition was gate-confirmed in a prior round. Scope is `{directive_path}`'s `fix_locus` when injected, otherwise the `{failing_result}`'s `stage_specific` attribution; Read that trigger once, and early-fail (`failing_result not readable: <path>`) if it cannot be read. Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6** and flow through Steps 7–9, ending at Step 9. Steps 2–5 (the partition) are skipped, since `manifest.json` is immutable after the partition gate; Step 7 (the semantic gate) re-runs on this pass, so the promoted gate is always fresh.
+- **No `<child>.md` in `{workdir}`:** no partition has been gate-confirmed yet (a first delivery, or a run interrupted or reset before that gate). Re-derive in full from Step 2 (a fresh partition, including the human partition gate), ending at Step 9. `design.md` or `manifest.json` alone do not qualify: they are Wave-1 output, written *before* the gate.
 
-**Early-fail exit.** Whenever a documented failure below cannot be resolved, close the run with the finalize early-fail entry — never hand-assemble the envelope:
+**Early-fail exit.** Whenever a documented failure below cannot be resolved, close the run with the finalize early-fail entry, not a hand-assembled envelope:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
@@ -100,25 +100,35 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
 
 ### Step 2: Wave 1 — decompose
 
-Dispatch one Level-1 sub-Task per `references/decompose-task-contract.md`: in its own context it reads `<brainstorm>/brainstorm.md` and writes `manifest.json` + the `design.md` overview (§1.1–1.7) + `ppa.json`. The partition strategy, field schemas, and the `STATUS` return protocol live in that contract — do not restate or reinterpret them here. After dispatching, end the turn; reap and proceed to Step 3 only after it reports.
+Dispatch one Level-1 sub-Task per `references/decompose-task-contract.md`. In its own context it reads `<brainstorm>/brainstorm.md` and writes `manifest.json`, the `design.md` overview (§1.1–1.7), and `ppa.json`; the partition strategy, field schemas, and `STATUS` return protocol live in that contract (do not restate them here).
+
+After dispatching, end the turn, then reap and proceed to Step 3 only after it reports.
 
 ### Step 3: Derive inter-module ports
 
-Run `derive-ports` to compute each child's inter-module ports — the §1.4.2 wires whose Producer/Consumer RTL module is in that child's `rtl_modules`:
+Run `derive-ports` to compute each child's inter-module ports (the §1.4.2 wires whose Producer/Consumer RTL module is in that child's `rtl_modules`):
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py derive-ports --workdir {workdir}
 ```
 
-On a non-zero exit, stderr names the defect: do NOT gate — route a Wave-1 rework sub-Task to fix it, or close via early-fail if it is unresolvable.
+On a non-zero exit, stderr names the defect. Do NOT gate: route a Wave-1 rework sub-Task to fix it, or close via early-fail if it is unresolvable.
 
-### Step 4: Partition gate (human) — no body read
+### Step 4: Partition gate (human)
 
-Present an N-child summary built from `Grep manifest.children[].{name,role}` + the `derive-ports` JSON (inter-module wires per child). **Do NOT read `design.md` §1.4.x into the main thread** — point the user to §1.4 to inspect themselves. Include an oversize-cluster advisory flag computed from manifest metadata only (`rtl_modules` count + `brainstorm_anchor` line-span as a size proxy) — a sub-Task context-budget hint, NOT a partition criterion (do not let it re-seed size-class thinking). Never auto-split. Confirm, or take merge feedback → re-dispatch Wave 1 with the new grouping → re-run `spec derive-ports`.
+Present an N-child summary from manifest metadata only: `Grep manifest.children[].{name,role}` plus the `derive-ports` JSON (inter-module wires per child). **Do NOT read `design.md` §1.4.x into the main thread**; point the user to §1.4 to inspect it themselves.
+
+The human then either:
+- **confirms** the partition, or
+- gives **merge feedback**, then you re-dispatch Wave 1 with the new grouping and re-run `derive-ports`.
+
+Guardrails: **never auto-split**. If a cluster's `rtl_modules` count looks unusually large, flag it for the human to re-check for a missed clean-handshake cut point, never a size-based split.
 
 ### Step 5: Wave 2 — child sub-designs (×N)
 
-Dispatch N sub-Tasks (one per child), each writing `{workdir}/<child>.md` per `references/child-design-template.md`. `frontmatter.ports` = the derived inter-module wire list (Step 3) + any child-authored top-IO ports. **Wave 2 is ALWAYS dispatched (N=1 → ×1 sub-Task); a child body never lives on the main thread.** After dispatching all N, end the turn; reap each child and proceed only after all N have reported.
+Dispatch N sub-Tasks (one per child), each writing `{workdir}/<child>.md` per `references/child-design-template.md`. Each child's `frontmatter.ports` is the derived inter-module wire list (Step 3) plus any child-authored top-IO ports. **Wave 2 is ALWAYS dispatched (even N=1 is one sub-Task).**
+
+After dispatching all N, end the turn; reap each child and proceed only after all N have reported.
 
 ### Step 6: Coverage gate + constraint derivation (script)
 
@@ -126,7 +136,7 @@ Dispatch N sub-Tasks (one per child), each writing `{workdir}/<child>.md` per `r
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py check-coverage --workdir {workdir} --brainstorm <brainstorm>/brainstorm.md
 ```
 
-It reads brainstorm/children/design in-process and writes `coverage.json` (sub-blocks: `brainstorm_coverage` / `frontmatter_subset` / `token_survival` / `self_containment` / `structure`); exit 0 = pass.
+It reads brainstorm/children/design in-process and prints the coverage verdict to stdout (sub-blocks: `brainstorm_coverage` / `frontmatter_subset` / `token_survival` / `self_containment` / `structure`); exit 0 = pass.
 
 **On failure you fix nothing yourself** — route the (small) verdict to a rework sub-Task by category, then re-run the script, looping until clean:
 
@@ -171,7 +181,7 @@ On a non-zero exit, re-assemble the JSON and re-run (a main-thread fix, NOT a re
 
 ### Step 8: design.md gate (human)
 
-Path-handoff: give the user the `design.md` (+ per-child) paths + the `coverage.json` verdict + the `spec-review.json` verdict — `spec_gate.flagged` blocking items + `spec_gate.must_ack` advisory items (deduped per Step 7) + any `review unavailable` ack item; point to `spec-review.json` for the one-line summaries; **do not echo any body**. Additionally present the `ppa.json` content **verbatim** (a few-element numeric array, not a "body") — these are the acceptance targets synthesis/power-analysis will gate on, transcribed by Wave 1 with no other human-visible surface; the approval covers them.
+Path-handoff: give the user the `design.md` (+ per-child) paths + the coverage verdict + the `spec-review.json` verdict — `spec_gate.flagged` blocking items + `spec_gate.must_ack` advisory items (deduped per Step 7) + any `review unavailable` ack item; point to `spec-review.json` for the one-line summaries; **do not echo any body**. Additionally present the `ppa.json` content **verbatim** (a few-element numeric array, not a "body") — these are the acceptance targets synthesis/power-analysis will gate on, transcribed by Wave 1 with no other human-visible surface; the approval covers them.
 
 **Approve precondition (the single home — finalize re-checks it in-process):** you MUST NOT accept the user's approval unless `spec_gate.gate==clear` OR every `flagged` finding is waived per Step 7's waiver protocol; if not, resolve at Step 7 first.
 
@@ -185,7 +195,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
   --waived '<spec_gate.waived[] JSON>'
 ```
 
-You supply only the human-gate outcome: `--status` (approve/reject) and `--waived` (`[]` if none). `ppa_targets` is read from the Wave-1-authored `{workdir}/ppa.json` (pass `--ppa-targets '<JSON>'` only as an explicit override; a missing/invalid `ppa.json` is a BLOCKED program exception, not a silent default). `finalize` (on a pass) re-runs the constraint derivation (divergence-proofing), re-derives the Step-7 `spec_gate` verdict in-process from `spec-review.json` and merges `--waived`, **enforces the Step-8 approve precondition itself** (an unmet precondition downgrades `--status pass` to a written `status=fail`), enumerates `artifacts[]` present-only (design.md / manifest.json / coverage.json / ppa.json / spec-review.json / the N `<child>.md` / `constraints/<TOP>.{sdc,sgdc}` — **never `brainstorm.md`**), and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail); a non-zero exit is a program exception (BLOCKED), not a `status=fail`.
+You supply only the human-gate outcome: `--status` (approve/reject) and `--waived` (`[]` if none). `ppa_targets` is read from the Wave-1-authored `{workdir}/ppa.json` (pass `--ppa-targets '<JSON>'` only as an explicit override; a missing/invalid `ppa.json` is a BLOCKED program exception, not a silent default). `finalize` (on a pass) re-runs the constraint derivation (divergence-proofing), re-derives the Step-7 `spec_gate` verdict in-process from `spec-review.json` and merges `--waived`, **enforces the Step-8 approve precondition itself** (an unmet precondition downgrades `--status pass` to a written `status=fail`), enumerates `artifacts[]` present-only (design.md / manifest.json / ppa.json / spec-review.json / the N `<child>.md` / `constraints/<TOP>.{sdc,sgdc}` — **never `brainstorm.md`**), and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail); a non-zero exit is a program exception (BLOCKED), not a `status=fail`.
 
 Downstream consumption note: synthesis and power-analysis read `ppa.json` directly as their gate targets; the Orchestrator reads it only to author rtl-design's directive. Nothing is injected into any prompt by this stage.
 
