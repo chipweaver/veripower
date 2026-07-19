@@ -132,28 +132,28 @@ After dispatching all N, end the turn; reap each child and proceed only after al
 
 ### Step 6: Coverage gate + constraint derivation (script)
 
+Run `check-coverage` to gate the design.md and children before the review:
+
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py check-coverage --workdir {workdir} --brainstorm <brainstorm>/brainstorm.md
 ```
 
-It reads brainstorm/children/design in-process and prints the coverage verdict to stdout (sub-blocks: `brainstorm_coverage` / `frontmatter_subset` / `token_survival` / `self_containment` / `structure`); exit 0 = pass.
-
-**On failure you fix nothing yourself** — route the (small) verdict to a rework sub-Task by category, then re-run the script, looping until clean:
+It prints the coverage verdict to stdout (sub-blocks: `brainstorm_coverage` / `frontmatter_subset` / `token_survival` / `self_containment` / `structure`); exit 0 = pass. On a non-zero exit, **fix nothing yourself**; you only route to a rework sub-Task:
+- **coverage violations** (a verdict is on stdout): route by category (below), then re-run, looping until clean.
+- **a table could not be parsed** (it raised; stderr names the defect): route a Wave-1 rework, or early-fail if unresolvable.
 
 | Violation category | Rework target |
 |---|---|
 | `gaps` / `orphans`; `structure` §1.3/§1.5 columns; period (R-B); Clock-Domain (R-F); `purity_violations`; `interconnect_violations` (§1.4.2 Width / Clock Domain); `top_io_driver_violations` (§1.4.1 output Owner) | Wave-1 rework (re-partition the manifest; `design.md` overview tables) |
 | `token_survival`; `frontmatter_subset`; `self_containment`; child §5 columns; feature coverage (R-C) | the affected Wave-2 child rework |
 
-You hold only the verdict + the routing decision — never a body.
-
-**On a clean coverage gate, immediately run:**
+**On a clean coverage gate, immediately run `derive-constraints`:**
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py derive-constraints --workdir {workdir}
 ```
 
-It generates the complete `constraints/<TOP>.{sdc,sgdc}` purely from the §1.6 + §1.4.1 tables (clocks + relationships, IO delays, abstract_ports, resets + polarity) and self-checks before writing (Iron Rule: no separate checker). Running it here — before the design.md gate — surfaces table defects the coverage gate cannot see (enum values, reset polarity/kind, clock-name collisions) while a rework still flows naturally through Steps 6→7→8. On a non-zero exit (stderr names the exact defect), route a Wave-1 rework sub-Task and re-run this step; if unresolvable, close via early-fail (`constraint derivation: <table> defect`). `finalize` re-runs the derivation at Step 9 as the divergence-proof invariant (`<TOP>` ← `manifest.module`), so the files the human approved and the files that ship cannot diverge.
+It generates `constraints/<TOP>.{sdc,sgdc}` from the §1.6 and §1.4.1 tables, self-checked before writing. Running it here, before the design.md gate, surfaces table defects the coverage gate cannot see (enum values, reset polarity/kind, clock-name collisions), so a rework is still cheap. On a non-zero exit, stderr names the exact defect: route a Wave-1 rework sub-Task and re-run this step, or close via early-fail if unresolvable.
 
 ### Step 7: Wave 3 — semantic review (gating)
 
