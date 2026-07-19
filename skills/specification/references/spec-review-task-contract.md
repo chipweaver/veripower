@@ -24,35 +24,39 @@ Read the `<child>.md` against its `brainstorm_anchor` intent and against `design
   intent for this child, with nothing omitted, contradicted, or silently added? (reference frame =
   brainstorm.md slice). Examples: a brainstorm-required mode/signal/behavior absent from the doc;
   a doc decision that contradicts a brainstorm requirement.
-- **`conformance`** (gating) — for each **control/status** §1.4.x row this child consumes or drives:
-  (1) does the row pin an Encoding that is **present AND adequate** — i.e. complete enough that the
-  consumer can implement its decode/obligation with no guessing (a code→symbol with the per-code
-  consumer obligation for a phase/command bus)? a missing or under-specified (thin) Encoding is a
-  `conformance` finding; (2) does this child's `<child>.md §2/§3` decode / obligation **agree with
-  the pinned Encoding row** (no divergent decode, no contradicted obligation)? (reference frame =
-  `design.md` §1.4.x Encoding). Decision rule: a well-formed-but-inadequate Encoding, or a child
-  decode/obligation that contradicts a well-formed row, is `conformance` (block). NOTE: there is no
-  deterministic encoding gate — judging adequacy IS your job here (do not assume a mechanical check
-  caught it).
-  Additionally, **name-resolution** for an inter-module behavior contract: when **two or more §1.4.2
-  wires reference the same named phase / sequence** (in their `Timing Constraint` cells or control-bus
-  `Encoding` symbols) but that name is **not declared in the §1.4.2.1 companion** — including the case
-  where such named references exist yet there is no companion at all — the references do not resolve,
-  and that is a `conformance` finding (block). The conformance block line is **encoding decode/adequacy
-  + name-resolution only** — both objective. Two things are NOT conformance (report as `soundness`
-  advisory, never block): (a) whether this module *ought* to have a joint contract it never referenced
-  (a pure judgment, like deciding what counts as control/status); (b) whether the stated
-  co-assertions / relative offsets / mutual-exclusion are *correct*, or whether a coarse symbol
-  resolves to several companion phases (ambiguous projection — the reference resolves, but not to one).
-- **`soundness`** (advisory must-acknowledge) — is the child's spec-introduced micro-architecture
-  (timing assumptions, state-machine / datapath choices) logically self-consistent and able to
-  realize the required behavior? (NO upstream reference — pure design judgment). **Also report here**
-  any cross-interface inconsistency that is NOT a `conformance` issue (not an encoding decode/adequacy
-  defect, not a behavior-contract name-resolution failure — those block above). In particular the
-  **correctness** of a cross-bus behavior contract — whether co-assertions / relative offsets /
-  mutual-exclusion are right, whether a **coarse control-bus symbol resolves to several companion
-  phases (ambiguous projection)**, and any cross-**bus** phase-fold you cannot fully verify from one
-  child — is advisory soundness; downstream RTL semantic-review / simulation is the backstop.
+- **`conformance`** (gating, reference frame = `design.md` §1.4.x Encoding) — for each **control/status**
+  §1.4.x row this child consumes or drives:
+  - **(1) Encoding present AND adequate** — does the row pin an Encoding complete enough that the
+    consumer can implement its decode/obligation with no guessing (a code→symbol with the per-code
+    consumer obligation for a phase/command bus)? A missing or under-specified (thin) Encoding is a
+    `conformance` finding.
+  - **(2) Decode agrees with the row** — does this child's `<child>.md §2/§3` decode / obligation
+    **agree with the pinned Encoding row** (no divergent decode, no contradicted obligation)? Decision
+    rule: a well-formed-but-inadequate Encoding, or a child decode/obligation that contradicts a
+    well-formed row, is `conformance` (block).
+  - **Name-resolution** for an inter-module behavior contract — when **two or more §1.4.2 wires
+    reference the same named phase / sequence** (in their `Timing Constraint` cells or control-bus
+    `Encoding` symbols) but that name is **not declared in the §1.4.2.1 companion** — including the case
+    where such named references exist yet there is no companion at all — the references do not resolve,
+    and that is a `conformance` finding (block).
+
+  NOTE: there is no deterministic encoding gate — judging adequacy IS your job here (do not assume a
+  mechanical check caught it). The conformance block line is **encoding decode/adequacy + name-resolution
+  only** — both objective. Two things are NOT conformance (report as `soundness` advisory, never block):
+  (a) whether this module *ought* to have a joint contract it never referenced (a pure judgment, like
+  deciding what counts as control/status); (b) whether the stated co-assertions / relative offsets /
+  mutual-exclusion are *correct*, or whether a coarse symbol resolves to several companion phases
+  (ambiguous projection — the reference resolves, but not to one).
+- **`soundness`** (advisory must-acknowledge, NO upstream reference — pure design judgment):
+  - **Micro-arch realizability** — is the child's spec-introduced micro-architecture (timing
+    assumptions, state-machine / datapath choices) logically self-consistent and able to realize the
+    required behavior?
+  - **Cross-interface inconsistency** that is NOT a `conformance` issue (not an encoding decode/adequacy
+    defect, not a behavior-contract name-resolution failure — those block above). In particular the
+    **correctness** of a cross-bus behavior contract — whether co-assertions / relative offsets /
+    mutual-exclusion are right, whether a **coarse control-bus symbol resolves to several companion
+    phases (ambiguous projection)**, and any cross-**bus** phase-fold you cannot fully verify from one
+    child — is advisory soundness; downstream RTL semantic-review / simulation is the backstop.
 
 ### Out of scope (do NOT report as faithfulness)
 - **Width / Clock-Domain / Owner mechanical defects** — these are the deterministic §1.4.x coverage
