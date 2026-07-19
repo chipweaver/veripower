@@ -169,22 +169,24 @@ Aggregate the reaped reports into `{workdir}/spec-review.json` (schema `referenc
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py validate-review --review {workdir}/spec-review.json
 ```
 
-A non-zero exit means the JSON you assembled is invalid; stderr names the schema or consistency violation. Re-assemble and re-run (a main-thread fix, NOT a re-dispatch). On exit 0 it prints the gate verdict `{"gate":"trip"|"clear","flagged":[{child,lens,severity}…],"must_ack":[{child,severity}…]}`: the mechanical `lens × severity` reduction, computed by the script, not by eye. You copy nothing into any envelope (finalize re-derives it from the promoted `spec-review.json`). Apply the verdict. **This section is the single home of the waiver protocol:**
+On a non-zero exit, the JSON you assembled is invalid: stderr names the schema violation. Re-assemble and re-run (a main-thread fix, NOT a re-dispatch).
 
-- **`clear`**: proceed; carry `must_ack` into Step 8, deduped against the prior promoted `spec-review.json` wave, surfacing an advisory item only if NEW or CHANGED (match by `child`+`summary`). An unchanged item was already acknowledged (anti rubber-stamp).
-- **`trip`**: resolve each `flagged` item in exactly one of three ways:
-  - **fixed**: the operator directs a rework sub-Task (handled as a Step-8 reject: body off the main thread, back to Step 6); or
-  - **waived (human waiver)**: record a waiver (schema `spec_gate.waived`) whose **`reason` is human-authored: PROMPT the operator and block until provided, never auto-write it**. A waiver keys on **(child, lens)**: one waiver clears every flagged finding of that pair. For a **critical-severity faithfulness** waiver, surface: "no downstream stage re-checks spec-vs-brainstorm, so this is a terminal accept." Waivers reach the envelope only via finalize `--waived`.
-  - **partition-rooted**: the defect is rooted in the child partition, not a design.md body (`manifest.json` is read-only after the partition gate), so a design.md-only rework cannot clear it; close via early-fail (`requirements need revision`) for a fresh run.
-- **Wave unusable**: write a minimal `spec-review.json` with a single `unavailable` finding (the validator reports `gate=clear`), and surface "review unavailable" as a **must-acknowledge** item at Step 8 (deduped likewise); the user's approval explicitly acknowledges the gate did not run, never silently a clean pass.
+On exit 0 it prints the gate verdict `{"gate":"trip"|"clear","flagged":[{child,lens,severity}…],"must_ack":[{child,severity}…]}`: the mechanical `lens × severity` reduction, computed by the script, not by eye. You copy nothing into any envelope; finalize re-derives it from the promoted `spec-review.json`.
+
+On `clear` you proceed to the Step-8 gate; on `trip` the findings are resolved there (block-in-place, above). `must_ack` advisories and any `unavailable` markers ride to that gate for acknowledgement. This stage never auto-fixes design.md.
 
 ### Step 8: design.md gate (human)
 
-Path-handoff: give the user the `design.md` (+ per-child) paths + the coverage verdict + the `spec-review.json` verdict — `spec_gate.flagged` blocking items + `spec_gate.must_ack` advisory items (deduped per Step 7) + any `review unavailable` ack item; point to `spec-review.json` for the one-line summaries; **do not echo any body**. Additionally present the `ppa.json` content **verbatim** (a few-element numeric array, not a "body") — these are the acceptance targets synthesis/power-analysis will gate on, transcribed by Wave 1 with no other human-visible surface; the approval covers them.
+Path-handoff: give the user the `design.md` (+ per-child) paths, the coverage verdict, and the `spec-review.json` verdict (`spec_gate.flagged` blocking items + `spec_gate.must_ack` advisory items + any `review unavailable` ack item); point to `spec-review.json` for the one-line summaries; **do not echo any body**. Surface a `must_ack` (or `review unavailable`) item only if NEW or CHANGED vs the prior promoted `spec-review.json` wave (match by `child`+`summary`); an unchanged item was already acknowledged (anti rubber-stamp). A `review unavailable` item means the gate did not run for that child, so the user's approval explicitly acknowledges it, never a silent clean pass. Additionally present the `ppa.json` content **verbatim** (a few-element numeric array, not a "body"); these are the acceptance targets synthesis/power-analysis will gate on, transcribed by Wave 1 with no other human-visible surface, and the approval covers them.
 
-**Approve precondition (the single home — finalize re-checks it in-process):** you MUST NOT accept the user's approval unless `spec_gate.gate==clear` OR every `flagged` finding is waived per Step 7's waiver protocol; if not, resolve at Step 7 first.
+If `spec_gate.gate==trip`, resolve each `flagged` item in exactly one of three ways. **This is the single home of the waiver protocol:**
+- **fixed**: the operator rejects (below) and directs a rework sub-Task back to Step 6.
+- **waived (human waiver)**: record a waiver (schema `spec_gate.waived`) whose **`reason` is human-authored: PROMPT the operator and block until provided, never auto-write it**. A waiver keys on **(child, lens)**: one waiver clears every flagged finding of that pair. For a **critical-severity faithfulness** waiver, surface: "no downstream stage re-checks spec-vs-brainstorm, so this is a terminal accept." Waivers reach the envelope only via finalize `--waived`.
+- **partition-rooted**: the defect is rooted in the child partition, not a design.md body (`manifest.json` is read-only after the partition gate), so a design.md-only rework cannot clear it; close via early-fail (`requirements need revision`) for a fresh run.
 
-On reject: route a rework sub-Task (body stays off the main thread; the rework first clears `spec_gate=clear` — invalidate-on-rework, so a post-clear body edit cannot leave a stale `clear`), then **re-enter the main chain at Step 6** and flow through 6→7→8 again.
+**Approve precondition (finalize re-checks it in-process):** you MUST NOT accept the user's approval unless `spec_gate.gate==clear` OR every `flagged` finding is waived per the waiver protocol above; if not, resolve first.
+
+On reject: route a rework sub-Task, body off the main thread. The rework first clears `spec_gate=clear` (invalidate-on-rework, so a post-clear body edit cannot leave a stale `clear`), then **re-enter the main chain at Step 6** and flows through 6→7→8 again.
 
 ### Step 9: Finalize (script, mandatory)
 
