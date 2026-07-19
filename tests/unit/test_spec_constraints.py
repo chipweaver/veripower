@@ -320,3 +320,68 @@ def test_self_check_flags_clock_group_divergence():
     constraints._self_check("m", [], [], sdc, sgdc_ok)  # no raise
     with pytest.raises(SystemExit):
         constraints._self_check("m", [], [], sdc, sgdc_bad)
+
+
+# ---------- F1: misnamed / empty §1.4.1 Signal column ----------
+
+
+def test_fail_loud_misnamed_signal_column(tmp_path):
+    # §1.4.1 with 'Port' instead of the canonical 'Signal' must fail loud, not silently
+    # yield zero ports and IO-less constraints (the ports.py-class drift defect).
+    design = (
+        "# m Design\n\n#### 1.4.1 Top-Level IO\n\n"
+        "| Port | Direction | Width | Clock Domain | Interface Group | Protocol | Role | ResetPolarity | ResetKind |\n"
+        "|---|---|---|---|---|---|---|---|---|\n"
+        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
+        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n\n"
+        "### 1.6 Clocks and Frequencies\n\n"
+        "| Clock Name | Nominal Frequency (MHz) | SDC Period (ns) | Relationship | Generated | Role |\n"
+        "|---|---|---|---|---|---|\n"
+        "| clk | 100 | 10.0 | primary | no | primary clock |\n\n"
+    )
+    proc = _run(_wd(tmp_path, design), check=False)
+    assert proc.returncode != 0 and "Signal" in proc.stderr
+
+
+# ---------- F2: data port with blank / invalid Direction ----------
+
+
+def test_fail_loud_data_port_blank_direction(tmp_path):
+    # A data-role port silently dropped from the SDC (no set_input/output_delay) when its
+    # Direction is blank/invalid. Must fail loud instead.
+    design = _design(
+        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
+        "| din |  | 8 | clk | cfg | APB3 | data | - | - |\n",  # blank Direction
+        "| clk | 100 | 10.0 | primary | no | primary clock |\n",
+    )
+    proc = _run(_wd(tmp_path, design), check=False)
+    assert proc.returncode != 0 and "Direction" in proc.stderr
+
+
+# ---------- F3: clock named like the '-domain' flag must not spuriously fail ----------
+
+
+def test_clock_named_like_domain_flag_not_spurious_fail(tmp_path):
+    # A single sync clock literally named 'x-domain' (no async clocks) must NOT trip the
+    # SDC/SGDC async-parity self-check; the old bare '-domain' substring matched the
+    # 'x-domain' inside `clock -name x-domain`.
+    design = _design(
+        "| xd_clk | input | 1 | x-domain | clk | - | clock | - | - |\n"
+        "| din | input | 8 | x-domain | cfg | APB3 | data | - | - |\n",
+        "| x-domain | 100 | 10.0 | primary | no | primary clock |\n",
+    )
+    proc = _run(_wd(tmp_path, design), check=False)
+    assert proc.returncode == 0, (proc.stdout, proc.stderr)
+
+
+def test_ports_column_guard_uses_header_not_ragged_row0():
+    # F5-consistency: the §1.4.1 column guard must check the declared HEADER, not the first
+    # data row. A complete header with a ragged first data row must NOT false-report a
+    # missing canonical column (it fails, if at all, with the accurate per-row reason).
+    design = _design(
+        "| din | input | 8 |\n",  # ragged: 3 cells under a 9-column header
+        "| clk | 100 | 10.0 | primary | no | primary clock |\n",
+    )
+    with pytest.raises(SystemExit) as e:
+        constraints._ports(design)
+    assert "missing canonical column" not in str(e.value.code)

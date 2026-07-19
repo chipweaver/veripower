@@ -861,3 +861,116 @@ def test_token_survival_ppa_token_elsewhere_still_required(tmp_path):
     )
     tok = cc.compute_token_survival(tmp_path, manifest, brainstorm, "no tokens here")
     assert {"missing_token": "0.5 ns"} in tok["missing_tokens"]
+
+
+# ---------- F4: duplicate brainstorm chapter titles must not mask an uncovered one ----------
+
+
+def test_brainstorm_coverage_duplicate_title_not_masked():
+    # two chapters share the title "Overview"; a child covering only the FIRST must not
+    # mask the SECOND (uncovered) one — the title must still surface in gaps.
+    bs = _bs(
+        {
+            "module": "m",
+            "children": [
+                {
+                    "name": "c",
+                    "doc": "c.md",
+                    "rtl_modules": ["c"],
+                    "brainstorm_anchor": "lines 1-3",
+                }
+            ],
+        },
+        "# Top\n## Overview\nbody\n## Middle\n## Overview\ntail\n",
+    )  # Top(1),Overview(2) covered by 1-3; Middle(4),Overview(5) uncovered
+    assert "Overview" in bs["gaps"], bs["gaps"]
+    assert "Middle" in bs["gaps"], bs["gaps"]
+
+
+# ---------- F5: ragged first data row must not yield false missing_column ----------
+
+
+def test_structure_ragged_first_row_no_false_missing_column():
+    # §1.6 header declares all 4 gated columns but the FIRST data row is short (2 cells);
+    # the column-presence check must read the HEADER, not the truncated first row.
+    design = _GOOD_DESIGN.replace(
+        "| clk | 100 | 10.0 | primary | primary clock |\n",
+        "| clk | 100 |\n| clk2 | 50 | 20.0 | synchronous-related | second |\n",
+    )
+    cv = _struct(design)["column_violations"]
+    assert not any(v["section"] == "1.6" for v in cv), cv
+
+
+# ---------- F6: missing 'children' manifest key must yield a clean verdict ----------
+
+
+def test_missing_children_key_clean_verdict(tmp_path):
+    (tmp_path / "manifest.json").write_text(json.dumps({"module": "m"}))  # no children
+    (tmp_path / "design.md").write_text(_GOOD_DESIGN)
+    bs = tmp_path / "brainstorm.md"
+    bs.write_text("# A\nx\n")
+    proc = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "check-coverage",
+            "--workdir",
+            str(tmp_path),
+            "--brainstorm",
+            str(bs),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 1, (proc.stdout, proc.stderr)
+    cov = json.loads(proc.stdout)  # valid JSON on stdout ⇒ graceful, not a traceback
+    assert cov["status"] == "fail"
+    assert cov["structure"]["manifest_violations"], cov["structure"]
+
+
+# ---------- F7: misnamed §1.3 ID column must fail loud ----------
+
+
+def test_parse_main_tables_13_wrong_header_is_loud():
+    import pytest
+    from spec import coverage as cc
+
+    design = (
+        "# m\n\n### 1.3 Feature Table\n\n"
+        "| FeatureID | Feature |\n|---|---|\n| F-00 | f |\n"
+    )
+    with pytest.raises(ValueError, match=r"1\.3.*ID"):
+        cc.parse_main_design_tables(design)
+
+
+# ---------- F8: §5 SourceFeature aliases are no longer honored ----------
+
+
+def test_source_feature_alias_not_honored():
+    # an old alias ('source_feature') must NOT be silently accepted for coverage —
+    # only the canonical 'SourceFeature' counts, so the feature stays uncovered.
+    bodies = {"c": _CHILD_5.replace("SourceFeature", "source_feature")}
+    s = _struct_with_children(_GOOD_DESIGN, bodies)
+    assert any(g["feature_id"] == "F-00" for g in s["feature_coverage_gaps"])
+
+
+# ---------- F9: cross-child link detection with directory-prefixed docs ----------
+
+
+def test_self_containment_cross_child_link_with_dir_prefixed_doc(tmp_path):
+    from spec import coverage as cc
+
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "a.md").write_text("see sibling [b](b.md)", encoding="utf-8")
+    (tmp_path / "sub" / "b.md").write_text("ok", encoding="utf-8")
+    manifest = {
+        "module": "m",
+        "children": [
+            {"name": "a", "doc": "sub/a.md", "rtl_modules": ["a"]},
+            {"name": "b", "doc": "sub/b.md", "rtl_modules": ["b"]},
+        ],
+    }
+    sc = cc.compute_self_containment(tmp_path, manifest, "# m clean")
+    assert sc["cross_child_links"], (
+        "must detect cross-child link with dir-prefixed docs"
+    )

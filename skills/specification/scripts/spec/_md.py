@@ -45,6 +45,17 @@ def extract_section(text: str, heading_regex: str) -> str:
     return "\n".join(out)
 
 
+def table_header(section_text: str) -> list[str]:
+    """Return the DECLARED column names (the header row) of the first markdown table,
+    independent of any data row's cell count. `[]` when there is no table. Use this for
+    column-presence checks: `parse_markdown_table` zips header↔cells and truncates to the
+    shorter, so a ragged first data row would drop trailing keys and read as 'missing'."""
+    for line in section_text.splitlines():
+        if line.strip().startswith("|"):
+            return _split_row(line)
+    return []
+
+
 def parse_markdown_table(section_text: str) -> list[dict]:
     """Parse the first markdown table after a heading; return list of row dicts."""
     rows: list[dict] = []

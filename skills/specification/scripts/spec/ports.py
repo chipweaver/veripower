@@ -21,7 +21,7 @@ import json
 import sys
 from pathlib import Path
 
-from spec._md import extract_section, parse_markdown_table
+from spec._md import extract_section, parse_markdown_table, table_header
 
 _SEC_142 = r"§?\s*1\.4\.2.*Inter.module\s+Interconnects?"
 
@@ -40,18 +40,25 @@ def _row_endpoints(row: dict) -> set:
 def derive_ports(workdir: Path) -> dict:
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
     design_text = (workdir / "design.md").read_text(encoding="utf-8")
-    rows = parse_markdown_table(extract_section(design_text, _SEC_142))
+    sec = extract_section(design_text, _SEC_142)
+    rows = parse_markdown_table(sec)
     if rows:
         missing = {"Wire", "Producer (RTL module)", "Consumer (RTL module)"} - set(
-            rows[0]
+            table_header(sec)
         )
         if missing:
             sys.exit(
                 f"design.md §1.4.2 table missing canonical column(s) {sorted(missing)} "
-                f"(found {list(rows[0])}); see design-template.md."
+                f"(found {table_header(sec)}); see design-template.md."
             )
+    children = manifest.get("children")
+    if not children:
+        sys.exit(
+            "derive-ports: manifest.children missing or empty — need >=1 child "
+            "(specification Completion Gate)."
+        )
     out: dict[str, list[str]] = {}
-    for child in manifest["children"]:
+    for child in children:
         rtl_modules = child.get("rtl_modules")
         if not rtl_modules:
             sys.exit(

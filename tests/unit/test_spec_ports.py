@@ -123,3 +123,34 @@ def test_142_missing_endpoint_column_fails_loud(tmp_path):
     proc = _run(tmp_path, check=False)
     assert proc.returncode != 0
     assert "1.4.2" in proc.stderr
+
+
+def test_142_column_guard_uses_header_not_ragged_row0(tmp_path):
+    """F5-consistency: the §1.4.2 column guard checks the declared HEADER, not the first
+    data row — a complete header with a ragged first data row must not false-report a
+    missing canonical column."""
+    design = (
+        "# m Design\n\n#### 1.4.2 Inter-module Interconnects\n\n"
+        "| Wire | Producer (RTL module) | Consumer (RTL module) | Protocol |\n"
+        "|------|------------------------|------------------------|----------|\n"
+        "| cmd_valid | ctrl |\n"  # ragged: 2 cells under a 4-column header
+    )
+    _write_workdir(
+        tmp_path,
+        {
+            "module": "m",
+            "children": [{"name": "ctrl", "doc": "ctrl.md", "rtl_modules": ["ctrl"]}],
+        },
+        design,
+    )
+    proc = _run(tmp_path, check=False)
+    assert "missing canonical column" not in proc.stderr
+
+
+def test_missing_children_fails_clean(tmp_path):
+    """A manifest without 'children' must fail loud with a clean message, not a KeyError."""
+    _write_workdir(tmp_path, {"module": "m"}, DESIGN)
+    proc = _run(tmp_path, check=False)
+    assert proc.returncode != 0
+    assert "children" in proc.stderr
+    assert "Traceback" not in proc.stderr

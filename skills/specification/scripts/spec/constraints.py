@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 
-from spec._md import extract_section, parse_markdown_table
+from spec._md import extract_section, parse_markdown_table, table_header
 
 _IO_DELAY_FRAC = 0.3
 _CLK_SEC = r"§?\s*1\.6.*Clocks?\s+and\s+Freq"
@@ -49,9 +49,16 @@ def _clocks(design: str) -> list[dict]:
 
 
 def _ports(design: str) -> list[dict]:
-    rows = parse_markdown_table(extract_section(design, _IO_SEC))
+    sec = extract_section(design, _IO_SEC)
+    rows = parse_markdown_table(sec)
     if not rows:
         _fail("design.md §1.4.1 Top-Level IO table not found / empty")
+    missing = {"Signal", "Direction", "Clock Domain", "Role"} - set(table_header(sec))
+    if missing:
+        _fail(
+            f"design.md §1.4.1 table missing canonical column(s) {sorted(missing)} "
+            f"(found {table_header(sec)}); see design-template.md."
+        )
     ports = []
     for r in rows:
         sig = r.get("Signal", "").strip()
@@ -60,16 +67,23 @@ def _ports(design: str) -> list[dict]:
         role = r.get("Role", "").strip().lower()
         if role not in {"clock", "reset", "data"}:
             _fail(f"port {sig!r}: missing/invalid Role {role!r} (clock/reset/data)")
+        direction = r.get("Direction", "").strip().lower()
+        if role == "data" and direction not in {"input", "output"}:
+            _fail(
+                f"port {sig!r}: data port needs Direction input/output, got {direction!r}"
+            )
         ports.append(
             {
                 "signal": sig,
-                "direction": r.get("Direction", "").strip().lower(),
+                "direction": direction,
                 "domain": r.get("Clock Domain", "").strip(),
                 "role": role,
                 "reset_polarity": r.get("ResetPolarity", "").strip(),
                 "reset_kind": r.get("ResetKind", "").strip().lower(),
             }
         )
+    if not ports:
+        _fail("design.md §1.4.1 has no valid port rows")
     return ports
 
 
@@ -240,7 +254,14 @@ def _self_check(top: str, clocks: list[dict], ports: list[dict], sdc: str, sgdc:
     # list (via _async_clock_groups / _sgdc_clock_domains respectively — different syntax,
     # same underlying data), so one declaring it and the other not means the two emitters
     # diverged — the exact defect F1 fixes. Backstop it here.
-    if ("set_clock_groups" in sdc) != ("-domain" in sgdc):
+    # Detect the SGDC async declaration by a standalone `-domain` token on a
+    # `clock -name` line — NOT a bare "-domain" substring, which a clock literally
+    # named "*-domain" (e.g. `clock -name x-domain ...`) would spuriously match.
+    sgdc_declares_async = any(
+        ln.startswith("clock -name ") and "-domain" in ln.split()
+        for ln in sgdc.splitlines()
+    )
+    if ("set_clock_groups" in sdc) != sgdc_declares_async:
         _fail(
             "self-check: async clock declaration present in one of SDC/SGDC but not the other"
         )

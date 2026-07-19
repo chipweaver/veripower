@@ -17,7 +17,7 @@ from pathlib import Path
 
 import yaml
 
-from spec._md import extract_section, parse_markdown_table
+from spec._md import extract_section, parse_markdown_table, table_header
 
 # ---------- brainstorm coverage ----------
 
@@ -73,7 +73,9 @@ def compute_brainstorm_coverage(
     ]
     total = len(brainstorm_text.splitlines())
     shared = set(manifest.get("shared_subsections") or [])
-    claimers = {t: [] for _, t in chapters}
+    # Key by (line_no, title): two chapters can share a title, and keying by title alone
+    # would let a COVERED same-titled chapter mask a distinct UNCOVERED one.
+    claimers = {(ln, t): [] for ln, t in chapters}
     orphans = []
     for child in manifest["children"]:
         anchor = parse_anchor(child["brainstorm_anchor"], total)
@@ -100,11 +102,14 @@ def compute_brainstorm_coverage(
             continue
         for ln, title in chapters:
             if any(s <= ln <= e for s, e in anchor):
-                claimers[title].append(child["name"])
-    return {
-        "gaps": [t for t, cs in claimers.items() if not cs and t not in shared],
-        "orphans": orphans,
-    }
+                claimers[(ln, title)].append(child["name"])
+    # Report titles (dedup, order-preserving); a title is a gap iff SOME instance of it is
+    # unclaimed and it is not a shared subsection.
+    gaps: list[str] = []
+    for (ln, title), cs in claimers.items():
+        if not cs and title not in shared and title not in gaps:
+            gaps.append(title)
+    return {"gaps": gaps, "orphans": orphans}
 
 
 # Cells that mean "unfilled". Width and Clock Domain also reject a bare dash (a wire always
@@ -153,7 +158,13 @@ def parse_main_design_tables(main_text: str) -> dict:
     out = {"features": set(), "ports": set(), "clocks": set()}
 
     sec = extract_section(main_text, r"§?\s*1\.3.*Feature\s+Table")
-    for row in parse_markdown_table(sec):
+    feat_rows = parse_markdown_table(sec)
+    if feat_rows and "ID" not in feat_rows[0]:
+        raise ValueError(
+            "design.md §1.3 table must use the canonical 'ID' column "
+            f"(found {list(feat_rows[0])}); see design-template.md."
+        )
+    for row in feat_rows:
         fid = row.get("ID", "").strip()
         if fid:
             out["features"].add(fid)
@@ -254,7 +265,10 @@ def compute_self_containment(
     """design.md ∪ children must be self-contained: no by-reference jumps to the
     brainstorm (prose pattern or a direct ](brainstorm.md) link), and no <child>.md
     markdown-link to another <child>.md (the cross-child scan is over children only)."""
-    child_docs = {child["doc"] for child in manifest["children"]}
+    # Compare on basenames: link targets are basename-normalized (below), so child_docs
+    # and the source name must be too — else a directory-prefixed child["doc"]
+    # (e.g. "sub/b.md") would never match a `](b.md)` link and cross-child links slip through.
+    child_docs = {Path(child["doc"]).name for child in manifest["children"]}
     by_ref: list[dict] = []
     cross: list[dict] = []
     docs = [("design.md", main_design_text, False)]
@@ -263,6 +277,7 @@ def compute_self_containment(
             (child["doc"], (workdir / child["doc"]).read_text(encoding="utf-8"), True)
         )
     for name, text, is_child in docs:
+        name_base = Path(name).name
         for m in _BY_REF_RE.finditer(text):
             by_ref.append({"file": name, "hit": m.group(0)})
         for lm in _MD_LINK_RE.finditer(text):
@@ -275,7 +290,7 @@ def compute_self_containment(
                 is_child
                 and target not in _LINK_WHITELIST
                 and target in child_docs
-                and target != name
+                and target != name_base
             ):
                 cross.append({"file": name, "link": target})
     return {"by_reference_jumps": by_ref, "cross_child_links": cross}
@@ -385,9 +400,10 @@ _GATED_COLS = {
     ),
 }
 
-# §5 Verification-Hints gated columns + the SourceFeature column aliases. The alias set
-# mirrors the derive-plan-data verb's source_feature candidates — keep the two in sync so the
-# specification gate and the simulation-plan parser can't disagree on the column name.
+# §5 Verification-Hints gated columns. The gate requires the canonical `SourceFeature`
+# header exactly (also the sole name honored for feature-coverage detection below): an
+# aliased column already fails the gated-column check, so tolerating it for coverage only
+# would let a spec fail-and-pass the same column inconsistently.
 _HINT_GATED = [
     "CheckID",
     "SourceFeature",
@@ -395,7 +411,6 @@ _HINT_GATED = [
     "Observable",
     "ReferenceRule",
 ]
-_SRC_FEATURE_ALIASES = {"sourcefeature", "source_feature", "sourceid", "featureid"}
 
 
 def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -> dict:
@@ -408,13 +423,15 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
         main_design_text, r"§?\s*1\.4\.2.*Inter.module\s+Interconnects?"
     ).strip():
         presence.append("§1.4.2 Inter-module Interconnects missing")
-    # Gated column presence.
+    # Gated column presence. Check against the declared HEADER (not rows[0]): a ragged
+    # first data row would drop trailing keys and read as spurious missing columns.
     for sec, (pat, cols) in _GATED_COLS.items():
-        rows = parse_markdown_table(extract_section(main_design_text, pat))
+        sec_text = extract_section(main_design_text, pat)
+        rows = parse_markdown_table(sec_text)
         if not rows:
             presence.append(f"§{sec} table missing or empty")
             continue
-        header = set(rows[0].keys())
+        header = set(table_header(sec_text))
         for c in cols:
             if c not in header:
                 columns.append({"section": sec, "missing_column": c})
@@ -473,17 +490,13 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
                 {"child": cname, "error": "§5 Verification Hints table missing"}
             )
             continue
-        header = list(rows[0].keys())
+        header = table_header(sec)
         for c in _HINT_GATED:
             if c not in header:
                 hint_col_v.append({"child": cname, "missing_column": c})
-        src_key = next(
-            (h for h in header if h.lower().replace(" ", "") in _SRC_FEATURE_ALIASES),
-            None,
-        )
-        if src_key:
+        if "SourceFeature" in header:
             for row in rows:
-                fid = row.get(src_key, "").strip()
+                fid = row.get("SourceFeature", "").strip()
                 if fid:
                     covered.add(fid)
     # Guard: when child_texts is None, skip the gap check — an empty covered set would
@@ -496,11 +509,10 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
     )
     # ----- §1.4.2 interconnect completeness (Width + Clock Domain). A heterogeneous
     # control bundle cannot fill one honest Width row → forced into per-field rows.
-    inter_rows = parse_markdown_table(
-        extract_section(
-            main_design_text, r"§?\s*1\.4\.2.*Inter.module\s+Interconnects?"
-        )
+    inter_sec = extract_section(
+        main_design_text, r"§?\s*1\.4\.2.*Inter.module\s+Interconnects?"
     )
+    inter_rows = parse_markdown_table(inter_sec)
     real_rows = [
         r
         for r in inter_rows
@@ -509,7 +521,7 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
     ]
     interconnect_v: list[dict] = []
     if real_rows:
-        header = set(real_rows[0].keys())
+        header = set(table_header(inter_sec))
         for col in ("Width", "Clock Domain"):
             if col not in header:
                 interconnect_v.append({"missing_column": col})
@@ -540,15 +552,14 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
             cname: set(parse_frontmatter(body).get("ports") or [])
             for cname, body in child_texts.items()
         }
+        io_sec = extract_section(main_design_text, _GATED_COLS["1.4.1"][0])
         io_out_rows = [
             r
-            for r in parse_markdown_table(
-                extract_section(main_design_text, _GATED_COLS["1.4.1"][0])
-            )
+            for r in parse_markdown_table(io_sec)
             if r.get("Direction", "").strip().lower() == "output"
             and r.get("Signal", "").strip()
         ]
-        if io_out_rows and "Owner" not in io_out_rows[0]:
+        if io_out_rows and "Owner" not in table_header(io_sec):
             top_io_driver_v.append({"missing_column": "Owner"})
         else:
             for row in io_out_rows:
@@ -645,6 +656,10 @@ def compute_purity(manifest: dict) -> list:
 def run(workdir: str, brainstorm: str) -> int:
     workdir_p = Path(workdir)
     manifest = json.loads((workdir_p / "manifest.json").read_text(encoding="utf-8"))
+    # Normalize a missing/empty children list once, so a manifest without 'children'
+    # yields the graceful `manifest.children must have length ≥ 1` verdict rather than a
+    # KeyError traceback from the downstream `manifest["children"]` accesses.
+    manifest["children"] = manifest.get("children") or []
     brainstorm_text = Path(brainstorm).read_text(encoding="utf-8")
     main_design_text = (workdir_p / "design.md").read_text(encoding="utf-8")
 
