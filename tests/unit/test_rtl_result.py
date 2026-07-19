@@ -15,8 +15,6 @@ _SEM_CLEAR = {
     "stage": "rtl-design",
     "module": "tpu_top",
     "reviewed_children": ["mac"],
-    "verdict": "ok",
-    "has_critical": False,
     "findings": [],
 }
 
@@ -103,8 +101,6 @@ def test_build_result_fail_on_semantic_trip(tmp_path):
         "stage": "rtl-design",
         "module": "tpu_top",
         "reviewed_children": ["mac"],
-        "verdict": "concerns",
-        "has_critical": True,
         "findings": [
             {
                 "child": "mac",

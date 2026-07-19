@@ -2,7 +2,7 @@
 """rtl validate-review — producer self-gate for the gating semantic-review.json artifact.
 
 Validates the file against references/semantic-review.schema.json (Draft 2020-12),
-checks verdict<->findings and has_critical<->severity consistency, then computes the
+then computes the
 gate verdict (the mechanical category x severity reduction over the findings,
 partitioned by fix_locus) and prints it as a one-line JSON the main thread copies --
 so the gate is script-owned, not judged by eye. `compute_gate` is reused in-process
@@ -106,27 +106,6 @@ def validate(review_path) -> int:
         for err in errors:
             loc = "/".join(str(p) for p in err.path) or "<root>"
             print(f"semantic-review invalid at {loc}: {err.message}", file=sys.stderr)
-        return 1
-    findings = doc.get("findings", [])
-    want_has_critical = any(f.get("severity") == "critical" for f in findings)
-    if doc.get("has_critical") != want_has_critical:
-        print(
-            f"semantic-review inconsistent: has_critical={doc.get('has_critical')} "
-            f"vs findings-critical={want_has_critical}",
-            file=sys.stderr,
-        )
-        return 1
-    want_verdict = (
-        "concerns"
-        if any(f.get("category") != "unavailable" for f in findings)
-        else "ok"
-    )
-    if doc.get("verdict") != want_verdict:
-        print(
-            f"semantic-review inconsistent: verdict={doc.get('verdict')!r} "
-            f"expected {want_verdict!r} from findings",
-            file=sys.stderr,
-        )
         return 1
     print(json.dumps(compute_gate(doc)))
     return 0

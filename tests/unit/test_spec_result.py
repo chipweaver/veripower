@@ -20,8 +20,6 @@ _CLEAR_REVIEW = {
     "stage": "specification",
     "module": "m",
     "reviewed_children": ["mac"],
-    "verdict": "ok",
-    "has_critical": False,
     "findings": [],
 }
 
@@ -210,8 +208,6 @@ def test_golden_waived_flagged_finding_passes(tmp_path):
                 "stage": "specification",
                 "module": "tpu_top",
                 "reviewed_children": ["mac"],
-                "verdict": "concerns",
-                "has_critical": True,
                 "findings": [
                     {
                         "child": "mac",
@@ -259,8 +255,6 @@ def test_golden_unwaived_flagged_blocks_pass(tmp_path):
                 "stage": "specification",
                 "module": "tpu_top",
                 "reviewed_children": ["mac"],
-                "verdict": "concerns",
-                "has_critical": True,
                 "findings": [
                     {
                         "child": "mac",
@@ -550,8 +544,6 @@ def test_precondition_downgrade_not_preempted_by_missing_ppa(tmp_path):
                 "stage": "specification",
                 "module": "tpu_top",
                 "reviewed_children": ["mac"],
-                "verdict": "concerns",
-                "has_critical": True,
                 "findings": [
                     {
                         "child": "mac",

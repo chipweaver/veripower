@@ -46,8 +46,6 @@ def test_semantic_review_accepts_confidence(tmp_path):
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c1"],
-        "verdict": "concerns",
-        "has_critical": True,
         "findings": [
             {
                 "child": "c1",

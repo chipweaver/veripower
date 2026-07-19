@@ -95,15 +95,13 @@ End the response with `STATUS: DONE` + a single JSON line (schema
 
 ```json
 {"schema_version": 1, "stage": "simulation", "module": "<module>",
- "reviewed_testpoints": ["TP-..."], "verdict": "ok|concerns", "has_critical": false,
+ "reviewed_testpoints": ["TP-..."],
  "findings": [{"tp_id": "<TP-ID | component token e.g. 'env:wiring'>",
                "severity": "critical|important|minor",
                "category": "missing|wrong-behavior|fake-green|unverifiable-arch|intent-defect",
                "location": "<file:line | plan ref>", "summary": "<one line>"}]}
 ```
 
-- `verdict": "ok"` ⟺ no finding with `category != "unavailable"`. `"concerns"` ⟺ ≥1 such finding.
-- `has_critical` ⟺ any `severity == "critical"`.
 - If you cannot read the full TB (context budget), do NOT silently pass: emit
   `STATUS: BLOCKED context-budget: <what was unread>` so the main thread records it as
   `unavailable` rather than a clean pass.

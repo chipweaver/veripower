@@ -10,14 +10,12 @@ sys.path.insert(0, str(ROOT / "skills" / "simulation" / "scripts"))
 from sim import review  # noqa: E402
 
 
-def _doc(findings, verdict, has_critical):
+def _doc(findings):
     return {
         "schema_version": 1,
         "stage": "simulation",
         "module": "m",
         "reviewed_testpoints": ["tp1"],
-        "verdict": verdict,
-        "has_critical": has_critical,
         "findings": findings,
     }
 
@@ -33,30 +31,27 @@ def _run(tmp_path, doc):
 
 
 def test_valid_doc_exit_0_prints_gate(tmp_path):
-    r = _run(tmp_path, _doc([], "ok", False))
+    r = _run(tmp_path, _doc([]))
     assert r.returncode == 0, r.stderr
     gate = json.loads(r.stdout.strip())
     assert gate["gate"] == "clear"
 
 
 def test_invalid_doc_exit_1(tmp_path):
-    # has_critical inconsistent with findings (finding carries all schema-required fields,
-    # incl. location, so the consistency check — not schema validation — is what trips)
+    # a bad severity enum → schema-invalid → exit 1 (the schema gate)
     doc = _doc(
         [
             {
                 "tp_id": "tp1",
                 "category": "missing",
-                "severity": "critical",
+                "severity": "bogus",
                 "location": "x",
                 "summary": "x",
             }
-        ],
-        "concerns",
-        False,
+        ]
     )
     r = _run(tmp_path, doc)
-    assert r.returncode == 1 and "inconsistent" in r.stderr
+    assert r.returncode == 1 and "conformance-review invalid" in r.stderr
 
 
 def test_compute_gate_trips_on_gating_finding():
@@ -93,5 +88,5 @@ def test_compute_gate_does_not_touch_schema():
 
 def test_schema_resolves(tmp_path):
     # a structurally-valid empty doc validates (proves _SCHEMA path is correct one dir deeper)
-    r = _run(tmp_path, _doc([], "ok", False))
+    r = _run(tmp_path, _doc([]))
     assert r.returncode == 0, r.stderr

@@ -61,8 +61,6 @@ _REVIEW_CLEAR = {
     "stage": "simulation-plan",
     "module": "tpu_top",
     "reviewed_testpoints": ["TP-1"],
-    "verdict": "ok",
-    "has_critical": False,
     "findings": [],
 }
 
@@ -124,8 +122,6 @@ def test_build_result_gate_trip_unwaived_is_fail(tmp_path):
         tmp_path,
         review={
             **_REVIEW_CLEAR,
-            "verdict": "concerns",
-            "has_critical": True,
             "findings": [
                 {
                     "tp_id": "TP-X",
@@ -152,8 +148,6 @@ def test_build_result_gate_trip_fully_waived_is_pass(tmp_path):
         tmp_path,
         review={
             **_REVIEW_CLEAR,
-            "verdict": "concerns",
-            "has_critical": True,
             "findings": [
                 {
                     "tp_id": "TP-X",
@@ -322,8 +316,6 @@ def test_finalize_blocked_on_bad_waived_json(tmp_path):
                 "stage": "simulation-plan",
                 "module": "m",
                 "reviewed_testpoints": ["TP-1"],
-                "verdict": "ok",
-                "has_critical": False,
                 "findings": [],
             }
         )

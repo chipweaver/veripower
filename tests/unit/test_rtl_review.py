@@ -23,8 +23,6 @@ def test_valid_doc_exit_0(tmp_path):
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
-        "verdict": "ok",
-        "has_critical": False,
         "findings": [],
     }
     assert _run(tmp_path, doc).returncode == 0
@@ -36,8 +34,6 @@ def test_invalid_doc_exit_1_with_stderr(tmp_path):
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
-        "verdict": "concerns",
-        "has_critical": False,
         "findings": [
             {
                 "child": "c",
@@ -59,8 +55,6 @@ def test_unavailable_category_exit_0(tmp_path):
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
-        "verdict": "ok",
-        "has_critical": False,
         "findings": [
             {
                 "child": "c",
@@ -80,8 +74,6 @@ def test_missing_severity_exit_1(tmp_path):
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
-        "verdict": "concerns",
-        "has_critical": False,
         "findings": [
             {"child": "c", "category": "missing", "location": "x", "summary": "y"}
         ],
@@ -97,8 +89,6 @@ def test_gating_finding_without_fix_locus_rejected(tmp_path):
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
-        "verdict": "concerns",
-        "has_critical": True,
         "findings": [
             {
                 "child": "c",
@@ -120,8 +110,6 @@ def test_gating_finding_with_fix_locus_ok(tmp_path):
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
-        "verdict": "concerns",
-        "has_critical": True,
         "findings": [
             {
                 "child": "c",
@@ -142,8 +130,6 @@ def test_bad_fix_locus_enum_rejected(tmp_path):
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
-        "verdict": "concerns",
-        "has_critical": False,
         "findings": [
             {
                 "child": "c",
@@ -166,8 +152,6 @@ def _gating_doc(fix_locus, *, severity="critical", category="missing"):
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
-        "verdict": "concerns",
-        "has_critical": severity == "critical",
         "findings": [
             {
                 "child": "c",
@@ -232,8 +216,6 @@ def test_gate_clears_on_unavailable_only(tmp_path):
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c"],
-        "verdict": "ok",
-        "has_critical": False,
         "findings": [
             {
                 "child": "c",
@@ -255,8 +237,6 @@ def test_mixed_locus_trip_partitions_loci(tmp_path):
         "stage": "rtl-design",
         "module": "m",
         "reviewed_children": ["c1", "c2"],
-        "verdict": "concerns",
-        "has_critical": True,
         "findings": [
             {
                 "child": "c1",
@@ -281,22 +261,6 @@ def test_mixed_locus_trip_partitions_loci(tmp_path):
     v = json.loads(r.stdout)
     assert v["gate"] == "trip"
     assert v["loci"] == {"rtl": ["c1"], "spec": ["c2"]}
-
-
-def test_has_critical_inconsistent_exit_1(tmp_path):
-    doc = _gating_doc("rtl", severity="critical")
-    doc["has_critical"] = False  # WRONG: a critical finding requires True
-    r = _run(tmp_path, doc)
-    assert r.returncode == 1
-    assert "semantic-review inconsistent" in r.stderr
-
-
-def test_verdict_inconsistent_exit_1(tmp_path):
-    doc = _gating_doc("rtl", severity="important")
-    doc["verdict"] = "ok"  # WRONG: a non-unavailable finding requires "concerns"
-    r = _run(tmp_path, doc)
-    assert r.returncode == 1
-    assert "semantic-review inconsistent" in r.stderr
 
 
 # ── compute_gate() direct, in-process — locks the X1 pure-fn extraction (Task 1.5) ───

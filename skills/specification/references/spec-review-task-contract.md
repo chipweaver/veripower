@@ -69,12 +69,11 @@ Read the `<child>.md` against its `brainstorm_anchor` intent and against `design
 ### Output
 End with `STATUS: DONE` + a single JSON line, or `STATUS: BLOCKED <reason>`:
 ```json
-{"child": "<name>", "verdict": "ok|concerns",
+{"child": "<name>",
  "findings": [{"lens": "faithfulness|conformance|soundness",
                "severity": "critical|important|minor",
                "location": "<child>.md §ref | brainstorm anchor ref", "summary": "<one line>"}]}
 ```
-- `verdict": "ok"` ⟺ `findings` empty; `"concerns"` ⟺ ≥1 finding.
 - The main thread stamps each finding with this `<child>` during aggregation; you need not repeat
   it per finding (the top-level `child` is authoritative).
 - **severity:** `critical` = likely-wrong intent realization downstream won't catch cheaply;

@@ -187,8 +187,6 @@ Dispatch, then reap on wake. Aggregate into `{workdir}/plan-review.json` (schema
 - `STATUS: DONE` + valid finding JSON → fold its findings in.
 - `STATUS: BLOCKED` OR malformed JSON → record one `{tp_id:"plan", lens:"unavailable",
   severity:"minor", location:"-", summary:"review unavailable: <reason>"}` finding.
-- `verdict="concerns"` iff any finding with `lens ≠ unavailable`; `has_critical` iff any
-  `severity=critical`.
 
 Run:
 

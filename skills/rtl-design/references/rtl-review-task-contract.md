@@ -49,7 +49,7 @@ mismatches (the deterministic `check-conformance` gate already covers these).
 End the response with `STATUS: DONE` + a single JSON line, or `STATUS: BLOCKED <reason>`:
 
 ```json
-{"child": "<name>", "verdict": "ok|concerns",
+{"child": "<name>",
  "findings": [{"severity": "critical|important|minor",
                "category": "missing|wrong-behavior|over-engineering",
                "fix_locus": "rtl|spec",
@@ -57,7 +57,6 @@ End the response with `STATUS: DONE` + a single JSON line, or `STATUS: BLOCKED <
                "location": "<file:line or <child>.md §2 ref>", "summary": "<one line>"}]}
 ```
 
-- `verdict": "ok"` ⟺ `findings` empty. `"concerns"` ⟺ ≥1 finding.
 - **severity guidance:** `critical` = likely wrong functionality that downstream may not catch cheaply;
   `important` = real concern worth a look; `minor` = nit. Calibrate — not everything is critical.
 - **`fix_locus` is required on every finding you emit** (`rtl` or `spec`). The main thread cannot route a

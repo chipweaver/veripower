@@ -208,8 +208,6 @@ Aggregate into `{workdir}/semantic-review.json` (schema `references/semantic-rev
   category:"unavailable", location:"-", summary:"review unavailable: <reason>"}` finding (the
   `unavailable` marker is the only finding with no `fix_locus`) — never silently treated as ok, but a
   DISTINCT category from substantive concerns.
-- `verdict="concerns"` iff any finding with category ≠ `unavailable`; `has_critical` iff any
-  `severity=critical`.
 
 Run:
 
@@ -260,8 +258,9 @@ or fail). A non-zero finalize exit is a program exception (BLOCKED).
 A 4.2 exit gate that already failed writes its own `status=fail` and stops there (it copies the
 `assemble` exit-gate verdict — including a mid-loop round's blocked-child or topology fail) — finalize is
 reached only when the exit gate passes through to the semantic gate. In the completion summary, emit one line
-`semantic-gate: <clear | trip | unavailable>; see semantic-review.json`; if `has_critical` (possible on a
-cleared gate when the critical finding is a non-gating category, e.g. `over-engineering`), add `⚠ <child>
+`semantic-gate: <clear | trip | unavailable>; see semantic-review.json`; if any `semantic-review.json`
+finding is `severity=critical` (possible on a cleared gate when the critical finding is a non-gating
+category, e.g. `over-engineering`), add `⚠ <child>
 critical <category> finding — recommend operator review before downstream`.
 
 rtl-design failures route by fix-locus: **upstream / architecture / intent** defects (exit-gate topology,

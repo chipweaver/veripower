@@ -1,2 +1,2 @@
 {"schema_version": 1, "stage": "simulation-plan", "module": "tpu_top",
- "reviewed_testpoints": [], "verdict": "ok", "has_critical": false, "findings": []}
+ "reviewed_testpoints": [], "findings": []}

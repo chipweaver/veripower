@@ -18,14 +18,12 @@ def _run(tmp_path, doc):
     )
 
 
-def _doc(findings, verdict="concerns", has_critical=False, children=("c",)):
+def _doc(findings, children=("c",)):
     return {
         "schema_version": 1,
         "stage": "specification",
         "module": "m",
         "reviewed_children": list(children),
-        "verdict": verdict,
-        "has_critical": has_critical,
         "findings": findings,
     }
 
@@ -41,13 +39,13 @@ def _finding(lens, severity="critical", child="c"):
 
 
 def test_valid_empty_clears(tmp_path):
-    r = _run(tmp_path, _doc([], verdict="ok"))
+    r = _run(tmp_path, _doc([]))
     assert r.returncode == 0
     assert json.loads(r.stdout) == {"gate": "clear", "flagged": [], "must_ack": []}
 
 
 def test_bad_lens_enum_exit_1(tmp_path):
-    r = _run(tmp_path, _doc([_finding("bogus")], has_critical=True))
+    r = _run(tmp_path, _doc([_finding("bogus")]))
     assert r.returncode == 1
     assert "spec-review invalid" in r.stderr
 
@@ -60,7 +58,7 @@ def test_missing_severity_exit_1(tmp_path):
 
 
 def test_faithfulness_critical_trips(tmp_path):
-    r = _run(tmp_path, _doc([_finding("faithfulness")], has_critical=True))
+    r = _run(tmp_path, _doc([_finding("faithfulness")]))
     assert r.returncode == 0
     v = json.loads(r.stdout)
     assert v["gate"] == "trip"
@@ -83,7 +81,7 @@ def test_faithfulness_important_trips(tmp_path):
 
 def test_soundness_never_trips_and_is_must_ack(tmp_path):
     # soundness at critical severity is advisory must-acknowledge, never blocks.
-    r = _run(tmp_path, _doc([_finding("soundness")], has_critical=True))
+    r = _run(tmp_path, _doc([_finding("soundness")]))
     assert r.returncode == 0
     v = json.loads(r.stdout)
     assert v["gate"] == "clear"
@@ -108,7 +106,7 @@ def test_unavailable_only_clears(tmp_path):
         "location": "-",
         "summary": "review unavailable: BLOCKED",
     }
-    r = _run(tmp_path, _doc([f], verdict="ok"))
+    r = _run(tmp_path, _doc([f]))
     assert r.returncode == 0
     v = json.loads(r.stdout)
     assert v["gate"] == "clear"
@@ -116,27 +114,12 @@ def test_unavailable_only_clears(tmp_path):
     assert v["must_ack"] == []
 
 
-def test_has_critical_inconsistent_exit_1(tmp_path):
-    r = _run(tmp_path, _doc([_finding("faithfulness")], has_critical=False))
-    assert r.returncode == 1
-    assert "spec-review inconsistent" in r.stderr
-
-
-def test_verdict_inconsistent_exit_1(tmp_path):
-    # a non-unavailable finding requires verdict "concerns"
-    r = _run(
-        tmp_path, _doc([_finding("soundness", severity="important")], verdict="ok")
-    )
-    assert r.returncode == 1
-    assert "spec-review inconsistent" in r.stderr
-
-
 def test_mixed_trip_and_must_ack(tmp_path):
     findings = [
         _finding("faithfulness", severity="critical", child="c1"),
         _finding("soundness", severity="important", child="c2"),
     ]
-    r = _run(tmp_path, _doc(findings, has_critical=True, children=("c1", "c2")))
+    r = _run(tmp_path, _doc(findings, children=("c1", "c2")))
     assert r.returncode == 0
     v = json.loads(r.stdout)
     assert v["gate"] == "trip"
@@ -147,7 +130,7 @@ def test_mixed_trip_and_must_ack(tmp_path):
 
 
 def test_conformance_critical_trips(tmp_path):
-    r = _run(tmp_path, _doc([_finding("conformance", "critical")], has_critical=True))
+    r = _run(tmp_path, _doc([_finding("conformance", "critical")]))
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
     assert out["gate"] == "trip"

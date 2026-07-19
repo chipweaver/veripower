@@ -4,7 +4,7 @@
 The specification main thread runs this AFTER aggregating the per-child reviewer findings into
 spec-review.json and BEFORE the design.md approval gate — fix-and-retry (main-thread re-assembly,
 not re-dispatch) on a non-zero exit. Validates against references/spec-review.schema.json (Draft
-2020-12), checks verdict<->findings and has_critical<->severity consistency, then computes the
+2020-12), then computes the
 gate verdict (the mechanical lens x severity reduction) and prints it as a one-line JSON the main
 thread copies -- so the gate is script-owned, not judged by eye.
 
@@ -81,25 +81,6 @@ def validate(target: Path) -> int:
         for err in errors:
             loc = "/".join(str(p) for p in err.path) or "<root>"
             print(f"spec-review invalid at {loc}: {err.message}", file=sys.stderr)
-        return 1
-    findings = doc.get("findings", [])
-    want_has_critical = any(f.get("severity") == "critical" for f in findings)
-    if doc.get("has_critical") != want_has_critical:
-        print(
-            f"spec-review inconsistent: has_critical={doc.get('has_critical')} "
-            f"vs findings-critical={want_has_critical}",
-            file=sys.stderr,
-        )
-        return 1
-    want_verdict = (
-        "concerns" if any(f.get("lens") != "unavailable" for f in findings) else "ok"
-    )
-    if doc.get("verdict") != want_verdict:
-        print(
-            f"spec-review inconsistent: verdict={doc.get('verdict')!r} "
-            f"expected {want_verdict!r} from findings",
-            file=sys.stderr,
-        )
         return 1
     print(json.dumps(gate_verdict(doc)))
     return 0

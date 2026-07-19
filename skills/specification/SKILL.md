@@ -164,7 +164,6 @@ Run this wave after Step 6 is fully clean and before the design.md gate, on **ev
 Aggregate the reaped reports into `{workdir}/spec-review.json` (schema `references/spec-review.schema.json`):
 - On `STATUS: DONE` + valid JSON, fold the reviewer's findings in, stamping each with its `child`.
 - On `STATUS: BLOCKED` or unparseable JSON, record one `unavailable`-lens finding for that child (`severity: minor`), so a crashed reviewer can't read as a silent clean pass.
-- Set the summary `verdict`/`has_critical` (validate-review rejects a mismatch).
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py validate-review --review {workdir}/spec-review.json

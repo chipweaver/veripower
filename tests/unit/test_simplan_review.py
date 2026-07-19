@@ -16,14 +16,12 @@ def _run(tmp_path, doc):
     )
 
 
-def _doc(findings, verdict="concerns", has_critical=False, tps=("TP-1",)):
+def _doc(findings, tps=("TP-1",)):
     return {
         "schema_version": 1,
         "stage": "simulation-plan",
         "module": "m",
         "reviewed_testpoints": list(tps),
-        "verdict": verdict,
-        "has_critical": has_critical,
         "findings": findings,
     }
 
@@ -39,19 +37,19 @@ def _finding(lens, severity="critical", tp_id="TP-1"):
 
 
 def test_valid_empty_clears(tmp_path):
-    r = _run(tmp_path, _doc([], verdict="ok"))
+    r = _run(tmp_path, _doc([]))
     assert r.returncode == 0
     assert json.loads(r.stdout) == {"gate": "clear", "flagged": [], "must_ack": []}
 
 
 def test_bad_lens_enum_exit_1(tmp_path):
-    r = _run(tmp_path, _doc([_finding("bogus")], has_critical=True))
+    r = _run(tmp_path, _doc([_finding("bogus")]))
     assert r.returncode == 1
     assert "plan-review invalid" in r.stderr
 
 
 def test_coverage_critical_trips(tmp_path):
-    r = _run(tmp_path, _doc([_finding("coverage")], has_critical=True))
+    r = _run(tmp_path, _doc([_finding("coverage")]))
     assert r.returncode == 0
     v = json.loads(r.stdout)
     assert v["gate"] == "trip"
@@ -73,7 +71,7 @@ def test_coverage_important_trips(tmp_path):
 
 
 def test_adequacy_never_trips_and_is_must_ack(tmp_path):
-    r = _run(tmp_path, _doc([_finding("adequacy")], has_critical=True))
+    r = _run(tmp_path, _doc([_finding("adequacy")]))
     assert r.returncode == 0
     v = json.loads(r.stdout)
     assert v["gate"] == "clear"
@@ -98,24 +96,12 @@ def test_unavailable_only_clears(tmp_path):
         "location": "-",
         "summary": "review unavailable: BLOCKED",
     }
-    r = _run(tmp_path, _doc([f], verdict="ok"))
+    r = _run(tmp_path, _doc([f]))
     assert r.returncode == 0
     v = json.loads(r.stdout)
     assert v["gate"] == "clear"
     assert v["flagged"] == []
     assert v["must_ack"] == []
-
-
-def test_has_critical_inconsistent_exit_1(tmp_path):
-    r = _run(tmp_path, _doc([_finding("coverage")], has_critical=False))
-    assert r.returncode == 1
-    assert "plan-review inconsistent" in r.stderr
-
-
-def test_verdict_inconsistent_exit_1(tmp_path):
-    r = _run(tmp_path, _doc([_finding("adequacy", severity="important")], verdict="ok"))
-    assert r.returncode == 1
-    assert "plan-review inconsistent" in r.stderr
 
 
 # ── extracted pure gate_verdict() (direct import — not subprocess) ───────────

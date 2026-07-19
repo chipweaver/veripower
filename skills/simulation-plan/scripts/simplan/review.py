@@ -3,8 +3,7 @@
 The simulation-plan main thread runs this AFTER assembling the fresh reviewer's findings into
 plan-review.json (Step 4) and BEFORE the Step-5 user review loop — fix-and-retry (main-thread
 re-assembly, not re-dispatch) on a non-zero exit. Validates against
-references/plan-review.schema.json (Draft 2020-12), checks verdict<->findings and
-has_critical<->severity consistency, then computes the gate verdict (the mechanical lens x
+references/plan-review.schema.json (Draft 2020-12), then computes the gate verdict (the mechanical lens x
 severity reduction) and prints it as a one-line JSON the main thread copies -- so the gate is
 script-owned, not judged by eye.
 
@@ -82,25 +81,6 @@ def validate(target: Path) -> int:
         for err in errors:
             loc = "/".join(str(p) for p in err.path) or "<root>"
             print(f"plan-review invalid at {loc}: {err.message}", file=sys.stderr)
-        return 1
-    findings = doc.get("findings", [])
-    want_has_critical = any(f.get("severity") == "critical" for f in findings)
-    if doc.get("has_critical") != want_has_critical:
-        print(
-            f"plan-review inconsistent: has_critical={doc.get('has_critical')} "
-            f"vs findings-critical={want_has_critical}",
-            file=sys.stderr,
-        )
-        return 1
-    want_verdict = (
-        "concerns" if any(f.get("lens") != "unavailable" for f in findings) else "ok"
-    )
-    if doc.get("verdict") != want_verdict:
-        print(
-            f"plan-review inconsistent: verdict={doc.get('verdict')!r} "
-            f"expected {want_verdict!r} from findings",
-            file=sys.stderr,
-        )
         return 1
     print(json.dumps(gate_verdict(doc)))
     return 0

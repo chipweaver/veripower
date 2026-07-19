@@ -43,14 +43,12 @@ End with `STATUS: DONE` + a single JSON line (schema `references/plan-review.sch
 `STATUS: BLOCKED <reason>`:
 ```json
 {"schema_version": 1, "stage": "simulation-plan", "module": "<module>",
- "reviewed_testpoints": ["TP-..."], "verdict": "ok|concerns", "has_critical": false,
+ "reviewed_testpoints": ["TP-..."],
  "findings": [{"tp_id": "<TP-ID | 'plan' for a spec-behavior gap tied to no single testpoint>",
                "lens": "coverage|adequacy",
                "severity": "critical|important|minor",
                "location": "<plan ref | design.md / <child>.md §ref>", "summary": "<one line>"}]}
 ```
-- `verdict": "ok"` ⟺ no finding with `lens != "unavailable"`; `"concerns"` ⟺ ≥1 such finding.
-- `has_critical` ⟺ any `severity == "critical"`.
 - If you cannot read the full plan/spec (context budget), do NOT silently pass: emit
   `STATUS: BLOCKED context-budget: <what was unread>` so the main thread records it as
   `unavailable` rather than a clean pass.
