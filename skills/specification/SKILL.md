@@ -157,7 +157,7 @@ It generates `constraints/<TOP>.{sdc,sgdc}` from the §1.6 and §1.4.1 tables, s
 
 ### Step 7: Wave 3 — semantic review (gating)
 
-Run this wave after Step 6 is fully clean and before the design.md gate, on **every** pass through the main chain. Dispatch **N per-child Level-1 reviewers** (one per `manifest.children[]`) per `references/spec-review-task-contract.md`, paths only: you read no body. The lens definitions, the gating split, and scope boundaries live in that contract; do not restate or reinterpret them here.
+On **every** pass through the main chain, dispatch **N per-child Level-1 reviewers** (one per `manifest.children[]`) per `references/spec-review-task-contract.md`, paths only: you read no body. The lens definitions, the gating split, and scope boundaries live in that contract; do not restate or reinterpret them here.
 
 > **Gate semantics (block-in-place).** A `gate=trip` is not an automatic fail-out: it does **NOT** itself route rework or write `status=fail`. It blocks `status=pass` **in place** and surfaces the findings to the Step-8 design.md gate, where a human resolves each one (reject-and-rework, waive, or early-fail).
 
@@ -195,7 +195,7 @@ On reject: route a rework sub-Task, body off the main thread. The rework first c
 
 ### Step 9: Finalize (script, mandatory)
 
-With the Step-8 gate resolved, run finalize to write `result.json`:
+Run finalize to write the stage's `result.json`:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
