@@ -195,15 +195,15 @@ On reject: route a rework sub-Task, body off the main thread. The rework first c
 
 ### Step 9: Finalize (script, mandatory)
 
+With the Step-8 gate resolved, run finalize to write `result.json`:
+
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
   --workdir {workdir} --module {module} --status <pass|fail> \
   --waived '<spec_gate.waived[] JSON>'
 ```
 
-You supply only the human-gate outcome: `--status` (approve/reject) and `--waived` (`[]` if none). `ppa_targets` is read from the Wave-1-authored `{workdir}/ppa.json` (pass `--ppa-targets '<JSON>'` only as an explicit override; a missing/invalid `ppa.json` is a BLOCKED program exception, not a silent default). `finalize` (on a pass) re-runs the constraint derivation (divergence-proofing), re-derives the Step-7 `spec_gate` verdict in-process from `spec-review.json` and merges `--waived`, **enforces the Step-8 approve precondition itself** (an unmet precondition downgrades `--status pass` to a written `status=fail`), enumerates `artifacts[]` present-only (design.md / manifest.json / ppa.json / spec-review.json / the N `<child>.md` / `constraints/<TOP>.{sdc,sgdc}` — **never `brainstorm.md`**), and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail); a non-zero exit is a program exception (BLOCKED), not a `status=fail`.
-
-Downstream consumption note: synthesis and power-analysis read `ppa.json` directly as their gate targets; the Orchestrator reads it only to author rtl-design's directive. Nothing is injected into any prompt by this stage.
+You supply only the human-gate outcome: `--status` (approve/reject) and `--waived` (`[]` if none). `ppa_targets` comes from the Wave-1-authored `{workdir}/ppa.json` (override with `--ppa-targets '<JSON>'` only when needed; a missing or invalid `ppa.json` is a BLOCKED program exception, not a silent default). finalize **downgrades a `--status pass` to a written `status=fail`** if the Step-8 approve precondition is unmet (`spec_gate` neither clear nor fully waived). Exit 0 = `result.json` written (status pass or fail); a non-zero exit is a program exception (BLOCKED, reason on stderr), not a `status=fail`.
 
 ## Decision Rules
 
