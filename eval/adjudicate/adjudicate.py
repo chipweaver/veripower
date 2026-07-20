@@ -56,6 +56,13 @@ _HERE = Path(__file__).resolve()
 _REPO_ROOT = _HERE.parents[2]
 _DEFAULT_WRAPPER = _REPO_ROOT / "eval" / "b1-wrapper"
 
+# Reuse VeriPower's single-owner SpyGlass report parser (locates the spyglass_work
+# report, tallies severities, reconciles against header totals, fails loud) rather
+# than a second implementation that could drift from the lint-cdc gate's own
+# definition of "clean".
+sys.path.insert(0, str(_REPO_ROOT / "skills" / "lint-cdc" / "templates" / "scripts"))
+import collect_report  # noqa: E402
+
 # The four signoff-clean criteria (§1.3), in report order. signoff_clean is
 # their strict AND — any None/False (incl. fail-loud unknowns) fails the AND.
 _CRITERIA = ("golden", "lint", "cdc", "timing_met")
@@ -237,47 +244,43 @@ def check_cdc(workdir: Path, dry: bool) -> dict:
 
 
 def _spyglass_check(workdir: Path, stage: str, dry: bool) -> dict:
-    rc = _make(stage, workdir, extra_env={"SPYGLASS_STAGE": stage}, dry=dry)
+    """(b)/(c): run SpyGlass {lint|cdc}, then parse the report with VeriPower's
+    single-owner collect_report. clean == zero error-severity violations — the
+    same bar the lint-cdc gate (result.py) applies. Waivers are NOT loaded (the
+    wrapper's run_spyglass.tcl sources none), so this is the raw fixed-ruleset
+    verdict, symmetric across arms (§1.3). Fail-loud: a SpyGlass launch failure,
+    a missing report, or an unparseable/irreconcilable report all yield
+    clean=False — never a fabricated pass."""
+    rc = _make(stage, workdir, dry=dry)
     if dry:
         return {"clean": None, "ran": False, "reason": "dry-run"}
+    # spyglass -shell exits 0 even on FATAL, so rc != 0 is a hard launch failure;
+    # real lint/cdc cleanliness is decided by parsing the report below.
     if rc != 0:
         return {"clean": False, "ran": True, "reason": f"make {stage} rc={rc}"}
-    # TODO(deploy): parse the SpyGlass moresimple report under
-    # spyglass_work/<goal>/... and count violations at the severities the
-    # pre-registered ruleset treats as blocking (Fatal/Error, plus any Warning
-    # promoted by the fixed .sgdc). clean == (blocking count == 0). Report
-    # location + severity policy are ruleset-version-specific; on a missing or
-    # unrecognized report, return clean=False (fail-loud), NOT clean=True.
-    report = _find_spyglass_report(workdir, stage)
-    if report is None:
+    # collect_report: 0 located+parsed+reconciled; 1 missing; 3 unparseable/mismatch.
+    cr_rc = collect_report.run(stage, workdir)
+    if cr_rc != 0:
         return {
             "clean": False,
             "ran": True,
-            "reason": f"{stage} report not found (fail-loud)",
+            "reason": f"collect_report {stage} rc={cr_rc} (fail-loud: missing/unparseable)",
         }
-    violations = _count_spyglass_violations(report)  # TODO: real parser
+    doc = json.loads((workdir / f"{stage}-violations.json").read_text())
+    counts = doc.get("counts", {})
+    n_err = counts.get("error")
+    if not isinstance(n_err, int):
+        return {
+            "clean": False,
+            "ran": True,
+            "reason": f"{stage}-violations.json has no integer error count",
+        }
     return {
-        "clean": violations == 0,
+        "clean": n_err == 0,
         "ran": True,
-        "violations": violations,
-        "evidence": str(report),
+        "counts": counts,
+        "evidence": str(workdir / f"{stage}-violations.json"),
     }
-
-
-def _find_spyglass_report(workdir: Path, stage: str) -> Path | None:
-    # TODO(deploy): pin the exact moresimple.rpt path per goal for the site's
-    # SpyGlass version. Placeholder glob:
-    hits = sorted((workdir / "spyglass_work").rglob("moresimple.rpt"))
-    return hits[0] if hits else None
-
-
-def _count_spyglass_violations(report: Path) -> int:
-    # TODO(deploy): real severity-aware count. Placeholder returns a sentinel
-    # that fails the AND so an unimplemented parser can never mint a pass.
-    raise NotImplementedError(
-        "SpyGlass violation parser not implemented — wire to the site's "
-        "moresimple.rpt severity columns before running for score"
-    )
 
 
 def check_synth_timing(workdir: Path, dry: bool) -> dict:
