@@ -18,14 +18,14 @@ Your sole responsibility: derive a frozen design source of truth from an approve
 
 Your boundary:
 
-- **Write only under `{workdir}`** (artifacts + `result.json`); never read or write other modules' artifacts. Reading reference material outside `{workdir}` (plugin-internal templates, upstream canonical inputs) is allowed.
-- **No brainstorm here.** Consume a frozen `<brainstorm>/brainstorm.md` (produced by the pre-pipeline `brainstorm` skill; `design-flow`'s entry gate already verified `Status: approved` — a missing/draft brainstorm means the user must run `Skill(veripower:brainstorm)` first). Run the two path-handoff gates but hold no document body and drive no D0–D7 dialogue.
-- **Constraint correctness** (periods consistent, IO delays / `abstract_port`s present) is generated and self-checked by `derive-constraints` — there is no LLM constraint overlay and no separate constraint checker.
-- **`design.md` must not contain by-reference jumps.** `design.md` is the unique source of truth; downstream stages do not read `brainstorm.md`. Any `see brainstorm`, `see spec D`, etc. = information loss; the referenced passage must be inlined verbatim.
-- **`design.md` and every `<child>.md` MUST reference the PPA targets by pointing at `ppa.json`, never restate the numeric target values in prose** (carrier line in `design-template.md` §1.1). `ppa.json` is the single home of PPA numbers — synthesis and power-analysis bind to it directly as their acceptance standard, so a restated number can silently drift from the value they actually gate on. This is the one sanctioned by-reference pointer; brainstorm content still must be inlined verbatim.
-- **`manifest.json` is read-only after the partition gate.** Changes to N require a fresh specification run (or re-dispatching Wave 1 with new grouping before the partition gate is reconfirmed).
-- **Minimal edit on any re-dispatch with a prior valid `design.md` on disk.** Edit only what this round's task requires: `{directive_path}`'s `fix_locus`, when injected, is authoritative for scope; otherwise a repair round amends `design.md` only. Every file outside that scope — `manifest.json`, the `<child>.md` set, `ppa.json`, the constraint files — MUST stay byte-identical to the prior run.
-- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
+- **Write only under `{workdir}`** (artifacts + `result.json`); never touch another module's artifacts. Reading templates and upstream inputs outside is fine.
+- **No brainstorm here.** Consume the frozen, approved `brainstorm.md`; run the two path-handoff gates, but hold no document body and drive no D0–D7 dialogue.
+- **No LLM constraint overlay.** `derive-constraints` generates and self-checks the constraint files; you neither hand-write nor re-check them.
+- **`design.md` carries no by-reference jumps** (`see brainstorm`, `see spec D`, …): it is the unique source of truth, so inline every referenced passage verbatim.
+- **Reference PPA targets by pointing at `ppa.json`, never by restating the numbers**: this is the one sanctioned by-reference pointer (brainstorm content is still inlined verbatim).
+- **`manifest.json` is read-only after the partition gate**; changing N takes a fresh run.
+- **Minimal change on re-dispatch**: with a prior `design.md` on disk, touch only what the round requires and leave every other file byte-identical.
+- **Scripts are black boxes**: never Read their source (only to debug a suspected script bug); invoke them per the documented commands and act on their documented failure output.
 
 ## Input Artifacts
 
@@ -212,12 +212,6 @@ You supply only the human-gate outcome: `--status` (approve/reject) and `--waive
 | "The design looks complete — I'll mark it pass" without the user's approval at the design.md gate | The design.md gate is architectural, not a formality. Marking pass without it ships an unapproved spec downstream. |
 | "Minimum fields look mostly there — pass" | Mark pass only when the required columns of §1.3/§1.4/§1.5/§1.7+ are complete (see the design-template completeness gate table). Partial ≠ pass. |
 | "I'll just Edit this wave-output design.md/`<child>.md` body to fix a number" | The main thread holds no body; numerics are locked in the frozen brainstorm. Amend a body only by re-dispatching its wave sub-Task — never by main-thread Edit. |
-
-## Pitfalls
-
-| Mistake | Fix |
-|---|---|
-| `design.md` drifts from `brainstorm.md` on Features / Scenarios / Clocks. | The overview sections of `design.md` are a canonical derivation from brainstorm; fields must be 1:1 consistent. |
 
 ## Completion Gate
 
