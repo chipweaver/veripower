@@ -165,13 +165,16 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
 def build_result(workdir, module, ppa_targets, waived, status, fail_reason=None) -> int:
     """Assemble the lean specification result.json.
 
-    pass path, in order: re-run derive_constraints() in-process (so <TOP> + the
-    constraint files cannot diverge) → re-derive spec_gate from the on-disk
-    spec-review.json and enforce the approve precondition (an unmet precondition
-    downgrades to a written status=fail BEFORE any ppa handling, so a ppa fault can
-    never preempt the documented downgrade) → validate the ppa.json sidecar (a
-    --ppa-targets override writes it; otherwise the Wave-1-authored {workdir}/ppa.json
-    is re-validated in place — the sidecar is the PPA SSoT, never copied into the
+    pass path, in order: re-run derive_constraints() in-process: the promoted
+    SDC/SGDC are finalize's own regeneration from the current §1.6/§1.4.1 tables
+    (authoritative; Step 6 already generated them clean from the same tables, so this
+    BLOCKs only on an illegitimate post-Step-6 table edit) → re-derive spec_gate from
+    the on-disk spec-review.json and enforce the approve precondition (an unmet one
+    downgrades to a written status=fail; placed after the regeneration and before ppa
+    handling, so a ppa fault cannot preempt the downgrade, though the regeneration
+    above would BLOCK ahead of it on that rare table edit) → validate the ppa.json
+    sidecar (a --ppa-targets override writes it; otherwise the Wave-1-authored
+    {workdir}/ppa.json is re-validated in place, the PPA SSoT never copied into the
     envelope) → enumerate artifacts[], write the envelope.
 
     fail path (human reject, or an early-fail exit carrying fail_reason): NEVER runs
@@ -221,8 +224,8 @@ def build_result(workdir, module, ppa_targets, waived, status, fail_reason=None)
 
     # Approve precondition (SKILL.md §Step 8, approve precondition): a pass is honored
     # only when the gate is clear OR every flagged finding is waived. Never ship an
-    # unreviewed/unwaived pass. Checked before ppa resolution so the downgrade is
-    # unconditional.
+    # unreviewed/unwaived pass. Checked before ppa resolution so a ppa fault cannot
+    # preempt the downgrade (the constraint regeneration above still runs first).
     if unresolved:
         ss = {
             "top_module": top,

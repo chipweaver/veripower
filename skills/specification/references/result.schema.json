@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/specification/result.schema.json",
   "title": "specification result.json contract (schema_version 1)",
-  "description": "Complete contract for asic/<module>/Design/specification/result.json. On status=pass, stage_specific carries top_module (filename-convention anchor for <TOP>.sdc/.sgdc); the PPA gate targets live in the ppa.json sidecar (ppa.schema.json) that synthesis/power-analysis read directly, not in this envelope. Other design data (interfaces, clock_domains, reset strategy) lives canonical in design.md and is not duplicated here. On status=fail, stage_specific.fail_reason is required (if/then below) — the one-line failure narrative. top_module may be absent if the early-fail path didn't reach scaffold-derivation.",
+  "description": "Complete contract for asic/<module>/Design/specification/result.json. On status=pass, stage_specific carries top_module (the <TOP>.sdc/.sgdc filename anchor) and the spec_gate verdict; on status=fail it carries fail_reason (the one-line failure narrative). top_module may be absent on an early-fail path that never reached scaffold-derivation.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
