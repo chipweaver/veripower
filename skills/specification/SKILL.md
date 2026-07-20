@@ -5,7 +5,7 @@ description: Use when writing or reviewing design specification (design.md), def
 
 # Requirements and Specification Freeze
 
-Your sole responsibility: derive a frozen design source of truth from an approved `<brainstorm>/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `ppa.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). You are a thin Level-0 dispatcher: three sub-agent waves, two path-handoff gates, deterministic main-thread scripts in between; the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
+Your sole responsibility: derive a frozen design source of truth from an approved `<brainstorm>/brainstorm.md` — `design.md` (overview §1.1–1.6 + §1.7 submodule index) + per-child `<child>.md` + `manifest.json` + `ppa.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). You are a thin Level-0 dispatcher: three sub-agent waves, two path-handoff gates, deterministic main-thread scripts in between; the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
 
 ## Iron Rule
 
@@ -80,7 +80,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
 
 | Step | Executor | Does → produces | On failure |
 |---|---|---|---|
-| 2 | Wave 1 (sub-Task) | decompose → `manifest.json` + `design.md` overview + `ppa.json` | `STATUS: BLOCKED` → Fan-out Contract |
+| 2 | Wave 1 (sub-Task) | decompose → `manifest.json` + `design.md` §1.1–1.7 + `ppa.json` | `STATUS: BLOCKED` → Fan-out Contract |
 | 3 | script | `derive-ports` (per-child inter-module wires) | → Wave-1 rework / early-fail |
 | 4 | human | partition gate | merge → Step 2 |
 | 5 | Wave 2 (sub-Task ×N) | one `<child>.md` per child | `STATUS: BLOCKED` → Fan-out Contract |
@@ -91,7 +91,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
 
 ### Step 2: Wave 1 — decompose
 
-Dispatch one Level-1 sub-Task per `references/decompose-task-contract.md`. In its own context it reads `<brainstorm>/brainstorm.md` and writes `manifest.json`, the `design.md` overview (§1.1–1.7), and `ppa.json`; the partition strategy, field schemas, and `STATUS` return protocol live in that contract (do not restate them here).
+Dispatch one Level-1 sub-Task per `references/decompose-task-contract.md`. In its own context it reads `<brainstorm>/brainstorm.md` and writes `manifest.json`, the `design.md` §1.1–1.7 (overview + §1.7 submodule index), and `ppa.json`; the partition strategy, field schemas, and `STATUS` return protocol live in that contract (do not restate them here).
 
 After dispatching, end the turn, then reap and proceed to Step 3 only after it reports.
 
