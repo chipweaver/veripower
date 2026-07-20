@@ -7,13 +7,6 @@ description: Use when writing or reviewing design specification (design.md), def
 
 Your sole responsibility: derive a frozen design source of truth from an approved `<brainstorm>/brainstorm.md` — `design.md` (overview §1.1–1.6 + submodule §1.7+) + per-child `<child>.md` + `manifest.json` + `ppa.json` + a pair of constraint files (`<TOP>.sdc` / `<TOP>.sgdc`). You are a thin Level-0 dispatcher: three sub-agent waves, two path-handoff gates, deterministic main-thread scripts in between; the brainstorm dialogue lives in the pre-pipeline `brainstorm` skill.
 
-## When to Use
-
-- First-time design.md derivation from an approved brainstorm.md.
-- Specification modification on an existing module (a repair round amends design.md only — brainstorm.md is frozen and read-only).
-- Reviewing or modifying an existing design.md.
-- Creating or updating SDC/SGDC constraint files.
-
 ## Iron Rule
 
 Your boundary:
