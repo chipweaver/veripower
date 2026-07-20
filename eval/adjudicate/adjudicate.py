@@ -172,25 +172,34 @@ def _gen_spyglass_prj(top: str) -> str:
 
 
 def _resolve_sourcelist(args) -> list[str]:
-    """Resolve the arm's RTL-only sourcelist for lint/cdc + synth.
+    """Resolve the arm's RTL-only sourcelist for lint/cdc + synth, as ABSOLUTE
+    paths.
+
+    The list is written into a fresh sandbox workdir and consumed by tools run
+    from there, so relative RTL paths — which would otherwise resolve against the
+    empty sandbox, not the arm's tree — are made absolute against the sourcelist
+    file's own directory (the usual filelist convention). Absolute entries pass
+    through. A listed file that does not exist fails loud: silently dropping an
+    RTL source would corrupt the lint/synth verdict.
 
     Prefer --rtl-sourcelist (the wrapper's filelist.txt: synthesizable RTL only,
     which is exactly what lint/cdc and synth both consume). Fall back to deriving
     it from a --rtl VCS/DC manifest by dropping blank/#/-/+/$ lines — but a
     testbench .sv carries no distinguishing prefix and cannot be auto-excluded,
-    so this path warns loudly: a TB leaking into synth/lint silently corrupts the
-    verdict.
+    so that path also warns.
     """
     if args.rtl_sourcelist:
-        return [
+        src = Path(args.rtl_sourcelist)
+        raw = [
             ln.strip()
-            for ln in Path(args.rtl_sourcelist).read_text().splitlines()
+            for ln in src.read_text().splitlines()
             if ln.strip() and not ln.strip().startswith("#")
         ]
-    if args.rtl:
-        lines = [
+    elif args.rtl:
+        src = Path(args.rtl)
+        raw = [
             ln.strip()
-            for ln in Path(args.rtl).read_text().splitlines()
+            for ln in src.read_text().splitlines()
             if ln.strip() and not ln.strip().startswith(("#", "-", "+", "$"))
         ]
         sys.stderr.write(
@@ -199,8 +208,22 @@ def _resolve_sourcelist(args) -> list[str]:
             "lint/synth. Pass --rtl-sourcelist (RTL only) for a trustworthy "
             "verdict.\n"
         )
-        return lines
-    raise SystemExit("adjudicate: one of --rtl-sourcelist / --rtl is required")
+    else:
+        raise SystemExit("adjudicate: one of --rtl-sourcelist / --rtl is required")
+
+    base = src.resolve().parent  # relative RTL paths are relative to the list file
+    resolved, missing = [], []
+    for p in raw:
+        ap = (Path(p) if Path(p).is_absolute() else base / p).resolve()
+        if not ap.is_file():
+            missing.append(p)
+        resolved.append(str(ap))
+    if missing:
+        raise SystemExit(
+            f"adjudicate: {len(missing)} RTL source(s) listed in {src} not found "
+            f"(relative paths resolved against {base}): {', '.join(missing)}"
+        )
+    return resolved
 
 
 # --------------------------------------------------------------------------- #
