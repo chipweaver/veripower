@@ -49,7 +49,7 @@ flowchart LR
 
 ### 1.3 Feature Table
 
-The columns of the table below must satisfy the "minimum field completeness" requirements; missing columns directly break downstream auto-derivation tooling:
+Most columns below are gated by `check-coverage`; see the Minimum Field Completeness Gate Table for which are gated vs recommended and what each omission costs:
 
 | ID | Feature | Description | Mode/Interface | Priority | HappyPath | CornerCases | NegativeCases | CoverageIntent |
 |----|------|------|----------------|----------|-----------|-------------|---------------|----------------|
@@ -65,7 +65,9 @@ The columns of the table below must satisfy the "minimum field completeness" req
 | rst_n  | input  | - | 1 | clk | reset   | -    | reset | - | 0  | async |
 | cfg_addr | input | - | 8 | clk | cfg_bus | APB3 | data  | - | -  | -     |
 
-> **Owner** (Output rows — **gated**: present, a manifest child, and that child lists the signal in its frontmatter `ports`): the child that drives this output. **Guidance (not gated):** prefer a **leaf child** that the pure top-integration child passes through to the boundary; an output driven by the top-integration child's own combinational glue (mux / reduction / constant) is discouraged — prefer a dedicated child (e.g. an arbiter). `Owner` = the top-integration child still passes the gate; this preference is a design note, not enforced. Input/inout rows use `-`. The gated part is enforced by `check-coverage`.
+> **Owner** (Output rows): the child that drives this output; input/inout rows use `-`.
+> - **Gated** (enforced by `check-coverage`): the Owner is present, is a manifest child, and that child lists the signal in its frontmatter `ports`.
+> - **Guidance (not gated):** prefer a **leaf child** that the pure top-integration child passes through to the boundary; an output driven by the top-integration child's own combinational glue (mux / reduction / constant) is discouraged, prefer a dedicated child (e.g. an arbiter). The top-integration child as `Owner` still passes the gate; this preference is a design note, not enforced.
 
 > **Role** (required — `derive-constraints` reads it): `clock` / `reset` / `data`.
 
@@ -85,7 +87,7 @@ The columns of the table below must satisfy the "minimum field completeness" req
 
 #### 1.4.2 Inter-module Interconnects
 
-> Fan-out mode (N≥2): authoritative list of all RTL-module-to-RTL-module wires. N=1 modules: this table is empty + a single row with `(none — N=1 module has no inter-module wires)` or omit the table entirely.
+> Fan-out mode (N≥2): authoritative list of all RTL-module-to-RTL-module wires. N=1 modules: keep the §1.4.2 heading with a single `(none — N=1 module has no inter-module wires)` row; do not omit the section (`check-coverage` requires §1.4.2 present).
 
 | Wire | Producer (RTL module) | Consumer (RTL module) | Width | Clock Domain | Protocol | Encoding | Timing Constraint | Notes |
 |------|-----------------------|-----------------------|-------|--------------|----------|----------|-------------------|-------|
@@ -102,26 +104,27 @@ The columns of the table below must satisfy the "minimum field completeness" req
 > is not pinned *in this row*; its joint contract is stated in the §1.4.2.1 Inter-module Behavior
 > Contract companion below.)
 
-> **Inter-module Behavior Contract** (required content rule — enforced by the spec-review
+> **Inter-module Behavior Contract** (required content rule, enforced by the spec-review
 > `conformance` lens, NOT a deterministic gate): when a *group* of inter-module wires is governed by
-> a contract that **more than one wire / child must jointly agree on** — a shared operating-phase or
-> event timeline, a sequencing, a co-assertion or mutual-exclusion among control strobes — that joint
-> contract MUST be stated **once** as a shared artifact in the `##### 1.4.2.1 Inter-module Behavior
-> Contract` companion below, NOT left implicit in one child's body (where sibling children and their
-> per-child reviewers cannot see it). A behavior fully captured by a single wire's own row (a plain
-> valid/ready handshake, a single-clock latency) needs no companion. The form adapts to the module: a
-> phase-sequenced datapath states an ordered operating-phase table; a handshake/arbitration module
-> states the co-assertion / mutual-exclusion rule in prose. Per-wire `Timing Constraint` cells and
-> control-bus `Encoding` symbols then reference the names declared in the companion. This pins the
-> *statement* of the contract and the *resolvability* of references to it; the *correctness* of the
-> co-assertions / relative offsets / mutual-exclusion is design judgment — advisory soundness +
-> downstream RTL/sim, not pinned here.
+> a contract that **more than one wire / child must jointly agree on** (a shared operating-phase or
+> event timeline, a sequencing, a co-assertion or mutual-exclusion among control strobes), that joint
+> contract MUST be stated **once** in the `##### 1.4.2.1` companion below, NOT left implicit in one
+> child's body (where sibling children and their per-child reviewers cannot see it).
+> - A behavior fully captured by a single wire's own row (a plain valid/ready handshake, a
+>   single-clock latency) needs no companion.
+> - Form adapts to the module: a phase-sequenced datapath states an ordered operating-phase table;
+>   a handshake/arbitration module states the co-assertion / mutual-exclusion rule in prose. Per-wire
+>   `Timing Constraint` cells and control-bus `Encoding` symbols then reference the names declared in
+>   the companion.
+> - This pins the *statement* of the contract and the *resolvability* of references to it; the
+>   *correctness* of the co-assertions / relative offsets / mutual-exclusion is design judgment
+>   (advisory soundness + downstream RTL/sim), not pinned here.
 
 ##### 1.4.2.1 Inter-module Behavior Contract
 
 Present **only** when §1.4.2 wires share a joint contract (see the Inter-module Behavior Contract
 rule above); omit entirely otherwise. Place it here, **after** the §1.4.2 wire table and its column
-notes, so the deterministic §1.4.2 interconnect parse (first-table-only) is unaffected.
+notes, so the §1.4.2 wire-table parse is unaffected.
 
 Worked example A — a **phase-sequenced datapath** states an ordered operating-phase timeline;
 control buses project onto it (each `Encoding` symbol names its canonical phase(s)) and per-wire
@@ -179,8 +182,8 @@ rdy      _________|‾‾‾‾‾‾‾‾‾‾‾‾‾|_______________   (sl
 > `check-coverage`). **Relationship**: `primary` / `synchronous-related` / `async`
 > — `async` clocks drive `set_clock_groups -asynchronous`. **Generated**: `yes` for a
 > divider/PLL output (no top-level port) — `derive-constraints` emits **no**
-> `create_clock` for it and records a `create_generated_clock`-deferred-to-RTL note in the
-> SDC header; default `no`. This table is the sole numeric + relationship source for the
+> `create_clock` for it and records a `create_generated_clock`-deferred-to-RTL note in place of
+> the `create_clock`; default `no`. This table is the sole numeric + relationship source for the
 > generated `constraints/<TOP>.{sdc,sgdc}`.
 ```
 
@@ -193,8 +196,8 @@ See `manifest.json` for the authoritative child registry. This table lists child
 
 | child name | doc | brainstorm_anchor | role |
 |------------|-----|-------------------|------|
-| sub_a | `sub_a.md` | brainstorm §sub_a | … |
-| sub_b | `sub_b.md` | brainstorm §sub_b | … |
+| sub_a | `sub_a.md` | lines 40-80 | … |
+| sub_b | `sub_b.md` | lines 81-120 | … |
 ```
 
 For every module (N≥1) the parent `design.md` keeps only this §1.7 index; each child's detail lives in its own `<child>.md` (per `child-design-template.md`), authored by wave-2 — which always dispatches one sub-Task per child (N=1 → ×1, never an inlined submodule body in `design.md`).
@@ -205,12 +208,12 @@ Before `design.md` is approved, the **gated** checks below must pass `check-cove
 
 | Check | Field location | Impact of missing |
 |--------|----------|----------|
-| §1.3 columns ID / Feature / Description / Mode/Interface / Priority / HappyPath / CornerCases / NegativeCases — **(gated)** | Overview §1.3 table | Absent columns degrade downstream derivation quality; `derive-plan-data` defaults them to empty, weakening testcase decomposition and suite splitting. |
+| §1.3 columns ID / Feature / Description / Mode/Interface / Priority / HappyPath / CornerCases / NegativeCases — **(gated)** | Overview §1.3 table | Missing any of these fails `check-coverage`; they drive downstream testcase decomposition and suite splitting (via `derive-plan-data`). |
 | §1.3 column CoverageIntent — **(recommended)** | Overview §1.3 table | Absent column degrades coverage-goal derivation; `derive-plan-data` defaults it to empty. |
 | §1.4.1 columns Signal / Direction / Clock Domain / Interface Group / Role — **(gated)** | Overview §1.4.1 table | Absent columns degrade constraint and agent generation; `derive-constraints` may emit incomplete IO delays or miss CDC domains. |
 | §1.4.1 columns Width / Protocol — **(recommended)** | Overview §1.4.1 table | Absent Width defaults to `1`; absent Protocol yields empty protocol annotations. |
 | §1.4.1 columns ResetPolarity / ResetKind — **required on `Role=reset` rows** (enforced at constraint generation by `derive-constraints`, which fail-louds on a reset row missing them — not by the coverage gate; use `-` on non-reset rows) | Overview §1.4.1 table | A reset row missing polarity/kind aborts `derive-constraints`. |
-| §1.5 columns ScenarioID / Trigger/Stimulus / Expected Result / Timing Constraint — **(gated)** | Overview §1.5 table | Absent columns degrade sequence-body and checker generation; `derive-plan-data` defaults them to empty. |
+| §1.5 columns ScenarioID / Trigger/Stimulus / Expected Result / Timing Constraint — **(gated)** | Overview §1.5 table | Missing any of these fails `check-coverage`; they drive downstream sequence-body and checker generation (via `derive-plan-data`). |
 | §1.5 column Exceptions / Negative Cases — **(recommended)** | Overview §1.5 table | Absent column degrades negative-case coverage; `derive-plan-data` defaults it to empty. |
 | §1.6 columns Clock Name / Nominal Frequency (MHz) / SDC Period (ns) / Relationship — **(gated)** | Overview §1.6 table | Absent columns degrade constraint generation; `derive-constraints` requires clock name, period, and relationship. |
 | §1.6 column Generated — **(recommended)** (defaults to `"no"`) | Overview §1.6 table | Absent column causes `derive-constraints` to treat all clocks as top-level ports (may emit spurious `create_clock` for PLL outputs). |
