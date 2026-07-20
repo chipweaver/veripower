@@ -91,11 +91,11 @@ _SGDC_SYNC_DOMAIN = "sync"
 
 
 def _clock_partition(clocks: list[dict]) -> tuple[list[str], list[str]]:
-    """The single source of grouping truth shared by BOTH emitters (F1): partition the
+    """The single source of grouping truth shared by BOTH emitters: partition the
     non-generated §1.6 clocks into (sync_names, async_names), preserving table order.
     `_async_clock_groups` (SDC) and `_sgdc_clock_domains` (SGDC) must render this ONE
     partition in their respective native syntaxes — computing it twice is how the two
-    formats silently diverge, the exact defect F1 fixes. Returns ([], []) when there is
+    formats silently diverge, the exact defect this prevents. Returns ([], []) when there is
     nothing to declare (fewer than 2 non-generated clocks, or none async)."""
     non_gen = [c for c in clocks if not c["generated"]]
     async_names = [c["name"] for c in non_gen if c["relationship"] == "async"]
@@ -108,8 +108,8 @@ def _clock_partition(clocks: list[dict]) -> tuple[list[str], list[str]]:
 def _async_clock_groups(clocks: list[dict]) -> list[str]:
     """`-group ...` fragments for `set_clock_groups -asynchronous` (SDC only — see
     `_sgdc_clock_domains` for the SGDC-native equivalent; SpyGlass's SGDC parser rejects
-    `set_clock_groups` as an unknown command, confirmed on SpyGlass_vL-2016.06, Task 2 of
-    the F1 plan). Renders the shared `_clock_partition`; returns [] when it is empty."""
+    `set_clock_groups` as an unknown command, confirmed on SpyGlass_vL-2016.06). Renders
+    the shared `_clock_partition`; returns [] when it is empty."""
     sync_names, async_names = _clock_partition(clocks)
     if not async_names:
         return []
@@ -123,8 +123,8 @@ def _async_clock_groups(clocks: list[dict]) -> list[str]:
 def _sgdc_clock_domains(clocks: list[dict]) -> dict[str, str]:
     """`clock -name ... -domain <D>` domain assignment — the SGDC-native equivalent of
     `_async_clock_groups`, since SpyGlass's SGDC parser has no `set_clock_groups` command
-    (SGDCSTX_002 "Use of unknown SGDC command", confirmed on SpyGlass_vL-2016.06, Task 2 of
-    the F1 plan: `set_clock_groups` inside `constraints.sgdc` is a fatal setup error, not a
+    (SGDCSTX_002 "Use of unknown SGDC command", confirmed on SpyGlass_vL-2016.06:
+    `set_clock_groups` inside `constraints.sgdc` is a fatal setup error, not a
     CDC violation). All `primary`/`synchronous-related` clocks share one domain (so SpyGlass
     does not spuriously flag them as unsynchronized against each other); each `async` clock
     gets its own distinct domain (its own name — SpyGlass already treats separately-named
@@ -136,8 +136,8 @@ def _sgdc_clock_domains(clocks: list[dict]) -> dict[str, str]:
         return {}
     if sync_names and _SGDC_SYNC_DOMAIN in async_names:
         # An async clock literally named "sync" would get -domain sync and be silently
-        # merged into the synchronous group — a false-negative CDC hole (the F1 defect
-        # class). Fail loudly; rename the clock in design.md §1.6.
+        # merged into the synchronous group — a false-negative CDC hole. Fail loudly;
+        # rename the clock in design.md §1.6.
         _fail(
             f"async clock {_SGDC_SYNC_DOMAIN!r} collides with the SGDC sync-group domain "
             f"label {_SGDC_SYNC_DOMAIN!r}; rename the clock in design.md §1.6"
@@ -250,10 +250,10 @@ def _data_port_in_sgdc(signal: str, sgdc: str) -> bool:
 def _self_check(top: str, clocks: list[dict], ports: list[dict], sdc: str, sgdc: str):
     if f"current_design {top}" not in sgdc:
         _fail(f"self-check: SGDC missing 'current_design {top}'")
-    # F1: SDC and SGDC both derive their async-clock declaration from the same `clocks`
+    # SDC and SGDC both derive their async-clock declaration from the same `clocks`
     # list (via _async_clock_groups / _sgdc_clock_domains respectively — different syntax,
     # same underlying data), so one declaring it and the other not means the two emitters
-    # diverged — the exact defect F1 fixes. Backstop it here.
+    # diverged — the exact defect the shared partition prevents. Backstop it here.
     # Detect the SGDC async declaration by a standalone `-domain` token on a
     # `clock -name` line — NOT a bare "-domain" substring, which a clock literally
     # named "*-domain" (e.g. `clock -name x-domain ...`) would spuriously match.

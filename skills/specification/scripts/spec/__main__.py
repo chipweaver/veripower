@@ -12,9 +12,9 @@ Thin dispatcher: each subcommand parses its own flags and calls into the
 spec.* library. Library imports are deferred into each handler (NOT top-level)
 for two reasons: (1) the entry module loads cheaply and stays decoupled; and
 (2) — the load-bearing reason when this template is copied per stage — it lets
-`--help` and verb dispatch run during incremental per-task TDD, BEFORE the
-sibling library modules exist. A top-level `from spec import coverage, ports, …`
-would ImportError until every verb is built, breaking the task-by-task green.
+`--help` and verb dispatch run before the sibling library modules exist. A
+top-level `from spec import coverage, ports, …` would ImportError until every
+verb's library is built.
 Keep them lazy. (Library modules themselves use top-level absolute imports;
 only this thin dispatcher defers.)
 """
