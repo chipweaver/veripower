@@ -273,6 +273,99 @@ def test_golden_unwaived_flagged_blocks_pass(tmp_path):
     assert "approve precondition unmet" in env["stage_specific"]["fail_reason"]
 
 
+# ── waiver trust boundary: finalize rejects an unreasoned / malformed waiver (exit 2) ──
+# The stderr message is asserted so the exit-2 is attributable to the waiver check, not to a
+# downstream failure on the bare tmp_path (which would also exit 2, for a different reason).
+
+
+def test_finalize_empty_reason_waiver_is_blocked(tmp_path, capsys):
+    waived = json.dumps(
+        [
+            {
+                "child": "mac",
+                "lens": "faithfulness",
+                "classification": "accepted-risk",
+                "reason": "   ",
+            }
+        ]
+    )
+    rc = result.finalize(tmp_path, "tpu_top", status="pass", waived_json=waived)
+    assert rc == 2
+    assert "--waived" in capsys.readouterr().err
+
+
+def test_finalize_bad_classification_waiver_is_blocked(tmp_path, capsys):
+    waived = json.dumps(
+        [
+            {
+                "child": "mac",
+                "lens": "faithfulness",
+                "classification": "meh",
+                "reason": "x",
+            }
+        ]
+    )
+    rc = result.finalize(tmp_path, "tpu_top", status="pass", waived_json=waived)
+    assert rc == 2
+    assert "--waived" in capsys.readouterr().err
+
+
+def test_finalize_missing_field_waiver_is_blocked(tmp_path, capsys):
+    waived = json.dumps(
+        [{"child": "mac", "classification": "false-positive", "reason": "x"}]
+    )
+    rc = result.finalize(tmp_path, "tpu_top", status="pass", waived_json=waived)
+    assert rc == 2
+    assert "--waived" in capsys.readouterr().err
+
+
+def test_finalize_non_list_waiver_is_blocked(tmp_path, capsys):
+    rc = result.finalize(tmp_path, "tpu_top", status="pass", waived_json='{"a": 1}')
+    assert rc == 2
+    assert "--waived" in capsys.readouterr().err
+
+
+def test_finalize_valid_waiver_still_passes(tmp_path):
+    # the check must not reject a well-formed human waiver: a valid one still clears the gate.
+    wd = tmp_path / "specification"
+    shutil.copytree(_FIX, wd)
+    (wd / "spec-review.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "stage": "specification",
+                "module": "tpu_top",
+                "reviewed_children": ["mac"],
+                "findings": [
+                    {
+                        "child": "mac",
+                        "lens": "faithfulness",
+                        "severity": "critical",
+                        "location": "§1.3",
+                        "summary": "missing feature",
+                    }
+                ],
+            }
+        )
+    )
+    waived = json.dumps(
+        [
+            {
+                "child": "mac",
+                "lens": "faithfulness",
+                "location": "§1.3",
+                "classification": "accepted-risk",
+                "reason": "out of scope this tapeout",
+            }
+        ]
+    )
+    rc = result.finalize(
+        wd, "tpu_top", status="pass", ppa_targets_json="[]", waived_json=waived
+    )
+    assert rc == 0
+    assert json.loads((wd / "result.json").read_text())["status"] == "pass"
+
+
 def test_finalize_bad_ppa_targets_json_is_blocked(tmp_path):
     MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
     r = subprocess.run(

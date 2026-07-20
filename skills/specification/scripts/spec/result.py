@@ -10,6 +10,7 @@ from spec.review import gate_verdict
 STAGE = "specification"
 
 _PPA_DIMS = {"area_um2", "timing_slack_ns", "power_mw"}
+_WAIVED_CLASSIFICATIONS = {"false-positive", "accepted-risk"}
 _REJECT_REASON = "design.md gate rejected at human review"
 
 
@@ -70,6 +71,29 @@ def _validate_ppa(targets) -> str | None:
             return f"ppa_targets[{i}].target must be a number (got {target!r})"
         if isinstance(target, float) and not math.isfinite(target):
             return f"ppa_targets[{i}].target must be finite (got {target!r})"
+    return None
+
+
+def _waived_error(waived) -> str | None:
+    """Validate the parsed --waived array before it can clear a flagged finding. Each entry
+    is a human waiver record: a non-empty child/lens/reason and a known classification. The
+    waiver is the sole way a blocking finding passes unfixed, so finalize must reject a
+    reasonless or malformed one (exit 2) rather than launder a non-decision into a promoted
+    pass — "reason is human-authored" (SKILL.md §Step 8) has no other deterministic backstop."""
+    if not isinstance(waived, list):
+        return f"--waived must be a JSON array (got {type(waived).__name__})"
+    for i, w in enumerate(waived):
+        if not isinstance(w, dict):
+            return f"--waived[{i}] must be an object (got {type(w).__name__})"
+        for key in ("child", "lens", "reason"):
+            v = w.get(key)
+            if not isinstance(v, str) or not v.strip():
+                return f"--waived[{i}] missing non-empty {key!r}"
+        if w.get("classification") not in _WAIVED_CLASSIFICATIONS:
+            return (
+                f"--waived[{i}] classification {w.get('classification')!r} not in "
+                f"{sorted(_WAIVED_CLASSIFICATIONS)}"
+            )
     return None
 
 
@@ -247,8 +271,9 @@ def finalize(
     """Parse the human-gate outcome args, then build_result. --ppa-targets is an optional
     override — by default the Wave-1-authored {workdir}/ppa.json is read from disk. exit
     0 = result.json written (pass or fail); exit 2 = BLOCKED (bad --ppa-targets/--waived
-    JSON, empty --fail-reason, missing/invalid ppa.json, unreadable manifest, a
-    derivation fail-loud, or any internal raise) — never conflated with status=fail."""
+    JSON, a malformed or reasonless --waived record, empty --fail-reason, missing/invalid
+    ppa.json, unreadable manifest, a derivation fail-loud, or any internal raise) — never
+    conflated with status=fail."""
     if fail_reason is not None and not fail_reason.strip():
         print(
             "[spec finalize] ERROR: --fail-reason must be a non-empty one-line reason",
@@ -263,6 +288,10 @@ def finalize(
             f"[spec finalize] ERROR: --ppa-targets/--waived not valid JSON: {exc}",
             file=sys.stderr,
         )
+        return 2
+    werr = _waived_error(waived)
+    if werr:
+        print(f"[spec finalize] ERROR: {werr}", file=sys.stderr)
         return 2
     try:
         return build_result(
