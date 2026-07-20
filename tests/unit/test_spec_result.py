@@ -88,19 +88,22 @@ def test_build_result_pass_lean_shape(tmp_path):
     )
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
-    assert ss["top_module"] == "tpu_top" and ss["ppa_targets"] == []
+    assert ss["top_module"] == "tpu_top"
     assert ss["spec_gate"] == {
         "gate": "clear",
         "flagged": [],
         "must_ack": [],
         "waived": [],
     }
+    assert (
+        "ppa_targets" not in ss
+    )  # PPA lives in the ppa.json sidecar, not the envelope
     assert "notes" not in ss and "fail_reason" not in ss  # lean shape
     assert json.loads((wd / "ppa.json").read_text()) == []  # sidecar written on pass
     assert {"path": "ppa.json", "kind": "ppa"} in env["artifacts"]
 
 
-def test_build_result_passes_ppa_targets_through(tmp_path):
+def test_build_result_override_writes_ppa_sidecar(tmp_path):
     wd = _spec_workdir(tmp_path)
     targets = [
         {"dim": "area_um2", "target": 70000.0},
@@ -110,9 +113,7 @@ def test_build_result_passes_ppa_targets_through(tmp_path):
         wd, module="tpu_top", ppa_targets=targets, waived=[], status="pass"
     )
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert (
-        ss["ppa_targets"] == targets
-    )  # recorded verbatim in stage_specific (faithful record of the γ-floor inputs)
+    assert "ppa_targets" not in ss  # the sidecar is the SSoT, not the envelope
     # ppa.json is the stable sidecar synthesis/power-analysis read directly (spec §4.3)
     assert json.loads((wd / "ppa.json").read_text()) == targets
 
@@ -170,7 +171,9 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     ss = env["stage_specific"]
     assert env["status"] == "pass"
     assert ss["top_module"] == "tpu_top"  # == manifest.module
-    assert ss["ppa_targets"] == targets  # passed through verbatim
+    assert (
+        "ppa_targets" not in ss
+    )  # PPA lives in the ppa.json sidecar, not the envelope
     assert ss["spec_gate"] == {
         "gate": "clear",
         "flagged": [],
@@ -413,7 +416,7 @@ def test_pass_reads_ppa_from_disk_when_no_override(tmp_path):
         == 0
     )
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["ppa_targets"] == targets
+    assert "ppa_targets" not in ss
     # the wave-1 disk copy IS the source — untouched, not rewritten
     assert json.loads((wd / "ppa.json").read_text()) == targets
 
@@ -443,7 +446,7 @@ def test_forgotten_override_no_longer_wipes_ppa_json(tmp_path):
     assert r.returncode == 0
     assert json.loads((wd / "ppa.json").read_text()) == targets  # NOT wiped
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["ppa_targets"] == targets
+    assert "ppa_targets" not in ss
 
 
 def test_pass_missing_ppa_json_is_blocked(tmp_path):

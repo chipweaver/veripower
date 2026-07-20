@@ -203,7 +203,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
   --waived '<spec_gate.waived[] JSON>'
 ```
 
-You supply only the human-gate outcome: `--status` (approve/reject) and `--waived` (`[]` if none). `ppa_targets` comes from the Wave-1-authored `{workdir}/ppa.json` (override with `--ppa-targets '<JSON>'` only when needed; a missing or invalid `ppa.json` is a BLOCKED program exception, not a silent default). finalize **downgrades a `--status pass` to a written `status=fail`** if the Step-8 approve precondition is unmet (`spec_gate` neither clear nor fully waived). Exit 0 = `result.json` written (status pass or fail); a non-zero exit is a program exception (BLOCKED, reason on stderr), not a `status=fail`.
+You supply only the human-gate outcome: `--status` (approve/reject) and `--waived` (`[]` if none). finalize validates the Wave-1-authored `{workdir}/ppa.json` sidecar (a missing or invalid one is BLOCKED, not a silent default; override with `--ppa-targets` only if needed) and **downgrades a `--status pass` to a written `status=fail`** if the Step-8 approve precondition is unmet (`spec_gate` neither clear nor fully waived). Exit 0 = `result.json` written (status pass or fail); a non-zero exit is a program exception (BLOCKED, reason on stderr), not a `status=fail`.
 
 ## Decision Rules
 
@@ -247,6 +247,7 @@ Your sole on-disk completion signal is `{workdir}/result.json` present with `sta
 - [`references/sdc-template.md`](references/sdc-template.md) — SDC generated-output reference (what `derive-constraints` emits).
 - [`references/sgdc-template.md`](references/sgdc-template.md) — SGDC generated-output reference (what `derive-constraints` emits).
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema (`schema_version: 1`).
+- [`references/ppa.schema.json`](references/ppa.schema.json) — the `ppa.json` PPA-targets sidecar schema (the cross-stage PPA dim namespace).
 - [`references/spec-review.schema.json`](references/spec-review.schema.json) — gating semantic-review schema (Wave 3, Step 7).
 - [`references/decompose-task-contract.md`](references/decompose-task-contract.md) — Wave-1 decompose sub-Task contract (Step 2).
 - [`references/spec-review-task-contract.md`](references/spec-review-task-contract.md) — per-child reviewer sub-Task contract (Step 7).

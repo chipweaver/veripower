@@ -36,7 +36,7 @@ def _write(module, rel, content):
 # Minimal declared outputs + stage_specific so dispatch is available and the
 # reap-time schema validation genuinely passes (mirrors test_kernel_cli).
 _STAGE_SPECIFIC = {
-    "specification": {"top_module": "top", "ppa_targets": []},
+    "specification": {"top_module": "top"},
     "simulation-plan": {},
     "rtl-design": {},
     "lint-cdc": {"violations": []},

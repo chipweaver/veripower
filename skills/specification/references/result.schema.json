@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/specification/result.schema.json",
   "title": "specification result.json contract (schema_version 1)",
-  "description": "Complete contract for asic/<module>/Design/specification/result.json. On status=pass, stage_specific carries top_module (filename-convention anchor for <TOP>.sdc/.sgdc) and ppa_targets (PPA gate targets for later stages to consume). Other design data (interfaces, clock_domains, reset strategy) lives canonical in design.md and is not duplicated here. On status=fail, stage_specific.fail_reason is required (if/then below) — the one-line failure narrative. top_module / ppa_targets may be absent if the early-fail path didn't reach scaffold-derivation.",
+  "description": "Complete contract for asic/<module>/Design/specification/result.json. On status=pass, stage_specific carries top_module (filename-convention anchor for <TOP>.sdc/.sgdc); the PPA gate targets live in the ppa.json sidecar (ppa.schema.json) that synthesis/power-analysis read directly, not in this envelope. Other design data (interfaces, clock_domains, reset strategy) lives canonical in design.md and is not duplicated here. On status=fail, stage_specific.fail_reason is required (if/then below) — the one-line failure narrative. top_module may be absent if the early-fail path didn't reach scaffold-derivation.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
@@ -24,19 +24,6 @@
           "properties": {
             "top_module":  {"type": "string", "minLength": 1},
             "fail_reason": {"type": "string", "minLength": 1},
-            "ppa_targets": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": ["dim", "target"],
-                "properties": {
-                  "dim":         {"type": "string", "enum": ["area_um2", "timing_slack_ns", "power_mw"]},
-                  "target":      {"type": "number"},
-                  "scenario_id": {"type": "string"}
-                },
-                "additionalProperties": true
-              }
-            },
             "spec_gate": {
               "type": "object",
               "additionalProperties": false,
@@ -78,7 +65,7 @@
     },
     {
       "if":   {"properties": {"status": {"const": "pass"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["top_module", "ppa_targets"]}}}
+      "then": {"properties": {"stage_specific": {"required": ["top_module"]}}}
     },
     {
       "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},

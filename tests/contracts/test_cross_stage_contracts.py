@@ -5,7 +5,7 @@ boundaries:
 
 1. **PPA dim namespace consistency.** Every `dim` value that any stage's
    `ppa_actual[]` schema allows (via const or enum) must appear in
-   `specification.ppa_targets[].dim` enum. specification authors the
+   specification's `ppa.schema.json` `dim` enum. specification authors the
    targets; downstream stages MEASURE against them. A stage that reports
    a dim specification can't express has no target — rework routing
    loses signal silently.
@@ -17,6 +17,7 @@ boundaries:
    path-drift incident type the failure-memory entry flags.
 """
 
+import json
 import re
 
 import pytest
@@ -57,12 +58,14 @@ def _ppa_actual_dims_for_stage(stage: str) -> set[str]:
 
 
 def _spec_ppa_target_dims() -> set[str]:
-    for entry in load_stage_schema("specification").get("allOf", []):
-        ss = entry.get("properties", {}).get("stage_specific", {})
-        ppa_t = ss.get("properties", {}).get("ppa_targets")
-        if ppa_t:
-            return _collect_dim_values_from_array_schema(ppa_t)
-    return set()
+    # spec's PPA-target dim enum lives on the ppa.json sidecar schema (the SSoT downstream
+    # reads); it is no longer copied into the result.json envelope.
+    ppa_schema = json.loads(
+        (
+            PLUGIN_ROOT / "skills" / "specification" / "references" / "ppa.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    return _collect_dim_values_from_array_schema(ppa_schema)
 
 
 def test_ppa_dim_union_subset_of_spec_targets() -> None:
@@ -80,10 +83,10 @@ def test_ppa_dim_union_subset_of_spec_targets() -> None:
     missing = measured_union - spec_targets
     assert not missing, (
         f"Stages report ppa_actual dims {sorted(missing)} that specification's "
-        f"ppa_targets[].dim enum doesn't list. Per-stage measured dims: "
+        f"ppa.schema.json dim enum doesn't list. Per-stage measured dims: "
         f"{ {s: sorted(d) for s, d in measured.items()} }; "
         f"spec target dims: {sorted(spec_targets)}. Add the missing dim(s) to "
-        f"specification's ppa_targets enum, or stop reporting them downstream."
+        f"specification's ppa.schema.json, or stop reporting them downstream."
     )
 
 

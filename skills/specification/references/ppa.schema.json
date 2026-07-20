@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/specification/ppa.schema.json",
+  "title": "specification PPA targets (Design/specification/ppa.json)",
+  "description": "The PPA gate targets specification emits into the ppa.json sidecar (one object per gated dimension; [] when none). synthesis and power-analysis read this file directly as their acceptance standard; rtl-design receives it via the Orchestrator-authored directive. The dim enum is the cross-stage PPA namespace every downstream ppa_actual[].dim must be a subset of.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["dim", "target"],
+    "properties": {
+      "dim":         {"type": "string", "enum": ["area_um2", "timing_slack_ns", "power_mw"]},
+      "target":      {"type": "number"},
+      "scenario_id": {"type": "string"}
+    },
+    "additionalProperties": true
+  }
+}

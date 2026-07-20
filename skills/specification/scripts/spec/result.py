@@ -34,9 +34,7 @@ def _write_result(workdir: Path, env: dict) -> None:
     tmp = workdir / "result.json.tmp"
     tmp.write_text(json.dumps(env, indent=2) + "\n")
     tmp.replace(workdir / "result.json")  # atomic: never observed half-written
-    sys.stdout.write(
-        f"[spec finalize] Written: {workdir / 'result.json'} (status={env['status']})\n"
-    )
+    print(f"[spec finalize] wrote {workdir / 'result.json'} (status={env['status']})")
 
 
 def _write_ppa_json(workdir: Path, ppa_targets: list) -> None:
@@ -49,7 +47,7 @@ def _write_ppa_json(workdir: Path, ppa_targets: list) -> None:
 
 
 def _validate_ppa(targets) -> str | None:
-    """Shape-check a ppa_targets array (mirrors result.schema.json's ppa_targets items:
+    """Shape-check a ppa_targets array (mirrors ppa.schema.json's items:
     dim in the PPA enum, finite numeric target). Returns a one-line defect description,
     or None when valid — checked at finalize so a bad wave-1 ppa.json (or a bad
     override) blocks here with a fix-oriented message instead of failing schema
@@ -171,9 +169,10 @@ def build_result(workdir, module, ppa_targets, waived, status, fail_reason=None)
     constraint files cannot diverge) → re-derive spec_gate from the on-disk
     spec-review.json and enforce the approve precondition (an unmet precondition
     downgrades to a written status=fail BEFORE any ppa handling, so a ppa fault can
-    never preempt the documented downgrade) → resolve ppa_targets (an explicit
-    override wins and lands on disk; otherwise the Wave-1-authored {workdir}/ppa.json
-    is read) → enumerate artifacts[], write the envelope.
+    never preempt the documented downgrade) → validate the ppa.json sidecar (a
+    --ppa-targets override writes it; otherwise the Wave-1-authored {workdir}/ppa.json
+    is re-validated in place — the sidecar is the PPA SSoT, never copied into the
+    envelope) → enumerate artifacts[], write the envelope.
 
     fail path (human reject, or an early-fail exit carrying fail_reason): NEVER runs
     the derivation — an early-fail's tables may be incomplete, and the derivation's
@@ -241,16 +240,17 @@ def build_result(workdir, module, ppa_targets, waived, status, fail_reason=None)
         )
         return 0
 
-    override = ppa_targets is not None
-    if override:
+    if ppa_targets is not None:
         err = _validate_ppa(ppa_targets)
         if err:
             raise ValueError(f"--ppa-targets override: {err}")
         _write_ppa_json(workdir, ppa_targets)
     else:
-        ppa_targets = _load_ppa_from_disk(workdir)
+        # validate the Wave-1 ppa.json in place (raises -> BLOCKED); it is the PPA SSoT
+        # synthesis/power-analysis read directly, not copied into this envelope.
+        _load_ppa_from_disk(workdir)
 
-    ss = {"top_module": top, "ppa_targets": ppa_targets, "spec_gate": spec_gate}
+    ss = {"top_module": top, "spec_gate": spec_gate}
     artifacts = enumerate_artifacts(workdir, top)
     _write_result(
         workdir,
@@ -276,7 +276,7 @@ def finalize(
     conflated with status=fail."""
     if fail_reason is not None and not fail_reason.strip():
         print(
-            "[spec finalize] ERROR: --fail-reason must be a non-empty one-line reason",
+            "[spec finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",
             file=sys.stderr,
         )
         return 2
@@ -285,13 +285,13 @@ def finalize(
         waived = json.loads(waived_json)
     except json.JSONDecodeError as exc:
         print(
-            f"[spec finalize] ERROR: --ppa-targets/--waived not valid JSON: {exc}",
+            f"[spec finalize] BLOCKED: --ppa-targets/--waived not valid JSON: {exc}",
             file=sys.stderr,
         )
         return 2
     werr = _waived_error(waived)
     if werr:
-        print(f"[spec finalize] ERROR: {werr}", file=sys.stderr)
+        print(f"[spec finalize] BLOCKED: {werr}", file=sys.stderr)
         return 2
     try:
         return build_result(
@@ -300,8 +300,8 @@ def finalize(
     except SystemExit as exc:
         # derive_constraints' fail-loud sys.exit is a BaseException; keep the
         # documented exit-code contract (2 = BLOCKED) instead of leaking exit 1.
-        print(f"[spec finalize] FAIL=internal {exc.code or exc}", file=sys.stderr)
+        print(f"[spec finalize] BLOCKED: {exc.code or exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        print(f"[spec finalize] FAIL=internal {exc}", file=sys.stderr)
+        print(f"[spec finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2
