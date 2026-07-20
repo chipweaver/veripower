@@ -16,7 +16,7 @@
 
 | Content type | Recommended format | Notes |
 |----------|----------|------|
-| Architecture diagrams (§1.2 / submodules §1.7+ / brainstorm D4 candidates) | mermaid code block | GitHub / VSCode preview / mkdocs all render natively; for multiple side-by-side candidates use one code block each. |
+| Architecture diagrams (§1.2 / submodule `<child>.md` bodies / brainstorm D4 candidates) | mermaid code block | GitHub / VSCode preview / mkdocs all render natively; for multiple side-by-side candidates use one code block each. |
 | Timing diagrams (§1.5 interface timing / brainstorm D5 scenarios) | Hand-drawn ASCII (preferred) or wavedrom | wavedrom does **not** render on GitHub — if wavedrom is used, attach an ASCII equivalent or export a PNG when reviewing the PR; otherwise stick with ASCII. |
 
 Each timing diagram must be paired with a textual description that **maps one-to-one onto each phase of the waveform** (setup/hold, handshake meaning, typical/boundary cycles, etc.). This convention applies to both `brainstorm.md` and `design.md`.
@@ -232,27 +232,5 @@ Before `design.md` is approved, the **gated** checks below must pass `check-cove
 
 | Version | Date | Notes | brainstorm.md |
 |------|------|------|---------------------|
-| 0.1 | YYYY-MM-DD | Initial draft (overview + submodules full) | approved |
+| 0.1 | YYYY-MM-DD | Initial draft | approved |
 ```
-
-`brainstorm.md` is **frozen** for the duration of a run: design.md derives from it but never amends it in-pipeline. A requirements change is handled out-of-band, not by editing brainstorm.md mid-flow.
-
-## Fidelity (objective gate — no self-certification section)
-
-`design.md` carries **no** §3 Derivation Notes or §4 Internal Consistency Self-Check
-table. Fidelity is verified objectively by `check-coverage`, whose stdout verdict covers:
-
-- `token_survival` — every hard token in the **whole** brainstorm (a fenced code block /
-  `assign …;` / `always @(…) …;` / `parameter`/`localparam` numeric def / sized literals
-  `N'hXX` / timing `N.N ns`) must survive as a **contiguous** substring in `design.md ∪ <child>.md`.
-- `brainstorm_coverage` — every brainstorm chapter (ATX ≤ 2, minus `shared_subsections`)
-  falls in some child's `brainstorm_anchor` range. Reports `gaps` + `orphans` only.
-- `frontmatter_subset` — child `ports / clocks / features` ⊆ the main design tables.
-- `self_containment` — no by-reference jumps to brainstorm; no cross-child `<child>.md` links.
-- `structure` — §1.4.x present; §1.3/§1.4.1/§1.5/§1.6 + child §5 gated columns; §1.6 freq↔period;
-  §1.4.1 Clock-Domain ⊆ §1.6; every §1.3 feature covered by a child §5.
-
-The brainstorm → design.md handoff is **frozen** (see Document Control). The machine
-checks token survival + coverage (substring/structural); a human reviewer judges
-engineering soundness — the semantic "not contradictory" consistency the token check
-cannot catch.

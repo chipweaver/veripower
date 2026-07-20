@@ -44,7 +44,7 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 | Path (relative to `{workdir}`) | Schema / Format | Use |
 |---|---|---|
 | `result.json` | `references/result.schema.json` + `framework/references/schemas/envelope.schema.json` | This stage's status contract. |
-| `design.md` | Custom markdown (section template in `references/design-template.md`) | Design document (overview §1.1–1.6 + submodule §1.7+). |
+| `design.md` | Custom markdown (section template in `references/design-template.md`) | Design document (overview §1.1–1.6 + §1.7 submodule index). |
 | `manifest.json` | Custom JSON (child registry) | Child-partition SSoT (`module`, `children[]` with `name` / `doc` / `rtl_modules[]` / `brainstorm_anchor` / `role`); consumed by simulation-plan / rtl-design. |
 | `<child>.md × N` | Custom markdown (template in `references/child-design-template.md`) | Per-child sub-design (frontmatter + §1–§5); consumed by rtl-design (§2/§3), simulation-plan (§5). |
 | `ppa.json` | `references/ppa.schema.json` | PPA-targets SSoT, authored by Wave 1 from brainstorm D6 (`[]` when none); declared input of synthesis / power-analysis. |
@@ -201,7 +201,7 @@ You supply only the human-gate outcome: `--status` (approve/reject) and `--waive
 | Excuse | Reality |
 |---|---|
 | "The design looks complete — I'll mark it pass" without the user's approval at the design.md gate | The design.md gate is architectural, not a formality. Marking pass without it ships an unapproved spec downstream. |
-| "Minimum fields look mostly there — pass" | Mark pass only when the required columns of §1.3/§1.4/§1.5/§1.7+ are complete (see the design-template completeness gate table). Partial ≠ pass. |
+| "Minimum fields look mostly there — pass" | Mark pass only when the required (gated) columns are complete (see the design-template completeness gate table). Partial ≠ pass. |
 | "I'll just Edit this wave-output design.md/`<child>.md` body to fix a number" | The main thread holds no body; numerics are locked in the frozen brainstorm. Amend a body only by re-dispatching its wave sub-Task — never by main-thread Edit. |
 
 ## Completion Gate
