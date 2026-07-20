@@ -218,9 +218,8 @@ You supply only the human-gate outcome: `--status` (approve/reject) and `--waive
 - **Step 6 self-checks:** `spec check-coverage` exit 0 AND `spec derive-constraints` exit 0 (both pre-human-gate; the latter re-run by finalize as the divergence-proof invariant).
 - **Semantic gate:** the Step-7 `spec_gate` verdict cleared per the Step-8 approve precondition; `stage_specific.spec_gate` written; `spec-review.json` in `artifacts[]`.
 - **Human:** the design.md gate is approved (incl. port roles, reset polarity, clock relationships, the presented `ppa.json`) — the engineering-soundness judgment the token check cannot catch.
-- **Finalize:** `result.json` was written by `spec finalize` (it owns status / `top_module` / `ppa_targets` / `spec_gate` / `fail_reason` / `artifacts[]`; `<TOP>` = `manifest.module` matches the `constraints/<TOP>.{sdc,sgdc}` stems). You supply only `--status` / `--waived` (+ `--ppa-targets` only as an explicit override; `--fail-reason` on the early-fail exits).
+- **Finalize:** `spec finalize` wrote `result.json` (Step 9), owning status / `top_module` / `spec_gate` / `fail_reason` / `artifacts[]`; its verdict is schema-validated externally, not by you.
 - No Iron Rule or Red Flag was triggered.
-- `result.json` written; its verdict is schema-validated externally, not by you.
 
 ## Return Contract
 
