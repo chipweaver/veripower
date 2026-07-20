@@ -4,9 +4,8 @@
 The specification main thread runs this AFTER aggregating the per-child reviewer findings into
 spec-review.json and BEFORE the design.md approval gate — fix-and-retry (main-thread re-assembly,
 not re-dispatch) on a non-zero exit. Validates against references/spec-review.schema.json (Draft
-2020-12), then computes the
-gate verdict (the mechanical lens x severity reduction) and prints it as a one-line JSON the main
-thread copies -- so the gate is script-owned, not judged by eye.
+2020-12), then computes the gate verdict (the mechanical lens x severity reduction) and prints it
+as a one-line JSON -- the gate is script-owned, not judged by eye.
 
 Gate policy: faithfulness (vs frozen brainstorm intent) AND conformance (vs the §1.4.x pinned
 Encoding the child consumes/produces) findings at critical/important BLOCK (gate=trip) -- both have
@@ -38,8 +37,8 @@ _GATING_SEVERITIES = {"critical", "important"}
 
 def gate_verdict(doc: dict) -> dict:
     """Pure lens x severity reduction over doc['findings'] (no schema gate, no I/O).
-    The caller guarantees doc is a validated spec-review (main() runs the schema +
-    consistency gate first; finalize reads the already-on-disk, already-gated artifact)."""
+    The caller guarantees doc is a validated spec-review (validate() runs the schema
+    gate first; finalize reads the already-on-disk, already-gated artifact)."""
     findings = doc.get("findings", [])
     gating = [
         f
