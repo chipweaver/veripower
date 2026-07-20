@@ -37,7 +37,12 @@ check_design > reports/check_design.rpt
 # Synthesis input (timing-intent) SDC — distinct from env.sh's SDC (output netlist SDC read by STA).
 set sdc_in [expr {[info exists ::env(SDC_IN)] ? $::env(SDC_IN) : "constraints/example.sdc"}]
 source $sdc_in
-if {![compile]} { puts stderr "ERROR: compile failed"; exit 1 }
+# compile_ultra: standard high-effort QoR (what an engineer uses for real timing
+# closure). Fall back to basic compile only if compile_ultra is unavailable —
+# plain compile under-optimizes and would fail otherwise-closeable timing.
+if {![compile_ultra]} {
+    if {![compile]} { puts stderr "ERROR: compile failed"; exit 1 }
+}
 
 report_qor                                       > reports/qor.rpt
 report_area   -hierarchy                         > reports/area.rpt

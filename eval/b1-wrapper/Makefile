@@ -44,5 +44,6 @@ merge:  ## Merge coverage dbs (urg)
 	@source ./env.sh && urg -dir simv.vdb -dir cov_test.vdb -report both -dbname both.vdb
 
 clean:  ## Remove build artifacts
-	rm -rf out reports work spyglass_work simv simv.daidir csrc cov_test* *.vdb cov_merge
-	rm -f run.log sta.log com.log sim.log timing-report.txt command.log *.svf ucli.key vc_hdrs.h
+	rm -rf out reports work spyglass_work simv simv.eda-bin simv*.daidir csrc cov_test* *.vdb cov_merge
+	rm -f run.log sta.log com.log sim.log timing-report.txt command.log *.svf ucli.key vc_hdrs.h \
+		pt_shell_command.log sg_shell.log
