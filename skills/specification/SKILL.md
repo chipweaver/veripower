@@ -205,11 +205,6 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
 
 You supply only the human-gate outcome: `--status` (approve/reject) and `--waived` (`[]` if none). finalize validates the Wave-1-authored `{workdir}/ppa.json` sidecar (a missing or invalid one is BLOCKED, not a silent default; override with `--ppa-targets` only if needed) and **downgrades a `--status pass` to a written `status=fail`** if the Step-8 approve precondition is unmet (`spec_gate` neither clear nor fully waived). Exit 0 = `result.json` written (status pass or fail); a non-zero exit is a program exception (BLOCKED, reason on stderr), not a `status=fail`.
 
-## Decision Rules
-
-- When specification conflicts with the architecture plan, the `Status=approved` content of `brainstorm.md` takes precedence; if unclear, close via early-fail (`requirements need revision: …`) — you do not brainstorm; recovery is out-of-band, outside this skill.
-- Overview (§1.1–1.6) vs submodule (§1.7+) conflict-resolution order is owned by `design-template.md` — see it. (§1.6 ↔ constraint consistency is by-construction: `derive-constraints` generates both files from §1.6.)
-
 ## Red Flags
 
 | Excuse | Reality |
