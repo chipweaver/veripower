@@ -223,11 +223,9 @@ You supply only the human-gate outcome: `--status` (approve/reject) and `--waive
 
 ## Return Contract
 
-**Do not decide what happens after you complete** — control returns directly to the caller; the caller decides based on `result.json`.
+**Do not decide what happens after you complete**; control returns to the caller, which decides from `result.json`.
 
-### Re-entry and completion
-
-Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`; a missing `result.json` is treated as incomplete (no cross-session "already complete" flag). The framework's `carry_self` never carries the gate review (`spec-review.json`) forward on a repair — invalidate-on-rework. Every re-entry re-runs the semantic gate (Step 7) on the current `design.md` (+ per-child) before the Step-8 approve precondition and Step-9 finalize, so a compaction resumes without losing work and a stale `clear` cannot survive to finalize. The two path-handoff gates always re-ask idempotently: re-point the user to the on-disk path and ask them to reconfirm — **do not re-read or re-echo the file body.** `brainstorm.md` is the frozen module-root input verified `Status: approved` by design-flow's entry gate before you run; you never approve or re-approve it.
+Your sole completion signal is `{workdir}/result.json` present with `status=pass`; a missing one is incomplete (no cross-session "already complete" flag), so a repair round or a compaction resume just re-enters the main chain at Step 6 and re-runs it idempotently.
 
 ## Bundled References
 
