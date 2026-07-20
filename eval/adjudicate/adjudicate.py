@@ -63,6 +63,12 @@ _DEFAULT_WRAPPER = _REPO_ROOT / "eval" / "b1-wrapper"
 sys.path.insert(0, str(_REPO_ROOT / "skills" / "lint-cdc" / "templates" / "scripts"))
 import collect_report  # noqa: E402
 
+# Same reuse for timing: VeriPower's single-owner PrimeTime parser keys on the
+# report's (MET)/(VIOLATED) marker (never the printed number) and fails loud —
+# the same setup-MET-and-hold-MET bar the timing-analysis gate applies.
+sys.path.insert(0, str(_REPO_ROOT / "skills" / "timing-analysis" / "scripts"))
+from timing import result as timing_result  # noqa: E402
+
 # The four signoff-clean criteria (§1.3), in report order. signoff_clean is
 # their strict AND — any None/False (incl. fail-loud unknowns) fails the AND.
 _CRITERIA = ("golden", "lint", "cdc", "timing_met")
@@ -285,7 +291,12 @@ def _spyglass_check(workdir: Path, stage: str, dry: bool) -> dict:
 
 def check_synth_timing(workdir: Path, dry: bool) -> dict:
     """(d): DC synth under FIXED SDC_IN, then PT STA; met == synth produced a
-    netlist AND STA ran AND no VIOLATED slack (setup & hold WNS >= 0)."""
+    netlist AND STA ran AND the timing gate passes. Timing is judged by
+    VeriPower's single-owner timing.result parser, which keys on the report's
+    (MET)/(VIOLATED) marker — never the printed slack number (a real sub-rounding
+    violation prints 0.00) — i.e. the same setup-MET-and-hold-MET bar the
+    timing-analysis gate applies. Fail-loud: synth/STA failure or an unparseable
+    report -> timing_met=False, never a fabricated pass."""
     sdc_in = "constraints/design.sdc"  # FIXED timing intent (not the arm's)
     # Synthesize the RTL-only sourcelist (filelist.txt), NOT the sim manifest —
     # dc_run.tcl analyzes every listed file, so a TB/UVM line would break synth.
@@ -315,24 +326,28 @@ def check_synth_timing(workdir: Path, dry: bool) -> dict:
             "ran": True,
             "reason": f"sta rc={rc_sta} / report present={report.exists()}",
         }
-    wns = _parse_wns(report.read_text())
-    if wns is None:
-        # parser did not recognize the format -> cannot confirm met -> fail-loud
+    # timing.result.run: 0 parsed+judged; 1 missing; 3 unparseable / marker-vs-sign
+    # contradiction. It classifies setup/hold on the (MET)/(VIOLATED) marker.
+    tr_rc = timing_result.run(report, workdir / "timing-actual.json")
+    if tr_rc != 0:
         return {
             "timing_met": False,
             "synth_ok": True,
             "ran": True,
-            "reason": "WNS parse unrecognized (fail-loud)",
+            "reason": f"timing.result rc={tr_rc} (fail-loud: missing/unparseable)",
             "evidence": str(report),
         }
-    met = wns["setup_ns"] >= 0 and wns["hold_ns"] >= 0
+    actual = json.loads((workdir / "timing-actual.json").read_text())
+    setup, hold = actual["timing"]["setup"], actual["timing"]["hold"]
     return {
-        "timing_met": met,
+        "timing_met": actual["verdict"] == "pass",
         "synth_ok": True,
         "ran": True,
-        "wns_setup_ns": wns["setup_ns"],
-        "wns_hold_ns": wns["hold_ns"],
-        "evidence": str(report),
+        "wns_setup_ns": setup["worst_slack_ns"],
+        "wns_hold_ns": hold["worst_slack_ns"],
+        "setup_met": setup["met"],
+        "hold_met": hold["met"],
+        "evidence": str(workdir / "timing-actual.json"),
     }
 
 
@@ -341,24 +356,6 @@ def _read_top(workdir: Path) -> str:
         if ln.startswith("export TOP="):
             return ln.split("=", 1)[1].strip().strip('"')
     raise RuntimeError("TOP not found in generated env.sh")
-
-
-def _parse_wns(report_text: str) -> dict | None:
-    """Extract worst setup/hold slack from run_sta.tcl's report
-    (report_timing -delay max, then -delay min, then check_timing).
-
-    TODO(deploy): this is tool-version-sensitive (mirrors eda-env.md's stance
-    on urg text layout). The robust gate is 'any VIOLATED slack -> not met';
-    the numeric WNS below is best-effort for reporting. Attributing a given
-    slack line to setup vs hold relies on run_sta.tcl's max-then-min ordering —
-    verify against your PT version's exact 'slack (MET|VIOLATED)  <val>' lines
-    before trusting the numbers. Return None on any unrecognized layout so the
-    caller fails loud rather than assuming met.
-    """
-    raise NotImplementedError(
-        "WNS parser not implemented — wire to the site's PrimeTime "
-        "report_timing slack layout before running for score"
-    )
 
 
 def check_golden(
