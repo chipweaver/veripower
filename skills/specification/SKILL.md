@@ -135,8 +135,8 @@ It prints the coverage verdict to stdout (sub-blocks: `brainstorm_coverage` / `f
 
 | Violation category | Rework target |
 |---|---|
-| `gaps` / `orphans`; `structure` §1.3/§1.5 columns; period (R-B); Clock-Domain (R-F); `purity_violations`; `interconnect_violations` (§1.4.2 Width / Clock Domain); `top_io_driver_violations` (§1.4.1 output Owner) | Wave-1 rework (re-partition the manifest; `design.md` overview tables) |
-| `token_survival`; `frontmatter_subset`; `self_containment`; child §5 columns; feature coverage (R-C) | the affected Wave-2 child rework |
+| `gaps` / `orphans`; `structure` §1.3/§1.5 columns; period; Clock-Domain; `purity_violations`; `interconnect_violations` (§1.4.2 Width / Clock Domain); `top_io_driver_violations` (§1.4.1 output Owner) | Wave-1 rework (re-partition the manifest; `design.md` overview tables) |
+| `token_survival`; `frontmatter_subset`; `self_containment`; child §5 columns; feature coverage | the affected Wave-2 child rework |
 
 **On a clean coverage gate, immediately run `derive-constraints`:**
 

@@ -181,7 +181,7 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
             continue
         T = period_of.get(p["domain"])
         if T is None:
-            continue  # domain is a generated clock (deferred) or absent (R-F-gated); defensive
+            continue  # domain is a generated clock (deferred) or absent (clock-domain-gated); defensive
         delay = round(T * _IO_DELAY_FRAC, 4)
         if p["direction"] == "input":
             out.append(

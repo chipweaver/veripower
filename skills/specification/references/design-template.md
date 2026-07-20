@@ -1,15 +1,15 @@
 # design.md Section Template
 
-`{workdir}/design.md` is the **sole design source of truth** produced by this skill: overview sections 1.1–1.6 describe the module as a whole (function, interfaces, timing, frequencies, architecture partitioning); submodule sections 1.7+ describe the implementation details of each submodule. All external consumers (RTL implementation / constraint generation / verification derivation / synthesis / power / timing signoff, etc.) read from this single document — there is no second copy.
+`{workdir}/design.md` is the **design source of truth** produced by this skill: §1.1–1.6 describe the module as a whole (function, interfaces, timing, frequencies, architecture partitioning), and the §1.7 submodule index points to each child's `<child>.md`, where the per-submodule implementation detail lives. All external consumers (RTL implementation / constraint generation / verification derivation / synthesis / power / timing signoff, etc.) read from `design.md` and these child docs.
 
-> **`design.md` self-containment principle**: all critical invariants from brainstorm (RTL formulas / interface timing / numeric parameters / implementation constraints / overlay explicit spec supplement sections) must be inlined verbatim into `design.md`. **By-reference jumps are forbidden** (such as "see brainstorm §sd_clock_divider IO Ports" / "see spec D2" / "refer to brainstorm section sd_controller_wb" / "see brainstorm §X"). The downstream skill input lists do not literally include `brainstorm.md`; by-reference = information loss, which causes false-fail under cycle-accurate `===` checks. Enforced by `check-coverage:self_containment`.
+> **`design.md` self-containment principle**: all critical invariants from brainstorm (RTL formulas / interface timing / numeric parameters / implementation constraints / overlay explicit spec supplement sections) must be inlined verbatim into `design.md`. **By-reference jumps are forbidden** (such as "see brainstorm §sd_clock_divider IO Ports" / "see spec D2" / "refer to brainstorm section sd_controller_wb" / "see brainstorm §X"). The downstream skill input lists do not literally include `brainstorm.md`; by-reference = information loss, which causes false-fail under cycle-accurate `===` checks. Enforced by `check-coverage`.
 
 ## Document Position
 
 | Section range | Responsibility |
 |---|---|
-| 1.1–1.6 Overview sections | Function, interfaces, timing, frequencies, architecture partitioning; 1:1 consistent with each D-dimension field in brainstorm.md; on conflict, this section is the single upper-layer authority. |
-| 1.7+ Submodule sections | Implementation details (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.); on conflict, **modify the overview sections first, then the submodule sections** (`constraints/<TOP>.{sdc,sgdc}` is regenerated from §1.6 by `derive-constraints` — never hand-edited). |
+| 1.1–1.6 Overview sections | Function, interfaces, timing, frequencies, architecture partitioning; 1:1 consistent with each D-dimension field in brainstorm.md; on conflict, this section is the single upper-layer authority. `constraints/<TOP>.{sdc,sgdc}` is regenerated from §1.6 by `derive-constraints`, never hand-edited. |
+| 1.7 Submodule Index | Pointer table to each child's `<child>.md` (name / doc / brainstorm anchor / role); the per-submodule implementation detail (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.) lives in those child docs, not here. On conflict between an overview table and a child doc, **fix the overview first**. |
 | 2 Document control | Version, revision notes, the corresponding (frozen / approved) brainstorm.md. |
 
 ## Rendering Conventions
@@ -65,7 +65,7 @@ The columns of the table below must satisfy the "minimum field completeness" req
 | rst_n  | input  | - | 1 | clk | reset   | -    | reset | - | 0  | async |
 | cfg_addr | input | - | 8 | clk | cfg_bus | APB3 | data  | - | -  | -     |
 
-> **Owner** (Output rows — **gated**: present, a manifest child, and that child lists the signal in its frontmatter `ports`): the child that drives this output. **Guidance (not gated):** prefer a **leaf child** that the pure top-integration child passes through to the boundary; an output driven by the top-integration child's own combinational glue (mux / reduction / constant) is discouraged — prefer a dedicated child (e.g. an arbiter). `Owner` = the top-integration child still passes the gate; this preference is a design note, not enforced. Input/inout rows use `-`. The gated part is enforced by `check-coverage:structure.top_io_driver_violations`.
+> **Owner** (Output rows — **gated**: present, a manifest child, and that child lists the signal in its frontmatter `ports`): the child that drives this output. **Guidance (not gated):** prefer a **leaf child** that the pure top-integration child passes through to the boundary; an output driven by the top-integration child's own combinational glue (mux / reduction / constant) is discouraged — prefer a dedicated child (e.g. an arbiter). `Owner` = the top-integration child still passes the gate; this preference is a design note, not enforced. Input/inout rows use `-`. The gated part is enforced by `check-coverage`.
 
 > **Role** (required — `derive-constraints` reads it): `clock` / `reset` / `data`.
 
@@ -91,7 +91,7 @@ The columns of the table below must satisfy the "minimum field completeness" req
 |------|-----------------------|-----------------------|-------|--------------|----------|----------|-------------------|-------|
 | … | … | … | … | … | … | … | … | … |
 
-> **Width** and **Clock Domain** are **gated**: every inter-module wire pins a concrete Width (`-` is not valid) and a Clock Domain that is a §1.6 clock name. (Direction is encoded by Producer/Consumer. ResetPolarity/ResetKind are NOT gated on §1.4.2 — reset is enforced only at constraint generation on §1.4.1 `Role=reset` rows.) A heterogeneous control bundle (fields of differing width, e.g. an old `ctrl_bus`) cannot fill one honest Width row — break it into per-field wires. Enforced by `check-coverage:structure.interconnect_violations`.
+> **Width** and **Clock Domain** are **gated**: every inter-module wire pins a concrete Width (`-` is not valid) and a Clock Domain that is a §1.6 clock name. (Direction is encoded by Producer/Consumer. ResetPolarity/ResetKind are NOT gated on §1.4.2 — reset is enforced only at constraint generation on §1.4.1 `Role=reset` rows.) A heterogeneous control bundle (fields of differing width, e.g. an old `ctrl_bus`) cannot fill one honest Width row — break it into per-field wires. Enforced by `check-coverage`.
 
 > **Encoding** (required content rule — enforced by the spec-review `conformance` lens, NOT a
 > deterministic gate): a wire that carries an **encoded control/status value** (a command/phase bus,
@@ -176,7 +176,7 @@ rdy      _________|‾‾‾‾‾‾‾‾‾‾‾‾‾|_______________   (sl
 | clk_io | 50  | 20.0 | async   | no | IO-domain clock |
 
 > **SDC Period (ns)** must equal `1000 / Nominal Frequency (MHz)` (enforced by
-> `check-coverage` R-B). **Relationship**: `primary` / `synchronous-related` / `async`
+> `check-coverage`). **Relationship**: `primary` / `synchronous-related` / `async`
 > — `async` clocks drive `set_clock_groups -asynchronous`. **Generated**: `yes` for a
 > divider/PLL output (no top-level port) — `derive-constraints` emits **no**
 > `create_clock` for it and records a `create_generated_clock`-deferred-to-RTL note in the
@@ -201,7 +201,7 @@ For every module (N≥1) the parent `design.md` keeps only this §1.7 index; eac
 
 ## Minimum Field Completeness Gate Table
 
-Before `design.md` is approved, the **gated** checks below must pass `check-coverage:structure`; **recommended** columns degrade downstream quality if absent (`derive-plan-data` defaults them, so a missing column yields an empty/weaker derivation, not a crash). Failing any gated check disqualifies you from marking pass.
+Before `design.md` is approved, the **gated** checks below must pass `check-coverage`; **recommended** columns degrade downstream quality if absent (`derive-plan-data` defaults them, so a missing column yields an empty/weaker derivation, not a crash). Failing any gated check disqualifies you from marking pass.
 
 | Check | Field location | Impact of missing |
 |--------|----------|----------|
@@ -214,14 +214,14 @@ Before `design.md` is approved, the **gated** checks below must pass `check-cove
 | §1.5 column Exceptions / Negative Cases — **(recommended)** | Overview §1.5 table | Absent column degrades negative-case coverage; `derive-plan-data` defaults it to empty. |
 | §1.6 columns Clock Name / Nominal Frequency (MHz) / SDC Period (ns) / Relationship — **(gated)** | Overview §1.6 table | Absent columns degrade constraint generation; `derive-constraints` requires clock name, period, and relationship. |
 | §1.6 column Generated — **(recommended)** (defaults to `"no"`) | Overview §1.6 table | Absent column causes `derive-constraints` to treat all clocks as top-level ports (may emit spurious `create_clock` for PLL outputs). |
-| §1.6 internal consistency: `SDC Period (ns)` ≈ `1000 / Nominal Frequency (MHz)` per row — **(gated)** | Overview §1.6 table | A freq/period typo would propagate into every generated `create_clock`; enforced by `check-coverage` (R-B). |
-| §1.4.1 `Clock Domain` values ⊆ §1.6 clock names — **(gated)** | §1.4.1 + §1.6 tables | A phantom domain would make `abstract_port -clock <phantom>` and break SpyGlass CDC; enforced by `check-coverage` (R-F). |
-| §1.4.1 every Output has an `Owner` that is a manifest child listing the signal — **(gated)** | §1.4.1 Owner column + per-child frontmatter | A missing/invalid Owner, or an Owner child that does not list the signal, is an undriven / mis-declared top output; enforced by `check-coverage:structure.top_io_driver_violations`. (The leaf-owner / no-top-glue preference is documented guidance, not gated.) |
-| §1.4.2 columns Width / Clock Domain present + per-row concrete — **(gated)** | Overview §1.4.2 table | Unpinned inter-module width lets body-blind fan-out children diverge (the fa_core 128b↔32b / opaque-`ctrl_bus` class); enforced by `check-coverage:structure.interconnect_violations`. |
-| §1.4.2 `Clock Domain` values ⊆ §1.6 clock names — **(gated)** | §1.4.2 + §1.6 tables | A phantom interconnect domain hides a CDC path; enforced by `check-coverage:structure.interconnect_violations`. |
-| Every §1.3 feature `ID` referenced by ≥1 child §5 `SourceFeature` — **(gated)** | §1.3 feature table + per-child `<child>.md §5` | Catches specified-but-unverified features; enforced by `check-coverage` (R-C, feature→§5 coverage). |
-| `<child>.md §5` Verification-Hints table has the **gated** columns CheckID / SourceFeature / ImplementationDetail / Observable / ReferenceRule (Latency / ResetBehavior recommended; ImplementationDetailVerbatim is guarded by token-survival, BrainstormAnchor is traceability) | per-child `<child>.md §5` (see `child-design-template.md`) | Cannot generate rule-based RM / scoreboard; **enforced by `check-coverage` structure + R-C feature-coverage**. |
-| `design.md` self-containment (no `see brainstorm` / `refer to brainstorm` / `see spec D` / cross-child links) | Whole document + each `<child>.md` | See the self-containment principle stated once above; **enforced by `check-coverage:self_containment`**. |
+| §1.6 internal consistency: `SDC Period (ns)` ≈ `1000 / Nominal Frequency (MHz)` per row — **(gated)** | Overview §1.6 table | A freq/period typo would propagate into every generated `create_clock`; enforced by `check-coverage`. |
+| §1.4.1 `Clock Domain` values ⊆ §1.6 clock names — **(gated)** | §1.4.1 + §1.6 tables | A phantom domain would make `abstract_port -clock <phantom>` and break SpyGlass CDC; enforced by `check-coverage`. |
+| §1.4.1 every Output has an `Owner` that is a manifest child listing the signal — **(gated)** | §1.4.1 Owner column + per-child frontmatter | A missing/invalid Owner, or an Owner child that does not list the signal, is an undriven / mis-declared top output; enforced by `check-coverage`. (The leaf-owner / no-top-glue preference is documented guidance, not gated.) |
+| §1.4.2 columns Width / Clock Domain present + per-row concrete — **(gated)** | Overview §1.4.2 table | Unpinned inter-module width lets body-blind fan-out children diverge (the fa_core 128b↔32b / opaque-`ctrl_bus` class); enforced by `check-coverage`. |
+| §1.4.2 `Clock Domain` values ⊆ §1.6 clock names — **(gated)** | §1.4.2 + §1.6 tables | A phantom interconnect domain hides a CDC path; enforced by `check-coverage`. |
+| Every §1.3 feature `ID` referenced by ≥1 child §5 `SourceFeature` — **(gated)** | §1.3 feature table + per-child `<child>.md §5` | Catches specified-but-unverified features; enforced by `check-coverage`. |
+| `<child>.md §5` Verification-Hints table has the **gated** columns CheckID / SourceFeature / ImplementationDetail / Observable / ReferenceRule (Latency / ResetBehavior recommended; ImplementationDetailVerbatim is guarded by token-survival, BrainstormAnchor is traceability) | per-child `<child>.md §5` (see `child-design-template.md`) | Cannot generate rule-based RM / scoreboard; **enforced by `check-coverage`**. |
+| `design.md` self-containment (no `see brainstorm` / `refer to brainstorm` / `see spec D` / cross-child links) | Whole document + each `<child>.md` | See the self-containment principle stated once above; **enforced by `check-coverage`**. |
 
 > Derivation rules, UVM field mapping, and a complete derivation-chain example are owned by `veripower:simulation-plan`. You do not need to read them; you only need to ensure every check in this table lands in the table columns.
 
@@ -249,8 +249,8 @@ table. Fidelity is verified objectively by `check-coverage`, whose stdout verdic
   falls in some child's `brainstorm_anchor` range. Reports `gaps` + `orphans` only.
 - `frontmatter_subset` — child `ports / clocks / features` ⊆ the main design tables.
 - `self_containment` — no by-reference jumps to brainstorm; no cross-child `<child>.md` links.
-- `structure` — §1.4.x present; §1.3/§1.4.1/§1.5/§1.6 + child §5 gated columns; §1.6 freq↔period
-  (R-B); §1.4.1 Clock-Domain ⊆ §1.6 (R-F); every §1.3 feature covered by a child §5 (R-C).
+- `structure` — §1.4.x present; §1.3/§1.4.1/§1.5/§1.6 + child §5 gated columns; §1.6 freq↔period;
+  §1.4.1 Clock-Domain ⊆ §1.6; every §1.3 feature covered by a child §5.
 
 The brainstorm → design.md handoff is **frozen** (see Document Control). The machine
 checks token survival + coverage (substring/structural); a human reviewer judges
