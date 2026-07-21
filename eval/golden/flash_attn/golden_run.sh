@@ -12,9 +12,10 @@
 # seeds are supplied by the adjudicator (--seeds); they are NOT the arms' dev seeds.
 #
 # Usage (typically from an adjudicate.py sandbox, cwd = the run workdir):
-#   golden_run.sh --rtl <rtl_sourcelist> --seeds 7,11,13,17,19 [--causal 0,1] [--work DIR]
-#
-# STATUS: DRAFT — needs VCS + a conforming DUT to exercise end-to-end.
+#   golden_run.sh --rtl <rtl_sourcelist> --seeds 7,11,13,17,19 \
+#                 [--top NAME] [--causal 0,1] [--work DIR]
+# --top is the DUT's top module name (default fa_core_indep); the full arm names
+# its top per the per-repeat module dir (e.g. fa_core_indep_0), so pass it there.
 # ============================================================================
 set -euo pipefail
 
@@ -24,6 +25,7 @@ RTL=""
 SEEDS="1,2,3,4,5"
 CAUSAL="0,1"
 WORK="./golden_work"
+TOP="fa_core_indep" # DUT module name (full arm names its top per repeat dir)
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -41,6 +43,10 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--work)
 		WORK="$2"
+		shift 2
+		;;
+	--top)
+		TOP="$2"
 		shift 2
 		;;
 	*)
@@ -68,7 +74,7 @@ python3 "$HERE/reference.py" --seeds "$SEEDS" --causal "$CAUSAL" \
 	--format tb --out vectors.tb
 
 # 2) compile arm RTL + the fixed golden TB (plain SV; no UVM).
-vcs -full64 -sverilog -timescale=1ns/1ps \
+vcs -full64 -sverilog -timescale=1ns/1ps +define+DUT_TOP="$TOP" \
 	-f "$RTL" "$HERE/fa_core_indep_golden_tb.sv" \
 	-o simv_golden 2>&1 | tee compile.log
 

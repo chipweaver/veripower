@@ -47,6 +47,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -135,7 +136,23 @@ def _prepare_workdir(
                 f"fixed constraint missing: {src} — cannot adjudicate without "
                 f"the pre-registered §1.3 fixed bar"
             )
-        shutil.copyfile(src, workdir / "constraints" / name)
+        dst = workdir / "constraints" / name
+        if name == "design.sgdc":
+            # The SGDC's `current_design` must name THIS run's actual top. Arms
+            # differ: the full arm names its top per the per-repeat module dir
+            # (e.g. fa_core_indep_0), the B1 arm uses the pinned name — so a
+            # hardcoded name leaves clk/reset/ports unconstrained for one arm.
+            # Rebind it to --top (exactly like the generated .prj top); the fixed
+            # constraints themselves are unchanged, so §1.3 symmetry holds.
+            dst.write_text(
+                re.sub(
+                    r"(?m)^\s*current_design\s+\S+.*$",
+                    f"current_design {top}",
+                    src.read_text(),
+                )
+            )
+        else:
+            shutil.copyfile(src, dst)
 
     (workdir / "env.sh").write_text(_gen_env_sh(top, lib_db))
     (workdir / "scripts" / "spyglass.prj").write_text(_gen_spyglass_prj(top))
