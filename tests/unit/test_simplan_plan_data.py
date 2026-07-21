@@ -132,11 +132,15 @@ def test_derive_missing_design_md_fails_loud(tmp_path):
 
 
 def test_derive_missing_features_table_fails_loud(tmp_path):
-    # design.md present but no §1.3 Feature Table → ValueError, non-zero, no plan-data.json (D5)
+    # design.md present but no §1.3 Feature Table → ValueError, non-zero, no plan-data.json (D5).
+    # A valid child is supplied so load_check_hints passes and load_features is the failure.
     (tmp_path / "design.md").write_text(
         "# m\n\n## 1. Module Overview\n\nno feature table here\n"
     )
-    (tmp_path / "manifest.json").write_text(json.dumps({"module": "m", "children": []}))
+    (tmp_path / "core.md").write_text(CHILD_MD)
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"module": "m", "children": [{"name": "core", "doc": "core.md"}]})
+    )
     proc = _run(tmp_path, check=False)
     assert proc.returncode != 0
     assert "1.3" in proc.stderr or "Feature Table" in proc.stderr
@@ -201,3 +205,79 @@ def test_derive_output_override_writes_requested_path(tmp_path):
         "interfaces"
     ]  # real content at the override path
     assert not (wd / "plan-data.json").exists()
+
+
+# ── net-new: input-hardening fail-loud guards (A1, A2, A3, A5) ──
+def test_derive_duplicate_check_id_fails_loud(tmp_path):
+    # A1: two §5 rows share a check_id → by_id / check_ids would collapse them (covering
+    # one "covers both", leaving the second silently unverified). Must fail loud.
+    child = (
+        "# core\n\n## §5 Verification Hints (9 columns required)\n\n"
+        "| CheckID | SourceFeature | ImplementationDetail | ImplementationDetailVerbatim | BrainstormAnchor | Observable | ReferenceRule | Latency | ResetBehavior |\n"
+        "|---|---|---|---|---|---|---|---|---|\n"
+        "| CHK-00 | F-00 | a | v1 | L1 | o1 | r1 | 1 | 0 |\n"
+        "| CHK-00 | F-00 | b | v2 | L2 | o2 | r2 | 2 | 0 |\n"
+    )
+    (tmp_path / "design.md").write_text(DESIGN_MD)
+    (tmp_path / "core.md").write_text(child)
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"module": "m", "children": [{"name": "core", "doc": "core.md"}]})
+    )
+    proc = _run(tmp_path, check=False)
+    assert proc.returncode != 0
+    assert "duplicate check_id" in proc.stderr and "CHK-00" in proc.stderr
+    assert not (tmp_path / "plan-data.json").exists()
+
+
+def test_derive_misnamed_check_id_header_fails_loud(tmp_path):
+    # A2: a §5 table whose Check-ID header is hyphenated (normalize_header does not strip
+    # hyphens) maps to zero hints, silently dropping the child's entire hint set from the
+    # coverage gate. With a §5 table PRESENT but Check ID unmapped, fail loud.
+    child = (
+        "# core\n\n## §5 Verification Hints (9 columns required)\n\n"
+        "| Check-ID | SourceFeature | ImplementationDetail | ImplementationDetailVerbatim | BrainstormAnchor | Observable | ReferenceRule | Latency | ResetBehavior |\n"
+        "|---|---|---|---|---|---|---|---|---|\n"
+        "| CHK-00 | F-00 | a | v1 | L1 | o1 | r1 | 1 | 0 |\n"
+    )
+    (tmp_path / "design.md").write_text(DESIGN_MD)
+    (tmp_path / "core.md").write_text(child)
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"module": "m", "children": [{"name": "core", "doc": "core.md"}]})
+    )
+    proc = _run(tmp_path, check=False)
+    assert proc.returncode != 0
+    assert "Check ID column" in proc.stderr and "core" in proc.stderr
+    assert not (tmp_path / "plan-data.json").exists()
+
+
+def test_derive_misnamed_signal_name_header_fails_loud(tmp_path):
+    # A3: §1.4.1 table PRESENT but its Signal-Name header is mis-named → load_interfaces
+    # would return [] and emit a thin plan-data.json. Must fail loud (mirrors load_features).
+    wd = _workdir(tmp_path)
+    (wd / "design.md").write_text(
+        DESIGN_MD.replace("| Signal | Direction |", "| Sig | Direction |")
+    )
+    proc = _run(wd, check=False)
+    assert proc.returncode != 0
+    assert "Signal Name" in proc.stderr and "1.4.1" in proc.stderr
+    assert not (wd / "plan-data.json").exists()
+
+
+def test_derive_empty_or_malformed_children_fails_loud(tmp_path):
+    # A5: children[] empty → clean sys.exit (not a bare KeyError / trivial zero-check pass);
+    # a non-dict child in the list → TypeError backstop in run() (clean exit, no traceback).
+    (tmp_path / "design.md").write_text(DESIGN_MD)
+    (tmp_path / "manifest.json").write_text(json.dumps({"module": "m", "children": []}))
+    proc = _run(tmp_path, check=False)
+    assert proc.returncode != 0
+    assert "children" in proc.stderr and "Traceback" not in proc.stderr
+    assert not (tmp_path / "plan-data.json").exists()
+    # non-list/string child → TypeError caught by run()'s backstop tuple, clean exit
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"module": "m", "children": ["core"]})
+    )
+    proc = _run(tmp_path, check=False)
+    assert proc.returncode != 0
+    assert (
+        proc.stderr.startswith("derive-plan-data:") and "Traceback" not in proc.stderr
+    )

@@ -200,6 +200,10 @@ def load_interfaces(design_text: str) -> list[dict]:
         best = (headers, rows, mapping)
 
     _, rows, mapping = best
+    if "signal_name" not in mapping:
+        raise ValueError(
+            "design.md §1.4.1 IO table is missing a Signal Name column (mis-named header?)"
+        )
     result: list[dict] = []
     for row in rows:
         signal = row.get(mapping.get("signal_name", ""), "").strip()
@@ -283,20 +287,38 @@ def load_check_hints(workdir: Path) -> list[dict]:
     (the specification skill always emits it); a missing one fails loud.
     """
     manifest = json.loads((Path(workdir) / "manifest.json").read_text(encoding="utf-8"))
+    children = manifest.get("children")
+    if not isinstance(children, list) or not children:
+        sys.exit("derive-plan-data: manifest.json has no non-empty children[] list")
     hints: list[dict] = []
-    for child in manifest["children"]:
+    seen: dict[str, str] = {}
+    for child in children:
         sub_text = (Path(workdir) / child["doc"]).read_text(encoding="utf-8")
         section = extract_section(sub_text, r"(^|.*)§?\s*5\.?\s*Verification\s+Hints?")
         if not section:
             continue
         try:
-            _, rows = parse_first_markdown_table(section)
+            headers, rows = parse_first_markdown_table(section)
         except ValueError:
             continue
+        # A child that HAS a §5 table but whose Check-ID header is mis-named (e.g.
+        # `Check-ID`, which normalize_header does not strip to `checkid`) would yield
+        # zero hints silently, dropping that child's entire hint set from the coverage
+        # gate. Read the declared header once; a missing Check ID column fails loud.
+        if "check_id" not in map_headers(headers, CHECK_HINT_HEADER_CANDIDATES):
+            raise ValueError(
+                f"{child['name']} §5 table has no Check ID column (mis-named header?)"
+            )
         for row in rows:
             h = _normalize_check_hint_row(row)
             if h is None:
                 continue
+            cid = h["check_id"]
+            if cid in seen:
+                raise ValueError(
+                    f"duplicate check_id {cid!r} across <child>.md §5 tables"
+                )
+            seen[cid] = child["name"]
             h["child"] = child["name"]
             hints.append(h)
     return hints
@@ -354,7 +376,7 @@ def run(workdir, output=None) -> int:
         interfaces = load_interfaces(design_text)
         scenarios = load_scenarios(design_text)
         cross_module_wires = load_cross_module_wires(design_text)
-    except (ValueError, KeyError, OSError, json.JSONDecodeError) as e:
+    except (ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as e:
         sys.exit(f"derive-plan-data: {e}")
 
     plan_data = {

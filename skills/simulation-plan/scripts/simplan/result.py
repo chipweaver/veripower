@@ -52,7 +52,7 @@ def count_features(plan_md: str) -> int:
 
 def enumerate_artifacts(workdir) -> list:
     """Fixed simulation-plan artifact set, present-only, with kinds (plan-review.json promotes
-    per SKILL Step 4). Never lists result.json (self) — the envelope schema forbids it."""
+    per the SKILL plan-adequacy review). Never lists result.json (self) — the envelope schema forbids it."""
     workdir = Path(workdir)
     fixed = [
         ("verification-plan.md", "plan"),
@@ -67,13 +67,13 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
 
     pass path: re-derives the counts (scaffold arrays + distinct-F-NN in the plan md §3)
     and the plan-adequacy gate verdict (gate_verdict over the on-disk plan-review.json)
-    in-process, and enforces the Step-5 approve precondition (a tripped-and-unwaived gate
+    in-process, and enforces the approve precondition (a tripped-and-unwaived gate
     downgrades to a written status=fail).
 
     fail path (user reject, or an early-fail exit carrying fail_reason): NEVER reads the
     plan/scaffold — an early-fail workdir may hold neither, and a raise here would turn
     a routable fail into a BLOCKED. plan_adequacy_gate is included iff plan-review.json
-    is PRESENT — an absent record is the legitimate early-fail-before-Step-4 case, but a
+    is PRESENT — an absent record is the legitimate early-fail case (before the plan-adequacy review), but a
     present-and-corrupt record raises (finalize → exit 2), so corruption surfaces instead
     of silently dropping the flagged/waiver record from the promoted fail. artifacts[]
     stays the present-only enumeration, so a seeded rework workdir carries the full prior
@@ -87,11 +87,11 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
     if status == "fail":
         review_present = (workdir / "plan-review.json").is_file()
         if fail_reason is None and not review_present:
-            # A user reject can only follow Step 4/5 — the judged record must be on
+            # A user reject can only follow the plan-adequacy review and user loop — the judged record must be on
             # disk. A bare --status fail on a workdir that never ran the gate would
             # fabricate a human rejection; force the caller to say what failed.
             raise ValueError(
-                "--status fail without --fail-reason is the Step-5 user reject and "
+                "--status fail without --fail-reason is the user reject and "
                 "requires plan-review.json on disk; for an early fail pass --fail-reason"
             )
         if waived and not review_present:
@@ -134,7 +134,7 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
     gate = gate_verdict(review)
     if waived:
         gate = {**gate, "waived": waived}
-    # Approve precondition (SKILL.md §Step 5): pass iff gate clears OR every flagged is
+    # Approve precondition (SKILL.md, user review loop): pass iff gate clears OR every flagged is
     # waived. Waiver pairing keys on (tp_id, lens) and ignores location, matching the
     # SKILL's own gate granularity — intentional, not a defect.
     flagged_ids = {(f.get("tp_id"), f.get("lens")) for f in gate.get("flagged", [])}
@@ -204,7 +204,7 @@ def finalize(
     any internal raise) — never conflated with status=fail."""
     if fail_reason is not None and not fail_reason.strip():
         print(
-            "[simplan finalize] ERROR: --fail-reason must be a non-empty one-line reason",
+            "[simplan finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",
             file=sys.stderr,
         )
         return 2
@@ -212,7 +212,7 @@ def finalize(
         # An unpaired --fail-reason is a caller slip about to invert a failure into a
         # computed pass; refuse loudly instead of silently discarding the reason.
         print(
-            "[simplan finalize] ERROR: --fail-reason requires --status fail",
+            "[simplan finalize] BLOCKED: --fail-reason requires --status fail",
             file=sys.stderr,
         )
         return 2
@@ -220,14 +220,14 @@ def finalize(
         waived = json.loads(waived_json) if waived_json else None
     except json.JSONDecodeError as exc:
         print(
-            f"[simplan finalize] ERROR: --waived not valid JSON: {exc}",
+            f"[simplan finalize] BLOCKED: --waived not valid JSON: {exc}",
             file=sys.stderr,
         )
         return 2
     if waived is not None:
         err = _waived_error(waived)
         if err:
-            print(f"[simplan finalize] ERROR: {err}", file=sys.stderr)
+            print(f"[simplan finalize] BLOCKED: {err}", file=sys.stderr)
             return 2
     try:
         return build_result(
@@ -239,5 +239,5 @@ def finalize(
             fail_reason=fail_reason,
         )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        print(f"[simplan finalize] FAIL=internal {exc}", file=sys.stderr)
+        print(f"[simplan finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

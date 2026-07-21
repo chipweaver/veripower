@@ -9,11 +9,12 @@ Verbs (one stage = one tool; see skills/simulation-plan/SKILL.md for usage):
   finalize              assemble the lean result.json            (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the simplan.*
-library. Library imports are deferred into each handler (NOT top-level) so --help
-and verb dispatch run during incremental per-task TDD, before the sibling modules
-exist. A top-level `from simplan import plan_data, materialize, …` would ImportError
-until every verb is built. Keep them lazy. (Library modules themselves use top-level
-absolute imports; only this thin dispatcher defers.)
+library. Library imports are deferred into each handler (NOT top-level) so --help and
+verb dispatch run before the sibling library modules need to exist; that is the
+load-bearing reason when this template is copied per stage. A top-level `from simplan
+import plan_data, materialize, …` would ImportError if a sibling module is absent. Keep
+them lazy. (Library modules themselves use top-level absolute imports; only this thin
+dispatcher defers.)
 """
 
 import argparse
@@ -111,7 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--status",
         choices=["pass", "fail"],
         default=None,
-        help="human Step-5 verdict; fail = user reject, or a documented "
+        help="human user-review-loop verdict; fail = user reject, or a documented "
         "early-fail exit (with --fail-reason)",
     )
     sp.add_argument(
@@ -121,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--fail-reason",
         default=None,
         help="on --status fail: the one-line failure narrative (early-fail entry); "
-        "default = the Step-5 user-reject wording",
+        "default = the user-reject wording",
     )
     sp.set_defaults(func=_cmd_finalize)
 

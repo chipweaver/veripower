@@ -29,10 +29,10 @@ Materialize each scenario's abstract description ("business flow," "low power," 
   "id": "S4a",
   "scenario": "200MB/s (low-power off)",
   "clock_state": "on",
-  "reset_state": "released",
+  "reset_state": "de-asserted",
   "data_state": "business_flow",
   "low_power_state": "off",
-  "corner_intent": "TT@25C",
+  "corner_intent": "TT",
   "sequence_ref": "<module>_traffic_200mbps_seq",
   "duration_cycles": 10000,
   "purpose": "Typical performance"
@@ -57,17 +57,11 @@ When the specification mentions a low-power feature (e.g., retention mode) that 
 
 ## `sequence_ref` naming rules and `sequences[]` sync (cross-stage contract)
 
-`power_scenarios[].sequence_ref` is a reference into `sequences[].name`; **it is not an independent namespace.**
-
-SV classes (`tb/uvm/seq/{module}_{name}_seq.sv`, compiled into `{module}_tb_pkg`) are materialized only from `sequences[]` — `power_scenarios[]` is **not** a materialization source. The downstream power-scenario emit resolves `power_scenarios[].sequence_ref` against the already-materialized `{module}_<sequence_ref>_seq` classes — if the ref is not registered in `sequences[]`, no SV class is materialized for it, so emit validation fails closed.
+`power_scenarios[].sequence_ref` is a reference into `sequences[].name` — not an independent namespace. SV classes are materialized only from `sequences[]`, so `check-scaffold` rejects a `sequence_ref` that resolves to no `sequences[].name` (and downstream, no SV class would exist for it).
 
 | Situation | How to fill |
 |---|---|
 | Power scenario stimulus equals some functional sequence | `sequence_ref` = that functional sequence's `sequences[].name`. |
 | Power scenario needs independent stimulus (typical: clock-off / sustained idle / sustained saturated traffic / DVFS switching) | First add a new entry to `sequences[]` (with `name` + `agent`), then have `power_scenarios[].sequence_ref` reference that `name`. |
-
-**Forbidden:** inventing a new `sequence_ref` name **without syncing the same name into `sequences[]`** — without a backing `sequences[]` entry no SV class is materialized for it, so emit validation always fails.
-
-The template example name `<module>_traffic_200mbps_seq` and the like remain compliant — provided they are **simultaneously** registered as a `sequences[].name` entry (with the corresponding agent). Naming independence ≠ registration optional.
 
 `sequences[]` is the materialization list (functional + power union); `tests[]` and `power_scenarios[]` are consumption indices — they share the same materialization pool.

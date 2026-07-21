@@ -85,6 +85,30 @@ def test_good_scaffold_passes(tmp_path):
     assert proc.returncode == 0 and "OK" in proc.stdout
 
 
+def test_malformed_scaffold_json_fails_loud(tmp_path):
+    # A6: a JSON syntax error in scaffold-specification.json must fail loud with a
+    # fix-oriented message, not a raw traceback.
+    sc = tmp_path / "scaffold-specification.json"
+    sc.write_text("{ oops ]")
+    pd = tmp_path / "plan-data.json"
+    pd.write_text(json.dumps({"check_hints": []}))
+    proc = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "check-scaffold",
+            "--scaffold",
+            str(sc),
+            "--plan-data",
+            str(pd),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode != 0
+    assert "not valid JSON" in proc.stderr and "Traceback" not in proc.stderr
+
+
 def test_injected_interface_transaction_tolerated(tmp_path):
     # GOOD already carries materialize-injected interface/transaction. addP:false must not reject them.
     assert _run(tmp_path, GOOD).returncode == 0

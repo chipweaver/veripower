@@ -4,7 +4,7 @@ This directory is the deployment template for the `veripower:simulation` skill, 
 
 - Stage SOP: `skills/simulation/SKILL.md`
 - Artifact contract: `skills/simulation/references/artifact-contract.md`
-- Plan contract (consumer contract): `skills/simulation-plan/references/spec-input-contract.md`
+- Plan field-derivation guide (how simulation-plan authored the scaffold): `skills/simulation-plan/references/spec-input-contract.md`
 
 ## Automatic deployment
 

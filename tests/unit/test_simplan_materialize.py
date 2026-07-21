@@ -180,6 +180,54 @@ def test_idempotent(tmp_path):
     assert sc.read_text() == first
 
 
+def test_empty_direction_data_port_fails_loud(tmp_path):
+    # A4: a data-role port with empty Direction can't be classed driver vs monitor →
+    # the generated TB is wrong. Direction is gated for data roles; fail loud.
+    plan = json.loads(json.dumps(PLAN))
+    plan["interfaces"][2]["direction"] = ""  # wdata (role=data) has no Direction
+    sc_in = _scaffold(
+        [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
+    )
+    pd, sc = _write(tmp_path, plan, sc_in)
+    proc = _run(pd, sc, check=False)
+    assert proc.returncode != 0
+    assert "Direction" in proc.stderr and "wdata" in proc.stderr
+
+
+def test_duplicate_signal_name_within_agent_fails_loud(tmp_path):
+    # A7: the same signal name appearing twice within one agent's groups would emit
+    # duplicate SV declarations. Must fail loud.
+    plan = json.loads(json.dumps(PLAN))
+    plan["interfaces"].append(
+        {
+            "signal_name": "wdata",  # duplicate of the existing cfg-group wdata
+            "direction": "input",
+            "width": "8",
+            "interface_group": "cfg",
+            "role": "data",
+        }
+    )
+    sc_in = _scaffold(
+        [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
+    )
+    pd, sc = _write(tmp_path, plan, sc_in)
+    proc = _run(pd, sc, check=False)
+    assert proc.returncode != 0
+    assert "duplicate signal" in proc.stderr and "wdata" in proc.stderr
+
+
+def test_malformed_json_fails_loud(tmp_path):
+    # A6: a JSON syntax error in plan-data.json (or scaffold) must fail loud with a
+    # fix-oriented message, not a raw traceback.
+    pd = tmp_path / "plan-data.json"
+    sc = tmp_path / "scaffold-specification.json"
+    pd.write_text("{ not: valid json ]")
+    sc.write_text(json.dumps(_scaffold([])))
+    proc = _run(pd, sc, check=False)
+    assert proc.returncode != 0
+    assert "not valid JSON" in proc.stderr and "Traceback" not in proc.stderr
+
+
 def test_duplicate_group_fails_loud(tmp_path):
     sc_in = _scaffold(
         [{"name": "a", "mode": "active", "interface_groups": ["cfg", "cfg"]}]

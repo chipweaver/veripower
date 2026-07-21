@@ -189,9 +189,18 @@ def run(scaffold_path, plan_data_path, schema_path=None) -> int:
     """check-scaffold: 3-layer gate (structural -> semantic -> coverage, short-circuit).
     exit 0 with 'check-scaffold: OK ...' / exit 1 with a fix-oriented message to stderr."""
     schema_path = Path(schema_path) if schema_path else _DEFAULT_SCHEMA
-    scaffold = json.loads(Path(scaffold_path).read_text(encoding="utf-8"))
-    schema = json.loads(Path(schema_path).read_text(encoding="utf-8"))
-    plan_data = json.loads(Path(plan_data_path).read_text(encoding="utf-8"))
+    try:
+        scaffold = json.loads(Path(scaffold_path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        sys.exit(f"check-scaffold: {scaffold_path} is not valid JSON: {e}")
+    try:
+        schema = json.loads(Path(schema_path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        sys.exit(f"check-scaffold: {schema_path} is not valid JSON: {e}")
+    try:
+        plan_data = json.loads(Path(plan_data_path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        sys.exit(f"check-scaffold: {plan_data_path} is not valid JSON: {e}")
     errors = validate(scaffold, schema)
     if not errors:
         errors = coverage_errors(scaffold, plan_data)

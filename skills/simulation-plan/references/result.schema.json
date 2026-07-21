@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-plan/result.schema.json",
   "title": "simulation-plan result.json contract (schema_version 1)",
-  "description": "Complete contract for asic/<module>/Verification/simulation-plan/result.json. On status=fail, stage_specific.fail_reason is required (if/then below) — the one-line failure narrative. Canonical structured data lives in scaffold-specification.json and is NOT duplicated here.",
+  "description": "Complete contract for asic/<module>/Verification/simulation-plan/result.json. On status=pass, stage_specific carries the plan_adequacy_gate verdict; on status=fail, fail_reason (the one-line failure narrative).",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {

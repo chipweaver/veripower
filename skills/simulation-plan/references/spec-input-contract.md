@@ -1,30 +1,49 @@
-# Spec → Simulation Input Contract (consumer-side copy)
+# Spec Fields → Simulation-Plan Objects (plan-data.json field guide)
 
-This document describes how the `simulation-plan` / `simulation` stages derive testpoints, UVM transactions, agents, sequences, checkers, and rule-based reference models from `Design/specification/design.md`. **Spec authors do not need to read this.** They only need to satisfy the "Minimum Field Completeness Gate Table" in `${CLAUDE_PLUGIN_ROOT}/skills/specification/references/design-template.md`. This file is the consumer-side contract copy that reverse-anchors the fields spec must provide.
+`derive-plan-data` extracts every structured field of `design.md` (§1.3 / §1.4.1 / §1.4.2 /
+§1.5 / §1.6) and each per-child `<child>.md §5` into `plan-data.json`. You author the scaffold
+and `verification-plan.md` **from that JSON**; do not re-read `design.md` / `<child>.md` into
+the main thread. This guide names the `design.md` columns only so you recognize where each
+`plan-data.json` field came from, and maps them to the objects this stage authors
+(`scaffold-specification.json`: `agents` / `sequences` / `tests` / `testpoints[]` /
+`power_scenarios[]`, and `verification-plan.md`). It does not gate completeness: design-template's
+gate table plus `check-coverage` enforce that upstream, before this stage runs.
+
+**Scope boundary.** This guide stops at the JSON contract you author. Turning the scaffold into
+SystemVerilog (driver / monitor bodies, RM `predict()`, scoreboard `check_txn`, reset) happens
+later in the `simulation` stage (`skills/simulation/references/inlined-check-hints.md`). Do not
+add SV-rendering claims here.
 
 ## Basic principles
 
-- **The single human source of truth is `design.md`.** There is no separate requirement-to-testpoint mapping document.
-- Structured fields must live in fixed sections (§1.3 / §1.4.1 / §1.4.2 / §1.5 / per-child `<child>.md §5` verification-hint tables); they must not be scattered across free-form prose.
-- The minimum compatible input is the three columns `ID` / `Feature` / `Description` in §1.3. The more complete the fields, the higher the quality of automated derivation.
-- Per-child `<child>.md` submodule sections carry implementation-related constraints, especially register side effects, exceptions, concurrency, back-pressure, reset, and state-machine boundaries.
-- **Before `specification` is set to `pass`, the fields must be sufficient to support automated derivation of transactions / agents / seqs / checkers / rule-based RMs.** When fields are missing, write `result.json` with `status=fail` and `stage_specific.fail_reason` describing the gap; the caller decides next steps from there, instead of pressing on.
+- **Author from `plan-data.json`, not the raw spec.** `derive-plan-data` distils every field
+  below into it; the `design.md` column names in this guide are provenance, so you recognize
+  each field. Reserve any raw `design.md` read for prose the extract omits (§1.1–1.2 overview),
+  and keep it bounded.
+- **The single human source of truth is `design.md`.** There is no separate
+  requirement-to-testpoint mapping document.
+- Structured fields must live in fixed sections (§1.3 / §1.4.1 / §1.4.2 / §1.5 / per-child
+  `<child>.md §5`); they must not be scattered across free-form prose.
+- The minimum compatible input is the three columns `ID` / `Feature` / `Description` in §1.3.
+  The more complete the fields, the higher the quality of your derivation.
+- Per-child `<child>.md` sections carry implementation constraints: register side effects,
+  exceptions, concurrency, back-pressure, reset, state-machine boundaries.
 
 ---
 
 ## Overview §1.3 Main Features table (drives testcase decomposition)
 
-| Column | Required | Use |
-|---|---|---|
-| `ID` | required | Unique requirement / feature identifier, e.g., `F-00`. |
-| `Feature` | required | Human-readable feature name. |
-| `Description` | required | Summary of feature scope, behavior, and constraints. |
-| `Mode/Interface` | recommended | Points to the interface, mode, or scenario domain. |
-| `Priority` | recommended | Specifies `smoke` / `P0` / `regress` priority, etc. |
-| `HappyPath` | recommended | Main positive-test path → drives the happy-path sequence. |
-| `CornerCases` | recommended | Boundary, concurrency, timing, back-pressure scenarios → drive corner sequences. |
-| `NegativeCases` | recommended | Exceptions, illegal inputs, non-target capabilities → drive negative sequences. |
-| `CoverageIntent` | recommended | Expected coverage model, e.g., registers, modes, error codes, cross coverage. |
+| Column | Use |
+|---|---|
+| `ID` | Unique requirement / feature identifier, e.g., `F-00`. |
+| `Feature` | Human-readable feature name. |
+| `Description` | Summary of feature scope, behavior, and constraints. |
+| `Mode/Interface` | Points to the interface, mode, or scenario domain. |
+| `Priority` | Your authoring-priority signal (which behaviors to cover first). Not consumed by any script. |
+| `HappyPath` | Main positive path; the happy-path testcase you author. |
+| `CornerCases` | Boundary / concurrency / timing / back-pressure cases you author. |
+| `NegativeCases` | Exceptions, illegal inputs, non-target capabilities you author as negative cases. |
+| `CoverageIntent` | Expected coverage model, e.g., registers, modes, error codes, cross coverage. |
 
 Example:
 
@@ -35,170 +54,131 @@ Example:
 | F-01 | AES-128 encryption | AES-128 encryption in ECB mode | ECB | P0 | Reference vectors match | Back-to-back block input | Unsupported keylen config | mode × keylen coverage |
 ```
 
-**Derivation targets:** `HappyPath` / `CornerCases` / `NegativeCases` drive testcase decomposition directly; `Priority` decides whether a testcase lands in the `smoke` or the `regress` suite.
+`HappyPath` / `CornerCases` / `NegativeCases` give you the positive / boundary / negative
+testcases and testpoints to author.
 
 ---
 
-## Overview §1.4 Interface tables (drives transaction / interface / agent generation)
+## Overview §1.4 Interface tables (§1.4.1 drives transactions / agents; §1.4.2 aware-only)
 
-**§1.4 split** — §1.4 is split into two subsections; only §1.4.1 drives DUT-boundary
-transactions / agents. §1.4.2 is simulation-aware-only (informational; cross-module
-wires are not part of the DUT transaction class).
+### §1.4.1 Top-Level IO table (DUT boundary, primary derivation input)
 
-### §1.4.1 Top-Level IO table (DUT boundary — primary derivation input)
-
-| Column | Required | Derivation target |
-|---|---|---|
-| `Signal name` | required | virtual interface port name. |
-| `Direction` | required | driver (DUT input) / monitor (DUT output) role assignment. |
-| `Width` | required | Transaction field width; interface port width. |
-| `Clock domain` | recommended | Agent grouping basis (signals in the same clock domain go in the same agent). |
-| `Interface group` | recommended | Signals in the same group go in the same agent (e.g., `APB`, `AXI_W`, `IRQ`). |
-| `Protocol` | recommended | Decides the sequence pattern (e.g., `APB3` / `AXI4` / `custom`). |
-| `Role` | recommended (gated upstream) | `clock` / `reset` / `data` — drives clk/rst exclusion from `transaction.fields` and reset-port identification. |
+| Column | What you do with it |
+|---|---|
+| `Signal name` | Fills `interface.signals[].name` (the vif port); materialize fills this, do not hand-transcribe. |
+| `Width` | Fills `interface.signals[].width` and `transaction.fields[].width`; materialize fills this. |
+| `Interface group` | The agent grouping key: signals sharing a group become one vif + one agent. |
+| `Role` | `clock` / `reset` / `data`. clk/rst signals are excluded from `transaction.fields` and bound via `primary_clock` / `reset`; a data row needs `Role=data`. Gated: an empty Role fails loud. |
+| `Direction` | `input` / `output` (DUT view). Gated: materialize requires it non-empty on data signals. Use it to set each agent's `mode` (`active` for a group you drive, `passive` for one you only observe); the value is not otherwise script-consumed. |
+| `Clock domain` | Informational; recorded in plan-data but not consumed. Agent grouping is by `Interface group`, not clock domain. |
+| `Protocol` | Your reference for the sequence pattern to author (e.g. `APB3` / `AXI4` / `custom`); not script-consumed. |
 
 **Mapping rules:**
-- Signals in the same `Interface group` → one virtual interface + the corresponding agent.
-- `Direction = input` (DUT view) → driver drives.
-- `Direction = output` (DUT view) → monitor samples.
-- `Width` → transaction class field width definition.
+- Signals in the same `Interface group` become one virtual interface + the corresponding agent.
+- clk/rst signals carry no `Interface group`: they bind via `primary_clock` / `reset`, not as
+  agent signals. Putting them in a group collides with the clk/rst port name at render time.
+- `transaction.fields` are the group's signals minus clk/rst, named verbatim after the signal;
+  materialize does not abstract, rename, or merge them.
 
-**Note:** §1.4.1 also carries `ResetPolarity` / `ResetKind`; these are consumed by constraint generation (the `derive-constraints` verb), **not** by you.
+**Note:** §1.4.1 also carries `ResetPolarity` / `ResetKind`; these are consumed by constraint
+generation (the `derive-constraints` verb), **not** by you.
 
-### §1.4.2 Inter-module Interconnects table (cross-child wires — aware-only)
+### §1.4.2 Inter-module Interconnects table (cross-child wires, aware-only)
 
-Lists wires between RTL modules inside the DUT (Producer / Consumer at the
-RTL-module level / Protocol / Timing). Simulation is **aware-only** of this
-table: cross-module wires are NOT part of the DUT transaction class and do
-NOT add agents. The table is consulted for monitor placement hints (e.g.,
-internal bus snooping for debug coverage) and for understanding back-pressure
-paths that surface at the DUT boundary.
+Lists wires between RTL modules inside the DUT (Producer / Consumer at the RTL-module level /
+Protocol / Timing). Simulation is **aware-only** of this table: cross-module wires are NOT part
+of the DUT transaction class and do NOT add agents. The table is consulted for monitor placement
+hints (internal bus snooping for debug coverage) and for understanding back-pressure paths that
+surface at the DUT boundary.
 
-In fan-out mode each cross-child wire is declared once here; per-child
-`<child>.md §2 Interface` references but does not redefine it.
+In fan-out mode each cross-child wire is declared once here; per-child `<child>.md §2 Interface`
+references but does not redefine it.
 
 ---
 
-## Overview §1.5 Interface Timing Scenarios table (drives sequence / checker generation)
+## Overview §1.5 Interface Timing Scenarios table (drives sequence authoring)
 
-| Column | Required | Derivation target |
-|---|---|---|
-| `ScenarioID` | recommended | One-to-one mapping ID for sequence and testcase (e.g., `SC-APB-00`). |
-| `Interface / Mode` | recommended | Decides which agent receives the stimulus (corresponds to §1.4 interface group). |
-| `Trigger / Stimulus` | recommended | Drives sequence body logic (concrete stimulus steps). |
-| `Expected result` | recommended | Drives the checker decision condition (DUT-observable output). |
-| `Timing constraint` | recommended | Drives the checker timing window (e.g., "pready high within ≤2 cycles after penable"). |
-| `Exception / Negative` | optional | Drives negative testcase sequences (illegal input, error recovery). |
+| Column | What you do with it |
+|---|---|
+| `ScenarioID` | Author one sequence in `sequences[]` per scenario (e.g. `SC-APB-00`). |
+| `Interface / Mode` | Which agent receives the stimulus (the §1.4 interface group). |
+| `Trigger / Stimulus` | The sequence body (concrete stimulus steps). |
+| `Expected result` | The testpoint check intent (the DUT-observable output the downstream scoreboard will judge). |
+| `Timing constraint` | Recorded in the testpoint intent (e.g. "pready high within ≤2 cycles after penable"). |
+| `Exception / Negative` | A negative-path sequence + a negative testpoint. |
 
 **Mapping rules:**
-- Each `ScenarioID` → one sequence class.
-- `Expected result` + `Timing constraint` → checker decision logic + timeout window.
-- `Exception / Negative` → negative sequence + corresponding error checker.
+- Each `ScenarioID`: author one sequence class in `sequences[]`.
+- `Expected result` + `Timing constraint`: record as the testpoint's check intent; the downstream
+  `simulation` stage renders the actual scoreboard check from it.
+- `Exception / Negative`: author a negative sequence + a negative testpoint.
 
 ---
 
-## Per-child `<child>.md §5` Verification Hints table (drives RM rules / checker implementation details)
+## Per-child `<child>.md §5` Verification Hints table (drives inlined_check_hints[])
 
-The 9-column Verification Hints table lives in each `<child>.md §5` (one per child unit
-declared in `manifest.json`).
+The 9-column Verification Hints table lives in each `<child>.md §5` (one per child unit declared
+in `manifest.json`). You cluster its rows into `testpoints[].covers[]`; materialize then fills
+each `testpoints[].inlined_check_hints[]` from those `covers[]`.
 
-| Column | Required | Derivation target |
-|---|---|---|
-| `CheckID` | recommended | Unique checker-rule identifier (e.g., `CHK-APB-00`). |
-| `SourceFeature` | recommended | Traces back to the §1.3 feature ID (e.g., `F-00`). |
-| `ImplementationDetail` | recommended | ≤20-word summary of the implementation constraint (state-machine boundary, register side effect, clearing timing). Fallback RM source when no verbatim formula exists. |
-| `ImplementationDetailVerbatim` | recommended (token-survival-guarded) | Verbatim cycle-accurate formula, present only when a formula exists; the **preferred** RM `predict()` source — materializes into scaffold `inlined_check_hints[].implementation_detail`. |
-| `Observable` | recommended | Monitor-sampled signal + scoreboard compare field. |
-| `ReferenceRule` | recommended | RM input-to-output mapping rule description (drives the `predict()` method logic). |
-| `Latency` | optional | Expected response latency (in cycles); used by checker timeout decisions. |
-| `ResetBehavior` | optional | Expected value after reset; used by reset-check checkers (drives the `reset()` method). |
+| Column | Where it lands |
+|---|---|
+| `CheckID` | Identifies the check; you cluster it into a testpoint via `covers[]`. |
+| `SourceFeature` | Traces back to the §1.3 feature ID. |
+| `ImplementationDetail` | ≤20-word constraint summary; the fallback source for `inlined_check_hints[].implementation_detail`. |
+| `ImplementationDetailVerbatim` | Verbatim cycle-accurate formula; the **preferred** source, materialized into `inlined_check_hints[].implementation_detail`. |
+| `Observable` | Copied to `inlined_check_hints[].observable` (metadata for the downstream check author). |
+| `ReferenceRule` | Copied to `inlined_check_hints[].reference_rule` (metadata for the downstream check author). |
+| `Latency` | Copied to `inlined_check_hints[].latency` (metadata). |
+| `ResetBehavior` | Copied to `inlined_check_hints[].reset_behavior` (metadata). |
 
-Example:
-
-```markdown
-| CheckID | SourceFeature | ImplementationDetail | ImplementationDetailVerbatim | BrainstormAnchor | Observable | ReferenceRule | Latency | ResetBehavior |
-|---------|---------------|----------------------|------------------------------|------------------|------------|---------------|---------|---------------|
-| CHK-APB-00 | F-00 | pready single-beat by default; wait cycles may be inserted | reg_file[addr] <= pwdata (write); prdata <= reg_file[addr] (read) | L42 | pready_o, pslverr_o | write→reg[addr]=wdata; read→prdata=reg[addr] | ≤2 cycles | reg_file all-zero |
-| CHK-APB-01 | F-00 | Illegal address returns pslverr=1; prdata invalid | pslverr <= (addr ∉ legal_range) | L57 | pslverr_o | addr ∉ legal range → pslverr=1 | ≤2 cycles | pslverr=0 |
-```
+`materialize-scaffold` fills `inlined_check_hints[]` deterministically from your `covers[]` +
+plan-data: `implementation_detail = verbatim-if-present-else-summary`, and the other four columns
+copied as metadata. How those hints become SV `predict()` / scoreboard checks is the downstream
+`simulation` stage's job.
 
 ---
 
-## Field-to-UVM-component mapping
+## Spec field → scaffold object index
 
-```text
-§1.4.1 Top-Level IO table    ──→  transaction class fields (widths from the "Width" column)
-                                  + virtual interface port definitions (signal name + direction + width)
-                                  + agent grouping (by "Interface group" / "Clock domain")
-                                  + driver-driven signal set (Direction = input, DUT view)
-                                  + monitor-sampled signal set (Direction = output, DUT view)
-
-§1.4.2 Inter-module Interconnects ──→  simulation aware-only (no transaction class,
-                                       no agent); optional internal-monitor placement
-                                       hints + back-pressure path tracing.
-
-§1.3 Main Features table     ──→  testcase decomposition + verification-plan.md §3 testpoints table
-  + HappyPath        ──→  happy-path sequence intent
-  + CornerCases      ──→  corner sequence intent
-  + NegativeCases    ──→  negative sequence intent
-  + Priority         ──→  smoke / regress suite assignment
-
-§1.5 Timing Scenarios table  ──→  sequence class (one sequence per ScenarioID)
-  + Trigger / Stimulus  ──→  sequence body logic skeleton
-  + Expected result     ──→  checker decision condition
-  + Timing constraint   ──→  checker timeout window (response within N cycles)
-  + Exception / Negative ──→  negative sequence + error checker
-
-§1.7 Submodule Index         ──→  pointer to `manifest.json` (children[].name + children[].doc)
-                                  for per-child Verification Hints lookup.
-
-<child>.md §5 Verification Hints  ──→  RM rule implementation + checker details + timeout / reset checks
-  + ImplementationDetailVerbatim ──→  scaffold inlined_check_hints[].implementation_detail
-                                      (verbatim cycle-accurate formula; the ≤20-word ImplementationDetail
-                                       summary is the fallback — the summary alone is NOT the cycle-accurate source)
-  + ReferenceRule    ──→  RM predict() method logic
-  + Observable       ──→  monitor-sampled signal + scoreboard compare field
-  + Latency          ──→  checker timeout window (cycles)
-  + ResetBehavior    ──→  checker post-reset initial-value check + RM reset() method
-```
-
----
-
-## Spec field → simulation object derivation
-
-Section anchors in `design.md` are English canonical (Surface 1):
+Section anchors in `design.md` are English canonical:
 - §1.3 Feature Table → testpoint feature IDs
 - §1.4.1 Top-Level IO → DUT-boundary interfaces / agents / transaction fields
-- §1.4.2 Inter-module Interconnects → optional cross-module wire awareness
-  (simulation aware-only; cross-module wires are not part of DUT transaction class)
+- §1.4.2 Inter-module Interconnects → optional cross-module wire awareness (aware-only)
 - §1.5 Interface Timing Scenarios → scenario-driven sequences
-- §1.6 Clocks and Frequencies → clock domain, primary_clock
+- §1.6 Clocks and Frequencies → `primary_clock`
 - §1.7 Submodule Index → pointer to `manifest.json`
 
-Per-child Verification Hints (9-column table) live in `<child>.md §5`;
-`simplan derive-plan-data --workdir` reads `manifest.json` + each `<child>.md`
-and tags each hint with a `child` field.
+Per-child Verification Hints (9-column table) live in `<child>.md §5`; `simplan derive-plan-data
+--workdir` reads `manifest.json` + each `<child>.md` and tags each hint with a `child` field.
 
 ---
 
 ## Derivation rules
 
-- Derive `verification-plan.md` (human-readable review anchor, with testpoints and power-scenario sections) and `scaffold-specification.json` (machine-read contract, with `agents` / `sequences` / `tests` / `testpoints[]` / `power_scenarios[]`) from the fields above.
-- When §1.3 contains only the three columns `ID` / `Feature` / `Description`, the derivation script falls back to a minimum testpoint set; it **cannot** generate transactions / agents / seqs / checkers / RMs automatically. When the §1.4.1 Top-Level IO table and the §1.5 timing-scenarios table are missing, exit with `result.json status=fail` + `stage_specific.fail_reason`; do not "stretch" to generate.
-- Non-target capabilities (e.g., "does not support" / "does not include") should still appear in the §1.3 feature table so negative tests and result summaries can be derived from them.
-- **Without structured verification inputs, do not enter automated environment generation.** The spec is inadequate and must be completed (more inputs gathered) before planning proceeds.
+- Derive `verification-plan.md` (human-readable review anchor) and `scaffold-specification.json`
+  (machine-read contract) from the fields above.
+- When §1.3 carries only `ID` / `Feature` / `Description`, you have little to derive: you can
+  still author feature-traceability testpoints, but transactions / agents / sequences / checks
+  need the §1.4 / §1.5 / §5 fields. There is no automatic generation; you author these, guided
+  by the fields above.
+- Non-target capabilities ("does not support" / "does not include") should still appear in the
+  §1.3 feature table so negative tests and result summaries can be derived from them.
 
 ---
 
-## Complete derivation chain example: APB slave register module
+## Complete derivation-chain example: APB slave register module
+
+(These tables show the `design.md` rows as they arrive in `plan-data.json`; you read them from
+that JSON, not the raw file.)
 
 ### §1.4.1 Top-Level IO table (APB slave)
 
 ```markdown
 | Signal name | Direction | Width | Clock domain | Interface group | Protocol | Role |
 |-------------|-----------|-------|--------------|-----------------|----------|------|
-| pclk | input | 1 | pclk | APB | APB3 | clock |
-| preset_n | input | 1 | pclk | APB | APB3 | reset |
+| pclk | input | 1 | pclk | | APB3 | clock |
+| preset_n | input | 1 | pclk | | APB3 | reset |
 | psel | input | 1 | pclk | APB | APB3 | data |
 | penable | input | 1 | pclk | APB | APB3 | data |
 | pwrite | input | 1 | pclk | APB | APB3 | data |
@@ -209,25 +189,30 @@ and tags each hint with a `child` field.
 | pslverr | output | 1 | pclk | APB | APB3 | data |
 ```
 
-**Derived results:**
-- `apb_txn`: addr[7:0], data[31:0], rw, ready_delay, slverr.
-- `apb_if`: contains all APB signal ports.
-- `apb_agent`: driver drives psel / penable / paddr / pwdata / pwrite; monitor samples prdata / pready / pslverr.
+(clk/rst carry no `Interface group`: `primary_clock` comes from §1.6 and `reset` from the
+`Role=reset` row; grouping them under `APB` would collide with the clk/rst port name at render.)
+
+**What this yields:**
+- `apb_agent` (`mode: active`, covers Interface group `APB`).
+- `apb_if.interface.signals`: `psel, penable, pwrite, paddr, pwdata, prdata, pready, pslverr`
+  (all APB-group signals; `pclk` / `preset_n` are not agent signals).
+- `apb_txn.transaction.fields`: the same signals, clk/rst already excluded, named verbatim:
+  `psel(1), penable(1), pwrite(1), paddr(8), pwdata(32), prdata(32), pready(1), pslverr(1)`.
+  materialize fills these; it does not abstract or rename (there is no `addr` / `data` / `rw`).
 
 ### §1.5 Interface Timing Scenarios table (APB slave)
 
 ```markdown
 | ScenarioID | Interface / Mode | Trigger / Stimulus | Expected result | Timing constraint | Exception / Negative |
 |------------|------------------|--------------------|-----------------|-------------------|----------------------|
-| SC-APB-00 | APB / write | Legal-address write transaction (psel → penable sequence) | pready high within 1–2 cycles, pslverr=0 | ≤2 cycles after penable | — |
-| SC-APB-01 | APB / read | Legal-address read transaction (psel → penable sequence) | prdata returns the register value; pready high | ≤2 cycles after penable | — |
+| SC-APB-00 | APB / write | Legal-address write transaction | pready high within 1–2 cycles, pslverr=0 | ≤2 cycles after penable | — |
+| SC-APB-01 | APB / read | Legal-address read transaction | prdata returns the register value; pready high | ≤2 cycles after penable | — |
 | SC-APB-02 | APB / write | Illegal address (out of valid range) | pslverr high; prdata don't-care | ≤2 cycles after penable | Address out of range |
 ```
 
-**Derived results:**
-- `apb_write_seq` (SC-APB-00), `apb_read_seq` (SC-APB-01), `apb_illegal_addr_seq` (SC-APB-02).
-- `apb_ready_checker`: pready high within ≤2 cycles after penable.
-- `apb_slverr_checker`: pslverr=1 on illegal address.
+**What you author:** `sequences[]` entries `apb_write_seq` (SC-APB-00), `apb_read_seq`
+(SC-APB-01), `apb_illegal_addr_seq` (SC-APB-02), each with a testpoint recording the Expected +
+Timing as its check intent.
 
 ### `<child>.md §5` Verification Hints table (APB slave)
 
@@ -238,17 +223,8 @@ and tags each hint with a `child` field.
 | CHK-APB-01 | F-00 | Illegal address returns pslverr=1 | pslverr <= (addr ∉ legal_range) | L57 | pslverr | addr ∉ legal range → pslverr=1 | ≤2 cycles | pslverr=0 |
 ```
 
-**Derived results:**
-- `apb_reg_rm`: predict() implements `if write: reg_file[addr]=wdata; if read: return reg_file[addr]`; reset() clears reg_file.
-- `apb_scoreboard`: compares monitor-sampled prdata against the RM predict result; checks pslverr=1 on illegal address.
-
----
-
-## Review suggestions
-
-- When reviewing `design.md` §1.3, confirm: the feature table has stable IDs and basic scenario descriptions; HappyPath / Corner / Negative are present.
-- When reviewing `design.md` §1.4.1, confirm: the Top-Level IO table includes direction / width / interface group (missing any blocks derivation).
-- When reviewing `design.md` §1.4.2 (fan-out mode only), confirm: each cross-child wire is declared once with Producer / Consumer / Protocol / Timing; `<child>.md §2 Interface` only references — never redefines.
-- When reviewing `design.md` §1.5, confirm: the timing-scenarios table includes ScenarioID / trigger / expected / timing constraint.
-- When reviewing per-child `<child>.md §5` verification-hint tables, confirm: `ImplementationDetailVerbatim` (the cycle-accurate RM `predict()` formula source — preferred; the ≤20-word `ImplementationDetail` summary alone is NOT sufficient), `ReferenceRule` (RM core input), `Observable` (monitor observation point), `Latency` / `ResetBehavior` (checker boundary conditions) are present.
-- Ensure the spec answers — before it is finalized — "how exactly is this feature tested," "what fields are in the transaction," "what does the checker compare," "what is the RM rule"; planning must not need to ask the user later.
+**What you author:** testpoints clustering `CHK-APB-00` / `CHK-APB-01` via `covers[]`. materialize
+then fills their `inlined_check_hints[]`: `implementation_detail` from the Verbatim column
+(`reg_file[addr] <= pwdata …`), plus `observable` / `reference_rule` / `latency` /
+`reset_behavior` as metadata. The RM `predict()` and scoreboard that consume these hints are
+authored downstream in the `simulation` stage.

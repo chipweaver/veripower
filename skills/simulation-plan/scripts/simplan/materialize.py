@@ -47,6 +47,14 @@ def _clk_rst_signal_names(plan_data: dict) -> set:
             )
         if role in {"clock", "reset"}:
             names.add(s["signal_name"])
+        elif not (s.get("direction") or "").strip():
+            # A data port with no Direction can't be classed driver vs monitor, so the
+            # generated TB is wrong. Direction is gated for data roles — an empty value
+            # is a spec-gate escape; fail loud rather than silently pick a default.
+            sys.exit(
+                f"materialize-scaffold: data signal {s.get('signal_name')!r} has empty Direction "
+                f"(design.md §1.4.1 Direction gated: driver/monitor). Re-run specification."
+            )
     return names
 
 
@@ -150,6 +158,14 @@ def materialize(plan_data: dict, scaffold: dict) -> dict:
                 f"entries: {dupes}."
             )
         matched = [s for g in groups for s in by_group[g]]
+        matched_names = [s["signal_name"] for s in matched]
+        dupe_names = sorted({n for n in matched_names if matched_names.count(n) > 1})
+        if dupe_names:
+            sys.exit(
+                f"materialize-scaffold: agent {aname!r} has duplicate signal name(s) "
+                f"{dupe_names} across its interface_groups {groups} — would emit duplicate "
+                f"SV declarations."
+            )
         signals = [
             {
                 "name": s["signal_name"],
@@ -178,9 +194,15 @@ def materialize(plan_data: dict, scaffold: dict) -> dict:
 
 
 def run(plan_data_path, scaffold_path) -> int:
-    plan_data = json.loads(Path(plan_data_path).read_text(encoding="utf-8"))
     scaffold_path = Path(scaffold_path)
-    scaffold = json.loads(scaffold_path.read_text(encoding="utf-8"))
+    try:
+        plan_data = json.loads(Path(plan_data_path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        sys.exit(f"materialize-scaffold: {plan_data_path} is not valid JSON: {e}")
+    try:
+        scaffold = json.loads(scaffold_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        sys.exit(f"materialize-scaffold: {scaffold_path} is not valid JSON: {e}")
     scaffold = materialize(plan_data, scaffold)
     scaffold_path.write_text(
         json.dumps(scaffold, indent=2, ensure_ascii=False), encoding="utf-8"

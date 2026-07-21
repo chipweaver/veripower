@@ -1,10 +1,10 @@
 """Producer self-gate for the (gating) plan-review.json artifact — the validate-review verb.
 
 The simulation-plan main thread runs this AFTER assembling the fresh reviewer's findings into
-plan-review.json (Step 4) and BEFORE the Step-5 user review loop — fix-and-retry (main-thread
+plan-review.json (the plan-adequacy review) and BEFORE the user review loop — fix-and-retry (main-thread
 re-assembly, not re-dispatch) on a non-zero exit. Validates against
 references/plan-review.schema.json (Draft 2020-12), then computes the gate verdict (the mechanical lens x
-severity reduction) and prints it as a one-line JSON the main thread copies -- so the gate is
+severity reduction) and prints it as a one-line JSON -- so the gate is
 script-owned, not judged by eye.
 
 Gate policy: coverage (testpoint/skip completeness vs spec) findings at critical/important BLOCK
@@ -38,8 +38,8 @@ _GATING_SEVERITIES = {"critical", "important"}
 def gate_verdict(doc: dict) -> dict:
     """Pure lens x severity reduction over a (schema-valid) plan-review doc.
     coverage at critical/important blocks (gate=trip); adequacy is advisory must-acknowledge;
-    unavailable never blocks. Caller guarantees the doc passed the schema/consistency gate
-    (validate()'s gate, or — for finalize — the on-disk plan-review.json already gated at Step 4)."""
+    unavailable never blocks. Caller guarantees the doc passed the schema gate
+    (validate()'s gate, or — for finalize — the on-disk plan-review.json already gated by the plan-adequacy review)."""
     findings = doc.get("findings", [])
     gating = [
         f
