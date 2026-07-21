@@ -24,6 +24,13 @@
 // ============================================================================
 `timescale 1ns/1ps
 
+// DUT module name: the pinned interface name is `fa_core_indep`, but the full
+// (VeriPower) arm names its top per the per-repeat module dir (e.g.
+// `fa_core_indep_0`). Override at compile with +define+DUT_TOP=<name>.
+`ifndef DUT_TOP
+  `define DUT_TOP fa_core_indep
+`endif
+
 module fa_core_indep_golden_tb;
 
   // ---- fixed interface (pinned in the spec) --------------------------------
@@ -39,7 +46,7 @@ module fa_core_indep_golden_tb;
   logic        busy;
   logic        done;
 
-  fa_core_indep dut (
+  `DUT_TOP dut (
     .clk          (clk),
     .rst_n        (rst_n),
     .qkv_in_data  (qkv_in_data),
