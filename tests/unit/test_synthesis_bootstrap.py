@@ -139,6 +139,29 @@ def test_define_and_dashf_still_skipped(tmp_path):
     assert "top.v" in gen
 
 
+def test_rtl_load_gates_every_analyze(tmp_path):
+    """Every generated analyze is gated, and no ungated one survives.
+
+    An unchecked analyze failure is not benign: DC keeps going, the module ends up
+    unresolved, and because DC reports an unresolved reference as a Warning rather
+    than an Error, dc_run.tcl's check_design gate does not fire either — `compile`
+    then succeeds and the stage reports a clean (and smaller) QoR for a design
+    missing a whole module. The companion gates on elaborate / link live in
+    tests/contracts/test_dc_run_gates.py.
+    """
+    skill_dst, rtl, workdir = _mirror(tmp_path)
+    (rtl / "filelist.txt").write_text("a.v\nb.v\n")
+    proc = _run(skill_dst, workdir, "--top", "a")
+    assert proc.returncode == 0, proc.stderr
+    gen = (workdir / "scripts" / "rtl_load.tcl").read_text()
+    assert "proc _analyze_or_die" in gen
+    assert "exit 1" in gen
+    calls = [ln for ln in gen.splitlines() if ln.startswith("_analyze_or_die {")]
+    assert len(calls) == 2, calls
+    ungated = [ln for ln in gen.splitlines() if ln.startswith("analyze ")]
+    assert ungated == [], ungated
+
+
 def test_happy_path_substitutes_my_top(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "filelist.txt").write_text("top.v\n")
