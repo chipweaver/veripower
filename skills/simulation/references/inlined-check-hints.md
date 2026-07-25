@@ -2,7 +2,7 @@
 
 `scaffold-specification.json.testpoints[].inlined_check_hints[]` is the field where the
 simulation-plan stage inlines the precise check semantics from `plan-data.json.check_hints[]`
-directly into the testpoint (see the field description in `simulation-plan/SKILL.md`). When
+directly into the testpoint (field description: `skills/simulation-plan/references/scaffold-specification.schema.json`). When
 materializing the TB / writing the refmodel and scoreboard, you MUST follow the
 rules below and are **not allowed** to silently downgrade to shadow-register mode or
 mismatch-as-uvm_info mode:
