@@ -6,26 +6,6 @@ closed by the ask-gated `kernel.py signoff` verb.
 
 ## Pipeline
 
-```
-[brainstorm] (pre-pipeline, own session) → approved brainstorm.md ↓
-
-[specification] → [simulation-plan] → [rtl-design]
-                                            │
-                          ┌─────────────────┴──────────────────┐
-                          ↓                                    ↓
-                     [lint-cdc]                          [simulation]
-                          │                                    │
-                          ↓                                    │
-                     [synthesis]                               │
-                          │                                    │
-                          ↓                                    │
-                  [timing-analysis]                            │
-                          │                                    │
-                          └─────────────────┬──────────────────┘
-                                            ↓
-                                    [power-analysis]
-```
-
 Signoff is not a stage: with every proof valid and every oracle pinned, a human closes
 the module with `kernel.py signoff` (§5.5). See "Kernel & Skill Dispatch" below.
 
@@ -40,24 +20,16 @@ whose reap lands a `diagnosis` event. Authoritative registry and routing rules:
 Per-module work tree under `asic/<module>/`:
 
 - `events.jsonl` — append-only event log, the SOLE durable state file (7 event types: `dispatch`, `outcome`, `diagnosis`, `pin`, `reopen`, `signoff`, `escalation`; schemas `framework/references/schemas/events/`). Written only by `kernel.py`; per-stage status is derived from it + disk fingerprints on demand (`kernel.py status`), never stored.
-- `Design/<stage>/result.json` — for specification, rtl-design, lint-cdc, synthesis, timing-analysis
 - `Design/rtl-design/semantic-review.json` — gating per-child intent-review produced by rtl-design's Step-4.4 semantic gate (schema `skills/rtl-design/references/semantic-review.schema.json`).
-- `Verification/<stage>/result.json` — for simulation-plan, simulation, power-analysis, simulation-triage
 - `Verification/simulation/conformance-review.json` — gating per-testpoint check-adequacy review produced by the simulation stage's Step-4 conformance gate (schema `skills/simulation/references/conformance-review.schema.json`); promoted advisory artifact, gate source for `failure_phase=conformance`.
 - `Verification/simulation-plan/plan-review.json` — gating testpoint-adequacy review (`coverage` vs spec blocks; `adequacy` check-strategy soundness is advisory must-acknowledge) produced by simulation-plan's Step-4 adequacy gate via a self-dispatched Level-1 reviewer (schema `skills/simulation-plan/references/plan-review.schema.json`).
 - `brainstorm.md` (module root, `asic/<module>/brainstorm.md`) — sole upstream of `design.md`; produced by the pre-pipeline `brainstorm` skill (own session), frozen for the run, NOT listed in specification's `result.json.artifacts[]`.
 - `Design/specification/manifest.json` — child registry SSoT (every module, N≥1; contains `module`, `children[]` with `name` / `doc` / `rtl_modules[]` / `brainstorm_anchor` / `role`, and optional `shared_subsections[]`).
-- `Design/specification/coverage.json` — script-generated coverage, by the `spec` package's `check-coverage` verb (sub-blocks documented in `specification/SKILL.md`). The `spec` `derive-constraints` verb generates `constraints/<TOP>.{sdc,sgdc}`.
 - `Design/specification/ppa.json` — PPA targets emitted by specification; a declared input of `synthesis` and `power-analysis` (they read it themselves — nothing is injected into their prompts). `rtl-design` gets targets only via its Orchestrator-authored directive.
 - `Design/specification/spec-review.json` — gating per-child spec intent review (`faithfulness` vs brainstorm blocks; `conformance` vs the §1.4.x pinned Encoding + §1.4.2.1 inter-module behavior contract (encoding decode/adequacy + behavior-contract name-resolution) blocks; `soundness` — micro-arch realizability + observed cross-interface inconsistency — is advisory must-acknowledge) produced by specification's Step-7 semantic gate (schema `skills/specification/references/spec-review.schema.json`).
 - `Design/specification/<child>.md × N` — per-child sub-design (frontmatter + §1–§5 strong structure including 9-column §5 Verification Hints).
 
 Result-envelope schemas: `framework/references/schemas/`.
-
-## Path Variables
-
-- `${CLAUDE_PLUGIN_ROOT}` — VeriPower plugin root
-- `${CLAUDE_SKILL_DIR}` — current skill directory
 
 Domain-specific coding rules live in each skill's references.
 
@@ -70,7 +42,6 @@ Domain-specific coding rules live in each skill's references.
 - `framework/scripts/schedule.py` — the scheduler (`decide`): objective-scoped (`delivery`/`repair`/`signoff`), pure over (disk, log, args), exactly one action per call.
 - `framework/scripts/route.py` — pure deterministic rework-target selection (sole home of the failure→target maps); composed inside `schedule.py` and `kernel.py`. No state.
 - `framework/scripts/store.py` — artifact-lifecycle internals (promote, trace mirroring, dispatch-time `inputs.json` injection via `inject_inputs`, author self-carry via `carry_self`), imported by `kernel.py`; internal — never invoked directly.
-- `framework/scripts/usage.py` — parses a Claude Code JSONL trace (a Task subagent's mirrored `.subagent_traces/<rule>-<id>.output`, or an orchestrator session transcript) into a token-usage breakdown; `kernel.py reap` calls it on a Task subagent's mirrored trace to populate the outcome event's `cost_tokens`.
 - Main-thread-loaded stages: `specification`, `simulation-plan`, `rtl-design`, and `simulation` — Orchestrator calls `Skill(veripower:...)` directly. The other 4 stages (`lint-cdc`, `synthesis`, `timing-analysis`, `power-analysis`) plus `simulation-triage` are strictly Task-dispatched subagents; branch on the `DISPATCH` action's `execution` field. See `skills/design-flow/SKILL.md` and `ARCHITECTURE.md §2`.
 - `brainstorm` is a separate **pre-pipeline** skill (own session, NOT in the orchestrator-dispatch list above): it runs the D0–D7 dialogue and produces the approved `brainstorm.md` the pipeline starts from. It writes no `result.json` and calls no `kernel.py`.
 

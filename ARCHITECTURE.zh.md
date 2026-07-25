@@ -470,7 +470,7 @@ asic/<module>/
 ├── Design/
 │   ├── specification/
 │   │   ├── result.json                     # 规范视图（promote 之后）
-│   │   ├── design.md / manifest.json / coverage.json / ppa.json / <child>.md
+│   │   ├── design.md / manifest.json / ppa.json / <child>.md
 │   │   ├── spec-review.json                # 提升的 proposed-oracle 产物
 │   │   ├── constraints/<TOP>.{sdc,sgdc}     # specification 独占；下游从这里读
 │   │   └── runs/<N>/                        # 每次派发写这里；promote 合并进规范视图

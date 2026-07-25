@@ -105,8 +105,8 @@ differ in how much they involve you:
 
 - **`specification` (autonomous).** Derives the frozen design source of truth
   from your brainstorm: `design.md`, the per-child sub-designs, `manifest.json`,
-  `coverage.json`, and the constraint pair (`<TOP>.sdc` / `<TOP>.sgdc`). No
-  dialogue — it reads the approved brainstorm and produces the spec.
+  and the constraint pair (`<TOP>.sdc` / `<TOP>.sgdc`). No dialogue — it reads
+  the approved brainstorm and produces the spec.
 - **`simulation-plan` (your review).** Drafts the verification plan (testpoints
   + power scenarios) and **presents `verification-plan.md` for your approval**.
   The stage passes only after you approve.

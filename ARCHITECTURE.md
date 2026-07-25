@@ -472,7 +472,7 @@ asic/<module>/
 ├── Design/
 │   ├── specification/
 │   │   ├── result.json                     # canonical (post-promote)
-│   │   ├── design.md / manifest.json / coverage.json / ppa.json / <child>.md
+│   │   ├── design.md / manifest.json / ppa.json / <child>.md
 │   │   ├── spec-review.json                # promoted proposed-oracle artifact
 │   │   ├── constraints/<TOP>.{sdc,sgdc}     # specification owns these; downstream reads here
 │   │   └── runs/<N>/                        # each dispatch writes here; promote merges into canonical

@@ -95,7 +95,7 @@ VeriPower 通过一条 9 个阶段的流水线，把一个已批准的想法变�
 协调器按依赖顺序派发各阶段。最早的两个阶段在「需要你参与多少」上有所不同：
 
 - **`specification`（自主）。** 从你的头脑风暴推导出冻结的设计真源：`design.md`、
-  各子模块的子设计、`manifest.json`、`coverage.json`，以及约束文件对
+  各子模块的子设计、`manifest.json`，以及约束文件对
   （`<TOP>.sdc` / `<TOP>.sgdc`）。无对话——它读取已批准的头脑风暴并产出规格。
 - **`simulation-plan`（你来审阅）。** 起草验证计划（testpoint + 功耗场景），并把
   `verification-plan.md` **呈现给你批准**。只有你批准后，该阶段才会通过。
