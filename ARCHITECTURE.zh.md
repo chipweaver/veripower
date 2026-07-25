@@ -102,7 +102,7 @@ Orchestrator 的三条派发路径：
 
 ### 2.2 内核界面
 
-`framework/scripts/` 是一个确定性核心，拆成六个可裸导入、各司一职的模块外加 CLI。`kernel.py` 是 Orchestrator 调用的唯一入口；其余由它导入。
+`framework/scripts/` 是一个确定性核心，拆成五个可裸导入、各司一职的模块外加 CLI。`kernel.py` 是 Orchestrator 调用的唯一入口；其余由它导入。
 
 | 模块 | 职责 |
 |---|---|
@@ -112,7 +112,6 @@ Orchestrator 的三条派发路径：
 | `schedule.py` | 调度器：`decide(objective) → 恰好一个动作`。对 (磁盘, 日志, 参数) 纯函数；组合 `route.py` 与 `facts.signoff_gate`。持有目标→所需证明集映射与新鲜失败处置。 |
 | `route.py` | 纯确定性返工目标选择——静态失败→目标映射表的**唯一居所**（`PA_CATEGORY`、`FIXED_TARGET`、`LINT_CATEGORY`、`TRIAGE_ROOT_CAUSE`）。不持有状态；原样组合进 `schedule.py` 与 `kernel.py`。 |
 | `store.py` | 文件系统产物生命周期助手：派发时的 `inject_inputs`（写 `<workdir>/inputs.json`）与 `carry_self`（把作者自己上一轮的规范产物拷进新 workdir）、收割时的 `promote` 与 `_mirror_subagent_trace`。由 `kernel.py` 导入；从不直接调用。 |
-| `usage.py` | 解析一份 Claude Code JSONL 转录——一个 Task 子 Agent 镜像下来的 `.subagent_traces/<rule>-<id>.output`，或一份 orchestrator 会话转录——归并成一份 token 用量明细（`parse_trace_usage`，按 message id 去重）。纯函数/只读，仅用标准库，从不抛异常。`kernel.py` 在收割时对 Task 子 Agent 镜像下来的转录调用它，填入 outcome 事件的 `cost_tokens`。 |
 
 事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（7 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
 
@@ -246,7 +245,7 @@ Orchestrator 的三条派发路径：
 | **type** | **写入方（动词）** | **用途 / 关键字段** |
 |---|---|---|
 | `dispatch` | 自动（`dispatch`） | 开启一个 run：`rule`、`run`、`workdir`、`params`（含 `directive` 的路径+摘要）、`objective`、`diagnosis_refs`，以及——仅产证明规则——消费的 `inputs` 版本表（`proof.inputs` 的唯一来源）。 |
-| `outcome` | 自动（`reap`） | 关闭一个 run：`verdict ∈ {pass, fail, blocked}`、产出的 `outputs` 版本表（含规范 `result.json`）、`proofs[]`、`tool_versions`、可选 `reason`（blocked 子类）、可选 `cost_tokens`（该 run Task 子 Agent 转录的仅供审计的 token 用量——主线程阶段没有此字段，且从不进入有效性判定）。 |
+| `outcome` | 自动（`reap`） | 关闭一个 run：`verdict ∈ {pass, fail, blocked}`、产出的 `outputs` 版本表（含规范 `result.json`）、`proofs[]`、`tool_versions`、可选 `reason`（blocked 子类）。 |
 | `diagnosis` | triage 自动（`reap`）；人工经 `diagnose` | 一条失败归因。必填（按 `diagnosis.schema.json`）：`id`、`subject {proof, outcome_run}`、`attribution`、`evidence`、`source ∈ {triage, human}`。可选：`fix_owner`、`fix_locus`、`confidence`、`supersedes`；`provenance`（`human` 必填，由 `diagnose` 强制）。 |
 | `pin` | `pin` | 把 `proposed` oracle 向 `human` 棘轮：`oracle_ref`、`content_fingerprint`（pin 时记录）、`provenance`、`reason`。 |
 | `reopen` | `reopen` | 撤销一个 pin：`pin_ref`、`reason`。使 oracle 在其落账后被 reopen 的证明失效（§4.4）。 |
@@ -407,7 +406,7 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 - **PPA 目标 → `rtl-design` directive。** `specification` 产出 `Design/specification/ppa.json`。`synthesis` 与 `power-analysis` *直接*消费它——它是二者的声明输入（`Rule.inputs["ppa"]`），目标由它们自己从文件读取，提示词里不注入任何东西。`rtl-design` 没有 `ppa.json` 输入边，故 Orchestrator 撰写 rtl-design 的 directive 时把每个 PPA 目标的 `dim` 与数值转录进去——directive 是 rtl-design 唯一的 PPA 通道。PPA 目标就此只经文件和 directive 传递；内核不向任何提示词注入 PPA 字段。
 - **triage 转发（逐字节）。** 携带 `triage_forward: true` 的自动重建，其 directive *就是* triage 的 `result.json`，逐字节转发（`--directive <triage result.json>`）——`dispatch` 复制字节，禁止 LLM 转述。多诊断合并把每个来源按诊断归属标题串接。
 
-**收割。** `kernel.py reap --rule <r> --run <n> [--subagent-output-file <f>]` 不接受裁决标志——一切由 `cmd_reap` 派生（§4.7），包括时间完整性检查：`produced_at` 早于本 run dispatch 的 `result.json` 是被携带进来的陈旧信封，派生为 `blocked` / `stale_result`（§4.7）。它尽力镜像异步转录（§6.5），若镜像成功则解析该转录（`usage.parse_trace_usage`）算出 outcome 的 `cost_tokens`——一个仅供审计、从不进入证明有效性或 verdict 判定的 token 用量数字。它派生 `(verdict, reason, proofs, diagnosis)` 四元组，在 `pass` *与* `fail` 上（`blocked` 除外）`store.promote` 产物到规范目录，按实际 promote 集把指纹记入 outcome 的 `outputs`，追加 `outcome`，并——对完成的 triage——追加派生的 `diagnosis`。promote 幂等（§7.2），promote 中途崩溃由下一次收割修复。
+**收割。** `kernel.py reap --rule <r> --run <n> [--subagent-output-file <f>]` 不接受裁决标志——一切由 `cmd_reap` 派生（§4.7），包括时间完整性检查：`produced_at` 早于本 run dispatch 的 `result.json` 是被携带进来的陈旧信封，派生为 `blocked` / `stale_result`（§4.7）。它尽力镜像异步转录（§6.5）。它派生 `(verdict, reason, proofs, diagnosis)` 四元组，在 `pass` *与* `fail` 上（`blocked` 除外）`store.promote` 产物到规范目录，按实际 promote 集把指纹记入 outcome 的 `outputs`，追加 `outcome`，并——对完成的 triage——追加派生的 `diagnosis`。promote 幂等（§7.2），promote 中途崩溃由下一次收割修复。
 
 **崩溃恢复折叠进循环。** 没有单独的初始化或恢复阶段：第一次 `dispatch` 创建日志；已完成但未收割的 run 由 `decide` 第 0 步接住。执行器*没写* `result.json` 就死掉的 run 仍在途，在 `YIELD` 的 `in_flight[]` 视图中以 `has_result: false` 现身；Orchestrator 确认执行器已死后，发出显式 `reap`，派生 `blocked`，为重路由解锁账本（`skills/design-flow/SKILL.md` 的 Dead-in-flight 规则）。
 

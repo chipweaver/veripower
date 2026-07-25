@@ -1,4 +1,0 @@
-# Generic single-clock SpyGlass constraints (SGDC). Replace clk/rst_n for yours.
-current_design accum
-clock -name clk   -period 10.0 -edge {0 5.0}
-reset -name rst_n -value 0 -async

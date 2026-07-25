@@ -1,5 +1,0 @@
-# Demo SpyGlass sourcelist (RTL only) — the default scripts/spyglass.prj reads
-# this path from the invocation root, so `make lint`/`make cdc` smoke the demo
-# as-shipped. Replace with your design's RTL sourcelist (and update the `top` in
-# scripts/spyglass.prj). Not used by synth/sim — those take filelist.f.
-demo/rtl/accum.v

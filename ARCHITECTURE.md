@@ -102,7 +102,7 @@ The three dispatch paths from the Orchestrator:
 
 ### 2.2 The kernel surface
 
-`framework/scripts/` is one deterministic core split into six bare-importable, single-responsibility modules plus the CLI. `kernel.py` is the only entry point the Orchestrator calls; it imports the rest.
+`framework/scripts/` is one deterministic core split into five bare-importable, single-responsibility modules plus the CLI. `kernel.py` is the only entry point the Orchestrator calls; it imports the rest.
 
 | Module | Responsibility |
 |---|---|
@@ -112,7 +112,6 @@ The three dispatch paths from the Orchestrator:
 | `schedule.py` | The scheduler: `decide(objective) → exactly one action`. Pure over (disk, log, args); composes `route.py` and `facts.signoff_gate`. Owns the objective→required-proof map and the fresh-failure disposition. |
 | `route.py` | Pure deterministic rework-target selection — the **single home** of the static failure→target maps (`PA_CATEGORY`, `FIXED_TARGET`, `LINT_CATEGORY`, `TRIAGE_ROOT_CAUSE`). Holds no state; composed unchanged inside `schedule.py` and `kernel.py`. |
 | `store.py` | Filesystem artifact-lifecycle helpers: dispatch-time `inject_inputs` (writes `<workdir>/inputs.json`) and `carry_self` (copies the author's own previous canonical products into the fresh workdir), reap-time `promote` and `_mirror_subagent_trace`. Imported by `kernel.py`; never invoked directly. |
-| `usage.py` | Parses a Claude Code JSONL trace — a Task subagent's mirrored `.subagent_traces/<rule>-<id>.output`, or an orchestrator session transcript — into a token-usage breakdown (`parse_trace_usage`, deduped by message id). Pure / read-only, stdlib only, never raises. `kernel.py` calls it at reap on a Task subagent's mirrored trace to populate the outcome event's `cost_tokens`. |
 
 The event schemas at `framework/references/schemas/events/<type>.schema.json` (7 of them, §4.2) and the result envelope at `framework/references/schemas/envelope.schema.json` complete the core.
 
@@ -246,7 +245,7 @@ Because the log is the state, in-flight is derived too: `facts.in_flight` = ever
 | **type** | **Written by (verb)** | **Purpose / key fields** |
 |---|---|---|
 | `dispatch` | auto (`dispatch`) | Opens a run: `rule`, `run`, `workdir`, `params` (incl. the `directive` path+digest), `objective`, `diagnosis_refs`, and — for proof-producing rules only — the consumed `inputs` version table (the sole source of `proof.inputs`). |
-| `outcome` | auto (`reap`) | Closes a run: `verdict ∈ {pass, fail, blocked}`, the produced `outputs` version table (incl. the canonical `result.json`), `proofs[]`, `tool_versions`, optional `reason` (the blocked sub-class), optional `cost_tokens` (audit-only token usage of the run's Task subagent trace — absent on main-thread stages, never entering validity). |
+| `outcome` | auto (`reap`) | Closes a run: `verdict ∈ {pass, fail, blocked}`, the produced `outputs` version table (incl. the canonical `result.json`), `proofs[]`, `tool_versions`, optional `reason` (the blocked sub-class). |
 | `diagnosis` | auto for triage (`reap`); human via `diagnose` | A failure attribution. Required (per `diagnosis.schema.json`): `id`, `subject {proof, outcome_run}`, `attribution`, `evidence`, `source ∈ {triage, human}`. Optional: `fix_owner`, `fix_locus`, `confidence`, `supersedes`; `provenance` (required for `human`, enforced by `diagnose`). |
 | `pin` | `pin` | Ratchets a `proposed` oracle toward `human`: `oracle_ref`, `content_fingerprint` (recorded at pin time), `provenance`, `reason`. |
 | `reopen` | `reopen` | Retires a pin: `pin_ref`, `reason`. Invalidates any proof whose oracle was reopened after it landed (§4.4). |
@@ -407,7 +406,7 @@ The Orchestrator branches on the returned `execution`: `main-thread` → `Skill(
 - **PPA targets → `rtl-design` directive.** `specification` emits `Design/specification/ppa.json`. `synthesis` and `power-analysis` consume it *directly* — it is a declared input of both (`Rule.inputs["ppa"]`), so they read the targets from the file themselves and nothing is injected into their prompts. `rtl-design` has no `ppa.json` input edge, so when the Orchestrator authors rtl-design's directive it transcribes each PPA target's `dim` and numeric value in — the directive is rtl-design's only PPA channel. PPA targets thus travel by file and directive; the kernel injects no PPA field into any prompt.
 - **Triage forward (verbatim).** For an auto-rebuild carrying `triage_forward: true`, the directive *is* the triage `result.json`, forwarded byte-for-byte (`--directive <triage result.json>`) — `dispatch` copies the bytes, no LLM rewording. A multi-diagnosis merge concatenates each source under a per-diagnosis header.
 
-**Reap.** `kernel.py reap --rule <r> --run <n> [--subagent-output-file <f>]` takes no verdict flag — `cmd_reap` derives everything (§4.7), including the temporal-integrity check: a `result.json` whose `produced_at` predates this run's dispatch is a carried-in stale envelope and is derived `blocked` / `stale_result` (§4.7). It best-effort mirrors the async transcript (§6.5) and, when a trace was mirrored, parses it (`usage.parse_trace_usage`) into the outcome's `cost_tokens` — an audit-only token-usage figure that never enters proof validity or the verdict. It derives the `(verdict, reason, proofs, diagnosis)` 4-tuple, `store.promote`s the produced artifacts into canonical on `pass` *and* `fail` (never on `blocked`), fingerprints the actual promote set into the outcome's `outputs`, appends the `outcome`, and — for a completed triage — appends the derived `diagnosis`. Promote is idempotent (§7.2), so a crash mid-promote is repaired by the next reap.
+**Reap.** `kernel.py reap --rule <r> --run <n> [--subagent-output-file <f>]` takes no verdict flag — `cmd_reap` derives everything (§4.7), including the temporal-integrity check: a `result.json` whose `produced_at` predates this run's dispatch is a carried-in stale envelope and is derived `blocked` / `stale_result` (§4.7). It best-effort mirrors the async transcript (§6.5). It derives the `(verdict, reason, proofs, diagnosis)` 4-tuple, `store.promote`s the produced artifacts into canonical on `pass` *and* `fail` (never on `blocked`), fingerprints the actual promote set into the outcome's `outputs`, appends the `outcome`, and — for a completed triage — appends the derived `diagnosis`. Promote is idempotent (§7.2), so a crash mid-promote is repaired by the next reap.
 
 **Crash recovery folds into the loop.** There is no separate init or recovery phase: the first `dispatch` creates the log; a completed-but-unreaped run is picked up by `decide` step 0. A run whose executor died *without* writing `result.json` stays in-flight and surfaces in `YIELD`'s `in_flight[]` view as `has_result: false`; the Orchestrator, after confirming the executor is dead, issues an explicit `reap` that derives `blocked`, unblocking the ledger for re-routing (the Dead-in-flight rule in `skills/design-flow/SKILL.md`).
 
