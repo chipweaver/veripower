@@ -78,9 +78,9 @@ consumed by `kernel._derive_triage`, and the reliability gate by `schedule._reli
 
 ### `scripts/store.py` — artifact-lifecycle internals
 
-The promote + trace-mirroring helpers imported by `kernel.py` (canonical-view
-rebuild, hardlink promote, async-transcript mirroring). An import-only internal —
-`kernel.py` is its only caller; never invoked directly.
+The promote helpers imported by `kernel.py` (canonical-view rebuild, hardlink
+promote). An import-only internal — `kernel.py` is its only caller; never
+invoked directly.
 
 ## Ownership model
 

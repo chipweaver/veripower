@@ -131,7 +131,7 @@ def cmd_dispatch(
     }
 
 
-def cmd_reap(module, rule, run, subagent_output_file=None):
+def cmd_reap(module, rule, run):
     events = facts.read_events(module)
     # Guard BEFORE deriving anything: a dispatch event for (rule, run) must exist, or
     # there is no workdir to derive a verdict from (the prior bug: TypeError on
@@ -142,8 +142,6 @@ def cmd_reap(module, rule, run, subagent_output_file=None):
     if workdir is None:
         return {"ok": False, "error": f"no dispatch event for {rule} run {run}"}
     root = facts.module_root(module)
-    if subagent_output_file:
-        store._mirror_subagent_trace(root / workdir, rule, subagent_output_file)
     rj = root / workdir / "result.json"
     # UNIFORM 4-tuple across proof rules AND triage — never a shape-shifting return.
     verdict, reason, proofs, diagnosis = _derive_verdict(module, rule, run, rj, events)
@@ -534,12 +532,6 @@ def main():
     re_.add_argument("--module", required=True)
     re_.add_argument("--rule", required=True, choices=list(rules.RULES))
     re_.add_argument("--run", required=True, type=int)
-    re_.add_argument(
-        "--subagent-output-file",
-        default=None,
-        help="/tmp/.../tasks/<agent_id>.output path from the async Task "
-        "launch, best-effort mirrored to <workdir>/.subagent_traces/",
-    )
     dg = sub.add_parser("diagnose")
     dg.add_argument("--module", required=True)
     dg.add_argument("--id", required=True, dest="diag_id")
@@ -629,9 +621,7 @@ def main():
             refs,
             extra_params,
         ),
-        "reap": lambda: cmd_reap(
-            args.module, args.rule, args.run, args.subagent_output_file
-        ),
+        "reap": lambda: cmd_reap(args.module, args.rule, args.run),
         "diagnose": lambda: cmd_diagnose(
             args.module,
             args.diag_id,

@@ -62,7 +62,7 @@ and re-pass the same `--wake` on every re-query within the turn.
 
 | action | execute |
 |---|---|
-| `REAP` | `kernel.py reap --module {module} --rule <rule> --run <run> [--subagent-output-file <output-file>]`, then loop. Pass `--subagent-output-file` (from the `<task-notification>`'s `<output-file>`) for every async Task reap so the trace is mirrored; the four main-thread skills complete synchronously and need no such file. `reap` derives the verdict from the run's own `result.json` (pass/fail; missing/unparseable/malformed/schema-invalid → `blocked`; a `produced_at` predating this run's dispatch → `blocked` `stale_result`, an unparseable `produced_at` → `blocked` `produced_at_unparseable` — a carried-in or mis-stamped envelope, so the stage must be re-run to author a fresh one) — never pass a verdict yourself. |
+| `REAP` | `kernel.py reap --module {module} --rule <rule> --run <run>`, then loop. `reap` derives the verdict from the run's own `result.json` (pass/fail; missing/unparseable/malformed/schema-invalid → `blocked`; a `produced_at` predating this run's dispatch → `blocked` `stale_result`, an unparseable `produced_at` → `blocked` `produced_at_unparseable` — a carried-in or mis-stamped envelope, so the stage must be re-run to author a fresh one) — never pass a verdict yourself. |
 | `DISPATCH`, `execution: main-thread` | `kernel.py dispatch ...` (see Dispatch below) → `Skill(veripower:<skill>)` (the skill from the dispatch return) → loop. The next `decide` sees the finished run's `result.json` and returns `REAP`. |
 | `DISPATCH`, `execution: task` | `kernel.py dispatch ...` → render `framework/references/prompts/stage-subagent.md.tpl`, filling **every** template slot: `{module}`; the stage and skill lines from the dispatch return's `rule` / `skill` fields; `{workdir}` from the dispatch return; on a rework dispatch also `{failing_result}` and `{directive_path}` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered template>)` → loop. The next `decide` typically returns `YIELD` (the async run has no `result.json` yet) but may `DISPATCH` another eligible branch first — the loop is unconditional either way; a later `--wake` returns `REAP`. |
 | `DISPATCH`, `rule: simulation-triage` | The ambiguous-`simulation`-failure branch. `kernel.py dispatch --module {module} --rule simulation-triage --objective <action.objective> --params '{"sim_run": <sim_run>}'` (take `<sim_run>` from the action's `params.sim_run` — the kernel feeds it to `store.inject_inputs` and the diagnosis `subject.outcome_run`) → render the template as for any other task dispatch (triage reads its failed run + design/rtl/plan locations from the injected `inputs.json`, so nothing is appended to its prompt) → `Task(subagent_type="general-purpose", run_in_background=True, ...)` → loop. |
@@ -154,8 +154,7 @@ already reads from canonical files. `kernel.py dispatch` writes it into
 On `YIELD`, inspect the returned `in_flight[]` (each entry is `{rule, run, has_result}`).
 A run with `has_result: false` whose executor you confirm is **dead** (the Task subagent
 crashed, exited without writing `result.json`, or its wake was lost) gets an explicit
-`kernel.py reap --module {module} --rule <rule> --run <run> --subagent-output-file
-<output-file>` (the path recorded at the Task launch) — with no `result.json` present,
+`kernel.py reap --module {module} --rule <rule> --run <run>` — with no `result.json` present,
 `reap` derives `blocked`, unblocking the ledger so the next `decide` can re-route. Never reap
 a run whose executor is still alive.
 
@@ -209,7 +208,6 @@ that `decide` will escalate again rather than auto-rebuild.
 | DISPATCH task fills `subagent_type="veripower:<stage>"` | A stage skill is not an agent type; use `general-purpose`. |
 | Two mutating kernel calls with no `decide` between | Every action's executor is followed by a loop back to `decide`. Re-derive nothing by hand. |
 | Passing a verdict / `--outcome` to `reap` | `reap` derives the verdict from `result.json` alone; there is no verdict flag. |
-| Async reap omits `--subagent-output-file` | Self-audit both async reap sites (normal and dead-in-flight) carry it (best-effort; a missing/invalid path never raises, but the trace is then unmirrored). |
 
 ## Bundled References
 

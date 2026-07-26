@@ -1,11 +1,10 @@
 """VeriPower filesystem artifact-lifecycle helpers.
 
 Split out so the kernel stays focused on state mutations. No I/O beyond the
-promote/mirror operations themselves. Imports only stdlib + rules (no
+promote operation itself. Imports only stdlib + rules (no
 jsonschema/referencing deps).
 
-Imported by kernel.py: its reap path calls `store.promote` /
-`store._mirror_subagent_trace`.
+Imported by kernel.py: its reap path calls `store.promote`.
 """
 
 from __future__ import annotations
@@ -89,7 +88,6 @@ _CARRY_EXCLUDE = (
     "result.json",
     "runs",
     ".promote-tmp",
-    ".subagent_traces",
     "inputs.json",
     "directive.md",
     "changed-inputs.md",
@@ -152,47 +150,6 @@ def _cp_al(src: Path, dst: Path) -> None:
             _cp_al(entry, dst / entry.name)
         else:
             os.link(str(entry), str(dst / entry.name))
-
-
-def _mirror_subagent_trace(
-    workdir: Path, rule: str, output_file: str | None
-) -> Path | None:
-    """Best-effort mirror of an async subagent transcript into workdir.
-
-    Async Task launch produces an /tmp/.../tasks/<agent_id>.output JSONL
-    transcript that gets garbage-collected by Claude Code at session end,
-    leaving stage trace permanently unavailable for downstream analysis
-    (external analysis / postmortem). Orchestrator forwards the value of
-    the notification's <output-file> tag via --subagent-output-file on the
-    kernel.py reap call; this helper copies it to a stable workdir
-    relative path so the trace outlives the session.
-
-    Destination: <workdir>/.subagent_traces/<rule>-<agent_id>.output
-    (agent_id derived from src basename minus .output)
-
-    Returns the destination path on success, or None on any skip / failure
-    (missing source, empty arg, OSError). Never raises — caller is in the
-    cmd_reap reap path and must not be aborted by trace-mirror issues.
-    """
-    if not output_file:
-        return None
-    src = Path(output_file)
-    if not src.exists():
-        return None
-    agent_id = src.stem  # basename minus .output suffix
-    dst_dir = workdir / ".subagent_traces"
-    try:
-        dst_dir.mkdir(parents=True, exist_ok=True)
-        dst = dst_dir / f"{rule}-{agent_id}.output"
-        shutil.copy2(src, dst)
-        return dst
-    except OSError as e:
-        print(
-            f"[store.py] mirror subagent trace failed "
-            f"(stage={rule}, agent_id={agent_id}): {e}",
-            file=sys.stderr,
-        )
-        return None
 
 
 def promote(module: str, rule: str, run_n: int) -> None:
