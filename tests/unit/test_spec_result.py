@@ -681,3 +681,32 @@ def test_empty_fail_reason_is_blocked(tmp_path):
     rc = result.finalize(wd, "tpu_top", status="fail", fail_reason="   ")
     assert rc == 2
     assert not (wd / "result.json").exists()
+
+
+def test_pass_non_string_scenario_id_is_blocked(tmp_path):
+    # power-analysis matches a target to a scenario by string equality, so a non-string
+    # scenario_id matches nothing and that target is silently never enforced.
+    # ppa.schema.json already types the field; the hand-written check did not.
+    wd = _spec_workdir(tmp_path)
+    (wd / "ppa.json").write_text(
+        json.dumps([{"dim": "power_mw", "target": 1, "scenario_id": 5}])
+    )
+    assert result.finalize(wd, "tpu_top", status="pass", waived_json="[]") == 2
+
+
+def test_pass_non_finite_ppa_target_is_blocked(tmp_path):
+    # Regression guard, green before and after the schema swap: NaN survives json.loads and
+    # satisfies the schema's `type: number`, yet it makes power-analysis' `actual > target`
+    # false for every input, disarming that gate. The explicit finite check must survive.
+    wd = _spec_workdir(tmp_path)
+    (wd / "ppa.json").write_text('[{"dim": "power_mw", "target": NaN}]')
+    assert result.finalize(wd, "tpu_top", status="pass", waived_json="[]") == 2
+
+
+def test_unreadable_ppa_schema_blocks_instead_of_waving_targets_through(
+    tmp_path, monkeypatch
+):
+    # _validate_ppa is the only place ppa.json is ever validated, so a schema it cannot
+    # read must fail closed.
+    monkeypatch.setattr(result, "_PPA_SCHEMA", tmp_path / "absent.json")
+    assert result._validate_ppa([{"dim": "power_mw", "target": 1}]) is not None

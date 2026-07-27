@@ -4,12 +4,16 @@ import math
 import sys
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+
 from spec.constraints import derive_constraints
 from spec.review import gate_verdict
 
 STAGE = "specification"
 
-_PPA_DIMS = {"area_um2", "timing_slack_ns", "power_mw"}
+_PPA_SCHEMA = (
+    Path(__file__).resolve().parent.parent.parent / "references" / "ppa.schema.json"
+)
 _WAIVED_CLASSIFICATIONS = {"false-positive", "accepted-risk"}
 _REJECT_REASON = "design.md gate rejected at human review"
 
@@ -47,28 +51,38 @@ def _write_ppa_json(workdir: Path, ppa_targets: list) -> None:
 
 
 def _validate_ppa(targets) -> str | None:
-    """Shape-check a ppa_targets array (mirrors ppa.schema.json's items:
-    dim in the PPA enum, finite numeric target). Returns a one-line defect description,
-    or None when valid — checked at finalize so a bad wave-1 ppa.json (or a bad
-    override) blocks here with a fix-oriented message instead of failing schema
-    validation later at reap. Non-finite floats are rejected explicitly: Python's
-    json.loads accepts NaN/Infinity tokens, but they are not valid RFC-8259 JSON and
-    would corrupt the ppa.json SSoT for strict downstream parsers."""
-    if not isinstance(targets, list):
-        return f"ppa_targets must be a JSON array (got {type(targets).__name__})"
+    """Validate a ppa_targets array against ppa.schema.json. Returns a one-line defect
+    description, or None when valid.
+
+    This is the ONLY place ppa.json is ever validated. The kernel schema-gates result.json
+    at reap, never this sidecar, and both downstream readers fail OPEN on a bad entry:
+    synthesis filters an unrecognized dim away, and power-analysis skips a target whose
+    scenario_id does not string-match. A miss here is therefore silent all the way down,
+    which is why the schema is loaded rather than restated in Python.
+
+    Two obligations the schema cannot carry, kept explicit on top of it:
+      * `json.loads` accepts the NaN / Infinity tokens and `type: number` admits them, but
+        they are not RFC-8259 JSON, and a NaN target makes power-analysis' `actual > target`
+        false for every input, silently disarming that gate.
+      * an unreadable schema must fail closed, never wave the targets through.
+    """
+    try:
+        schema = json.loads(_PPA_SCHEMA.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"{_PPA_SCHEMA.name} unreadable: {exc}"
+    errors = sorted(
+        Draft202012Validator(schema).iter_errors(targets),
+        key=lambda e: list(e.absolute_path),
+    )
+    if errors:
+        err = errors[0]
+        path = "$" + "".join(
+            f"[{p!r}]" if isinstance(p, int) else f".{p}" for p in err.absolute_path
+        )
+        return f"schema violation at {path}: {err.message}"
     for i, t in enumerate(targets):
-        if not isinstance(t, dict):
-            return f"ppa_targets[{i}] must be an object"
-        if t.get("dim") not in _PPA_DIMS:
-            return (
-                f"ppa_targets[{i}].dim must be one of {sorted(_PPA_DIMS)} "
-                f"(got {t.get('dim')!r})"
-            )
-        target = t.get("target")
-        if isinstance(target, bool) or not isinstance(target, (int, float)):
-            return f"ppa_targets[{i}].target must be a number (got {target!r})"
-        if isinstance(target, float) and not math.isfinite(target):
-            return f"ppa_targets[{i}].target must be finite (got {target!r})"
+        if isinstance(t["target"], float) and not math.isfinite(t["target"]):
+            return f"ppa_targets[{i}].target must be finite (got {t['target']!r})"
     return None
 
 
