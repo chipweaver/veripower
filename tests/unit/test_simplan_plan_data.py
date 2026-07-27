@@ -281,3 +281,35 @@ def test_derive_empty_or_malformed_children_fails_loud(tmp_path):
     assert (
         proc.stderr.startswith("derive-plan-data:") and "Traceback" not in proc.stderr
     )
+
+
+def test_check_hints_read_every_sec5_heading_the_spec_gate_accepts(tmp_path):
+    # The specification gate selects §5 with a looser heading pattern than this consumer
+    # used, so a heading like "§5 - Verification Hints" passed the gate (columns and all)
+    # while derive-plan-data matched nothing and silently dropped that child's entire hint
+    # set. Whatever the gate validated, this consumer must read.
+    import sys
+
+    sys.path.insert(0, str(ROOT / "skills/simulation-plan/scripts"))
+    from simplan.plan_data import load_check_hints
+
+    for heading in (
+        "## §5 Verification Hints (9 columns required)",
+        "## §5. Verification Hints",
+        "## §5 - Verification Hints",
+        "## §5: Verification Hints",
+    ):
+        body = CHILD_MD.replace(
+            "## §5 Verification Hints (9 columns required)", heading
+        )
+        (tmp_path / "core.md").write_text(body, encoding="utf-8")
+        (tmp_path / "manifest.json").write_text(
+            json.dumps(
+                {"module": "m", "children": [{"name": "core", "doc": "core.md"}]}
+            ),
+            encoding="utf-8",
+        )
+        hints = load_check_hints(tmp_path)
+        assert [h["check_id"] for h in hints] == ["CHK-00"], (
+            f"dropped under {heading!r}"
+        )

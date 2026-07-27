@@ -1,6 +1,6 @@
 """Cross-stage producer/consumer contract checks (D3).
 
-Two invariants that prevent silent-transformation drift across stage
+Three invariants that prevent silent-transformation drift across stage
 boundaries:
 
 1. **PPA dim namespace consistency.** Every `dim` value that any stage's
@@ -15,6 +15,13 @@ boundaries:
    `rules.RULES[stage].workdir_root`. A SKILL.md saying `Design/synthesis/`
    while the kernel promotes to `Verification/synthesis/` is the canonical
    path-drift incident type the failure-memory entry flags.
+
+3. **§5 heading selector agreement.** specification's `check-coverage` gate and
+   simulation-plan's `derive-plan-data` select the §5 Verification Hints section
+   out of the same child docs. The gate validates that section's columns; the
+   consumer reads its rows. When the consumer's pattern was the stricter of the
+   two, a heading the gate accepted (`§5 - Verification Hints`) matched nothing
+   downstream and dropped that child's entire hint set with no error.
 """
 
 import json
@@ -147,4 +154,25 @@ def test_power_dut_path_matches_simulation_tb_top() -> None:
     )
     assert "env(STRIP_PATH)" in ptpx, (
         "ptpx.tcl must read strip_path from $STRIP_PATH (env.sh) — guard removed?"
+    )
+
+
+def test_sec5_heading_selector_identical_across_stages() -> None:
+    """The gate's §5 selector and the consumer's must be byte-identical.
+
+    They cannot share a module (no cross-stage shared lib), so each declares its own
+    constant and this lint is what keeps the two copies honest. Anything the gate
+    selects has already had its gated columns validated, so the consumer reading the
+    same span is exactly right; a narrower consumer pattern silently drops hints.
+    """
+    import sys
+
+    for pkg in ("specification", "simulation-plan"):
+        sys.path.insert(0, str(PLUGIN_ROOT / "skills" / pkg / "scripts"))
+    from simplan.plan_data import SEC5_HINTS_HEADING as consumer
+    from spec.coverage import SEC5_HINTS_HEADING as gate
+
+    assert gate == consumer, (
+        "spec.coverage and simplan.plan_data disagree on the §5 heading selector; "
+        "a heading matching only the looser one is silently dropped downstream"
     )

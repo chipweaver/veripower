@@ -26,6 +26,12 @@ from simplan._md import (
     write_text,
 )
 
+# The §5 heading selector. specification's check-coverage gate reads the SAME section out of
+# the same child docs and has already validated its gated columns, so the two patterns must
+# stay byte-identical: anything the gate accepts, this consumer must read rather than skip.
+# tests/contracts/test_cross_stage_contracts.py locks them equal.
+SEC5_HINTS_HEADING = r"§?\s*5\b.*Verification\s+Hints?"
+
 # ---------------------------------------------------------------------------
 # Header candidate mappings.
 #
@@ -294,7 +300,7 @@ def load_check_hints(workdir: Path) -> list[dict]:
     seen: dict[str, str] = {}
     for child in children:
         sub_text = (Path(workdir) / child["doc"]).read_text(encoding="utf-8")
-        section = extract_section(sub_text, r"(^|.*)§?\s*5\.?\s*Verification\s+Hints?")
+        section = extract_section(sub_text, SEC5_HINTS_HEADING)
         if not section:
             continue
         try:

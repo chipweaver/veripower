@@ -406,6 +406,12 @@ _HINT_GATED = [
     "ReferenceRule",
 ]
 
+# The §5 heading selector. simulation-plan's derive-plan-data reads the SAME section out of
+# the same child docs, so the two patterns must stay byte-identical: a heading this gate
+# accepts but that consumer misses drops the child's whole hint set with no error.
+# tests/contracts/test_cross_stage_contracts.py locks them equal.
+SEC5_HINTS_HEADING = r"§?\s*5\b.*Verification\s+Hints?"
+
 
 def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -> dict:
     presence: list[str] = []
@@ -477,7 +483,7 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
     hint_col_v: list[dict] = []
     covered: set[str] = set()
     for cname, body in (child_texts or {}).items():
-        sec = extract_section(body, r"§?\s*5\b.*Verification\s+Hints?")
+        sec = extract_section(body, SEC5_HINTS_HEADING)
         rows = parse_markdown_table(sec)
         if not rows:
             hint_col_v.append(
