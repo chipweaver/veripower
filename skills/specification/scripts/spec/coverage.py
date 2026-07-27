@@ -32,13 +32,6 @@ def parse_brainstorm_chapters_with_depth(brainstorm_text: str):
     return chapters
 
 
-def parse_brainstorm_chapters(brainstorm_text: str):
-    """Backwards-compatible wrapper returning `(line_no, title)` pairs."""
-    return [
-        (ln, t) for ln, t, _ in parse_brainstorm_chapters_with_depth(brainstorm_text)
-    ]
-
-
 def parse_anchor(anchor_str: str, brainstorm_lines: int):
     """Parse anchor; return a list of `(start, end)` ranges, or `None`.
 
@@ -47,10 +40,9 @@ def parse_anchor(anchor_str: str, brainstorm_lines: int):
       * ``lines X-Y``
       * ``lines X-end``
       * ``lines X-Y, X'-Y'`` (comma-separated disjoint ranges)
-      * literal ``D4-architecture-only`` (→ None; caller records an orphan)
+    Anything else — including the literal ``D4-architecture-only`` the child
+    template offers — falls through to `None`, so the caller records an orphan.
     """
-    if anchor_str.strip() == "D4-architecture-only":
-        return None
     ranges: list[tuple[int, int]] = []
     for part in anchor_str.split(","):
         m = re.match(r"\s*(?:lines\s+)?(\d+)-(\d+|end)\s*$", part)

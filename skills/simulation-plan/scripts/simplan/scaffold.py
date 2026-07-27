@@ -185,10 +185,10 @@ def validate(scaffold: dict, schema: dict) -> list:
     return semantic_errors(scaffold)
 
 
-def run(scaffold_path, plan_data_path, schema_path=None) -> int:
+def run(scaffold_path, plan_data_path) -> int:
     """check-scaffold: 3-layer gate (structural -> semantic -> coverage, short-circuit).
     exit 0 with 'check-scaffold: OK ...' / exit 1 with a fix-oriented message to stderr."""
-    schema_path = Path(schema_path) if schema_path else _DEFAULT_SCHEMA
+    schema_path = _DEFAULT_SCHEMA
     try:
         scaffold = json.loads(Path(scaffold_path).read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:

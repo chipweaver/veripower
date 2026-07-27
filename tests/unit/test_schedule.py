@@ -271,8 +271,8 @@ def test_signoff_objective_is_not_a_delivery_alias(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1)  # default (proposed) grades — gate must refuse
     assert schedule.required_proofs(
-        "m", facts.read_events("m"), "delivery"
-    ) == schedule.required_proofs("m", facts.read_events("m"), "signoff")
+        facts.read_events("m"), "delivery"
+    ) == schedule.required_proofs(facts.read_events("m"), "signoff")
     assert schedule.decide("m", objective="delivery")["action"] == "DONE"
     assert schedule.decide("m", objective="signoff")["action"] == "ESCALATE"
 
@@ -674,7 +674,7 @@ def test_required_proofs_repair_only_targets_stage_proofs(tmp_path, monkeypatch)
     _outcome(
         "m", "simulation-triage", 1, "fail", {}, []
     )  # non-proof rule, newest outcome
-    req = schedule.required_proofs("m", facts.read_events("m"), "repair")
+    req = schedule.required_proofs(facts.read_events("m"), "repair")
     assert "simulation-triage" not in req
     assert req <= set(rules.FORWARD_PRIORITY)
 

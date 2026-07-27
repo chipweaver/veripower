@@ -405,9 +405,7 @@ def _selector_paths(root: Path, glob: str) -> list[Path]:
     return sorted(root.glob(glob))
 
 
-def input_available(
-    module: str, events: list[dict], glob: str, *, consumer: str
-) -> bool:
+def input_available(module: str, events: list[dict], glob: str) -> bool:
     import fnmatch
 
     if glob in rules.PIPELINE_INPUTS:  # external whitelist — need only exist
@@ -449,7 +447,7 @@ def rule_available(module: str, events: list[dict], rule_name: str) -> bool:
         return True
     for globs in rule.inputs.values():
         for g in globs:
-            if not input_available(module, events, g, consumer=rule_name):
+            if not input_available(module, events, g):
                 return False
     return True
 

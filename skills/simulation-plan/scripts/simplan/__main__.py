@@ -45,7 +45,7 @@ def _cmd_materialize_scaffold(a: argparse.Namespace) -> int:
 def _cmd_check_scaffold(a: argparse.Namespace) -> int:
     from simplan import scaffold
 
-    return scaffold.run(a.scaffold, a.plan_data, a.schema)
+    return scaffold.run(a.scaffold, a.plan_data)
 
 
 def _cmd_validate_review(a: argparse.Namespace) -> int:
@@ -92,12 +92,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("check-scaffold", help="structural + semantic + coverage gate")
     sp.add_argument("--scaffold", required=True, type=Path)
     sp.add_argument("--plan-data", required=True, type=Path)
-    sp.add_argument(
-        "--schema",
-        type=Path,
-        default=None,
-        help="optional schema override (default: sibling references/)",
-    )
     sp.set_defaults(func=_cmd_check_scaffold)
 
     sp = sub.add_parser("validate-review", help="plan-review.json schema + gate")

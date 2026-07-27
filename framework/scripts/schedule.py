@@ -18,7 +18,7 @@ import rules  # noqa: E402
 _STAGE_PROOFS = [r for r in rules.FORWARD_PRIORITY if rules.RULES[r].proof]
 
 
-def required_proofs(module: str, events: list[dict], objective: str) -> set[str]:
+def required_proofs(events: list[dict], objective: str) -> set[str]:
     if objective in ("delivery", "signoff"):
         # Identical sets, deliberately: signoff does not require MORE proofs than delivery,
         # it requires the SAME proofs to clear a stricter bar — facts.signoff_gate, applied
@@ -297,7 +297,7 @@ def decide(
     # §3.3 末句: repair's rebuild chain (timing -> rebuild synthesis FIRST) walks the
     # producers of unavailable inputs; delivery's required set already spans the DAG so
     # the expansion is usually a no-op there.
-    required = required_proofs(module, events, objective)
+    required = required_proofs(events, objective)
     work = {p for p in required if not facts.proof_valid(module, events, p)}
     frontier = set(work)
     while frontier:

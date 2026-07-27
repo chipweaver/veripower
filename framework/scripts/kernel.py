@@ -273,7 +273,7 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
     if stale:
         return "blocked", stale, [], None
     if rule_name == "simulation-triage":
-        return _derive_triage(module, env, dispatch)  # Task C7 — same 4-tuple
+        return _derive_triage(env, dispatch)  # Task C7 — same 4-tuple
     if rule.proof is None:
         return status, None, [], None
     cdir = Path(*rule.workdir_root)
@@ -296,7 +296,7 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
     return status, None, [proof], None
 
 
-def _derive_triage(module, env, dispatch):
+def _derive_triage(env, dispatch):
     """Triage reap (§2 triage contract): complete -> (verdict, None, [], diagnosis-event);
     skipped/crash -> blocked, no diagnosis (the sim failure stays ambiguous; next round
     re-dispatches triage, §3.3). Confidence lands as-is (P4) — reliability is decide's
@@ -566,12 +566,6 @@ def main():
     so.add_argument("--reason", required=True)
     st = sub.add_parser("status")
     st.add_argument("--module", required=True)
-    st.add_argument(
-        "--json",
-        action="store_true",
-        help="accepted for CLI symmetry — every verb already prints a "
-        "JSON envelope, so this is a no-op",
-    )
     co = sub.add_parser("consequences")
     co.add_argument("--module", required=True)
     co.add_argument("--paths", nargs="+", required=True)

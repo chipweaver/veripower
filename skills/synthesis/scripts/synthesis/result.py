@@ -95,14 +95,14 @@ def run(reports_dir, out_path, area_target, slack_target) -> int:
         return 3
 
     qor_text = qor_rpt.read_text(errors="replace")
-    slacks = [float(x) for x in _SLACK_RE.findall(qor_text)]
-    if not slacks:
+    worst = parse_worst_slack_ns(qor_text)
+    if worst is None:
         print(
             f"[synthesis finalize] FAIL=unparseable no 'Critical Path Slack' line in {qor_rpt}",
             file=sys.stderr,
         )
         return 3
-    worst = min(slacks)
+    n_groups = len(_SLACK_RE.findall(qor_text))
 
     # WNS cross-check: only a *present-and-contradictory* design summary trips exit 3.
     summary = parse_wns_summary(qor_text)
@@ -135,7 +135,7 @@ def run(reports_dir, out_path, area_target, slack_target) -> int:
             {
                 "dim": "timing_slack_ns",
                 "value": worst,
-                "source": f"qor.rpt worst Critical Path Slack across {len(slacks)} group(s) (min)",
+                "source": f"qor.rpt worst Critical Path Slack across {n_groups} group(s) (min)",
             },
         ],
         "violations": violations,
