@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def _cmd_bootstrap(a: argparse.Namespace) -> int:
     from lintcdc import bootstrap
 
-    return bootstrap.run(a.module, a.workdir, top=a.top)
+    return bootstrap.run(a.workdir, top=a.top)
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
@@ -46,7 +46,6 @@ def build_parser() -> argparse.ArgumentParser:
         "bootstrap",
         help="deploy templates + seed SGDC (carried/cold/template) + sync filelist",
     )
-    sp.add_argument("--module", required=True)
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
         "--top",

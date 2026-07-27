@@ -77,7 +77,7 @@ def _make_tree(
     return m, workdir, _MAIN
 
 
-def _run(module, workdir, main, extra=None, cwd=None):
+def _run(workdir, main, extra=None, cwd=None):
     if cwd is None:
         # The bootstrap anchors the design tree on the CWD; the tree root is the
         # prefix of the (absolute) workdir up to the 'asic/' component.
@@ -87,8 +87,6 @@ def _run(module, workdir, main, extra=None, cwd=None):
         "python3",
         str(main),
         "bootstrap",
-        "--module",
-        module,
         "--workdir",
         str(workdir),
     ]
@@ -99,7 +97,7 @@ def _run(module, workdir, main, extra=None, cwd=None):
 
 def test_deploys_and_substitutes(tmp_path):
     m, workdir, main = _make_tree(tmp_path)
-    r = _run(m, workdir, main)
+    r = _run(workdir, main)
     assert r.returncode == 0, r.stderr
     tcl = (workdir / "run_sta.tcl").read_text()
     assert (
@@ -115,7 +113,7 @@ def test_deploys_and_substitutes(tmp_path):
 
 def test_workdir_and_netlist_dir_are_absolute(tmp_path):
     m, workdir, main = _make_tree(tmp_path)
-    assert _run(m, workdir, main).returncode == 0
+    assert _run(workdir, main).returncode == 0
     tcl = (workdir / "run_sta.tcl").read_text()
     # pt_shell runs from the workdir; NETLIST_DIR/WORKDIR are absolute so reads resolve
     # from any CWD and PT's auto-logs land inside the gitignored workdir.
@@ -134,7 +132,7 @@ def test_run_sta_reads_absolute_netlist_from_inputs_json(tmp_path):
     # survive.
     m, workdir, main = _make_tree(tmp_path)
     synth_root = tmp_path / "asic" / m / "Design" / "synthesis"
-    r = _run(m, workdir, main)
+    r = _run(workdir, main)
     assert r.returncode == 0, r.stderr
     sta = (workdir / "run_sta.tcl").read_text()
     assert f"set NETLIST_DIR {synth_root}" in sta
@@ -149,7 +147,7 @@ def test_run_sta_reads_absolute_netlist_from_inputs_json(tmp_path):
 def test_lib_db_captured_when_exported(tmp_path, monkeypatch):
     m, workdir, main = _make_tree(tmp_path)
     monkeypatch.setenv("LIB_DB", "/home/eda/Foundry/TSMC.90/slow.db")
-    assert _run(m, workdir, main).returncode == 0
+    assert _run(workdir, main).returncode == 0
     cfg = (workdir / "config.tcl").read_text()
     assert "set LIB_DB /home/eda/Foundry/TSMC.90/slow.db" in cfg
     assert "FILL_IN_LIB_DB_PATH" not in cfg
@@ -161,7 +159,7 @@ def test_lib_db_empty_env_falls_back(tmp_path, monkeypatch):
     # `set LIB_DB ` (empty value) which result.read_lib_db's `\S+` regex won't match.
     m, workdir, main = _make_tree(tmp_path)
     monkeypatch.setenv("LIB_DB", "")
-    assert _run(m, workdir, main).returncode == 0
+    assert _run(workdir, main).returncode == 0
     cfg = (workdir / "config.tcl").read_text()
     assert "set LIB_DB FILL_IN_LIB_DB_PATH" in cfg  # fallback, not an empty value
 
@@ -169,7 +167,7 @@ def test_lib_db_empty_env_falls_back(tmp_path, monkeypatch):
 def test_fail_closed_when_netlist_missing(tmp_path):
     # Pass --top so we get past TOP-inference and hit the netlist-existence check.
     m, workdir, main = _make_tree(tmp_path, with_netlist=False)
-    r = _run(m, workdir, main, extra=["--top", "sdc_controller"])
+    r = _run(workdir, main, extra=["--top", "sdc_controller"])
     assert r.returncode == 1
     assert "external reference" in r.stderr
     assert not (workdir / "run_sta.tcl").exists()
@@ -178,7 +176,7 @@ def test_fail_closed_when_netlist_missing(tmp_path):
 def test_fail_closed_when_sdc_missing(tmp_path):
     # BP3 is two-sided: the netlist alone is not enough; PT also reads the SDC.
     m, workdir, main = _make_tree(tmp_path, with_sdc=False)
-    r = _run(m, workdir, main, extra=["--top", "sdc_controller"])
+    r = _run(workdir, main, extra=["--top", "sdc_controller"])
     assert r.returncode == 1
     assert "external reference" in r.stderr
     assert not (workdir / "run_sta.tcl").exists()
@@ -187,7 +185,7 @@ def test_fail_closed_when_sdc_missing(tmp_path):
 def test_cant_infer_top_no_netlist(tmp_path):
     # No --top and no out/*_syn.v -> inference returns None -> fail-closed exit 1.
     m, workdir, main = _make_tree(tmp_path, with_netlist=False)
-    r = _run(m, workdir, main)  # no --top
+    r = _run(workdir, main)  # no --top
     assert r.returncode == 1
     assert "cannot infer top" in r.stderr
 
@@ -197,15 +195,15 @@ def test_cant_infer_top_multiple(tmp_path):
     m, workdir, main = _make_tree(tmp_path)
     syn_out = tmp_path / "asic" / m / "Design" / "synthesis" / "out"
     (syn_out / "other_syn.v").write_text("// second netlist\n")
-    r = _run(m, workdir, main)  # no --top
+    r = _run(workdir, main)  # no --top
     assert r.returncode == 1
     assert "cannot infer top" in r.stderr
 
 
 def test_aborts_when_already_deployed(tmp_path):
     m, workdir, main = _make_tree(tmp_path)
-    assert _run(m, workdir, main).returncode == 0
-    r2 = _run(m, workdir, main)
+    assert _run(workdir, main).returncode == 0
+    r2 = _run(workdir, main)
     assert r2.returncode == 1
     assert "already deployed" in (r2.stderr + r2.stdout)
 
@@ -218,7 +216,7 @@ def test_missing_template_dir_fail_closed(tmp_path):
     shutil.copytree(REPO_ROOT / "skills" / "timing-analysis", skill_copy)
     shutil.rmtree(skill_copy / "templates")
     main = skill_copy / "scripts" / "timing" / "__main__.py"
-    r = _run(m, workdir, main, extra=["--top", "sdc_controller"])
+    r = _run(workdir, main, extra=["--top", "sdc_controller"])
     assert r.returncode == 1
     assert "missing" in r.stderr
     assert not (workdir / "run_sta.tcl").exists()
@@ -233,8 +231,6 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
             "python3",
             str(main),
             "bootstrap",
-            "--module",
-            m,
             "--workdir",
             "asic/sdc_controller/Design/timing-analysis/runs/1/",  # relative + trailing slash
         ],

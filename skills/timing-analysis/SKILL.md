@@ -63,7 +63,7 @@ Confirm `<netlist>/out/<TOP>_syn.v` and `<sdc>/out/<TOP>_syn.sdc` are present. I
 ### Step 2: Bootstrap
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py bootstrap --module {module} --workdir {workdir}
+python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py bootstrap --workdir {workdir}
 ```
 
 Deploys `run_sta.tcl` + `config.tcl`, resolves `<TOP>`, verifies the netlist/SDC, and aborts if `{workdir}` is already deployed.

@@ -193,7 +193,7 @@ def _deploy_no_clobber(src_root: Path, dest: Path) -> None:
         shutil.copy2(p, d)
 
 
-def run(module: str, workdir, top: str | None = None) -> int:
+def run(workdir, top: str | None = None) -> int:
     if not _TEMPLATE_DIR.is_dir():
         _err(f"missing template directory: {_TEMPLATE_DIR}")
         return 1

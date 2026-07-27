@@ -69,7 +69,7 @@ Steps 2–7 are mechanically identical regardless of scope; the scope set here n
 Run:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
+python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
 ```
 
 The script deploys the templates to `{workdir}` NO-CLOBBER — a `scripts/constraints.sgdc` / `scripts/waiver.tcl` already carried into the workdir by `carry_self` before this run started is never overwritten — substitutes the `MY_TOP` placeholder, and on a genuinely first run (no carried `scripts/constraints.sgdc`) fills it from the SGDC seed (cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `directive.md` does NOT count as "deployed"). When `--top` is omitted, infer it from `<rtl_doc>/README.md` or `<rtl>/filelist.txt` (inference failure aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files you edit are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.

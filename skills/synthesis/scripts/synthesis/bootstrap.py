@@ -186,7 +186,7 @@ def _write_config_tcl(dest: Path, top: str) -> None:
         print(f"[synthesis bootstrap] wrote scripts/config.tcl (LIB_DB={lib_db})")
 
 
-def run(module: str, workdir, top: str | None = None) -> int:
+def run(workdir, top: str | None = None) -> int:
     if not _TEMPLATE_DIR.is_dir():
         _err(f"missing template directory: {_TEMPLATE_DIR}")
         return 1

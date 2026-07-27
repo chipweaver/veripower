@@ -103,8 +103,6 @@ def _run(skill_dst, workdir, *extra):
             "python3",
             str(skill_dst / "scripts" / "synthesis" / "__main__.py"),
             "bootstrap",
-            "--module",
-            "M",
             "--workdir",
             str(workdir),
             *extra,
@@ -259,8 +257,6 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
             "python3",
             str(skill_dst / "scripts" / "synthesis" / "__main__.py"),
             "bootstrap",
-            "--module",
-            "M",
             "--workdir",
             "asic/M/Design/synthesis/runs/1/",  # relative + trailing slash
             "--top",

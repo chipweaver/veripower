@@ -76,7 +76,7 @@ Determine this round's fix scope from the first available source:
 ### Step 2: Bootstrap
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
+python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
 ```
 
 Deploys the templates into `{workdir}`, generates `scripts/rtl_load.tcl` + `scripts/config.tcl`, and seeds `constraints.sdc`; aborts when `{workdir}` is already deployed. Mechanics — placeholder substitution, SDC source-of-truth, `+incdir+` handling, `LIB_DB`, `--top` inference — are documented once in `references/makefile-bootstrap.md`.

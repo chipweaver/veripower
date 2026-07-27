@@ -63,7 +63,7 @@ def _sub(path: Path, placeholder: str, value: str) -> None:
     path.write_text(path.read_text().replace(placeholder, value))
 
 
-def run(module: str, workdir, top: str | None = None) -> int:
+def run(workdir, top: str | None = None) -> int:
     if not _TEMPLATE_DIR.is_dir():
         _err(f"missing {_TEMPLATE_DIR}")
         return 1

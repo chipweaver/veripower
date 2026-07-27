@@ -125,7 +125,7 @@ def _make_tree(
     return m, workdir, _MAIN
 
 
-def _run(module, workdir, main, extra=None, cwd=None):
+def _run(workdir, main, extra=None, cwd=None):
     if cwd is None:
         # The bootstrap anchors the design tree on the CWD; the tree root is the
         # prefix of the (absolute) workdir up to the 'asic/' component.
@@ -135,8 +135,6 @@ def _run(module, workdir, main, extra=None, cwd=None):
         "python3",
         str(main),
         "bootstrap",
-        "--module",
-        module,
         "--workdir",
         str(workdir),
     ]
@@ -149,7 +147,7 @@ def test_deploys_and_substitutes_template_branch(tmp_path):
     # No warm/cold seed -> template branch: env.sh MY_TOP -> top, and the copytree'd
     # template constraints.sgdc IS MY_TOP-substituted.
     m, workdir, main = _make_tree(tmp_path)
-    r = _run(m, workdir, main, extra=["--top", "dut"])
+    r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     assert (workdir / "Makefile").is_file()
     env_sh = (workdir / "env.sh").read_text()
@@ -167,7 +165,7 @@ def test_carried_sgdc_used_and_not_resubstituted(tmp_path):
         tmp_path,
         carried_sgdc="# SENTINEL carried sgdc\ncurrent_design dut\nquasi_static -name x\n",
     )
-    r = _run(m, workdir, main, extra=["--top", "dut"])
+    r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     assert "SENTINEL carried" in (workdir / "scripts" / "constraints.sgdc").read_text()
     assert "carried scripts/constraints.sgdc" in r.stdout
@@ -178,7 +176,7 @@ def test_carried_waiver_survives_template_deploy(tmp_path):
     # Pre-place a carried scripts/waiver.tcl (as kernel.py's carry_self would, BEFORE
     # this verb runs), then deploy: the no-clobber template deploy must NOT clobber it.
     m, workdir, main = _make_tree(tmp_path, carried_waiver="HUMAN AUDITED")
-    r = _run(m, workdir, main, extra=["--top", "dut"])
+    r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     assert (workdir / "scripts" / "waiver.tcl").read_text() == "HUMAN AUDITED"
 
@@ -186,7 +184,7 @@ def test_carried_waiver_survives_template_deploy(tmp_path):
 def test_no_carried_waiver_keeps_substituted_template(tmp_path):
     # No carried waiver -> the no-clobber-deployed template waiver.tcl stays, MY_TOP-substituted.
     m, workdir, main = _make_tree(tmp_path)
-    r = _run(m, workdir, main, extra=["--top", "dut"])
+    r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     tpl = (workdir / "scripts" / "waiver.tcl").read_text()
     assert "MY_TOP" not in tpl
@@ -197,7 +195,7 @@ def test_cold_seed_used(tmp_path):
     m, workdir, main = _make_tree(
         tmp_path, cold="# SENTINEL cold sgdc\ncurrent_design dut\n"
     )
-    r = _run(m, workdir, main, extra=["--top", "dut"])
+    r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     assert "SENTINEL cold" in (workdir / "scripts" / "constraints.sgdc").read_text()
     assert "cold-start" in r.stdout
@@ -207,7 +205,7 @@ def test_readme_inference_wins_over_filelist(tmp_path):
     m, workdir, main = _make_tree(
         tmp_path, readme="**Top module**: inferred_top\n", filelist="other.v\n"
     )
-    r = _run(m, workdir, main)  # no --top
+    r = _run(workdir, main)  # no --top
     assert r.returncode == 0, r.stderr
     assert 'export TOP="${TOP:-inferred_top}"' in (workdir / "env.sh").read_text()
 
@@ -215,7 +213,7 @@ def test_readme_inference_wins_over_filelist(tmp_path):
 def test_infer_from_filelist_when_top_omitted(tmp_path):
     # No --top, no README: TOP inferred from filelist first entry ('dut').
     m, workdir, main = _make_tree(tmp_path)  # filelist -> rtl/dut.v
-    r = _run(m, workdir, main)  # no --top
+    r = _run(workdir, main)  # no --top
     assert r.returncode == 0, r.stderr
     assert 'export TOP="${TOP:-dut}"' in (workdir / "env.sh").read_text()
 
@@ -228,7 +226,7 @@ def test_filelist_synced_and_rebased(tmp_path):
         tmp_path, filelist="# a comment\nrtl/dut.v\nrtl/sub/u.sv\n"
     )
     rtl_root = _rtl_dir(workdir)
-    r = _run(m, workdir, main, extra=["--top", "dut"])
+    r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     gen = (workdir / "scripts" / "filelist.txt").read_text()
     assert f"+incdir+{rtl_root}" in gen
@@ -245,7 +243,7 @@ def test_filelist_reanchors_to_absolute_rtl(tmp_path):
     # scripts/filelist.txt must bake the ABSOLUTE rtl root, never a relative climb.
     m, workdir, main = _make_tree(tmp_path, filelist="rtl/dut.v\n")
     rtl_root = _rtl_dir(workdir)
-    r = _run(m, workdir, main, extra=["--top", "dut"])
+    r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     src = (workdir / "scripts" / "filelist.txt").read_text()
     assert str(rtl_root) in src
@@ -256,7 +254,7 @@ def test_empty_filelist_fail_closed(tmp_path):
     # filelist with only comments/blanks -> 0 usable entries -> exit 1.
     m, workdir, main = _make_tree(tmp_path, filelist="# only a comment\n\n")
     # --top given so we pass inference and reach the filelist sync.
-    r = _run(m, workdir, main, extra=["--top", "dut"])
+    r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
     assert "no usable RTL entries" in r.stderr
 
@@ -265,9 +263,7 @@ def test_no_rtl_filelist_keeps_template_filelist(tmp_path):
     # rtl-design/filelist.txt absent -> sync is a no-op; the deployed regenerated-
     # placeholder template filelist.txt stays untouched (no MY_TOP, no relpath climb).
     m, workdir, main = _make_tree(tmp_path, filelist=None)
-    r = _run(
-        m, workdir, main, extra=["--top", "dut"]
-    )  # --top: no filelist to infer from
+    r = _run(workdir, main, extra=["--top", "dut"])  # --top: no filelist to infer from
     assert r.returncode == 0, r.stderr
     gen = (workdir / "scripts" / "filelist.txt").read_text()
     assert "regenerated by bootstrap" in gen
@@ -277,15 +273,15 @@ def test_no_rtl_filelist_keeps_template_filelist(tmp_path):
 def test_cant_infer_top_fail_closed(tmp_path):
     # No --top, no README, filelist has no usable RTL entry -> inference None -> exit 1.
     m, workdir, main = _make_tree(tmp_path, filelist="+incdir+x\n", readme=None)
-    r = _run(m, workdir, main)  # no --top
+    r = _run(workdir, main)  # no --top
     assert r.returncode == 1
     assert "cannot infer top" in r.stderr
 
 
 def test_already_deployed_guard(tmp_path):
     m, workdir, main = _make_tree(tmp_path)
-    assert _run(m, workdir, main, extra=["--top", "dut"]).returncode == 0
-    r2 = _run(m, workdir, main, extra=["--top", "dut"])
+    assert _run(workdir, main, extra=["--top", "dut"]).returncode == 0
+    r2 = _run(workdir, main, extra=["--top", "dut"])
     assert r2.returncode == 1
     assert "already deployed" in r2.stderr
 
@@ -298,7 +294,7 @@ def test_missing_template_dir_fail_closed(tmp_path):
     shutil.copytree(REPO_ROOT / "skills" / "lint-cdc", skill_copy)
     shutil.rmtree(skill_copy / "templates")
     main = skill_copy / "scripts" / "lintcdc" / "__main__.py"
-    r = _run(m, workdir, main, extra=["--top", "dut"])
+    r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
     assert "missing template directory" in r.stderr
     assert not (workdir / "Makefile").exists()  # fail-closed before any mutation
@@ -311,7 +307,7 @@ def test_period_mismatch_warns_not_fails(tmp_path):
         cold="current_design dut\nclock -name clk -period 10\n",
         sdc="create_clock -period 20 [get_ports clk]\n",
     )
-    r = _run(m, workdir, main, extra=["--top", "dut"])
+    r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     assert "WARNING" in r.stderr and "periods disagree" in r.stderr
 
@@ -325,8 +321,6 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
             "python3",
             str(main),
             "bootstrap",
-            "--module",
-            m,
             "--workdir",
             "asic/M/Design/lint-cdc/runs/1/",  # relative + trailing slash
             "--top",
