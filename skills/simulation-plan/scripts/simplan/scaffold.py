@@ -147,10 +147,17 @@ def coverage_errors(scaffold: dict, plan_data: dict) -> list:
     """Bidirectional coverage matrix: every plan-data check_id is covered (in some
     testpoints[].covers[]) or skipped (in skipped_checks[]); every non-empty covers[] entry
     resolves to a real plan-data check_id. The inline existence/non-emptiness is guaranteed by
-    construction (the materialize-scaffold verb), so it is not re-checked here. The reverse
-    (dangling-covers) check duplicates materialize's guard — it earns its keep only when
-    check-scaffold runs standalone on a non-materialized scaffold; in the pipeline, materialize
-    aborts on a dangling covers[] first."""
+    construction (the materialize-scaffold verb), so it is not re-checked here.
+
+    The dangling-covers half reads as redundant with materialize's own guard and is not.
+    That guard is a build-time precondition; this is the gate, and the documented fix loop
+    re-runs the gate alone. The uncovered-check_hints message below steers the author into
+    hand-adding a check_id to covers[], an edit made after materialize already wrote the
+    file, so a typo in that id is caught here or nowhere. derive-plan-data also regenerates
+    plan-data.json every run, leaving a scaffold materialized against the previous one free
+    to dangle against the current. references/plan-review-task-contract.md then puts this
+    defect class out of scope for the LLM reviewer on the strength of this check, so
+    dropping it would leave the class owned by nobody."""
     check_ids = {
         h["check_id"] for h in plan_data.get("check_hints", []) if h.get("check_id")
     }
