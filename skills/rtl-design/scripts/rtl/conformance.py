@@ -161,12 +161,17 @@ def _table_rows(section_text: str) -> list:
 
 def _interconnect_wires(design_text: str) -> list:
     """§1.4.2 Wire names, skipping the canonical N=1 placeholder row
-    ('(none — N=1 ...)') so a legitimately empty interconnect isn't flagged a phantom wire."""
+    ('(none — N=1 ...)') so a legitimately empty interconnect isn't flagged a phantom wire.
+
+    The `(none` test is the whole rule, matching specification's check-coverage, which
+    partitions the same rows to decide which ones it validates Width / Clock Domain on.
+    Any looser test here exempts a row specification validated as a real wire, dropping it
+    from the top-integration check with nothing to say so."""
     sec = _extract_section(design_text, r"§?\s*1\.4\.2.*Inter.module\s+Interconnects?")
     out = []
     for r in _table_rows(sec):
         w = r.get("Wire", "").strip()
-        if w and not w.lower().startswith("(none") and "n=1" not in w.lower():
+        if w and not w.lower().startswith("(none"):
             out.append(w)
     return out
 

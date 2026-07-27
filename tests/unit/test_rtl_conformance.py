@@ -470,3 +470,21 @@ def test_dialect_v_vh_and_support_files_pass(tmp_path):
     r = _run(tmp_path)
     assert r.returncode == 0
     assert not any(x["kind"] == "dialect" for x in json.loads(r.stdout)["violations"])
+
+
+def test_interconnect_wires_skips_only_the_canonical_placeholder():
+    # The docstring's contract is "skip the canonical '(none — N=1 …)' row" — nothing else.
+    # A second, looser clause also exempted any Wire whose text contains 'n=1', quietly
+    # removing that wire from the top-integration check. specification's gate uses the
+    # '(none' test alone, so it still counts such a row as a real wire and validates its
+    # Width / Clock Domain: the two stages must partition the rows the same way.
+    from rtl.conformance import _interconnect_wires
+
+    sec = (
+        "## §1.4.2 Inter-module Interconnects\n\n"
+        "| Wire | Producer | Consumer |\n"
+        "|---|---|---|\n"
+        "| (none — N=1 module has no inter-module wires) | - | - |\n"
+        "| bus_n=1_sel | p | c |\n"
+    )
+    assert _interconnect_wires(sec) == ["bus_n=1_sel"]
