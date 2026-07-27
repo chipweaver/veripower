@@ -24,7 +24,10 @@ def test_parse_anchor_multi_range():
 
 
 def test_parse_anchor_d4_literal():
-    assert parse_anchor("D4-architecture-only", 100) is None
+    # A well-formed anchor claiming no lines: the empty list, NOT None. None is reserved
+    # for unparseable, and the caller turns None into a gate-failing orphan.
+    assert parse_anchor("D4-architecture-only", 100) == []
+    assert parse_anchor("D4-architecture-only", 100) is not None
 
 
 def test_parse_anchor_garbage():
@@ -122,6 +125,35 @@ def test_brainstorm_coverage_only_gaps_and_orphans():
     )  # chapters A(1),B(2),C(4); child covers 1-5
     assert set(bs.keys()) == {"gaps", "orphans"}  # no covered_chapters / overlaps
     assert bs["gaps"] == [] and bs["orphans"] == []
+
+
+def test_brainstorm_coverage_architecture_only_child_is_not_an_orphan():
+    # child-design-template.md offers "D4-architecture-only" as a legal brainstorm_anchor,
+    # for a child born of the architecture partitioning rather than of any one chapter. It
+    # claims no lines by design, so it must not read as a broken anchor: an orphan fails the
+    # whole gate, which would make such a module impossible to deliver.
+    bs = _bs(
+        {
+            "module": "m",
+            "children": [
+                {
+                    "name": "c",
+                    "doc": "c.md",
+                    "rtl_modules": ["c"],
+                    "brainstorm_anchor": "lines 1-5",
+                },
+                {
+                    "name": "m_top",
+                    "doc": "m_top.md",
+                    "rtl_modules": ["m"],
+                    "brainstorm_anchor": "D4-architecture-only",
+                },
+            ],
+        },
+        "# A\n## B\nx\n## C\ny\n",
+    )
+    assert bs["orphans"] == []
+    assert bs["gaps"] == []
 
 
 def test_brainstorm_coverage_gap_detected():

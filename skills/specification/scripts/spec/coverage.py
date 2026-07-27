@@ -33,16 +33,18 @@ def parse_brainstorm_chapters_with_depth(brainstorm_text: str):
 
 
 def parse_anchor(anchor_str: str, brainstorm_lines: int):
-    """Parse anchor; return a list of `(start, end)` ranges, or `None`.
+    """Parse anchor; return a list of `(start, end)` ranges, or `None` when unparseable.
 
-    Caller writes an `orphans` entry with an `error` field when this
-    returns `None`. Accepted forms:
+    The empty list is distinct from `None`: it means a well-formed anchor that claims no
+    brainstorm lines. Caller writes an `orphans` entry only on `None`. Accepted forms:
       * ``lines X-Y``
       * ``lines X-end``
       * ``lines X-Y, X'-Y'`` (comma-separated disjoint ranges)
-    Anything else — including the literal ``D4-architecture-only`` the child
-    template offers — falls through to `None`, so the caller records an orphan.
+      * ``D4-architecture-only`` — a child born of the architecture partitioning rather
+        than of any one chapter, so it claims nothing and yields the empty list.
     """
+    if anchor_str.strip() == "D4-architecture-only":
+        return []
     ranges: list[tuple[int, int]] = []
     for part in anchor_str.split(","):
         m = re.match(r"\s*(?:lines\s+)?(\d+)-(\d+|end)\s*$", part)
@@ -51,7 +53,7 @@ def parse_anchor(anchor_str: str, brainstorm_lines: int):
         start = int(m.group(1))
         end = brainstorm_lines if m.group(2) == "end" else int(m.group(2))
         ranges.append((start, end))
-    return ranges or None
+    return ranges
 
 
 def compute_brainstorm_coverage(
