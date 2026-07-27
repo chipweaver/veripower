@@ -110,13 +110,13 @@ Full mechanics: [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-state-model-the-event-
 
 ### 3. Event-sourced audit log: events.jsonl is the only durable state
 
-> Six typed, schema-validated event types in one append-only log; there is no `task.json` and no status snapshot — every stage's status is *derived* from the log plus disk fingerprints on demand. `kernel.py` is the sole writer of all six event types and validates each against its schema at write time, so the audit log cannot be forged through an agent prompt.
+> Seven typed, schema-validated event types in one append-only log; there is no `task.json` and no status snapshot — every stage's status is *derived* from the log plus disk fingerprints on demand. `kernel.py` is the sole writer of all seven event types and validates each against its schema at write time, so the audit log cannot be forged through an agent prompt.
 
 **For chip-design teams.** Every AI-driven decision in the design flow leaves a tamper-evident record — the table-stakes property that converts an "AI demo" into a production-defensible EDA tool. Crash recovery is a free side effect: a run whose executor died left a `dispatch` with no matching `outcome`, so it still reads as in-flight and the next `decide` reaps it — no separate recovery phase.
 
 **For agent-system builders.** Classic event sourcing applied to agent orchestration — mature in distributed systems, rare in agent design. The forgery-resistance pattern (a single validated writer, with no agent-writable event channel) is a useful primitive for any agent system that needs to be auditable.
 
-Full mechanics: [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-state-model-the-event-log) (the six event types and the projection contract).
+Full mechanics: [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-state-model-the-event-log) (the seven event types and the projection contract).
 
 ## Swappable execution layer
 
