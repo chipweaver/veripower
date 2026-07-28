@@ -27,10 +27,12 @@ VeriPower 通过一条 9 个阶段的流水线，把一个已批准的想法变�
 
 ## 前置条件
 
-- **加载了插件的 Claude Code：**
+- **安装了插件的 Claude Code：**
   ```bash
-  claude --plugin-dir /path/to/veripower
+  claude plugin marketplace add chipweaver/veripower
+  claude plugin install veripower@chipweaver
   ```
+  若想直接跑一份工作副本：`claude --plugin-dir /path/to/veripower`。
 - **Python 3**，外加 [`requirements.txt`](requirements.txt) 中的两个依赖
   （`jsonschema`、`referencing`）。
 - **EDA 工具——仅工具相关阶段需要。** 有五个阶段会调用 Synopsys 商业工具

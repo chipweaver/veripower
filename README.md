@@ -131,9 +131,11 @@ The reference implementation ships Synopsys-backed skills because that's the too
 ## Install & first run (Claude Code plugin)
 
 ```bash
-# launch Claude Code with the plugin
-claude --plugin-dir /path/to/veripower
+claude plugin marketplace add chipweaver/veripower
+claude plugin install veripower@chipweaver
 ```
+
+Or, to run a working copy without installing it: `claude --plugin-dir /path/to/veripower`.
 
 Then settle requirements with the `brainstorm` skill and ask the agent in chat to *"Run the design flow for {module}"*. The full step-by-step walkthrough is in **[`GETTING-STARTED.md`](GETTING-STARTED.md)**.
 
@@ -148,9 +150,10 @@ veripower/
 ├── CLAUDE.md                # project instructions auto-loaded by Claude Code
 ├── README.md                # this file
 ├── LICENSE                  # MIT
-├── .claude-plugin/          # plugin manifest
+├── .claude-plugin/          # plugin + marketplace manifests
 ├── skills/                  # one skill per pipeline stage + orchestrator + triage
 ├── framework/               # kernel.py + rule registry + JSON schemas + prompt template
+├── hooks/                   # shipped ask-gate over the pin/reopen/signoff judgment verbs
 ├── docs/                    # auxiliary design docs (schema, skill authoring)
 └── tests/                   # unit / contracts / scenarios (three tiers)
 ```

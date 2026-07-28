@@ -1,10 +1,11 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "veripower",
   "description": "AI-assisted IC design flow skills — specification, RTL, lint/CDC, simulation, synthesis, timing analysis, and signoff",
   "version": "0.1.0",
   "author": { "name": "chipweaver" },
+  "homepage": "https://github.com/chipweaver/veripower",
   "repository": "https://github.com/chipweaver/veripower",
   "license": "MIT",
-  "keywords": ["ic-design", "asic", "eda", "verification", "synthesis", "rtl", "uvm"],
-  "skills": "./skills/"
+  "keywords": ["ic-design", "asic", "eda", "verification", "synthesis", "rtl", "uvm"]
 }

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "chipweaver",
+  "description": "ChipWeaver plugin marketplace",
+  "owner": { "name": "chipweaver", "url": "https://github.com/chipweaver" },
+  "plugins": [
+    {
+      "name": "veripower",
+      "source": "./",
+      "description": "AI-assisted IC design flow skills — specification, RTL, lint/CDC, simulation, synthesis, timing analysis, and signoff",
+      "version": "0.1.0",
+      "author": { "name": "chipweaver" },
+      "homepage": "https://github.com/chipweaver/veripower",
+      "license": "MIT",
+      "category": "engineering",
+      "keywords": ["ic-design", "asic", "eda", "verification", "synthesis", "rtl", "uvm"]
+    }
+  ]
+}

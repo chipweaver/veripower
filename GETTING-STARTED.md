@@ -31,10 +31,12 @@ time.
 
 ## Prerequisites
 
-- **Claude Code with the plugin loaded:**
+- **Claude Code with the plugin installed:**
   ```bash
-  claude --plugin-dir /path/to/veripower
+  claude plugin marketplace add chipweaver/veripower
+  claude plugin install veripower@chipweaver
   ```
+  To run a working copy instead: `claude --plugin-dir /path/to/veripower`.
 - **Python 3** plus the two dependencies in [`requirements.txt`](requirements.txt)
   (`jsonschema`, `referencing`).
 - **EDA tools — for the tool-gated stages only.** Five stages invoke commercial
