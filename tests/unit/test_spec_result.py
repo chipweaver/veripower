@@ -208,6 +208,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "ppa.json",
         "clocks.json",
         "features.json",
+        "timing-scenarios.json",
     }
     assert "brainstorm.md" not in paths and "result.json" not in paths
     assert "notes" not in ss

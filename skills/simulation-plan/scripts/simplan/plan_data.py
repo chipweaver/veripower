@@ -2,8 +2,9 @@
 
 The derive-plan-data verb reads a spec workdir (manifest.json + design.md + per-child
 <child>.md) and emits plan-data.json containing features, interfaces, scenarios,
-check_hints, and cross_module_wires. Clocks and features are not here — they are
-authored as Design/specification/{clocks,features}.json and read from there. The simulation-plan agent consumes this to
+check_hints and cross_module_wires. Clocks, features and timing scenarios are not here
+— they are authored as Design/specification/{clocks,features,timing-scenarios}.json and
+read from there. The simulation-plan agent consumes this to
 draft verification-plan.md and scaffold-specification.json; the materialize-scaffold verb
 then reads plan-data.json to fill the agent signal lists.
 
@@ -49,15 +50,6 @@ INTERFACE_HEADER_CANDIDATES = {
     "interface_group": {"interfacegroup", "interface_group", "group"},
     "protocol": {"protocol"},
     "role": {"role"},
-}
-
-SCENARIO_HEADER_CANDIDATES = {
-    "scenario_id": {"scenarioid", "scenario_id", "sceneid"},
-    "interface_mode": {"interface/mode", "interface"},
-    "stimulus": {"trigger/stimulus", "stimulus", "trigger"},
-    "expected": {"expectedresult", "expected", "result"},
-    "timing_constraint": {"timingconstraint", "timing_constraint"},
-    "exception": {"exceptions/negativecases", "exception", "negative"},
 }
 
 CHECK_HINT_HEADER_CANDIDATES = {
@@ -133,43 +125,6 @@ def load_interfaces(design_text: str) -> list[dict]:
                 "role": row.get(mapping.get("role", ""), "").strip(),
             }
         )
-    return result
-
-
-def load_scenarios(design_text: str) -> list[dict]:
-    """English canonical anchor — §1.5 Interface Timing Scenarios."""
-    section = extract_section(
-        design_text, r"(^|.*)§?\s*1\.5.*Interface\s+Timing\s+Scenarios?"
-    )
-    if not section:
-        return []
-    tables = parse_all_markdown_tables(section)
-    if not tables:
-        return []
-
-    result: list[dict] = []
-    for headers, rows in tables:
-        mapping = map_headers(headers, SCENARIO_HEADER_CANDIDATES)
-        if "scenario_id" not in mapping and "stimulus" not in mapping:
-            continue
-        for row in rows:
-            scenario_id = row.get(mapping.get("scenario_id", ""), "").strip()
-            if not scenario_id:
-                continue
-            result.append(
-                {
-                    "scenario_id": scenario_id,
-                    "interface_mode": row.get(
-                        mapping.get("interface_mode", ""), ""
-                    ).strip(),
-                    "stimulus": row.get(mapping.get("stimulus", ""), "").strip(),
-                    "expected": row.get(mapping.get("expected", ""), "").strip(),
-                    "timing_constraint": row.get(
-                        mapping.get("timing_constraint", ""), ""
-                    ).strip(),
-                    "exception": row.get(mapping.get("exception", ""), "").strip(),
-                }
-            )
     return result
 
 
@@ -283,14 +238,12 @@ def run(workdir, output=None) -> int:
         design_text = read_text(design)
         check_hints = load_check_hints(workdir)
         interfaces = load_interfaces(design_text)
-        scenarios = load_scenarios(design_text)
         cross_module_wires = load_cross_module_wires(design_text)
     except (ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as e:
         sys.exit(f"derive-plan-data: {e}")
 
     plan_data = {
         "interfaces": interfaces,
-        "scenarios": scenarios,
         "check_hints": check_hints,
         "cross_module_wires": cross_module_wires,
     }
@@ -298,7 +251,7 @@ def run(workdir, output=None) -> int:
     write_text(output_path, json.dumps(plan_data, indent=2, ensure_ascii=False))
     print(f"derive-plan-data: wrote {output_path}")
     print(
-        f"  interfaces={len(interfaces)}, scenarios={len(scenarios)}, "
-        f"check_hints={len(check_hints)}, cross_module_wires={len(cross_module_wires)}"
+        f"  interfaces={len(interfaces)}, check_hints={len(check_hints)}, "
+        f"cross_module_wires={len(cross_module_wires)}"
     )
     return 0

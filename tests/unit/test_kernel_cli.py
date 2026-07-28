@@ -125,6 +125,7 @@ _STAGE_FILES = {
         "ppa.json": "{}",
         "clocks.json": "[]",
         "features.json": "[]",
+        "timing-scenarios.json": "[]",
         "constraints/top.sdc": "# sdc",
         "constraints/top.sgdc": "# sgdc",
     },

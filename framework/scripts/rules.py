@@ -50,6 +50,7 @@ RULES: dict[str, Rule] = {
             "ppa.json",
             "clocks.json",
             "features.json",
+            "timing-scenarios.json",
             "spec-review.json",
             "constraints/*.sdc",
             "constraints/*.sgdc",
@@ -73,6 +74,7 @@ RULES: dict[str, Rule] = {
             "children": ("Design/specification/*.md",),
             "clocks": ("Design/specification/clocks.json",),
             "features": ("Design/specification/features.json",),
+            "scenarios": ("Design/specification/timing-scenarios.json",),
         },
         outputs=(
             "verification-plan.md",

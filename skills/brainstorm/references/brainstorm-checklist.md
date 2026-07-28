@@ -131,7 +131,7 @@ Rendering conventions (hand-drawn ASCII preferred / wavedrom — note that GitHu
 
 ## D7. Verification Input Field Readiness
 
-Cross-check, row by row, against the "Minimum Field Completeness Gate Table" at the end of `${CLAUDE_PLUGIN_ROOT}/skills/specification/references/design-template.md` — the required items are the `features.json` / §1.4 / §1.5 / §1.7+ rows in that table. The brainstorm only acts as a reminder; the actual fields land during the design.md authoring stage. Missing items are called out by name in the `Verification Inputs Readiness` section of brainstorm.md.
+Cross-check, row by row, against the "Minimum Field Completeness Gate Table" at the end of `${CLAUDE_PLUGIN_ROOT}/skills/specification/references/design-template.md` — the required items are the `features.json` / `timing-scenarios.json` / §1.4 / §1.7+ rows in that table. The brainstorm only acts as a reminder; the actual fields land during the design.md authoring stage. Missing items are called out by name in the `Verification Inputs Readiness` section of brainstorm.md.
 
 ## Subsection IDs and Stable Anchors
 

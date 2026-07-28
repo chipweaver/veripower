@@ -142,13 +142,8 @@ done             ________________________________|‾‾‾‾‾   (counter >= 
 
 #### Timing Scenarios Table
 
-| ScenarioID | Interface/Mode | Trigger/Stimulus | Expected Result | Timing Constraint | Exceptions / Negative Cases |
-|------------|-----------|-----------|----------|----------|-----------|
-| SC-001 | apb + data_in + ctrl (full compute pass) | Load `W=[[1,2],[3,4]]` via APB (`W00..W11 = 1,2,3,4`); stream 4 input pairs `in1=1,3,5,7` / `in2=2,4,6,8` with `in1_en`/`in2_en`; assert `start` | `done` rises; four result words are read back over four APB reads | `done` must assert (no hang); APB reads return result-FIFO words | If `start` deasserts mid-pass, `counter` resets to 0 and `done` does not assert; writes/reads at FIFO boundaries ignored |
-| SC-002 | apb + data_in + ctrl (full compute pass) | Load `W=[[1,2],[2,3]]`; stream 2 input pairs `in1=9,11` / `in2=10,12`; assert `start` | `done` rises; four APB reads return results | `done` must assert (no hang); APB reads return result-FIFO words | Same as SC-001 |
-| SC-003 | ctrl + apb (re-run on existing contents) | Re-assert `start` with no new weights/inputs | `done` rises again on the existing pipeline/FIFO contents; four APB reads | `done` must assert (no hang); APB reads return result-FIFO words | Reading beyond available result words exercises result-FIFO empty/wrap behavior |
-
-These transcribe the existing directed testbench sequence exactly so it binds and runs unchanged.
+The scenario rows live in `timing-scenarios.json`; the waveform above and its phase-by-phase
+description are the part that cannot be tabulated, and stay here.
 
 ### 1.6 Clocks and Frequencies
 

@@ -165,9 +165,8 @@ rdy      _________|‾‾‾‾‾‾‾‾‾‾‾‾‾|_______________   (sl
 
 #### Timing Scenarios Table
 
-| ScenarioID | Interface/Mode | Trigger/Stimulus | Expected Result | Timing Constraint | Exceptions / Negative Cases |
-|------------|-----------|-----------|----------|----------|-----------|
-| SC-… | … | … | … | … | … |
+The scenario rows live in `timing-scenarios.json`. The waveform diagrams above and their
+phase-by-phase descriptions stay here — they are the part no table could hold.
 
 ### 1.6 Clocks and Frequencies
 
@@ -177,6 +176,20 @@ frequencies or relationships in prose — same single-home rule as §1.1's PPA t
 Narrative that is NOT a per-clock field belongs here: domain count, CDC posture,
 reset scheme, release-ordering constraints.
 ```
+
+## timing-scenarios.json (§1.5's machine half)
+
+Authored by Wave 1; schema `references/timing-scenarios.schema.json`. A JSON array, one
+object per scenario. Values are free prose.
+
+| Field | Rule |
+|---|---|
+| `id` | Required. One sequence is authored per id. |
+| `stimulus` / `expected` / `timing_constraint` | Required and non-empty. |
+| `interface_mode` / `exceptions` | Optional. |
+
+The waveform diagram and its phase-by-phase description are **not** fields — they stay in
+§1.5, per the one-to-one pairing rule in §Rendering Conventions.
 
 ## features.json (§1.3's machine half)
 
@@ -241,8 +254,8 @@ Before `design.md` is approved, the **gated** checks below must pass `check-cove
 | §1.4.1 columns Signal / Direction / Clock Domain / Interface Group / Role — **(gated)** | Overview §1.4.1 table | Absent columns degrade constraint and agent generation; `derive-constraints` may emit incomplete IO delays or miss CDC domains. |
 | §1.4.1 columns Width / Protocol — **(recommended)** | Overview §1.4.1 table | Absent Width defaults to `1`; absent Protocol yields empty protocol annotations. |
 | §1.4.1 columns ResetPolarity / ResetKind — **required on `Role=reset` rows** (enforced at constraint generation by `derive-constraints`, which fail-louds on a reset row missing them — not by the coverage gate; use `-` on non-reset rows) | Overview §1.4.1 table | A reset row missing polarity/kind aborts `derive-constraints`. |
-| §1.5 columns ScenarioID / Trigger/Stimulus / Expected Result / Timing Constraint — **(gated)** | Overview §1.5 table | Missing any of these fails `check-coverage`; they drive downstream sequence-body and checker generation (via `derive-plan-data`). |
-| §1.5 column Exceptions / Negative Cases — **(recommended)** | Overview §1.5 table | Absent column degrades negative-case coverage; `derive-plan-data` defaults it to empty. |
+| `timing-scenarios.json` fields `id` / `stimulus` / `expected` / `timing_constraint` present and non-empty — **(schema)** | `timing-scenarios.json` | Enforced by `timing-scenarios.schema.json` at `check-coverage`; they drive downstream sequence-body and checker authoring. |
+| `timing-scenarios.json` fields `interface_mode` / `exceptions` — **(optional)** | `timing-scenarios.json` | Absent means absent; nothing substitutes a value. |
 | `clocks.json` fields `name` / `freq_mhz` / `period_ns` / `relationship` present and correctly typed — **(schema)** | `clocks.json` | Enforced by `clocks.schema.json` at `derive-constraints`, which fails loud. A mistyped key is named in the error, not silently defaulted. |
 | `clocks.json` declares exactly one `relationship: "primary"` — **(gated)** | `clocks.json` | Not schema-expressible; `derive-constraints` fails loud. It is the TB main clock — an ambiguous set would let a downstream reader pick arbitrarily. |
 | `clocks.json` internal consistency: `period_ns` ≈ `1000 / freq_mhz` per entry — **(gated)** | `clocks.json` | A freq/period typo would propagate into every generated `create_clock`; enforced by `check-coverage`. |

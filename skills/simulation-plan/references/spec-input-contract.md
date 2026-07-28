@@ -1,9 +1,10 @@
 # Spec Fields → Simulation-Plan Objects (plan-data.json field guide)
 
-`derive-plan-data` extracts every structured field of `design.md` (§1.4.1 / §1.4.2 / §1.5)
-and each per-child `<child>.md §5` into `plan-data.json`. Clocks and features are the
-exceptions: they are already structured as `clocks.json` / `features.json` (specification's
-own outputs) and are read from there directly — nothing derives them. You author the scaffold and
+`derive-plan-data` extracts every structured field of `design.md` (§1.4.1 / §1.4.2) and each
+per-child `<child>.md §5` into `plan-data.json`. Clocks, features and timing scenarios are the
+exceptions: they are already structured as `clocks.json` / `features.json` /
+`timing-scenarios.json` (specification's own outputs) and are read from there directly —
+nothing derives them. You author the scaffold and
 `verification-plan.md` **from that JSON**; do not re-read `design.md` / `<child>.md` into
 the main thread. This guide names the `design.md` columns only so you recognize where each
 `plan-data.json` field came from, and maps them to the objects this stage authors
@@ -25,8 +26,8 @@ add SV-rendering claims here.
 - **The single human source of truth is `design.md`.** There is no separate
   requirement-to-testpoint mapping document.
 - Structured fields must live in `features.json` / `clocks.json` or in fixed design.md
-  sections (§1.4.1 / §1.4.2 / §1.5 / per-child `<child>.md §5`); they must not be scattered
-  across free-form prose.
+  sections (§1.4.1 / §1.4.2 / per-child `<child>.md §5`); they must not be scattered across
+  free-form prose.
 - `features.json` requires every field but `coverage_intent`, so a degraded feature list is
   not a case you have to cope with — an incomplete one fails the specification gate.
 - Per-child `<child>.md` sections carry implementation constraints: register side effects,
@@ -108,22 +109,25 @@ references but does not redefine it.
 
 ---
 
-## Overview §1.5 Interface Timing Scenarios table (drives sequence authoring)
+## timing-scenarios.json (drives sequence authoring)
 
-| Column | What you do with it |
+| Field | What you do with it |
 |---|---|
-| `ScenarioID` | Author one sequence in `sequences[]` per scenario (e.g. `SC-APB-00`). |
-| `Interface / Mode` | Which agent receives the stimulus (the §1.4 interface group). |
-| `Trigger / Stimulus` | The sequence body (concrete stimulus steps). |
-| `Expected result` | The testpoint check intent (the DUT-observable output the downstream scoreboard will judge). |
-| `Timing constraint` | Recorded in the testpoint intent (e.g. "pready high within ≤2 cycles after penable"). |
-| `Exception / Negative` | A negative-path sequence + a negative testpoint. |
+| `id` | Author one sequence in `sequences[]` per scenario (e.g. `SC-APB-00`). |
+| `interface_mode` | Which agent receives the stimulus (the §1.4 interface group). |
+| `stimulus` | The sequence body (concrete stimulus steps). |
+| `expected` | The testpoint check intent (the DUT-observable output the downstream scoreboard will judge). |
+| `timing_constraint` | Recorded in the testpoint intent (e.g. "pready high within ≤2 cycles after penable"). |
+| `exceptions` | A negative-path sequence + a negative testpoint. |
+
+design.md §1.5 still holds the waveform diagrams and their phase-by-phase descriptions; read
+them for the cycle-level detail a scenario row cannot carry.
 
 **Mapping rules:**
-- Each `ScenarioID`: author one sequence class in `sequences[]`.
-- `Expected result` + `Timing constraint`: record as the testpoint's check intent; the downstream
+- Each `id`: author one sequence class in `sequences[]`.
+- `expected` + `timing_constraint`: record as the testpoint's check intent; the downstream
   `simulation` stage renders the actual scoreboard check from it.
-- `Exception / Negative`: author a negative sequence + a negative testpoint.
+- `exceptions`: author a negative sequence + a negative testpoint.
 
 ---
 
@@ -158,7 +162,7 @@ Section anchors in `design.md` are English canonical:
   `name` the case-results summary prints
 - §1.4.1 Top-Level IO → DUT-boundary interfaces / agents / transaction fields
 - §1.4.2 Inter-module Interconnects → optional cross-module wire awareness (aware-only)
-- §1.5 Interface Timing Scenarios → scenario-driven sequences
+- `timing-scenarios.json` (NOT a design.md section) → scenario-driven sequences
 - `clocks.json` (NOT a design.md section) → `primary_clock`, script-injected by
   `materialize-scaffold` from the single `relationship: "primary"` entry
 - §1.7 Submodule Index → pointer to `manifest.json`
@@ -173,7 +177,7 @@ Per-child Verification Hints (9-column table) live in `<child>.md §5`; `simplan
 - Derive `verification-plan.md` (human-readable review anchor) and `scaffold-specification.json`
   (machine-read contract) from the fields above.
 - `features.json` alone gives you feature-traceability testpoints; transactions / agents /
-  sequences / checks need the §1.4 / §1.5 / §5 fields. There is no automatic generation; you
+  sequences / checks need `timing-scenarios.json` and the §1.4 / §5 fields. There is no automatic generation; you
   author these, guided by the fields above.
 - Non-target capabilities ("does not support" / "does not include") belong in a feature's
   `negative_cases`, so negative tests and result summaries can be derived from them.
@@ -213,14 +217,26 @@ the `Role=reset` row; grouping them under `APB` would collide with the clk/rst p
   `psel(1), penable(1), pwrite(1), paddr(8), pwdata(32), prdata(32), pready(1), pslverr(1)`.
   materialize fills these; it does not abstract or rename (there is no `addr` / `data` / `rw`).
 
-### §1.5 Interface Timing Scenarios table (APB slave)
+### timing-scenarios.json (APB slave)
 
-```markdown
-| ScenarioID | Interface / Mode | Trigger / Stimulus | Expected result | Timing constraint | Exception / Negative |
-|------------|------------------|--------------------|-----------------|-------------------|----------------------|
-| SC-APB-00 | APB / write | Legal-address write transaction | pready high within 1–2 cycles, pslverr=0 | ≤2 cycles after penable | — |
-| SC-APB-01 | APB / read | Legal-address read transaction | prdata returns the register value; pready high | ≤2 cycles after penable | — |
-| SC-APB-02 | APB / write | Illegal address (out of valid range) | pslverr high; prdata don't-care | ≤2 cycles after penable | Address out of range |
+```json
+[
+  {
+    "id": "SC-APB-00",
+    "interface_mode": "APB / write",
+    "stimulus": "Legal-address write transaction",
+    "expected": "pready high within 1-2 cycles, pslverr=0",
+    "timing_constraint": "<=2 cycles after penable"
+  },
+  {
+    "id": "SC-APB-02",
+    "interface_mode": "APB / write",
+    "stimulus": "Illegal address (out of valid range)",
+    "expected": "pslverr high; prdata don't-care",
+    "timing_constraint": "<=2 cycles after penable",
+    "exceptions": "Address out of range"
+  }
+]
 ```
 
 **What you author:** `sequences[]` entries `apb_write_seq` (SC-APB-00), `apb_read_seq`

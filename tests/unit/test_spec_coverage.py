@@ -320,9 +320,7 @@ _GOOD_DESIGN = (
     "| din | input | 8 | clk | cfg | APB3 | data |\n\n"
     "#### 1.4.2 Inter-module Interconnects\n\n(none — N=1)\n\n"
     "### 1.5 Interface Timing Scenarios\n\n"
-    "| ScenarioID | Interface/Mode | Trigger/Stimulus | Expected Result | Timing Constraint | Exceptions |\n"
-    "|------------|----------------|------------------|-----------------|-------------------|------------|\n"
-    "| SC-0 | cfg | write | ack | T_setup | none |\n\n"
+    "Scenario rows live in `timing-scenarios.json`.\n\n"
     "### 1.6 Clocks and Frequencies\n\n"
     "Clock definitions live in `clocks.json` (the sole numeric + relationship source).\n"
 )
@@ -355,6 +353,16 @@ _DEFAULT_FEATURES = [
 ]
 
 
+_DEFAULT_SCENARIOS = [
+    {
+        "id": "SC-0",
+        "stimulus": "write",
+        "expected": "ack",
+        "timing_constraint": "T_setup",
+    }
+]
+
+
 def _clocks_wd(clocks=None, features=None):
     """A throwaway specification workdir holding the sidecars compute_structure reads."""
     import json
@@ -368,6 +376,7 @@ def _clocks_wd(clocks=None, features=None):
     (d / "features.json").write_text(
         json.dumps(_DEFAULT_FEATURES if features is None else features)
     )
+    (d / "timing-scenarios.json").write_text(json.dumps(_DEFAULT_SCENARIOS))
     return d
 
 
@@ -387,7 +396,7 @@ def test_structure_clean_passes():
 
 
 def test_structure_missing_gated_column():
-    bad = _GOOD_DESIGN.replace("| Timing Constraint ", "| ").replace("| T_setup ", "| ")
+    bad = _GOOD_DESIGN.replace("| Role |", "|").replace("| clock |", "|")
     assert _struct(bad)["column_violations"]
 
 
@@ -532,6 +541,7 @@ def test_end_to_end_multi_child_clean_workdir(tmp_path):
     )  # the module-level fixture from earlier tasks
     (tmp_path / "features.json").write_text(json.dumps(_DEFAULT_FEATURES))
     (tmp_path / "clocks.json").write_text(json.dumps(_DEFAULT_CLOCKS))
+    (tmp_path / "timing-scenarios.json").write_text(json.dumps(_DEFAULT_SCENARIOS))
     child = (
         '---\nchild: {n}\nparent: core\nbrainstorm_anchor: "{a}"\n'
         "ports: []\nclocks: []\nfeatures:\n  - F-00\n---\n\n"
@@ -1035,6 +1045,37 @@ def test_empty_features_json_is_a_schema_violation_not_a_coverage_gap():
     # blame the children for a defect that belongs to features.json.
     s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, features=[])
     assert s["features_schema_violations"] and s["feature_coverage_gaps"] == []
+
+
+# ---------- timing-scenarios.json contract ----------
+
+
+def _validate_scenarios(workdir, doc=None):
+    import json
+
+    from spec import coverage as cc
+
+    if doc is not None:
+        (workdir / "timing-scenarios.json").write_text(json.dumps(doc))
+    return cc.validate_sidecar(workdir, "timing-scenarios.json")
+
+
+def test_scenarios_missing_is_reported(tmp_path):
+    assert _validate_scenarios(tmp_path) == [{"error": "timing-scenarios.json missing"}]
+
+
+def test_scenarios_misspelled_key_names_itself(tmp_path):
+    v = _validate_scenarios(tmp_path, [{**_DEFAULT_SCENARIOS[0], "stimulis": "x"}])
+    assert v and "stimulis" in v[0]["error"]
+
+
+def test_scenarios_optional_fields_may_be_absent(tmp_path):
+    assert _validate_scenarios(tmp_path, _DEFAULT_SCENARIOS) == []
+
+
+def test_scenarios_blank_required_field_rejected(tmp_path):
+    v = _validate_scenarios(tmp_path, [{**_DEFAULT_SCENARIOS[0], "expected": ""}])
+    assert v and v[0]["at"].endswith(".expected")
 
 
 # ---------- F8: §5 SourceFeature aliases are no longer honored ----------

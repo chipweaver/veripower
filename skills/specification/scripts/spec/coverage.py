@@ -183,44 +183,33 @@ def parse_main_design_tables(main_text: str) -> dict:
     return out
 
 
-_FEATURES_SCHEMA = (
-    Path(__file__).resolve().parent.parent.parent
-    / "references"
-    / "features.schema.json"
-)
+_REFERENCES = Path(__file__).resolve().parent.parent.parent / "references"
 
 
-def load_features(workdir: Path) -> list[dict]:
-    """features.json entries. A missing/malformed file yields [] — validate_features
-    reports it, so no caller sees a half-parsed list."""
+def load_sidecar(workdir: Path, name: str) -> list[dict]:
+    """An authored JSON sidecar's entries. A missing/malformed file yields [] —
+    validate_sidecar reports it, so no caller sees a half-parsed list."""
     try:
-        feats = json.loads((workdir / "features.json").read_text(encoding="utf-8"))
+        doc = json.loads((workdir / name).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return []
-    return feats if isinstance(feats, list) else []
+    return doc if isinstance(doc, list) else []
 
 
-def feature_ids_of(workdir: Path) -> set[str]:
-    return {
-        f["id"].strip()
-        for f in load_features(workdir)
-        if isinstance(f.get("id"), str) and f["id"].strip()
-    }
-
-
-def validate_features(workdir: Path) -> list[dict]:
-    """features.json against features.schema.json, returned as violations rather than
-    raised: a gate names every defect instead of stopping at the first."""
+def validate_sidecar(workdir: Path, name: str) -> list[dict]:
+    """One authored sidecar against its schema, returned as violations rather than raised:
+    a gate names every defect instead of stopping at the first."""
+    schema_path = _REFERENCES / f"{Path(name).stem}.schema.json"
     try:
-        doc = json.loads((workdir / "features.json").read_text(encoding="utf-8"))
+        doc = json.loads((workdir / name).read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return [{"error": "features.json missing"}]
+        return [{"error": f"{name} missing"}]
     except (OSError, json.JSONDecodeError) as exc:
-        return [{"error": f"features.json unreadable: {exc}"}]
+        return [{"error": f"{name} unreadable: {exc}"}]
     try:
-        schema = json.loads(_FEATURES_SCHEMA.read_text(encoding="utf-8"))
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        return [{"error": f"{_FEATURES_SCHEMA.name} unreadable: {exc}"}]
+        return [{"error": f"{schema_path.name} unreadable: {exc}"}]
     out: list[dict] = []
     for err in sorted(
         Draft202012Validator(schema).iter_errors(doc),
@@ -231,6 +220,22 @@ def validate_features(workdir: Path) -> list[dict]:
         )
         out.append({"at": where, "error": err.message})
     return out
+
+
+def load_features(workdir: Path) -> list[dict]:
+    return load_sidecar(workdir, "features.json")
+
+
+def validate_features(workdir: Path) -> list[dict]:
+    return validate_sidecar(workdir, "features.json")
+
+
+def feature_ids_of(workdir: Path) -> set[str]:
+    return {
+        f["id"].strip()
+        for f in load_features(workdir)
+        if isinstance(f.get("id"), str) and f["id"].strip()
+    }
 
 
 def load_clock_names(workdir: Path) -> set[str]:
@@ -431,10 +436,6 @@ _GATED_COLS = {
         r"§?\s*1\.4\.1.*Top.Level\s+IO",
         ["Signal", "Direction", "Clock Domain", "Interface Group", "Role"],
     ),
-    "1.5": (
-        r"§?\s*1\.5.*Interface\s+Timing\s+Scenarios?",
-        ["ScenarioID", "Trigger/Stimulus", "Expected Result", "Timing Constraint"],
-    ),
 }
 
 # §5 Verification-Hints gated columns. The gate requires the canonical `SourceFeature`
@@ -629,6 +630,9 @@ def compute_structure(
         "presence_violations": presence,
         "column_violations": columns,
         "features_schema_violations": validate_features(workdir),
+        "timing_scenarios_schema_violations": validate_sidecar(
+            workdir, "timing-scenarios.json"
+        ),
         "period_violations": period_v,
         "clock_domain_violations": domain_v,
         "manifest_violations": manifest_v,

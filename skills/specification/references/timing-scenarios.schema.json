@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/specification/timing-scenarios.schema.json",
+  "title": "timing-scenarios.json — interface timing scenarios (authored, never derived)",
+  "description": "One entry per interface timing scenario; the simulation-plan agent authors one sequence per entry. Authored by the specification stage's Wave 1. design.md §1.5 keeps the waveform diagrams and their phase-by-phase descriptions — those are the part a table could never hold — and points here for the scenario rows. Values are free prose; no script parses inside a field.",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "required": ["id", "stimulus", "expected", "timing_constraint"],
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "description": "Scenario identifier, e.g. SC-001. One sequence is authored per id.",
+        "type": "string",
+        "minLength": 1
+      },
+      "interface_mode": {
+        "description": "Optional. The interface group(s) or operating mode the scenario drives.",
+        "type": "string",
+        "minLength": 1
+      },
+      "stimulus": {
+        "description": "What is driven to trigger the scenario.",
+        "type": "string",
+        "minLength": 1
+      },
+      "expected": {
+        "description": "The observable outcome.",
+        "type": "string",
+        "minLength": 1
+      },
+      "timing_constraint": {
+        "description": "The timing obligation the scenario must satisfy.",
+        "type": "string",
+        "minLength": 1
+      },
+      "exceptions": {
+        "description": "Optional. Exception and negative-case behaviour for this scenario.",
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}
