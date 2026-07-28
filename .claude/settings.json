@@ -1,12 +1,4 @@
 {
-  "permissions": {
-    "ask": [
-      "Bash(python3 *framework/scripts/kernel.py pin*)",
-      "Bash(python3 *framework/scripts/kernel.py reopen*)",
-      "Bash(python3 framework/scripts/kernel.py pin*)",
-      "Bash(python3 framework/scripts/kernel.py reopen*)"
-    ]
-  },
   "hooks": {
     "PreToolUse": [
       {

@@ -1,0 +1,16 @@
+{
+  "description": "Prompt the human on kernel.py pin / reopen / signoff — the three judgment verbs that move an oracle across the proposed→human trust line.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ask_judgment_verbs.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
