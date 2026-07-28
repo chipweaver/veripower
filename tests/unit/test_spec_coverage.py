@@ -312,9 +312,7 @@ def test_self_containment_direct_brainstorm_link_flagged(tmp_path):
 _GOOD_DESIGN = (
     "# m Design\n\n"
     "### 1.3 Feature Table\n\n"
-    "| ID | Feature | Description | Mode/Interface | Priority | HappyPath | CornerCases | NegativeCases |\n"
-    "|----|---------|-------------|----------------|----------|-----------|-------------|---------------|\n"
-    "| F-00 | f | d | cfg | smoke | h | c | n |\n\n"
+    "The feature list lives in `features.json`.\n\n"
     "#### 1.4.1 Top-Level IO\n\n"
     "| Signal | Direction | Width | Clock Domain | Interface Group | Protocol | Role |\n"
     "|--------|-----------|-------|--------------|-----------------|----------|------|\n"
@@ -343,8 +341,22 @@ _DEFAULT_CLOCKS = [
 ]
 _NO_CLOCKS = object()  # sentinel: write no clocks.json at all
 
+_DEFAULT_FEATURES = [
+    {
+        "id": "F-00",
+        "name": "f",
+        "description": "d",
+        "mode_interface": "cfg",
+        "priority": "smoke",
+        "happy_path": "h",
+        "corner_cases": "c",
+        "negative_cases": "n",
+    }
+]
 
-def _clocks_wd(clocks=None):
+
+def _clocks_wd(clocks=None, features=None):
+    """A throwaway specification workdir holding the sidecars compute_structure reads."""
     import json
     import tempfile
 
@@ -353,17 +365,20 @@ def _clocks_wd(clocks=None):
         (d / "clocks.json").write_text(
             json.dumps(_DEFAULT_CLOCKS if clocks is None else clocks)
         )
+    (d / "features.json").write_text(
+        json.dumps(_DEFAULT_FEATURES if features is None else features)
+    )
     return d
 
 
-def _struct(design, manifest=None, clocks=None):
+def _struct(design, manifest=None, clocks=None, features=None):
     from spec import coverage as cc
 
     manifest = manifest or {
         "module": "m",
         "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
     }
-    return cc.compute_structure(_clocks_wd(clocks), manifest, design)
+    return cc.compute_structure(_clocks_wd(clocks, features), manifest, design)
 
 
 def test_structure_clean_passes():
@@ -372,7 +387,7 @@ def test_structure_clean_passes():
 
 
 def test_structure_missing_gated_column():
-    bad = _GOOD_DESIGN.replace("| Priority ", "| ").replace("| smoke ", "| ")
+    bad = _GOOD_DESIGN.replace("| Timing Constraint ", "| ").replace("| T_setup ", "| ")
     assert _struct(bad)["column_violations"]
 
 
@@ -411,13 +426,13 @@ def test_structure_no_clocks_json_does_not_cascade_domain_violations():
     assert s["clock_domain_violations"] == []
 
 
-def _struct_with_children(design, child_bodies, clocks=None):
+def _struct_with_children(design, child_bodies, clocks=None, features=None):
     from spec import coverage as cc
 
     children = [{"name": n, "doc": f"{n}.md", "rtl_modules": [n]} for n in child_bodies]
     manifest = {"module": "m", "children": children}
     return cc.compute_structure(
-        _clocks_wd(clocks), manifest, design, child_texts=child_bodies
+        _clocks_wd(clocks, features), manifest, design, child_texts=child_bodies
     )
 
 
@@ -515,6 +530,8 @@ def test_end_to_end_multi_child_clean_workdir(tmp_path):
     (tmp_path / "design.md").write_text(
         _GOOD_DESIGN
     )  # the module-level fixture from earlier tasks
+    (tmp_path / "features.json").write_text(json.dumps(_DEFAULT_FEATURES))
+    (tmp_path / "clocks.json").write_text(json.dumps(_DEFAULT_CLOCKS))
     child = (
         '---\nchild: {n}\nparent: core\nbrainstorm_anchor: "{a}"\n'
         "ports: []\nclocks: []\nfeatures:\n  - F-00\n---\n\n"
@@ -975,16 +992,49 @@ def test_missing_children_key_clean_verdict(tmp_path):
 # ---------- F7: misnamed §1.3 ID column must fail loud ----------
 
 
-def test_parse_main_tables_13_wrong_header_is_loud():
-    import pytest
+# ---------- features.json contract ----------
+
+
+def _validate_features(workdir, doc=None):
+    import json
+
     from spec import coverage as cc
 
-    design = (
-        "# m\n\n### 1.3 Feature Table\n\n"
-        "| FeatureID | Feature |\n|---|---|\n| F-00 | f |\n"
-    )
-    with pytest.raises(ValueError, match=r"1\.3.*ID"):
-        cc.parse_main_design_tables(design)
+    if doc is not None:
+        (workdir / "features.json").write_text(json.dumps(doc))
+    return cc.validate_features(workdir)
+
+
+def test_features_missing_is_reported(tmp_path):
+    assert _validate_features(tmp_path) == [{"error": "features.json missing"}]
+
+
+def test_features_misspelled_key_names_itself(tmp_path):
+    v = _validate_features(tmp_path, [{**_DEFAULT_FEATURES[0], "happy_pat": "h"}])
+    assert v and "happy_pat" in v[0]["error"]
+
+
+def test_features_blank_required_field_rejected(tmp_path):
+    # Every field is minLength 1: a blank one is a defect, not a default.
+    v = _validate_features(tmp_path, [{**_DEFAULT_FEATURES[0], "happy_path": ""}])
+    assert v and v[0]["at"].endswith(".happy_path")
+
+
+def test_features_missing_required_field_rejected(tmp_path):
+    lean = {k: v for k, v in _DEFAULT_FEATURES[0].items() if k != "priority"}
+    v = _validate_features(tmp_path, [lean])
+    assert v and "priority" in v[0]["error"]
+
+
+def test_features_coverage_intent_optional(tmp_path):
+    assert _validate_features(tmp_path, _DEFAULT_FEATURES) == []
+
+
+def test_empty_features_json_is_a_schema_violation_not_a_coverage_gap():
+    # minItems 1. With no ids to cover, feature_coverage_gaps must stay quiet rather than
+    # blame the children for a defect that belongs to features.json.
+    s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, features=[])
+    assert s["features_schema_violations"] and s["feature_coverage_gaps"] == []
 
 
 # ---------- F8: §5 SourceFeature aliases are no longer honored ----------

@@ -14,7 +14,7 @@ ports:                             # required (may be empty). cross-out ports on
 clocks:                            # required (may be empty)
   - { name: <clock_name>, domain: <domain> }    #   each name must appear in clocks.json
 features:                          # required (may be empty)
-  - <feature_id>                   #   each must appear in main §1.3
+  - <feature_id>                   #   each must appear in features.json
 ---
 ```
 

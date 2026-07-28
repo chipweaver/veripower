@@ -1,9 +1,9 @@
 # Spec Fields → Simulation-Plan Objects (plan-data.json field guide)
 
-`derive-plan-data` extracts every structured field of `design.md` (§1.3 / §1.4.1 / §1.4.2 /
-§1.5) and each per-child `<child>.md §5` into `plan-data.json`. Clocks are the one exception:
-they are already structured as `clocks.json` (specification's own output) and are read from
-there directly by `materialize-scaffold` — nothing derives them. You author the scaffold and
+`derive-plan-data` extracts every structured field of `design.md` (§1.4.1 / §1.4.2 / §1.5)
+and each per-child `<child>.md §5` into `plan-data.json`. Clocks and features are the
+exceptions: they are already structured as `clocks.json` / `features.json` (specification's
+own outputs) and are read from there directly — nothing derives them. You author the scaffold and
 `verification-plan.md` **from that JSON**; do not re-read `design.md` / `<child>.md` into
 the main thread. This guide names the `design.md` columns only so you recognize where each
 `plan-data.json` field came from, and maps them to the objects this stage authors
@@ -24,39 +24,49 @@ add SV-rendering claims here.
   and keep it bounded.
 - **The single human source of truth is `design.md`.** There is no separate
   requirement-to-testpoint mapping document.
-- Structured fields must live in fixed sections (§1.3 / §1.4.1 / §1.4.2 / §1.5 / per-child
-  `<child>.md §5`); they must not be scattered across free-form prose.
-- The minimum compatible input is the three columns `ID` / `Feature` / `Description` in §1.3.
-  The more complete the fields, the higher the quality of your derivation.
+- Structured fields must live in `features.json` / `clocks.json` or in fixed design.md
+  sections (§1.4.1 / §1.4.2 / §1.5 / per-child `<child>.md §5`); they must not be scattered
+  across free-form prose.
+- `features.json` requires every field but `coverage_intent`, so a degraded feature list is
+  not a case you have to cope with — an incomplete one fails the specification gate.
 - Per-child `<child>.md` sections carry implementation constraints: register side effects,
   exceptions, concurrency, back-pressure, reset, state-machine boundaries.
 
 ---
 
-## Overview §1.3 Main Features table (drives testcase decomposition)
+## features.json (drives testcase decomposition)
 
-| Column | Use |
+| Field | Use |
 |---|---|
-| `ID` | Unique requirement / feature identifier, e.g., `F-00`. |
-| `Feature` | Human-readable feature name. |
-| `Description` | Summary of feature scope, behavior, and constraints. |
-| `Mode/Interface` | Points to the interface, mode, or scenario domain. |
-| `Priority` | Your authoring-priority signal (which behaviors to cover first). Not consumed by any script. |
-| `HappyPath` | Main positive path; the happy-path testcase you author. |
-| `CornerCases` | Boundary / concurrency / timing / back-pressure cases you author. |
-| `NegativeCases` | Exceptions, illegal inputs, non-target capabilities you author as negative cases. |
-| `CoverageIntent` | Expected coverage model, e.g., registers, modes, error codes, cross coverage. |
+| `id` | Unique requirement / feature identifier, e.g., `F-00`. |
+| `name` | Human-readable feature name. |
+| `description` | Summary of feature scope, behavior, and constraints. |
+| `mode_interface` | Points to the interface, mode, or scenario domain. |
+| `priority` | Your authoring-priority signal (which behaviors to cover first). Not consumed by any script. |
+| `happy_path` | Main positive path; the happy-path testcase you author. |
+| `corner_cases` | Boundary / concurrency / timing / back-pressure cases you author. |
+| `negative_cases` | Exceptions, illegal inputs, non-target capabilities you author as negative cases. |
+| `coverage_intent` | Optional. Expected coverage model, e.g., registers, modes, error codes, cross coverage. |
 
 Example:
 
-```markdown
-| ID | Feature | Description | Mode/Interface | Priority | HappyPath | CornerCases | NegativeCases | CoverageIntent |
-|----|---------|-------------|----------------|----------|-----------|-------------|---------------|----------------|
-| F-00 | APB slave interface | Supports APB3 single-beat access with wait cycles | APB | smoke | Legal R/W transactions complete | pready inserts wait cycles | Illegal address access | R/W, wait, error-response coverage |
-| F-01 | AES-128 encryption | AES-128 encryption in ECB mode | ECB | P0 | Reference vectors match | Back-to-back block input | Unsupported keylen config | mode × keylen coverage |
+```json
+[
+  {
+    "id": "F-00",
+    "name": "APB slave interface",
+    "description": "Supports APB3 single-beat access with wait cycles",
+    "mode_interface": "APB",
+    "priority": "smoke",
+    "happy_path": "Legal R/W transactions complete",
+    "corner_cases": "pready inserts wait cycles",
+    "negative_cases": "Illegal address access",
+    "coverage_intent": "R/W, wait, error-response coverage"
+  }
+]
 ```
 
-`HappyPath` / `CornerCases` / `NegativeCases` give you the positive / boundary / negative
+`happy_path` / `corner_cases` / `negative_cases` give you the positive / boundary / negative
 testcases and testpoints to author.
 
 ---
@@ -126,7 +136,7 @@ each `testpoints[].inlined_check_hints[]` from those `covers[]`.
 | Column | Where it lands |
 |---|---|
 | `CheckID` | Identifies the check; you cluster it into a testpoint via `covers[]`. |
-| `SourceFeature` | Traces back to the §1.3 feature ID. |
+| `SourceFeature` | Traces back to a `features.json` `id`. |
 | `ImplementationDetail` | ≤20-word constraint summary; the fallback source for `inlined_check_hints[].implementation_detail`. |
 | `ImplementationDetailVerbatim` | Verbatim cycle-accurate formula; the **preferred** source, materialized into `inlined_check_hints[].implementation_detail`. |
 | `Observable` | Copied to `inlined_check_hints[].observable` (metadata for the downstream check author). |
@@ -144,7 +154,8 @@ copied as metadata. How those hints become SV `predict()` / scoreboard checks is
 ## Spec field → scaffold object index
 
 Section anchors in `design.md` are English canonical:
-- §1.3 Feature Table → testpoint feature IDs
+- `features.json` (NOT a design.md section) → testpoint feature IDs, test names, and the
+  `name` the case-results summary prints
 - §1.4.1 Top-Level IO → DUT-boundary interfaces / agents / transaction fields
 - §1.4.2 Inter-module Interconnects → optional cross-module wire awareness (aware-only)
 - §1.5 Interface Timing Scenarios → scenario-driven sequences
@@ -161,12 +172,11 @@ Per-child Verification Hints (9-column table) live in `<child>.md §5`; `simplan
 
 - Derive `verification-plan.md` (human-readable review anchor) and `scaffold-specification.json`
   (machine-read contract) from the fields above.
-- When §1.3 carries only `ID` / `Feature` / `Description`, you have little to derive: you can
-  still author feature-traceability testpoints, but transactions / agents / sequences / checks
-  need the §1.4 / §1.5 / §5 fields. There is no automatic generation; you author these, guided
-  by the fields above.
-- Non-target capabilities ("does not support" / "does not include") should still appear in the
-  §1.3 feature table so negative tests and result summaries can be derived from them.
+- `features.json` alone gives you feature-traceability testpoints; transactions / agents /
+  sequences / checks need the §1.4 / §1.5 / §5 fields. There is no automatic generation; you
+  author these, guided by the fields above.
+- Non-target capabilities ("does not support" / "does not include") belong in a feature's
+  `negative_cases`, so negative tests and result summaries can be derived from them.
 
 ---
 

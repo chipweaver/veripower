@@ -1,0 +1,57 @@
+[
+  {
+    "id": "F-01",
+    "name": "2×2 weight-stationary MAC array",
+    "description": "Four cells `mac_00`, `mac_01`, `mac_10`, `mac_11`. Each MAC cell, every clock (async active-low reset → 0): `o_result <= (i_data * i_weight) + i_pre_result` (registered); `o_data_next <= i_data` (registered, forwards data to the next cell). The product `i_data * i_weight` is a 32-bit multiply truncated to 32 bits; the accumulate is 32-bit and wraps (no saturation).",
+    "mode_interface": "data (array datapath)",
+    "priority": "must",
+    "happy_path": "Valid `i_data`/`i_weight` → `o_result` reflects the MAC one cycle later; `o_data_next` forwards `i_data` one cycle later.",
+    "corner_cases": "`i_pre_result = 0` (top-row cells `mac_00`/`mac_01`) → cell acts as a pure multiply into the partial-sum chain.",
+    "negative_cases": "Product/sum exceeding 32 bits wraps — accepted by design (no saturation/overflow protection).",
+    "coverage_intent": "Exercise registered MAC output and data forwarding for all four cells; verify partial-sum chaining and 32-bit wrap behavior."
+  },
+  {
+    "id": "F-02",
+    "name": "Systolic input skew alignment",
+    "description": "`systolic_reg` aligns the two input streams for the diagonal wavefront: `out1` = `in1` delayed **1** cycle (one register `delay10`); `out2` = `in2` delayed **2** cycles (two registers `delay20` → `delay21`). Async active-low reset clears all skew registers to 0.",
+    "mode_interface": "data (skew datapath)",
+    "priority": "must",
+    "happy_path": "`in1` appears on `out1` after 1 cycle; `in2` appears on `out2` after 2 cycles.",
+    "corner_cases": "Two consecutive input words observed on the staggered diagonal wavefront (`out1` leads `out2` by 1 cycle).",
+    "negative_cases": "Async active-low reset asserted mid-stream clears `delay10`/`delay20`/`delay21` to 0.",
+    "coverage_intent": "Verify 1-cycle and 2-cycle delay alignment and reset clearing of all skew registers."
+  },
+  {
+    "id": "F-03",
+    "name": "8-entry input/result FIFOs",
+    "description": "Three identical FIFO instances: two input FIFOs (`fifo_00`, `fifo_01`) and one result FIFO (`fifo_result`). Pointer-based, single-clock: write on `i_wr & !o_full` → `mem[wr_addr]`, `wr_addr` advances on the same; `rd_addr` advances on `i_rd & !o_empty`; read is combinational (`o_data = mem[rd_addr]`); `o_empty = (wr_addr == rd_addr)`; `o_full = ((wr_addr + 1) == rd_addr)`. Async active-low reset clears memory and both pointers to 0.",
+    "mode_interface": "data (FIFO)",
+    "priority": "must",
+    "happy_path": "Write then read returns the written word in FIFO order.",
+    "corner_cases": "`o_full`/`o_empty` use 3-bit pointer wrap (modulo-8); the `(wr_addr+1)==rd_addr` full condition is part of the contract.",
+    "negative_cases": "Write while `o_full` (or read while `o_empty`) is ignored (pointer does not advance).",
+    "coverage_intent": "Verify FIFO-order write/read, modulo-8 pointer wrap, full/empty flag generation, and ignored writes/reads at boundary."
+  },
+  {
+    "id": "F-04",
+    "name": "APB-style register file (weight load + result read-back)",
+    "description": "`mem[0:3]` holds the four weights. Decoded enables: `write_enb = i_psel & i_penable & i_pwrite` → `mem[i_paddr] <= i_pwdata` (clocked, **no reset** on this block — faithful to the reference). `read_enb = i_psel & i_penable & !i_pwrite` → `o_prdata = fifo_result.o_data` (combinational); otherwise `o_prdata = 0`. The result FIFO read pointer advances on `read_enb` (`fifo_result.i_rd = read_enb`). APB address map: `W00 = 0`, `W01 = 1`, `W10 = 2`, `W11 = 3`.",
+    "mode_interface": "apb (APB-style register port)",
+    "priority": "must",
+    "happy_path": "APB write programs `mem[i_paddr]`; APB read returns the next result-FIFO word and advances its read pointer.",
+    "corner_cases": "When no read is active, `o_prdata = 0`. The register-file block is clocked-only with no reset.",
+    "negative_cases": "Read while result FIFO empty returns its combinational `o_data`; concurrent non-APB activity leaves `mem` untouched (write only on `write_enb`).",
+    "coverage_intent": "Verify weight load to each of the four addresses, read-back of result words with pointer advance, and `o_prdata = 0` when no read."
+  },
+  {
+    "id": "F-05",
+    "name": "`start`/counter control sequence and `done` generation (critical timing lock)",
+    "description": "`counter` (4-bit): async reset → 0; while `start` asserted, increments each clock; when `start` deasserted, resets to 0. Input-FIFO pop enable: `fifo_en = start & (counter < 2)` (drives `i_rd` of both input FIFOs — pops two elements at the start of a pass). Result-FIFO write enable: `result_fifo_wr = (counter ∈ {2,3,4,5})`. Result routing into the result FIFO: `result_fifo_i_data = out1` when `counter ∈ {2,4}`, `= out2` when `counter ∈ {3,5}`, else `0`, where `out1 = mac_10.o_result` and `out2 = mac_11.o_result`. **`done = (counter >= 5)`.**",
+    "mode_interface": "ctrl/status (counter-driven FSM)",
+    "priority": "must",
+    "happy_path": "Assert `start`; `counter` advances `1→2→3→4→5`; input FIFOs pop while `counter < 2`; results pushed at `counter ∈ {2,3,4,5}` (`out1` at 2/4, `out2` at 3/5); `done` asserts at `counter >= 5`.",
+    "corner_cases": "Re-assert `start` with no new weights/inputs → `done` rises again on the existing pipeline/FIFO contents.",
+    "negative_cases": "`start` deasserted mid-pass resets `counter` to 0 (no `done`); writes/reads at FIFO boundaries are ignored per FIFO contract.",
+    "coverage_intent": "Verify counter advance/reset, `fifo_en` pop window, result-FIFO write window and `out1`/`out2` routing, and `done` assertion at `counter >= 5`."
+  }
+]

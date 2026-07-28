@@ -23,10 +23,14 @@ soft hint; the hard guarantee is `check-coverage`'s purity gate.
 - `manifest.json` — `module`; `children[]` with `name` / `doc` / `rtl_modules[]` (REQUIRED, ≥1) /
   `brainstorm_anchor` / `role`; optional `shared_subsections[]`.
 - `design.md` §1.1–1.6 overview (incl. §1.4.1 Top-Level IO + §1.4.2 Inter-module Interconnects) +
-  §1.7 submodule index, per `references/design-template.md`. §1.6 carries the CDC/reset narrative
-  and a pointer to `clocks.json` — **no clock table**.
+  §1.7 submodule index, per `references/design-template.md`. §1.3 and §1.6 carry narrative plus
+  a pointer to `features.json` / `clocks.json` — **no feature or clock table**.
 - `ppa.json` — the D6 `ppa_targets` **verbatim** as a JSON array of `{dim, target}` (`[]` when D6
   declares none or was not reached).
+- `features.json` — one object per feature (`id` / `name` / `description` / `mode_interface` /
+  `priority` / `happy_path` / `corner_cases` / `negative_cases`, plus optional
+  `coverage_intent`), per `references/features.schema.json`. Every field except
+  `coverage_intent` must be non-empty — a blank one is a defect, not a default.
 - `clocks.json` — one object per clock (`name` / `freq_mhz` / `period_ns` / `relationship`, plus
   optional `generated` / `role`), per `references/clocks.schema.json`. Numbers are numbers;
   exactly one `relationship: "primary"`; a mistyped key fails at `derive-constraints`.

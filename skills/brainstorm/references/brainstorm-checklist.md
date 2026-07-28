@@ -131,13 +131,13 @@ Rendering conventions (hand-drawn ASCII preferred / wavedrom — note that GitHu
 
 ## D7. Verification Input Field Readiness
 
-Cross-check, row by row, against the "Minimum Field Completeness Gate Table" at the end of `${CLAUDE_PLUGIN_ROOT}/skills/specification/references/design-template.md` — the required columns are the §1.3 / §1.4 / §1.5 / §1.7+ items in that table. The brainstorm only acts as a reminder; the actual fields land during the design.md authoring stage. Missing items are called out by name in the `Verification Inputs Readiness` section of brainstorm.md.
+Cross-check, row by row, against the "Minimum Field Completeness Gate Table" at the end of `${CLAUDE_PLUGIN_ROOT}/skills/specification/references/design-template.md` — the required items are the `features.json` / §1.4 / §1.5 / §1.7+ rows in that table. The brainstorm only acts as a reminder; the actual fields land during the design.md authoring stage. Missing items are called out by name in the `Verification Inputs Readiness` section of brainstorm.md.
 
 ## Subsection IDs and Stable Anchors
 
 The objective coverage gate (`check-coverage`) and the manifest's per-child `brainstorm_anchor` line ranges trace at **brainstorm subsection granularity**, so brainstorm.md must carry stable, reusable names:
 
-- Each row of the D1 feature table carries a stable `ID` (recommended `F-NN`) — design.md §1.3 reuses it directly, and the child frontmatter `features ⊆ §1.3` subset check keys on it.
+- Each row of the D1 feature table carries a stable `ID` (recommended `F-NN`) — `features.json` reuses it directly as `id`, and the child frontmatter `features ⊆ features.json` subset check keys on it.
 - D2a top-level interface groups + D2b inter-module wire names, D4 candidates, D5 scenario table all use reusable named anchors (e.g., `cfg_bus` / `Candidate B` / `SC-001`).
 - D6 must explicitly write `ppa_targets: []` even when PPA optimization is not pursued, distinguishing "asked and decided none" from "forgot to ask."
 - Open questions use numbering like `OQ-NN` so they remain locatable.

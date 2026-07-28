@@ -2,7 +2,7 @@
 
 The parsing seam extracted from the 501-line god-file: read_text, write_text,
 normalize_header, extract_section, parse_first_markdown_table,
-parse_all_markdown_tables, map_headers, default_if_blank. STAGE-PRIVATE —
+parse_all_markdown_tables, map_headers. STAGE-PRIVATE —
 consumed only inside this stage (plan_data.py, plus result.count_features for
 extract_section). Stage-internal dedup only: specification and rtl-design keep
 their own copies (skills stay decoupled; design §1 non-goals).
@@ -134,7 +134,3 @@ def map_headers(headers: list[str], candidates: dict[str, set[str]]) -> dict[str
             if normalized in aliases:
                 mapping[key] = header
     return mapping
-
-
-def default_if_blank(value: str, fallback: str) -> str:
-    return value.strip() if value and value.strip() else fallback

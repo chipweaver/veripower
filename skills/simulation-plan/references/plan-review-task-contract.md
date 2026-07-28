@@ -8,7 +8,8 @@ coverage-matrix) passes and BEFORE the user review loop. This review is **gating
 main thread does NOT auto-fix the plan. Do not call the Task tool and do not call `kernel.py`.
 
 ## Inputs (paths only — the main thread reads no body)
-- `Design/specification/design.md` (§1 behavior, §1.3 Feature Table, §1.4 IO/interconnects, §1.5
+- `Design/specification/features.json` (the feature spine testpoints trace to)
+- `Design/specification/design.md` (§1 behavior, §1.4 IO/interconnects, §1.5
   Interface Timing Scenarios) + each `Design/specification/<child>.md §5 Verification Hints` —
   the authoritative statement of what must be verified.
 - The plan under review: `{workdir}/verification-plan.md` §3 Testpoints table + §4 Power

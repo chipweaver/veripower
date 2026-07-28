@@ -133,11 +133,12 @@ def test_derive_missing_design_md_fails_loud(tmp_path):
     assert "design.md" in proc.stderr
 
 
-def test_derive_missing_features_table_fails_loud(tmp_path):
-    # design.md present but no §1.3 Feature Table → ValueError, non-zero, no plan-data.json (D5).
-    # A valid child is supplied so load_check_hints passes and load_features is the failure.
+def test_derive_no_parsable_section_fails_loud(tmp_path):
+    # A design.md with none of the sections this verb parses must fail loud rather than
+    # write a thin plan-data.json. §1.4.1 carries that guard: every module has top-level
+    # IO, and its presence is gated upstream.
     (tmp_path / "design.md").write_text(
-        "# m\n\n## 1. Module Overview\n\nno feature table here\n"
+        "# m\n\n## 1. Module Overview\n\nno tables here\n"
     )
     (tmp_path / "core.md").write_text(CHILD_MD)
     (tmp_path / "manifest.json").write_text(
@@ -145,7 +146,7 @@ def test_derive_missing_features_table_fails_loud(tmp_path):
     )
     proc = _run(tmp_path, check=False)
     assert proc.returncode != 0
-    assert "1.3" in proc.stderr or "Feature Table" in proc.stderr
+    assert "1.4.1" in proc.stderr
     # S6: clean fail-loud, not a raw traceback (matches the missing-design.md line)
     assert (
         proc.stderr.startswith("derive-plan-data:") and "Traceback" not in proc.stderr

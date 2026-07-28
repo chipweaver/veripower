@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 
 import yaml
+from jsonschema import Draft202012Validator
 
 from spec._md import extract_section, parse_markdown_table, table_header
 
@@ -143,25 +144,15 @@ def parse_frontmatter(sub_text: str) -> dict:
 
 
 def parse_main_design_tables(main_text: str) -> dict:
-    """Extract feature IDs / port names from main design.md (clock names: load_clock_names).
+    """Extract port / wire names from main design.md.
+
+    Feature IDs come from features.json, clock names from clocks.json.
 
     Section headings are English canonical (Surface 1 contract).
     Regex alternations are always grouped via `(...)` to avoid operator
     precedence bugs.
     """
-    out = {"features": set(), "ports": set()}
-
-    sec = extract_section(main_text, r"§?\s*1\.3.*Feature\s+Table")
-    feat_rows = parse_markdown_table(sec)
-    if feat_rows and "ID" not in feat_rows[0]:
-        raise ValueError(
-            "design.md §1.3 table must use the canonical 'ID' column "
-            f"(found {list(feat_rows[0])}); see design-template.md."
-        )
-    for row in feat_rows:
-        fid = row.get("ID", "").strip()
-        if fid:
-            out["features"].add(fid)
+    out = {"ports": set()}
 
     sec_top = extract_section(main_text, r"§?\s*1\.4\.1.*Top.Level\s+IO")
     top_rows = parse_markdown_table(sec_top)
@@ -189,6 +180,56 @@ def parse_main_design_tables(main_text: str) -> dict:
         if v:
             out["ports"].add(v)
 
+    return out
+
+
+_FEATURES_SCHEMA = (
+    Path(__file__).resolve().parent.parent.parent
+    / "references"
+    / "features.schema.json"
+)
+
+
+def load_features(workdir: Path) -> list[dict]:
+    """features.json entries. A missing/malformed file yields [] — validate_features
+    reports it, so no caller sees a half-parsed list."""
+    try:
+        feats = json.loads((workdir / "features.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return feats if isinstance(feats, list) else []
+
+
+def feature_ids_of(workdir: Path) -> set[str]:
+    return {
+        f["id"].strip()
+        for f in load_features(workdir)
+        if isinstance(f.get("id"), str) and f["id"].strip()
+    }
+
+
+def validate_features(workdir: Path) -> list[dict]:
+    """features.json against features.schema.json, returned as violations rather than
+    raised: a gate names every defect instead of stopping at the first."""
+    try:
+        doc = json.loads((workdir / "features.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return [{"error": "features.json missing"}]
+    except (OSError, json.JSONDecodeError) as exc:
+        return [{"error": f"features.json unreadable: {exc}"}]
+    try:
+        schema = json.loads(_FEATURES_SCHEMA.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [{"error": f"{_FEATURES_SCHEMA.name} unreadable: {exc}"}]
+    out: list[dict] = []
+    for err in sorted(
+        Draft202012Validator(schema).iter_errors(doc),
+        key=lambda e: list(e.absolute_path),
+    ):
+        where = "$" + "".join(
+            f"[{q!r}]" if isinstance(q, int) else f".{q}" for q in err.absolute_path
+        )
+        out.append({"at": where, "error": err.message})
     return out
 
 
@@ -227,6 +268,7 @@ def compute_frontmatter_subset(
     """Frontmatter `ports / clocks / features` ⊆ main-design tables; all required keys present."""
     main_tables = parse_main_design_tables(main_design_text)
     clock_names = load_clock_names(workdir)
+    feature_ids = feature_ids_of(workdir)
     ports_v: list[dict] = []
     clocks_v: list[dict] = []
     features_v: list[dict] = []
@@ -246,7 +288,7 @@ def compute_frontmatter_subset(
             if cn and cn not in clock_names:
                 clocks_v.append({"child": cname, "clock_name": cn})
         for f in fm.get("features") or []:
-            if f not in main_tables["features"]:
+            if f not in feature_ids:
                 features_v.append({"child": cname, "feature_id": f})
     return {
         "ports_violations": ports_v,
@@ -385,19 +427,6 @@ def compute_token_survival(
 
 # Gated column sets (quality-critical; the rest stay recommended-not-gated).
 _GATED_COLS = {
-    "1.3": (
-        r"§?\s*1\.3.*Feature\s+Table",
-        [
-            "ID",
-            "Feature",
-            "Description",
-            "Mode/Interface",
-            "Priority",
-            "HappyPath",
-            "CornerCases",
-            "NegativeCases",
-        ],
-    ),
     "1.4.1": (
         r"§?\s*1\.4\.1.*Top.Level\s+IO",
         ["Signal", "Direction", "Clock Domain", "Interface Group", "Role"],
@@ -482,16 +511,10 @@ def compute_structure(
     manifest_v: list[str] = []
     if len(manifest.get("children") or []) < 1:
         manifest_v.append("manifest.children must have length ≥ 1")
-    # Every §1.3 feature ID must be referenced by ≥1 child §5 SourceFeature; child §5
+    # Every features.json id must be referenced by ≥1 child §5 SourceFeature; child §5
     # gated columns must be present. Coverage is emergent (per-child §5 authored decentrally),
     # so this is a post-wave2 check, not an injection.
-    feature_ids = {
-        row.get("ID", "").strip()
-        for row in parse_markdown_table(
-            extract_section(main_design_text, _GATED_COLS["1.3"][0])
-        )
-        if row.get("ID", "").strip()
-    }
+    feature_ids = feature_ids_of(workdir)
     hint_col_v: list[dict] = []
     covered: set[str] = set()
     for cname, body in (child_texts or {}).items():
@@ -605,6 +628,7 @@ def compute_structure(
     return {
         "presence_violations": presence,
         "column_violations": columns,
+        "features_schema_violations": validate_features(workdir),
         "period_violations": period_v,
         "clock_domain_violations": domain_v,
         "manifest_violations": manifest_v,

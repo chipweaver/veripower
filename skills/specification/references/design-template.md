@@ -49,11 +49,9 @@ flowchart LR
 
 ### 1.3 Feature Table
 
-Most columns below are gated by `check-coverage`; see the Minimum Field Completeness Gate Table for which are gated vs recommended and what each omission costs:
-
-| ID | Feature | Description | Mode/Interface | Priority | HappyPath | CornerCases | NegativeCases | CoverageIntent |
-|----|------|------|----------------|----------|-----------|-------------|---------------|----------------|
-| F-00 | … | … | … | smoke | … | … | … | … |
+The feature list lives in `features.json` (the spine child §5 `SourceFeature` rows and
+testpoints refer to). Do not restate features in prose. Narrative that is not a per-feature
+field belongs here: how the features partition the module, which are out of scope.
 
 ### 1.4 Module Interface and Interconnects
 
@@ -180,6 +178,21 @@ Narrative that is NOT a per-clock field belongs here: domain count, CDC posture,
 reset scheme, release-ordering constraints.
 ```
 
+## features.json (§1.3's machine half)
+
+Authored by Wave 1; schema `references/features.schema.json`. A JSON array, one object per
+feature. All fields are free prose — no script parses inside a field.
+
+| Field | Rule |
+|---|---|
+| `id` | Required. What child §5 `SourceFeature` rows and testpoints refer to. |
+| `name` | Required. Short label; reaches the TB testlist and the human-read case-results summary. |
+| `description` | Required. What the feature is, including any RTL formula that pins it. |
+| `mode_interface` | Required. The interface group or operating mode exercised. |
+| `priority` | Required free text — the vocabulary is your project's, not the schema's. |
+| `happy_path` / `corner_cases` / `negative_cases` | Required and non-empty. |
+| `coverage_intent` | Optional. Absent means absent. |
+
 ## clocks.json (§1.6's machine half)
 
 Authored by Wave 1 alongside `ppa.json`; schema `references/clocks.schema.json`. A JSON
@@ -223,8 +236,8 @@ Before `design.md` is approved, the **gated** checks below must pass `check-cove
 
 | Check | Field location | Impact of missing |
 |--------|----------|----------|
-| §1.3 columns ID / Feature / Description / Mode/Interface / Priority / HappyPath / CornerCases / NegativeCases — **(gated)** | Overview §1.3 table | Missing any of these fails `check-coverage`; they drive downstream testcase decomposition and suite splitting (via `derive-plan-data`). |
-| §1.3 column CoverageIntent — **(recommended)** | Overview §1.3 table | Absent column degrades coverage-goal derivation; `derive-plan-data` defaults it to empty. |
+| `features.json` fields `id` / `name` / `description` / `mode_interface` / `priority` / `happy_path` / `corner_cases` / `negative_cases` present and non-empty — **(schema)** | `features.json` | Enforced by `features.schema.json` at `check-coverage`. Non-empty is deliberate — a blank field is a defect, not a default. |
+| `features.json` field `coverage_intent` — **(optional)** | `features.json` | Absent means absent; nothing substitutes a value for it. |
 | §1.4.1 columns Signal / Direction / Clock Domain / Interface Group / Role — **(gated)** | Overview §1.4.1 table | Absent columns degrade constraint and agent generation; `derive-constraints` may emit incomplete IO delays or miss CDC domains. |
 | §1.4.1 columns Width / Protocol — **(recommended)** | Overview §1.4.1 table | Absent Width defaults to `1`; absent Protocol yields empty protocol annotations. |
 | §1.4.1 columns ResetPolarity / ResetKind — **required on `Role=reset` rows** (enforced at constraint generation by `derive-constraints`, which fail-louds on a reset row missing them — not by the coverage gate; use `-` on non-reset rows) | Overview §1.4.1 table | A reset row missing polarity/kind aborts `derive-constraints`. |
@@ -237,7 +250,7 @@ Before `design.md` is approved, the **gated** checks below must pass `check-cove
 | §1.4.1 every Output has an `Owner` that is a manifest child listing the signal — **(gated)** | §1.4.1 Owner column + per-child frontmatter | A missing/invalid Owner, or an Owner child that does not list the signal, is an undriven / mis-declared top output; enforced by `check-coverage`. (The leaf-owner / no-top-glue preference is documented guidance, not gated.) |
 | §1.4.2 columns Width / Clock Domain present + per-row concrete — **(gated)** | Overview §1.4.2 table | Unpinned inter-module width lets body-blind fan-out children diverge (the fa_core 128b↔32b / opaque-`ctrl_bus` class); enforced by `check-coverage`. |
 | §1.4.2 `Clock Domain` values ⊆ `clocks.json` `name`s — **(gated)** | §1.4.2 table + `clocks.json` | A phantom interconnect domain hides a CDC path; enforced by `check-coverage`. |
-| Every §1.3 feature `ID` referenced by ≥1 child §5 `SourceFeature` — **(gated)** | §1.3 feature table + per-child `<child>.md §5` | Catches specified-but-unverified features; enforced by `check-coverage`. |
+| Every `features.json` `id` referenced by ≥1 child §5 `SourceFeature` — **(gated)** | `features.json` + per-child `<child>.md §5` | Catches specified-but-unverified features; enforced by `check-coverage`. |
 | `<child>.md §5` Verification-Hints table has the **gated** columns CheckID / SourceFeature / ImplementationDetail / Observable / ReferenceRule (Latency / ResetBehavior recommended; ImplementationDetailVerbatim is guarded by token-survival, BrainstormAnchor is traceability) | per-child `<child>.md §5` (see `child-design-template.md`) | Cannot generate rule-based RM / scoreboard; **enforced by `check-coverage`**. |
 | `design.md` self-containment (no `see brainstorm` / `refer to brainstorm` / `see spec D` / cross-child links) | Whole document + each `<child>.md` | See the self-containment principle stated once above; **enforced by `check-coverage`**. |
 

@@ -124,6 +124,7 @@ _STAGE_FILES = {
         "manifest.json": "{}",
         "ppa.json": "{}",
         "clocks.json": "[]",
+        "features.json": "[]",
         "constraints/top.sdc": "# sdc",
         "constraints/top.sgdc": "# sgdc",
     },

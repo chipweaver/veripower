@@ -35,6 +35,7 @@ Each read-only upstream input's location is injected: read `inputs.json` in your
 |---|---|---|
 | `<design>/design.md` | Custom markdown | Module-level design (§1.1–1.5: features / IO / interconnects / timing scenarios). Per-submodule content lives in each `<child>.md`. |
 | `<design>/clocks.json` | `specification/references/clocks.schema.json` | Clock definitions. `materialize-scaffold` reads it to derive `primary_clock`. |
+| `<design>/features.json` | `specification/references/features.schema.json` | Feature list. You author testpoints and tests from it — read it directly, not via `plan-data.json`. |
 | `<manifest>/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; its `children[]` roster drives per-child `§5` consumption (via `simplan derive-plan-data`). |
 | `<children>/<child>.md` × N | Custom markdown | Only `§5 Verification Hints` is consumed (via `simplan derive-plan-data`, tagging `check_hints[]` with `child`). |
 
@@ -125,7 +126,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
 
 Produce `verification-plan.md` and `scaffold-specification.json` by running the pipeline below in order. When amending, keep testpoint IDs / sequence names / `power_scenarios.sequence_ref` stable: downstream coverage / scaffold / SAIF caches key off them, so renumbering one silently breaks the cache.
 
-**Run `derive-plan-data`** to extract the raw spec fields (features / interfaces / scenarios / check-hints / wires) into `plan-data.json` (every run). Clocks are **not** among them — they are read straight from `clocks.json` by `materialize-scaffold`:
+**Run `derive-plan-data`** to extract the raw spec fields (interfaces / scenarios / check-hints / wires) into `plan-data.json` (every run). Clocks and features are **not** among them — read `clocks.json` / `features.json` directly:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workdir <design> --output {workdir}/plan-data.json

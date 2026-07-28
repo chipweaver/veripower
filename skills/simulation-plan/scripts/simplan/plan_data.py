@@ -2,8 +2,8 @@
 
 The derive-plan-data verb reads a spec workdir (manifest.json + design.md + per-child
 <child>.md) and emits plan-data.json containing features, interfaces, scenarios,
-check_hints, and cross_module_wires. Clocks are not here — they are authored as
-Design/specification/clocks.json and read from there. The simulation-plan agent consumes this to
+check_hints, and cross_module_wires. Clocks and features are not here — they are
+authored as Design/specification/{clocks,features}.json and read from there. The simulation-plan agent consumes this to
 draft verification-plan.md and scaffold-specification.json; the materialize-scaffold verb
 then reads plan-data.json to fill the agent signal lists.
 
@@ -18,7 +18,6 @@ import sys
 from pathlib import Path
 
 from simplan._md import (
-    default_if_blank,
     extract_section,
     map_headers,
     parse_all_markdown_tables,
@@ -41,18 +40,6 @@ SEC5_HINTS_HEADING = r"§?\s*5\b.*Verification\s+Hints?"
 # normalized (lowercased, space-stripped, paren-stripped, backtick-stripped)
 # header text against these candidate sets.
 # ---------------------------------------------------------------------------
-
-FEATURE_HEADER_CANDIDATES = {
-    "feature_id": {"id", "featureid"},
-    "feature_name": {"feature", "featurename", "name"},
-    "description": {"description", "desc", "notes"},
-    "mode_interface": {"mode/interface", "interface", "mode"},
-    "priority": {"priority"},
-    "happy_path": {"happypath", "happy_path", "happy"},
-    "corner_cases": {"cornercases", "corner_cases", "corner"},
-    "negative_cases": {"negativecases", "negative_cases", "negative"},
-    "coverage_intent": {"coverageintent", "coverage_intent", "coverage"},
-}
 
 INTERFACE_HEADER_CANDIDATES = {
     "signal_name": {"signalname", "signal", "port", "portname"},
@@ -99,69 +86,18 @@ CHECK_HINT_HEADER_CANDIDATES = {
 # ---------------------------------------------------------------------------
 
 
-def load_features(design_text: str) -> list[dict]:
-    """English canonical anchor — §1.3 Feature Table."""
-    section = extract_section(design_text, r"(^|.*)§?\s*1\.3.*Feature\s+Table")
-    if not section:
-        raise ValueError('design.md "§1.3 Feature Table" section not found.')
-    headers, rows = parse_first_markdown_table(section)
-    mapping = map_headers(headers, FEATURE_HEADER_CANDIDATES)
-    required = {"feature_id", "feature_name", "description"}
-    missing = required - mapping.keys()
-    if missing:
-        raise ValueError(
-            f"design.md §1.3 features table is missing required columns: {', '.join(sorted(missing))}"
-        )
-
-    features: list[dict] = []
-    for row in rows:
-        feature_id = row[mapping["feature_id"]].strip()
-        feature_name = row[mapping["feature_name"]].strip()
-        description = row[mapping["description"]].strip()
-        if not feature_id or not feature_name:
-            continue
-        features.append(
-            {
-                "feature_id": feature_id,
-                "feature_name": feature_name,
-                "description": description,
-                "mode_interface": default_if_blank(
-                    row.get(mapping.get("mode_interface", ""), ""), "unspecified"
-                ),
-                "priority": default_if_blank(
-                    row.get(mapping.get("priority", ""), ""), ""
-                ),
-                "happy_path": default_if_blank(
-                    row.get(mapping.get("happy_path", ""), ""),
-                    f"Verify {feature_name}'s main-path behavior conforms to spec.",
-                ),
-                "corner_cases": default_if_blank(
-                    row.get(mapping.get("corner_cases", ""), ""),
-                    "",
-                ),
-                "negative_cases": default_if_blank(
-                    row.get(mapping.get("negative_cases", ""), ""),
-                    "",
-                ),
-                "coverage_intent": default_if_blank(
-                    row.get(mapping.get("coverage_intent", ""), ""),
-                    "feature traceability",
-                ),
-            }
-        )
-    if not features:
-        raise ValueError("design.md §1.3 features table is empty.")
-    return features
-
-
 def load_interfaces(design_text: str) -> list[dict]:
-    """Extract §1.4.1 Top-Level IO."""
+    """Extract §1.4.1 Top-Level IO.
+
+    An absent section or table fails loud: every module has top-level IO, and this is the
+    guard behind run()'s promise never to write a thin plan-data.json.
+    """
     section = extract_section(design_text, r"(^|.*)§?\s*1\.4\.1.*Top.Level\s+IO")
     if not section:
-        return []
+        raise ValueError('design.md "§1.4.1 Top-Level IO" section not found.')
     tables = parse_all_markdown_tables(section)
     if not tables:
-        return []
+        raise ValueError("design.md §1.4.1 Top-Level IO table not found / empty.")
 
     best: tuple[list[str], list[dict], dict] | None = None
     for headers, rows in tables:
@@ -331,8 +267,8 @@ def _normalize_check_hint_row(row: dict) -> dict | None:
 
 def run(workdir, output=None) -> int:
     """derive-plan-data: spec workdir -> plan-data.json. Fail-loud non-zero on a
-    missing design.md (sys.exit) or a missing/empty §1.3 table (raised ValueError);
-    never writes a thin/partial plan-data.json on a structural defect."""
+    missing design.md (sys.exit) or a structural defect in a section it does parse;
+    never writes a thin/partial plan-data.json."""
     workdir = Path(workdir).resolve()
     design = workdir / "design.md"
     if not design.is_file():
@@ -340,13 +276,12 @@ def run(workdir, output=None) -> int:
     output_path = Path(output).resolve() if output else workdir / "plan-data.json"
 
     # read_text + the load_* helpers raise on a structural defect (decode error in the
-    # hand-authored spec, missing §1.3 / columns, missing/malformed manifest.json);
+    # hand-authored spec, missing sections / columns, missing/malformed manifest.json);
     # convert them to the same clean fail-loud exit the missing-design.md case uses,
     # rather than a raw traceback.
     try:
         design_text = read_text(design)
         check_hints = load_check_hints(workdir)
-        features = load_features(design_text)
         interfaces = load_interfaces(design_text)
         scenarios = load_scenarios(design_text)
         cross_module_wires = load_cross_module_wires(design_text)
@@ -354,7 +289,6 @@ def run(workdir, output=None) -> int:
         sys.exit(f"derive-plan-data: {e}")
 
     plan_data = {
-        "features": features,
         "interfaces": interfaces,
         "scenarios": scenarios,
         "check_hints": check_hints,
@@ -364,8 +298,7 @@ def run(workdir, output=None) -> int:
     write_text(output_path, json.dumps(plan_data, indent=2, ensure_ascii=False))
     print(f"derive-plan-data: wrote {output_path}")
     print(
-        f"  features={len(features)}, interfaces={len(interfaces)}, "
-        f"scenarios={len(scenarios)}, check_hints={len(check_hints)}, "
-        f"cross_module_wires={len(cross_module_wires)}"
+        f"  interfaces={len(interfaces)}, scenarios={len(scenarios)}, "
+        f"check_hints={len(check_hints)}, cross_module_wires={len(cross_module_wires)}"
     )
     return 0
