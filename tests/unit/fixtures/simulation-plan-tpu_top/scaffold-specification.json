@@ -921,7 +921,7 @@
   "skipped_checks": [],
   "primary_clock": {
     "dut_port_name": "i_clk",
-    "period_ns": "10.0"
+    "period_ns": 10.0
   },
   "reset": {
     "dut_port_name": "i_rstn"

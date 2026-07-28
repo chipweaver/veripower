@@ -73,7 +73,7 @@
       "additionalProperties": false,
       "properties": {
         "dut_port_name": {"type": "string"},
-        "period_ns": {"type": "string"}
+        "period_ns": {"type": "number", "exclusiveMinimum": 0}
       }
     },
     "reset": {

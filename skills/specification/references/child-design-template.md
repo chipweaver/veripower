@@ -12,7 +12,7 @@ brainstorm_anchor: "lines X-Y"     # required; or "lines X-end" / "lines X-Y, X'
 ports:                             # required (may be empty). cross-out ports only
   - <port_name>                    #   each must appear in main §1.4.1 ∪ §1.4.2
 clocks:                            # required (may be empty)
-  - { name: <clock_name>, domain: <domain> }    #   each name must appear in main §1.6
+  - { name: <clock_name>, domain: <domain> }    #   each name must appear in clocks.json
 features:                          # required (may be empty)
   - <feature_id>                   #   each must appear in main §1.3
 ---

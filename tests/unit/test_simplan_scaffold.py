@@ -41,7 +41,7 @@ GOOD = {
     "tests": [{"name": "t_smoke", "feature": "F1", "test_id": "T1", "seqs": ["smoke"]}],
     "rm": {"name": "m_rm", "inports": ["m_drv_txn"]},
     "scoreboard": {"name": "m_sb", "compare_txn": "m_obs_txn"},
-    "primary_clock": {"dut_port_name": "clk", "period_ns": "10.0"},
+    "primary_clock": {"dut_port_name": "clk", "period_ns": 10.0},
     "reset": {"dut_port_name": "rst_n"},
     "testpoints": [
         {

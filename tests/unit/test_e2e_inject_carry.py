@@ -82,6 +82,7 @@ _STAGE_FILES = {
         "design.md": "design v1",
         "manifest.json": "{}",
         "ppa.json": "{}",
+        "clocks.json": "[]",
         "child_a.md": "child a design",  # a real per-child doc (N>=1), distinct
         # from design.md, so the "children" selector has a genuine match of its own
         "constraints/top.sdc": "# sdc",

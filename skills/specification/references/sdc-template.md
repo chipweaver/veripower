@@ -1,15 +1,17 @@
 # SDC — generated-output reference
 
 `constraints/<TOP>.sdc` is **generated** by the `derive-constraints` verb as a pure function of
-`design.md` §1.6 (clocks/relationships) + §1.4.1 (port roles/domains). Do **not** hand-author
-or hand-edit it; change the design tables and re-run derive. This file documents what derive
+`clocks.json` (clocks/relationships) + `design.md` §1.4.1 (port roles/domains). Do **not**
+hand-author or hand-edit it; change the source and re-run derive. This file documents what derive
 emits so reviewers know what to expect.
 
 **Emitted (spec-time):**
-- `create_clock -name <clk> -period <T> [get_ports <clk>]` per non-generated §1.6 clock
-  (`T` = `SDC Period (ns)`; must equal `<TOP>.sgdc`).
+- `create_clock -name <clk> -period <T> [get_ports <clk>]` per non-generated `clocks.json`
+  entry (`T` = `period_ns`). Equality with `<TOP>.sgdc` is structural — both emitters render
+  the same entry — and is asserted in `tests/unit/test_spec_constraints.py`, not re-checked at
+  runtime by re-parsing the emitted text.
 - `set_clock_groups -asynchronous` with one `-group` for the non-async (primary /
-  synchronous-related) clocks plus one `-group` per `Relationship=async` clock; emitted
+  synchronous-related) clocks plus one `-group` per `relationship: "async"` clock; emitted
   only when ≥2 non-generated clocks exist.
 - `set_clock_uncertainty -setup 0.2 [all_clocks]` + `-hold 0.0 [all_clocks]` — fixed
   placeholders; the split form is deliberate (single-value widens pre-CTS hold into false

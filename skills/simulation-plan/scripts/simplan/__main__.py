@@ -39,7 +39,7 @@ def _cmd_derive_plan_data(a: argparse.Namespace) -> int:
 def _cmd_materialize_scaffold(a: argparse.Namespace) -> int:
     from simplan import materialize
 
-    return materialize.run(a.plan_data, a.scaffold)
+    return materialize.run(a.plan_data, a.scaffold, a.clocks)
 
 
 def _cmd_check_scaffold(a: argparse.Namespace) -> int:
@@ -87,6 +87,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--plan-data", required=True, type=Path)
     sp.add_argument("--scaffold", required=True, type=Path)
+    sp.add_argument(
+        "--clocks",
+        required=True,
+        type=Path,
+        help="path to the specification workdir's clocks.json (primary_clock source)",
+    )
     sp.set_defaults(func=_cmd_materialize_scaffold)
 
     sp = sub.add_parser("check-scaffold", help="structural + semantic + coverage gate")

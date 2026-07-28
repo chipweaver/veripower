@@ -50,6 +50,7 @@ _OUTPUTS = {
         "Design/specification/child.md",
         "Design/specification/manifest.json",
         "Design/specification/ppa.json",
+        "Design/specification/clocks.json",
         "Design/specification/constraints/top.sdc",
         "Design/specification/constraints/top.sgdc",
     ],
@@ -542,11 +543,27 @@ def _spec_workdir(tmp_path):
         "| clk_io | input | 1 | clk_io | clk | - | clock | - | - |\n"
         "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n\n"
         "### 1.6 Clocks and Frequencies\n\n"
-        "| Clock Name | Nominal Frequency (MHz) | SDC Period (ns) | Relationship | "
-        "Generated | Role |\n"
-        "|---|---|---|---|---|---|\n"
-        "| clk | 100 | 10.0 | primary | no | primary clock |\n"
-        "| clk_io | 50 | 20.0 | async | no | io clock |\n"
+        "Clock definitions live in `clocks.json`.\n"
+    )
+    (tmp_path / "clocks.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "clk",
+                    "freq_mhz": 100,
+                    "period_ns": 10.0,
+                    "relationship": "primary",
+                    "role": "primary clock",
+                },
+                {
+                    "name": "clk_io",
+                    "freq_mhz": 50,
+                    "period_ns": 20.0,
+                    "relationship": "async",
+                    "role": "io clock",
+                },
+            ]
+        )
     )
     return tmp_path
 

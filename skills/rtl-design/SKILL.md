@@ -42,7 +42,8 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `<design>/design.md` | Custom markdown | Module-level design. Passed by path to the child sub-Tasks, read-scope limited to the §1.4.1/§1.4.2/§1.6 tables (`references/child-task-contract.md`); the main thread does not read it. |
+| `<design>/design.md` | Custom markdown | Module-level design. Passed by path to the child sub-Tasks, read-scope limited to the §1.4.1/§1.4.2 tables (`references/child-task-contract.md`); the main thread does not read it. |
+| `<design>/clocks.json` | `specification/references/clocks.schema.json` | Clock definitions. Passed by path to the child sub-Tasks — a `"generated": true` entry is the `create_generated_clock` the child must report; the main thread does not read it. |
 | `<manifest>/manifest.json` | JSON (`{module, children:[{name, doc, rtl_modules, brainstorm_anchor, role}]}`) | Child roster — drives the fan-out `N = len(children[])` (every child, incl. the top-integration child). |
 | `<children>/<child>.md` × N | Custom markdown (frontmatter + §1–§5) | Per-child sub-design: frontmatter (`ports` / `clocks` / `features` / `file_path`) + §2 Interface / §3 Internal Behavior drive per-child RTL derivation. |
 

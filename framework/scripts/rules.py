@@ -48,6 +48,7 @@ RULES: dict[str, Rule] = {
             # promoted products; sim-plan/rtl-design consume them as inputs
             "manifest.json",
             "ppa.json",
+            "clocks.json",
             "spec-review.json",
             "constraints/*.sdc",
             "constraints/*.sgdc",
@@ -69,6 +70,7 @@ RULES: dict[str, Rule] = {
             "design": ("Design/specification/design.md",),
             "manifest": ("Design/specification/manifest.json",),
             "children": ("Design/specification/*.md",),
+            "clocks": ("Design/specification/clocks.json",),
         },
         outputs=(
             "verification-plan.md",
@@ -92,6 +94,9 @@ RULES: dict[str, Rule] = {
             "design": ("Design/specification/design.md",),
             "manifest": ("Design/specification/manifest.json",),
             "children": ("Design/specification/*.md",),
+            # Read by the child sub-Tasks (create_generated_clock annotations per
+            # references/child-task-contract.md), not by any script in this stage.
+            "clocks": ("Design/specification/clocks.json",),
         },
         outputs=("*.v", "filelist.txt", "README.md", "semantic-review.json"),
         proof="rtl-design",

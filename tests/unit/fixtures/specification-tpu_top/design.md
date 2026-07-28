@@ -158,11 +158,9 @@ These transcribe the existing directed testbench sequence exactly so it binds an
 
 ### 1.6 Clocks and Frequencies
 
-Single clock domain; no CDC. Reset `i_rstn` is asynchronous, active-low (`negedge i_rstn`), applied to the MAC cells, skew registers, FIFOs, and the counter; the APB write/register-file block is clocked-only with no reset. Single reset, no release-ordering constraints.
+Clock definitions live in `clocks.json` (the sole numeric + relationship source; `constraints/tpu_top.{sdc,sgdc}` are generated from it).
 
-| Clock Name | Nominal Frequency (MHz) | SDC Period (ns) | Relationship | Generated | Role |
-|------------|-------------------------|-----------------|--------------|-----------|------|
-| i_clk | 100 | 10.0 | primary | no | primary clock |
+Single clock domain; no CDC. Reset `i_rstn` is asynchronous, active-low (`negedge i_rstn`), applied to the MAC cells, skew registers, FIFOs, and the counter; the APB write/register-file block is clocked-only with no reset. Single reset, no release-ordering constraints.
 
 ### 1.7 Submodule Index
 

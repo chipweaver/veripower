@@ -143,13 +143,13 @@ def parse_frontmatter(sub_text: str) -> dict:
 
 
 def parse_main_design_tables(main_text: str) -> dict:
-    """Extract feature IDs / port names / clock names from main design.md.
+    """Extract feature IDs / port names from main design.md (clock names: load_clock_names).
 
     Section headings are English canonical (Surface 1 contract).
     Regex alternations are always grouped via `(...)` to avoid operator
     precedence bugs.
     """
-    out = {"features": set(), "ports": set(), "clocks": set()}
+    out = {"features": set(), "ports": set()}
 
     sec = extract_section(main_text, r"§?\s*1\.3.*Feature\s+Table")
     feat_rows = parse_markdown_table(sec)
@@ -189,19 +189,36 @@ def parse_main_design_tables(main_text: str) -> dict:
         if v:
             out["ports"].add(v)
 
-    sec_clk = extract_section(main_text, r"§?\s*1\.6.*Clocks?\s+and\s+Freq")
-    clk_rows = parse_markdown_table(sec_clk)
-    if clk_rows and "Clock Name" not in clk_rows[0]:
-        raise ValueError(
-            "design.md §1.6 table must use the canonical 'Clock Name' column "
-            f"(found {list(clk_rows[0])}); see design-template.md."
-        )
-    for row in clk_rows:
-        v = row.get("Clock Name", "").strip()
-        if v:
-            out["clocks"].add(v)
-
     return out
+
+
+def load_clock_names(workdir: Path) -> set[str]:
+    """Clock names from `{workdir}/clocks.json`. A missing/malformed file yields an empty
+    set rather than an error: derive-constraints schema-validates it and runs first, so
+    reporting the same defect here would duplicate it."""
+    path = workdir / "clocks.json"
+    try:
+        clocks = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    if not isinstance(clocks, list):
+        return set()
+    return {
+        c["name"].strip()
+        for c in clocks
+        if isinstance(c, dict) and isinstance(c.get("name"), str) and c["name"].strip()
+    }
+
+
+def load_clocks_raw(workdir: Path) -> list[dict]:
+    """clocks.json entries for the freq/period cross-check. Same tolerance as
+    load_clock_names."""
+    path = workdir / "clocks.json"
+    try:
+        clocks = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return clocks if isinstance(clocks, list) else []
 
 
 def compute_frontmatter_subset(
@@ -209,6 +226,7 @@ def compute_frontmatter_subset(
 ) -> dict:
     """Frontmatter `ports / clocks / features` ⊆ main-design tables; all required keys present."""
     main_tables = parse_main_design_tables(main_design_text)
+    clock_names = load_clock_names(workdir)
     ports_v: list[dict] = []
     clocks_v: list[dict] = []
     features_v: list[dict] = []
@@ -225,7 +243,7 @@ def compute_frontmatter_subset(
                 ports_v.append({"child": cname, "port": p})
         for c in fm.get("clocks") or []:
             cn = c.get("name") if isinstance(c, dict) else c
-            if cn and cn not in main_tables["clocks"]:
+            if cn and cn not in clock_names:
                 clocks_v.append({"child": cname, "clock_name": cn})
         for f in fm.get("features") or []:
             if f not in main_tables["features"]:
@@ -388,10 +406,6 @@ _GATED_COLS = {
         r"§?\s*1\.5.*Interface\s+Timing\s+Scenarios?",
         ["ScenarioID", "Trigger/Stimulus", "Expected Result", "Timing Constraint"],
     ),
-    "1.6": (
-        r"§?\s*1\.6.*Clocks?\s+and\s+Freq",
-        ["Clock Name", "Nominal Frequency (MHz)", "SDC Period (ns)", "Relationship"],
-    ),
 }
 
 # §5 Verification-Hints gated columns. The gate requires the canonical `SourceFeature`
@@ -413,7 +427,9 @@ _HINT_GATED = [
 SEC5_HINTS_HEADING = r"§?\s*5\b.*Verification\s+Hints?"
 
 
-def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -> dict:
+def compute_structure(
+    workdir: Path, manifest: dict, main_design_text: str, child_texts=None
+) -> dict:
     presence: list[str] = []
     columns: list[dict] = []
     # §1.4.1 presence is covered by the gated-column loop (adds "§1.4.1 table missing or empty").
@@ -435,27 +451,23 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
         for c in cols:
             if c not in header:
                 columns.append({"section": sec, "missing_column": c})
-    # §1.6 period ≈ 1000/freq.
+    # period_ns ≈ 1000/freq_mhz. A cross-field arithmetic relation, so not expressible in
+    # JSON Schema; both operands are hand-authored, so the check carries real information.
     period_v: list[dict] = []
-    clk_rows = parse_markdown_table(
-        extract_section(main_design_text, _GATED_COLS["1.6"][0])
-    )
-    clock_names: set[str] = set()
-    for row in clk_rows:
-        name = row.get("Clock Name", "").strip()
-        if name:
-            clock_names.add(name)
-        try:
-            freq = float(row.get("Nominal Frequency (MHz)", "").strip())
-            period = float(row.get("SDC Period (ns)", "").strip())
-        except ValueError:
+    for c in load_clocks_raw(workdir):
+        if not isinstance(c, dict):
+            continue
+        name = c.get("name")
+        freq, period = c.get("freq_mhz"), c.get("period_ns")
+        if not isinstance(freq, (int, float)) or not isinstance(period, (int, float)):
+            continue  # a type defect is derive-constraints' schema report, not ours
+        if isinstance(freq, bool) or isinstance(period, bool):
             continue
         if freq > 0 and abs(period - 1000.0 / freq) > 0.01:
             period_v.append({"clock": name, "freq_mhz": freq, "period_ns": period})
-    # §1.4.1 Clock Domain values ⊆ §1.6 clock names.
-    # Guard: skip when §1.6 is absent (clock_names empty) — the §1.6 absence is already
-    # caught by the gated-column loop; running the domain check vacuously would flood the
-    # output with spurious violations for every §1.4.1 row.
+    clock_names = load_clock_names(workdir)
+    # §1.4.1 Clock Domain values ⊆ clocks.json names. Skip when there are no names: running
+    # it vacuously would emit a spurious violation for every §1.4.1 row.
     domain_v: list[dict] = []
     if clock_names:
         for row in parse_markdown_table(
@@ -537,7 +549,11 @@ def compute_structure(manifest: dict, main_design_text: str, child_texts=None) -
                     )
                 elif clock_names and dom not in clock_names:
                     interconnect_v.append(
-                        {"wire": wire, "clock_domain": dom, "error": "not in §1.6"}
+                        {
+                            "wire": wire,
+                            "clock_domain": dom,
+                            "error": "not in clocks.json",
+                        }
                     )
     # ----- §1.4.1 top-IO Owner (deterministic). Every output declares an Owner child that
     # lists the signal; Owner DECLARES the driver (not inferred from claimer counts, which
@@ -671,7 +687,9 @@ def run(workdir: str, brainstorm: str) -> int:
     fm_sub = compute_frontmatter_subset(workdir_p, manifest, main_design_text)
     tok = compute_token_survival(workdir_p, manifest, brainstorm_text, main_design_text)
     self_c = compute_self_containment(workdir_p, manifest, main_design_text)
-    struct = compute_structure(manifest, main_design_text, child_texts=child_bodies)
+    struct = compute_structure(
+        workdir_p, manifest, main_design_text, child_texts=child_bodies
+    )
     # Fold top-integration purity into the structure sub-block; the existing
     # `or any(struct.values())` in has_fail (below) picks it up — no has_fail change needed.
     struct["purity_violations"] = compute_purity(manifest)

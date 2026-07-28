@@ -54,7 +54,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
     except KeyError:
         sys.exit(
             "scaffold: scaffold-spec missing primary_clock block. "
-            "Rerun simulation-plan to populate primary_clock from plan-data.json.clocks[] "
+            "Rerun simulation-plan to populate primary_clock from clocks.json "
             "(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
         )
     try:
@@ -63,7 +63,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
     except KeyError as e:
         sys.exit(
             f"scaffold: scaffold-spec primary_clock.{e.args[0] if e.args else 'field'} missing. "
-            f"Rerun simulation-plan to populate primary_clock from plan-data.json.clocks[] "
+            f"Rerun simulation-plan to populate primary_clock from clocks.json "
             f"(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
         )
 
@@ -72,7 +72,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
     except (TypeError, ValueError):
         sys.exit(
             f"scaffold: primary_clock.period_ns is not numeric: {period_ns_raw!r}. "
-            f"Check design.md §1.6 'SDC period (ns)' cell value (expected e.g. '10.0')."
+            f"The schema pins it as a number; check Design/specification/clocks.json."
         )
 
     try:

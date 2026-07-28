@@ -33,7 +33,8 @@ Each read-only upstream input's location is injected: read `inputs.json` in your
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `<design>/design.md` | Custom markdown | Module-level design (§1.1–1.6: features / IO / interconnects / timing scenarios / clocks). Per-submodule content lives in each `<child>.md`. |
+| `<design>/design.md` | Custom markdown | Module-level design (§1.1–1.5: features / IO / interconnects / timing scenarios). Per-submodule content lives in each `<child>.md`. |
+| `<design>/clocks.json` | `specification/references/clocks.schema.json` | Clock definitions. `materialize-scaffold` reads it to derive `primary_clock`. |
 | `<manifest>/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; its `children[]` roster drives per-child `§5` consumption (via `simplan derive-plan-data`). |
 | `<children>/<child>.md` × N | Custom markdown | Only `§5 Verification Hints` is consumed (via `simplan derive-plan-data`, tagging `check_hints[]` with `child`). |
 
@@ -124,7 +125,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
 
 Produce `verification-plan.md` and `scaffold-specification.json` by running the pipeline below in order. When amending, keep testpoint IDs / sequence names / `power_scenarios.sequence_ref` stable: downstream coverage / scaffold / SAIF caches key off them, so renumbering one silently breaks the cache.
 
-**Run `derive-plan-data`** to extract the raw spec fields (features / interfaces / scenarios / check-hints / clocks / wires) into `plan-data.json` (every run):
+**Run `derive-plan-data`** to extract the raw spec fields (features / interfaces / scenarios / check-hints / wires) into `plan-data.json` (every run). Clocks are **not** among them — they are read straight from `clocks.json` by `materialize-scaffold`:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workdir <design> --output {workdir}/plan-data.json
@@ -137,10 +138,10 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workd
 **Run `materialize-scaffold`** (every run) to fill the script-injected fields (see the fields section):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py materialize-scaffold --plan-data {workdir}/plan-data.json --scaffold {workdir}/scaffold-specification.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py materialize-scaffold --plan-data {workdir}/plan-data.json --scaffold {workdir}/scaffold-specification.json --clocks <design>/clocks.json
 ```
 
-On a non-zero exit, read stderr for the cause, fix the scaffold or design.md §1.4.1/§1.6, and re-run.
+On a non-zero exit, read stderr for the cause, fix the scaffold or (for a clock defect) re-run specification — `clocks.json` is its output, not yours — and re-run.
 
 **Run `check-scaffold`** (the gate; every pass) to validate the scaffold's structure, semantics, and coverage-matrix (every check_id covered-or-skipped; every `covers[]` resolves):
 

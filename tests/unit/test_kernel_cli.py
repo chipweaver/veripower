@@ -123,6 +123,7 @@ _STAGE_FILES = {
         "design.md": "design v1",
         "manifest.json": "{}",
         "ppa.json": "{}",
+        "clocks.json": "[]",
         "constraints/top.sdc": "# sdc",
         "constraints/top.sgdc": "# sgdc",
     },

@@ -462,6 +462,7 @@ _OUTPUTS = {
         "Design/specification/child.md",
         "Design/specification/manifest.json",
         "Design/specification/ppa.json",
+        "Design/specification/clocks.json",
         "Design/specification/constraints/top.sdc",
         "Design/specification/constraints/top.sgdc",
     ],

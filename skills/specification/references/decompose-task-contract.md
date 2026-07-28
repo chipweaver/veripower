@@ -23,9 +23,13 @@ soft hint; the hard guarantee is `check-coverage`'s purity gate.
 - `manifest.json` — `module`; `children[]` with `name` / `doc` / `rtl_modules[]` (REQUIRED, ≥1) /
   `brainstorm_anchor` / `role`; optional `shared_subsections[]`.
 - `design.md` §1.1–1.6 overview (incl. §1.4.1 Top-Level IO + §1.4.2 Inter-module Interconnects) +
-  §1.7 submodule index, per `references/design-template.md`.
+  §1.7 submodule index, per `references/design-template.md`. §1.6 carries the CDC/reset narrative
+  and a pointer to `clocks.json` — **no clock table**.
 - `ppa.json` — the D6 `ppa_targets` **verbatim** as a JSON array of `{dim, target}` (`[]` when D6
   declares none or was not reached).
+- `clocks.json` — one object per clock (`name` / `freq_mhz` / `period_ns` / `relationship`, plus
+  optional `generated` / `role`), per `references/clocks.schema.json`. Numbers are numbers;
+  exactly one `relationship: "primary"`; a mistyped key fails at `derive-constraints`.
 
 ## Output
 End with `STATUS: DONE` + the written paths, or `STATUS: BLOCKED <reason>` (a program exception

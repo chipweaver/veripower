@@ -138,7 +138,7 @@ Every field in result.json is script-derived — the per-error `reason` comes fr
 
 - Only `severity=error` items trigger `fail`; warning / info are treated as `pass`.
 - It is preferable to run `make lint` first to converge `set_case_analysis` (removing test-control-signal false positives) before `make cdc`, or to run `make all` once (a single session sharing `elaborate`). The `make cdc` tool layer can run standalone (`cdc_setup` goals carry their own `elaborate`), but until the SGDC is stable CDC will report residual false positives.
-- Clock and IO facts arrive via the SGDC seed (`<sgdc_seed>/constraints/*.sgdc`, produced by `derive-constraints`), which self-checks SDC≡§1.6 and SGDC≡SDC by construction (F1) — this stage does not re-check design.md-vs-SDC consistency. The `constraints.sgdc`-vs-SDC runtime sanity check (`references/makefile-bootstrap.md`) may still fire but is non-load-bearing.
+- Clock and IO facts arrive via the SGDC seed (`<sgdc_seed>/constraints/*.sgdc`, produced by `derive-constraints`). SDC≡SGDC holds **by construction**: both are rendered from the same `clocks.json` entry via one shared clock partition (F1), and that equality is asserted in `tests/unit/test_spec_constraints.py` rather than re-derived from the emitted text at runtime. This stage does not re-check spec-vs-SDC consistency.
 
 ## Red Flags
 

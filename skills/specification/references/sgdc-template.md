@@ -1,12 +1,13 @@
 # SGDC — generated-output reference
 
-`constraints/<TOP>.sgdc` is **generated** by the `derive-constraints` verb from `design.md` §1.6 +
-§1.4.1. Do **not** hand-edit; change the design tables and re-run derive.
+`constraints/<TOP>.sgdc` is **generated** by the `derive-constraints` verb from `clocks.json` +
+`design.md` §1.4.1. Do **not** hand-edit; change the source and re-run derive.
 
 **Emitted (spec-time):**
 - `current_design <TOP>`.
-- `clock -name <clk> -period <T> -edge {0 T/2}` per non-generated §1.6 clock (period must
-  equal `<TOP>.sdc`), plus `-domain <D>` when §1.6 has ≥1 `async` clock and ≥2 non-generated
+- `clock -name <clk> -period <T> -edge {0 T/2}` per non-generated `clocks.json` entry (period
+  equals `<TOP>.sdc`'s by construction — same entry, two emitters), plus `-domain <D>` when
+  `clocks.json` has ≥1 `async` clock and ≥2 non-generated
   clocks: all `primary`/`synchronous-related` clocks share one domain name (`sync`), each `async`
   clock gets its own distinct domain (its own name); the generator fails loudly if an `async` clock
   is literally named `sync` while synchronous clocks exist (name-collision guard). SGDC-native equivalent of `<TOP>.sdc`'s

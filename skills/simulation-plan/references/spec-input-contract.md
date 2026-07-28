@@ -1,8 +1,10 @@
 # Spec Fields → Simulation-Plan Objects (plan-data.json field guide)
 
 `derive-plan-data` extracts every structured field of `design.md` (§1.3 / §1.4.1 / §1.4.2 /
-§1.5 / §1.6) and each per-child `<child>.md §5` into `plan-data.json`. You author the scaffold
-and `verification-plan.md` **from that JSON**; do not re-read `design.md` / `<child>.md` into
+§1.5) and each per-child `<child>.md §5` into `plan-data.json`. Clocks are the one exception:
+they are already structured as `clocks.json` (specification's own output) and are read from
+there directly by `materialize-scaffold` — nothing derives them. You author the scaffold and
+`verification-plan.md` **from that JSON**; do not re-read `design.md` / `<child>.md` into
 the main thread. This guide names the `design.md` columns only so you recognize where each
 `plan-data.json` field came from, and maps them to the objects this stage authors
 (`scaffold-specification.json`: `agents` / `sequences` / `tests` / `testpoints[]` /
@@ -146,7 +148,8 @@ Section anchors in `design.md` are English canonical:
 - §1.4.1 Top-Level IO → DUT-boundary interfaces / agents / transaction fields
 - §1.4.2 Inter-module Interconnects → optional cross-module wire awareness (aware-only)
 - §1.5 Interface Timing Scenarios → scenario-driven sequences
-- §1.6 Clocks and Frequencies → `primary_clock`
+- `clocks.json` (NOT a design.md section) → `primary_clock`, script-injected by
+  `materialize-scaffold` from the single `relationship: "primary"` entry
 - §1.7 Submodule Index → pointer to `manifest.json`
 
 Per-child Verification Hints (9-column table) live in `<child>.md §5`; `simplan derive-plan-data
@@ -189,8 +192,8 @@ that JSON, not the raw file.)
 | pslverr | output | 1 | pclk | APB | APB3 | data |
 ```
 
-(clk/rst carry no `Interface group`: `primary_clock` comes from §1.6 and `reset` from the
-`Role=reset` row; grouping them under `APB` would collide with the clk/rst port name at render.)
+(clk/rst carry no `Interface group`: `primary_clock` comes from `clocks.json` and `reset` from
+the `Role=reset` row; grouping them under `APB` would collide with the clk/rst port name at render.)
 
 **What this yields:**
 - `apb_agent` (`mode: active`, covers Interface group `APB`).

@@ -4,7 +4,7 @@
 Verbs (one stage = one tool; see skills/specification/SKILL.md for usage):
   derive-ports        per-child §1.4.2 inter-module ports   (stdout: JSON)
   check-coverage      manifest-driven coverage gate         (stdout: verdict JSON; exit 0/1)
-  derive-constraints  generate SDC/SGDC from §1.6 + §1.4.1  (stdout: JSON; fail-loud)
+  derive-constraints  generate SDC/SGDC from clocks.json + §1.4.1 (stdout: JSON; fail-loud)
   validate-review     spec-review.json schema + gate        (stdout: gate JSON; exit 0/1)
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 

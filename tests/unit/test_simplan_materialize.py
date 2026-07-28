@@ -46,20 +46,26 @@ PLAN = {
             "role": "data",
         },
     ],
-    "clocks": [{"clock_name": "clk", "period_ns": "10.0", "relationship": "primary"}],
     "check_hints": [],
 }
 
 
-def _write(tmp_path, plan_data, scaffold):
+CLOCKS = [
+    {"name": "clk", "freq_mhz": 100, "period_ns": 10.0, "relationship": "primary"}
+]
+
+
+def _write(tmp_path, plan_data, scaffold, clocks=None):
     pd = tmp_path / "plan-data.json"
     sc = tmp_path / "scaffold-specification.json"
+    ck = tmp_path / "clocks.json"
     pd.write_text(json.dumps(plan_data))
     sc.write_text(json.dumps(scaffold))
+    ck.write_text(json.dumps(CLOCKS if clocks is None else clocks))
     return pd, sc
 
 
-def _run(pd, sc, check=True):
+def _run(pd, sc, check=True, clocks_path=None):
     return subprocess.run(
         [
             "python3",
@@ -69,6 +75,8 @@ def _run(pd, sc, check=True):
             str(pd),
             "--scaffold",
             str(sc),
+            "--clocks",
+            str(clocks_path if clocks_path is not None else pd.parent / "clocks.json"),
         ],
         capture_output=True,
         text=True,
@@ -103,20 +111,31 @@ def test_primary_clock_and_reset_derived(tmp_path):
     pd, sc = _write(tmp_path, PLAN, sc_in)
     _run(pd, sc)
     out = json.loads(sc.read_text())
-    assert out["primary_clock"] == {"dut_port_name": "clk", "period_ns": "10.0"}
+    assert out["primary_clock"] == {"dut_port_name": "clk", "period_ns": 10.0}
     assert out["reset"] == {"dut_port_name": "rst_n"}
 
 
 def test_no_primary_relationship_fails_loud(tmp_path):
-    plan = json.loads(json.dumps(PLAN))
-    plan["clocks"][0]["relationship"] = "async"
+    # Defence in depth: derive-constraints enforces exactly-one-primary upstream, so
+    # reaching here means clocks.json was edited after that gate.
+    no_primary = [{**CLOCKS[0], "relationship": "async"}]
     sc_in = _scaffold(
         [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
     )
-    pd, sc = _write(tmp_path, plan, sc_in)
+    pd, sc = _write(tmp_path, PLAN, sc_in, clocks=no_primary)
     proc = _run(pd, sc, check=False)
     assert proc.returncode != 0
     assert "primary" in proc.stderr.lower()
+
+
+def test_missing_clocks_json_fails_loud(tmp_path):
+    sc_in = _scaffold(
+        [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
+    )
+    pd, sc = _write(tmp_path, PLAN, sc_in)
+    (tmp_path / "clocks.json").unlink()
+    proc = _run(pd, sc, check=False)
+    assert proc.returncode != 0 and "clocks.json" in proc.stderr
 
 
 def test_no_reset_role_fails_loud(tmp_path):

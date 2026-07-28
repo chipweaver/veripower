@@ -46,9 +46,6 @@ _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_SGDC_CLK = re.compile(r"^\s*clock\s")
-_SDC_CLK = re.compile(r"^\s*create_clock\s")
-_PERIOD = re.compile(r"-period\s+(\d+(?:\.\d+)?)")
 
 
 def _err(msg: str) -> None:
@@ -151,32 +148,6 @@ def _sync_filelist(dest: Path, rtl_dir: Path) -> int:
         f"  filelist.txt: synced from Design/rtl-design/filelist.txt ({len(entries)} files)"
     )
     return 0
-
-
-def _first_period(path: Path, anchor: re.Pattern) -> str | None:
-    if not path.is_file():
-        return None
-    for line in path.read_text(errors="replace").splitlines():
-        if anchor.match(line):
-            m = _PERIOD.search(line)
-            if m:
-                return m.group(1)
-    return None
-
-
-def _check_period(sgdc: Path, sdc: Path) -> None:
-    """WARN-only smoke check: first clock period in spec <TOP>.sgdc vs <TOP>.sdc.
-    Mismatch prints a WARNING to stderr and NEVER fails; either file missing / either
-    period unparseable -> silent no-op (consistency is a specification rework)."""
-    sg = _first_period(sgdc, _SGDC_CLK)
-    sd = _first_period(sdc, _SDC_CLK)
-    if sg is None or sd is None or sg == sd:
-        return
-    _err(
-        "WARNING: SGDC and SDC clock periods disagree; update per design.md §1.6 before re-running."
-    )
-    _err(f"  {sgdc.name}  clock -period       = {sg} ns")
-    _err(f"  {sdc.name}   create_clock -period = {sd} ns")
 
 
 def _deploy_no_clobber(src_root: Path, dest: Path) -> None:
@@ -284,11 +255,6 @@ def run(workdir, top: str | None = None) -> int:
     rc = _sync_filelist(dest, rtl_dir)
     if rc != 0:
         return rc
-
-    # The specification stage root is injected into inputs.json (dispatch-time), not
-    # self-navigated via tree_root/asic/<module>/Design/specification.
-    spec_con = Path(inputs["sgdc_seed"]) / "constraints"
-    _check_period(spec_con / f"{top}.sgdc", spec_con / f"{top}.sdc")
 
     print(f"[lintcdc bootstrap] deployed {dest}")
     print(f"  TOP={top}")

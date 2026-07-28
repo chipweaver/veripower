@@ -300,18 +300,6 @@ def test_missing_template_dir_fail_closed(tmp_path):
     assert not (workdir / "Makefile").exists()  # fail-closed before any mutation
 
 
-def test_period_mismatch_warns_not_fails(tmp_path):
-    # cold sgdc period 10 vs sdc period 20 -> WARNING on stderr, exit STILL 0.
-    m, workdir, main = _make_tree(
-        tmp_path,
-        cold="current_design dut\nclock -name clk -period 10\n",
-        sdc="create_clock -period 20 [get_ports clk]\n",
-    )
-    r = _run(workdir, main, extra=["--top", "dut"])
-    assert r.returncode == 0, r.stderr
-    assert "WARNING" in r.stderr and "periods disagree" in r.stderr
-
-
 def test_relative_workdir_with_trailing_slash(tmp_path):
     # BP5: a relative --workdir resolves against the CWD (the design-tree root), and
     # the trailing slash is dropped before deploy.

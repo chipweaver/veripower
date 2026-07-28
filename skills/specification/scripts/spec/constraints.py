@@ -2,49 +2,65 @@ import json
 import sys
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+
 from spec._md import extract_section, parse_markdown_table, table_header
 
 _IO_DELAY_FRAC = 0.3
-_CLK_SEC = r"§?\s*1\.6.*Clocks?\s+and\s+Freq"
 _IO_SEC = r"§?\s*1\.4\.1.*Top.Level\s+IO"
+_CLOCKS_SCHEMA = (
+    Path(__file__).resolve().parent.parent.parent / "references" / "clocks.schema.json"
+)
 
 
 def _fail(msg: str):
     sys.exit(f"derive-constraints: {msg}")
 
 
-def _clocks(design: str) -> list[dict]:
-    rows = parse_markdown_table(extract_section(design, _CLK_SEC))
-    if not rows:
-        _fail("design.md §1.6 Clocks and Frequencies table not found / empty")
-    clocks = []
-    for r in rows:
-        name = r.get("Clock Name", "").strip()
-        if not name:
-            continue
-        try:
-            period = float(r.get("SDC Period (ns)", "").strip())
-        except ValueError:
-            _fail(
-                f"clock {name!r}: non-numeric SDC Period {r.get('SDC Period (ns)')!r}"
-            )
-        relationship = r.get("Relationship", "").strip().lower()
-        if relationship not in {"primary", "synchronous-related", "async"}:
-            _fail(
-                f"clock {name!r}: Relationship must be primary/synchronous-related/async "
-                f"(got {relationship!r})"
-            )
-        clocks.append(
-            {
-                "name": name,
-                "period": period,
-                "relationship": relationship,
-                "generated": r.get("Generated", "no").strip().lower()
-                in {"yes", "y", "true"},
-            }
+def load_clocks(workdir: Path) -> list[dict]:
+    """Read + schema-validate `{workdir}/clocks.json`, the authored clock SSoT.
+
+    The ONLY place clocks.json is validated: finalize re-runs derive_constraints()
+    in-process, so that path is covered here too. The schema is loaded, not restated in
+    Python; an unreadable schema fails closed.
+
+    Exactly-one-`primary` is enforced on top of the schema (not expressible in it). The
+    `period_ns == 1000/freq_mhz` cross-check is the check-coverage gate's.
+    """
+    path = workdir / "clocks.json"
+    if not path.is_file():
+        _fail(
+            f"{path} missing: the specification stage authors clocks.json (design.md §1.6 "
+            "carries only a pointer to it); see references/clocks.schema.json"
         )
-    if not clocks:
-        _fail("§1.6 has no clock rows")
+    try:
+        clocks = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        _fail(f"clocks.json is not valid JSON: {exc}")
+    try:
+        schema = json.loads(_CLOCKS_SCHEMA.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        _fail(f"{_CLOCKS_SCHEMA.name} unreadable: {exc}")
+    errors = sorted(
+        Draft202012Validator(schema).iter_errors(clocks),
+        key=lambda e: list(e.absolute_path),
+    )
+    if errors:
+        err = errors[0]
+        where = "$" + "".join(
+            f"[{p!r}]" if isinstance(p, int) else f".{p}" for p in err.absolute_path
+        )
+        _fail(f"clocks.json schema violation at {where}: {err.message}")
+
+    primaries = [c["name"] for c in clocks if c["relationship"] == "primary"]
+    if len(primaries) != 1:
+        _fail(
+            f"clocks.json must declare exactly one relationship=='primary' clock "
+            f"(found {len(primaries)}: {primaries}) — it is the TB main clock; refusing to "
+            "let a downstream reader pick one arbitrarily"
+        )
+    for c in clocks:
+        c.setdefault("generated", False)
     return clocks
 
 
@@ -84,6 +100,23 @@ def _ports(design: str) -> list[dict]:
         )
     if not ports:
         _fail("design.md §1.4.1 has no valid port rows")
+    # Reset-row field validation — §1.4.1 input, so it belongs with the rest of the parse.
+    for p in ports:
+        if p["role"] != "reset":
+            continue
+        if not p["domain"]:
+            _fail(
+                f"reset {p['signal']!r}: Clock Domain must be non-empty "
+                "(it feeds abstract_port -clock; a blank token is invalid SGDC)"
+            )
+        if p["reset_polarity"] not in {"0", "1"}:
+            _fail(
+                f"reset {p['signal']!r}: ResetPolarity must be 0 or 1 (got {p['reset_polarity']!r})"
+            )
+        if p["reset_kind"] not in {"sync", "async"}:
+            _fail(
+                f"reset {p['signal']!r}: ResetKind must be sync or async (got {p['reset_kind']!r})"
+            )
     return ports
 
 
@@ -92,7 +125,7 @@ _SGDC_SYNC_DOMAIN = "sync"
 
 def _clock_partition(clocks: list[dict]) -> tuple[list[str], list[str]]:
     """The single source of grouping truth shared by BOTH emitters: partition the
-    non-generated §1.6 clocks into (sync_names, async_names), preserving table order.
+    non-generated clocks.json entries into (sync_names, async_names), preserving table order.
     `_async_clock_groups` (SDC) and `_sgdc_clock_domains` (SGDC) must render this ONE
     partition in their respective native syntaxes — computing it twice is how the two
     formats silently diverge, the exact defect this prevents. Returns ([], []) when there is
@@ -137,10 +170,10 @@ def _sgdc_clock_domains(clocks: list[dict]) -> dict[str, str]:
     if sync_names and _SGDC_SYNC_DOMAIN in async_names:
         # An async clock literally named "sync" would get -domain sync and be silently
         # merged into the synchronous group — a false-negative CDC hole. Fail loudly;
-        # rename the clock in design.md §1.6.
+        # rename the clock in clocks.json.
         _fail(
             f"async clock {_SGDC_SYNC_DOMAIN!r} collides with the SGDC sync-group domain "
-            f"label {_SGDC_SYNC_DOMAIN!r}; rename the clock in design.md §1.6"
+            f"label {_SGDC_SYNC_DOMAIN!r}; rename the clock in clocks.json"
         )
     domains = {name: _SGDC_SYNC_DOMAIN for name in sync_names}
     domains.update({name: name for name in async_names})
@@ -150,7 +183,7 @@ def _sgdc_clock_domains(clocks: list[dict]) -> dict[str, str]:
 def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     out = [
         f"# SDC constraints for {top}",
-        "# Generated by the derive-constraints verb from design.md §1.6 + §1.4.1 — do not hand-edit.",
+        "# Generated by the derive-constraints verb from clocks.json + design.md §1.4.1 — do not hand-edit.",
         f"# Note: clock periods MUST match {top}.sgdc.",
         "",
     ]
@@ -162,7 +195,7 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
             )
             continue
         out.append(
-            f"create_clock -name {c['name']} -period {c['period']} [get_ports {c['name']}]"
+            f"create_clock -name {c['name']} -period {c['period_ns']} [get_ports {c['name']}]"
         )
     groups = _async_clock_groups(clocks)
     if groups:
@@ -175,7 +208,7 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
         "set_clock_uncertainty -hold  0.0 [all_clocks]   ;# pre-CTS hold = 0; replace per CTS skew"
     )
     out.append("")
-    period_of = {c["name"]: c["period"] for c in non_gen}
+    period_of = {c["name"]: c["period_ns"] for c in non_gen}
     for p in ports:
         if p["role"] != "data":
             continue
@@ -207,10 +240,10 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     for c in clocks:
         if c["generated"]:
             continue
-        half = round(c["period"] / 2, 4)
+        half = round(c["period_ns"] / 2, 4)
         domain_flag = f" -domain {domains[c['name']]}" if c["name"] in domains else ""
         out.append(
-            f"clock -name {c['name']} -period {c['period']} -edge {{0 {half}}}{domain_flag}"
+            f"clock -name {c['name']} -period {c['period_ns']} -edge {{0 {half}}}{domain_flag}"
         )
     out.append("")
     for p in ports:
@@ -237,69 +270,6 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     return "\n".join(out) + "\n"
 
 
-def _data_port_in_sgdc(signal: str, sgdc: str) -> bool:
-    """True iff `signal` appears as a token inside a data `abstract_port -ports {...}` group."""
-    for line in sgdc.splitlines():
-        if line.startswith("abstract_port -ports {"):
-            group = line.split("{", 1)[1].split("}", 1)[0]
-            if signal in group.split():
-                return True
-    return False
-
-
-def _self_check(top: str, clocks: list[dict], ports: list[dict], sdc: str, sgdc: str):
-    if f"current_design {top}" not in sgdc:
-        _fail(f"self-check: SGDC missing 'current_design {top}'")
-    # SDC and SGDC both derive their async-clock declaration from the same `clocks`
-    # list (via _async_clock_groups / _sgdc_clock_domains respectively — different syntax,
-    # same underlying data), so one declaring it and the other not means the two emitters
-    # diverged — the exact defect the shared partition prevents. Backstop it here.
-    # Detect the SGDC async declaration by a standalone `-domain` token on a
-    # `clock -name` line — NOT a bare "-domain" substring, which a clock literally
-    # named "*-domain" (e.g. `clock -name x-domain ...`) would spuriously match.
-    sgdc_declares_async = any(
-        ln.startswith("clock -name ") and "-domain" in ln.split()
-        for ln in sgdc.splitlines()
-    )
-    if ("set_clock_groups" in sdc) != sgdc_declares_async:
-        _fail(
-            "self-check: async clock declaration present in one of SDC/SGDC but not the other"
-        )
-    for c in clocks:
-        if c["generated"]:
-            continue
-        if f"create_clock -name {c['name']} " not in sdc:
-            _fail(f"self-check: no create_clock for clock {c['name']!r}")
-    # A data port whose Clock Domain is a *generated* clock is deferred to RTL
-    # (create_generated_clock pin not yet known); generate_sdc/generate_sgdc skip it
-    # by design (see their "domain is a generated clock (deferred); defensive"
-    # branches), so the self-check must mirror that skip — not demand an abstract_port
-    # the generators intentionally did not emit. Only non-generated-clock data ports
-    # are required to carry one.
-    non_generated = {c["name"] for c in clocks if not c["generated"]}
-    for p in ports:
-        if (
-            p["role"] == "data"
-            and p["domain"] in non_generated
-            and not _data_port_in_sgdc(p["signal"], sgdc)
-        ):
-            _fail(f"self-check: no abstract_port for data port {p['signal']!r}")
-        if p["role"] == "reset":
-            if not p["domain"]:
-                _fail(
-                    f"reset {p['signal']!r}: Clock Domain must be non-empty "
-                    "(it feeds abstract_port -clock; a blank token is invalid SGDC)"
-                )
-            if p["reset_polarity"] not in {"0", "1"}:
-                _fail(
-                    f"reset {p['signal']!r}: ResetPolarity must be 0 or 1 (got {p['reset_polarity']!r})"
-                )
-            if p["reset_kind"] not in {"sync", "async"}:
-                _fail(
-                    f"reset {p['signal']!r}: ResetKind must be sync or async (got {p['reset_kind']!r})"
-                )
-
-
 def derive_constraints(workdir: Path) -> dict:
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
     top = manifest.get(
@@ -307,12 +277,11 @@ def derive_constraints(workdir: Path) -> dict:
     )  # <TOP> pinned to manifest.module (== finalize top_module)
     if not top:
         _fail("manifest.json missing 'module' (the <TOP> name)")
+    clocks = load_clocks(workdir)
     design = (workdir / "design.md").read_text(encoding="utf-8")
-    clocks = _clocks(design)
     ports = _ports(design)
     sdc = generate_sdc(top, clocks, ports)
     sgdc = generate_sgdc(top, clocks, ports)
-    _self_check(top, clocks, ports, sdc, sgdc)
     cdir = workdir / "constraints"
     cdir.mkdir(exist_ok=True)
     (cdir / f"{top}.sdc").write_text(sdc, encoding="utf-8")

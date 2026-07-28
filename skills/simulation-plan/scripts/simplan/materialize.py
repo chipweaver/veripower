@@ -6,7 +6,7 @@ Group). This verb fills each agent's interface.signals + transaction.fields
 deterministically from plan-data.json.interfaces[] (grouped by interface_group), so the
 LLM never hand-transcribes signal names/widths. Clock/reset signals (identified by the
 gated §1.4.1 Role) are kept in interface.signals but excluded from transaction.fields —
-they must never be rand txn fields. It also derives primary_clock (from the §1.6
+they must never be rand txn fields. It also derives primary_clock (from clocks.json
 relationship=="primary" clock) and reset (from the §1.4.1 role=="reset" interface) and
 writes them into the scaffold, and materializes each testpoints[].inlined_check_hints[]
 from the testpoint's covers[] + plan-data check_hints[] (implementation_detail =
@@ -58,34 +58,21 @@ def _clk_rst_signal_names(plan_data: dict) -> set:
     return names
 
 
-def _derive_primary_clock(plan_data: dict) -> dict:
-    clocks = plan_data.get("clocks", [])
-    if not clocks:
+def _derive_primary_clock(clocks: list) -> dict:
+    """primary_clock from clocks.json. No normalization or coercion: clocks.schema.json
+    pins the fields and derive-constraints has already validated them upstream."""
+    if not isinstance(clocks, list) or not clocks:
         sys.exit(
-            "materialize-scaffold: plan-data.json has no clocks[] — primary_clock cannot be "
-            "derived (design.md §1.6 Clocks and Frequencies required)."
+            "materialize-scaffold: clocks.json is empty or not a JSON array — "
+            "primary_clock cannot be derived. Re-run specification."
         )
-    primary = next(
-        (
-            c
-            for c in clocks
-            if (c.get("relationship") or "").strip().lower() == "primary"
-        ),
-        None,
-    )
+    primary = next((c for c in clocks if c.get("relationship") == "primary"), None)
     if primary is None:
         sys.exit(
-            "materialize-scaffold: no clock with Relationship=='primary' in design.md §1.6 — "
-            "a gated §1.6 declares one; refusing to silently pick row-0 as the TB main clock."
+            "materialize-scaffold: no clocks.json entry with relationship=='primary' — "
+            "refusing to pick entry 0 as the TB main clock. Re-run specification."
         )
-    name = (primary.get("clock_name") or "").strip()
-    period = (primary.get("period_ns") or "").strip()
-    if not name or not period:
-        sys.exit(
-            f"materialize-scaffold: primary clock row missing clock_name/period_ns "
-            f"(name={name!r}, period={period!r}); design.md §1.6 Clock Name + SDC Period required."
-        )
-    return {"dut_port_name": name, "period_ns": period}
+    return {"dut_port_name": primary["name"], "period_ns": primary["period_ns"]}
 
 
 def _derive_reset(plan_data: dict) -> dict:
@@ -126,7 +113,7 @@ def _materialize_inline(plan_data: dict, scaffold: dict) -> None:
         tp["inlined_check_hints"] = inlined
 
 
-def materialize(plan_data: dict, scaffold: dict) -> dict:
+def materialize(plan_data: dict, scaffold: dict, clocks: list) -> dict:
     interfaces = plan_data.get("interfaces", [])
     exclude = _clk_rst_signal_names(plan_data)
     by_group: dict[str, list[dict]] = {}
@@ -187,13 +174,13 @@ def materialize(plan_data: dict, scaffold: dict) -> dict:
             ]
         }
 
-    scaffold["primary_clock"] = _derive_primary_clock(plan_data)
+    scaffold["primary_clock"] = _derive_primary_clock(clocks)
     scaffold["reset"] = _derive_reset(plan_data)
     _materialize_inline(plan_data, scaffold)
     return scaffold
 
 
-def run(plan_data_path, scaffold_path) -> int:
+def run(plan_data_path, scaffold_path, clocks_path) -> int:
     scaffold_path = Path(scaffold_path)
     try:
         plan_data = json.loads(Path(plan_data_path).read_text(encoding="utf-8"))
@@ -203,7 +190,15 @@ def run(plan_data_path, scaffold_path) -> int:
         scaffold = json.loads(scaffold_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         sys.exit(f"materialize-scaffold: {scaffold_path} is not valid JSON: {e}")
-    scaffold = materialize(plan_data, scaffold)
+    try:
+        clocks = json.loads(Path(clocks_path).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        sys.exit(
+            f"materialize-scaffold: {clocks_path} not found; check the --clocks path."
+        )
+    except json.JSONDecodeError as e:
+        sys.exit(f"materialize-scaffold: {clocks_path} is not valid JSON: {e}")
+    scaffold = materialize(plan_data, scaffold, clocks)
     scaffold_path.write_text(
         json.dumps(scaffold, indent=2, ensure_ascii=False), encoding="utf-8"
     )

@@ -2,7 +2,8 @@
 
 The derive-plan-data verb reads a spec workdir (manifest.json + design.md + per-child
 <child>.md) and emits plan-data.json containing features, interfaces, scenarios,
-check_hints, clocks, and cross_module_wires. The simulation-plan agent consumes this to
+check_hints, and cross_module_wires. Clocks are not here — they are authored as
+Design/specification/clocks.json and read from there. The simulation-plan agent consumes this to
 draft verification-plan.md and scaffold-specification.json; the materialize-scaffold verb
 then reads plan-data.json to fill the agent signal lists.
 
@@ -51,14 +52,6 @@ FEATURE_HEADER_CANDIDATES = {
     "corner_cases": {"cornercases", "corner_cases", "corner"},
     "negative_cases": {"negativecases", "negative_cases", "negative"},
     "coverage_intent": {"coverageintent", "coverage_intent", "coverage"},
-}
-
-CLOCK_HEADER_CANDIDATES = {
-    "clock_name": {"clockname", "clock"},
-    "description": {"description"},
-    "frequency": {"nominalfrequency", "frequency"},
-    "period_ns": {"sdcperiod", "periodns", "period"},
-    "relationship": {"relationship"},
 }
 
 INTERFACE_HEADER_CANDIDATES = {
@@ -159,30 +152,6 @@ def load_features(design_text: str) -> list[dict]:
     if not features:
         raise ValueError("design.md §1.3 features table is empty.")
     return features
-
-
-def load_clock_table(design_text: str) -> list[dict]:
-    """English canonical anchor — §1.6 Clocks and Frequencies."""
-    section = extract_section(design_text, r"(^|.*)§?\s*1\.6.*Clocks?\s+and\s+Freq")
-    if not section:
-        return []
-    try:
-        headers, rows = parse_first_markdown_table(section)
-    except ValueError:
-        return []
-    mapping = map_headers(headers, CLOCK_HEADER_CANDIDATES)
-    result: list[dict] = []
-    for row in rows:
-        result.append(
-            {
-                "clock_name": row.get(mapping.get("clock_name", ""), ""),
-                "description": row.get(mapping.get("description", ""), ""),
-                "frequency": row.get(mapping.get("frequency", ""), ""),
-                "period_ns": row.get(mapping.get("period_ns", ""), ""),
-                "relationship": row.get(mapping.get("relationship", ""), ""),
-            }
-        )
-    return result
 
 
 def load_interfaces(design_text: str) -> list[dict]:
@@ -378,7 +347,6 @@ def run(workdir, output=None) -> int:
         design_text = read_text(design)
         check_hints = load_check_hints(workdir)
         features = load_features(design_text)
-        clocks = load_clock_table(design_text)
         interfaces = load_interfaces(design_text)
         scenarios = load_scenarios(design_text)
         cross_module_wires = load_cross_module_wires(design_text)
@@ -390,7 +358,6 @@ def run(workdir, output=None) -> int:
         "interfaces": interfaces,
         "scenarios": scenarios,
         "check_hints": check_hints,
-        "clocks": clocks,
         "cross_module_wires": cross_module_wires,
     }
 
@@ -399,6 +366,6 @@ def run(workdir, output=None) -> int:
     print(
         f"  features={len(features)}, interfaces={len(interfaces)}, "
         f"scenarios={len(scenarios)}, check_hints={len(check_hints)}, "
-        f"clocks={len(clocks)}, cross_module_wires={len(cross_module_wires)}"
+        f"cross_module_wires={len(cross_module_wires)}"
     )
     return 0

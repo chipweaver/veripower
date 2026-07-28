@@ -173,19 +173,34 @@ rdy      _________|‾‾‾‾‾‾‾‾‾‾‾‾‾|_______________   (sl
 
 ### 1.6 Clocks and Frequencies
 
-| Clock Name | Nominal Frequency (MHz) | SDC Period (ns) | Relationship | Generated | Role |
-|------------|-------------------------|-----------------|--------------|-----------|------|
-| clk    | 100 | 10.0 | primary | no | primary clock |
-| clk_io | 50  | 20.0 | async   | no | IO-domain clock |
-
-> **SDC Period (ns)** must equal `1000 / Nominal Frequency (MHz)` (enforced by
-> `check-coverage`). **Relationship**: `primary` / `synchronous-related` / `async`
-> — `async` clocks drive `set_clock_groups -asynchronous`. **Generated**: `yes` for a
-> divider/PLL output (no top-level port) — `derive-constraints` emits **no**
-> `create_clock` for it and records a `create_generated_clock`-deferred-to-RTL note in place of
-> the `create_clock`; default `no`. This table is the sole numeric + relationship source for the
-> generated `constraints/<TOP>.{sdc,sgdc}`.
+Clock definitions live in `clocks.json` (the sole numeric + relationship source;
+`constraints/<TOP>.{sdc,sgdc}` are generated from it). Do not restate periods,
+frequencies or relationships in prose — same single-home rule as §1.1's PPA targets.
+Narrative that is NOT a per-clock field belongs here: domain count, CDC posture,
+reset scheme, release-ordering constraints.
 ```
+
+## clocks.json (§1.6's machine half)
+
+Authored by Wave 1 alongside `ppa.json`; schema `references/clocks.schema.json`. A JSON
+array, one object per clock:
+
+```json
+[
+  { "name": "clk",    "freq_mhz": 100, "period_ns": 10.0, "relationship": "primary", "generated": false, "role": "primary clock" },
+  { "name": "clk_io", "freq_mhz": 50,  "period_ns": 20.0, "relationship": "async",   "generated": false, "role": "IO-domain clock" }
+]
+```
+
+| Field | Rule |
+|---|---|
+| `name` | Required. For a non-generated clock this is also the top-level port name `create_clock` binds to. |
+| `freq_mhz` / `period_ns` | Required **numbers** (not strings). `period_ns` must equal `1000 / freq_mhz` — enforced by `check-coverage`. |
+| `relationship` | Required, one of `primary` / `synchronous-related` / `async`. `async` drives `set_clock_groups -asynchronous` (SDC) and a distinct `-domain` (SGDC). **Exactly one `primary`** — it is the TB main clock; `derive-constraints` fails loud otherwise. |
+| `generated` | Optional (default `false`). `true` for a divider/PLL output with no top-level port: `derive-constraints` emits **no** `create_clock` and records a `create_generated_clock`-deferred-to-RTL note in its place. |
+| `role` | Optional free text for human / agent readers. No script parses it. |
+
+`additionalProperties` is `false`: a mistyped key fails at write time, in front of you.
 
 ## Submodule Index Template (§1.7)
 
@@ -215,13 +230,13 @@ Before `design.md` is approved, the **gated** checks below must pass `check-cove
 | §1.4.1 columns ResetPolarity / ResetKind — **required on `Role=reset` rows** (enforced at constraint generation by `derive-constraints`, which fail-louds on a reset row missing them — not by the coverage gate; use `-` on non-reset rows) | Overview §1.4.1 table | A reset row missing polarity/kind aborts `derive-constraints`. |
 | §1.5 columns ScenarioID / Trigger/Stimulus / Expected Result / Timing Constraint — **(gated)** | Overview §1.5 table | Missing any of these fails `check-coverage`; they drive downstream sequence-body and checker generation (via `derive-plan-data`). |
 | §1.5 column Exceptions / Negative Cases — **(recommended)** | Overview §1.5 table | Absent column degrades negative-case coverage; `derive-plan-data` defaults it to empty. |
-| §1.6 columns Clock Name / Nominal Frequency (MHz) / SDC Period (ns) / Relationship — **(gated)** | Overview §1.6 table | Absent columns degrade constraint generation; `derive-constraints` requires clock name, period, and relationship. |
-| §1.6 column Generated — **(recommended)** (defaults to `"no"`) | Overview §1.6 table | Absent column causes `derive-constraints` to treat all clocks as top-level ports (may emit spurious `create_clock` for PLL outputs). |
-| §1.6 internal consistency: `SDC Period (ns)` ≈ `1000 / Nominal Frequency (MHz)` per row — **(gated)** | Overview §1.6 table | A freq/period typo would propagate into every generated `create_clock`; enforced by `check-coverage`. |
-| §1.4.1 `Clock Domain` values ⊆ §1.6 clock names — **(gated)** | §1.4.1 + §1.6 tables | A phantom domain would make `abstract_port -clock <phantom>` and break SpyGlass CDC; enforced by `check-coverage`. |
+| `clocks.json` fields `name` / `freq_mhz` / `period_ns` / `relationship` present and correctly typed — **(schema)** | `clocks.json` | Enforced by `clocks.schema.json` at `derive-constraints`, which fails loud. A mistyped key is named in the error, not silently defaulted. |
+| `clocks.json` declares exactly one `relationship: "primary"` — **(gated)** | `clocks.json` | Not schema-expressible; `derive-constraints` fails loud. It is the TB main clock — an ambiguous set would let a downstream reader pick arbitrarily. |
+| `clocks.json` internal consistency: `period_ns` ≈ `1000 / freq_mhz` per entry — **(gated)** | `clocks.json` | A freq/period typo would propagate into every generated `create_clock`; enforced by `check-coverage`. |
+| §1.4.1 `Clock Domain` values ⊆ `clocks.json` `name`s — **(gated)** | §1.4.1 table + `clocks.json` | A phantom domain would make `abstract_port -clock <phantom>` and break SpyGlass CDC; enforced by `check-coverage`. |
 | §1.4.1 every Output has an `Owner` that is a manifest child listing the signal — **(gated)** | §1.4.1 Owner column + per-child frontmatter | A missing/invalid Owner, or an Owner child that does not list the signal, is an undriven / mis-declared top output; enforced by `check-coverage`. (The leaf-owner / no-top-glue preference is documented guidance, not gated.) |
 | §1.4.2 columns Width / Clock Domain present + per-row concrete — **(gated)** | Overview §1.4.2 table | Unpinned inter-module width lets body-blind fan-out children diverge (the fa_core 128b↔32b / opaque-`ctrl_bus` class); enforced by `check-coverage`. |
-| §1.4.2 `Clock Domain` values ⊆ §1.6 clock names — **(gated)** | §1.4.2 + §1.6 tables | A phantom interconnect domain hides a CDC path; enforced by `check-coverage`. |
+| §1.4.2 `Clock Domain` values ⊆ `clocks.json` `name`s — **(gated)** | §1.4.2 table + `clocks.json` | A phantom interconnect domain hides a CDC path; enforced by `check-coverage`. |
 | Every §1.3 feature `ID` referenced by ≥1 child §5 `SourceFeature` — **(gated)** | §1.3 feature table + per-child `<child>.md §5` | Catches specified-but-unverified features; enforced by `check-coverage`. |
 | `<child>.md §5` Verification-Hints table has the **gated** columns CheckID / SourceFeature / ImplementationDetail / Observable / ReferenceRule (Latency / ResetBehavior recommended; ImplementationDetailVerbatim is guarded by token-survival, BrainstormAnchor is traceability) | per-child `<child>.md §5` (see `child-design-template.md`) | Cannot generate rule-based RM / scoreboard; **enforced by `check-coverage`**. |
 | `design.md` self-containment (no `see brainstorm` / `refer to brainstorm` / `see spec D` / cross-child links) | Whole document + each `<child>.md` | See the self-containment principle stated once above; **enforced by `check-coverage`**. |

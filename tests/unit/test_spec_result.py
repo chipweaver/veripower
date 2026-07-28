@@ -36,14 +36,27 @@ def _design(io_rows, clk_rows):
 
 
 def _spec_workdir(tmp_path):
-    """A workdir derive_constraints() can run over (valid §1.6 + §1.4.1 tables) plus the
-    finalize inputs (manifest/coverage/per-child md/spec-review)."""
+    """A workdir derive_constraints() can run over (valid clocks.json + §1.4.1 table) plus
+    the finalize inputs (manifest/coverage/per-child md/spec-review)."""
     wd = tmp_path
     design = _design(
         "| i_clk | input | 1 | i_clk | clk | - | clock | - | - |\n",
         "| i_clk | 100 | 10.0 | primary | no | primary clock |\n",
     )
     (wd / "design.md").write_text(design)
+    (wd / "clocks.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "i_clk",
+                    "freq_mhz": 100,
+                    "period_ns": 10.0,
+                    "relationship": "primary",
+                    "role": "primary clock",
+                }
+            ]
+        )
+    )
     (wd / "manifest.json").write_text(
         json.dumps(
             {
@@ -149,6 +162,7 @@ def test_enumerate_artifacts_present_only_with_kinds(tmp_path):
     assert by_path["mac.md"] == "child-design" and by_path["fifo.md"] == "child-design"
     assert by_path["constraints/tpu_top.sdc"] == "sdc"
     assert by_path["constraints/tpu_top.sgdc"] == "sgdc"
+    assert by_path["clocks.json"] == "clocks"
     assert "brainstorm.md" not in by_path and "result.json" not in by_path
     assert all((wd / p).is_file() for p in by_path)  # present-only
 
@@ -192,6 +206,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "constraints/tpu_top.sdc",
         "constraints/tpu_top.sgdc",
         "ppa.json",
+        "clocks.json",
     }
     assert "brainstorm.md" not in paths and "result.json" not in paths
     assert "notes" not in ss
@@ -665,10 +680,18 @@ def test_derivation_failure_on_pass_is_blocked_exit2(tmp_path):
     # finalize must keep its documented 0/2 contract instead of leaking exit 1.
     wd = _spec_workdir(tmp_path)
     (wd / "ppa.json").write_text("[]")
-    (wd / "design.md").write_text(
-        _design(
-            "| i_clk | input | 1 | i_clk | clk | - | clock | - | - |\n",
-            "| i_clk | 100 | banana | primary | no | primary clock |\n",
+    # a non-numeric period now fails at clocks.json schema validation, not at a float()
+    # of a table cell — the defect is caught by `type: number` before any rendering.
+    (wd / "clocks.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "i_clk",
+                    "freq_mhz": 100,
+                    "period_ns": "banana",
+                    "relationship": "primary",
+                }
+            ]
         )
     )
     assert result.finalize(wd, "tpu_top", status="pass", waived_json="[]") == 2

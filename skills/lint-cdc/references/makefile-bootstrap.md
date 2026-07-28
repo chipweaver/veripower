@@ -30,7 +30,6 @@ The lint-cdc bootstrap verb resolves the SGDC seed in carried → cold → templ
 
 `<sgdc_seed>/constraints/<TOP>.sgdc` is always the seed source of truth (specification persists it once, then it is frozen); you **do not** write back to that source of truth. The SGDC with depth annotations is listed in `result.json.artifacts[]` and lands at this stage's own canonical (`Design/lint-cdc/scripts/constraints.sgdc`), which `carry_self` uses as the next run's carry-forward anchor.
 
-After deployment, the script also cross-checks the first clock `-period` in the spec source-of-truth `<TOP>.sgdc` against `<TOP>.sdc`; on mismatch it prints a `WARNING` only and does not abort — consistency issues are a `specification` rework.
 
 ## Makefile (`asic/<module>/Design/lint-cdc/runs/<N>/`)
 

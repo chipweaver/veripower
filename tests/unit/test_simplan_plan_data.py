@@ -76,9 +76,11 @@ def test_interface_role_carried(tmp_path):
     assert roles == {"clk": "clock", "rst_n": "reset", "wdata": "data"}
 
 
-def test_clock_relationship_carried(tmp_path):
+def test_clocks_no_longer_derived(tmp_path):
+    # Clocks are authored as Design/specification/clocks.json and read from there.
+    # Asserting the key is ABSENT keeps a re-added markdown clock parser from passing.
     pd = _plan_data(_workdir(tmp_path))
-    assert pd["clocks"][0]["relationship"] == "primary"
+    assert "clocks" not in pd
 
 
 def test_verbatim_extracted_risk_and_anchor_absent(tmp_path):

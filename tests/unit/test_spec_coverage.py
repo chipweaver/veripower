@@ -89,19 +89,6 @@ def test_parse_main_tables_142_wrong_header_is_loud():
         cc.parse_main_design_tables(design)
 
 
-def test_parse_main_tables_16_wrong_header_is_loud():
-    """A §1.6 with a non-template header must not silently yield zero clocks."""
-    import pytest
-    from spec import coverage as cc
-
-    design = (
-        "# m\n\n### 1.6 Clocks and Freq\n\n"
-        "| Name | Frequency |\n|------|----------|\n| sys_clk | 100 MHz |\n"
-    )
-    with pytest.raises(ValueError, match=r"1\.6.*Clock Name"):
-        cc.parse_main_design_tables(design)
-
-
 def _bs(manifest, brainstorm):
     from spec import coverage as cc
 
@@ -339,20 +326,44 @@ _GOOD_DESIGN = (
     "|------------|----------------|------------------|-----------------|-------------------|------------|\n"
     "| SC-0 | cfg | write | ack | T_setup | none |\n\n"
     "### 1.6 Clocks and Frequencies\n\n"
-    "| Clock Name | Nominal Frequency (MHz) | SDC Period (ns) | Relationship | Role |\n"
-    "|------------|-------------------------|-----------------|--------------|------|\n"
-    "| clk | 100 | 10.0 | primary | primary clock |\n"
+    "Clock definitions live in `clocks.json` (the sole numeric + relationship source).\n"
 )
 
 
-def _struct(design, manifest=None):
+# compute_structure reads clocks.json out of the workdir, so the in-memory-design helpers
+# below need a throwaway workdir to hold it.
+_DEFAULT_CLOCKS = [
+    {
+        "name": "clk",
+        "freq_mhz": 100,
+        "period_ns": 10.0,
+        "relationship": "primary",
+        "role": "primary clock",
+    }
+]
+_NO_CLOCKS = object()  # sentinel: write no clocks.json at all
+
+
+def _clocks_wd(clocks=None):
+    import json
+    import tempfile
+
+    d = Path(tempfile.mkdtemp())
+    if clocks is not _NO_CLOCKS:
+        (d / "clocks.json").write_text(
+            json.dumps(_DEFAULT_CLOCKS if clocks is None else clocks)
+        )
+    return d
+
+
+def _struct(design, manifest=None, clocks=None):
     from spec import coverage as cc
 
     manifest = manifest or {
         "module": "m",
         "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
     }
-    return cc.compute_structure(manifest, design)
+    return cc.compute_structure(_clocks_wd(clocks), manifest, design)
 
 
 def test_structure_clean_passes():
@@ -366,11 +377,12 @@ def test_structure_missing_gated_column():
 
 
 def test_structure_rb_period_freq_mismatch():
-    bad = _GOOD_DESIGN.replace("| 100 | 10.0 |", "| 100 | 8.0 |")  # 1000/100=10, not 8
-    assert _struct(bad)["period_violations"]
+    # 1000/100 = 10, not 8 — the one clock check the schema cannot express.
+    bad = [{**_DEFAULT_CLOCKS[0], "period_ns": 8.0}]
+    assert _struct(_GOOD_DESIGN, clocks=bad)["period_violations"]
 
 
-def test_structure_rf_clock_domain_not_in_16():
+def test_structure_rf_clock_domain_not_in_clocks_json():
     bad = _GOOD_DESIGN.replace(
         "| din | input | 8 | clk |", "| din | input | 8 | clk_x |"
     )
@@ -392,23 +404,21 @@ def test_structure_142_cross_reference_does_not_satisfy_presence():
     assert any("1.4.2" in p for p in s["presence_violations"])
 
 
-def test_structure_no_16_does_not_cascade_domain_violations():
-    # with §1.6 absent, do NOT emit spurious clock_domain_violations (the §1.6 absence
-    # is caught by column/presence; the domain check must stay quiet).
-    no_16 = _GOOD_DESIGN.split("### 1.6 Clocks and Frequencies")[0]
-    s = _struct(no_16)
+def test_structure_no_clocks_json_does_not_cascade_domain_violations():
+    # With clocks.json absent, do NOT emit a spurious clock_domain_violation for every
+    # §1.4.1 row — that absence is derive-constraints' fail-loud to report.
+    s = _struct(_GOOD_DESIGN, clocks=_NO_CLOCKS)
     assert s["clock_domain_violations"] == []
-    assert s[
-        "presence_violations"
-    ]  # §1.6 absence still caught via presence ("§1.6 table missing or empty")
 
 
-def _struct_with_children(design, child_bodies):
+def _struct_with_children(design, child_bodies, clocks=None):
     from spec import coverage as cc
 
     children = [{"name": n, "doc": f"{n}.md", "rtl_modules": [n]} for n in child_bodies]
     manifest = {"module": "m", "children": children}
-    return cc.compute_structure(manifest, design, child_texts=child_bodies)
+    return cc.compute_structure(
+        _clocks_wd(clocks), manifest, design, child_texts=child_bodies
+    )
 
 
 _CHILD_5 = (
@@ -686,9 +696,7 @@ _DESIGN_142 = (  # one fully-pinned §1.4.2 wire (Width + Clock Domain)
     "|----------|-------------------|-------|\n"
     "| score_S | pe_array | row_reduce | 32 | clk | stream | t | fp32 |\n\n"
     "### 1.6 Clocks and Frequencies\n\n"
-    "| Clock Name | Nominal Frequency (MHz) | SDC Period (ns) | Relationship |\n"
-    "|------------|-------------------------|-----------------|--------------|\n"
-    "| clk | 100 | 10.0 | primary |\n"
+    "Clock definitions live in `clocks.json` (the sole numeric + relationship source).\n"
 )
 
 
@@ -709,8 +717,10 @@ def test_interconnect_missing_width():
     )
 
 
-def test_interconnect_clock_not_in_16():
-    bad = _DESIGN_142.replace("| 32 | clk |", "| 32 | clk_x |")  # clk_x not in §1.6
+def test_interconnect_clock_not_in_clocks_json():
+    bad = _DESIGN_142.replace(
+        "| 32 | clk |", "| 32 | clk_x |"
+    )  # clk_x not in clocks.json
     iv = _struct(bad)["interconnect_violations"]
     assert any(
         v.get("wire") == "score_S" and v.get("clock_domain") == "clk_x" for v in iv
@@ -763,9 +773,9 @@ _IO_MANIFEST = {
 def _driver(design, bodies, manifest=None):
     from spec import coverage as cc
 
-    return cc.compute_structure(manifest or _IO_MANIFEST, design, child_texts=bodies)[
-        "top_io_driver_violations"
-    ]
+    return cc.compute_structure(
+        _clocks_wd(), manifest or _IO_MANIFEST, design, child_texts=bodies
+    )["top_io_driver_violations"]
 
 
 def _row(owner):
@@ -859,7 +869,9 @@ def test_driver_missing_owner_column():
 def test_driver_skipped_without_child_texts():
     from spec import coverage as cc
 
-    s = cc.compute_structure(_IO_MANIFEST, _io_design(_row("drv")))  # child_texts=None
+    s = cc.compute_structure(
+        _clocks_wd(), _IO_MANIFEST, _io_design(_row("drv"))
+    )  # child_texts=None
     assert s["top_io_driver_violations"] == []
 
 
