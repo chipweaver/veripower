@@ -17,68 +17,15 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
 sys.path.insert(0, str(REPO_ROOT / "skills" / "synthesis" / "scripts"))
-from synthesis import bootstrap  # noqa: E402
 
 
 # ── BP1/BP2: inference helpers (in-process, precise) ──────────────────────────
-def test_infer_top_from_readme_top_module_line(tmp_path):
-    # The byte-stable line rtl-design emits + synth greps (test_rtl_assemble.py).
-    (tmp_path / "README.md").write_text("**Top module**: my_top\n\nbody\n")
-    assert bootstrap.infer_top_from_readme(tmp_path) == "my_top"
-
-
-def test_infer_top_from_readme_first_match_wins(tmp_path):
-    # head -1 semantics: the Top line is line 1; a later 'top'-bearing line
-    # (e.g. a sync_cell annotation) must not win.
-    (tmp_path / "README.md").write_text(
-        "**Top module**: real_top\n\n- sync_cell top_sync added\n"
-    )
-    assert bootstrap.infer_top_from_readme(tmp_path) == "real_top"
-
-
-def test_infer_top_from_readme_skips_table_rows(tmp_path):
-    # A 'top' mention only inside a markdown table row → not inferred.
-    (tmp_path / "README.md").write_text("| top | note |\n|---|---|\n| a | b |\n")
-    assert bootstrap.infer_top_from_readme(tmp_path) is None
-
-
-def test_infer_top_from_readme_none_when_absent(tmp_path):
-    assert bootstrap.infer_top_from_readme(tmp_path) is None
-
-
-def test_infer_top_from_filelist_basename(tmp_path):
-    (tmp_path / "filelist.txt").write_text("rtl/foo.sv\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) == "foo"
-
-
-def test_infer_top_from_filelist_skips_directives_and_comments(tmp_path):
-    (tmp_path / "filelist.txt").write_text("# header\n+incdir+inc\ntop.v\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) == "top"
-
-
-def test_infer_top_from_filelist_sequential_ext_strip(tmp_path):
-    # chained .v/.sv/.vh strip, no break (a name ending '.sv.v' loses both):
-    # foo.sv.v -> (strip .v) foo.sv -> (strip .sv) foo
-    (tmp_path / "filelist.txt").write_text("foo.sv.v\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) == "foo"
-
-
-def test_infer_top_from_filelist_does_not_skip_double_slash(tmp_path):
-    # BP2 asymmetry: the inference skip set is {#, blank, +/-} — it does NOT skip
-    # '//'. So a leading '//top.v' line IS the first entry: basename('//top.v')
-    # -> 'top.v' -> 'top'. (rtl_load generation DOES skip '//' — see
-    # test_rtl_load_skips_double_slash_comment below; the two skip sets differ.)
-    (tmp_path / "filelist.txt").write_text("//top.v\nreal.v\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) == "top"
-
-
-# ── BP3-BP11: full deploy (subprocess mirror) ─────────────────────────────────
 def _mirror(tmp_path):
     """Build the upstream asic/M/... refs under a tmp design-tree root; return
     (skill_dir, rtl_dir, workdir). skill_dir is the real shipped skill — deploy
     tests run it with cwd=tmp_path, so the bootstrap anchors the tree on the CWD.
 
-    Pre-populates workdir/inputs.json (rtl/sdc/ppa keys) the way kernel.py dispatch
+    Pre-populates workdir/inputs.json (rtl/sdc/ppa/manifest keys) the way kernel.py dispatch
     injects it at dispatch time — bootstrap now reads upstream locations from
     inputs.json instead of self-navigating tree_root/asic/<module>/Design/... ."""
     skill_dst = REPO_ROOT / "skills" / "synthesis"
@@ -87,8 +34,12 @@ def _mirror(tmp_path):
     spec = tmp_path / "asic" / "M" / "Design" / "specification"
     workdir = tmp_path / "asic" / "M" / "Design" / "synthesis" / "runs" / "1"
     workdir.mkdir(parents=True)
+    spec.mkdir(parents=True, exist_ok=True)
+    (spec / "manifest.json").write_text(json.dumps({"module": "M_top", "children": []}))
     (workdir / "inputs.json").write_text(
-        json.dumps({"rtl": str(rtl), "sdc": str(spec), "ppa": str(spec)})
+        json.dumps(
+            {"rtl": str(rtl), "sdc": str(spec), "ppa": str(spec), "manifest": str(spec)}
+        )
     )
     return skill_dst, rtl, workdir
 
@@ -175,18 +126,6 @@ def test_happy_path_substitutes_my_top(tmp_path):
     assert "MY_RTL_DIR" not in (workdir / "scripts" / "dc_run.tcl").read_text()
 
 
-def test_readme_top_inference_wins_over_filelist(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "README.md").write_text("**Top module**: inferred_top\n")
-    (rtl / "filelist.txt").write_text("other.v\n")
-    proc = _run(skill_dst, workdir)  # no --top
-    assert proc.returncode == 0, proc.stderr
-    assert (
-        'set ::env(TOP)    "inferred_top"'
-        in (workdir / "scripts" / "config.tcl").read_text()
-    )
-
-
 def test_sdc_source_of_truth_copied(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "filelist.txt").write_text("top.v\n")
@@ -215,12 +154,22 @@ def test_missing_filelist_fail_closed(tmp_path):
     assert "missing" in proc.stderr and "filelist.txt" in proc.stderr
 
 
-def test_cant_infer_top_fail_closed(tmp_path):
+def test_top_read_from_manifest(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("+incdir+x\n")  # no RTL, no README
+    (rtl / "filelist.txt").write_text("some_other_name.v\n")
+    assert _run(skill_dst, workdir).returncode == 0  # no --top
+    # manifest.module wins; the filelist basename is not consulted at all
+    assert "M_top" in (workdir / "env.sh").read_text()
+
+
+def test_cant_read_top_fail_closed(tmp_path):
+    skill_dst, rtl, workdir = _mirror(tmp_path)
+    (rtl / "filelist.txt").write_text("top.v\n")
+    spec = tmp_path / "asic" / "M" / "Design" / "specification"
+    (spec / "manifest.json").unlink()
     proc = _run(skill_dst, workdir)  # no --top
     assert proc.returncode == 1
-    assert "cannot infer top" in proc.stderr
+    assert "cannot read top" in proc.stderr
 
 
 def test_already_deployed_guard(tmp_path):

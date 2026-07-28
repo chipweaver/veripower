@@ -31,7 +31,7 @@ def _workdir(
     (wd / "filelist.txt").write_text(
         "\n".join(f"{c}.v" for c in children) + f"\n{top}.v\n"
     )
-    (wd / "README.md").write_text(f"**Top module**: {top}\n")
+    (wd / "README.md").write_text("## Constraint-annotation note\n")
 
     # ledger (.child_reports.json) — rtl._ledger.load_ledger REQUIRES per record {files, annotations}
     # with annotations.sgdc + annotations.sdc sub-blocks. NO `status` key (status lives in fresh).

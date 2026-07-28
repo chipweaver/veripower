@@ -129,6 +129,10 @@ RULES: dict[str, Rule] = {
             "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/filelist.txt"),
             "rtl_doc": ("Design/rtl-design/README.md",),
             "sgdc_seed": ("Design/specification/constraints/*.sgdc",),
+            # TOP comes from manifest.module. The specification stage root is already
+            # reachable through the constraints key, but only the declared globs are
+            # fingerprinted — without this edge a module rename would not invalidate.
+            "manifest": ("Design/specification/manifest.json",),
         },
         outputs=(
             "lint-report.txt",
@@ -153,6 +157,10 @@ RULES: dict[str, Rule] = {
             "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/filelist.txt"),
             "rtl_doc": ("Design/rtl-design/README.md",),
             "sdc": ("Design/specification/constraints/*.sdc",),
+            # TOP comes from manifest.module. The specification stage root is already
+            # reachable through the constraints key, but only the declared globs are
+            # fingerprinted — without this edge a module rename would not invalidate.
+            "manifest": ("Design/specification/manifest.json",),
             "ppa": ("Design/specification/ppa.json",),
         },
         outputs=(

@@ -40,30 +40,9 @@ def test_render_filelist_dedups():
     assert assemble.render_filelist(ledger).count("pkg.sv") == 1
 
 
-def test_render_readme_top_line_first():
-    # The exact byte-stable line the synthesis/lint-cdc bootstraps grep (head -1):
-    # a `sync_cell -name top_*` annotation line also matches 'top', so Top must be line 1.
-    ledger = {
-        "a": {
-            "files": ["a.sv"],
-            "annotations": {
-                "sgdc": {
-                    "sync_cell": ["top_sync"],
-                    "reset_synchronizer": [],
-                    "set_case_analysis": [],
-                    "quasi_static": [],
-                },
-                "sdc": {},
-            },
-        }
-    }
-    out = assemble.render_readme(ledger, "real_top")
-    assert out.splitlines()[0] == "**Top module**: real_top"
-
-
 def test_render_readme_fallbacks():
     ledger = {"a": {"files": ["a.sv"], "annotations": {"sgdc": {}, "sdc": {}}}}
-    text = assemble.render_readme(ledger, "t")
+    text = assemble.render_readme(ledger)
     assert "single clock domain; no deep annotations needed." in text
     assert "set_false_path: none" in text
 
@@ -103,7 +82,7 @@ def test_render_readme_aggregated():
             },
         },
     }
-    text = assemble.render_readme(ledger, "top")
+    text = assemble.render_readme(ledger)
     assert "sync_cell -name cdc_sync_2ff" in text
     assert "set_case_analysis 0 scan_en" in text
     assert "quasi_static -name cfg_word" in text

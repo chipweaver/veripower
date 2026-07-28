@@ -91,7 +91,7 @@ def _agg(ledger: dict, family: str, key: str) -> list:
     return items
 
 
-def render_readme(ledger: dict, top: str) -> str:
+def render_readme(ledger: dict) -> str:
     sync = _agg(ledger, "sgdc", "sync_cell")
     rsync = _agg(ledger, "sgdc", "reset_synchronizer")
     sca = _agg(ledger, "sgdc", "set_case_analysis")
@@ -101,8 +101,6 @@ def render_readme(ledger: dict, top: str) -> str:
     fp = _agg(ledger, "sdc", "set_false_path")
 
     lines = [
-        f"**Top module**: {top}",
-        "",
         "## Constraint-annotation note",
         "",
         "### SGDC",
@@ -135,7 +133,7 @@ def run(workdir, manifest, top, *, seeded=False) -> int:
         print(f"[rtl assemble] {e}", file=sys.stderr)
         return 1
     (workdir / "filelist.txt").write_text(render_filelist(ledger), encoding="utf-8")
-    (workdir / "README.md").write_text(render_readme(ledger, top), encoding="utf-8")
+    (workdir / "README.md").write_text(render_readme(ledger), encoding="utf-8")
     verdict, rc = post_verdict(manifest, top, fresh, out)
     print(json.dumps(verdict, ensure_ascii=False))
     return rc

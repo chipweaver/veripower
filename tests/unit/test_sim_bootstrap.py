@@ -41,29 +41,10 @@ def test_top_from_scaffold_absent_or_no_top(tmp_path):
     assert bootstrap.infer_top_from_scaffold(tmp_path) is None
 
 
-def test_top_from_filelist_first_rtl_basename(tmp_path):
-    (tmp_path / "filelist.txt").write_text("# c\n+incdir+inc\nrtl/my_top.sv\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) == "my_top"
-
-
-def test_top_from_filelist_rejects_directive(tmp_path):
-    (tmp_path / "filelist.txt").write_text("+incdir+include\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) is None
-
-
-def test_top_from_filelist_rejects_padded_bare_name(tmp_path):
-    # A whitespace-padded bare filename (no path separator) must NOT infer a top:
-    # basename keeps the leading spaces, so the identifier check rejects it — byte-for-byte
-    # the shell/lint-cdc behavior (no .strip() before basename).
-    (tmp_path / "filelist.txt").write_text("  top.v\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) is None
-
-
-# ── full deploy "mirror" tests (subprocess; isolated repo root) ───────────────
 def _mirror(
     tmp_path,
     *,
-    readme="**Top module**: dut\n",
+    readme="## Constraint-annotation note\n",
     filelist="rtl/dut.v\n+incdir+inc\n",
     scaffold_top="dut",
 ):
@@ -223,14 +204,13 @@ def test_bootstrap_allows_hint_only_workdir(tmp_path):
     assert (wd / "Makefile").is_file()
 
 
-def test_bootstrap_uninferrable_top_exit_1(tmp_path):
+def test_bootstrap_unreadable_top_exit_1(tmp_path):
     main, wd, module = _mirror(
         tmp_path,
-        filelist="+incdir+inc\n",
-        scaffold_top=None,  # no scaffold-specification.json -> can't infer from scaffold
+        scaffold_top=None,  # no scaffold-specification.json -> nothing to read TOP from
     )
     r = _run(main, module, wd)
-    assert r.returncode == 1 and "infer top" in r.stderr.lower()
+    assert r.returncode == 1 and "read top" in r.stderr.lower()
 
 
 def test_bootstrap_missing_rtl_filelist_exit_1(tmp_path):

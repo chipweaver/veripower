@@ -13,7 +13,7 @@ Exit codes (returned as int; __main__ does sys.exit):
   0  deployed (infra only, or infra + scaffold; rework when a carried Makefile is
      already present in workdir, first run otherwise — the no-clobber deploy never
      overwrites a carried TB)
-  1  fail-closed guard (missing infra template dir / cannot infer top / missing RTL
+  1  fail-closed guard (missing infra template dir / cannot read top / missing RTL
      filelist / missing --scaffold file)
   (2 = usage is owned by argparse in __main__.py)
 """
@@ -21,7 +21,6 @@ Exit codes (returned as int; __main__ does sys.exit):
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import sys
@@ -73,24 +72,6 @@ def infer_top_from_scaffold(scaffold_dir: Path) -> str | None:
     return top if isinstance(top, str) and _IDENT_RE.match(top) else None
 
 
-def infer_top_from_filelist(rtl_dir: Path) -> str | None:
-    """First true RTL path entry's basename (.v/.sv/.vh stripped) -> top, when an identifier.
-    Skips comments (#), blanks, and +/- directives. Extensions stripped sequentially."""
-    f = rtl_dir / "filelist.txt"
-    if not f.is_file():
-        return None
-    for raw in f.read_text(errors="replace").splitlines():
-        line = raw.replace("\r", "")
-        if re.match(r"^\s*#", line) or not line.strip() or re.match(r"^\s*[+\-]", line):
-            continue
-        base = os.path.basename(line)
-        for ext in (".v", ".sv", ".vh"):
-            if base.endswith(ext):
-                base = base[: -len(ext)]
-        return base if _IDENT_RE.match(base) else None
-    return None
-
-
 def _deploy_no_clobber(src_root: Path, dest: Path) -> None:
     """Copy every template file into dest UNLESS dest already has one at that path —
     a carried file (brought forward by kernel.py's carry_self before this verb runs,
@@ -127,17 +108,15 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
 
     # Infer TOP (the declared `scaffold` input's scaffold-specification.json `top` field
     # first — a REQUIRED field, spec-input-contract — then the RTL filelist) BEFORE the
-    # prereq/guard. README is no longer consulted (D6/G4), and specification/manifest.json
-    # is no longer consulted either: simulation does not declare specification as an
-    # input, and `scaffold` already IS a declared one, so TOP now comes from a coordinate
-    # simulation genuinely tracks (mirrors power-analysis inferring TOP from its injected
+    # prereq/guard. TOP comes from the scaffold: simulation does not declare specification
+    # as an input, and `scaffold` already IS a declared one, so this is a coordinate the
+    # stage genuinely tracks (mirrors power-analysis inferring TOP from its injected
     # netlist rather than a non-declared specification read).
     if not top:
         top = infer_top_from_scaffold(Path(inputs["scaffold"]))
     if not top:
-        top = infer_top_from_filelist(rtl_dir)
-    if not top:
-        _err("cannot infer top-module name; pass --top <name>")
+        _err("cannot read top-module name; pass --top <name>")
+        _err("  scaffold-specification.json must carry a 'top' name.")
         return 1
 
     # Prerequisite: the rtl-design filelist must exist (the scaffold's RTL source).

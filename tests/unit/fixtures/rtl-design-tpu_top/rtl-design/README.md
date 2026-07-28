@@ -1,5 +1,3 @@
-**Top module**: tpu_top
-
 ## Constraint-annotation note
 
 ### SGDC

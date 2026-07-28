@@ -2,59 +2,140 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/rtl-design/result.schema.json",
   "title": "rtl-design result.json contract (schema_version 1)",
-  "description": "Complete contract for asic/<module>/Design/rtl-design/result.json. Canonical handoff to consumers is via README.md (`Top module: <TOP>` line + SGDC/SDC annotations) and filelist.txt (RTL source list) at the canonical path Design/rtl-design/; stage_specific has no pass-required fields. top_module may be populated for audit/cross-validation but is not consumed by any reader (consumers parse TOP from README.md `Top module:` line first, falling back to filelist.txt first non-comment line). On status=fail, stage_specific.fail_reason is required (if/then below) — the one-line failure narrative.",
+  "description": "Complete contract for asic/<module>/Design/rtl-design/result.json. Canonical handoff to consumers is via filelist.txt (RTL source list) and README.md (SGDC/SDC annotations, read by the lint-cdc and synthesis agents) at the canonical path Design/rtl-design/; stage_specific has no pass-required fields. top_module may be populated for audit/cross-validation but is not consumed by any reader: TOP is manifest.module, which specification authors and every consumer declares as an input. On status=fail, stage_specific.fail_reason is required (if/then below) — the one-line failure narrative.",
   "allOf": [
-    {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
+    {
+      "$ref": "https://veripower.local/schemas/envelope.schema.json"
+    },
     {
       "properties": {
-        "stage": {"const": "rtl-design"},
+        "stage": {
+          "const": "rtl-design"
+        },
         "stage_specific": {
           "type": "object",
           "properties": {
-            "top_module":  {"type": "string", "minLength": 1},
-            "fail_reason": {"type": "string", "minLength": 1},
+            "top_module": {
+              "type": "string",
+              "minLength": 1
+            },
+            "fail_reason": {
+              "type": "string",
+              "minLength": 1
+            },
             "semantic_gate": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["gate", "flagged", "loci", "spec_confidence"],
+              "required": [
+                "gate",
+                "flagged",
+                "loci",
+                "spec_confidence"
+              ],
               "$comment": "Stores the validate-review verb's stdout verdict verbatim (no transform). flagged.category is the GATING subset {missing,wrong-behavior} -- kept in sync with _GATING_CATEGORIES in rtl/review.py; over-engineering/unavailable/minor never appear here. spec_confidence is the MINIMUM confidence over every fix_locus=spec finding (not just the gating subset), null if none -- rtl-design has no triage, so this is the sole upstream-route trust signal the kernel gets on a spec-locus trip (route.py).",
               "properties": {
-                "gate": {"enum": ["trip", "clear"]},
+                "gate": {
+                  "enum": [
+                    "trip",
+                    "clear"
+                  ]
+                },
                 "flagged": {
                   "type": "array",
                   "items": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["child", "category", "severity", "fix_locus"],
+                    "required": [
+                      "child",
+                      "category",
+                      "severity",
+                      "fix_locus"
+                    ],
                     "properties": {
-                      "child": {"type": "string"},
-                      "category": {"enum": ["missing", "wrong-behavior"]},
-                      "severity": {"enum": ["critical", "important"]},
-                      "fix_locus": {"enum": ["rtl", "spec"]}
+                      "child": {
+                        "type": "string"
+                      },
+                      "category": {
+                        "enum": [
+                          "missing",
+                          "wrong-behavior"
+                        ]
+                      },
+                      "severity": {
+                        "enum": [
+                          "critical",
+                          "important"
+                        ]
+                      },
+                      "fix_locus": {
+                        "enum": [
+                          "rtl",
+                          "spec"
+                        ]
+                      }
                     }
                   }
                 },
                 "loci": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["rtl", "spec"],
+                  "required": [
+                    "rtl",
+                    "spec"
+                  ],
                   "properties": {
-                    "rtl": {"type": "array", "items": {"type": "string"}},
-                    "spec": {"type": "array", "items": {"type": "string"}}
+                    "rtl": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "spec": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
                   }
                 },
-                "spec_confidence": {"enum": ["high", "medium", "low", null]}
+                "spec_confidence": {
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low",
+                    null
+                  ]
+                }
               }
             }
           },
           "additionalProperties": true
         }
       },
-      "required": ["stage_specific"]
+      "required": [
+        "stage_specific"
+      ]
     },
     {
-      "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["fail_reason"]}}}
+      "if": {
+        "properties": {
+          "status": {
+            "const": "fail"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stage_specific": {
+            "required": [
+              "fail_reason"
+            ]
+          }
+        }
+      }
     }
   ]
 }

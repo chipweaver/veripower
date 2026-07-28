@@ -25,52 +25,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _MAIN = REPO_ROOT / "skills" / "lint-cdc" / "scripts" / "lintcdc" / "__main__.py"
 sys.path.insert(0, str(REPO_ROOT / "skills" / "lint-cdc" / "scripts"))
-from lintcdc import bootstrap  # noqa: E402
 
 
 # ── BP3: inference helpers (in-process, precise — copied from synthesis) ───────
-def test_infer_top_from_readme_top_module_line(tmp_path):
-    (tmp_path / "README.md").write_text("**Top module**: my_top\n\nbody\n")
-    assert bootstrap.infer_top_from_readme(tmp_path) == "my_top"
-
-
-def test_infer_top_from_readme_first_match_wins(tmp_path):
-    (tmp_path / "README.md").write_text(
-        "**Top module**: real_top\n\n- sync_cell top_sync added\n"
-    )
-    assert bootstrap.infer_top_from_readme(tmp_path) == "real_top"
-
-
-def test_infer_top_from_readme_skips_table_rows(tmp_path):
-    (tmp_path / "README.md").write_text("| top | note |\n|---|---|\n| a | b |\n")
-    assert bootstrap.infer_top_from_readme(tmp_path) is None
-
-
-def test_infer_top_from_readme_none_when_absent(tmp_path):
-    assert bootstrap.infer_top_from_readme(tmp_path) is None
-
-
-def test_infer_top_from_filelist_basename(tmp_path):
-    (tmp_path / "filelist.txt").write_text("rtl/foo.sv\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) == "foo"
-
-
-def test_infer_top_from_filelist_skips_directives_and_comments(tmp_path):
-    (tmp_path / "filelist.txt").write_text("# header\n+incdir+inc\ntop.v\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) == "top"
-
-
-def test_infer_top_from_filelist_sequential_ext_strip(tmp_path):
-    # chained .v/.sv/.vh strip, no break (a name ending '.sv.v' loses both).
-    (tmp_path / "filelist.txt").write_text("foo.sv.v\n")
-    assert bootstrap.infer_top_from_filelist(tmp_path) == "foo"
-
-
-def test_infer_top_from_filelist_none_when_absent(tmp_path):
-    assert bootstrap.infer_top_from_filelist(tmp_path) is None
-
-
-# ── BP2/BP4-BP11: full deploy (subprocess mirror) ─────────────────────────────
 def _rtl_dir(workdir: Path) -> Path:
     """The rtl-design dir for a workdir built by _make_tree (.../Design/lint-cdc/runs/N)."""
     return workdir.parents[3] / "Design" / "rtl-design"
@@ -119,8 +76,19 @@ def _make_tree(
             (ws / "constraints.sgdc").write_text(carried_sgdc)
         if carried_waiver is not None:
             (ws / "waiver.tcl").write_text(carried_waiver)
+    spec_root.mkdir(parents=True, exist_ok=True)
+    (spec_root / "manifest.json").write_text(
+        json.dumps({"module": "dut", "children": []})
+    )
     (workdir / "inputs.json").write_text(
-        json.dumps({"rtl": str(rtl), "rtl_doc": str(rtl), "sgdc_seed": str(spec_root)})
+        json.dumps(
+            {
+                "rtl": str(rtl),
+                "rtl_doc": str(rtl),
+                "sgdc_seed": str(spec_root),
+                "manifest": str(spec_root),
+            }
+        )
     )
     return m, workdir, _MAIN
 
@@ -201,23 +169,6 @@ def test_cold_seed_used(tmp_path):
     assert "cold-start" in r.stdout
 
 
-def test_readme_inference_wins_over_filelist(tmp_path):
-    m, workdir, main = _make_tree(
-        tmp_path, readme="**Top module**: inferred_top\n", filelist="other.v\n"
-    )
-    r = _run(workdir, main)  # no --top
-    assert r.returncode == 0, r.stderr
-    assert 'export TOP="${TOP:-inferred_top}"' in (workdir / "env.sh").read_text()
-
-
-def test_infer_from_filelist_when_top_omitted(tmp_path):
-    # No --top, no README: TOP inferred from filelist first entry ('dut').
-    m, workdir, main = _make_tree(tmp_path)  # filelist -> rtl/dut.v
-    r = _run(workdir, main)  # no --top
-    assert r.returncode == 0, r.stderr
-    assert 'export TOP="${TOP:-dut}"' in (workdir / "env.sh").read_text()
-
-
 def test_filelist_synced_and_rebased(tmp_path):
     # rtl-design/filelist.txt -> scripts/filelist.txt with the +incdir + re-anchored
     # ABSOLUTE paths. Skip set is {#, blank} ONLY: a comment is dropped, real .v lines
@@ -270,12 +221,14 @@ def test_no_rtl_filelist_keeps_template_filelist(tmp_path):
     assert "../../../rtl-design" not in gen and "MY_TOP" not in gen
 
 
-def test_cant_infer_top_fail_closed(tmp_path):
-    # No --top, no README, filelist has no usable RTL entry -> inference None -> exit 1.
-    m, workdir, main = _make_tree(tmp_path, filelist="+incdir+x\n", readme=None)
+def test_cant_read_top_fail_closed(tmp_path):
+    # No --top and no manifest -> exit 1. README and filelist are not consulted.
+    m, workdir, main = _make_tree(tmp_path, readme=None)
+    spec = tmp_path / "asic" / m / "Design" / "specification"
+    (spec / "manifest.json").unlink()
     r = _run(workdir, main)  # no --top
     assert r.returncode == 1
-    assert "cannot infer top" in r.stderr
+    assert "cannot read top" in r.stderr
 
 
 def test_already_deployed_guard(tmp_path):

@@ -23,7 +23,7 @@ workdir, or an empty rtl-design filelist.
 
 Exit codes (returned as int; __main__ does sys.exit):
   0  deployed
-  1  fail-closed guard (missing template dir / cannot infer top / already deployed /
+  1  fail-closed guard (missing template dir / cannot read top / already deployed /
      rtl-design filelist has no usable RTL entries)
   (2 = usage is owned by argparse in __main__.py)
 """
@@ -31,7 +31,6 @@ Exit codes (returned as int; __main__ does sys.exit):
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import sys
@@ -52,55 +51,18 @@ def _err(msg: str) -> None:
     print(f"[lintcdc bootstrap] {msg}", file=sys.stderr)
 
 
-def infer_top_from_readme(rtl_dir: Path) -> str | None:
-    """First non-table line naming a top module -> first identifier after ':'/'：'.
-
-    Matches a top-module line: case-insensitive 'top' / 'top module' preceded by
-    start / '*' / '#' / whitespace, excluding markdown table rows (first match wins);
-    the capture charset allows a leading digit but the identifier validation then
-    rejects it. A ':' or '：' is REQUIRED — a colon-less line is not matched. The
-    producer always emits the cross-stage contract form `**Top module**: <top>`, so
-    requiring the colon matches the actual contract and the colon-less case has no
-    real input.
-    """
-    f = rtl_dir / "README.md"
+def top_from_manifest(manifest_dir: Path) -> str | None:
+    """TOP from the injected manifest's `module`. The specification stage authors it and
+    every other copy — the two result.json echoes, the scaffold's `top` — derives from it.
+    `manifest` is a declared input, so a rename invalidates this stage's proof."""
+    f = Path(manifest_dir) / "manifest.json"
     if not f.is_file():
         return None
-    line_re = re.compile(r"(^|[*#\s])(top|top\s+module)", re.I)
-    extract_re = re.compile(r"^[^:：]*[:：]\s*([A-Za-z0-9_]+)")
-    for raw in f.read_text(errors="replace").splitlines():
-        line = raw.replace("\r", "")
-        if re.match(r"^\s*\|", line):  # skip markdown table rows
-            continue
-        if not line_re.search(line):
-            continue
-        m = extract_re.match(line)
-        if not m:
-            return None
-        top = m.group(1)
-        return top if _IDENT_RE.match(top) else None
-    return None
-
-
-def infer_top_from_filelist(rtl_dir: Path) -> str | None:
-    """First true RTL path entry's basename (.v/.sv/.vh stripped) -> top, when an
-    identifier. Skips comments (#), blanks, and +/- directives (the inference skip
-    set is {#, blank, +/-} — NO '//' skip). Extensions are stripped sequentially (a
-    name ending '.sv.v' loses both).
-    """
-    f = rtl_dir / "filelist.txt"
-    if not f.is_file():
+    try:
+        top = json.loads(f.read_text(encoding="utf-8")).get("module")
+    except json.JSONDecodeError:
         return None
-    for raw in f.read_text(errors="replace").splitlines():
-        line = raw.replace("\r", "")
-        if re.match(r"^\s*#", line) or not line.strip() or re.match(r"^\s*[+\-]", line):
-            continue
-        base = os.path.basename(line)
-        for ext in (".v", ".sv", ".vh"):
-            if base.endswith(ext):
-                base = base[: -len(ext)]
-        return base if _IDENT_RE.match(base) else None
-    return None
+    return top if isinstance(top, str) and _IDENT_RE.match(top) else None
 
 
 def _sub(path: Path, placeholder: str, value: str) -> None:
@@ -184,13 +146,10 @@ def run(workdir, top: str | None = None) -> int:
 
     # Infer TOP (README first, then filelist) BEFORE mkdir/guard (shell order).
     if not top:
-        top = infer_top_from_readme(rtl_dir)
+        top = top_from_manifest(inputs["manifest"])
     if not top:
-        top = infer_top_from_filelist(rtl_dir)
-    if not top:
-        _err("cannot infer top-module name; pass --top <name>")
-        _err("  Add a 'Top: <name>' line to Design/rtl-design/README.md, or")
-        _err("  ensure Design/rtl-design/filelist.txt begins with an RTL path.")
+        _err("cannot read top-module name; pass --top <name>")
+        _err("  Design/specification/manifest.json must carry a 'module' name.")
         return 1
 
     dest.mkdir(parents=True, exist_ok=True)
