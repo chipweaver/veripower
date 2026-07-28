@@ -101,9 +101,4 @@ producing the staggered diagonal wavefront the MAC array expects.
 
 ## 5. Verification Hints
 
-| CheckID | SourceFeature | ImplementationDetail | ImplementationDetailVerbatim | BrainstormAnchor | Observable | ReferenceRule | Latency | ResetBehavior |
-|---------|---------------|----------------------|------------------------------|------------------|------------|---------------|---------|---------------|
-| CHK-SREG-01 | F-02 | out1 = in1 delayed 1 cycle via register delay10 | `out1` = `in1` delayed **1** cycle (one register `delay10`); `delay10 <= in1`; `out1 = delay10` | L61 | `out1` (`mac00_in`) | out1[t] == in1[t-1] | 1 cycle | `delay10` cleared to 0 on async active-low reset (`negedge i_rstn`) |
-| CHK-SREG-02 | F-02 | out2 = in2 delayed 2 cycles via cascaded delay20 then delay21 | `out2` = `in2` delayed **2** cycles (two registers `delay20` → `delay21`); `delay20 <= in2`; `delay21 <= delay20`; `out2 = delay21` | L62 | `out2` (`mac10_in`) | out2[t] == in2[t-2] | 2 cycle | `delay20` and `delay21` cleared to 0 on async active-low reset (`negedge i_rstn`) |
-| CHK-SREG-03 | F-02 | async active-low reset clears all three skew registers to 0 | Async active-low reset clears all skew registers to 0; `delay10`/`delay20`/`delay21` <= 0 on `negedge i_rstn` | L64 | `delay10`, `delay20`, `delay21`, `out1`, `out2` | on i_rstn==0: delay10==delay20==delay21==0 → out1==out2==0 | 0 cycle (async) | all skew registers (`delay10`, `delay20`, `delay21`) = 0 |
-| CHK-SREG-04 | F-02 | out1 leads out2 by 1 cycle for a same-cycle input pair (diagonal wavefront stagger) | `out1` = `in1` delayed **1** cycle (one register `delay10`); `out2` = `in2` delayed **2** cycles (two registers `delay20` → `delay21`) | L61-L62 | `out1` (`mac00_in`), `out2` (`mac10_in`) | for pair presented at t: out1 valid at t+1, out2 valid at t+2 (out1 leads out2 by 1) | 1 cycle (lead) | both lines restart latency from reset-release edge after `delay10`/`delay20`/`delay21` cleared to 0 |
+The check hints live in `check-hints/systolic_reg.json`.

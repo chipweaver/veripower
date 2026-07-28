@@ -41,10 +41,36 @@ Register side effects / FSM / reset behavior / clock-gating logic (prose + table
 
 Async interaction / back-pressure / error handling / exception paths (prose).
 
-## §5 Verification Hints (9 columns required)
+## §5 Verification Hints
 
-| CheckID | SourceFeature | ImplementationDetail | ImplementationDetailVerbatim | BrainstormAnchor | Observable | ReferenceRule | Latency | ResetBehavior |
-|---------|---------------|----------------------|------------------------------|------------------|------------|---------------|---------|---------------|
-| CHK-... | F-... | (≤20-word summary) | (brainstorm verbatim RTL formula / token, MUST contain `assign / always / <= / literal numeric` or marked `(narrative-only; see L<N>-<M>)`) | L<N> or §subsection-anchor | <observable signal> | <RM rule> | ≤N cycle | <reset value> |
+The hints live in `check-hints/<child>.md`'s JSON sibling — `check-hints/<child>.json`, one
+file per child because children are authored in parallel. Keep this section as a pointer to
+it; narrative about *why* a check exists belongs in §3 / §4.
 
-**Critical**: `ImplementationDetailVerbatim` is the **only** source of cycle-accurate refmodel formulas for downstream simulation-plan / simulation. It must preserve brainstorm-original tokens (not summary-compressed). `check-coverage`'s token-survival check requires every brainstorm hard token (`assign` / `always` / sized literals / timing) to survive into `design.md ∪ <child>.md`, so brainstorm formulas land here verbatim.
+Schema: `references/check-hints.schema.json`. A JSON array, one object per check:
+
+```json
+[
+  {
+    "check_id": "CHK-...",
+    "source_feature": "F-...",
+    "implementation_detail": "<=20-word summary",
+    "implementation_detail_verbatim": "brainstorm-verbatim RTL formula or token",
+    "brainstorm_anchor": "L<N>",
+    "observable": "<observable signal>",
+    "reference_rule": "<RM rule>",
+    "latency": "<=N cycle",
+    "reset_behavior": "<reset value>"
+  }
+]
+```
+
+| Field | Rule |
+|---|---|
+| `check_id` | Required. Unique across **every** child, not just yours. |
+| `source_feature` | Required. A `features.json` `id`. |
+| `implementation_detail` / `observable` / `reference_rule` | Required and non-empty. |
+| `implementation_detail_verbatim` | Optional in shape, load-bearing in fact — see below. |
+| `brainstorm_anchor` / `latency` / `reset_behavior` | Optional. |
+
+**Critical**: `implementation_detail_verbatim` is the **only** source of cycle-accurate refmodel formulas for downstream simulation-plan / simulation. It must preserve brainstorm-original tokens (not summary-compressed) — contain `assign` / `always` / `<=` / a literal numeric, or carry the marker `(narrative-only; see L<N>-<M>)` when the brainstorm states no formula. `check-coverage`'s token-survival check requires every brainstorm hard token (`assign` / `always` / sized literals / timing) to survive into `design.md ∪ <child>.md ∪ check-hints/*.json`, so brainstorm formulas land here verbatim.

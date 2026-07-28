@@ -1,10 +1,9 @@
 # Spec Fields → Simulation-Plan Objects (plan-data.json field guide)
 
-`derive-plan-data` extracts every structured field of `design.md` (§1.4.1 / §1.4.2) and each
-per-child `<child>.md §5` into `plan-data.json`. Clocks, features and timing scenarios are the
-exceptions: they are already structured as `clocks.json` / `features.json` /
-`timing-scenarios.json` (specification's own outputs) and are read from there directly —
-nothing derives them. You author the scaffold and
+`derive-plan-data` extracts `design.md` §1.4.1 / §1.4.2 into `plan-data.json` and aggregates
+every `check-hints/<child>.json` into `check_hints[]`. Clocks, features and timing scenarios
+never pass through it: they are authored as `clocks.json` / `features.json` /
+`timing-scenarios.json` and read from there directly. You author the scaffold and
 `verification-plan.md` **from that JSON**; do not re-read `design.md` / `<child>.md` into
 the main thread. This guide names the `design.md` columns only so you recognize where each
 `plan-data.json` field came from, and maps them to the objects this stage authors
@@ -26,7 +25,7 @@ add SV-rendering claims here.
 - **The single human source of truth is `design.md`.** There is no separate
   requirement-to-testpoint mapping document.
 - Structured fields must live in `features.json` / `clocks.json` or in fixed design.md
-  sections (§1.4.1 / §1.4.2 / per-child `<child>.md §5`); they must not be scattered across
+  sections (§1.4.1 / §1.4.2) or in an authored sidecar; they must not be scattered across
   free-form prose.
 - `features.json` requires every field but `coverage_intent`, so a degraded feature list is
   not a case you have to cope with — an incomplete one fails the specification gate.
@@ -131,22 +130,22 @@ them for the cycle-level detail a scenario row cannot carry.
 
 ---
 
-## Per-child `<child>.md §5` Verification Hints table (drives inlined_check_hints[])
+## Per-child `check-hints/<child>.json` (drives inlined_check_hints[])
 
-The 9-column Verification Hints table lives in each `<child>.md §5` (one per child unit declared
+The check hints live in `check-hints/<child>.json` (one per child unit declared
 in `manifest.json`). You cluster its rows into `testpoints[].covers[]`; materialize then fills
 each `testpoints[].inlined_check_hints[]` from those `covers[]`.
 
 | Column | Where it lands |
 |---|---|
-| `CheckID` | Identifies the check; you cluster it into a testpoint via `covers[]`. |
-| `SourceFeature` | Traces back to a `features.json` `id`. |
-| `ImplementationDetail` | ≤20-word constraint summary; the fallback source for `inlined_check_hints[].implementation_detail`. |
-| `ImplementationDetailVerbatim` | Verbatim cycle-accurate formula; the **preferred** source, materialized into `inlined_check_hints[].implementation_detail`. |
-| `Observable` | Copied to `inlined_check_hints[].observable` (metadata for the downstream check author). |
-| `ReferenceRule` | Copied to `inlined_check_hints[].reference_rule` (metadata for the downstream check author). |
-| `Latency` | Copied to `inlined_check_hints[].latency` (metadata). |
-| `ResetBehavior` | Copied to `inlined_check_hints[].reset_behavior` (metadata). |
+| `check_id` | Identifies the check; you cluster it into a testpoint via `covers[]`. |
+| `source_feature` | Traces back to a `features.json` `id`. |
+| `implementation_detail` | ≤20-word constraint summary; the fallback source for `inlined_check_hints[].implementation_detail`. |
+| `implementation_detail_verbatim` | Verbatim cycle-accurate formula; the **preferred** source, materialized into `inlined_check_hints[].implementation_detail`. |
+| `observable` | Copied to `inlined_check_hints[].observable` (metadata for the downstream check author). |
+| `reference_rule` | Copied to `inlined_check_hints[].reference_rule` (metadata for the downstream check author). |
+| `latency` | Copied to `inlined_check_hints[].latency` (metadata). |
+| `reset_behavior` | Copied to `inlined_check_hints[].reset_behavior` (metadata). |
 
 `materialize-scaffold` fills `inlined_check_hints[]` deterministically from your `covers[]` +
 plan-data: `implementation_detail = verbatim-if-present-else-summary`, and the other four columns
@@ -167,8 +166,8 @@ Section anchors in `design.md` are English canonical:
   `materialize-scaffold` from the single `relationship: "primary"` entry
 - §1.7 Submodule Index → pointer to `manifest.json`
 
-Per-child Verification Hints (9-column table) live in `<child>.md §5`; `simplan derive-plan-data
---workdir` reads `manifest.json` + each `<child>.md` and tags each hint with a `child` field.
+Per-child check hints live in `check-hints/<child>.json`; `simplan derive-plan-data --workdir`
+reads `manifest.json` + each of those files and tags every hint with a `child` field.
 
 ---
 
@@ -177,7 +176,7 @@ Per-child Verification Hints (9-column table) live in `<child>.md §5`; `simplan
 - Derive `verification-plan.md` (human-readable review anchor) and `scaffold-specification.json`
   (machine-read contract) from the fields above.
 - `features.json` alone gives you feature-traceability testpoints; transactions / agents /
-  sequences / checks need `timing-scenarios.json` and the §1.4 / §5 fields. There is no automatic generation; you
+  sequences / checks need `timing-scenarios.json`, `check-hints/*.json` and the §1.4 fields. There is no automatic generation; you
   author these, guided by the fields above.
 - Non-target capabilities ("does not support" / "does not include") belong in a feature's
   `negative_cases`, so negative tests and result summaries can be derived from them.
@@ -243,17 +242,37 @@ the `Role=reset` row; grouping them under `APB` would collide with the clk/rst p
 (SC-APB-01), `apb_illegal_addr_seq` (SC-APB-02), each with a testpoint recording the Expected +
 Timing as its check intent.
 
-### `<child>.md §5` Verification Hints table (APB slave)
+### `check-hints/<child>.json` (APB slave)
 
-```markdown
-| CheckID | SourceFeature | ImplementationDetail | ImplementationDetailVerbatim | BrainstormAnchor | Observable | ReferenceRule | Latency | ResetBehavior |
-|---------|---------------|----------------------|------------------------------|------------------|------------|---------------|---------|---------------|
-| CHK-APB-00 | F-00 | pready single-beat by default; wait cycles may be inserted | reg_file[addr] <= pwdata (write); prdata <= reg_file[addr] (read) | L42 | pready, pslverr | write→reg_file[addr]=wdata; read→prdata=reg_file[addr] | ≤2 cycles | reg_file all-zero |
-| CHK-APB-01 | F-00 | Illegal address returns pslverr=1 | pslverr <= (addr ∉ legal_range) | L57 | pslverr | addr ∉ legal range → pslverr=1 | ≤2 cycles | pslverr=0 |
+```json
+[
+  {
+    "check_id": "CHK-APB-00",
+    "source_feature": "F-00",
+    "implementation_detail": "pready single-beat by default; wait cycles may be inserted",
+    "implementation_detail_verbatim": "reg_file[addr] <= pwdata (write); prdata <= reg_file[addr] (read)",
+    "brainstorm_anchor": "L42",
+    "observable": "pready, pslverr",
+    "reference_rule": "write->reg_file[addr]=wdata; read->prdata=reg_file[addr]",
+    "latency": "<=2 cycles",
+    "reset_behavior": "reg_file all-zero"
+  },
+  {
+    "check_id": "CHK-APB-01",
+    "source_feature": "F-00",
+    "implementation_detail": "Illegal address returns pslverr=1",
+    "implementation_detail_verbatim": "pslverr <= (addr not in legal_range)",
+    "brainstorm_anchor": "L57",
+    "observable": "pslverr",
+    "reference_rule": "addr outside legal range -> pslverr=1",
+    "latency": "<=2 cycles",
+    "reset_behavior": "pslverr=0"
+  }
+]
 ```
 
 **What you author:** testpoints clustering `CHK-APB-00` / `CHK-APB-01` via `covers[]`. materialize
-then fills their `inlined_check_hints[]`: `implementation_detail` from the Verbatim column
+then fills their `inlined_check_hints[]`: `implementation_detail` from `implementation_detail_verbatim`
 (`reg_file[addr] <= pwdata …`), plus `observable` / `reference_rule` / `latency` /
 `reset_behavior` as metadata. The RM `predict()` and scoreboard that consume these hints are
 authored downstream in the `simulation` stage.

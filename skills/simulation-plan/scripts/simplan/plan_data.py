@@ -1,12 +1,11 @@
 """Extract the derived verification universe from a spec workdir into plan-data.json.
 
-The derive-plan-data verb reads a spec workdir (manifest.json + design.md + per-child
-<child>.md) and emits plan-data.json containing features, interfaces, scenarios,
-check_hints and cross_module_wires. Clocks, features and timing scenarios are not here
-— they are authored as Design/specification/{clocks,features,timing-scenarios}.json and
-read from there. The simulation-plan agent consumes this to
-draft verification-plan.md and scaffold-specification.json; the materialize-scaffold verb
-then reads plan-data.json to fill the agent signal lists.
+The derive-plan-data verb reads a spec workdir (manifest.json + design.md §1.4.x +
+check-hints/<child>.json) and emits plan-data.json containing interfaces, check_hints and
+cross_module_wires. Clocks, features and timing scenarios are authored as
+Design/specification/{clocks,features,timing-scenarios}.json and read from there directly.
+The simulation-plan agent consumes plan-data.json to draft verification-plan.md and
+scaffold-specification.json; materialize-scaffold reads it to fill the agent signal lists.
 
 Markdown parsing lives in the stage-private simplan._md seam; this module owns the
 header-candidate maps + the per-section loaders.
@@ -27,12 +26,6 @@ from simplan._md import (
     write_text,
 )
 
-# The §5 heading selector. specification's check-coverage gate reads the SAME section out of
-# the same child docs and has already validated its gated columns, so the two patterns must
-# stay byte-identical: anything the gate accepts, this consumer must read rather than skip.
-# tests/contracts/test_cross_stage_contracts.py locks them equal.
-SEC5_HINTS_HEADING = r"§?\s*5\b.*Verification\s+Hints?"
-
 # ---------------------------------------------------------------------------
 # Header candidate mappings.
 #
@@ -51,27 +44,6 @@ INTERFACE_HEADER_CANDIDATES = {
     "protocol": {"protocol"},
     "role": {"role"},
 }
-
-CHECK_HINT_HEADER_CANDIDATES = {
-    "check_id": {"checkid", "check_id"},
-    "source_feature": {"sourcefeature", "source_feature", "sourceid", "featureid"},
-    "implementation_detail": {
-        "implementationdetail",
-        "implementation_detail",
-        "detail",
-        "implementation",
-    },
-    "implementation_detail_verbatim": {
-        "implementationdetailverbatim",
-        "implementation_detail_verbatim",
-        "verbatim",
-    },
-    "observable": {"observable"},
-    "reference_rule": {"referencerule", "reference_rule", "rule"},
-    "latency": {"latency", "cycles"},
-    "reset_behavior": {"resetbehavior", "reset_behavior", "reset"},
-}
-
 
 # ---------------------------------------------------------------------------
 # Spec parsers
@@ -148,9 +120,10 @@ def load_cross_module_wires(design_text: str) -> list[dict]:
 
 
 def load_check_hints(workdir: Path) -> list[dict]:
-    """Iterate manifest.children, read each <child>.md §5 Verification Hints,
-    tag each hint with the `child` field. manifest.json is a required input
-    (the specification skill always emits it); a missing one fails loud.
+    """Aggregate every child's check-hints/<child>.json, tagging each hint with its child.
+
+    The per-child split exists because wave-2 children are authored in parallel; the
+    aggregate exists because check_id uniqueness and the coverage matrix are global.
     """
     manifest = json.loads((Path(workdir) / "manifest.json").read_text(encoding="utf-8"))
     children = manifest.get("children")
@@ -159,60 +132,22 @@ def load_check_hints(workdir: Path) -> list[dict]:
     hints: list[dict] = []
     seen: dict[str, str] = {}
     for child in children:
-        sub_text = (Path(workdir) / child["doc"]).read_text(encoding="utf-8")
-        section = extract_section(sub_text, SEC5_HINTS_HEADING)
-        if not section:
-            continue
-        try:
-            headers, rows = parse_first_markdown_table(section)
-        except ValueError:
-            continue
-        # A child that HAS a §5 table but whose Check-ID header is mis-named (e.g.
-        # `Check-ID`, which normalize_header does not strip to `checkid`) would yield
-        # zero hints silently, dropping that child's entire hint set from the coverage
-        # gate. Read the declared header once; a missing Check ID column fails loud.
-        if "check_id" not in map_headers(headers, CHECK_HINT_HEADER_CANDIDATES):
-            raise ValueError(
-                f"{child['name']} §5 table has no Check ID column (mis-named header?)"
-            )
-        for row in rows:
-            h = _normalize_check_hint_row(row)
-            if h is None:
-                continue
-            cid = h["check_id"]
+        name = child["name"]
+        path = Path(workdir) / "check-hints" / f"{name}.json"
+        if not path.is_file():
+            raise ValueError(f"{path} missing: every child authors its own check hints")
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(doc, list):
+            raise ValueError(f"{path} must be a JSON array")
+        for hint in doc:
+            cid = hint.get("check_id")
+            if not cid:
+                raise ValueError(f"{path} has an entry without check_id")
             if cid in seen:
-                raise ValueError(
-                    f"duplicate check_id {cid!r} across <child>.md §5 tables"
-                )
-            seen[cid] = child["name"]
-            h["child"] = child["name"]
-            hints.append(h)
+                raise ValueError(f"duplicate check_id {cid!r}: {seen[cid]} and {name}")
+            seen[cid] = name
+            hints.append({**hint, "child": name})
     return hints
-
-
-def _normalize_check_hint_row(row: dict) -> dict | None:
-    """Map a raw markdown-row dict (header keys) to the canonical check_hint dict."""
-    headers = list(row.keys())
-    mapping = map_headers(headers, CHECK_HINT_HEADER_CANDIDATES)
-    if "check_id" not in mapping and "source_feature" not in mapping:
-        return None
-    check_id = row.get(mapping.get("check_id", ""), "").strip()
-    if not check_id:
-        return None
-    return {
-        "check_id": check_id,
-        "source_feature": row.get(mapping.get("source_feature", ""), "").strip(),
-        "implementation_detail": row.get(
-            mapping.get("implementation_detail", ""), ""
-        ).strip(),
-        "implementation_detail_verbatim": row.get(
-            mapping.get("implementation_detail_verbatim", ""), ""
-        ).strip(),
-        "observable": row.get(mapping.get("observable", ""), "").strip(),
-        "reference_rule": row.get(mapping.get("reference_rule", ""), "").strip(),
-        "latency": row.get(mapping.get("latency", ""), "").strip(),
-        "reset_behavior": row.get(mapping.get("reset_behavior", ""), "").strip(),
-    }
 
 
 # ---------------------------------------------------------------------------

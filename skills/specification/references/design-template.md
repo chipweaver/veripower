@@ -49,8 +49,8 @@ flowchart LR
 
 ### 1.3 Feature Table
 
-The feature list lives in `features.json` (the spine child §5 `SourceFeature` rows and
-testpoints refer to). Do not restate features in prose. Narrative that is not a per-feature
+The feature list lives in `features.json` (the spine `check-hints/<child>.json`
+`source_feature` values and testpoints refer to). Do not restate features in prose. Narrative that is not a per-feature
 field belongs here: how the features partition the module, which are out of scope.
 
 ### 1.4 Module Interface and Interconnects
@@ -198,7 +198,7 @@ feature. All fields are free prose — no script parses inside a field.
 
 | Field | Rule |
 |---|---|
-| `id` | Required. What child §5 `SourceFeature` rows and testpoints refer to. |
+| `id` | Required. What `check-hints/<child>.json` `source_feature` values and testpoints refer to. |
 | `name` | Required. Short label; reaches the TB testlist and the human-read case-results summary. |
 | `description` | Required. What the feature is, including any RTL formula that pins it. |
 | `mode_interface` | Required. The interface group or operating mode exercised. |
@@ -263,8 +263,8 @@ Before `design.md` is approved, the **gated** checks below must pass `check-cove
 | §1.4.1 every Output has an `Owner` that is a manifest child listing the signal — **(gated)** | §1.4.1 Owner column + per-child frontmatter | A missing/invalid Owner, or an Owner child that does not list the signal, is an undriven / mis-declared top output; enforced by `check-coverage`. (The leaf-owner / no-top-glue preference is documented guidance, not gated.) |
 | §1.4.2 columns Width / Clock Domain present + per-row concrete — **(gated)** | Overview §1.4.2 table | Unpinned inter-module width lets body-blind fan-out children diverge (the fa_core 128b↔32b / opaque-`ctrl_bus` class); enforced by `check-coverage`. |
 | §1.4.2 `Clock Domain` values ⊆ `clocks.json` `name`s — **(gated)** | §1.4.2 table + `clocks.json` | A phantom interconnect domain hides a CDC path; enforced by `check-coverage`. |
-| Every `features.json` `id` referenced by ≥1 child §5 `SourceFeature` — **(gated)** | `features.json` + per-child `<child>.md §5` | Catches specified-but-unverified features; enforced by `check-coverage`. |
-| `<child>.md §5` Verification-Hints table has the **gated** columns CheckID / SourceFeature / ImplementationDetail / Observable / ReferenceRule (Latency / ResetBehavior recommended; ImplementationDetailVerbatim is guarded by token-survival, BrainstormAnchor is traceability) | per-child `<child>.md §5` (see `child-design-template.md`) | Cannot generate rule-based RM / scoreboard; **enforced by `check-coverage`**. |
+| Every `features.json` `id` referenced by ≥1 `check-hints/<child>.json` `source_feature` — **(gated)** | `features.json` + `check-hints/*.json` | Catches specified-but-unverified features; enforced by `check-coverage`. |
+| `check-hints/<child>.json` fields `check_id` / `source_feature` / `implementation_detail` / `observable` / `reference_rule` present and non-empty — **(schema)** | `check-hints/*.json` | Enforced by `check-hints.schema.json` at `check-coverage`; without them no rule-based RM / scoreboard can be generated. `implementation_detail_verbatim` is guarded by token-survival instead. |
 | `design.md` self-containment (no `see brainstorm` / `refer to brainstorm` / `see spec D` / cross-child links) | Whole document + each `<child>.md` | See the self-containment principle stated once above; **enforced by `check-coverage`**. |
 
 > Derivation rules, UVM field mapping, and a complete derivation-chain example are owned by `veripower:simulation-plan`. You do not need to read them; you only need to ensure every check in this table lands in the table columns.

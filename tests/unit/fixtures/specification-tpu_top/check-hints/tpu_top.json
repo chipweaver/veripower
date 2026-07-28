@@ -1,0 +1,112 @@
+[
+  {
+    "check_id": "CHK-TOP-01",
+    "source_feature": "F-04",
+    "implementation_detail": "APB write decode programs mem[i_paddr] from i_pwdata, clocked no reset",
+    "implementation_detail_verbatim": "`write_enb = i_psel & i_penable & i_pwrite` → `mem[i_paddr] <= i_pwdata` (clocked, **no reset** on this block — faithful to the reference)",
+    "brainstorm_anchor": "L84",
+    "observable": "`mem[i_paddr]` (`mem[0]`/`mem[1]`/`mem[2]`/`mem[3]`) → MAC `i_weight`",
+    "reference_rule": "on write_enb: mem[i_paddr][t+1] == i_pwdata[t]",
+    "latency": "1 cycle",
+    "reset_behavior": "NOT reset by `i_rstn`; clocked-only, retains last value"
+  },
+  {
+    "check_id": "CHK-TOP-02",
+    "source_feature": "F-04",
+    "implementation_detail": "APB read returns result-FIFO o_data combinationally, else 0; advances rd ptr",
+    "implementation_detail_verbatim": "`read_enb  = i_psel & i_penable & !i_pwrite` → `o_prdata = fifo_result.o_data` (combinational); otherwise `o_prdata = 0`. The result FIFO read pointer advances on `read_enb` (`fifo_result.i_rd = read_enb`).",
+    "brainstorm_anchor": "L86-L88",
+    "observable": "`o_prdata`, `fifo_result.i_rd` (`result_fifo_o_data`)",
+    "reference_rule": "read_enb=1 → o_prdata==fifo_result.o_data & i_rd advances rd_addr; read_enb=0 → o_prdata==0",
+    "latency": "0 cycle (comb read)",
+    "reset_behavior": "regfile block no reset; result-FIFO rd_addr=0 on async reset"
+  },
+  {
+    "check_id": "CHK-TOP-03",
+    "source_feature": "F-04",
+    "implementation_detail": "APB address map selects weight register",
+    "implementation_detail_verbatim": "APB address map: `W00 = 0`, `W01 = 1`, `W10 = 2`, `W11 = 3`",
+    "brainstorm_anchor": "L90",
+    "observable": "`mem[0]`, `mem[1]`, `mem[2]`, `mem[3]`",
+    "reference_rule": "i_paddr∈{0,1,2,3} maps to mem[0..3] = W00/W01/W10/W11",
+    "latency": "1 cycle (write)",
+    "reset_behavior": "mem not reset (clocked-only)"
+  },
+  {
+    "check_id": "CHK-TOP-04",
+    "source_feature": "F-05",
+    "implementation_detail": "4-bit counter: async reset 0, increments while start, resets when start low",
+    "implementation_detail_verbatim": "`counter` (4-bit): async reset → 0; while `start` asserted, increments each clock; when `start` deasserted, resets to 0",
+    "brainstorm_anchor": "L93-L94",
+    "observable": "`counter`",
+    "reference_rule": "start=1 → counter[t+1]==counter[t]+1; start=0 → counter[t+1]==0",
+    "latency": "1 cycle",
+    "reset_behavior": "`counter` cleared to 0 on async active-low reset (`negedge i_rstn`)"
+  },
+  {
+    "check_id": "CHK-TOP-05",
+    "source_feature": "F-05",
+    "implementation_detail": "Input-FIFO pop enable active for first two counts while start",
+    "implementation_detail_verbatim": "`fifo_en = start & (counter < 2)` (drives `i_rd` of both input FIFOs — pops two elements at the start of a pass)",
+    "brainstorm_anchor": "L95-L96",
+    "observable": "`fifo_en` → `fifo_00.i_rd`, `fifo_01.i_rd`",
+    "reference_rule": "fifo_en == (start & (counter<2)); high at counter 0,1 only",
+    "latency": "0 cycle (comb)",
+    "reset_behavior": "counter=0 on async reset → fifo_en follows start gate"
+  },
+  {
+    "check_id": "CHK-TOP-06",
+    "source_feature": "F-05",
+    "implementation_detail": "Result-FIFO write enable active for counts 2..5",
+    "implementation_detail_verbatim": "`result_fifo_wr = (counter ∈ {2,3,4,5})`",
+    "brainstorm_anchor": "L97",
+    "observable": "`result_fifo_wr` → `fifo_result.i_wr`",
+    "reference_rule": "result_fifo_wr==1 iff counter∈{2,3,4,5}",
+    "latency": "0 cycle (comb)",
+    "reset_behavior": "counter=0 on async reset → result_fifo_wr=0"
+  },
+  {
+    "check_id": "CHK-TOP-07",
+    "source_feature": "F-05",
+    "implementation_detail": "Counter-routed result mux selects out1/out2/0",
+    "implementation_detail_verbatim": "`result_fifo_i_data = out1` when `counter ∈ {2,4}`, `= out2` when `counter ∈ {3,5}`, else `0`, where `out1 = mac_10.o_result` and `out2 = mac_11.o_result`",
+    "brainstorm_anchor": "L98-L101",
+    "observable": "`result_fifo_i_data`, `out1`, `out2`",
+    "reference_rule": "counter∈{2,4}→out1; counter∈{3,5}→out2; else 0",
+    "latency": "0 cycle (comb mux)",
+    "reset_behavior": "undriven outside window → 0"
+  },
+  {
+    "check_id": "CHK-TOP-08",
+    "source_feature": "F-05",
+    "implementation_detail": "Done asserts when counter reaches 5",
+    "implementation_detail_verbatim": "`done = (counter >= 5)`",
+    "brainstorm_anchor": "L102",
+    "observable": "`done`",
+    "reference_rule": "done == (counter >= 5)",
+    "latency": "0 cycle (comb)",
+    "reset_behavior": "counter=0 on async reset → done=0"
+  },
+  {
+    "check_id": "CHK-TOP-09",
+    "source_feature": "F-05",
+    "implementation_detail": "Const seed and result chain feeding the result mux (top-row zero seed)",
+    "implementation_detail_verbatim": "`32'h0` → `mac_00.i_pre_result`, `mac_01.i_pre_result`; `out1 = mac_10.o_result`; `out2 = mac_11.o_result`",
+    "brainstorm_anchor": "L152, L155-L156",
+    "observable": "`out1`, `out2`, `result_fifo_i_data`",
+    "reference_rule": "top-row pre_result==32'h0; out1==mac_10.o_result; out2==mac_11.o_result",
+    "latency": "registered (MAC)",
+    "reset_behavior": "MAC results 0 on async reset"
+  },
+  {
+    "check_id": "CHK-TOP-10",
+    "source_feature": "F-05",
+    "implementation_detail": "Re-assert start re-runs pass; start deasserted mid-pass resets counter no done",
+    "implementation_detail_verbatim": "`counter` (4-bit): async reset → 0; while `start` asserted, increments each clock; when `start` deasserted, resets to 0; `done = (counter >= 5)`",
+    "brainstorm_anchor": "L93-L94, L102",
+    "observable": "`counter`, `done`",
+    "reference_rule": "re-assert start → counter 0→5, done rises again; drop start mid-pass → counter→0, done==0",
+    "latency": "per-cycle",
+    "reset_behavior": "`counter`=0 on async reset (and on start deassert)"
+  }
+]

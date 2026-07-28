@@ -1,0 +1,79 @@
+[
+  {
+    "check_id": "CHK-MAC-01",
+    "source_feature": "F-01",
+    "implementation_detail": "Registered MAC: result = data×weight + partial sum, one cycle later",
+    "implementation_detail_verbatim": "every clock (async active-low reset → 0): `o_result <= (i_data * i_weight) + i_pre_result` (registered)",
+    "brainstorm_anchor": "L46",
+    "observable": "`o_result` (`mac00_out`/`mac01_out`/`out1`/`out2`)",
+    "reference_rule": "`o_result_next = (i_data * i_weight) + i_pre_result`, truncated/wrapped to 32 bits",
+    "latency": "1 cycle",
+    "reset_behavior": "`o_result <= 0` on `negedge i_rstn`"
+  },
+  {
+    "check_id": "CHK-MAC-02",
+    "source_feature": "F-01",
+    "implementation_detail": "Registered data forward to next cell, one cycle later",
+    "implementation_detail_verbatim": "`o_data_next <= i_data` (registered, forwards data to the next cell)",
+    "brainstorm_anchor": "L47",
+    "observable": "`o_data_next` (`mac01_in`/`mac11_in`)",
+    "reference_rule": "`o_data_next_next = i_data`",
+    "latency": "1 cycle",
+    "reset_behavior": "`o_data_next <= 0` on `negedge i_rstn`"
+  },
+  {
+    "check_id": "CHK-MAC-03",
+    "source_feature": "F-01",
+    "implementation_detail": "32-bit multiply truncated to 32 bits; 32-bit accumulate wraps (no saturation)",
+    "implementation_detail_verbatim": "The product `i_data * i_weight` is a 32-bit multiply truncated to 32 bits; the accumulate is 32-bit and **wraps** (no saturation).",
+    "brainstorm_anchor": "L49-L50",
+    "observable": "`o_result` MSBs",
+    "reference_rule": "`o_result = ((i_data * i_weight) + i_pre_result) mod 2^32`",
+    "latency": "1 cycle",
+    "reset_behavior": "`o_result <= 0` on `negedge i_rstn`"
+  },
+  {
+    "check_id": "CHK-MAC-04",
+    "source_feature": "F-01",
+    "implementation_detail": "Top-row cells seeded with zero partial sum → pure multiply",
+    "implementation_detail_verbatim": "`i_pre_result = 0` (top-row cells `mac_00`/`mac_01`) → cell acts as a pure multiply into the partial-sum chain.",
+    "brainstorm_anchor": "L55-L56",
+    "observable": "`mac00_out`/`mac01_out` with `32'h0` tie",
+    "reference_rule": "for `mac_00`/`mac_01`: `o_result = (i_data * i_weight) + 0` (i_pre_result tied `32'h0`)",
+    "latency": "1 cycle",
+    "reset_behavior": "`o_result <= 0` on `negedge i_rstn`"
+  },
+  {
+    "check_id": "CHK-MAC-05",
+    "source_feature": "F-01",
+    "implementation_detail": "Partial-sum chain: top-row result feeds bottom-row i_pre_result per column",
+    "implementation_detail_verbatim": "`o_result <= (i_data * i_weight) + i_pre_result` (registered) — column chain `mac00_out`→`mac_10.i_pre_result`, `mac01_out`→`mac_11.i_pre_result`",
+    "brainstorm_anchor": "L46",
+    "observable": "`out1` (`mac_10.o_result`), `out2` (`mac_11.o_result`)",
+    "reference_rule": "`out1 = (mac10.i_data * mem[2]) + mac00_out`; `out2 = (mac11.i_data * mem[3]) + mac01_out`",
+    "latency": "1 cycle per cell",
+    "reset_behavior": "`o_result <= 0` on `negedge i_rstn`"
+  },
+  {
+    "check_id": "CHK-MAC-06",
+    "source_feature": "F-01",
+    "implementation_detail": "Negative: product/sum > 32 bits wraps, accepted",
+    "implementation_detail_verbatim": "Negative case: product/sum exceeding 32 bits wraps — accepted by design.",
+    "brainstorm_anchor": "L57",
+    "observable": "`o_result` on overflow stimulus",
+    "reference_rule": "result wraps modulo 2^32; no saturation, no error flag",
+    "latency": "1 cycle",
+    "reset_behavior": "`o_result <= 0` on `negedge i_rstn`"
+  },
+  {
+    "check_id": "CHK-MAC-07",
+    "source_feature": "F-01",
+    "implementation_detail": "Intentionally-unconnected o_data_next on right-column cells",
+    "implementation_detail_verbatim": "`o_data_next <= i_data` (registered) — `mac_01.o_data_next` / `mac_11.o_data_next` intentionally unconnected",
+    "brainstorm_anchor": "L47 (narrative-only; see L160 design §1.4.2)",
+    "observable": "`mac_01.o_data_next`, `mac_11.o_data_next` (no consumer)",
+    "reference_rule": "output left dangling by design; not a connectivity error",
+    "latency": "1 cycle",
+    "reset_behavior": "`o_data_next <= 0` on `negedge i_rstn`"
+  }
+]

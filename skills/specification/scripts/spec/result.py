@@ -174,8 +174,15 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
     child_docs = [
         (c["doc"], "child-design") for c in manifest.get("children", []) if c.get("doc")
     ]
+    child_hints = [
+        (f"check-hints/{c['name']}.json", "check-hints")
+        for c in manifest.get("children", [])
+        if c.get("name")
+    ]
     return [
-        {"path": p, "kind": k} for p, k in fixed + child_docs if (workdir / p).is_file()
+        {"path": p, "kind": k}
+        for p, k in fixed + child_docs + child_hints
+        if (workdir / p).is_file()
     ]
 
 

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/specification/check-hints.schema.json",
+  "title": "check-hints/<child>.json — one child's verification check hints (authored, never derived)",
+  "description": "One file per child, authored by that child's wave-2 sub-Task: children are written in parallel, so a shared file would be a write conflict. check_id is unique across all children (derive-plan-data), source_feature resolves to a features.json id (check-coverage), and implementation_detail_verbatim is the sole downstream source of cycle-accurate refmodel formulas — token survival is what enforces it. Field names match the scaffold's inlined_check_hints[], so the injection is a verbatim copy.",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "required": [
+      "check_id",
+      "source_feature",
+      "implementation_detail",
+      "observable",
+      "reference_rule"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "check_id": {
+        "description": "Unique across every child. testpoints[].covers[] refers to it.",
+        "type": "string",
+        "minLength": 1
+      },
+      "source_feature": {
+        "description": "A features.json id. Every feature must be named by at least one hint.",
+        "type": "string",
+        "minLength": 1
+      },
+      "implementation_detail": {
+        "description": "Short summary of what is checked.",
+        "type": "string",
+        "minLength": 1
+      },
+      "implementation_detail_verbatim": {
+        "description": "The brainstorm-original RTL formula or token, uncompressed — or the narrative-only marker when the brainstorm states no formula. Optional in shape; token survival is what actually enforces it.",
+        "type": "string",
+        "minLength": 1
+      },
+      "brainstorm_anchor": {
+        "description": "Optional traceability pointer (e.g. L46). No script consumes it.",
+        "type": "string",
+        "minLength": 1
+      },
+      "observable": {
+        "description": "The signal or port the check observes.",
+        "type": "string",
+        "minLength": 1
+      },
+      "reference_rule": {
+        "description": "The reference-model rule the observable is judged against.",
+        "type": "string",
+        "minLength": 1
+      },
+      "latency": {
+        "description": "Optional. Cycles between stimulus and observable effect.",
+        "type": "string",
+        "minLength": 1
+      },
+      "reset_behavior": {
+        "description": "Optional. The observable's value under reset.",
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

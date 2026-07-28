@@ -11,7 +11,7 @@ main thread does NOT auto-fix the plan. Do not call the Task tool and do not cal
 - `Design/specification/features.json` (the feature spine testpoints trace to)
 - `Design/specification/timing-scenarios.json` (one sequence per scenario)
 - `Design/specification/design.md` (§1 behavior, §1.4 IO/interconnects, §1.5 waveforms)
-  + each `Design/specification/<child>.md §5 Verification Hints` —
+  + each `Design/specification/check-hints/<child>.json` —
   the authoritative statement of what must be verified.
 - The plan under review: `{workdir}/verification-plan.md` §3 Testpoints table + §4 Power
   Scenarios, and `{workdir}/scaffold-specification.json` (`testpoints[]` with `covers[]` +
@@ -21,7 +21,7 @@ main thread does NOT auto-fix the plan. Do not call the Task tool and do not cal
 You are a fresh, skeptical reviewer. **Do not trust that the plan is adequate because the
 structural coverage-matrix passed** (that only proves every check_id is covered-or-skipped). Two
 lenses:
-- **`coverage`** (gating; reference = spec) — does every spec behavior / failure mode / §5
+- **`coverage`** (gating; reference = spec) — does every spec behavior / failure mode / check
   Verification Hint have a real testpoint, and is every `skipped_checks[]` entry's skip genuinely
   justified against the spec (not hiding a real verification need)? A spec behavior with no
   testpoint, or an unjustified skip, is `coverage`.

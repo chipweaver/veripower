@@ -435,14 +435,32 @@ def test_structure_no_clocks_json_does_not_cascade_domain_violations():
     assert s["clock_domain_violations"] == []
 
 
-def _struct_with_children(design, child_bodies, clocks=None, features=None):
+_DEFAULT_HINTS = [
+    {
+        "check_id": "CHK-0",
+        "source_feature": "F-00",
+        "implementation_detail": "sum",
+        "observable": "y",
+        "reference_rule": "rm",
+    }
+]
+
+
+def _struct_with_children(design, child_bodies, clocks=None, features=None, hints=None):
+    import json
+
     from spec import coverage as cc
 
     children = [{"name": n, "doc": f"{n}.md", "rtl_modules": [n]} for n in child_bodies]
     manifest = {"module": "m", "children": children}
-    return cc.compute_structure(
-        _clocks_wd(clocks, features), manifest, design, child_texts=child_bodies
-    )
+    wd = _clocks_wd(clocks, features)
+    hd = wd / "check-hints"
+    hd.mkdir(exist_ok=True)
+    for n in child_bodies:
+        (hd / f"{n}.json").write_text(
+            json.dumps(_DEFAULT_HINTS if hints is None else hints)
+        )
+    return cc.compute_structure(wd, manifest, design, child_texts=child_bodies)
 
 
 _CHILD_5 = (
@@ -454,9 +472,9 @@ _CHILD_5 = (
 
 
 def test_rc_uncovered_feature_fails():
-    # §1.3 has F-00; child §5 references only F-99 → F-00 uncovered
-    bodies = {"c": _CHILD_5.replace("F-00", "F-99")}
-    s = _struct_with_children(_GOOD_DESIGN, bodies)
+    # features.json has F-00; the child's hints reference only F-99 → F-00 uncovered
+    orphan = [{**_DEFAULT_HINTS[0], "source_feature": "F-99"}]
+    s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, hints=orphan)
     assert any("F-00" in g["feature_id"] for g in s["feature_coverage_gaps"])
 
 
@@ -466,10 +484,18 @@ def test_rc_covered_feature_passes():
     assert s["feature_coverage_gaps"] == []
 
 
-def test_child_hint_missing_column_fails():
-    bodies = {"c": _CHILD_5.replace("| ReferenceRule ", "| ")}
-    s = _struct_with_children(_GOOD_DESIGN, bodies)
-    assert s["hint_column_violations"]
+def test_child_hint_missing_required_field_fails():
+    lean = [{k: v for k, v in _DEFAULT_HINTS[0].items() if k != "reference_rule"}]
+    s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, hints=lean)
+    v = s["hint_column_violations"]
+    assert v and v[0]["child"] == "c" and "reference_rule" in v[0]["error"]
+
+
+def test_child_hint_misspelled_key_fails():
+    bad = [{**_DEFAULT_HINTS[0], "obserable": "y"}]
+    s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, hints=bad)
+    v = s["hint_column_violations"]
+    assert v and "obserable" in v[0]["error"]
 
 
 def test_structure_clean_with_children_passes():
@@ -551,6 +577,10 @@ def test_end_to_end_multi_child_clean_workdir(tmp_path):
     )
     (tmp_path / "core_top.md").write_text(child.format(n="core_top", a="lines 1-3"))
     (tmp_path / "core_b.md").write_text(child.format(n="core_b", a="lines 4-6"))
+    hd = tmp_path / "check-hints"
+    hd.mkdir()
+    for n in ("core_top", "core_b"):
+        (hd / f"{n}.json").write_text(json.dumps(_DEFAULT_HINTS))
     bs = tmp_path / "brainstorm.md"
     bs.write_text("# A\nx\n## B\ny\n## C\nz\n")
     proc = subprocess.run(
@@ -1047,6 +1077,59 @@ def test_empty_features_json_is_a_schema_violation_not_a_coverage_gap():
     assert s["features_schema_violations"] and s["feature_coverage_gaps"] == []
 
 
+# ---------- check-hints/<child>.json: the two cross-checks that follow it ----------
+
+
+def _hints_workdir(tmp_path, hints, child_body="# c\n\nbody\n"):
+    import json
+
+    (tmp_path / "design.md").write_text(_GOOD_DESIGN)
+    (tmp_path / "c.md").write_text(child_body)
+    (tmp_path / "features.json").write_text(json.dumps(_DEFAULT_FEATURES))
+    (tmp_path / "clocks.json").write_text(json.dumps(_DEFAULT_CLOCKS))
+    (tmp_path / "timing-scenarios.json").write_text(json.dumps(_DEFAULT_SCENARIOS))
+    hd = tmp_path / "check-hints"
+    hd.mkdir(exist_ok=True)
+    (hd / "c.json").write_text(json.dumps(hints))
+    manifest = {"module": "m", "children": [{"name": "c", "doc": "c.md"}]}
+    return tmp_path, manifest
+
+
+def test_token_survival_reaches_into_check_hints(tmp_path):
+    # implementation_detail_verbatim is where brainstorm RTL formulas land, and it left
+    # <child>.md. A token present ONLY in the JSON must still count as survived.
+    from spec import coverage as cc
+
+    formula = "o_result <= (i_data * i_weight) + 32'd0"
+    hints = [{**_DEFAULT_HINTS[0], "implementation_detail_verbatim": formula}]
+    wd, manifest = _hints_workdir(tmp_path, hints)
+    assert formula not in (wd / "c.md").read_text()
+    assert formula not in (wd / "design.md").read_text()
+    r = cc.compute_token_survival(wd, manifest, f"# bs\n{formula}\n", _GOOD_DESIGN)
+    assert r["missing_tokens"] == []
+
+
+def test_token_survival_still_fails_when_token_is_nowhere(tmp_path):
+    from spec import coverage as cc
+
+    wd, manifest = _hints_workdir(tmp_path, _DEFAULT_HINTS)
+    r = cc.compute_token_survival(
+        wd, manifest, "# bs\nassign q = 8'hFF;\n", _GOOD_DESIGN
+    )
+    assert r["missing_tokens"]
+
+
+def test_self_containment_scans_check_hints(tmp_path):
+    # A by-reference jump is the same defect wherever it is written, so the scan followed
+    # the hints out of <child>.md.
+    from spec import coverage as cc
+
+    hints = [{**_DEFAULT_HINTS[0], "implementation_detail": "see brainstorm §mac"}]
+    wd, manifest = _hints_workdir(tmp_path, hints)
+    r = cc.compute_self_containment(wd, manifest, _GOOD_DESIGN)
+    assert any("check-hints/c.json" in v["file"] for v in r["by_reference_jumps"])
+
+
 # ---------- timing-scenarios.json contract ----------
 
 
@@ -1081,11 +1164,17 @@ def test_scenarios_blank_required_field_rejected(tmp_path):
 # ---------- F8: §5 SourceFeature aliases are no longer honored ----------
 
 
-def test_source_feature_alias_not_honored():
-    # an old alias ('source_feature') must NOT be silently accepted for coverage —
-    # only the canonical 'SourceFeature' counts, so the feature stays uncovered.
-    bodies = {"c": _CHILD_5.replace("SourceFeature", "source_feature")}
-    s = _struct_with_children(_GOOD_DESIGN, bodies)
+def test_source_feature_alias_is_rejected_not_reinterpreted():
+    # An aliased key is a schema violation, not a silently-tolerated spelling. The feature
+    # also stays uncovered, so the defect surfaces twice rather than being papered over.
+    aliased = [
+        {
+            **{k: v for k, v in _DEFAULT_HINTS[0].items() if k != "source_feature"},
+            "sourcefeature": "F-00",
+        }
+    ]
+    s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, hints=aliased)
+    assert s["hint_column_violations"]
     assert any(g["feature_id"] == "F-00" for g in s["feature_coverage_gaps"])
 
 

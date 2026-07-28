@@ -1,6 +1,5 @@
-"""Tests for the simplan derive-plan-data verb — extracts the derived universe
-(features, interfaces, clocks, scenarios, check_hints) from a spec workdir into
-plan-data.json."""
+"""Tests for the simplan derive-plan-data verb — extracts interfaces, check_hints and
+cross_module_wires from a spec workdir into plan-data.json."""
 
 import json
 import subprocess
@@ -38,20 +37,35 @@ DESIGN_MD = """# m Design Document (design.md)
 
 CHILD_MD = """# core
 
-## §5 Verification Hints (9 columns required)
+## 1 Purpose
 
-| CheckID | SourceFeature | ImplementationDetail | ImplementationDetailVerbatim | BrainstormAnchor | Observable | ReferenceRule | Latency | ResetBehavior |
-|---------|---------------|----------------------|------------------------------|------------------|------------|---------------|---------|---------------|
-| CHK-00 | F-00 | write reg | reg[addr] <= wdata | L12 | rdata | reg[addr]=wdata | 1 | 0 |
+The register bank.
 """
 
+CHECK_HINTS = [
+    {
+        "check_id": "CHK-00",
+        "source_feature": "F-00",
+        "implementation_detail": "write reg",
+        "implementation_detail_verbatim": "reg[addr] <= wdata",
+        "brainstorm_anchor": "L12",
+        "observable": "rdata",
+        "reference_rule": "reg[addr]=wdata",
+        "latency": "1",
+        "reset_behavior": "0",
+    }
+]
 
-def _workdir(tmp_path):
+
+def _workdir(tmp_path, hints=None):
     (tmp_path / "design.md").write_text(DESIGN_MD)
     (tmp_path / "core.md").write_text(CHILD_MD)
     (tmp_path / "manifest.json").write_text(
         json.dumps({"module": "m", "children": [{"name": "core", "doc": "core.md"}]})
     )
+    hd = tmp_path / "check-hints"
+    hd.mkdir(exist_ok=True)
+    (hd / "core.json").write_text(json.dumps(CHECK_HINTS if hints is None else hints))
     return tmp_path
 
 
@@ -83,38 +97,33 @@ def test_clocks_no_longer_derived(tmp_path):
     assert "clocks" not in pd
 
 
-def test_verbatim_extracted_risk_and_anchor_absent(tmp_path):
+def test_hints_are_carried_verbatim_plus_a_child_tag(tmp_path):
+    # The aggregate copies each authored entry as-is and adds `child`. Selecting which
+    # fields reach the scaffold is materialize-scaffold's job, not this loader's.
     pd = _plan_data(_workdir(tmp_path))
     h = pd["check_hints"][0]
-    assert h["implementation_detail_verbatim"] == "reg[addr] <= wdata"
-    assert h["implementation_detail"] == "write reg"
-    assert "risk" not in h
-    assert "brainstorm_anchor" not in h
+    assert h == {**CHECK_HINTS[0], "child": "core"}
 
 
-def test_escaped_pipe_in_verbatim_cell_does_not_shift_columns(tmp_path):
-    # Reproduces the wrom.md §5 corruption: a §5 ImplementationDetailVerbatim cell
-    # legitimately quotes an interface-table row whose '|' separators are markdown-
-    # escaped as '\|'. The parser must split on UNescaped '|' only (and unescape the
-    # cell), else the verbatim cell over-splits and every column after it shifts right.
-    child = (
-        "# core\n\n## §5 Verification Hints (9 columns required)\n\n"
-        "| CheckID | SourceFeature | ImplementationDetail | ImplementationDetailVerbatim | BrainstormAnchor | Observable | ReferenceRule | Latency | ResetBehavior |\n"
-        "|---|---|---|---|---|---|---|---|---|\n"
-        "| CHK-P | F-00 | bank sel | `sel \\| in \\| 3 \\| bank select` | L99 | obs_sig | sel rule | comb | none |\n"
+def test_pipes_in_a_verbatim_value_need_no_escaping(tmp_path):
+    # A verbatim value legitimately quotes an interface-table row whose separators are
+    # pipes. Nothing escapes them and nothing shifts.
+    hints = [
+        {
+            **CHECK_HINTS[0],
+            "check_id": "CHK-P",
+            "implementation_detail": "bank sel",
+            "implementation_detail_verbatim": "`sel | in | 3 | bank select`",
+            "observable": "obs_sig",
+        }
+    ]
+    h = next(
+        x
+        for x in _plan_data(_workdir(tmp_path, hints))["check_hints"]
+        if x["check_id"] == "CHK-P"
     )
-    (tmp_path / "design.md").write_text(DESIGN_MD)
-    (tmp_path / "core.md").write_text(child)
-    (tmp_path / "manifest.json").write_text(
-        json.dumps({"module": "m", "children": [{"name": "core", "doc": "core.md"}]})
-    )
-    h = next(x for x in _plan_data(tmp_path)["check_hints"] if x["check_id"] == "CHK-P")
-    assert h["implementation_detail"] == "bank sel"
     assert h["implementation_detail_verbatim"] == "`sel | in | 3 | bank select`"
     assert h["observable"] == "obs_sig"
-    assert h["reference_rule"] == "sel rule"
-    assert h["latency"] == "comb"
-    assert h["reset_behavior"] == "none"
 
 
 def test_idempotent_no_authored_state(tmp_path):
@@ -137,14 +146,9 @@ def test_derive_no_parsable_section_fails_loud(tmp_path):
     # A design.md with none of the sections this verb parses must fail loud rather than
     # write a thin plan-data.json. §1.4.1 carries that guard: every module has top-level
     # IO, and its presence is gated upstream.
-    (tmp_path / "design.md").write_text(
-        "# m\n\n## 1. Module Overview\n\nno tables here\n"
-    )
-    (tmp_path / "core.md").write_text(CHILD_MD)
-    (tmp_path / "manifest.json").write_text(
-        json.dumps({"module": "m", "children": [{"name": "core", "doc": "core.md"}]})
-    )
-    proc = _run(tmp_path, check=False)
+    wd = _workdir(tmp_path)  # valid manifest + child + check-hints
+    (wd / "design.md").write_text("# m\n\n## 1. Module Overview\n\nno tables here\n")
+    proc = _run(wd, check=False)
     assert proc.returncode != 0
     assert "1.4.1" in proc.stderr
     # S6: clean fail-loud, not a raw traceback (matches the missing-design.md line)
@@ -212,45 +216,31 @@ def test_derive_output_override_writes_requested_path(tmp_path):
 
 # ── net-new: input-hardening fail-loud guards (A1, A2, A3, A5) ──
 def test_derive_duplicate_check_id_fails_loud(tmp_path):
-    # A1: two §5 rows share a check_id → by_id / check_ids would collapse them (covering
-    # one "covers both", leaving the second silently unverified). Must fail loud.
-    child = (
-        "# core\n\n## §5 Verification Hints (9 columns required)\n\n"
-        "| CheckID | SourceFeature | ImplementationDetail | ImplementationDetailVerbatim | BrainstormAnchor | Observable | ReferenceRule | Latency | ResetBehavior |\n"
-        "|---|---|---|---|---|---|---|---|---|\n"
-        "| CHK-00 | F-00 | a | v1 | L1 | o1 | r1 | 1 | 0 |\n"
-        "| CHK-00 | F-00 | b | v2 | L2 | o2 | r2 | 2 | 0 |\n"
-    )
-    (tmp_path / "design.md").write_text(DESIGN_MD)
-    (tmp_path / "core.md").write_text(child)
-    (tmp_path / "manifest.json").write_text(
-        json.dumps({"module": "m", "children": [{"name": "core", "doc": "core.md"}]})
-    )
-    proc = _run(tmp_path, check=False)
+    # Two entries sharing a check_id would collapse in by_id — one testpoint would appear
+    # to cover both, leaving the second silently unverified. Uniqueness is global, which
+    # is why the per-child files are aggregated before it is checked.
+    dup = [CHECK_HINTS[0], {**CHECK_HINTS[0], "implementation_detail": "b"}]
+    proc = _run(_workdir(tmp_path, dup), check=False)
     assert proc.returncode != 0
     assert "duplicate check_id" in proc.stderr and "CHK-00" in proc.stderr
     assert not (tmp_path / "plan-data.json").exists()
 
 
-def test_derive_misnamed_check_id_header_fails_loud(tmp_path):
-    # A2: a §5 table whose Check-ID header is hyphenated (normalize_header does not strip
-    # hyphens) maps to zero hints, silently dropping the child's entire hint set from the
-    # coverage gate. With a §5 table PRESENT but Check ID unmapped, fail loud.
-    child = (
-        "# core\n\n## §5 Verification Hints (9 columns required)\n\n"
-        "| Check-ID | SourceFeature | ImplementationDetail | ImplementationDetailVerbatim | BrainstormAnchor | Observable | ReferenceRule | Latency | ResetBehavior |\n"
-        "|---|---|---|---|---|---|---|---|---|\n"
-        "| CHK-00 | F-00 | a | v1 | L1 | o1 | r1 | 1 | 0 |\n"
-    )
-    (tmp_path / "design.md").write_text(DESIGN_MD)
-    (tmp_path / "core.md").write_text(child)
-    (tmp_path / "manifest.json").write_text(
-        json.dumps({"module": "m", "children": [{"name": "core", "doc": "core.md"}]})
-    )
-    proc = _run(tmp_path, check=False)
+def test_derive_missing_child_hint_file_fails_loud(tmp_path):
+    # A child in the manifest with no check-hints file would silently contribute nothing
+    # to the coverage matrix.
+    wd = _workdir(tmp_path)
+    (wd / "check-hints" / "core.json").unlink()
+    proc = _run(wd, check=False)
     assert proc.returncode != 0
-    assert "Check ID column" in proc.stderr and "core" in proc.stderr
-    assert not (tmp_path / "plan-data.json").exists()
+    assert "check-hints/core.json" in proc.stderr
+    assert not (wd / "plan-data.json").exists()
+
+
+def test_derive_entry_without_check_id_fails_loud(tmp_path):
+    bad = [{k: v for k, v in CHECK_HINTS[0].items() if k != "check_id"}]
+    proc = _run(_workdir(tmp_path, bad), check=False)
+    assert proc.returncode != 0 and "check_id" in proc.stderr
 
 
 def test_derive_misnamed_signal_name_header_fails_loud(tmp_path):
@@ -284,35 +274,3 @@ def test_derive_empty_or_malformed_children_fails_loud(tmp_path):
     assert (
         proc.stderr.startswith("derive-plan-data:") and "Traceback" not in proc.stderr
     )
-
-
-def test_check_hints_read_every_sec5_heading_the_spec_gate_accepts(tmp_path):
-    # The specification gate selects §5 with a looser heading pattern than this consumer
-    # used, so a heading like "§5 - Verification Hints" passed the gate (columns and all)
-    # while derive-plan-data matched nothing and silently dropped that child's entire hint
-    # set. Whatever the gate validated, this consumer must read.
-    import sys
-
-    sys.path.insert(0, str(ROOT / "skills/simulation-plan/scripts"))
-    from simplan.plan_data import load_check_hints
-
-    for heading in (
-        "## §5 Verification Hints (9 columns required)",
-        "## §5. Verification Hints",
-        "## §5 - Verification Hints",
-        "## §5: Verification Hints",
-    ):
-        body = CHILD_MD.replace(
-            "## §5 Verification Hints (9 columns required)", heading
-        )
-        (tmp_path / "core.md").write_text(body, encoding="utf-8")
-        (tmp_path / "manifest.json").write_text(
-            json.dumps(
-                {"module": "m", "children": [{"name": "core", "doc": "core.md"}]}
-            ),
-            encoding="utf-8",
-        )
-        hints = load_check_hints(tmp_path)
-        assert [h["check_id"] for h in hints] == ["CHK-00"], (
-            f"dropped under {heading!r}"
-        )

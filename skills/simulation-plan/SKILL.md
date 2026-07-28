@@ -37,8 +37,8 @@ Each read-only upstream input's location is injected: read `inputs.json` in your
 | `<design>/clocks.json` | `specification/references/clocks.schema.json` | Clock definitions. `materialize-scaffold` reads it to derive `primary_clock`. |
 | `<design>/features.json` | `specification/references/features.schema.json` | Feature list. You author testpoints and tests from it — read it directly, not via `plan-data.json`. |
 | `<design>/timing-scenarios.json` | `specification/references/timing-scenarios.schema.json` | Timing scenarios. Author one sequence per `id`; read it directly. |
-| `<manifest>/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; its `children[]` roster drives per-child `§5` consumption (via `simplan derive-plan-data`). |
-| `<children>/<child>.md` × N | Custom markdown | Only `§5 Verification Hints` is consumed (via `simplan derive-plan-data`, tagging `check_hints[]` with `child`). |
+| `<manifest>/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; its `children[]` roster is the roster `derive-plan-data` aggregates check hints over. |
+| `<design>/check-hints/<child>.json` × N | `specification/references/check-hints.schema.json` | Per-child check hints; `simplan derive-plan-data` aggregates them into `check_hints[]`, tagging each with `child`. |
 
 ## Output Artifacts
 
@@ -133,7 +133,7 @@ Produce `verification-plan.md` and `scaffold-specification.json` by running the 
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workdir <design> --output {workdir}/plan-data.json
 ```
 
-**Author the judgment fields** into `scaffold-specification.json`, and write `verification-plan.md` per the section outline. Which fields are yours vs script-injected: the `scaffold-specification.json` fields section above. How to map spec fields to UVM objects (agents from interface groups, sequences from scenarios, tests from features, RM / scoreboard from `§5` check-hints): `references/spec-input-contract.md`.
+**Author the judgment fields** into `scaffold-specification.json`, and write `verification-plan.md` per the section outline. Which fields are yours vs script-injected: the `scaffold-specification.json` fields section above. How to map spec fields to UVM objects (agents from interface groups, sequences from scenarios, tests from features, RM / scoreboard from the check hints): `references/spec-input-contract.md`.
 
 **Author power scenarios** per `references/power-scenarios-template.md` into `verification-plan.md` §4 and `scaffold-specification.json.power_scenarios`; every `sequence_ref` must resolve to a `sequences[].name` (add the `sequences[]` entry first when a scenario needs its own stimulus).
 
@@ -246,7 +246,7 @@ Your sole completion signal is `{workdir}/result.json` present with `status=pass
 
 ## Bundled References
 
-- [`references/spec-input-contract.md`](references/spec-input-contract.md) — how the `plan-data.json` fields (extracted from `design.md` + per-child `<child>.md §5`) map to the scaffold objects this stage authors, with a worked APB example.
+- [`references/spec-input-contract.md`](references/spec-input-contract.md) — how the authored sidecars and `plan-data.json` fields map to the scaffold objects this stage authors, with a worked APB example.
 - [`references/power-scenarios-template.md`](references/power-scenarios-template.md) — the standard 9-power-scenarios table + per-module materialization guide.
 - [`references/scaffold-specification.schema.json`](references/scaffold-specification.schema.json) — structural schema for `scaffold-specification.json` (the machine contract); enforced by `simplan check-scaffold`.
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.

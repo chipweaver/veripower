@@ -196,10 +196,11 @@ def load_sidecar(workdir: Path, name: str) -> list[dict]:
     return doc if isinstance(doc, list) else []
 
 
-def validate_sidecar(workdir: Path, name: str) -> list[dict]:
+def validate_sidecar(workdir: Path, name: str, schema: str | None = None) -> list[dict]:
     """One authored sidecar against its schema, returned as violations rather than raised:
-    a gate names every defect instead of stopping at the first."""
-    schema_path = _REFERENCES / f"{Path(name).stem}.schema.json"
+    a gate names every defect instead of stopping at the first. `schema` overrides the
+    filename-derived schema, for sidecars named after their subject (check-hints/<child>)."""
+    schema_path = _REFERENCES / (schema or f"{Path(name).stem}.schema.json")
     try:
         doc = json.loads((workdir / name).read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -220,6 +221,10 @@ def validate_sidecar(workdir: Path, name: str) -> list[dict]:
         )
         out.append({"at": where, "error": err.message})
     return out
+
+
+def load_check_hints(workdir: Path, child: str) -> list[dict]:
+    return load_sidecar(workdir, f"check-hints/{child}.json")
 
 
 def load_features(workdir: Path) -> list[dict]:
@@ -335,6 +340,9 @@ def compute_self_containment(
         docs.append(
             (child["doc"], (workdir / child["doc"]).read_text(encoding="utf-8"), True)
         )
+    # A by-reference jump is the same defect wherever it is written, hints included.
+    for hp in sorted((workdir / "check-hints").glob("*.json")):
+        docs.append((f"check-hints/{hp.name}", hp.read_text(encoding="utf-8"), False))
     for name, text, is_child in docs:
         name_base = Path(name).name
         for m in _BY_REF_RE.finditer(text):
@@ -411,12 +419,18 @@ def compute_token_survival(
     verbatim-RTL contract.
     """
     brainstorm_text = _strip_ppa_targets_section(brainstorm_text)
-    # Read each child body once, not once-per-token.
+    # Read each child body once, not once-per-token. check-hints/<child>.json is part of the
+    # haystack: implementation_detail_verbatim is where brainstorm RTL formulas land, and
+    # survival is about the information, not the file format holding it.
     child_texts = [
         (workdir / child["doc"]).read_text(encoding="utf-8")
         for child in manifest["children"]
     ]
-    haystacks = [main_design_text, *child_texts]
+    hint_texts = [
+        p.read_text(encoding="utf-8")
+        for p in sorted((workdir / "check-hints").glob("*.json"))
+    ]
+    haystacks = [main_design_text, *child_texts, *hint_texts]
     missing: list[dict] = []
     seen: set[str] = set()
     for tok in _HARD_TOKEN_RE.findall(brainstorm_text):
@@ -437,24 +451,6 @@ _GATED_COLS = {
         ["Signal", "Direction", "Clock Domain", "Interface Group", "Role"],
     ),
 }
-
-# §5 Verification-Hints gated columns. The gate requires the canonical `SourceFeature`
-# header exactly (also the sole name honored for feature-coverage detection below): an
-# aliased column already fails the gated-column check, so tolerating it for coverage only
-# would let a spec fail-and-pass the same column inconsistently.
-_HINT_GATED = [
-    "CheckID",
-    "SourceFeature",
-    "ImplementationDetail",
-    "Observable",
-    "ReferenceRule",
-]
-
-# The §5 heading selector. simulation-plan's derive-plan-data reads the SAME section out of
-# the same child docs, so the two patterns must stay byte-identical: a heading this gate
-# accepts but that consumer misses drops the child's whole hint set with no error.
-# tests/contracts/test_cross_stage_contracts.py locks them equal.
-SEC5_HINTS_HEADING = r"§?\s*5\b.*Verification\s+Hints?"
 
 
 def compute_structure(
@@ -518,23 +514,15 @@ def compute_structure(
     feature_ids = feature_ids_of(workdir)
     hint_col_v: list[dict] = []
     covered: set[str] = set()
-    for cname, body in (child_texts or {}).items():
-        sec = extract_section(body, SEC5_HINTS_HEADING)
-        rows = parse_markdown_table(sec)
-        if not rows:
-            hint_col_v.append(
-                {"child": cname, "error": "§5 Verification Hints table missing"}
-            )
-            continue
-        header = table_header(sec)
-        for c in _HINT_GATED:
-            if c not in header:
-                hint_col_v.append({"child": cname, "missing_column": c})
-        if "SourceFeature" in header:
-            for row in rows:
-                fid = row.get("SourceFeature", "").strip()
-                if fid:
-                    covered.add(fid)
+    for cname in child_texts or {}:
+        for v in validate_sidecar(
+            workdir, f"check-hints/{cname}.json", schema="check-hints.schema.json"
+        ):
+            hint_col_v.append({"child": cname, **v})
+        for hint in load_check_hints(workdir, cname):
+            fid = hint.get("source_feature")
+            if isinstance(fid, str) and fid.strip():
+                covered.add(fid.strip())
     # Guard: when child_texts is None, skip the gap check — an empty covered set would
     # otherwise make the set difference MAXIMAL (all features "uncovered"), breaking
     # callers that invoke compute_structure without child bodies.
