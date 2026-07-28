@@ -52,6 +52,8 @@ RULES: dict[str, Rule] = {
             "features.json",
             "timing-scenarios.json",
             "check-hints/*.json",
+            "top-io.json",
+            "interconnects.json",
             "spec-review.json",
             "constraints/*.sdc",
             "constraints/*.sgdc",
@@ -77,6 +79,8 @@ RULES: dict[str, Rule] = {
             "features": ("Design/specification/features.json",),
             "scenarios": ("Design/specification/timing-scenarios.json",),
             "check_hints": ("Design/specification/check-hints/*.json",),
+            "top_io": ("Design/specification/top-io.json",),
+            "interconnects": ("Design/specification/interconnects.json",),
         },
         outputs=(
             "verification-plan.md",
@@ -100,9 +104,12 @@ RULES: dict[str, Rule] = {
             "design": ("Design/specification/design.md",),
             "manifest": ("Design/specification/manifest.json",),
             "children": ("Design/specification/*.md",),
-            # Read by the child sub-Tasks (create_generated_clock annotations per
-            # references/child-task-contract.md), not by any script in this stage.
+            # Read by the child sub-Tasks (create_generated_clock, set_case_analysis and
+            # quasi_static annotations per references/child-task-contract.md), not by any
+            # script in this stage.
             "clocks": ("Design/specification/clocks.json",),
+            "top_io": ("Design/specification/top-io.json",),
+            "interconnects": ("Design/specification/interconnects.json",),
         },
         outputs=("*.v", "filelist.txt", "README.md", "semantic-review.json"),
         proof="rtl-design",

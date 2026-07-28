@@ -1,7 +1,7 @@
 # SDC — generated-output reference
 
 `constraints/<TOP>.sdc` is **generated** by the `derive-constraints` verb as a pure function of
-`clocks.json` (clocks/relationships) + `design.md` §1.4.1 (port roles/domains). Do **not**
+`clocks.json` (clocks/relationships) + `top-io.json` (port roles/domains). Do **not**
 hand-author or hand-edit it; change the source and re-run derive. This file documents what derive
 emits so reviewers know what to expect.
 
@@ -16,7 +16,7 @@ emits so reviewers know what to expect.
 - `set_clock_uncertainty -setup 0.2 [all_clocks]` + `-hold 0.0 [all_clocks]` — fixed
   placeholders; the split form is deliberate (single-value widens pre-CTS hold into false
   hold-VIOLATED; pre-CTS hold = 0 is the convention).
-- `set_input_delay`/`set_output_delay` at `T×0.3` for each §1.4.1 `Role=data` port,
+- `set_input_delay`/`set_output_delay` at `T×0.3` for each `top-io.json` `role: data` port,
   `-clock <Clock Domain>`. Clock/reset ports get none.
 
 **Deferred to RTL-visible stages (lint-cdc / timing annotate back), NOT spec-time:**

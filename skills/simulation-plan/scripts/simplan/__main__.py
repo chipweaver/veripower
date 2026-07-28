@@ -2,7 +2,6 @@
 """simplan — simulation-plan-stage CLI.
 
 Verbs (one stage = one tool; see skills/simulation-plan/SKILL.md for usage):
-  derive-plan-data      spec workdir -> plan-data.json          (writes file; exit 0; fail-loud)
   materialize-scaffold  fill scaffold signals/clock/reset/inline (writes scaffold; exit 0; fail-loud)
   check-scaffold        structural+semantic+coverage gate        (exit 0 OK / 1 fix-message)
   validate-review       plan-review.json schema + gate           (stdout: gate JSON; exit 0/1)
@@ -12,7 +11,7 @@ Thin dispatcher: each subcommand parses its own flags and calls into the simplan
 library. Library imports are deferred into each handler (NOT top-level) so --help and
 verb dispatch run before the sibling library modules need to exist; that is the
 load-bearing reason when this template is copied per stage. A top-level `from simplan
-import plan_data, materialize, …` would ImportError if a sibling module is absent. Keep
+import materialize, scaffold, …` would ImportError if a sibling module is absent. Keep
 them lazy. (Library modules themselves use top-level absolute imports; only this thin
 dispatcher defers.)
 """
@@ -30,22 +29,16 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _cmd_derive_plan_data(a: argparse.Namespace) -> int:
-    from simplan import plan_data
-
-    return plan_data.run(a.workdir, a.output)
-
-
 def _cmd_materialize_scaffold(a: argparse.Namespace) -> int:
     from simplan import materialize
 
-    return materialize.run(a.plan_data, a.scaffold, a.clocks)
+    return materialize.run(a.scaffold, a.spec)
 
 
 def _cmd_check_scaffold(a: argparse.Namespace) -> int:
     from simplan import scaffold
 
-    return scaffold.run(a.scaffold, a.plan_data)
+    return scaffold.run(a.scaffold, a.spec)
 
 
 def _cmd_validate_review(a: argparse.Namespace) -> int:
@@ -71,33 +64,27 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="simplan", description="simulation-plan-stage CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sp = sub.add_parser("derive-plan-data", help="spec workdir -> plan-data.json")
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
-        "--output",
-        type=Path,
-        default=None,
-        help="direct output path (default: {workdir}/plan-data.json)",
-    )
-    sp.set_defaults(func=_cmd_derive_plan_data)
-
     sp = sub.add_parser(
         "materialize-scaffold",
         help="fill scaffold agent signals / clock / reset / inline hints",
     )
-    sp.add_argument("--plan-data", required=True, type=Path)
     sp.add_argument("--scaffold", required=True, type=Path)
     sp.add_argument(
-        "--clocks",
+        "--spec",
         required=True,
         type=Path,
-        help="path to the specification workdir's clocks.json (primary_clock source)",
+        help="the specification workdir: clocks.json / top-io.json / check-hints/ are read from it",
     )
     sp.set_defaults(func=_cmd_materialize_scaffold)
 
     sp = sub.add_parser("check-scaffold", help="structural + semantic + coverage gate")
     sp.add_argument("--scaffold", required=True, type=Path)
-    sp.add_argument("--plan-data", required=True, type=Path)
+    sp.add_argument(
+        "--spec",
+        required=True,
+        type=Path,
+        help="the specification workdir: the check hints for the coverage matrix are read from it",
+    )
     sp.set_defaults(func=_cmd_check_scaffold)
 
     sp = sub.add_parser("validate-review", help="plan-review.json schema + gate")

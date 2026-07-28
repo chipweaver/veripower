@@ -95,7 +95,7 @@
           "bins": {"type": "array"},
           "covers": {"type": "array"},
           "inlined_check_hints": {
-            "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the precise check semantics from `plan-data.json.check_hints[]`, materialized into this testpoint via its `covers[]`. `implementation_detail` is verbatim-if-present-else-summary.",
+            "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the precise check semantics from the authored `check-hints/<child>.json`, materialized into this testpoint via its `covers[]`. `implementation_detail` is verbatim-if-present-else-summary.",
             "type": "array",
             "items": {
               "type": "object",

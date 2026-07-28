@@ -60,59 +60,15 @@ The feature list lives in `features.json` (the spine child §5 `SourceFeature` r
 
 Interface groups: `clk_rst`, `data_in`, `ctrl`, `status`, `apb`. Binding contract: signal names, directions, and widths below are fixed and must match exactly — an existing directed testbench binds to these ports.
 
-| Signal | Direction | Width | Clock Domain | Interface Group | Protocol | Role | ResetPolarity | ResetKind |
-|--------|-----------|-------|--------------|-----------------|----------|------|---------------|-----------|
-| i_clk | input | 1 | i_clk | clk_rst | - | clock | - | - |
-| i_rstn | input | 1 | i_clk | clk_rst | - | reset | 0 | async |
-| in1 | input | 32 | i_clk | data_in | - | data | - | - |
-| in2 | input | 32 | i_clk | data_in | - | data | - | - |
-| in1_en | input | 1 | i_clk | data_in | - | data | - | - |
-| in2_en | input | 1 | i_clk | data_in | - | data | - | - |
-| start | input | 1 | i_clk | ctrl | - | data | - | - |
-| o_full | output | 3 | i_clk | status | - | data | - | - |
-| o_empty | output | 3 | i_clk | status | - | data | - | - |
-| done | output | 1 | i_clk | status | - | data | - | - |
-| i_paddr | input | 32 | i_clk | apb | APB-style | data | - | - |
-| i_psel | input | 1 | i_clk | apb | APB-style | data | - | - |
-| i_pwrite | input | 1 | i_clk | apb | APB-style | data | - | - |
-| i_pwdata | input | 32 | i_clk | apb | APB-style | data | - | - |
-| i_penable | input | 1 | i_clk | apb | APB-style | data | - | - |
-| o_prdata | output | 32 | i_clk | apb | APB-style | data | - | - |
-| counter | output | 4 | i_clk | ctrl | - | data | - | - |
-
-Notes on specific ports:
-- `i_rstn`: asynchronous active-low reset (`negedge i_rstn`); applies to the MAC cells, skew registers, FIFOs, and the counter. The APB write/register-file block is clocked-only with no reset.
-- `in1` / `in2`: 32-bit input data streams into `fifo_00` / `fifo_01` respectively.
-- `in1_en` / `in2_en`: write enables for `fifo_00` / `fifo_01`.
-- `o_full` / `o_empty`: 3-bit, ordering `{fifo_result, fifo_01, fifo_00}` = `[2],[1],[0]`.
-- `done`: high when `counter >= 5`.
-- `o_prdata`: APB read data — result FIFO `o_data` on read, else 0.
-- `counter`: 4-bit exposed counter; the testbench leaves it unconnected.
+Ports live in `top-io.json` (the DUT boundary; `constraints/tpu_top.{sdc,sgdc}` are
+generated from it together with `clocks.json`).
 
 #### 1.4.2 Inter-module Interconnects
 
 Authoritative RTL-module-to-RTL-module wire table. Children: `fifo` (×3: `fifo_00`, `fifo_01`, `fifo_result`), `systolic_reg` (×1), `mac` (×4: `mac_00`, `mac_01`, `mac_10`, `mac_11`). All other logic (APB register file, counter FSM, result routing, `done`) is inline in the `tpu_top` parent. Each cross-module wire is declared once here. `mac_01.o_data_next` and `mac_11.o_data_next` are intentionally unconnected.
 
-| Wire | Producer (RTL module) | Consumer (RTL module) | Protocol | Timing Constraint | Notes |
-|------|-----------------------|-----------------------|----------|-------------------|-------|
-| systolic_in1 | fifo | systolic_reg | combinational | same-cycle (i_clk) | `fifo_00.o_data` → `systolic_reg.in1`; input stream 1 |
-| systolic_in2 | fifo | systolic_reg | combinational | same-cycle (i_clk) | `fifo_01.o_data` → `systolic_reg.in2`; input stream 2 |
-| fifo_en | tpu_top | fifo | combinational | same-cycle (i_clk) | tpu_top (parent FSM) → `fifo_00.i_rd`, `fifo_01.i_rd`; `start & counter<2` |
-| mac00_in | systolic_reg | mac | registered | i_clk | `systolic_reg.out1` → `mac_00.i_data`; in1 skew (1 cyc) |
-| mac10_in | systolic_reg | mac | registered | i_clk | `systolic_reg.out2` → `mac_10.i_data`; in2 skew (2 cyc) |
-| mac01_in | mac | mac | registered | i_clk | `mac_00.o_data_next` → `mac_01.i_data`; data forward (row 0) |
-| mac11_in | mac | mac | registered | i_clk | `mac_10.o_data_next` → `mac_11.i_data`; data forward (row 1) |
-| mem[0] | tpu_top | mac | registered | i_clk | tpu_top (parent regfile) → `mac_00.i_weight`; weight `W00` |
-| mem[1] | tpu_top | mac | registered | i_clk | tpu_top (parent regfile) → `mac_01.i_weight`; weight `W01` |
-| mem[2] | tpu_top | mac | registered | i_clk | tpu_top (parent regfile) → `mac_10.i_weight`; weight `W10` |
-| mem[3] | tpu_top | mac | registered | i_clk | tpu_top (parent regfile) → `mac_11.i_weight`; weight `W11` |
-| 32'h0 | const | mac | const | static | const → `mac_00.i_pre_result`, `mac_01.i_pre_result`; top-row partial-sum seed |
-| mac00_out | mac | mac | registered | i_clk | `mac_00.o_result` → `mac_10.i_pre_result`; partial sum (col 0) |
-| mac01_out | mac | mac | registered | i_clk | `mac_01.o_result` → `mac_11.i_pre_result`; partial sum (col 1) |
-| out1 | mac | tpu_top | registered | i_clk | `mac_10.o_result` → tpu_top (parent result mux); result word A |
-| out2 | mac | tpu_top | registered | i_clk | `mac_11.o_result` → tpu_top (parent result mux); result word B |
-| result_fifo_i_data | tpu_top | fifo | combinational | same-cycle (i_clk) | tpu_top (parent result mux) → `fifo_result.i_data`; counter-routed |
-| result_fifo_o_data | fifo | tpu_top | combinational | same-cycle (i_clk) | `fifo_result.o_data` → tpu_top (parent APB read mux); → `o_prdata` |
+The cut-edge list lives in `interconnects.json`; `derive-ports` attributes each wire to the
+children that touch it and injects that list into the wave-2 child prompts.
 
 ### 1.5 Interface Timing Scenarios
 

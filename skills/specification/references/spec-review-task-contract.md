@@ -14,7 +14,7 @@ does NOT auto-fix design.md — a blocking finding is resolved by user-directed 
 - `asic/{module}/brainstorm.md`, read-scope = the child's `manifest.children[<self>].brainstorm_anchor`
   slice — the frozen statement of *intent* to check faithfulness against.
 - `design.md` path, read-scope §1.4 only (top IO / interconnects, **including the §1.4.x Encoding
-  column and the §1.4.2.1 Inter-module Behavior Contract companion when present**), as both
+  field and the §1.4.2.1 Inter-module Behavior Contract companion when present**), as both
   integration context and the conformance reference frame.
 
 ### Your job: skeptical intent review of the SPEC (NOT RTL / lint / PPA)
@@ -34,7 +34,7 @@ Read the `<child>.md` against its `brainstorm_anchor` intent and against `design
     **agree with the pinned Encoding row** (no divergent decode, no contradicted obligation)? Decision
     rule: a well-formed-but-inadequate Encoding, or a child decode/obligation that contradicts a
     well-formed row, is `conformance` (block).
-  - **Name-resolution** for an inter-module behavior contract — when **two or more §1.4.2 wires
+  - **Name-resolution** for an inter-module behavior contract — when **two or more `interconnects.json` wires
     reference the same named phase / sequence** (in their `Timing Constraint` cells or control-bus
     `Encoding` symbols) but that name is **not declared in the §1.4.2.1 companion** — including the case
     where such named references exist yet there is no companion at all — the references do not resolve,

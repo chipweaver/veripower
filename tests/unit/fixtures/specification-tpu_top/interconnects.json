@@ -1,0 +1,254 @@
+[
+  {
+    "wire": "systolic_in1",
+    "producers": [
+      "fifo"
+    ],
+    "consumers": [
+      "systolic_reg"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "combinational",
+    "timing_constraint": "same-cycle (i_clk)",
+    "notes": "`fifo_00.o_data` → `systolic_reg.in1`; input stream 1"
+  },
+  {
+    "wire": "systolic_in2",
+    "producers": [
+      "fifo"
+    ],
+    "consumers": [
+      "systolic_reg"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "combinational",
+    "timing_constraint": "same-cycle (i_clk)",
+    "notes": "`fifo_01.o_data` → `systolic_reg.in2`; input stream 2"
+  },
+  {
+    "wire": "fifo_en",
+    "producers": [
+      "tpu_top"
+    ],
+    "consumers": [
+      "fifo"
+    ],
+    "width": 1,
+    "clock_domain": "i_clk",
+    "protocol": "combinational",
+    "timing_constraint": "same-cycle (i_clk)",
+    "notes": "tpu_top (parent FSM) → `fifo_00.i_rd`, `fifo_01.i_rd`; `start & counter<2`"
+  },
+  {
+    "wire": "mac00_in",
+    "producers": [
+      "systolic_reg"
+    ],
+    "consumers": [
+      "mac"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "`systolic_reg.out1` → `mac_00.i_data`; in1 skew (1 cyc)"
+  },
+  {
+    "wire": "mac10_in",
+    "producers": [
+      "systolic_reg"
+    ],
+    "consumers": [
+      "mac"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "`systolic_reg.out2` → `mac_10.i_data`; in2 skew (2 cyc)"
+  },
+  {
+    "wire": "mac01_in",
+    "producers": [
+      "mac"
+    ],
+    "consumers": [
+      "mac"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "`mac_00.o_data_next` → `mac_01.i_data`; data forward (row 0)"
+  },
+  {
+    "wire": "mac11_in",
+    "producers": [
+      "mac"
+    ],
+    "consumers": [
+      "mac"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "`mac_10.o_data_next` → `mac_11.i_data`; data forward (row 1)"
+  },
+  {
+    "wire": "mem[0]",
+    "producers": [
+      "tpu_top"
+    ],
+    "consumers": [
+      "mac"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "tpu_top (parent regfile) → `mac_00.i_weight`; weight `W00`"
+  },
+  {
+    "wire": "mem[1]",
+    "producers": [
+      "tpu_top"
+    ],
+    "consumers": [
+      "mac"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "tpu_top (parent regfile) → `mac_01.i_weight`; weight `W01`"
+  },
+  {
+    "wire": "mem[2]",
+    "producers": [
+      "tpu_top"
+    ],
+    "consumers": [
+      "mac"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "tpu_top (parent regfile) → `mac_10.i_weight`; weight `W10`"
+  },
+  {
+    "wire": "mem[3]",
+    "producers": [
+      "tpu_top"
+    ],
+    "consumers": [
+      "mac"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "tpu_top (parent regfile) → `mac_11.i_weight`; weight `W11`"
+  },
+  {
+    "wire": "32'h0",
+    "producers": [
+      "const"
+    ],
+    "consumers": [
+      "mac"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "const",
+    "timing_constraint": "static",
+    "notes": "const → `mac_00.i_pre_result`, `mac_01.i_pre_result`; top-row partial-sum seed"
+  },
+  {
+    "wire": "mac00_out",
+    "producers": [
+      "mac"
+    ],
+    "consumers": [
+      "mac"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "`mac_00.o_result` → `mac_10.i_pre_result`; partial sum (col 0)"
+  },
+  {
+    "wire": "mac01_out",
+    "producers": [
+      "mac"
+    ],
+    "consumers": [
+      "mac"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "`mac_01.o_result` → `mac_11.i_pre_result`; partial sum (col 1)"
+  },
+  {
+    "wire": "out1",
+    "producers": [
+      "mac"
+    ],
+    "consumers": [
+      "tpu_top"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "`mac_10.o_result` → tpu_top (parent result mux); result word A"
+  },
+  {
+    "wire": "out2",
+    "producers": [
+      "mac"
+    ],
+    "consumers": [
+      "tpu_top"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "registered",
+    "timing_constraint": "i_clk",
+    "notes": "`mac_11.o_result` → tpu_top (parent result mux); result word B"
+  },
+  {
+    "wire": "result_fifo_i_data",
+    "producers": [
+      "tpu_top"
+    ],
+    "consumers": [
+      "fifo"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "combinational",
+    "timing_constraint": "same-cycle (i_clk)",
+    "notes": "tpu_top (parent result mux) → `fifo_result.i_data`; counter-routed"
+  },
+  {
+    "wire": "result_fifo_o_data",
+    "producers": [
+      "fifo"
+    ],
+    "consumers": [
+      "tpu_top"
+    ],
+    "width": 32,
+    "clock_domain": "i_clk",
+    "protocol": "combinational",
+    "timing_constraint": "same-cycle (i_clk)",
+    "notes": "`fifo_result.o_data` → tpu_top (parent APB read mux); → `o_prdata`"
+  }
+]

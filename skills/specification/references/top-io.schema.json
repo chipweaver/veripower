@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/specification/top-io.schema.json",
+  "title": "top-io.json — the module's top-level IO ports (authored, never derived)",
+  "description": "The DUT boundary. derive-constraints renders create_clock / set_input_delay / set_output_delay / abstract_port from it; simulation-plan derives agents and transaction fields from it; each rtl-design child reads it for set_case_analysis. Authored by the specification stage's Wave 1; design.md §1.4.1 points here and carries no table. Two conditional requirements are expressed below rather than in Python: an output declares its owner, and a reset row declares polarity and kind.",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "required": ["name", "direction", "width", "clock_domain", "interface_group", "role"],
+    "additionalProperties": false,
+    "allOf": [
+      {
+        "if": {"properties": {"direction": {"const": "output"}}, "required": ["direction"]},
+        "then": {"required": ["owner"]}
+      },
+      {
+        "if": {"properties": {"role": {"const": "reset"}}, "required": ["role"]},
+        "then": {"required": ["reset_polarity", "reset_kind"]}
+      }
+    ],
+    "properties": {
+      "name": {
+        "description": "The port name exactly as the netlist declares it, bit range included (e.g. token_in[4:0]). Emitted verbatim into get_ports / abstract_port, so it is not decomposed here.",
+        "type": "string",
+        "minLength": 1
+      },
+      "direction": {"enum": ["input", "output", "inout"]},
+      "width": {
+        "description": "Bit width. When name ends in a [h:l] range, check-coverage cross-checks width against it; an [i] index (a register-file element) carries no width claim and is skipped.",
+        "type": "integer",
+        "minimum": 1
+      },
+      "clock_domain": {
+        "description": "A clocks.json name. Clock and reset ports carry no IO delay; each data port gets set_input/output_delay against this domain.",
+        "type": "string",
+        "minLength": 1
+      },
+      "interface_group": {
+        "description": "Groups ports into one TB agent / one vif.",
+        "type": "string",
+        "minLength": 1
+      },
+      "role": {"enum": ["clock", "reset", "data"]},
+      "owner": {
+        "description": "Required on an output: the manifest child that drives it, which must list this port in its frontmatter ports. Prefer a leaf child passed through the pure top over top-level glue.",
+        "type": "string",
+        "minLength": 1
+      },
+      "protocol": {"type": "string", "minLength": 1},
+      "encoding": {
+        "description": "A control or status port pins its bit/field-to-symbol meaning here, including the consumer obligation per code. Raw data / clock / reset ports have none. Enforced by the spec-review conformance lens, not by a deterministic gate.",
+        "type": "string",
+        "minLength": 1
+      },
+      "reset_polarity": {"enum": [0, 1]},
+      "reset_kind": {"enum": ["sync", "async"]}
+    }
+  }
+}

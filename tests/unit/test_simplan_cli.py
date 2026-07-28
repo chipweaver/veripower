@@ -6,7 +6,6 @@ ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/simulation-plan/scripts/simplan/__main__.py"
 
 _VERBS = (
-    "derive-plan-data",
     "materialize-scaffold",
     "check-scaffold",
     "validate-review",
@@ -18,7 +17,7 @@ def _run(*argv):
     return subprocess.run(["python3", str(MAIN), *argv], capture_output=True, text=True)
 
 
-def test_cli_help_lists_all_five_verbs():
+def test_cli_help_lists_every_verb():
     r = _run("--help")
     assert r.returncode == 0, r.stderr
     for v in _VERBS:

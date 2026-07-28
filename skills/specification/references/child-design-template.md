@@ -24,14 +24,20 @@ features:                          # required (may be empty)
 
 ## §2 Interface
 
-A detailed port table covering the frontmatter `ports` (per-signal direction, width, clock domain, protocol, timing semantics). Child-internal-only boundary ports (test-mode strobe, debug tap, internal handshake) also appear here, though they are not in the frontmatter `ports`.
+Your boundary, in whatever shape serves this child. Carry only what is **yours**:
 
-Each of the following **restates its single source verbatim; never introduce a divergent value**:
-- **Inter-module port** (a §1.4.2 wire): width and clock domain match the §1.4.2 row.
-- **Control/status inter-module port**: its **Encoding** (bit/field→symbol meaning plus per-code consumer obligation) matches the §1.4.x row.
+- the net-to-instance.port mapping (which `interconnects.json` wire lands on which port of which instance you wrote);
+- bit packing (which field of a wide bus is which);
+- per-signal timing semantics at your boundary;
+- child-internal-only boundary ports (test-mode strobe, debug tap, internal handshake), which are not in the frontmatter `ports`.
+
+**Do not restate width, clock domain, protocol or encoding.** They live in `top-io.json` / `interconnects.json`; read them there. A restated value is a second hand-written home for one fact, and nothing checks the two against each other.
+
+Two references stay by name rather than by copy:
+- **Control/status inter-module port**: its encoding is one `interconnects.json` entry that producer and consumer both read; name the wire, do not re-describe the codes.
 - **Inter-module behavior contract** (a shared operating-phase / sequencing / co-assertion contract, declared in the §1.4.2.1 companion): reference the companion's declared names; do not redefine the phase set or sequencing.
 
-A top-IO **output** is owned by exactly one child (listed in that child's frontmatter `ports`); a leaf child passed through the pure top is preferred.
+A top-IO **output** is owned by exactly one child — `top-io.json`'s `owner` says which, and that child must list the port in its frontmatter `ports`. A leaf child passed through the pure top is preferred. Which **inputs** you read is your own decision, declared in your frontmatter and nowhere else.
 
 ## §3 Internal Behavior
 

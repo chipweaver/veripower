@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/specification/check-hints.schema.json",
   "title": "check-hints/<child>.json — one child's verification check hints (authored, never derived)",
-  "description": "One file per child, authored by that child's wave-2 sub-Task: children are written in parallel, so a shared file would be a write conflict. check_id is unique across all children (derive-plan-data), source_feature resolves to a features.json id (check-coverage), and implementation_detail_verbatim is the sole downstream source of cycle-accurate refmodel formulas — token survival is what enforces it. Field names match the scaffold's inlined_check_hints[], so the injection is a verbatim copy.",
+  "description": "One file per child, authored by that child's wave-2 sub-Task: children are written in parallel, so a shared file would be a write conflict. check_id is unique across all children (enforced when the files are aggregated), source_feature resolves to a features.json id (check-coverage), and implementation_detail_verbatim is the sole downstream source of cycle-accurate refmodel formulas — token survival is what enforces it. Field names match the scaffold's inlined_check_hints[], so the injection is a verbatim copy.",
   "type": "array",
   "minItems": 1,
   "items": {

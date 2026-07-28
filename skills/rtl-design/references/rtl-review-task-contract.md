@@ -14,7 +14,7 @@ remain advisory (never gate). Findings are aggregated into `semantic-review.json
 - The child's per-child design doc, located via `manifest.children[<self>].doc` (the registry SSoT —
   the SAME path authoring uses; do NOT hardcode `Design/specification/<child>.md`, which can drift from
   the deployed layout). **Read its §2 Interface (and, for the top-integration child, the §3.1
-  instantiation map = §1.4.2 restatement)** as the statement of *intent* to check against.
+  instantiation map wires the `interconnects.json` edges)** as the statement of *intent* to check against.
 - `design.md` path, read-scope §1.4 only (top IO / interconnects), for cross-checking integration intent.
 
 ## Your job: skeptical intent review (NOT lint / PPA / syntax)

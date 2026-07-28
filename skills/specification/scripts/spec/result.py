@@ -170,6 +170,8 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
         ("clocks.json", "clocks"),
         ("features.json", "features"),
         ("timing-scenarios.json", "timing-scenarios"),
+        ("top-io.json", "top-io"),
+        ("interconnects.json", "interconnects"),
     ]
     child_docs = [
         (c["doc"], "child-design") for c in manifest.get("children", []) if c.get("doc")

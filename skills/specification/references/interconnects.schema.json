@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/specification/interconnects.schema.json",
+  "title": "interconnects.json — RTL-module-to-RTL-module wires (authored, never derived)",
+  "description": "The authoritative cut-edge list. derive-ports attributes each wire to the children whose rtl_modules appear in producers/consumers and injects that list into the wave-2 child prompts, so a child never hand-guesses its inter-module ports. Authored by the specification stage's Wave 1; design.md §1.4.2 points here and carries no table. An N=1 module has no inter-module wires and writes an empty array. producers and consumers are arrays: a wire may fan out, and the endpoint list is not a comma-joined string to be split.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["wire", "producers", "consumers", "width", "clock_domain"],
+    "additionalProperties": false,
+    "properties": {
+      "wire": {
+        "description": "The net name. Not unique across entries by itself — the same net may appear once per distinct endpoint pairing.",
+        "type": "string",
+        "minLength": 1
+      },
+      "producers": {
+        "description": "RTL module names that drive the wire. `const` marks a literal source with no owning module.",
+        "type": "array",
+        "minItems": 1,
+        "items": {"type": "string", "minLength": 1}
+      },
+      "consumers": {
+        "type": "array",
+        "minItems": 1,
+        "items": {"type": "string", "minLength": 1}
+      },
+      "width": {
+        "description": "Bit width. A heterogeneous control bundle cannot state one honest width — split it into per-field wires instead.",
+        "type": "integer",
+        "minimum": 1
+      },
+      "clock_domain": {
+        "description": "A clocks.json name. A phantom domain here hides a CDC path.",
+        "type": "string",
+        "minLength": 1
+      },
+      "protocol": {"type": "string", "minLength": 1},
+      "encoding": {
+        "description": "A wire carrying an encoded control/status value pins its bit/field-to-symbol meaning here; producer and consumer read this one entry, so per-wire agreement is structural. A raw data wire has none.",
+        "type": "string",
+        "minLength": 1
+      },
+      "timing_constraint": {"type": "string", "minLength": 1},
+      "notes": {"type": "string", "minLength": 1}
+    }
+  }
+}

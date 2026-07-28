@@ -10,10 +10,10 @@ Three layers (each runs only if the prior passed):
      agent; sequences[].agent / tests[].seqs[] / power_scenarios[].sequence_ref
      resolve to declared agents/sequences; option-c (compare_txn omitted +
      multiple agents -> fail).
-  3. Coverage — bidirectional matrix over the LLM judgment vs plan-data.json
-     (required --plan-data): every plan-data check_hints[].check_id is covered by
-     some testpoints[].covers[] or listed in skipped_checks[]; every non-empty
-     covers[] entry resolves to a real check_id. Applied by run() after layers 1-2.
+  3. Coverage — bidirectional matrix over the LLM judgment vs the authored check hints
+     (required --spec): every check_id is covered by some testpoints[].covers[] or listed
+     in skipped_checks[]; every non-empty covers[] entry resolves to a real check_id.
+     Applied by run() after layers 1-2.
 
 Exits 0 with "check-scaffold: OK ..." on a clean scaffold; otherwise exits non-zero with a
 readable, fix-oriented message to stderr. Pairs with simulation render-scaffold's thin
@@ -25,6 +25,8 @@ import sys
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+
+from simplan.hints import HintsError, load_check_hints
 
 _DEFAULT_SCHEMA = (
     Path(__file__).resolve().parent.parent.parent
@@ -143,24 +145,22 @@ def semantic_errors(scaffold: dict) -> list:
     return errs
 
 
-def coverage_errors(scaffold: dict, plan_data: dict) -> list:
-    """Bidirectional coverage matrix: every plan-data check_id is covered (in some
+def coverage_errors(scaffold: dict, check_hints: list) -> list:
+    """Bidirectional coverage matrix: every authored check_id is covered (in some
     testpoints[].covers[]) or skipped (in skipped_checks[]); every non-empty covers[] entry
-    resolves to a real plan-data check_id. The inline existence/non-emptiness is guaranteed by
+    resolves to a real check_id. The inline existence/non-emptiness is guaranteed by
     construction (the materialize-scaffold verb), so it is not re-checked here.
 
     The dangling-covers half reads as redundant with materialize's own guard and is not.
     That guard is a build-time precondition; this is the gate, and the documented fix loop
     re-runs the gate alone. The uncovered-check_hints message below steers the author into
     hand-adding a check_id to covers[], an edit made after materialize already wrote the
-    file, so a typo in that id is caught here or nowhere. derive-plan-data also regenerates
-    plan-data.json every run, leaving a scaffold materialized against the previous one free
+    file, so a typo in that id is caught here or nowhere. The hints are re-read on every run,
+    leaving a scaffold materialized against an earlier set free
     to dangle against the current. references/plan-review-task-contract.md then puts this
     defect class out of scope for the LLM reviewer on the strength of this check, so
     dropping it would leave the class owned by nobody."""
-    check_ids = {
-        h["check_id"] for h in plan_data.get("check_hints", []) if h.get("check_id")
-    }
+    check_ids = {h["check_id"] for h in check_hints if h.get("check_id")}
     covered, errs = set(), []
     for tp in scaffold.get("testpoints", []):
         for cid in tp.get("covers") or []:
@@ -168,7 +168,7 @@ def coverage_errors(scaffold: dict, plan_data: dict) -> list:
             if cid not in check_ids:
                 errs.append(
                     f"testpoint {tp.get('id')!r} covers references unknown check_id {cid!r} "
-                    f"(not in plan-data check_hints)."
+                    f"(not in the authored check hints)."
                 )
     skipped = {s.get("check_id") for s in scaffold.get("skipped_checks", [])}
     uncovered = sorted(c for c in check_ids if c not in covered and c not in skipped)
@@ -192,7 +192,7 @@ def validate(scaffold: dict, schema: dict) -> list:
     return semantic_errors(scaffold)
 
 
-def run(scaffold_path, plan_data_path) -> int:
+def run(scaffold_path, spec_workdir) -> int:
     """check-scaffold: 3-layer gate (structural -> semantic -> coverage, short-circuit).
     exit 0 with 'check-scaffold: OK ...' / exit 1 with a fix-oriented message to stderr."""
     schema_path = _DEFAULT_SCHEMA
@@ -205,12 +205,12 @@ def run(scaffold_path, plan_data_path) -> int:
     except json.JSONDecodeError as e:
         sys.exit(f"check-scaffold: {schema_path} is not valid JSON: {e}")
     try:
-        plan_data = json.loads(Path(plan_data_path).read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        sys.exit(f"check-scaffold: {plan_data_path} is not valid JSON: {e}")
+        check_hints = load_check_hints(spec_workdir)
+    except HintsError as e:
+        sys.exit(f"check-scaffold: {e}")
     errors = validate(scaffold, schema)
     if not errors:
-        errors = coverage_errors(scaffold, plan_data)
+        errors = coverage_errors(scaffold, check_hints)
     if errors:
         sys.exit(
             "check-scaffold: scaffold-specification.json invalid:\n  - "

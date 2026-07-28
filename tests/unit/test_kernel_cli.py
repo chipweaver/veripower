@@ -127,6 +127,8 @@ _STAGE_FILES = {
         "features.json": "[]",
         "timing-scenarios.json": "[]",
         "check-hints/c.json": "[]",
+        "top-io.json": "[]",
+        "interconnects.json": "[]",
         "constraints/top.sdc": "# sdc",
         "constraints/top.sgdc": "# sgdc",
     },

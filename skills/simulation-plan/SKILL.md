@@ -35,10 +35,10 @@ Each read-only upstream input's location is injected: read `inputs.json` in your
 |---|---|---|
 | `<design>/design.md` | Custom markdown | Module-level design (§1.1–1.5: features / IO / interconnects / timing scenarios). Per-submodule content lives in each `<child>.md`. |
 | `<design>/clocks.json` | `specification/references/clocks.schema.json` | Clock definitions. `materialize-scaffold` reads it to derive `primary_clock`. |
-| `<design>/features.json` | `specification/references/features.schema.json` | Feature list. You author testpoints and tests from it — read it directly, not via `plan-data.json`. |
+| `<design>/features.json` | `specification/references/features.schema.json` | Feature list. You author testpoints and tests from it. |
 | `<design>/timing-scenarios.json` | `specification/references/timing-scenarios.schema.json` | Timing scenarios. Author one sequence per `id`; read it directly. |
-| `<manifest>/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; its `children[]` roster is the roster `derive-plan-data` aggregates check hints over. |
-| `<design>/check-hints/<child>.json` × N | `specification/references/check-hints.schema.json` | Per-child check hints; `simplan derive-plan-data` aggregates them into `check_hints[]`, tagging each with `child`. |
+| `<manifest>/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; its `children[]` roster is the roster the check hints are aggregated over. |
+| `<design>/check-hints/<child>.json` × N | `specification/references/check-hints.schema.json` | Per-child check hints. Read them directly; `materialize-scaffold` and `check-scaffold` aggregate them in memory (`check_id` uniqueness is global). |
 
 ## Output Artifacts
 
@@ -48,7 +48,6 @@ Each read-only upstream input's location is injected: read `inputs.json` in your
 | `verification-plan.md` | Custom markdown (section outline below); after the review loop carries frontmatter `Status: approved` | Human-readable review anchor for the Step-4 user loop. |
 | `scaffold-specification.json` | Custom JSON (field convention below) | Machine-read contract; the downstream simulation stage's bootstrap consumes it to materialize the TB. |
 | `plan-review.json` | `references/plan-review.schema.json` | Gating plan-adequacy review (Step 3); promoted to `artifacts[]`. |
-| `plan-data.json` | Custom JSON (derived by `simplan derive-plan-data`) | Intermediate cache, re-derived on every Step-2 pass; **not** placed in `result.json.artifacts[]`. |
 
 ### `verification-plan.md` section outline
 
@@ -82,7 +81,7 @@ You author (judgment): `module`, `top`, `agents[]` `{name, mode, interface_group
 
 Script-injected by `simplan materialize-scaffold` (do NOT hand-author): each agent's
 `interface.signals` (all group signals) + `transaction.fields` (clk/rst excluded), `primary_clock`, `reset`, and each
-`testpoints[].inlined_check_hints[]` (materialized from `covers[]` + plan-data,
+`testpoints[].inlined_check_hints[]` (materialized from `covers[]` + the check hints,
 `implementation_detail = verbatim-if-present-else-summary`).
 
 Full structural shape: [`references/scaffold-specification.schema.json`](references/scaffold-specification.schema.json);
@@ -92,7 +91,7 @@ Authoring judgment the schema/validator cannot express:
 - `agents[].mode`: `active` for driver/master/driving agents; `passive` for monitor/slave/observer.
 - `rm.inports` / `scoreboard.compare_txn`: name the agent txn(s) (`<module>_<agent>_txn`); the
   validator checks they resolve; you pick which agent is the RM input / the one observer.
-- `testpoints[].covers[]`: cluster the `plan-data.json.check_hints[]` check_ids into testpoints
+- `testpoints[].covers[]`: cluster the `check-hints/<child>.json` check_ids into testpoints
   (one-to-one / one-to-many / many-to-one; scenario testpoints you invent use `covers: []`).
 - `skipped_checks[]`: any `check_hints[]` check_id covered by no testpoint MUST be listed here with
   a `reason` (e.g. `"static lint gate, no runtime testpoint"`), else the coverage gate fails.
@@ -127,12 +126,6 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
 
 Produce `verification-plan.md` and `scaffold-specification.json` by running the pipeline below in order. When amending, keep testpoint IDs / sequence names / `power_scenarios.sequence_ref` stable: downstream coverage / scaffold / SAIF caches key off them, so renumbering one silently breaks the cache.
 
-**Run `derive-plan-data`** to extract the raw spec fields (interfaces / check-hints / wires) into `plan-data.json` (every run). Clocks, features and timing scenarios are **not** among them — read `clocks.json` / `features.json` / `timing-scenarios.json` directly:
-
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workdir <design> --output {workdir}/plan-data.json
-```
-
 **Author the judgment fields** into `scaffold-specification.json`, and write `verification-plan.md` per the section outline. Which fields are yours vs script-injected: the `scaffold-specification.json` fields section above. How to map spec fields to UVM objects (agents from interface groups, sequences from scenarios, tests from features, RM / scoreboard from the check hints): `references/spec-input-contract.md`.
 
 **Author power scenarios** per `references/power-scenarios-template.md` into `verification-plan.md` §4 and `scaffold-specification.json.power_scenarios`; every `sequence_ref` must resolve to a `sequences[].name` (add the `sequences[]` entry first when a scenario needs its own stimulus).
@@ -140,7 +133,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py derive-plan-data --workd
 **Run `materialize-scaffold`** (every run) to fill the script-injected fields (see the fields section):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py materialize-scaffold --plan-data {workdir}/plan-data.json --scaffold {workdir}/scaffold-specification.json --clocks <design>/clocks.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py materialize-scaffold --scaffold {workdir}/scaffold-specification.json --spec <design>
 ```
 
 On a non-zero exit, read stderr for the cause, fix the scaffold or (for a clock defect) re-run specification — `clocks.json` is its output, not yours — and re-run.
@@ -148,7 +141,7 @@ On a non-zero exit, read stderr for the cause, fix the scaffold or (for a clock 
 **Run `check-scaffold`** (the gate; every pass) to validate the scaffold's structure, semantics, and coverage-matrix (every check_id covered-or-skipped; every `covers[]` resolves):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py check-scaffold --scaffold {workdir}/scaffold-specification.json --plan-data {workdir}/plan-data.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py check-scaffold --scaffold {workdir}/scaffold-specification.json --spec <design>
 ```
 
 Fix and re-run on a non-zero exit.
@@ -246,7 +239,7 @@ Your sole completion signal is `{workdir}/result.json` present with `status=pass
 
 ## Bundled References
 
-- [`references/spec-input-contract.md`](references/spec-input-contract.md) — how the authored sidecars and `plan-data.json` fields map to the scaffold objects this stage authors, with a worked APB example.
+- [`references/spec-input-contract.md`](references/spec-input-contract.md) — how the authored sidecars map to the scaffold objects this stage authors, with a worked APB example.
 - [`references/power-scenarios-template.md`](references/power-scenarios-template.md) — the standard 9-power-scenarios table + per-module materialization guide.
 - [`references/scaffold-specification.schema.json`](references/scaffold-specification.schema.json) — structural schema for `scaffold-specification.json` (the machine contract); enforced by `simplan check-scaffold`.
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.

@@ -1,0 +1,151 @@
+[
+  {
+    "name": "i_clk",
+    "direction": "input",
+    "width": 1,
+    "clock_domain": "i_clk",
+    "interface_group": "clk_rst",
+    "role": "clock"
+  },
+  {
+    "name": "i_rstn",
+    "direction": "input",
+    "width": 1,
+    "clock_domain": "i_clk",
+    "interface_group": "clk_rst",
+    "role": "reset",
+    "reset_polarity": 0,
+    "reset_kind": "async"
+  },
+  {
+    "name": "in1",
+    "direction": "input",
+    "width": 32,
+    "clock_domain": "i_clk",
+    "interface_group": "data_in",
+    "role": "data"
+  },
+  {
+    "name": "in2",
+    "direction": "input",
+    "width": 32,
+    "clock_domain": "i_clk",
+    "interface_group": "data_in",
+    "role": "data"
+  },
+  {
+    "name": "in1_en",
+    "direction": "input",
+    "width": 1,
+    "clock_domain": "i_clk",
+    "interface_group": "data_in",
+    "role": "data"
+  },
+  {
+    "name": "in2_en",
+    "direction": "input",
+    "width": 1,
+    "clock_domain": "i_clk",
+    "interface_group": "data_in",
+    "role": "data"
+  },
+  {
+    "name": "start",
+    "direction": "input",
+    "width": 1,
+    "clock_domain": "i_clk",
+    "interface_group": "ctrl",
+    "role": "data"
+  },
+  {
+    "name": "o_full",
+    "direction": "output",
+    "width": 3,
+    "clock_domain": "i_clk",
+    "interface_group": "status",
+    "role": "data",
+    "owner": "tpu_top"
+  },
+  {
+    "name": "o_empty",
+    "direction": "output",
+    "width": 3,
+    "clock_domain": "i_clk",
+    "interface_group": "status",
+    "role": "data",
+    "owner": "tpu_top"
+  },
+  {
+    "name": "done",
+    "direction": "output",
+    "width": 1,
+    "clock_domain": "i_clk",
+    "interface_group": "status",
+    "role": "data",
+    "owner": "tpu_top"
+  },
+  {
+    "name": "i_paddr",
+    "direction": "input",
+    "width": 32,
+    "clock_domain": "i_clk",
+    "interface_group": "apb",
+    "role": "data",
+    "protocol": "APB-style"
+  },
+  {
+    "name": "i_psel",
+    "direction": "input",
+    "width": 1,
+    "clock_domain": "i_clk",
+    "interface_group": "apb",
+    "role": "data",
+    "protocol": "APB-style"
+  },
+  {
+    "name": "i_pwrite",
+    "direction": "input",
+    "width": 1,
+    "clock_domain": "i_clk",
+    "interface_group": "apb",
+    "role": "data",
+    "protocol": "APB-style"
+  },
+  {
+    "name": "i_pwdata",
+    "direction": "input",
+    "width": 32,
+    "clock_domain": "i_clk",
+    "interface_group": "apb",
+    "role": "data",
+    "protocol": "APB-style"
+  },
+  {
+    "name": "i_penable",
+    "direction": "input",
+    "width": 1,
+    "clock_domain": "i_clk",
+    "interface_group": "apb",
+    "role": "data",
+    "protocol": "APB-style"
+  },
+  {
+    "name": "o_prdata",
+    "direction": "output",
+    "width": 32,
+    "clock_domain": "i_clk",
+    "interface_group": "apb",
+    "role": "data",
+    "owner": "tpu_top",
+    "protocol": "APB-style"
+  },
+  {
+    "name": "counter",
+    "direction": "output",
+    "width": 4,
+    "clock_domain": "i_clk",
+    "interface_group": "ctrl",
+    "role": "data",
+    "owner": "tpu_top"
+  }
+]

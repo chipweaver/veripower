@@ -8,16 +8,15 @@ below. Do not call the Task tool (no Level-2 dispatch).
 
 - Child unit name + its `manifest.children[<self>].rtl_modules[]` list.
 - `{workdir}/<child>.md` (full per-child sub-design — you are its sole consumer; self-contained:
-  `frontmatter.ports` = injected §1.4.2 cut-edges, `frontmatter.clocks` ⊆ `clocks.json`; the top-integration
-  child's §3.1 instantiation map = §1.4.2 restatement).
+  `frontmatter.ports` = injected `interconnects.json` cut-edges, `frontmatter.clocks` ⊆ `clocks.json`;
+  the top-integration child's §3.1 instantiation map wires those same edges).
 - `references/coding-rules.md` path + `constraints/<TOP>.{sdc,sgdc}` paths.
-- `design.md` path, **read-scope limited to the §1.4.1/§1.4.2 tables only** (the main thread passes
-  the path and reads nothing): read **§1.4.1 (Top-Level IO) / §1.4.2 (Inter-module Interconnects)** —
-  the slices needed for `quasi_static` ← §1.4.2, `set_case_analysis` ← §1.4.1, and top wiring
-  (§1.4.2). Do **not** read §1.1–1.6 overview or §2–§5 detail.
+- `top-io.json` and `interconnects.json` paths — the boundary and the cut edges. Read them for
+  `set_case_analysis` (← `top-io.json`), `quasi_static` (← `interconnects.json`) and top wiring.
+  Do **not** read `design.md`; its overview is narrative you do not need.
 - `clocks.json` path (specification workdir) — the clock definitions. Read it for
   `create_generated_clock`: a `"generated": true` entry is a divider/PLL output whose
-  `create_generated_clock` pin is YOUR RTL's to name, deliberately deferred by specification. **Every child reads §1.4.1** (a top-IO port's owner is not derivable from the manifest,
+  `create_generated_clock` pin is YOUR RTL's to name, deliberately deferred by specification. **Every child reads `top-io.json`** (its `owner` field names the driving child, but which inputs you read is yours to declare,
   so all children read it rather than risk silently dropping a top-IO-derived `set_case_analysis`).
 
 ## Prohibitions (read carefully)
@@ -25,7 +24,7 @@ below. Do not call the Task tool (no Level-2 dispatch).
 - **No whole-design elaboration / smoke compile.** Do NOT run `verilator` / `iverilog` (or any tool)
   over the whole design or over sibling RTL, and do NOT reverse-read an external verification harness
   (a reference top, `Makefile`, or `*_defines` from the verification environment) to make ports line
-  up. Author from the `design.md §1.4.1/§1.4.2` / `<child>.md` contract; integration/elaboration correctness
+  up. Author from the `top-io.json` / `interconnects.json` / `<child>.md` contract; integration/elaboration correctness
   is verified by downstream verification.
 - **Unit child best-effort self-lint only.** A unit child MAY run `verilator --lint-only` on its **own
   module(s)** — a single-module syntax self-check, best-effort (skipped if no linter is present),
@@ -59,17 +58,17 @@ re-dispatches you to fix it. End the response with `STATUS: DONE` + a single JSO
   name you actually wrote, not a design.md placeholder). This is the whole point — `sync_cell -name`
   must match the netlist.
 - **Completeness is contract-bound, not best-effort.** Report **every** annotation your owned
-  structures imply from the §1.4.1 / §1.4.2 + `clocks.json` contract you received. An omission is a
+  structures imply from the `top-io.json` / `interconnects.json` / `clocks.json` contract you received. An omission is a
   contract violation, not a silent empty list. RTL-true names (`sync_cell`, `reset_synchronizer`) come
   from your RTL; contract-fact categories (`quasi_static`, `set_case_analysis`,
-  `create_generated_clock`) come from the §1.4.1 / §1.4.2 / `clocks.json` you read. Synthesis has no independent backstop for the SDC categories, so an
+  `create_generated_clock`) come from the sidecars you read. Synthesis has no independent backstop for the SDC categories, so an
   omission there is silently lost downstream — do not omit.
   Note: the `sync_cell` / `reset_synchronizer` (and `sdc.create_generated_clock`'s `module`) names you report are checked for **reality** by the
   stage's `check-conformance` gate — a reported name that is not an actual module in your RTL is a
   conformance violation (you will be re-dispatched to fix it), not a silently accepted annotation.
 - Which child reports what: a **leaf** child reports its internal synchronizers / generated clocks;
   the **top-integration** child reports cross-domain `quasi_static` + test-control `set_case_analysis`
-  (it owns the §1.4.2 interconnect). Empty lists `[]` when a category genuinely has none.
+  (it owns the interconnect). Empty lists `[]` when a category genuinely has none.
 - `incdirs`: list the include dirs your authored files `` `include `` from. You **author your own
   file/include layout** (specification defines RTL modules, not file layout — see this skill's
   Output Artifacts), so you

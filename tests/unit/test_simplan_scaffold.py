@@ -57,13 +57,23 @@ GOOD = {
 }
 
 
-def _run(tmp_path, scaffold, check=True, plan_data=None):
+def _spec(tmp_path, hints=None):
+    """tmp_path doubles as the spec workdir: manifest + check-hints/."""
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"module": "m", "children": [{"name": "c", "doc": "c.md"}]})
+    )
+    hd = tmp_path / "check-hints"
+    hd.mkdir(exist_ok=True)
+    (hd / "c.json").write_text(
+        json.dumps([{"check_id": "CHK-0"}] if hints is None else hints)
+    )
+    return tmp_path
+
+
+def _run(tmp_path, scaffold, check=True, hints=None):
     sc = tmp_path / "scaffold-specification.json"
     sc.write_text(json.dumps(scaffold))
-    pd = tmp_path / "plan-data.json"
-    if plan_data is None:
-        plan_data = {"check_hints": [{"check_id": "CHK-0"}]}
-    pd.write_text(json.dumps(plan_data))
+    _spec(tmp_path, hints)
     return subprocess.run(
         [
             "python3",
@@ -71,8 +81,8 @@ def _run(tmp_path, scaffold, check=True, plan_data=None):
             "check-scaffold",
             "--scaffold",
             str(sc),
-            "--plan-data",
-            str(pd),
+            "--spec",
+            str(tmp_path),
         ],
         capture_output=True,
         text=True,
@@ -90,8 +100,7 @@ def test_malformed_scaffold_json_fails_loud(tmp_path):
     # fix-oriented message, not a raw traceback.
     sc = tmp_path / "scaffold-specification.json"
     sc.write_text("{ oops ]")
-    pd = tmp_path / "plan-data.json"
-    pd.write_text(json.dumps({"check_hints": []}))
+    _spec(tmp_path, [])
     proc = subprocess.run(
         [
             "python3",
@@ -99,8 +108,8 @@ def test_malformed_scaffold_json_fails_loud(tmp_path):
             "check-scaffold",
             "--scaffold",
             str(sc),
-            "--plan-data",
-            str(pd),
+            "--spec",
+            str(tmp_path),
         ],
         capture_output=True,
         text=True,
@@ -266,7 +275,7 @@ def test_coverage_uncovered_check_fails(tmp_path):
         tmp_path,
         s,
         check=False,
-        plan_data={"check_hints": [{"check_id": "CHK-00"}, {"check_id": "CHK-01"}]},
+        hints=[{"check_id": "CHK-00"}, {"check_id": "CHK-01"}],
     )
     assert (
         proc.returncode != 0 and "uncovered" in proc.stderr and "CHK-01" in proc.stderr
@@ -288,7 +297,7 @@ def test_coverage_skip_passes(tmp_path):
     proc = _run(
         tmp_path,
         s,
-        plan_data={"check_hints": [{"check_id": "CHK-00"}, {"check_id": "CHK-01"}]},
+        hints=[{"check_id": "CHK-00"}, {"check_id": "CHK-01"}],
     )
     assert proc.returncode == 0
 
@@ -304,9 +313,7 @@ def test_coverage_dangling_covers_fails(tmp_path):
             ],
         }
     ]
-    proc = _run(
-        tmp_path, s, check=False, plan_data={"check_hints": [{"check_id": "CHK-00"}]}
-    )
+    proc = _run(tmp_path, s, check=False, hints=[{"check_id": "CHK-00"}])
     assert (
         proc.returncode != 0
         and "unknown check_id" in proc.stderr
@@ -329,7 +336,7 @@ def test_coverage_fully_covered_passes(tmp_path):
     proc = _run(
         tmp_path,
         s,
-        plan_data={"check_hints": [{"check_id": "CHK-00"}, {"check_id": "CHK-01"}]},
+        hints=[{"check_id": "CHK-00"}, {"check_id": "CHK-01"}],
     )
     assert proc.returncode == 0
 

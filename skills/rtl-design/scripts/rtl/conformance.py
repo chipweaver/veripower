@@ -107,7 +107,7 @@ def check_annotation_reality(workdir, ledger) -> list:
     return v
 
 
-# ---- minimal design.md §1.4.2 parse (mirrors check-coverage canonical-column contract) ----
+# ---- interconnects.json wire names ----
 
 
 def _extract_section(text: str, heading_regex: str) -> str:
@@ -159,30 +159,19 @@ def _table_rows(section_text: str) -> list:
     return rows
 
 
-def _interconnect_wires(design_text: str) -> list:
-    """§1.4.2 Wire names, skipping the canonical N=1 placeholder row
-    ('(none — N=1 ...)') so a legitimately empty interconnect isn't flagged a phantom wire.
-
-    The `(none` test is the whole rule, matching specification's check-coverage, which
-    partitions the same rows to decide which ones it validates Width / Clock Domain on.
-    Any looser test here exempts a row specification validated as a real wire, dropping it
-    from the top-integration check with nothing to say so."""
-    sec = _extract_section(design_text, r"§?\s*1\.4\.2.*Inter.module\s+Interconnects?")
-    out = []
-    for r in _table_rows(sec):
-        w = r.get("Wire", "").strip()
-        if w and not w.lower().startswith("(none"):
-            out.append(w)
-    return out
+def _interconnect_wires(interconnects: list) -> list:
+    """Wire names from interconnects.json. Every entry is a real cut edge — an N=1 module
+    writes an empty array rather than a placeholder row, so there is nothing to exempt."""
+    return [w["wire"] for w in interconnects if w.get("wire")]
 
 
-def check_top_integration(workdir, manifest, top, ledger, design_text) -> list:
+def check_top_integration(workdir, manifest, top, ledger, interconnects) -> list:
     """Every non-top rtl_module must be INTEGRATED — reachable from the top module through the
     instantiation hierarchy (presence proxy), not merely instantiated by the top file directly.
     This accepts legitimate hierarchical designs (a shared primitive nested inside a functional
     unit that the top instantiates: top -> unit -> primitive) while still catching truly-orphaned
-    or renamed modules. Every §1.4.2 Wire name must still appear as a token in the top-integration
-    child's RTL (the top owns the interconnect)."""
+    or renamed modules. Every interconnects.json wire name must still appear as a token in the
+    top-integration child's RTL (the top owns the interconnect)."""
     v = []
     topc = next(
         (c for c in manifest["children"] if top in c.get("rtl_modules", [])), None
@@ -231,7 +220,7 @@ def check_top_integration(workdir, manifest, top, ledger, design_text) -> list:
                     "owner_child": owner_of.get(mod),
                 }
             )
-    for wire in _interconnect_wires(design_text):
+    for wire in _interconnect_wires(interconnects):
         if not _has_token(text, wire):
             v.append(
                 {
@@ -338,17 +327,17 @@ def check_dialect(workdir, ledger) -> list:
     return v
 
 
-def run(workdir, manifest, top, ledger, design) -> int:
-    workdir, manifest, ledger, design = (
+def run(workdir, manifest, top, ledger, interconnects) -> int:
+    workdir, manifest, ledger, interconnects = (
         Path(workdir),
         Path(manifest),
         Path(ledger),
-        Path(design),
+        Path(interconnects),
     )
     try:
         manifest_data = _read_json(manifest)
         ledger_data = load_ledger(ledger)
-        design_text = design.read_text(encoding="utf-8")
+        interconnect_data = _read_json(interconnects)
     except (OSError, json.JSONDecodeError, LedgerError) as e:
         print(
             json.dumps(
@@ -365,7 +354,9 @@ def run(workdir, manifest, top, ledger, design) -> int:
     violations = (
         check_module_presence(workdir, manifest_data, ledger_data)
         + check_annotation_reality(workdir, ledger_data)
-        + check_top_integration(workdir, manifest_data, top, ledger_data, design_text)
+        + check_top_integration(
+            workdir, manifest_data, top, ledger_data, interconnect_data
+        )
         + check_dialect(workdir, ledger_data)
     )
 

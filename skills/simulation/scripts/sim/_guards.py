@@ -26,7 +26,7 @@ def _agent_io(agent: dict) -> tuple[list[dict], list[dict]]:
         sys.exit(
             f"scaffold: agent {aname!r} has no interface.signals. Rerun simulation-plan's "
             f"materialize step: agents declare interface_groups and the materializer fills "
-            f"signals from plan-data.json.interfaces[] "
+            f"signals from top-io.json "
             f"(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
         )
     fields = agent.get("transaction", {}).get("fields", [])

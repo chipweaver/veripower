@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """derive-ports — deterministic inter-module port derivation.
 
-Given a run workdir with manifest.json (children[].rtl_modules) and design.md
-(§1.4.2 Inter-module Interconnects wire table), compute each child's inter-module
-ports = the set of §1.4.2 wires whose Producer or Consumer RTL module is one of the
-child's rtl_modules. This is the FORWARD direction of the wire-attribution predicate
-the coverage checker used in reverse — so a child's inter-module ports are
-correct-by-construction (specification's main thread injects this into each wave-2
-child prompt; children never hand-guess inter-module ports).
+Given a run workdir with manifest.json (children[].rtl_modules) and interconnects.json,
+compute each child's inter-module ports = the wires whose producers or consumers include
+one of the child's rtl_modules. This is the FORWARD direction of the wire-attribution
+predicate the coverage checker used in reverse — so a child's inter-module ports are
+correct-by-construction (specification's main thread injects this into each wave-2 child
+prompt; children never hand-guess inter-module ports).
 
-Top-level IO ports (§1.4.1) are NOT derived here: §1.4.1 has no owner-module column,
-so those stay child-authored and are backstopped by check-coverage's frontmatter
-ports ⊆ §1.4.1∪§1.4.2 subset check.
+Top-level IO ports are NOT derived here. top-io.json states which child DRIVES each
+output, but which inputs a child reads is that child's own implementation decision, made
+in wave 2 — a different fact, authored where it is known, and backstopped by
+check-coverage's frontmatter-ports subset check.
 
 Usage:  python3 scripts/spec/__main__.py derive-ports --workdir <workdir>
 Output: JSON {<child_name>: [<wire>, ...], ...} on stdout (sorted, de-duped).
@@ -21,36 +21,19 @@ import json
 import sys
 from pathlib import Path
 
-from spec._md import extract_section, parse_markdown_table, table_header
-
-_SEC_142 = r"§?\s*1\.4\.2.*Inter.module\s+Interconnects?"
-
-
-def _row_endpoints(row: dict) -> set:
-    """RTL modules at both ends of a §1.4.2 wire row (template-canonical headers)."""
-    producers = {
-        p.strip() for p in row.get("Producer (RTL module)", "").split(",") if p.strip()
-    }
-    consumers = {
-        c.strip() for c in row.get("Consumer (RTL module)", "").split(",") if c.strip()
-    }
-    return producers | consumers
+from spec.sidecar import load_sidecar, validate_sidecar
 
 
 def derive_ports(workdir: Path) -> dict:
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
-    design_text = (workdir / "design.md").read_text(encoding="utf-8")
-    sec = extract_section(design_text, _SEC_142)
-    rows = parse_markdown_table(sec)
-    if rows:
-        missing = {"Wire", "Producer (RTL module)", "Consumer (RTL module)"} - set(
-            table_header(sec)
+    # This verb runs BEFORE the design.md gate and its output is injected into the wave-2
+    # child prompts, so a malformed sidecar must stop here rather than silently inject an
+    # empty cut-edge list.
+    for v in validate_sidecar(workdir, "interconnects.json"):
+        sys.exit(
+            f"derive-ports: interconnects.json: {v.get('at', '')} {v['error']}".strip()
         )
-        if missing:
-            sys.exit(
-                f"design.md §1.4.2 table missing canonical column(s) {sorted(missing)} "
-                f"(found {table_header(sec)}); see design-template.md."
-            )
+    wires = load_sidecar(workdir, "interconnects.json")
     children = manifest.get("children")
     if not children:
         sys.exit(
@@ -67,10 +50,13 @@ def derive_ports(workdir: Path) -> dict:
                 f"hard requirement (specification Completion Gate)."
             )
         owned = set(rtl_modules)
-        ports = {
-            wire
-            for row in rows
-            if (wire := row.get("Wire", "").strip()) and owned & _row_endpoints(row)
-        }
-        out[child["name"]] = sorted(ports)
+        out[child["name"]] = sorted(
+            {
+                w["wire"]
+                for w in wires
+                if w.get("wire")
+                and owned
+                & (set(w.get("producers") or []) | set(w.get("consumers") or []))
+            }
+        )
     return out

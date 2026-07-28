@@ -1,12 +1,11 @@
-# Spec Fields → Simulation-Plan Objects (plan-data.json field guide)
+# Spec Sidecars → Simulation-Plan Objects
 
-`derive-plan-data` extracts `design.md` §1.4.1 / §1.4.2 into `plan-data.json` and aggregates
-every `check-hints/<child>.json` into `check_hints[]`. Clocks, features and timing scenarios
-never pass through it: they are authored as `clocks.json` / `features.json` /
-`timing-scenarios.json` and read from there directly. You author the scaffold and
+Every structured spec field is authored as its own sidecar (`clocks.json` / `features.json` /
+`timing-scenarios.json` / `top-io.json` / `interconnects.json` / `check-hints/<child>.json`).
+Nothing derives them, and there is no intermediate cache to read instead. You author the scaffold and
 `verification-plan.md` **from that JSON**; do not re-read `design.md` / `<child>.md` into
 the main thread. This guide names the `design.md` columns only so you recognize where each
-`plan-data.json` field came from, and maps them to the objects this stage authors
+sidecar field means, and maps them to the objects this stage authors
 (`scaffold-specification.json`: `agents` / `sequences` / `tests` / `testpoints[]` /
 `power_scenarios[]`, and `verification-plan.md`). It does not gate completeness: design-template's
 gate table plus `check-coverage` enforce that upstream, before this stage runs.
@@ -18,15 +17,14 @@ add SV-rendering claims here.
 
 ## Basic principles
 
-- **Author from `plan-data.json`, not the raw spec.** `derive-plan-data` distils every field
+- **Author from the sidecars.** Each one distils every field
   below into it; the `design.md` column names in this guide are provenance, so you recognize
   each field. Reserve any raw `design.md` read for prose the extract omits (§1.1–1.2 overview),
   and keep it bounded.
 - **The single human source of truth is `design.md`.** There is no separate
   requirement-to-testpoint mapping document.
 - Structured fields must live in `features.json` / `clocks.json` or in fixed design.md
-  sections (§1.4.1 / §1.4.2) or in an authored sidecar; they must not be scattered across
-  free-form prose.
+  an authored sidecar; they must not be scattered across free-form prose.
 - `features.json` requires every field but `coverage_intent`, so a degraded feature list is
   not a case you have to cope with — an incomplete one fails the specification gate.
 - Per-child `<child>.md` sections carry implementation constraints: register side effects,
@@ -71,19 +69,19 @@ testcases and testpoints to author.
 
 ---
 
-## Overview §1.4 Interface tables (§1.4.1 drives transactions / agents; §1.4.2 aware-only)
+## top-io.json (drives transactions / agents) and interconnects.json (aware-only)
 
-### §1.4.1 Top-Level IO table (DUT boundary, primary derivation input)
+### top-io.json (DUT boundary, primary derivation input)
 
-| Column | What you do with it |
+| Field | What you do with it |
 |---|---|
-| `Signal name` | Fills `interface.signals[].name` (the vif port); materialize fills this, do not hand-transcribe. |
-| `Width` | Fills `interface.signals[].width` and `transaction.fields[].width`; materialize fills this. |
-| `Interface group` | The agent grouping key: signals sharing a group become one vif + one agent. |
-| `Role` | `clock` / `reset` / `data`. clk/rst signals are excluded from `transaction.fields` and bound via `primary_clock` / `reset`; a data row needs `Role=data`. Gated: an empty Role fails loud. |
-| `Direction` | `input` / `output` (DUT view). Gated: materialize requires it non-empty on data signals. Use it to set each agent's `mode` (`active` for a group you drive, `passive` for one you only observe); the value is not otherwise script-consumed. |
-| `Clock domain` | Informational; recorded in plan-data but not consumed. Agent grouping is by `Interface group`, not clock domain. |
-| `Protocol` | Your reference for the sequence pattern to author (e.g. `APB3` / `AXI4` / `custom`); not script-consumed. |
+| `name` | Fills `interface.signals[].name` (the vif port); materialize fills this, do not hand-transcribe. |
+| `width` | Fills `interface.signals[].width` and `transaction.fields[].width`; materialize fills this. |
+| `interface_group` | The agent grouping key: ports sharing a group become one vif + one agent. |
+| `role` | `clock` / `reset` / `data` (a schema enum, so it is always one of the three). clk/rst ports are excluded from `transaction.fields` and bound via `primary_clock` / `reset`. |
+| `direction` | `input` / `output` (DUT view). Use it to set each agent's `mode` (`active` for a group you drive, `passive` for one you only observe); the value is not otherwise script-consumed. |
+| `clock_domain` | Informational for you. Agent grouping is by `interface_group`, not clock domain. |
+| `protocol` | Your reference for the sequence pattern to author (e.g. `APB3` / `AXI4` / `custom`); not script-consumed. |
 
 **Mapping rules:**
 - Signals in the same `Interface group` become one virtual interface + the corresponding agent.
@@ -92,10 +90,10 @@ testcases and testpoints to author.
 - `transaction.fields` are the group's signals minus clk/rst, named verbatim after the signal;
   materialize does not abstract, rename, or merge them.
 
-**Note:** §1.4.1 also carries `ResetPolarity` / `ResetKind`; these are consumed by constraint
-generation (the `derive-constraints` verb), **not** by you.
+**Note:** `top-io.json` also carries `owner` / `reset_polarity` / `reset_kind` / `encoding`; those
+are for constraint generation and the spec-review lens, **not** for you.
 
-### §1.4.2 Inter-module Interconnects table (cross-child wires, aware-only)
+### interconnects.json (cross-child wires, aware-only)
 
 Lists wires between RTL modules inside the DUT (Producer / Consumer at the RTL-module level /
 Protocol / Timing). Simulation is **aware-only** of this table: cross-module wires are NOT part
@@ -148,7 +146,7 @@ each `testpoints[].inlined_check_hints[]` from those `covers[]`.
 | `reset_behavior` | Copied to `inlined_check_hints[].reset_behavior` (metadata). |
 
 `materialize-scaffold` fills `inlined_check_hints[]` deterministically from your `covers[]` +
-plan-data: `implementation_detail = verbatim-if-present-else-summary`, and the other four columns
+`implementation_detail = verbatim-if-present-else-summary`, and the other four fields
 copied as metadata. How those hints become SV `predict()` / scoreboard checks is the downstream
 `simulation` stage's job.
 
@@ -159,15 +157,16 @@ copied as metadata. How those hints become SV `predict()` / scoreboard checks is
 Section anchors in `design.md` are English canonical:
 - `features.json` (NOT a design.md section) → testpoint feature IDs, test names, and the
   `name` the case-results summary prints
-- §1.4.1 Top-Level IO → DUT-boundary interfaces / agents / transaction fields
-- §1.4.2 Inter-module Interconnects → optional cross-module wire awareness (aware-only)
+- `top-io.json` (NOT a design.md section) → DUT-boundary interfaces / agents / transaction fields
+- `interconnects.json` (NOT a design.md section) → optional cross-module wire awareness
 - `timing-scenarios.json` (NOT a design.md section) → scenario-driven sequences
 - `clocks.json` (NOT a design.md section) → `primary_clock`, script-injected by
   `materialize-scaffold` from the single `relationship: "primary"` entry
 - §1.7 Submodule Index → pointer to `manifest.json`
 
-Per-child check hints live in `check-hints/<child>.json`; `simplan derive-plan-data --workdir`
-reads `manifest.json` + each of those files and tags every hint with a `child` field.
+Per-child check hints live in `check-hints/<child>.json`. `materialize-scaffold` and
+`check-scaffold` read `manifest.json` + each of those files; `check_id` must be unique across
+all children, which is why they are aggregated before the matrix is checked.
 
 ---
 
@@ -185,16 +184,15 @@ reads `manifest.json` + each of those files and tags every hint with a `child` f
 
 ## Complete derivation-chain example: APB slave register module
 
-(These tables show the `design.md` rows as they arrive in `plan-data.json`; you read them from
-that JSON, not the raw file.)
+(The worked example below shows the authored sidecars; you read those files directly.)
 
-### §1.4.1 Top-Level IO table (APB slave)
+### top-io.json (APB slave)
 
 ```markdown
-| Signal name | Direction | Width | Clock domain | Interface group | Protocol | Role |
-|-------------|-----------|-------|--------------|-----------------|----------|------|
-| pclk | input | 1 | pclk | | APB3 | clock |
-| preset_n | input | 1 | pclk | | APB3 | reset |
+| name | direction | width | clock_domain | interface_group | protocol | role |
+|------|-----------|-------|--------------|-----------------|----------|------|
+| pclk | input | 1 | pclk | clk | APB3 | clock |
+| preset_n | input | 1 | pclk | reset | APB3 | reset |
 | psel | input | 1 | pclk | APB | APB3 | data |
 | penable | input | 1 | pclk | APB | APB3 | data |
 | pwrite | input | 1 | pclk | APB | APB3 | data |

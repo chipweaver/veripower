@@ -4,13 +4,32 @@ import re
 import sys
 from pathlib import Path
 
-from simplan._md import extract_section
 from simplan.review import gate_verdict
 
 STAGE = "simulation-plan"
 
 _REJECT_REASON = "user rejected plan"
 _WAIVED_CLASSIFICATIONS = {"false-positive", "accepted-risk"}
+
+
+def _extract_section(text: str, heading_pattern: str) -> str:
+    lines = text.splitlines()
+    capture = False
+    level: int | None = None
+    collected: list[str] = []
+    matcher = re.compile(heading_pattern)
+    for line in lines:
+        heading = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if heading:
+            if capture and len(heading.group(1)) <= (level or 6):
+                break
+            if matcher.search(heading.group(2)):
+                capture = True
+                level = len(heading.group(1))
+                continue
+        if capture:
+            collected.append(line)
+    return "\n".join(collected).strip()
 
 
 def _now_iso() -> str:
@@ -46,7 +65,7 @@ def count_features(plan_md: str) -> int:
     excludes a bare 'F-' and 'Frame-01'. The heading pattern is anchored to the start
     of the heading text (so '## 1.3 Overview of Testpoints strategy' cannot shadow the
     real '## 3. Testpoints Table') and case-insensitive."""
-    section = extract_section(plan_md, r"(?i)^\s*§?\s*3[.\s].*Testpoints?")
+    section = _extract_section(plan_md, r"(?i)^\s*§?\s*3[.\s].*Testpoints?")
     return len(set(re.findall(r"\bF-\d+\b", section)))
 
 

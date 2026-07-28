@@ -16,9 +16,8 @@ import re
 from pathlib import Path
 
 import yaml
-from jsonschema import Draft202012Validator
 
-from spec._md import extract_section, parse_markdown_table, table_header
+from spec.sidecar import load_sidecar, validate_sidecar
 
 # ---------- brainstorm coverage ----------
 
@@ -107,23 +106,40 @@ def compute_brainstorm_coverage(
     return {"gaps": gaps, "orphans": orphans}
 
 
-# Cells that mean "unfilled". Width and Clock Domain also reject a bare dash (a wire always
-# has a concrete width and a real timing domain).
-_BLANK_CELL = {"", "…", "...", "tbd", "todo", "?", "n/a"}
-_DASHES = {"-", "–", "—"}
-
-
-def _is_blank(v: str) -> bool:
-    return v.strip().lower() in _BLANK_CELL
-
-
-def _blank_or_dash(v: str) -> bool:
-    return _is_blank(v) or v.strip() in _DASHES
-
-
 # ---------- frontmatter subset (English canonical anchors) ----------
 
 # Every child .md must declare these frontmatter keys (presence check; empty value is OK).
+_BIT_RANGE_RE = re.compile(r"\[(\d+):(\d+)\]$")
+
+
+def _is_number(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def load_clocks_raw(workdir: Path) -> list[dict]:
+    return load_sidecar(workdir, "clocks.json")
+
+
+def load_clock_names(workdir: Path) -> set[str]:
+    return {
+        c["name"].strip()
+        for c in load_clocks_raw(workdir)
+        if isinstance(c.get("name"), str) and c["name"].strip()
+    }
+
+
+def feature_ids_of(workdir: Path) -> set[str]:
+    return {
+        f["id"].strip()
+        for f in load_sidecar(workdir, "features.json")
+        if isinstance(f.get("id"), str) and f["id"].strip()
+    }
+
+
+def load_check_hints(workdir: Path, child: str) -> list[dict]:
+    return load_sidecar(workdir, f"check-hints/{child}.json")
+
+
 _REQUIRED_FM_KEYS = (
     "child",
     "parent",
@@ -143,140 +159,16 @@ def parse_frontmatter(sub_text: str) -> dict:
     return yaml.safe_load(m.group(1)) or {}
 
 
-def parse_main_design_tables(main_text: str) -> dict:
-    """Extract port / wire names from main design.md.
-
-    Feature IDs come from features.json, clock names from clocks.json.
-
-    Section headings are English canonical (Surface 1 contract).
-    Regex alternations are always grouped via `(...)` to avoid operator
-    precedence bugs.
-    """
-    out = {"ports": set()}
-
-    sec_top = extract_section(main_text, r"§?\s*1\.4\.1.*Top.Level\s+IO")
-    top_rows = parse_markdown_table(sec_top)
-    if top_rows and "Signal" not in top_rows[0]:
-        raise ValueError(
-            "design.md §1.4.1 table must use the canonical 'Signal' column "
-            f"(found {list(top_rows[0])}); see design-template.md."
-        )
-    for row in top_rows:
-        v = row.get("Signal", "").strip()
-        if v:
-            out["ports"].add(v)
-
-    sec_inter = extract_section(
-        main_text, r"§?\s*1\.4\.2.*Inter.module\s+Interconnects?"
-    )
-    inter_rows = parse_markdown_table(sec_inter)
-    if inter_rows and "Wire" not in inter_rows[0]:
-        raise ValueError(
-            "design.md §1.4.2 table must use the canonical 'Wire' column "
-            f"(found {list(inter_rows[0])}); see design-template.md."
-        )
-    for row in inter_rows:
-        v = row.get("Wire", "").strip()
-        if v:
-            out["ports"].add(v)
-
-    return out
-
-
-_REFERENCES = Path(__file__).resolve().parent.parent.parent / "references"
-
-
-def load_sidecar(workdir: Path, name: str) -> list[dict]:
-    """An authored JSON sidecar's entries. A missing/malformed file yields [] —
-    validate_sidecar reports it, so no caller sees a half-parsed list."""
-    try:
-        doc = json.loads((workdir / name).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    return doc if isinstance(doc, list) else []
-
-
-def validate_sidecar(workdir: Path, name: str, schema: str | None = None) -> list[dict]:
-    """One authored sidecar against its schema, returned as violations rather than raised:
-    a gate names every defect instead of stopping at the first. `schema` overrides the
-    filename-derived schema, for sidecars named after their subject (check-hints/<child>)."""
-    schema_path = _REFERENCES / (schema or f"{Path(name).stem}.schema.json")
-    try:
-        doc = json.loads((workdir / name).read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return [{"error": f"{name} missing"}]
-    except (OSError, json.JSONDecodeError) as exc:
-        return [{"error": f"{name} unreadable: {exc}"}]
-    try:
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return [{"error": f"{schema_path.name} unreadable: {exc}"}]
-    out: list[dict] = []
-    for err in sorted(
-        Draft202012Validator(schema).iter_errors(doc),
-        key=lambda e: list(e.absolute_path),
-    ):
-        where = "$" + "".join(
-            f"[{q!r}]" if isinstance(q, int) else f".{q}" for q in err.absolute_path
-        )
-        out.append({"at": where, "error": err.message})
-    return out
-
-
-def load_check_hints(workdir: Path, child: str) -> list[dict]:
-    return load_sidecar(workdir, f"check-hints/{child}.json")
-
-
-def load_features(workdir: Path) -> list[dict]:
-    return load_sidecar(workdir, "features.json")
-
-
-def validate_features(workdir: Path) -> list[dict]:
-    return validate_sidecar(workdir, "features.json")
-
-
-def feature_ids_of(workdir: Path) -> set[str]:
-    return {
-        f["id"].strip()
-        for f in load_features(workdir)
-        if isinstance(f.get("id"), str) and f["id"].strip()
-    }
-
-
-def load_clock_names(workdir: Path) -> set[str]:
-    """Clock names from `{workdir}/clocks.json`. A missing/malformed file yields an empty
-    set rather than an error: derive-constraints schema-validates it and runs first, so
-    reporting the same defect here would duplicate it."""
-    path = workdir / "clocks.json"
-    try:
-        clocks = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return set()
-    if not isinstance(clocks, list):
-        return set()
-    return {
-        c["name"].strip()
-        for c in clocks
-        if isinstance(c, dict) and isinstance(c.get("name"), str) and c["name"].strip()
-    }
-
-
-def load_clocks_raw(workdir: Path) -> list[dict]:
-    """clocks.json entries for the freq/period cross-check. Same tolerance as
-    load_clock_names."""
-    path = workdir / "clocks.json"
-    try:
-        clocks = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    return clocks if isinstance(clocks, list) else []
-
-
 def compute_frontmatter_subset(
     workdir: Path, manifest: dict, main_design_text: str
 ) -> dict:
     """Frontmatter `ports / clocks / features` ⊆ main-design tables; all required keys present."""
-    main_tables = parse_main_design_tables(main_design_text)
+    port_names = {
+        p["name"] for p in load_sidecar(workdir, "top-io.json") if p.get("name")
+    }
+    port_names |= {
+        w["wire"] for w in load_sidecar(workdir, "interconnects.json") if w.get("wire")
+    }
     clock_names = load_clock_names(workdir)
     feature_ids = feature_ids_of(workdir)
     ports_v: list[dict] = []
@@ -291,7 +183,7 @@ def compute_frontmatter_subset(
         if missing:
             missing_keys_v.append({"child": cname, "missing": missing})
         for p in fm.get("ports") or []:
-            if p not in main_tables["ports"]:
+            if p not in port_names:
                 ports_v.append({"child": cname, "port": p})
         for c in fm.get("clocks") or []:
             cn = c.get("name") if isinstance(c, dict) else c
@@ -444,73 +336,74 @@ def compute_token_survival(
 
 # ---------- structural gate (presence, gated columns, freq↔period, clock domain) ----------
 
-# Gated column sets (quality-critical; the rest stay recommended-not-gated).
-_GATED_COLS = {
-    "1.4.1": (
-        r"§?\s*1\.4\.1.*Top.Level\s+IO",
-        ["Signal", "Direction", "Clock Domain", "Interface Group", "Role"],
-    ),
-}
-
 
 def compute_structure(
     workdir: Path, manifest: dict, main_design_text: str, child_texts=None
 ) -> dict:
-    presence: list[str] = []
-    columns: list[dict] = []
-    # §1.4.1 presence is covered by the gated-column loop (adds "§1.4.1 table missing or empty").
-    # §1.4.2 must be present as an actual heading (the "(none — N=1)" form is non-empty and passes);
-    # a prose cross-reference like "see §1.4.2" must NOT suppress this check.
-    if not extract_section(
-        main_design_text, r"§?\s*1\.4\.2.*Inter.module\s+Interconnects?"
-    ).strip():
-        presence.append("§1.4.2 Inter-module Interconnects missing")
-    # Gated column presence. Check against the declared HEADER (not rows[0]): a ragged
-    # first data row would drop trailing keys and read as spurious missing columns.
-    for sec, (pat, cols) in _GATED_COLS.items():
-        sec_text = extract_section(main_design_text, pat)
-        rows = parse_markdown_table(sec_text)
-        if not rows:
-            presence.append(f"§{sec} table missing or empty")
-            continue
-        header = set(table_header(sec_text))
-        for c in cols:
-            if c not in header:
-                columns.append({"section": sec, "missing_column": c})
+    """Cross-file and cross-field checks the sidecar schemas cannot express.
+
+    Everything about one sidecar's own shape — required fields, types, enums, and the two
+    conditional requirements on top-io (an output declares owner; a reset row declares
+    polarity and kind) — is validated by the schemas below and not restated here.
+    """
+    clock_names = load_clock_names(workdir)
+    ports = load_sidecar(workdir, "top-io.json")
+    wires = load_sidecar(workdir, "interconnects.json")
+
     # period_ns ≈ 1000/freq_mhz. A cross-field arithmetic relation, so not expressible in
     # JSON Schema; both operands are hand-authored, so the check carries real information.
     period_v: list[dict] = []
     for c in load_clocks_raw(workdir):
         if not isinstance(c, dict):
             continue
-        name = c.get("name")
         freq, period = c.get("freq_mhz"), c.get("period_ns")
-        if not isinstance(freq, (int, float)) or not isinstance(period, (int, float)):
+        if not _is_number(freq) or not _is_number(period):
             continue  # a type defect is derive-constraints' schema report, not ours
-        if isinstance(freq, bool) or isinstance(period, bool):
-            continue
         if freq > 0 and abs(period - 1000.0 / freq) > 0.01:
-            period_v.append({"clock": name, "freq_mhz": freq, "period_ns": period})
-    clock_names = load_clock_names(workdir)
-    # §1.4.1 Clock Domain values ⊆ clocks.json names. Skip when there are no names: running
-    # it vacuously would emit a spurious violation for every §1.4.1 row.
+            period_v.append(
+                {"clock": c.get("name"), "freq_mhz": freq, "period_ns": period}
+            )
+
+    # clock_domain ⊆ clocks.json names, on both sidecars. Skip when there are no names:
+    # running it vacuously would flag every port.
     domain_v: list[dict] = []
+    interconnect_v: list[dict] = []
     if clock_names:
-        for row in parse_markdown_table(
-            extract_section(main_design_text, _GATED_COLS["1.4.1"][0])
-        ):
-            dom = row.get("Clock Domain", "").strip()
+        for e in ports:
+            dom = e.get("clock_domain")
             if dom and dom not in clock_names:
-                domain_v.append(
-                    {"signal": row.get("Signal", "").strip(), "clock_domain": dom}
+                domain_v.append({"signal": e.get("name"), "clock_domain": dom})
+        for w in wires:
+            dom = w.get("clock_domain")
+            if dom and dom not in clock_names:
+                interconnect_v.append(
+                    {
+                        "wire": w.get("wire"),
+                        "clock_domain": dom,
+                        "error": "not in clocks.json",
+                    }
                 )
+
+    # width vs the [h:l] range a name carries. An [i] index (a register-file element) makes
+    # no width claim and is skipped.
+    width_v: list[dict] = []
+    for e in ports + wires:
+        n, w = e.get("name") or e.get("wire"), e.get("width")
+        if not isinstance(n, str) or not isinstance(w, int):
+            continue
+        m = _BIT_RANGE_RE.search(n)
+        if m:
+            implied = int(m.group(1)) - int(m.group(2)) + 1
+            if implied != w:
+                width_v.append({"name": n, "width": w, "name_implies": implied})
+
     # children ≥ 1 (NOT rtl_modules — already hard-enforced by derive_ports).
     manifest_v: list[str] = []
     if len(manifest.get("children") or []) < 1:
         manifest_v.append("manifest.children must have length ≥ 1")
-    # Every features.json id must be referenced by ≥1 child §5 SourceFeature; child §5
-    # gated columns must be present. Coverage is emergent (per-child §5 authored decentrally),
-    # so this is a post-wave2 check, not an injection.
+
+    # Every features.json id must be referenced by ≥1 check hint. Coverage is emergent
+    # (hints authored decentrally per child), so this is a post-wave2 check.
     feature_ids = feature_ids_of(workdir)
     hint_col_v: list[dict] = []
     covered: set[str] = set()
@@ -524,55 +417,19 @@ def compute_structure(
             if isinstance(fid, str) and fid.strip():
                 covered.add(fid.strip())
     # Guard: when child_texts is None, skip the gap check — an empty covered set would
-    # otherwise make the set difference MAXIMAL (all features "uncovered"), breaking
-    # callers that invoke compute_structure without child bodies.
+    # otherwise make the set difference MAXIMAL (all features "uncovered").
     feature_gaps = (
         [{"feature_id": fid} for fid in sorted(feature_ids - covered)]
         if child_texts
         else []
     )
-    # ----- §1.4.2 interconnect completeness (Width + Clock Domain). A heterogeneous
-    # control bundle cannot fill one honest Width row → forced into per-field rows.
-    inter_sec = extract_section(
-        main_design_text, r"§?\s*1\.4\.2.*Inter.module\s+Interconnects?"
-    )
-    inter_rows = parse_markdown_table(inter_sec)
-    real_rows = [
-        r
-        for r in inter_rows
-        if r.get("Wire", "").strip()
-        and not r.get("Wire", "").strip().lower().startswith("(none")
-    ]
-    interconnect_v: list[dict] = []
-    if real_rows:
-        header = set(table_header(inter_sec))
-        for col in ("Width", "Clock Domain"):
-            if col not in header:
-                interconnect_v.append({"missing_column": col})
-        for row in real_rows:
-            wire = row["Wire"].strip()
-            if "Width" in header and _blank_or_dash(row.get("Width", "")):
-                interconnect_v.append({"wire": wire, "missing_field": "Width"})
-            if "Clock Domain" in header:
-                dom = row.get("Clock Domain", "").strip()
-                if _blank_or_dash(dom):
-                    interconnect_v.append(
-                        {"wire": wire, "missing_field": "Clock Domain"}
-                    )
-                elif clock_names and dom not in clock_names:
-                    interconnect_v.append(
-                        {
-                            "wire": wire,
-                            "clock_domain": dom,
-                            "error": "not in clocks.json",
-                        }
-                    )
-    # ----- §1.4.1 top-IO Owner (deterministic). Every output declares an Owner child that
-    # lists the signal; Owner DECLARES the driver (not inferred from claimer counts, which
-    # cannot tell a top mux of N leaf sources from N leaves conflicting). Owner = the
-    # top-integration child passes here (a valid child listing its boundary outputs); the
-    # leaf-owner preference is documented template guidance, not a deterministic block.
-    # Needs child frontmatter → skip when child_texts is None.
+
+    # An output's owner must be a manifest child that lists the port in its frontmatter.
+    # Presence of owner is the schema's; resolving it against the manifest and the child's
+    # own declaration is cross-file. Owner DECLARES the driver rather than being inferred
+    # from claimer counts, which cannot tell a top mux of N leaf sources from N leaves
+    # conflicting. The top-integration child as owner passes; the leaf-owner preference is
+    # documented guidance, not a deterministic block.
     top_io_driver_v: list[dict] = []
     if child_texts:
         child_names = {c["name"] for c in manifest.get("children", [])}
@@ -580,58 +437,48 @@ def compute_structure(
             cname: set(parse_frontmatter(body).get("ports") or [])
             for cname, body in child_texts.items()
         }
-        io_sec = extract_section(main_design_text, _GATED_COLS["1.4.1"][0])
-        io_out_rows = [
-            r
-            for r in parse_markdown_table(io_sec)
-            if r.get("Direction", "").strip().lower() == "output"
-            and r.get("Signal", "").strip()
-        ]
-        if io_out_rows and "Owner" not in table_header(io_sec):
-            top_io_driver_v.append({"missing_column": "Owner"})
-        else:
-            for row in io_out_rows:
-                sig = row["Signal"].strip()
-                owner = row.get("Owner", "").strip()
-                if _blank_or_dash(owner):
-                    top_io_driver_v.append(
-                        {"signal": sig, "error": "output missing Owner"}
-                    )
-                elif owner not in child_names:
-                    top_io_driver_v.append(
-                        {
-                            "signal": sig,
-                            "owner": owner,
-                            "error": "Owner is not a manifest child",
-                        }
-                    )
-                elif sig not in child_ports.get(owner, set()):
-                    top_io_driver_v.append(
-                        {
-                            "signal": sig,
-                            "owner": owner,
-                            "error": "Owner child does not list this signal in its "
-                            "ports (declared driver does not drive it)",
-                        }
-                    )
+        for e in ports:
+            if e.get("direction") != "output":
+                continue
+            sig, owner = e.get("name"), e.get("owner")
+            if not owner:
+                continue  # schema reports the absence
+            if owner not in child_names:
+                top_io_driver_v.append(
+                    {
+                        "signal": sig,
+                        "owner": owner,
+                        "error": "owner is not a manifest child",
+                    }
+                )
+            elif sig not in child_ports.get(owner, set()):
+                top_io_driver_v.append(
+                    {
+                        "signal": sig,
+                        "owner": owner,
+                        "error": "owner child does not list this port in its ports "
+                        "(declared driver does not drive it)",
+                    }
+                )
+
     return {
-        "presence_violations": presence,
-        "column_violations": columns,
-        "features_schema_violations": validate_features(workdir),
+        "features_schema_violations": validate_sidecar(workdir, "features.json"),
         "timing_scenarios_schema_violations": validate_sidecar(
             workdir, "timing-scenarios.json"
         ),
+        "top_io_schema_violations": validate_sidecar(workdir, "top-io.json"),
+        "interconnects_schema_violations": validate_sidecar(
+            workdir, "interconnects.json"
+        ),
         "period_violations": period_v,
         "clock_domain_violations": domain_v,
+        "width_violations": width_v,
         "manifest_violations": manifest_v,
         "feature_coverage_gaps": feature_gaps,
         "hint_column_violations": hint_col_v,
         "interconnect_violations": interconnect_v,
         "top_io_driver_violations": top_io_driver_v,
     }
-
-
-# ---------- purity (top-integration child must be pure) ----------
 
 
 def compute_purity(manifest: dict) -> list:

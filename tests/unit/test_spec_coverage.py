@@ -60,35 +60,6 @@ def test_token_survival_reads_each_child_once(tmp_path, monkeypatch):
     assert reads["n"] == 1, f"child read {reads['n']}x; must be 1 (cached)"
 
 
-def test_parse_main_tables_wrong_header_is_loud(tmp_path):
-    """A §1.4.1 with a non-template header must not silently yield zero ports."""
-    from spec import coverage as cc
-
-    design = (
-        "# m\n\n### 1.4.1 Top-Level IO\n\n"
-        "| Bogus | Direction |\n|---|---|\n| clk | input |\n"
-    )
-    import pytest
-
-    with pytest.raises(ValueError, match=r"1\.4\.1.*Signal"):
-        cc.parse_main_design_tables(design)
-
-
-def test_parse_main_tables_142_wrong_header_is_loud():
-    """A §1.4.2 with a non-template header must not silently yield zero ports."""
-    import pytest
-    from spec import coverage as cc
-
-    design = (
-        "# m\n\n### 1.4.2 Inter-module Interconnects\n\n"
-        "| Signal | Producer (RTL module) | Consumer (RTL module) |\n"
-        "|--------|------------------------|------------------------|\n"
-        "| clk_en | ctrl | dp |\n"
-    )
-    with pytest.raises(ValueError, match=r"1\.4\.2.*Wire"):
-        cc.parse_main_design_tables(design)
-
-
 def _bs(manifest, brainstorm):
     from spec import coverage as cc
 
@@ -313,12 +284,8 @@ _GOOD_DESIGN = (
     "# m Design\n\n"
     "### 1.3 Feature Table\n\n"
     "The feature list lives in `features.json`.\n\n"
-    "#### 1.4.1 Top-Level IO\n\n"
-    "| Signal | Direction | Width | Clock Domain | Interface Group | Protocol | Role |\n"
-    "|--------|-----------|-------|--------------|-----------------|----------|------|\n"
-    "| clk | input | 1 | clk | clk | - | clock |\n"
-    "| din | input | 8 | clk | cfg | APB3 | data |\n\n"
-    "#### 1.4.2 Inter-module Interconnects\n\n(none — N=1)\n\n"
+    "#### 1.4.1 Top-Level IO\n\nPorts live in `top-io.json`.\n\n"
+    "#### 1.4.2 Inter-module Interconnects\n\nWires live in `interconnects.json`.\n\n"
     "### 1.5 Interface Timing Scenarios\n\n"
     "Scenario rows live in `timing-scenarios.json`.\n\n"
     "### 1.6 Clocks and Frequencies\n\n"
@@ -363,7 +330,27 @@ _DEFAULT_SCENARIOS = [
 ]
 
 
-def _clocks_wd(clocks=None, features=None):
+def _port(name, direction, role, domain="clk", width=1, group="cfg", **kw):
+    e = {
+        "name": name,
+        "direction": direction,
+        "width": width,
+        "clock_domain": domain,
+        "interface_group": group,
+        "role": role,
+    }
+    e.update(kw)
+    return e
+
+
+_DEFAULT_PORTS = [
+    _port("clk", "input", "clock"),
+    _port("din", "input", "data", width=8),
+]
+_DEFAULT_WIRES: list = []
+
+
+def _clocks_wd(clocks=None, features=None, ports=None, wires=None):
     """A throwaway specification workdir holding the sidecars compute_structure reads."""
     import json
     import tempfile
@@ -377,27 +364,30 @@ def _clocks_wd(clocks=None, features=None):
         json.dumps(_DEFAULT_FEATURES if features is None else features)
     )
     (d / "timing-scenarios.json").write_text(json.dumps(_DEFAULT_SCENARIOS))
+    (d / "top-io.json").write_text(
+        json.dumps(_DEFAULT_PORTS if ports is None else ports)
+    )
+    (d / "interconnects.json").write_text(
+        json.dumps(_DEFAULT_WIRES if wires is None else wires)
+    )
     return d
 
 
-def _struct(design, manifest=None, clocks=None, features=None):
+def _struct(design, manifest=None, clocks=None, features=None, ports=None, wires=None):
     from spec import coverage as cc
 
     manifest = manifest or {
         "module": "m",
         "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
     }
-    return cc.compute_structure(_clocks_wd(clocks, features), manifest, design)
+    return cc.compute_structure(
+        _clocks_wd(clocks, features, ports, wires), manifest, design
+    )
 
 
 def test_structure_clean_passes():
     s = _struct(_GOOD_DESIGN)
     assert all(not v for v in s.values()), s
-
-
-def test_structure_missing_gated_column():
-    bad = _GOOD_DESIGN.replace("| Role |", "|").replace("| clock |", "|")
-    assert _struct(bad)["column_violations"]
 
 
 def test_structure_rb_period_freq_mismatch():
@@ -407,25 +397,16 @@ def test_structure_rb_period_freq_mismatch():
 
 
 def test_structure_rf_clock_domain_not_in_clocks_json():
-    bad = _GOOD_DESIGN.replace(
-        "| din | input | 8 | clk |", "| din | input | 8 | clk_x |"
-    )
-    assert _struct(bad)["clock_domain_violations"]
+    bad = [
+        _port("clk", "input", "clock"),
+        _port("din", "input", "data", domain="clk_x"),
+    ]
+    assert _struct(_GOOD_DESIGN, ports=bad)["clock_domain_violations"]
 
 
 def test_structure_children_zero_fails():
     s = _struct(_GOOD_DESIGN, manifest={"module": "m", "children": []})
     assert s["manifest_violations"]
-
-
-def test_structure_142_cross_reference_does_not_satisfy_presence():
-    # a prose "see §1.4.2" without an actual §1.4.2 heading must still be flagged missing.
-    no_142 = _GOOD_DESIGN.replace(
-        "#### 1.4.2 Inter-module Interconnects\n\n(none — N=1)\n\n",
-        "Note: see §1.4.2 elsewhere for Inter-module Interconnects.\n\n",
-    )
-    s = _struct(no_142)
-    assert any("1.4.2" in p for p in s["presence_violations"])
 
 
 def test_structure_no_clocks_json_does_not_cascade_domain_violations():
@@ -446,14 +427,16 @@ _DEFAULT_HINTS = [
 ]
 
 
-def _struct_with_children(design, child_bodies, clocks=None, features=None, hints=None):
+def _struct_with_children(
+    design, child_bodies, clocks=None, features=None, hints=None, ports=None, wires=None
+):
     import json
 
     from spec import coverage as cc
 
     children = [{"name": n, "doc": f"{n}.md", "rtl_modules": [n]} for n in child_bodies]
     manifest = {"module": "m", "children": children}
-    wd = _clocks_wd(clocks, features)
+    wd = _clocks_wd(clocks, features, ports, wires)
     hd = wd / "check-hints"
     hd.mkdir(exist_ok=True)
     for n in child_bodies:
@@ -568,6 +551,8 @@ def test_end_to_end_multi_child_clean_workdir(tmp_path):
     (tmp_path / "features.json").write_text(json.dumps(_DEFAULT_FEATURES))
     (tmp_path / "clocks.json").write_text(json.dumps(_DEFAULT_CLOCKS))
     (tmp_path / "timing-scenarios.json").write_text(json.dumps(_DEFAULT_SCENARIOS))
+    (tmp_path / "top-io.json").write_text(json.dumps(_DEFAULT_PORTS))
+    (tmp_path / "interconnects.json").write_text(json.dumps(_DEFAULT_WIRES))
     child = (
         '---\nchild: {n}\nparent: core\nbrainstorm_anchor: "{a}"\n'
         "ports: []\nclocks: []\nfeatures:\n  - F-00\n---\n\n"
@@ -766,47 +751,43 @@ def test_interconnect_n1_none_is_clean():
     assert _struct(_GOOD_DESIGN)["interconnect_violations"] == []
 
 
-def test_interconnect_missing_width():
-    bad = _DESIGN_142.replace("| 32 | clk |", "| - | clk |")  # width dash = unpinned
-    iv = _struct(bad)["interconnect_violations"]
-    assert any(
-        v.get("wire") == "score_S" and v.get("missing_field") == "Width" for v in iv
-    )
+def test_interconnect_missing_width_is_a_schema_violation():
+    # Width presence moved into the schema; a wire without it never reaches the gate's
+    # cross-file checks.
+    bad = [
+        {
+            "wire": "score_S",
+            "producers": ["a"],
+            "consumers": ["b"],
+            "clock_domain": "clk",
+        }
+    ]
+    s = _struct(_GOOD_DESIGN, wires=bad)
+    assert s["interconnects_schema_violations"]
+    assert "width" in s["interconnects_schema_violations"][0]["error"]
 
 
 def test_interconnect_clock_not_in_clocks_json():
-    bad = _DESIGN_142.replace(
-        "| 32 | clk |", "| 32 | clk_x |"
-    )  # clk_x not in clocks.json
-    iv = _struct(bad)["interconnect_violations"]
+    # Cross-file, so it stays in the gate: a phantom domain hides a CDC path.
+    bad = [
+        {
+            "wire": "score_S",
+            "producers": ["a"],
+            "consumers": ["b"],
+            "width": 32,
+            "clock_domain": "clk_x",
+        }
+    ]
+    iv = _struct(_GOOD_DESIGN, wires=bad)["interconnect_violations"]
     assert any(
         v.get("wire") == "score_S" and v.get("clock_domain") == "clk_x" for v in iv
     )
 
 
-def test_interconnect_missing_column_reported_once():
-    design = (
-        "# m\n\n#### 1.4.2 Inter-module Interconnects\n\n"
-        "| Wire | Producer (RTL module) | Consumer (RTL module) | Protocol | Notes |\n"
-        "|------|----|----|----|----|\n"
-        "| w | a | b | p | n |\n"
-    )
-    iv = _struct(design)["interconnect_violations"]
-    assert iv.count({"missing_column": "Width"}) == 1
-    assert {"missing_column": "Clock Domain"} in iv
-
-
 # ---------- §1.4.1 top-IO Owner (deterministic) ----------
 
 
-def _io_design(rows_md):
-    return (
-        "# m\n\n#### 1.4.1 Top-Level IO\n\n"
-        "| Signal | Direction | Owner | Width | Clock Domain | Interface Group "
-        "| Protocol | Role | ResetPolarity | ResetKind |\n"
-        "|--------|-----------|-------|-------|--------------|-----------------"
-        "|----------|------|---------------|-----------|\n" + rows_md
-    )
+_IO_DESIGN = "# m\n\n#### 1.4.1 Top-Level IO\n\nPorts live in `top-io.json`.\n"
 
 
 def _io_fm(name, ports):
@@ -827,16 +808,23 @@ _IO_MANIFEST = {
 }
 
 
-def _driver(design, bodies, manifest=None):
+def _driver(ports, bodies, manifest=None):
     from spec import coverage as cc
 
     return cc.compute_structure(
-        _clocks_wd(), manifest or _IO_MANIFEST, design, child_texts=bodies
+        _clocks_wd(ports=ports),
+        manifest or _IO_MANIFEST,
+        _IO_DESIGN,
+        child_texts=bodies,
     )["top_io_driver_violations"]
 
 
 def _row(owner):
-    return f"| sig_o | output | {owner} | 8 | clk | g | - | data | - | - |\n"
+    """The clock port plus one output whose owner is under test."""
+    out = _port("sig_o", "output", "data", width=8, group="g")
+    if owner is not None:
+        out["owner"] = owner
+    return [_port("clk", "input", "clock"), out]
 
 
 def test_driver_clean_leaf_owner():
@@ -845,7 +833,7 @@ def test_driver_clean_leaf_owner():
         "drv": _io_fm("drv", ["sig_o"]),
         "other": _io_fm("other", []),
     }
-    assert _driver(_io_design(_row("drv")), bodies) == []
+    assert _driver((_row("drv")), bodies) == []
 
 
 def test_driver_owner_top_passes_deterministic():
@@ -856,19 +844,25 @@ def test_driver_owner_top_passes_deterministic():
         "drv": _io_fm("drv", []),
         "other": _io_fm("other", []),
     }
-    assert _driver(_io_design(_row("top")), bodies) == []
+    assert _driver((_row("top")), bodies) == []
 
 
-def test_driver_owner_missing():
+def test_driver_owner_missing_is_a_schema_violation():
+    # if direction == output then owner — the schema says it, so the gate does not repeat
+    # it; the gate only resolves an owner that IS present.
+    from spec import coverage as cc
+
     bodies = {
         "top": _io_fm("top", ["sig_o"]),
         "drv": _io_fm("drv", ["sig_o"]),
         "other": _io_fm("other", []),
     }
-    v = _driver(_io_design(_row("-")), bodies)
-    assert any(
-        x.get("signal") == "sig_o" and "missing Owner" in x.get("error", "") for x in v
+    st = cc.compute_structure(
+        _clocks_wd(ports=_row(None)), _IO_MANIFEST, _IO_DESIGN, child_texts=bodies
     )
+    assert st["top_io_schema_violations"]
+    assert "owner" in st["top_io_schema_violations"][0]["error"]
+    assert st["top_io_driver_violations"] == []
 
 
 def test_driver_owner_not_a_child():
@@ -877,7 +871,7 @@ def test_driver_owner_not_a_child():
         "drv": _io_fm("drv", []),
         "other": _io_fm("other", []),
     }
-    v = _driver(_io_design(_row("ghost")), bodies)
+    v = _driver((_row("ghost")), bodies)
     assert any(
         x.get("signal") == "sig_o" and "not a manifest child" in x.get("error", "")
         for x in v
@@ -890,44 +884,32 @@ def test_driver_owner_does_not_list_signal():
         "drv": _io_fm("drv", []),
         "other": _io_fm("other", []),
     }
-    v = _driver(_io_design(_row("drv")), bodies)
+    v = _driver((_row("drv")), bodies)
     assert any(
         x.get("signal") == "sig_o" and "does not list" in x.get("error", "") for x in v
     )
 
 
 def test_driver_input_not_gated():
-    design = _io_design("| in_i | input | - | 8 | clk | g | - | data | - | - |\n")
+    # An input has no owner: which inputs a child reads is that child's own decision,
+    # declared in its frontmatter, not a partition fact stated at the top.
+    ports = [
+        _port("clk", "input", "clock"),
+        _port("in_i", "input", "data", width=8, group="g"),
+    ]
     bodies = {
         "top": _io_fm("top", ["in_i"]),
         "drv": _io_fm("drv", ["in_i"]),
         "other": _io_fm("other", ["in_i"]),
     }
-    assert _driver(design, bodies) == []
-
-
-def test_driver_missing_owner_column():
-    design = (  # old §1.4.1 header (no Owner) with an output row
-        "# m\n\n#### 1.4.1 Top-Level IO\n\n"
-        "| Signal | Direction | Width | Clock Domain | Interface Group | Protocol "
-        "| Role | ResetPolarity | ResetKind |\n"
-        "|--------|-----------|-------|--------------|-----------------|----------"
-        "|------|---------------|-----------|\n"
-        "| sig_o | output | 8 | clk | g | - | data | - | - |\n"
-    )
-    bodies = {
-        "top": _io_fm("top", ["sig_o"]),
-        "drv": _io_fm("drv", ["sig_o"]),
-        "other": _io_fm("other", []),
-    }
-    assert _driver(design, bodies).count({"missing_column": "Owner"}) == 1
+    assert _driver(ports, bodies) == []
 
 
 def test_driver_skipped_without_child_texts():
     from spec import coverage as cc
 
     s = cc.compute_structure(
-        _clocks_wd(), _IO_MANIFEST, _io_design(_row("drv"))
+        _clocks_wd(ports=_row("drv")), _IO_MANIFEST, _IO_DESIGN
     )  # child_texts=None
     assert s["top_io_driver_violations"] == []
 
@@ -991,17 +973,6 @@ def test_brainstorm_coverage_duplicate_title_not_masked():
 # ---------- F5: ragged first data row must not yield false missing_column ----------
 
 
-def test_structure_ragged_first_row_no_false_missing_column():
-    # §1.6 header declares all 4 gated columns but the FIRST data row is short (2 cells);
-    # the column-presence check must read the HEADER, not the truncated first row.
-    design = _GOOD_DESIGN.replace(
-        "| clk | 100 | 10.0 | primary | primary clock |\n",
-        "| clk | 100 |\n| clk2 | 50 | 20.0 | synchronous-related | second |\n",
-    )
-    cv = _struct(design)["column_violations"]
-    assert not any(v["section"] == "1.6" for v in cv), cv
-
-
 # ---------- F6: missing 'children' manifest key must yield a clean verdict ----------
 
 
@@ -1042,7 +1013,7 @@ def _validate_features(workdir, doc=None):
 
     if doc is not None:
         (workdir / "features.json").write_text(json.dumps(doc))
-    return cc.validate_features(workdir)
+    return cc.validate_sidecar(workdir, "features.json")
 
 
 def test_features_missing_is_reported(tmp_path):

@@ -1,7 +1,7 @@
 # `inlined_check_hints[]` handling rules
 
 `scaffold-specification.json.testpoints[].inlined_check_hints[]` is the field where the
-simulation-plan stage inlines the precise check semantics from `plan-data.json.check_hints[]`
+simulation-plan stage inlines the precise check semantics from the authored check hints
 directly into the testpoint (field description: `skills/simulation-plan/references/scaffold-specification.schema.json`). When
 materializing the TB / writing the refmodel and scoreboard, you MUST follow the
 rules below and are **not allowed** to silently downgrade to shadow-register mode or
@@ -42,7 +42,7 @@ not a license to read the RTL.
   assertions; when fields are missing, infer from `implementation_detail`.
 
 When `testpoint.inlined_check_hints[]` is **empty** (testpoints created by the LLM during the
-sim-plan stage — not derived from `plan-data.json.check_hints[]` but added as scenario-necessary
+sim-plan stage — not derived from the authored check hints but added as scenario-necessary
 supplements, e.g., `TP-IRQ` / `TP-RESET` / `TP-CARDET`), you may freely choose a
 functional-model mode (shadow register / RM abstraction, etc.); a cycle-accurate refmodel is not
 required — this branch covers scenario-class testpoints with no spec formula available at plan time.

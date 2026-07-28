@@ -19,14 +19,12 @@ def test_table_rows_honors_escaped_pipe():
     assert _table_rows(sec) == [{"Wire": "w1", "Producer": "p | q", "Consumer": "c1"}]
 
 
-def _setup(
-    tmp_path, children, ledger, files, design="## §1.4.2 Inter-module Interconnects\n"
-):
+def _setup(tmp_path, children, ledger, files, wires=None):
     (tmp_path / "manifest.json").write_text(
         json.dumps({"module": "top", "children": children})
     )
     (tmp_path / ".child_reports.json").write_text(json.dumps(ledger))
-    (tmp_path / "design.md").write_text(design)
+    (tmp_path / "interconnects.json").write_text(json.dumps(wires or []))
     for rel, content in files.items():
         p = tmp_path / rel
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -47,8 +45,8 @@ def _run(tmp_path, top="top"):
             top,
             "--ledger",
             str(tmp_path / ".child_reports.json"),
-            "--design",
-            str(tmp_path / "design.md"),
+            "--interconnects",
+            str(tmp_path / "interconnects.json"),
         ],
         capture_output=True,
         text=True,
@@ -279,12 +277,15 @@ def test_annotation_reality_reset_synchronizer_phantom_fails(tmp_path):
     )
 
 
-_DESIGN_WITH_WIRE = (
-    "## §1.4.2 Inter-module Interconnects\n\n"
-    "| Wire | Producer | Consumer | Width |\n"
-    "|---|---|---|---|\n"
-    "| bus_ready | leaf_m | top | 1 |\n"
-)
+_WIRES_WITH_BUS_READY = [
+    {
+        "wire": "bus_ready",
+        "producers": ["leaf_m"],
+        "consumers": ["top"],
+        "width": 1,
+        "clock_domain": "clk",
+    }
+]
 
 
 def test_top_integration_pass(tmp_path):
@@ -302,7 +303,7 @@ def test_top_integration_pass(tmp_path):
             "leaf.v": "module leaf_m(output bus_ready); endmodule\n",
             "top.v": "module top; wire bus_ready; leaf_m u_leaf(.bus_ready(bus_ready)); endmodule\n",
         },
-        design=_DESIGN_WITH_WIRE,
+        wires=_WIRES_WITH_BUS_READY,
     )
     r = _run(tmp_path)
     assert r.returncode == 0
@@ -323,7 +324,7 @@ def test_top_integration_missing_instance_and_wire_fails(tmp_path):
             "leaf.v": "module leaf_m(output bus_ready); endmodule\n",
             "top.v": "module top; endmodule\n",
         },  # neither instantiates leaf_m nor has bus_ready net
-        design=_DESIGN_WITH_WIRE,
+        wires=_WIRES_WITH_BUS_READY,
     )
     r = _run(tmp_path)
     assert r.returncode == 1
@@ -383,10 +384,7 @@ def test_single_child_is_top_no_violations(tmp_path):
         [{"name": "only", "rtl_modules": ["top"]}],
         {"only": {"files": ["top.v"], "annotations": _ANN}},
         {"top.v": "module top(input a); endmodule\n"},
-        design=(
-            "## §1.4.2 Inter-module Interconnects\n\n| Wire | Producer | Consumer | Width |\n"
-            "|---|---|---|---|\n| (none — N=1 module has no inter-module wires) | - | - | - |\n"
-        ),
+        wires=[],  # N=1: no inter-module wires
     )
     r = _run(tmp_path)
     assert r.returncode == 0
@@ -472,19 +470,13 @@ def test_dialect_v_vh_and_support_files_pass(tmp_path):
     assert not any(x["kind"] == "dialect" for x in json.loads(r.stdout)["violations"])
 
 
-def test_interconnect_wires_skips_only_the_canonical_placeholder():
-    # The docstring's contract is "skip the canonical '(none — N=1 …)' row" — nothing else.
-    # A second, looser clause also exempted any Wire whose text contains 'n=1', quietly
-    # removing that wire from the top-integration check. specification's gate uses the
-    # '(none' test alone, so it still counts such a row as a real wire and validates its
-    # Width / Clock Domain: the two stages must partition the rows the same way.
+def test_interconnect_wires_needs_no_placeholder_exemption():
+    # An N=1 module writes an empty array, so there is no placeholder row to exempt — and
+    # therefore no looser second clause that could quietly drop a real wire whose name
+    # happens to contain the placeholder's text.
     from rtl.conformance import _interconnect_wires
 
-    sec = (
-        "## §1.4.2 Inter-module Interconnects\n\n"
-        "| Wire | Producer | Consumer |\n"
-        "|---|---|---|\n"
-        "| (none — N=1 module has no inter-module wires) | - | - |\n"
-        "| bus_n=1_sel | p | c |\n"
-    )
-    assert _interconnect_wires(sec) == ["bus_n=1_sel"]
+    assert _interconnect_wires([]) == []
+    assert _interconnect_wires(
+        [{"wire": "bus_n=1_sel", "producers": ["p"], "consumers": ["c"]}]
+    ) == ["bus_n=1_sel"]

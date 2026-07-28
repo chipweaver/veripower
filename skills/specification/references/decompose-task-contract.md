@@ -5,7 +5,7 @@ overview. Do not call the Task tool.
 
 ## Read
 `<brainstorm>/brainstorm.md` (frozen, `Status: approved`) — the module set (**D4**) and the
-inter-module wire table (**D2b** → `design.md` §1.4.2) are the partition inputs.
+inter-module wire list (**D2b** → `interconnects.json`) are the partition inputs.
 
 ## Partition strategy
 Partition on the interface graph's edges, NOT by line counts: cut ONLY at clean elastic-handshake
@@ -22,12 +22,17 @@ soft hint; the hard guarantee is `check-coverage`'s purity gate.
 ## Write
 - `manifest.json` — `module`; `children[]` with `name` / `doc` / `rtl_modules[]` (REQUIRED, ≥1) /
   `brainstorm_anchor` / `role`; optional `shared_subsections[]`.
-- `design.md` §1.1–1.6 overview (incl. §1.4.1 Top-Level IO + §1.4.2 Inter-module Interconnects) +
+- `design.md` §1.1–1.6 overview (narrative only; §1.4.1 / §1.4.2 point at their sidecars) +
   §1.7 submodule index, per `references/design-template.md`. §1.3 / §1.5 / §1.6 carry narrative
   — and, for §1.5, the waveform diagrams — plus a pointer to `features.json` /
   `timing-scenarios.json` / `clocks.json`. **No feature, scenario or clock table.**
 - `ppa.json` — the D6 `ppa_targets` **verbatim** as a JSON array of `{dim, target}` (`[]` when D6
   declares none or was not reached).
+- `top-io.json` — one object per top-level port (`name` / `direction` / `width` / `clock_domain` /
+  `interface_group` / `role`; an output also declares `owner`; a reset also declares
+  `reset_polarity` / `reset_kind`), per `references/top-io.schema.json`.
+- `interconnects.json` — one object per cut edge (`wire` / `producers` / `consumers` / `width` /
+  `clock_domain`), per `references/interconnects.schema.json`. `[]` for an N=1 module.
 - `timing-scenarios.json` — one object per scenario (`id` / `stimulus` / `expected` /
   `timing_constraint`, plus optional `interface_mode` / `exceptions`), per
   `references/timing-scenarios.schema.json`.

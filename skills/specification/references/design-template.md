@@ -57,50 +57,14 @@ field belongs here: how the features partition the module, which are out of scop
 
 #### 1.4.1 Top-Level IO
 
-| Signal | Direction | Owner | Width | Clock Domain | Interface Group | Protocol | Role | Encoding | ResetPolarity | ResetKind |
-|--------|-----------|-------|-------|--------------|-----------------|----------|------|----------|---------------|-----------|
-| clk    | input  | - | 1 | clk | clk     | -    | clock | - | -  | -     |
-| rst_n  | input  | - | 1 | clk | reset   | -    | reset | - | 0  | async |
-| cfg_addr | input | - | 8 | clk | cfg_bus | APB3 | data  | - | -  | -     |
-
-> **Owner** (Output rows): the child that drives this output; input/inout rows use `-`.
-> - **Gated** (enforced by `check-coverage`): the Owner is present, is a manifest child, and that child lists the signal in its frontmatter `ports`.
-> - **Guidance (not gated):** prefer a **leaf child** that the pure top-integration child passes through to the boundary; an output driven by the top-integration child's own combinational glue (mux / reduction / constant) is discouraged, prefer a dedicated child (e.g. an arbiter). The top-integration child as `Owner` still passes the gate; this preference is a design note, not enforced.
-
-> **Role** (required — `derive-constraints` reads it): `clock` / `reset` / `data`.
-
-> **Encoding** (required content rule — enforced by the spec-review `conformance` lens, NOT a
-> deterministic gate): a **control or status** signal MUST pin its bit/field→symbol meaning here.
-> Single-bit: `0:<meaning>; 1:<meaning>`. Multi-bit: per field `bit[h:l] <name>: <code>:<symbol>; …`,
-> and for a phase/command code write the **consumer obligation**, not just a label
-> (e.g. `3:PV (consumer re-preloads the stationary operand, then streams)`). A raw data / clock /
-> reset signal uses `-` (no encoded value). The single source of truth is this row; a child restates
-> it verbatim, never diverges.
-
-> **ResetPolarity** (reset rows only): `0` = active-low, `1` = active-high.
-> **ResetKind** (reset rows only): `sync` / `async`.
-> Clock and reset ports carry no IO delay; each `data` port gets
-> `set_input/output_delay -clock <Clock Domain>` and an `abstract_port -clock <Clock Domain>`.
-> These columns make constraint generation a pure function of this table — no name heuristics.
+The port list lives in `top-io.json`. Narrative that is not a per-port field belongs here:
+what the boundary is for, which groups exist and why.
 
 #### 1.4.2 Inter-module Interconnects
 
-> Fan-out mode (N≥2): authoritative list of all RTL-module-to-RTL-module wires. N=1 modules: keep the §1.4.2 heading with a single `(none — N=1 module has no inter-module wires)` row; do not omit the section (`check-coverage` requires §1.4.2 present).
-
-| Wire | Producer (RTL module) | Consumer (RTL module) | Width | Clock Domain | Protocol | Encoding | Timing Constraint | Notes |
-|------|-----------------------|-----------------------|-------|--------------|----------|----------|-------------------|-------|
-| … | … | … | … | … | … | … | … | … |
-
-> **Width** and **Clock Domain** are **gated**: every inter-module wire pins a concrete Width (`-` is not valid) and a Clock Domain that is a §1.6 clock name. (Direction is encoded by Producer/Consumer. ResetPolarity/ResetKind are NOT gated on §1.4.2 — reset is enforced only at constraint generation on §1.4.1 `Role=reset` rows.) A heterogeneous control bundle (fields of differing width, e.g. an old `ctrl_bus`) cannot fill one honest Width row — break it into per-field wires. Enforced by `check-coverage`.
-
-> **Encoding** (required content rule — enforced by the spec-review `conformance` lens, NOT a
-> deterministic gate): a wire that carries an **encoded control/status value** (a command/phase bus,
-> a status/mode bus) MUST pin its bit/field→symbol meaning here, using the same format and
-> obligation-semantics rule as §1.4.1 `Encoding`. A raw data wire (e.g. an operand/score beat) uses
-> `-`. This row is the single source; producer and consumer children read the same row, so per-wire
-> agreement is structural. (Cross-**bus** consistency — multiple control buses that project one FSM —
-> is not pinned *in this row*; its joint contract is stated in the §1.4.2.1 Inter-module Behavior
-> Contract companion below.)
+The wire list lives in `interconnects.json` (authoritative for every
+RTL-module-to-RTL-module cut edge; an N=1 module writes an empty array). Narrative about how
+the children divide the datapath belongs here.
 
 > **Inter-module Behavior Contract** (required content rule, enforced by the spec-review
 > `conformance` lens, NOT a deterministic gate): when a *group* of inter-module wires is governed by
@@ -177,6 +141,37 @@ Narrative that is NOT a per-clock field belongs here: domain count, CDC posture,
 reset scheme, release-ordering constraints.
 ```
 
+## top-io.json (§1.4.1's machine half)
+
+Authored by Wave 1; schema `references/top-io.schema.json`. A JSON array, one object per port.
+
+| Field | Rule |
+|---|---|
+| `name` | Required. The netlist name **including its bit range** (`token_in[4:0]`) — emitted verbatim into `get_ports` / `abstract_port`. |
+| `direction` | Required: `input` / `output` / `inout`. |
+| `width` | Required **integer**. When `name` ends in `[h:l]`, `check-coverage` cross-checks it; an `[i]` index (a register-file element) makes no width claim and is skipped. |
+| `clock_domain` | Required. A `clocks.json` name. Clock and reset ports carry no IO delay; each `data` port gets `set_input/output_delay` against this domain. |
+| `interface_group` | Required. Groups ports into one TB agent / one vif. |
+| `role` | Required: `clock` / `reset` / `data`. `derive-constraints` branches on it. |
+| `owner` | **Required on an output** (schema-enforced): the manifest child that drives it, which must list the port in its frontmatter `ports`. Prefer a **leaf** child passed through the pure top; an output driven by the top-integration child's own glue (mux / reduction / constant) is discouraged but passes. Inputs carry no owner — which inputs a child reads is that child's own wave-2 decision. |
+| `reset_polarity` / `reset_kind` | **Required when `role` is `reset`** (schema-enforced): `0` = active-low / `1` = active-high; `sync` / `async`. |
+| `protocol` | Optional. |
+| `encoding` | A **control or status** port MUST pin its bit/field-to-symbol meaning: single-bit `0:<meaning>; 1:<meaning>`; multi-bit per field `bit[h:l] <name>: <code>:<symbol>; …`. For a phase/command code write the **consumer obligation**, not just a label (e.g. `3:PV (consumer re-preloads the stationary operand, then streams)`). A raw data / clock / reset port has none. Enforced by the spec-review `conformance` lens, NOT a deterministic gate. This entry is the single source — a child names the port, never re-describes the codes. |
+
+## interconnects.json (§1.4.2's machine half)
+
+Authored by Wave 1; schema `references/interconnects.schema.json`. A JSON array, one object
+per cut edge. An N=1 module writes `[]`.
+
+| Field | Rule |
+|---|---|
+| `wire` | Required. Not unique by itself: the same net may appear once per distinct endpoint pairing. |
+| `producers` / `consumers` | Required **arrays** of RTL module names. `const` marks a literal source with no owning module. `derive-ports` attributes each wire to the children whose `rtl_modules` appear here. |
+| `width` | Required integer. A heterogeneous control bundle cannot state one honest width — split it into per-field wires. |
+| `clock_domain` | Required. A `clocks.json` name; a phantom domain here hides a CDC path. |
+| `protocol` / `timing_constraint` / `notes` | Optional. |
+| `encoding` | A wire carrying an **encoded control/status value** MUST pin its bit/field-to-symbol meaning, same format and obligation rule as `top-io.json`. Producer and consumer read this one entry, so per-wire agreement is structural. Cross-**bus** consistency is not pinned here — that joint contract goes in the §1.4.2.1 companion. |
+
 ## timing-scenarios.json (§1.5's machine half)
 
 Authored by Wave 1; schema `references/timing-scenarios.schema.json`. A JSON array, one
@@ -245,24 +240,24 @@ For every module (N≥1) the parent `design.md` keeps only this §1.7 index; eac
 
 ## Minimum Field Completeness Gate Table
 
-Before `design.md` is approved, the **gated** checks below must pass `check-coverage`; **recommended** columns degrade downstream quality if absent (`derive-plan-data` defaults them, so a missing column yields an empty/weaker derivation, not a crash). Failing any gated check disqualifies you from marking pass.
+Before `design.md` is approved, the **gated** checks below must pass `check-coverage`; **(schema)** rows are enforced earlier, by the verb that first reads the sidecar. Failing any gated check disqualifies you from marking pass.
 
 | Check | Field location | Impact of missing |
 |--------|----------|----------|
 | `features.json` fields `id` / `name` / `description` / `mode_interface` / `priority` / `happy_path` / `corner_cases` / `negative_cases` present and non-empty — **(schema)** | `features.json` | Enforced by `features.schema.json` at `check-coverage`. Non-empty is deliberate — a blank field is a defect, not a default. |
 | `features.json` field `coverage_intent` — **(optional)** | `features.json` | Absent means absent; nothing substitutes a value for it. |
-| §1.4.1 columns Signal / Direction / Clock Domain / Interface Group / Role — **(gated)** | Overview §1.4.1 table | Absent columns degrade constraint and agent generation; `derive-constraints` may emit incomplete IO delays or miss CDC domains. |
-| §1.4.1 columns Width / Protocol — **(recommended)** | Overview §1.4.1 table | Absent Width defaults to `1`; absent Protocol yields empty protocol annotations. |
-| §1.4.1 columns ResetPolarity / ResetKind — **required on `Role=reset` rows** (enforced at constraint generation by `derive-constraints`, which fail-louds on a reset row missing them — not by the coverage gate; use `-` on non-reset rows) | Overview §1.4.1 table | A reset row missing polarity/kind aborts `derive-constraints`. |
+| `top-io.json` fields `name` / `direction` / `width` / `clock_domain` / `interface_group` / `role` present and correctly typed — **(schema)** | `top-io.json` | Enforced by `top-io.schema.json` at `derive-constraints`, which runs before this gate and fails loud. |
+| `top-io.json`: an output declares `owner`; a `role: reset` entry declares `reset_polarity` + `reset_kind` — **(schema)** | `top-io.json` | Both are conditional requirements expressed in the schema rather than in Python. |
+| `top-io.json` `width` agrees with the `[h:l]` range in `name` — **(gated)** | `top-io.json` | A same-entry disagreement between the netlist name and the declared width; enforced by `check-coverage`. An `[i]` index is skipped. |
 | `timing-scenarios.json` fields `id` / `stimulus` / `expected` / `timing_constraint` present and non-empty — **(schema)** | `timing-scenarios.json` | Enforced by `timing-scenarios.schema.json` at `check-coverage`; they drive downstream sequence-body and checker authoring. |
 | `timing-scenarios.json` fields `interface_mode` / `exceptions` — **(optional)** | `timing-scenarios.json` | Absent means absent; nothing substitutes a value. |
 | `clocks.json` fields `name` / `freq_mhz` / `period_ns` / `relationship` present and correctly typed — **(schema)** | `clocks.json` | Enforced by `clocks.schema.json` at `derive-constraints`, which fails loud. A mistyped key is named in the error, not silently defaulted. |
 | `clocks.json` declares exactly one `relationship: "primary"` — **(gated)** | `clocks.json` | Not schema-expressible; `derive-constraints` fails loud. It is the TB main clock — an ambiguous set would let a downstream reader pick arbitrarily. |
 | `clocks.json` internal consistency: `period_ns` ≈ `1000 / freq_mhz` per entry — **(gated)** | `clocks.json` | A freq/period typo would propagate into every generated `create_clock`; enforced by `check-coverage`. |
-| §1.4.1 `Clock Domain` values ⊆ `clocks.json` `name`s — **(gated)** | §1.4.1 table + `clocks.json` | A phantom domain would make `abstract_port -clock <phantom>` and break SpyGlass CDC; enforced by `check-coverage`. |
-| §1.4.1 every Output has an `Owner` that is a manifest child listing the signal — **(gated)** | §1.4.1 Owner column + per-child frontmatter | A missing/invalid Owner, or an Owner child that does not list the signal, is an undriven / mis-declared top output; enforced by `check-coverage`. (The leaf-owner / no-top-glue preference is documented guidance, not gated.) |
-| §1.4.2 columns Width / Clock Domain present + per-row concrete — **(gated)** | Overview §1.4.2 table | Unpinned inter-module width lets body-blind fan-out children diverge (the fa_core 128b↔32b / opaque-`ctrl_bus` class); enforced by `check-coverage`. |
-| §1.4.2 `Clock Domain` values ⊆ `clocks.json` `name`s — **(gated)** | §1.4.2 table + `clocks.json` | A phantom interconnect domain hides a CDC path; enforced by `check-coverage`. |
+| `top-io.json` `clock_domain` values ⊆ `clocks.json` `name`s — **(gated)** | `top-io.json` + `clocks.json` | A phantom domain would make `abstract_port -clock <phantom>` and break SpyGlass CDC; enforced by `check-coverage`. |
+| `top-io.json` `owner` resolves to a manifest child that lists the port — **(gated)** | `top-io.json` + per-child frontmatter | An owner that is not a child, or a child that does not list the port, is an undriven / mis-declared top output; enforced by `check-coverage`. (Presence of `owner` is the schema's; the leaf-owner preference is documented guidance, not gated.) |
+| `interconnects.json` fields `wire` / `producers` / `consumers` / `width` / `clock_domain` present and correctly typed — **(schema)** | `interconnects.json` | Enforced by `interconnects.schema.json` at `derive-ports`, which runs before this gate and fails loud — its output is injected into the wave-2 child prompts, so a silent empty list would be worse than a stop. Unpinned inter-module width lets body-blind fan-out children diverge (the fa_core 128b↔32b / opaque-`ctrl_bus` class). |
+| `interconnects.json` `clock_domain` values ⊆ `clocks.json` `name`s — **(gated)** | `interconnects.json` + `clocks.json` | A phantom interconnect domain hides a CDC path; enforced by `check-coverage`. |
 | Every `features.json` `id` referenced by ≥1 `check-hints/<child>.json` `source_feature` — **(gated)** | `features.json` + `check-hints/*.json` | Catches specified-but-unverified features; enforced by `check-coverage`. |
 | `check-hints/<child>.json` fields `check_id` / `source_feature` / `implementation_detail` / `observable` / `reference_rule` present and non-empty — **(schema)** | `check-hints/*.json` | Enforced by `check-hints.schema.json` at `check-coverage`; without them no rule-based RM / scoreboard can be generated. `implementation_detail_verbatim` is guarded by token-survival instead. |
 | `design.md` self-containment (no `see brainstorm` / `refer to brainstorm` / `see spec D` / cross-child links) | Whole document + each `<child>.md` | See the self-containment principle stated once above; **enforced by `check-coverage`**. |

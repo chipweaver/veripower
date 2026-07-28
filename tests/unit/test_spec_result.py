@@ -36,14 +36,24 @@ def _design(io_rows, clk_rows):
 
 
 def _spec_workdir(tmp_path):
-    """A workdir derive_constraints() can run over (valid clocks.json + §1.4.1 table) plus
+    """A workdir derive_constraints() can run over (valid clocks.json + top-io.json) plus
     the finalize inputs (manifest/coverage/per-child md/spec-review)."""
     wd = tmp_path
-    design = _design(
-        "| i_clk | input | 1 | i_clk | clk | - | clock | - | - |\n",
-        "| i_clk | 100 | 10.0 | primary | no | primary clock |\n",
+    (wd / "design.md").write_text("# tpu_top Design\n\nNarrative only.\n")
+    (wd / "top-io.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "i_clk",
+                    "direction": "input",
+                    "width": 1,
+                    "clock_domain": "i_clk",
+                    "interface_group": "clk",
+                    "role": "clock",
+                }
+            ]
+        )
     )
-    (wd / "design.md").write_text(design)
     (wd / "clocks.json").write_text(
         json.dumps(
             [
@@ -209,6 +219,8 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "clocks.json",
         "features.json",
         "timing-scenarios.json",
+        "top-io.json",
+        "interconnects.json",
         "check-hints/mac.json",
         "check-hints/systolic_reg.json",
         "check-hints/fifo.json",

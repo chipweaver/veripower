@@ -54,6 +54,8 @@ _OUTPUTS = {
         "Design/specification/features.json",
         "Design/specification/timing-scenarios.json",
         "Design/specification/check-hints/c.json",
+        "Design/specification/top-io.json",
+        "Design/specification/interconnects.json",
         "Design/specification/constraints/top.sdc",
         "Design/specification/constraints/top.sgdc",
     ],
@@ -538,15 +540,39 @@ def _spec_workdir(tmp_path):
         )
     )
     (tmp_path / "design.md").write_text(
-        "# m Design\n\n#### 1.4.1 Top-Level IO\n\n"
-        "| Signal | Direction | Width | Clock Domain | Interface Group | Protocol | "
-        "Role | ResetPolarity | ResetKind |\n"
-        "|---|---|---|---|---|---|---|---|---|\n"
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| clk_io | input | 1 | clk_io | clk | - | clock | - | - |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n\n"
-        "### 1.6 Clocks and Frequencies\n\n"
-        "Clock definitions live in `clocks.json`.\n"
+        "# m Design\n\n#### 1.4.1 Top-Level IO\n\nPorts live in `top-io.json`.\n\n"
+        "### 1.6 Clocks and Frequencies\n\nClock definitions live in `clocks.json`.\n"
+    )
+    (tmp_path / "top-io.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "clk",
+                    "direction": "input",
+                    "width": 1,
+                    "clock_domain": "clk",
+                    "interface_group": "clk",
+                    "role": "clock",
+                },
+                {
+                    "name": "clk_io",
+                    "direction": "input",
+                    "width": 1,
+                    "clock_domain": "clk_io",
+                    "interface_group": "clk",
+                    "role": "clock",
+                },
+                {
+                    "name": "din",
+                    "direction": "input",
+                    "width": 8,
+                    "clock_domain": "clk",
+                    "interface_group": "cfg",
+                    "protocol": "APB3",
+                    "role": "data",
+                },
+            ]
+        )
     )
     (tmp_path / "clocks.json").write_text(
         json.dumps(

@@ -68,7 +68,7 @@ Closure signal: you restate the module's intent accurately in 1–2 sentences an
 D2 covers two related but separate concerns:
 
 **D2a Top-Level IO**: DUT-boundary signals (signal name / direction / width /
-clock domain / protocol). Output: design.md §1.4.1 Top-Level IO table.
+clock domain / protocol). Output: `top-io.json`.
 
 - List of top-level interface groups (one name per group, e.g., `cfg_bus` / `data_in` / `status_out`).
 - Protocol type per group (AXI-lite / APB / valid-ready / streaming / custom).
@@ -77,8 +77,7 @@ clock domain / protocol). Output: design.md §1.4.1 Top-Level IO table.
 
 **D2b Inter-module Interconnects** (fan-out mode only; can be empty for
 N=1 modules): wires between RTL modules (Producer / Consumer at RTL-module
-level / Protocol / Timing). Output: design.md §1.4.2 Inter-module
-Interconnects table. Each cross-child wire is **declared once** in §1.4.2;
+level / Protocol / Timing). Output: `interconnects.json`. Each cross-child wire is **declared once** there;
 sub-design `<child>.md §2 Interface` references but does not redefine.
 
 ## D3. Clocks and Reset

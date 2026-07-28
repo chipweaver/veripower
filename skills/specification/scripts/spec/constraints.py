@@ -2,15 +2,9 @@ import json
 import sys
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
-
-from spec._md import extract_section, parse_markdown_table, table_header
+from spec.sidecar import load_sidecar, validate_sidecar
 
 _IO_DELAY_FRAC = 0.3
-_IO_SEC = r"§?\s*1\.4\.1.*Top.Level\s+IO"
-_CLOCKS_SCHEMA = (
-    Path(__file__).resolve().parent.parent.parent / "references" / "clocks.schema.json"
-)
 
 
 def _fail(msg: str):
@@ -18,40 +12,12 @@ def _fail(msg: str):
 
 
 def load_clocks(workdir: Path) -> list[dict]:
-    """Read + schema-validate `{workdir}/clocks.json`, the authored clock SSoT.
-
-    The ONLY place clocks.json is validated: finalize re-runs derive_constraints()
-    in-process, so that path is covered here too. The schema is loaded, not restated in
-    Python; an unreadable schema fails closed.
-
-    Exactly-one-`primary` is enforced on top of the schema (not expressible in it). The
-    `period_ns == 1000/freq_mhz` cross-check is the check-coverage gate's.
-    """
-    path = workdir / "clocks.json"
-    if not path.is_file():
-        _fail(
-            f"{path} missing: the specification stage authors clocks.json (design.md §1.6 "
-            "carries only a pointer to it); see references/clocks.schema.json"
-        )
-    try:
-        clocks = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        _fail(f"clocks.json is not valid JSON: {exc}")
-    try:
-        schema = json.loads(_CLOCKS_SCHEMA.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        _fail(f"{_CLOCKS_SCHEMA.name} unreadable: {exc}")
-    errors = sorted(
-        Draft202012Validator(schema).iter_errors(clocks),
-        key=lambda e: list(e.absolute_path),
-    )
-    if errors:
-        err = errors[0]
-        where = "$" + "".join(
-            f"[{p!r}]" if isinstance(p, int) else f".{p}" for p in err.absolute_path
-        )
-        _fail(f"clocks.json schema violation at {where}: {err.message}")
-
+    """Clocks from clocks.json. Type/enum/required are the schema's; the one obligation it
+    cannot express — exactly one `primary` — is enforced here, because derive-constraints
+    runs before the design.md gate and is therefore the earliest feedback point."""
+    for v in validate_sidecar(workdir, "clocks.json"):
+        _fail(f"clocks.json: {v.get('at', '')} {v['error']}".strip())
+    clocks = load_sidecar(workdir, "clocks.json")
     primaries = [c["name"] for c in clocks if c["relationship"] == "primary"]
     if len(primaries) != 1:
         _fail(
@@ -64,59 +30,18 @@ def load_clocks(workdir: Path) -> list[dict]:
     return clocks
 
 
-def _ports(design: str) -> list[dict]:
-    sec = extract_section(design, _IO_SEC)
-    rows = parse_markdown_table(sec)
-    if not rows:
-        _fail("design.md §1.4.1 Top-Level IO table not found / empty")
-    missing = {"Signal", "Direction", "Clock Domain", "Role"} - set(table_header(sec))
-    if missing:
-        _fail(
-            f"design.md §1.4.1 table missing canonical column(s) {sorted(missing)} "
-            f"(found {table_header(sec)}); see design-template.md."
-        )
-    ports = []
-    for r in rows:
-        sig = r.get("Signal", "").strip()
-        if not sig:
-            continue
-        role = r.get("Role", "").strip().lower()
-        if role not in {"clock", "reset", "data"}:
-            _fail(f"port {sig!r}: missing/invalid Role {role!r} (clock/reset/data)")
-        direction = r.get("Direction", "").strip().lower()
-        if role == "data" and direction not in {"input", "output"}:
-            _fail(
-                f"port {sig!r}: data port needs Direction input/output, got {direction!r}"
-            )
-        ports.append(
-            {
-                "signal": sig,
-                "direction": direction,
-                "domain": r.get("Clock Domain", "").strip(),
-                "role": role,
-                "reset_polarity": r.get("ResetPolarity", "").strip(),
-                "reset_kind": r.get("ResetKind", "").strip().lower(),
-            }
-        )
+def _ports(workdir: Path) -> list[dict]:
+    """Top-level IO from top-io.json. Shape, enums and the two conditional requirements
+    (an output declares owner; a reset row declares polarity and kind) are the schema's;
+    check-coverage validates it and runs the cross-file owner check."""
+    for v in validate_sidecar(workdir, "top-io.json"):
+        _fail(f"top-io.json: {v.get('at', '')} {v['error']}".strip())
+    ports = load_sidecar(workdir, "top-io.json")
     if not ports:
-        _fail("design.md §1.4.1 has no valid port rows")
-    # Reset-row field validation — §1.4.1 input, so it belongs with the rest of the parse.
-    for p in ports:
-        if p["role"] != "reset":
-            continue
-        if not p["domain"]:
-            _fail(
-                f"reset {p['signal']!r}: Clock Domain must be non-empty "
-                "(it feeds abstract_port -clock; a blank token is invalid SGDC)"
-            )
-        if p["reset_polarity"] not in {"0", "1"}:
-            _fail(
-                f"reset {p['signal']!r}: ResetPolarity must be 0 or 1 (got {p['reset_polarity']!r})"
-            )
-        if p["reset_kind"] not in {"sync", "async"}:
-            _fail(
-                f"reset {p['signal']!r}: ResetKind must be sync or async (got {p['reset_kind']!r})"
-            )
+        _fail(
+            f"{workdir / 'top-io.json'} missing or empty: the specification stage authors it "
+            "(design.md §1.4.1 carries only a pointer); see references/top-io.schema.json"
+        )
     return ports
 
 
@@ -212,17 +137,17 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     for p in ports:
         if p["role"] != "data":
             continue
-        T = period_of.get(p["domain"])
+        T = period_of.get(p["clock_domain"])
         if T is None:
             continue  # domain is a generated clock (deferred) or absent (clock-domain-gated); defensive
         delay = round(T * _IO_DELAY_FRAC, 4)
         if p["direction"] == "input":
             out.append(
-                f"set_input_delay  {delay} -clock {p['domain']} [get_ports {{{p['signal']}}}]"
+                f"set_input_delay  {delay} -clock {p['clock_domain']} [get_ports {{{p['name']}}}]"
             )
         elif p["direction"] == "output":
             out.append(
-                f"set_output_delay {delay} -clock {p['domain']} [get_ports {{{p['signal']}}}]"
+                f"set_output_delay {delay} -clock {p['clock_domain']} [get_ports {{{p['name']}}}]"
             )
     return "\n".join(out) + "\n"
 
@@ -250,11 +175,9 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
         if p["role"] != "reset":
             continue
         async_flag = " -async" if p["reset_kind"] == "async" else ""
+        out.append(f"reset -name {p['name']} -value {p['reset_polarity']}{async_flag}")
         out.append(
-            f"reset -name {p['signal']} -value {p['reset_polarity']}{async_flag}"
-        )
-        out.append(
-            f"abstract_port -ports {p['signal']} -clock {p['domain']} -reset {p['signal']}"
+            f"abstract_port -ports {p['name']} -clock {p['clock_domain']} -reset {p['name']}"
         )
     if any(p["role"] == "reset" for p in ports):
         out.append("")
@@ -262,9 +185,9 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     by_domain: dict[str, list[str]] = {}
     for p in ports:
         if p["role"] == "data":
-            if p["domain"] not in clock_names:
+            if p["clock_domain"] not in clock_names:
                 continue  # domain is a generated clock (deferred) or absent; defensive (mirrors generate_sdc)
-            by_domain.setdefault(p["domain"], []).append(p["signal"])
+            by_domain.setdefault(p["clock_domain"], []).append(p["name"])
     for dom, sigs in by_domain.items():
         out.append(f"abstract_port -ports {{{' '.join(sigs)}}} -clock {dom}")
     return "\n".join(out) + "\n"
@@ -278,8 +201,7 @@ def derive_constraints(workdir: Path) -> dict:
     if not top:
         _fail("manifest.json missing 'module' (the <TOP> name)")
     clocks = load_clocks(workdir)
-    design = (workdir / "design.md").read_text(encoding="utf-8")
-    ports = _ports(design)
+    ports = _ports(workdir)
     sdc = generate_sdc(top, clocks, ports)
     sgdc = generate_sgdc(top, clocks, ports)
     cdir = workdir / "constraints"

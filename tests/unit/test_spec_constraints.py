@@ -34,19 +34,26 @@ def _clk(name, freq_mhz, period_ns, relationship="primary", generated=False, rol
     }
 
 
+def _port(name, direction, role, domain="clk", width=1, group="cfg", **kw):
+    e = {
+        "name": name,
+        "direction": direction,
+        "width": width,
+        "clock_domain": domain,
+        "interface_group": group,
+        "role": role,
+    }
+    if direction == "output":
+        e.setdefault("owner", "c")
+    e.update(kw)
+    return e
+
+
 _DEFAULT_CLOCKS = [_clk("clk", 100, 10.0, role="primary clock")]
+_CLK_PORT = _port("clk", "input", "clock")
 
 
-def _design(io_rows):
-    """§1.4.1 only — clocks come from clocks.json."""
-    return (
-        "# m Design\n\n#### 1.4.1 Top-Level IO\n\n"
-        "| Signal | Direction | Width | Clock Domain | Interface Group | Protocol | Role | ResetPolarity | ResetKind |\n"
-        "|---|---|---|---|---|---|---|---|---|\n" + io_rows + "\n"
-    )
-
-
-def _wd(tmp_path, design, clocks=None, write_clocks=True):
+def _wd(tmp_path, ports, clocks=None, write_clocks=True, write_io=True):
     (tmp_path / "manifest.json").write_text(
         json.dumps(
             {
@@ -55,21 +62,22 @@ def _wd(tmp_path, design, clocks=None, write_clocks=True):
             }
         )
     )
-    (tmp_path / "design.md").write_text(design)
     if write_clocks:
         (tmp_path / "clocks.json").write_text(
             json.dumps(_DEFAULT_CLOCKS if clocks is None else clocks, indent=2)
         )
+    if write_io:
+        (tmp_path / "top-io.json").write_text(json.dumps(ports, indent=2))
     return tmp_path
 
 
 def test_core_clocks_and_io_delays(tmp_path):
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-        "| dout | output | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
-    summary = json.loads(_run(_wd(tmp_path, design)).stdout)
+    ports = [
+        _CLK_PORT,
+        _port("din", "input", "data", width=8, protocol="APB3"),
+        _port("dout", "output", "data", width=8, protocol="APB3"),
+    ]
+    summary = json.loads(_run(_wd(tmp_path, ports)).stdout)
     assert summary == {"top": "m", "clocks": 1, "data_ports": 2, "resets": 0}
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
@@ -78,17 +86,25 @@ def test_core_clocks_and_io_delays(tmp_path):
     assert "set_output_delay 3.0 -clock clk [get_ports {dout}]" in sdc
     assert "clock -name clk -period 10.0 -edge {0 5.0}" in sgdc
     assert "abstract_port -ports {din dout} -clock clk" in sgdc
-    # data/clock split exact via Role: clk gets no IO delay
+    # data/clock split exact via role: clk gets no IO delay
     assert "[get_ports {clk}]" not in sdc
 
 
+def test_bit_range_in_name_reaches_get_ports_verbatim(tmp_path):
+    # The netlist name carries its range; derive-constraints does not decompose it.
+    ports = [_CLK_PORT, _port("token_in[4:0]", "input", "data", width=5)]
+    _run(_wd(tmp_path, ports))
+    sdc = (tmp_path / "constraints" / "m.sdc").read_text()
+    assert "set_input_delay  3.0 -clock clk [get_ports {token_in[4:0]}]" in sdc
+
+
 def test_async_reset_emits_async_flag(tmp_path):
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| rst_n | input | 1 | clk | reset | - | reset | 0 | async |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
-    summary = json.loads(_run(_wd(tmp_path, design)).stdout)
+    ports = [
+        _CLK_PORT,
+        _port("rst_n", "input", "reset", reset_polarity=0, reset_kind="async"),
+        _port("din", "input", "data", width=8),
+    ]
+    summary = json.loads(_run(_wd(tmp_path, ports)).stdout)
     assert summary["resets"] == 1
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "reset -name rst_n -value 0 -async" in sgdc
@@ -96,38 +112,35 @@ def test_async_reset_emits_async_flag(tmp_path):
 
 
 def test_sync_reset_drops_async_flag(tmp_path):
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| rst | input | 1 | clk | reset | - | reset | 1 | sync |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
-    _run(_wd(tmp_path, design))
+    ports = [
+        _CLK_PORT,
+        _port("rst", "input", "reset", reset_polarity=1, reset_kind="sync"),
+        _port("din", "input", "data", width=8),
+    ]
+    _run(_wd(tmp_path, ports))
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "reset -name rst -value 1\n" in sgdc  # no -async
     assert "-async" not in sgdc.split("reset -name rst")[1].split("\n")[0]
 
 
 def test_no_reset_ports_emits_no_reset_section(tmp_path):
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
-    _run(_wd(tmp_path, design))
+    ports = [_CLK_PORT, _port("din", "input", "data", width=8)]
+    _run(_wd(tmp_path, ports))
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "reset -name" not in sgdc
 
 
 def test_async_clock_groups(tmp_path):
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| clk_io | input | 1 | clk_io | clk | - | clock | - | - |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
+    ports = [
+        _CLK_PORT,
+        _port("clk_io", "input", "clock", domain="clk_io"),
+        _port("din", "input", "data", width=8),
+    ]
     clocks = [
         _clk("clk", 100, 10.0),
         _clk("clk_io", 50, 20.0, "async", role="io clock"),
     ]
-    _run(_wd(tmp_path, design, clocks))
+    _run(_wd(tmp_path, ports, clocks))
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
     assert "set_clock_groups -asynchronous" in sdc
     assert "-group [get_clocks {clk}]" in sdc
@@ -135,15 +148,12 @@ def test_async_clock_groups(tmp_path):
 
 
 def test_generated_clock_skips_create_clock(tmp_path):
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
+    ports = [_CLK_PORT, _port("din", "input", "data", width=8)]
     clocks = [
         _clk("clk", 100, 10.0),
         _clk("clk_div2", 50, 20.0, "synchronous-related", generated=True),
     ]
-    json.loads(_run(_wd(tmp_path, design, clocks)).stdout)
+    json.loads(_run(_wd(tmp_path, ports, clocks)).stdout)
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "create_clock -name clk_div2" not in sdc
@@ -159,19 +169,11 @@ def test_generated_clock_skips_create_clock(tmp_path):
 def test_generated_flag_may_be_omitted(tmp_path):
     # `generated` is optional in the schema; load_clocks defaults it to False, so an entry
     # written without the key must behave exactly like generated: false.
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
     lean = [
-        {
-            "name": "clk",
-            "freq_mhz": 100,
-            "period_ns": 10.0,
-            "relationship": "primary",
-        }
+        {"name": "clk", "freq_mhz": 100, "period_ns": 10.0, "relationship": "primary"}
     ]
-    proc = _run(_wd(tmp_path, design, lean), check=False)
+    ports = [_CLK_PORT, _port("din", "input", "data", width=8)]
+    proc = _run(_wd(tmp_path, ports, lean), check=False)
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
     assert "create_clock -name clk -period 10.0 [get_ports clk]" in sdc
@@ -181,219 +183,205 @@ def test_generated_flag_may_be_omitted(tmp_path):
 
 
 def test_fail_loud_missing_clocks_json(tmp_path):
-    design = _design("| clk | input | 1 | clk | clk | - | clock | - | - |\n")
-    proc = _run(_wd(tmp_path, design, write_clocks=False), check=False)
+    proc = _run(_wd(tmp_path, [_CLK_PORT], write_clocks=False), check=False)
     assert proc.returncode != 0 and "clocks.json" in proc.stderr
 
 
 def test_fail_loud_empty_clocks_json(tmp_path):
     # minItems: 1 — an empty array is a missing clock definition, not "no clocks".
-    design = _design("| clk | input | 1 | clk | clk | - | clock | - | - |\n")
-    proc = _run(_wd(tmp_path, design, []), check=False)
+    proc = _run(_wd(tmp_path, [_CLK_PORT], []), check=False)
     assert proc.returncode != 0 and "clocks.json" in proc.stderr
 
 
 def test_fail_loud_invalid_relationship(tmp_path):
     # An invalid/misspelled relationship must fail loud, not silently fall into the
     # synchronous group (which would drop a needed set_clock_groups -asynchronous).
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
-    bad = [_clk("clk", 100, 10.0, "related")]  # 'related' is not in the enum
-    proc = _run(_wd(tmp_path, design, bad), check=False)
+    bad = [_clk("clk", 100, 10.0, "related")]
+    proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
     assert proc.returncode != 0 and "relationship" in proc.stderr
 
 
 def test_fail_loud_string_period(tmp_path):
-    # period_ns is a number: a quoted value must be rejected here, not float()-ed downstream.
-    design = _design("| clk | input | 1 | clk | clk | - | clock | - | - |\n")
+    # period_ns is a number: a quoted value must be rejected here, not float()-ed later.
     bad = [{**_clk("clk", 100, 10.0), "period_ns": "10.0"}]
-    proc = _run(_wd(tmp_path, design, bad), check=False)
+    proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
     assert proc.returncode != 0 and "period_ns" in proc.stderr
 
 
-def test_fail_loud_misspelled_key(tmp_path):
+def test_fail_loud_misspelled_clock_key(tmp_path):
     # additionalProperties: false — a mistyped key must name itself instead of defaulting.
-    design = _design("| clk | input | 1 | clk | clk | - | clock | - | - |\n")
     bad = [{**_clk("clk", 100, 10.0), "peroid_ns": 10.0}]
-    proc = _run(_wd(tmp_path, design, bad), check=False)
+    proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
     assert proc.returncode != 0 and "peroid_ns" in proc.stderr
 
 
 def test_fail_loud_no_primary_clock(tmp_path):
     # Not schema-expressible; load_clocks enforces it.
-    design = _design("| clk | input | 1 | clk | clk | - | clock | - | - |\n")
     bad = [_clk("clk", 100, 10.0, "synchronous-related")]
-    proc = _run(_wd(tmp_path, design, bad), check=False)
+    proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
     assert proc.returncode != 0 and "primary" in proc.stderr
 
 
 def test_fail_loud_two_primary_clocks(tmp_path):
-    design = _design("| clk | input | 1 | clk | clk | - | clock | - | - |\n")
     bad = [_clk("clk", 100, 10.0), _clk("clk2", 50, 20.0)]
-    proc = _run(_wd(tmp_path, design, bad), check=False)
+    proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
     assert proc.returncode != 0 and "primary" in proc.stderr
 
 
 def test_fail_loud_malformed_clocks_json(tmp_path):
-    design = _design("| clk | input | 1 | clk | clk | - | clock | - | - |\n")
-    wd = _wd(tmp_path, design, write_clocks=False)
+    wd = _wd(tmp_path, [_CLK_PORT], write_clocks=False)
     (wd / "clocks.json").write_text("[{,]")
     proc = _run(wd, check=False)
-    assert proc.returncode != 0 and "valid JSON" in proc.stderr
+    assert proc.returncode != 0 and "clocks.json" in proc.stderr
 
 
-# ---------- §1.4.1 contract violations (still a markdown table) ----------
+# ---------- top-io.json contract violations ----------
+
+
+def test_fail_loud_missing_top_io(tmp_path):
+    proc = _run(_wd(tmp_path, [], write_io=False), check=False)
+    assert proc.returncode != 0 and "top-io.json" in proc.stderr
+
+
+def test_fail_loud_empty_top_io(tmp_path):
+    proc = _run(_wd(tmp_path, []), check=False)
+    assert proc.returncode != 0 and "top-io.json" in proc.stderr
 
 
 def test_fail_loud_invalid_role(tmp_path):
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | bogus | - | - |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
-    proc = _run(_wd(tmp_path, design), check=False)
-    assert proc.returncode != 0 and "Role" in proc.stderr
+    bad = [{**_CLK_PORT, "role": "bogus"}]
+    proc = _run(_wd(tmp_path, bad), check=False)
+    assert proc.returncode != 0 and "role" in proc.stderr
+
+
+def test_fail_loud_invalid_direction(tmp_path):
+    bad = [{**_CLK_PORT, "direction": ""}]
+    proc = _run(_wd(tmp_path, bad), check=False)
+    assert proc.returncode != 0 and "direction" in proc.stderr
 
 
 def test_fail_loud_reset_missing_kind(tmp_path):
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| rst_n | input | 1 | clk | reset | - | reset | 0 | |\n"  # no ResetKind
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
-    proc = _run(_wd(tmp_path, design), check=False)
-    assert proc.returncode != 0 and "ResetKind" in proc.stderr
-
-
-def test_fail_loud_reset_empty_domain(tmp_path):
-    # S2: a reset port with a blank Clock Domain would emit `abstract_port ... -clock `
-    # (empty -clock token, invalid SGDC); the coverage gate skips empty domains, so
-    # derive-constraints must fail loud — mirroring how reset polarity/kind are enforced.
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| rst_n | input | 1 |  | reset | - | reset | 0 | async |\n"  # blank Clock Domain
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
-    proc = _run(_wd(tmp_path, design), check=False)
-    assert proc.returncode != 0 and "Clock Domain" in proc.stderr
+    # if role == reset then reset_polarity + reset_kind — in the schema, not in Python.
+    bad = [_CLK_PORT, _port("rst_n", "input", "reset", reset_polarity=0)]
+    proc = _run(_wd(tmp_path, bad), check=False)
+    assert proc.returncode != 0 and "reset_kind" in proc.stderr
 
 
 def test_fail_loud_reset_invalid_polarity(tmp_path):
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| rst_n | input | 1 | clk | reset | - | reset | low | async |\n"  # not 0/1
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
-    proc = _run(_wd(tmp_path, design), check=False)
-    assert proc.returncode != 0 and "ResetPolarity" in proc.stderr
+    bad = [
+        _CLK_PORT,
+        _port("rst_n", "input", "reset", reset_polarity=2, reset_kind="async"),
+    ]
+    proc = _run(_wd(tmp_path, bad), check=False)
+    assert proc.returncode != 0 and "reset_polarity" in proc.stderr
+
+
+def test_fail_loud_output_missing_owner(tmp_path):
+    # if direction == output then owner — also schema-expressed.
+    q = {k: v for k, v in _port("q", "output", "data").items() if k != "owner"}
+    proc = _run(_wd(tmp_path, [_CLK_PORT, q]), check=False)
+    assert proc.returncode != 0 and "owner" in proc.stderr
+
+
+def test_fail_loud_string_width(tmp_path):
+    bad = [{**_CLK_PORT, "width": "1"}]
+    proc = _run(_wd(tmp_path, bad), check=False)
+    assert proc.returncode != 0 and "width" in proc.stderr
+
+
+def test_fail_loud_misspelled_port_key(tmp_path):
+    bad = [{**_CLK_PORT, "clock_domian": "clk"}]
+    proc = _run(_wd(tmp_path, bad), check=False)
+    assert proc.returncode != 0 and "clock_domian" in proc.stderr
 
 
 # ---------- emitters ----------
 
 
 def test_data_port_on_generated_clock_deferred(tmp_path):
-    # A data port whose Clock Domain is a GENERATED clock is deferred to RTL
-    # (create_generated_clock pin not yet known). Both emitters skip it by design — valid
-    # input → exit 0, and no abstract_port is emitted for the deferred port.
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| pgen | input | 8 | clk_div2 | cfg | APB3 | data | - | - |\n"
-    )
+    # A data port whose clock_domain is a GENERATED clock is deferred to RTL
+    # (create_generated_clock pin not yet known). Both emitters skip it by design.
+    ports = [_CLK_PORT, _port("pgen", "input", "data", domain="clk_div2", width=8)]
     clocks = [
         _clk("clk", 100, 10.0),
         _clk("clk_div2", 50, 20.0, "synchronous-related", generated=True),
     ]
-    proc = _run(_wd(tmp_path, design, clocks), check=False)
+    proc = _run(_wd(tmp_path, ports, clocks), check=False)
     assert proc.returncode == 0
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "abstract_port -ports {pgen}" not in sgdc
 
 
 def test_multi_domain_abstract_port_grouping(tmp_path):
-    # driver-domain association: each data port groups under its OWN Clock Domain.
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| clk2 | input | 1 | clk2 | clk | - | clock | - | - |\n"
-        "| a | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-        "| b | input | 8 | clk2 | cfg | APB3 | data | - | - |\n"
-    )
-    clocks = [
-        _clk("clk", 100, 10.0),
-        _clk("clk2", 50, 20.0, "async", role="second clock"),
+    # driver-domain association: each data port groups under its OWN clock_domain.
+    ports = [
+        _CLK_PORT,
+        _port("clk2", "input", "clock", domain="clk2"),
+        _port("a", "input", "data", width=8),
+        _port("b", "input", "data", domain="clk2", width=8),
     ]
-    _run(_wd(tmp_path, design, clocks))
+    clocks = [_clk("clk", 100, 10.0), _clk("clk2", 50, 20.0, "async", role="second")]
+    _run(_wd(tmp_path, ports, clocks))
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "abstract_port -ports {a} -clock clk" in sgdc
     assert "abstract_port -ports {b} -clock clk2" in sgdc
 
 
 def test_input_only_module(tmp_path):
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
-    summary = json.loads(_run(_wd(tmp_path, design)).stdout)
+    ports = [_CLK_PORT, _port("din", "input", "data", width=8)]
+    summary = json.loads(_run(_wd(tmp_path, ports)).stdout)
     assert summary["data_ports"] == 1
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
     assert "set_input_delay" in sdc and "set_output_delay" not in sdc
 
 
 def test_output_only_module(tmp_path):
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| dout | output | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
-    _run(_wd(tmp_path, design))
+    ports = [_CLK_PORT, _port("dout", "output", "data", width=8)]
+    _run(_wd(tmp_path, ports))
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
     assert "set_output_delay" in sdc and "set_input_delay" not in sdc
 
 
 def test_no_data_port_module(tmp_path):
-    # clock + reset only, no data ports → valid output, no false requirement.
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| rst_n | input | 1 | clk | reset | - | reset | 0 | async |\n"
-    )
-    summary = json.loads(_run(_wd(tmp_path, design)).stdout)
+    ports = [
+        _CLK_PORT,
+        _port("rst_n", "input", "reset", reset_polarity=0, reset_kind="async"),
+    ]
+    summary = json.loads(_run(_wd(tmp_path, ports)).stdout)
     assert summary["data_ports"] == 0 and summary["resets"] == 1
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
     assert "set_input_delay" not in sdc and "set_output_delay" not in sdc
 
 
 def test_short_named_data_port_on_generated_clock_deferred(tmp_path):
-    # The generated-clock deferral applies regardless of signal-name length: a short
-    # name 'd' on a generated clock is skipped (deferred to RTL), not fail-louded.
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| d | input | 8 | clk_div2 | cfg | APB3 | data | - | - |\n"
-    )
+    # The generated-clock deferral applies regardless of name length.
+    ports = [_CLK_PORT, _port("d", "input", "data", domain="clk_div2", width=8)]
     clocks = [
         _clk("clk", 100, 10.0),
         _clk("clk_div2", 50, 20.0, "synchronous-related", generated=True),
     ]
-    proc = _run(_wd(tmp_path, design, clocks), check=False)
+    proc = _run(_wd(tmp_path, ports, clocks), check=False)
     assert proc.returncode == 0
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "abstract_port -ports {d}" not in sgdc
 
 
 def test_sgdc_emits_async_clock_groups(tmp_path):
-    # F1: a primary + an async clock must produce a clock -domain declaration in the SGDC too, not
-    # just set_clock_groups in the SDC. SpyGlass's SGDC parser rejects set_clock_groups as
-    # an unknown command (confirmed on SpyGlass_vL-2016.06, Task 2 of the F1 plan) — the
+    # F1: a primary + an async clock must produce a clock -domain declaration in the SGDC
+    # too, not just set_clock_groups in the SDC. SpyGlass's SGDC parser rejects
+    # set_clock_groups as an unknown command (confirmed on SpyGlass_vL-2016.06) — the
     # SGDC-native equivalent is `clock -domain <D>`, one shared domain per sync/primary
-    # group, a distinct domain per async clock.
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| clk_io | input | 1 | clk_io | clk | - | clock | - | - |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n"
-    )
+    # group, a distinct one per async clock.
+    ports = [
+        _CLK_PORT,
+        _port("clk_io", "input", "clock", domain="clk_io"),
+        _port("din", "input", "data", width=8),
+    ]
     clocks = [
         _clk("clk", 100, 10.0),
         _clk("clk_io", 50, 20.0, "async", role="io clock"),
     ]
-    _run(_wd(tmp_path, design, clocks))
+    _run(_wd(tmp_path, ports, clocks))
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "set_clock_groups" not in sgdc
     assert "clock -name clk -period 10.0 -edge {0 5.0} -domain sync" in sgdc
@@ -409,18 +397,9 @@ def test_sgdc_domain_label_collision_fails_loudly():
 
 
 def test_sdc_sgdc_async_declaration_agrees_by_construction():
-    # F1: both emitters render the same _clock_partition, so their async declarations agree
+    # F1: both emitters render the SAME _clock_partition, so their async declarations agree
     # by construction. Asserted against the two functions, not by re-parsing their output.
-    ports = [
-        {
-            "signal": "din",
-            "direction": "input",
-            "domain": "clk",
-            "role": "data",
-            "reset_polarity": "-",
-            "reset_kind": "-",
-        }
-    ]
+    ports = [_port("din", "input", "data", width=8)]
     for clocks in (
         [_clk("clk", 100, 10.0)],  # no async clock
         [_clk("clk", 100, 10.0), _clk("clk_io", 50, 20.0, "async")],  # async present
@@ -437,57 +416,13 @@ def test_sdc_sgdc_async_declaration_agrees_by_construction():
         assert sdc_async == bool(constraints._clock_partition(clocks)[1])
 
 
-# ---------- F1: misnamed / empty §1.4.1 Signal column ----------
-
-
-def test_fail_loud_misnamed_signal_column(tmp_path):
-    # §1.4.1 with 'Port' instead of the canonical 'Signal' must fail loud, not silently
-    # yield zero ports and IO-less constraints (the ports.py-class drift defect).
-    design = (
-        "# m Design\n\n#### 1.4.1 Top-Level IO\n\n"
-        "| Port | Direction | Width | Clock Domain | Interface Group | Protocol | Role | ResetPolarity | ResetKind |\n"
-        "|---|---|---|---|---|---|---|---|---|\n"
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| din | input | 8 | clk | cfg | APB3 | data | - | - |\n\n"
-    )
-    proc = _run(_wd(tmp_path, design), check=False)
-    assert proc.returncode != 0 and "Signal" in proc.stderr
-
-
-# ---------- F2: data port with blank / invalid Direction ----------
-
-
-def test_fail_loud_data_port_blank_direction(tmp_path):
-    # A data-role port silently dropped from the SDC (no set_input/output_delay) when its
-    # Direction is blank/invalid. Must fail loud instead.
-    design = _design(
-        "| clk | input | 1 | clk | clk | - | clock | - | - |\n"
-        "| din |  | 8 | clk | cfg | APB3 | data | - | - |\n"  # blank Direction
-    )
-    proc = _run(_wd(tmp_path, design), check=False)
-    assert proc.returncode != 0 and "Direction" in proc.stderr
-
-
-# ---------- F3: clock named like the '-domain' flag must not spuriously fail ----------
-
-
 def test_clock_named_like_domain_flag_not_spurious_fail(tmp_path):
     # A single sync clock literally named 'x-domain' (no async clocks) must not trip the
     # SDC/SGDC async-parity assertion (a bare '-domain' substring match would).
-    design = _design(
-        "| xd_clk | input | 1 | x-domain | clk | - | clock | - | - |\n"
-        "| din | input | 8 | x-domain | cfg | APB3 | data | - | - |\n"
-    )
+    ports = [
+        _port("xd_clk", "input", "clock", domain="x-domain"),
+        _port("din", "input", "data", domain="x-domain", width=8),
+    ]
     clocks = [_clk("x-domain", 100, 10.0, role="primary clock")]
-    proc = _run(_wd(tmp_path, design, clocks), check=False)
+    proc = _run(_wd(tmp_path, ports, clocks), check=False)
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
-
-
-def test_ports_column_guard_uses_header_not_ragged_row0():
-    # F5-consistency: the §1.4.1 column guard must check the declared HEADER, not the first
-    # data row. A complete header with a ragged first data row must NOT false-report a
-    # missing canonical column (it fails, if at all, with the accurate per-row reason).
-    design = _design("| din | input | 8 |\n")  # ragged: 3 cells under a 9-column header
-    with pytest.raises(SystemExit) as e:
-        constraints._ports(design)
-    assert "missing canonical column" not in str(e.value.code)

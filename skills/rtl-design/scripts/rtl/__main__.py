@@ -44,7 +44,7 @@ def _cmd_assemble(a: argparse.Namespace) -> int:
 def _cmd_check_conformance(a: argparse.Namespace) -> int:
     from rtl import conformance
 
-    return conformance.run(a.workdir, a.manifest, a.top, a.ledger, a.design)
+    return conformance.run(a.workdir, a.manifest, a.top, a.ledger, a.interconnects)
 
 
 def _cmd_validate_review(a: argparse.Namespace) -> int:
@@ -88,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--manifest", required=True, type=Path)
     sp.add_argument("--top", required=True)
     sp.add_argument("--ledger", required=True, type=Path)
-    sp.add_argument("--design", required=True, type=Path)
+    sp.add_argument("--interconnects", required=True, type=Path)
     sp.set_defaults(func=_cmd_check_conformance)
 
     sp = sub.add_parser("validate-review", help="semantic-review.json schema + gate")
