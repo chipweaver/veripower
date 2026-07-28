@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/rtl-design/result.schema.json",
   "title": "rtl-design result.json contract (schema_version 1)",
-  "description": "Complete contract for asic/<module>/Design/rtl-design/result.json. Canonical handoff to consumers is via filelist.txt (RTL source list) and README.md (SGDC/SDC annotations, read by the lint-cdc and synthesis agents) at the canonical path Design/rtl-design/; stage_specific has no pass-required fields. top_module may be populated for audit/cross-validation but is not consumed by any reader: TOP is manifest.module, which specification authors and every consumer declares as an input. On status=fail, stage_specific.fail_reason is required (if/then below) — the one-line failure narrative.",
+  "description": "Complete contract for asic/<module>/Design/rtl-design/result.json. Canonical handoff to consumers is via rtl-files.json (per-child file layout, from which every downstream filelist is generated) and constraint-annotations.json (per-child SGDC/SDC annotations, read by the lint-cdc and synthesis agents) at the canonical path Design/rtl-design/; stage_specific has no pass-required fields. top_module may be populated for audit/cross-validation but is not consumed by any reader: TOP is manifest.module, which specification authors and every consumer declares as an input. On status=fail, stage_specific.fail_reason is required (if/then below) — the one-line failure narrative.",
   "allOf": [
     {
       "$ref": "https://veripower.local/schemas/envelope.schema.json"

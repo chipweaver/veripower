@@ -57,7 +57,7 @@ below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `<rtl>/filelist.txt` | text | DUT RTL compile list — bootstrap rebases it into `rtl_filelist.f` (fails when missing); RTL enters only mechanically via this list (Iron Rule). |
+| `<rtl>/rtl-files.json` | `skills/rtl-design/references/rtl-files.schema.json` | Per-child DUT RTL file layout — bootstrap generates `rtl_filelist.f` from it (fails when missing); RTL enters only mechanically via that generated list (Iron Rule). |
 | `<plan>/verification-plan.md` | Custom markdown | env-build sub-Task input — passed by path; the main thread never reads the body. |
 | `<scaffold>/scaffold-specification.json` | Custom JSON | TB scaffold contract — sub-Task input; the main thread asserts existence only; also the `top` inference source for `sim bootstrap` (falls back to the `<rtl>` filelist). |
 

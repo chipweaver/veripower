@@ -23,7 +23,7 @@ from sim import bootstrap  # noqa: E402
 # ── B1: TOP-inference helpers (in-process) ─────────────────────────────────────
 def test_top_from_scaffold_top_field(tmp_path):
     # top is read from the declared `scaffold` input's scaffold-specification.json
-    # `top` field (a REQUIRED field per its schema), not README prose or manifest.json
+    # `top` field (a REQUIRED field per its schema), not manifest.json
     # (specification is not a declared simulation input).
     (tmp_path / "scaffold-specification.json").write_text(
         json.dumps({"top": "my_top", "module": "m"})
@@ -44,8 +44,7 @@ def test_top_from_scaffold_absent_or_no_top(tmp_path):
 def _mirror(
     tmp_path,
     *,
-    readme="## Constraint-annotation note\n",
-    filelist="rtl/dut.v\n+incdir+inc\n",
+    rtl_files={"c": {"files": ["rtl/dut.v"], "incdirs": ["inc"]}},
     scaffold_top="dut",
 ):
     """Seed the upstream rtl-design references + a scaffold-specification.json (`top`
@@ -61,8 +60,7 @@ def _mirror(
     module = "tpu_top"
     rtl = tmp_path / "asic" / module / "Design" / "rtl-design"
     rtl.mkdir(parents=True)
-    (rtl / "README.md").write_text(readme)
-    (rtl / "filelist.txt").write_text(filelist)
+    (rtl / "rtl-files.json").write_text(json.dumps(rtl_files))
     plan_root = tmp_path / "asic" / module / "Verification" / "simulation-plan"
     plan_root.mkdir(parents=True)
     if scaffold_top is not None:
@@ -213,11 +211,11 @@ def test_bootstrap_unreadable_top_exit_1(tmp_path):
     assert r.returncode == 1 and "read top" in r.stderr.lower()
 
 
-def test_bootstrap_missing_rtl_filelist_exit_1(tmp_path):
+def test_bootstrap_missing_rtl_files_exit_1(tmp_path):
     main, wd, module = _mirror(tmp_path)
-    (tmp_path / "asic" / module / "Design" / "rtl-design" / "filelist.txt").unlink()
+    (tmp_path / "asic" / module / "Design" / "rtl-design" / "rtl-files.json").unlink()
     r = _run(main, module, wd, "--top", "dut")
-    assert r.returncode == 1 and "RTL filelist" in r.stderr
+    assert r.returncode == 1 and "RTL file list" in r.stderr
 
 
 def test_bootstrap_missing_scaffold_file_exit_1(tmp_path):

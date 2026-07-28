@@ -65,8 +65,8 @@ _OUTPUTS = {
     ],
     "rtl-design": [
         "Design/rtl-design/matvec.v",
-        "Design/rtl-design/filelist.txt",
-        "Design/rtl-design/README.md",
+        "Design/rtl-design/rtl-files.json",
+        "Design/rtl-design/constraint-annotations.json",
     ],
     "lint-cdc": ["Design/lint-cdc/lint-report.txt", "Design/lint-cdc/cdc-report.txt"],
     "synthesis": [
@@ -333,7 +333,10 @@ def test_step2_repair_direct_hash_invariance_triage_forward(tmp_path, monkeypatc
 
     # (b) minimal-edit / hash-invariance: untouched outputs' fingerprints unchanged;
     # the edited file's fingerprint DID change (proves the edit landed).
-    for untouched in ("Design/rtl-design/filelist.txt", "Design/rtl-design/README.md"):
+    for untouched in (
+        "Design/rtl-design/rtl-files.json",
+        "Design/rtl-design/constraint-annotations.json",
+    ):
         assert rtl2[untouched] == rtl1[untouched]
     assert rtl2["Design/rtl-design/matvec.v"] != rtl1["Design/rtl-design/matvec.v"]
 

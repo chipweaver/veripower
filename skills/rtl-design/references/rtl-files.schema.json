@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/rtl-design/rtl-files.schema.json",
+  "title": "rtl-files.json — per-child RTL file layout (authored by assemble from the reaped child reports)",
+  "description": "Which files each child wrote and which include directories they `include from. Every downstream filelist is GENERATED from this: simulation's rtl_filelist.f, synthesis's rtl_load.tcl, lint-cdc's scripts/filelist.txt. Keys are manifest child names. files[] order within a child is the child's declared dependency order; children follow manifest order. An empty object is a legitimate transient state before wave 2 has reaped any child; the roster requirement lives in the post exit gate.",
+  "type": "object",
+  "additionalProperties": {
+    "type": "object",
+    "required": [
+      "files"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "files": {
+        "description": "Paths relative to the rtl-design stage root, in dependency order. The child authors its own file layout — specification defines RTL modules, not files.",
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "incdirs": {
+        "description": "Include directories the child's files `include from, relative to the rtl-design stage root. Omitted or empty when the child uses no `include. Downstream emits these in each tool's own syntax; they are never joined into a text line for a reader to split apart again.",
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

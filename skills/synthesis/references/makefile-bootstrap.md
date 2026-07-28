@@ -12,12 +12,12 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap \
 - Deploys into the directory given by `--workdir` (typically `asic/<module>/Design/synthesis/runs/<N>/`, supplied by the caller). A relative `--workdir` resolves against the working tree root (the CWD, i.e. the directory containing `asic/`).
 - Replaces the `MY_TOP` placeholder in: `env.sh`, `constraints.sdc` (when no source of truth is present).
 - Replaces the `MY_RTL_DIR` placeholder in `scripts/dc_run.tcl` with the ABSOLUTE rtl-design stage root, read from the injected `<workdir>/inputs.json` `"rtl"` key (no self-navigation, no relpath).
-- Generates `scripts/rtl_load.tcl` from `<rtl>/filelist.txt` (each entry wrapped as `analyze -format sverilog -define SYNTHESIS [list <RTL_DIR>/<entry>]`, `<RTL_DIR>` being that same absolute root).
-- Expands each `+incdir+<dir>` entry in `filelist.txt` (emitted by rtl-design's `assemble` verb) onto `search_path` in `scripts/rtl_load.tcl`, rebased `<RTL_DIR>/<dir>`. `+define+` / `-f` directives are skipped (`-define SYNTHESIS` is passed per `analyze`; nested `-f` is out of scope).
+- Generates `scripts/rtl_load.tcl` from `<rtl>/rtl-files.json` (each `files[]` entry wrapped as `analyze -format sverilog -define SYNTHESIS [list <RTL_DIR>/<entry>]`, `<RTL_DIR>` being that same absolute root; `-define SYNTHESIS` is passed per `analyze`).
+- Emits each child's `incdirs[]` onto `search_path` in `scripts/rtl_load.tcl`, rebased `<RTL_DIR>/<dir>`.
 - Generates `scripts/config.tcl` injecting `::env(TOP)` + `::env(LIB_DB)` (LIB_DB starts as the `FILL_IN_LIB_DB_PATH` placeholder).
 - The script aborts when the target directory is already deployed (detected by an existing `Makefile`).
-- When `--top` is omitted, it is inferred from `<rtl>/README.md` / `filelist.txt`.
-- When `<rtl>/filelist.txt` is missing or contains no usable RTL entries, the script fails closed (avoiding a fallback to `${TOP}.v` that would mis-name a `.sv` top).
+- When `--top` is omitted, it is read from `manifest.module`.
+- When `<rtl>/rtl-files.json` is missing or names no RTL files, the script fails closed (avoiding a fallback to `${TOP}.v` that would mis-name a `.sv` top).
 
 ## SDC source-of-truth decision
 

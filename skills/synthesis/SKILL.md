@@ -17,7 +17,7 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 
 ## Iron Rule
 
-- The injected input locations (`<rtl>`, `<rtl_doc>`, `<sdc>`, `<ppa>` — from `inputs.json`) are read-only canonical: never modify anything under them (or any other stage's canonical output); the only files you write live under `{workdir}`.
+- The injected input locations (`<rtl>`, `<annotations>`, `<sdc>`, `<ppa>` — from `inputs.json`) are read-only canonical: never modify anything under them (or any other stage's canonical output); the only files you write live under `{workdir}`.
 - Timing exceptions MUST be supplemented iteratively after RTL becomes visible; they cannot be pre-written at the specification stage (contract violation — RTL port names cannot be known in advance).
 - Do not claim synthesis is complete when the DC license is missing — without a license, write `status=fail` + `fail_reason="DC license missing"`.
 - Do not claim synthesis is complete when the netlist (`out/<TOP>_syn.v`) does not exist — the netlist must land on disk.
@@ -40,8 +40,8 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `<rtl>/filelist.txt` | text | RTL file list. |
-| `<rtl_doc>/README.md` | Custom markdown | Constraint-annotation note (SDC: generated clock / multicycle / false path). |
+| `<rtl>/rtl-files.json` | `skills/rtl-design/references/rtl-files.schema.json` | Per-child RTL file layout; the bootstrap generates `scripts/rtl_load.tcl` from it. |
+| `<annotations>/constraint-annotations.json` | `skills/rtl-design/references/constraint-annotations.schema.json` | Per-child SDC annotations (`create_generated_clock` / `set_multicycle_path` / `set_false_path`). |
 | `<sdc>/constraints/<TOP>.sdc` | SDC | SDC source of truth (optional) — bootstrap seeds the working `constraints.sdc` from it, else the template placeholder. |
 | `LIB_DB` (env) | std cell Liberty `.db` path | Set before any run (Step 3) — `env.sh` / Makefile fail loudly when unset. |
 
@@ -63,7 +63,7 @@ When `{failing_result}` is injected, read additional context from the same direc
 
 ### Step 1: Read inputs and determine scope
 
-Pre-check the external references: `<rtl>/filelist.txt` (containing ≥1 RTL entry — not a comment, not a `+` / `-` directive) and `<rtl_doc>/README.md` all present. If any file is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if filelist exists but has no usable RTL entries, write `fail_reason="external reference missing: <rtl>/filelist.txt (no RTL entries)"` and exit.
+Pre-check the external references: `<rtl>/rtl-files.json` (naming ≥1 RTL file) and `<annotations>/constraint-annotations.json` are both present. If either is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if `rtl-files.json` names no files, write `fail_reason="external reference missing: <rtl>/rtl-files.json (no RTL entries)"` and exit.
 
 Determine this round's fix scope from the first available source:
 1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
@@ -87,7 +87,7 @@ Deploys the templates into `{workdir}`, generates `scripts/rtl_load.tcl` + `scri
 
 ### Step 4: Edit `{workdir}/constraints.sdc`
 
-- Read the SDC portion of the "constraint-annotation note" in `<rtl_doc>/README.md`; add `create_generated_clock` entries (if any).
+- Read `<annotations>/constraint-annotations.json` and union the `sdc` block across every child; add a `create_generated_clock` for each `{module, pin}` entry (if any).
 - Replace the `set_clock_uncertainty -setup` / `-hold` placeholder values with the values from the process library (when undocumented, keep setup=`0.2 ns` / hold=`0.0 ns` and add a note; pre-CTS hold = 0 — see `specification/references/sdc-template.md`).
 - Fill `set_drive` / `set_load` per the IO cell library (when there is no spec, keep the placeholders and add a note).
 - Confirm `set_input_delay` / `set_output_delay` (replace from the interface spec when available).
@@ -137,7 +137,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
 
 | Mistake | Fix |
 |------|------|
-| `rtl_load.tcl` out of sync with `filelist.txt` | After RTL changes, regenerate `rtl_load.tcl`. |
+| `rtl_load.tcl` out of sync with `<rtl>/rtl-files.json` | After RTL changes, regenerate `rtl_load.tcl`. |
 | `set_clock_uncertainty` uses placeholder values without a note / collapses back to the single-value form | Placeholder values must be flagged in `constraints.sdc` with a `# notes:` comment for later replacement; keep the `-setup` / `-hold` split (pre-CTS hold = 0); do not merge them back into a single value. |
 
 ## Completion Gate
@@ -146,9 +146,9 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept blocked); on `fail`, `stage_specific.{fail_reason, failure_kind}` are required.
 - [ ] result.json was written by `synthesis finalize` (it owns status / ppa_actual / artifacts / failure_kind / the reproducibility header).
-- [ ] `scripts/rtl_load.tcl` matches `<rtl>/filelist.txt`.
-- [ ] `create_generated_clock` covers every generated clock in the RTL (or the SDC remarks in `<rtl_doc>/README.md` confirm there are none).
-- [ ] `set_false_path` / `set_multicycle_path` cover the exception paths annotated in `<rtl_doc>/README.md`.
+- [ ] `scripts/rtl_load.tcl` matches `<rtl>/rtl-files.json`.
+- [ ] `create_generated_clock` covers every `sdc.create_generated_clock` entry in `<annotations>/constraint-annotations.json` (every child reporting `[]` means there are none).
+- [ ] `set_false_path` / `set_multicycle_path` cover the exception paths that file annotates.
 - [ ] Remaining timing violations have been classified (real violations have been recorded in `violations[]`).
 - [ ] `out/<TOP>_syn.v` / `out/<TOP>_syn.sdc` / `out/<TOP>_syn.sdf` exist.
 

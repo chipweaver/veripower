@@ -4,7 +4,7 @@
 Behavior-preserving port of the former bootstrap shell (campaign §3.3): a NO-CLOBBER
 deploy (`_deploy_no_clobber`) + str.replace do the `cp -a` + `sed -i` work. Collapses
 the former three-script pipeline into one verb: deploy infra, substitute the MY_TOP /
-MY_MODULE placeholders, infer TOP, rewrite rtl_filelist.f (sim._filelist) from the
+MY_MODULE placeholders, read TOP, generate rtl_filelist.f (sim._filelist) from the
 injected absolute rtl-design root, and — when --scaffold is given — render the full
 UVM scaffold via sim.scaffold.render (the same code path the standalone render-scaffold
 verb uses).
@@ -104,10 +104,10 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
     # inputs.json (dispatch-time), not self-navigated via tree_root/asic/<module>/....
     inputs = json.loads((dest / "inputs.json").read_text(encoding="utf-8"))
     rtl_dir = Path(inputs["rtl"])
-    rtl_filelist = rtl_dir / "filelist.txt"
+    rtl_files_path = rtl_dir / "rtl-files.json"
 
-    # Infer TOP (the declared `scaffold` input's scaffold-specification.json `top` field
-    # first — a REQUIRED field, spec-input-contract — then the RTL filelist) BEFORE the
+    # Read TOP (the declared `scaffold` input's scaffold-specification.json `top` field —
+    # a REQUIRED field, spec-input-contract) BEFORE the
     # prereq/guard. TOP comes from the scaffold: simulation does not declare specification
     # as an input, and `scaffold` already IS a declared one, so this is a coordinate the
     # stage genuinely tracks (mirrors power-analysis inferring TOP from its injected
@@ -120,8 +120,8 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         return 1
 
     # Prerequisite: the rtl-design filelist must exist (the scaffold's RTL source).
-    if not rtl_filelist.is_file():
-        _err(f"missing RTL filelist: {rtl_filelist}")
+    if not rtl_files_path.is_file():
+        _err(f"missing RTL file list: {rtl_files_path}")
         return 1
 
     # Existence check: a caller may pre-create the workdir with hint files
@@ -163,12 +163,12 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         except OSError:
             pass
 
-    # Step 2: rewrite rtl_filelist.f from the injected rtl-design filelist.txt (paths
-    # rebased to the ABSOLUTE rtl root). ALWAYS overwrites — a cross-stage-derived
-    # filelist must re-anchor every round, so this is never no-clobbered.
-    from sim._filelist import rewrite_rtl_filelist
+    # Step 2: generate rtl_filelist.f from the injected rtl-files.json (paths anchored at
+    # the ABSOLUTE rtl root). ALWAYS overwrites — a cross-stage-derived filelist must
+    # re-anchor every round, so this is never no-clobbered.
+    from sim._filelist import load_rtl_files, write_rtl_filelist
 
-    rewrite_rtl_filelist(rtl_filelist, dest / "rtl_filelist.f", str(rtl_dir))
+    write_rtl_filelist(load_rtl_files(rtl_dir), dest / "rtl_filelist.f", str(rtl_dir))
 
     # Step 3: render the UVM scaffold when --scaffold is provided (same path as render-scaffold).
     if scaffold:

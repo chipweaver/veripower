@@ -64,14 +64,14 @@ def test_pre_phase_fails_zero_coverage(tmp_path):
 
 def test_post_verdict_fails_clean_on_missing_ledger(tmp_path):
     # C3: the post-exit gate must fail loud-but-clean (status=fail, rc=1) when
-    # fresh_reports.json / the ledger are absent, per its own fail_reason — not let
+    # fresh_reports.json / the sidecars are absent, per its own fail_reason — not let
     # a raw traceback escape from reading a missing file.
     (tmp_path / "manifest.json").write_text(json.dumps(_PURE_MANIFEST))
     verdict, rc = post_verdict(
         tmp_path / "manifest.json",
         "top",
         tmp_path / "fresh_reports.json",  # absent
-        tmp_path / ".child_reports.json",  # absent
+        tmp_path,  # workdir: neither sidecar present
     )
     assert rc == 1
     assert "fresh_reports.json" in verdict["fail_reason"]

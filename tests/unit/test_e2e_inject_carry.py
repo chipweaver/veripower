@@ -99,8 +99,8 @@ _STAGE_FILES = {
     },
     "rtl-design": {
         "top.v": "module top; endmodule",
-        "filelist.txt": "top.v",
-        "README.md": "readme",
+        "rtl-files.json": '{"child_a": {"files": ["top.v"]}}',
+        "constraint-annotations.json": "{}",
     },
     "synthesis": {
         "out/top_syn.v": "module top; endmodule",
@@ -211,7 +211,7 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     canonical = tmp_path / "asic" / module / "Design" / "rtl-design"
     assert (canonical / "top.v").read_text() == _STAGE_FILES["rtl-design"]["top.v"]
 
-    # 4. re-dispatch rtl-design -> the previous *.v/filelist.txt/README.md were
+    # 4. re-dispatch rtl-design -> the previous *.v and both sidecars were
     # CARRIED into the new workdir (carry_self), not re-authored from scratch.
     d2 = _run_json(
         tmp_path,
@@ -226,10 +226,12 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     assert d2["ok"] is True and d2["run"] == d1["run"] + 1
     wd2 = tmp_path / "asic" / module / d2["workdir"]
     assert (wd2 / "top.v").read_text() == _STAGE_FILES["rtl-design"]["top.v"]
-    assert (wd2 / "filelist.txt").read_text() == _STAGE_FILES["rtl-design"][
-        "filelist.txt"
+    assert (wd2 / "rtl-files.json").read_text() == _STAGE_FILES["rtl-design"][
+        "rtl-files.json"
     ]
-    assert (wd2 / "README.md").read_text() == _STAGE_FILES["rtl-design"]["README.md"]
+    assert (wd2 / "constraint-annotations.json").read_text() == _STAGE_FILES[
+        "rtl-design"
+    ]["constraint-annotations.json"]
 
 
 def test_power_transformer_filelist_across_sim_and_synth(tmp_path):

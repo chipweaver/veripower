@@ -69,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--top",
         default=None,
-        help="top module; inferred from rtl-design README/filelist when omitted",
+        help="top module; read from the specification manifest when omitted",
     )
     sp.set_defaults(func=_cmd_bootstrap)
 

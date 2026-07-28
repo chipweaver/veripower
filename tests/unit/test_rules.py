@@ -117,16 +117,16 @@ def _assert_acyclic(graph):
             visit(n)
 
 
-def test_simulation_does_not_bind_rtl_readme():
-    # D6/G4: simulation reads top from manifest.module (spec §4.3), not README prose; README
-    # is not a sim verdict-dependency, so it must NOT be a declared simulation input (binding
-    # it made README-only edits falsely invalidate the simulation proof). lint-cdc / synthesis
-    # DO legitimately bind README (SGDC/SDC annotation notes).
+def test_simulation_does_not_bind_constraint_annotations():
+    # D6/G4: simulation consumes only the RTL file layout, so binding the annotations would
+    # let an annotation-only edit falsely invalidate the simulation proof. lint-cdc and
+    # synthesis DO bind them — their agents transcribe them into the constraint scripts.
+    ann = "Design/rtl-design/constraint-annotations.json"
     sim_globs = [g for gs in rules.RULES["simulation"].inputs.values() for g in gs]
-    assert "Design/rtl-design/README.md" not in sim_globs
+    assert ann not in sim_globs
     for r in ("lint-cdc", "synthesis"):
         globs = [g for gs in rules.RULES[r].inputs.values() for g in gs]
-        assert "Design/rtl-design/README.md" in globs, f"{r} should still bind README"
+        assert ann in globs, f"{r} should bind the constraint annotations"
 
 
 def test_carry_no_carry_fields_and_values():

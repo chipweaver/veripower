@@ -111,7 +111,12 @@ RULES: dict[str, Rule] = {
             "top_io": ("Design/specification/top-io.json",),
             "interconnects": ("Design/specification/interconnects.json",),
         },
-        outputs=("*.v", "filelist.txt", "README.md", "semantic-review.json"),
+        outputs=(
+            "*.v",
+            "rtl-files.json",
+            "constraint-annotations.json",
+            "semantic-review.json",
+        ),
         proof="rtl-design",
         oracle=("semantic-review", "proposed"),
         oracle_selector="semantic-review.json",
@@ -126,8 +131,10 @@ RULES: dict[str, Rule] = {
         execution="task",
         workdir_root=("Design", "lint-cdc"),
         inputs={
-            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/filelist.txt"),
-            "rtl_doc": ("Design/rtl-design/README.md",),
+            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/rtl-files.json"),
+            # The per-child SGDC/SDC annotations the agent transcribes into the
+            # constraint scripts, in the child's real module names.
+            "annotations": ("Design/rtl-design/constraint-annotations.json",),
             "sgdc_seed": ("Design/specification/constraints/*.sgdc",),
             # TOP comes from manifest.module. The specification stage root is already
             # reachable through the constraints key, but only the declared globs are
@@ -154,8 +161,10 @@ RULES: dict[str, Rule] = {
         execution="task",
         workdir_root=("Design", "synthesis"),
         inputs={
-            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/filelist.txt"),
-            "rtl_doc": ("Design/rtl-design/README.md",),
+            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/rtl-files.json"),
+            # The per-child SGDC/SDC annotations the agent transcribes into the
+            # constraint scripts, in the child's real module names.
+            "annotations": ("Design/rtl-design/constraint-annotations.json",),
             "sdc": ("Design/specification/constraints/*.sdc",),
             # TOP comes from manifest.module. The specification stage root is already
             # reachable through the constraints key, but only the declared globs are
@@ -196,10 +205,9 @@ RULES: dict[str, Rule] = {
         execution="main-thread",
         workdir_root=("Verification", "simulation"),
         inputs={
-            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/filelist.txt"),
-            # NOT rtl_doc/README: simulation's only README use was top inference, now
-            # read from manifest.module (§4.3); README prose is not a sim verdict-dependency,
-            # so binding it only caused README-only edits to falsely invalidate (D6/G4).
+            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/rtl-files.json"),
+            # NOT constraint-annotations.json: simulation consumes only the file layout,
+            # so binding it would let an annotation-only edit falsely invalidate (D6/G4).
             "plan": ("Verification/simulation-plan/verification-plan.md",),
             "scaffold": ("Verification/simulation-plan/scaffold-specification.json",),
         },
@@ -254,7 +262,7 @@ RULES: dict[str, Rule] = {
         workdir_root=("Verification", "simulation-triage"),
         inputs={
             "design": ("Design/specification/design.md",),
-            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/filelist.txt"),
+            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/rtl-files.json"),
             "plan": ("Verification/simulation-plan/verification-plan.md",),
         },
         outputs=(),

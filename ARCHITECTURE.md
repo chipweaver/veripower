@@ -471,7 +471,7 @@ asic/<module>/
 │   │   ├── spec-review.json                # promoted proposed-oracle artifact
 │   │   ├── constraints/<TOP>.{sdc,sgdc}     # specification owns these; downstream reads here
 │   │   └── runs/<N>/                        # each dispatch writes here; promote merges into canonical
-│   ├── rtl-design/           { result.json + *.v / filelist.txt / README.md / semantic-review.json + runs/<N>/ }
+│   ├── rtl-design/           { result.json + *.v / rtl-files.json / constraint-annotations.json / semantic-review.json + runs/<N>/ }
 │   ├── lint-cdc/             { result.json + reports / *-violations.json / scripts/{constraints.sgdc,waiver.tcl} + runs/<N>/ }
 │   ├── synthesis/            { result.json + out/*_syn.{v,sdc,sdf} / reports/qor.rpt + runs/<N>/ }
 │   └── timing-analysis/      { result.json + timing-report.txt / timing-actual.json + runs/<N>/ }

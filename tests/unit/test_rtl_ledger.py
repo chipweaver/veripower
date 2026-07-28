@@ -8,7 +8,19 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills/rtl-design/scripts"))
 from rtl._ledger import LedgerError, load_ledger, merge_filter  # noqa: E402
 
-_ANN = {"sgdc": {}, "sdc": {}}
+_ANN = {
+    "sgdc": {
+        "sync_cell": [],
+        "reset_synchronizer": [],
+        "set_case_analysis": [],
+        "quasi_static": [],
+    },
+    "sdc": {
+        "create_generated_clock": [],
+        "set_multicycle_path": [],
+        "set_false_path": [],
+    },
+}
 
 
 def _rec(files):
@@ -31,33 +43,75 @@ def test_merge_filters_removed_child_F2():
     assert set(out) == {"a"}
 
 
-def test_load_ledger_ok(tmp_path):
-    p = tmp_path / ".child_reports.json"
-    p.write_text('{"a": {"files": ["a.sv"], "annotations": {"sgdc": {}, "sdc": {}}}}')
-    assert load_ledger(p)["a"]["files"] == ["a.sv"]
+def _write(d, files=None, anns=None):
+    import json
+
+    (d / "rtl-files.json").write_text(json.dumps(files if files is not None else {}))
+    (d / "constraint-annotations.json").write_text(
+        json.dumps(anns if anns is not None else {})
+    )
+    return d
 
 
-def test_load_ledger_raises_on_missing_key_F8(tmp_path):
-    p = tmp_path / "bad.json"
-    p.write_text('{"a": {"files": ["a.sv"]}}')  # no 'annotations'
-    with pytest.raises(LedgerError, match="annotations"):
-        load_ledger(p)
+def test_load_ledger_merges_the_two_sidecars(tmp_path):
+    wd = _write(tmp_path, {"a": {"files": ["a.sv"]}}, {"a": _ANN})
+    got = load_ledger(wd)
+    assert got["a"]["files"] == ["a.sv"]
+    assert got["a"]["annotations"] == _ANN
+
+
+def test_load_ledger_raises_when_a_sidecar_is_absent(tmp_path):
+    import json
+
+    (tmp_path / "rtl-files.json").write_text(json.dumps({"a": {"files": ["a.sv"]}}))
+    with pytest.raises(LedgerError, match="constraint-annotations.json"):
+        load_ledger(tmp_path)
+
+
+def test_load_ledger_raises_on_roster_disagreement(tmp_path):
+    # The two are written together by one verb, so a child in one and not the other is a
+    # defect rather than a partial result.
+    wd = _write(
+        tmp_path, {"a": {"files": ["a.sv"]}, "b": {"files": ["b.sv"]}}, {"a": _ANN}
+    )
+    with pytest.raises(LedgerError, match="roster"):
+        load_ledger(wd)
+
+
+def test_load_ledger_raises_on_missing_annotation_category(tmp_path):
+    # An omitted category and an explicit [] are not the same claim: the child contract
+    # requires every category, so the schema does too.
+    lean = {"sgdc": {"sync_cell": []}, "sdc": _ANN["sdc"]}
+    wd = _write(tmp_path, {"a": {"files": ["a.sv"]}}, {"a": lean})
+    with pytest.raises(LedgerError, match="required property"):
+        load_ledger(wd)
 
 
 def test_load_ledger_raises_on_null_annotation_block(tmp_path):
-    # M4: {"sgdc": null, "sdc": null} is key-present but null-valued; it passes a
-    # key-only check yet crashes _agg downstream (None.get(...)). The validator must
-    # reject it loudly (LedgerError) rather than let a raw AttributeError escape.
-    p = tmp_path / "bad.json"
-    p.write_text(
-        '{"a": {"files": ["a.sv"], "annotations": {"sgdc": null, "sdc": null}}}'
+    # M4: null-valued blocks pass a key-only check yet crash _agg downstream.
+    wd = _write(
+        tmp_path, {"a": {"files": ["a.sv"]}}, {"a": {"sgdc": None, "sdc": None}}
     )
-    with pytest.raises(LedgerError, match="sgdc"):
-        load_ledger(p)
+    with pytest.raises(LedgerError, match="not of type 'object'"):
+        load_ledger(wd)
 
 
-def test_load_ledger_raises_on_malformed_json_F8(tmp_path):
-    p = tmp_path / "bad.json"
-    p.write_text("{not json")
+def test_load_ledger_raises_on_empty_files_list(tmp_path):
+    wd = _write(tmp_path, {"a": {"files": []}}, {"a": _ANN})
+    with pytest.raises(LedgerError, match="files"):
+        load_ledger(wd)
+
+
+def test_load_ledger_raises_on_malformed_json(tmp_path):
+    wd = _write(tmp_path, {"a": {"files": ["a.sv"]}}, {"a": _ANN})
+    (wd / "rtl-files.json").write_text("{not json")
     with pytest.raises(LedgerError):
-        load_ledger(p)
+        load_ledger(wd)
+
+
+def test_write_ledger_round_trips(tmp_path):
+    from rtl._ledger import write_ledger
+
+    ledger = {"a": {"files": ["a.sv"], "incdirs": ["inc"], "annotations": _ANN}}
+    write_ledger(tmp_path, ledger)
+    assert load_ledger(tmp_path) == ledger

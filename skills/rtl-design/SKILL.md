@@ -1,11 +1,11 @@
 ---
 name: rtl-design
-description: Use when writing or modifying Verilog/SystemVerilog RTL, maintaining filelist, or recording top module + constraint annotations in README.md; not for verification, lint, or synthesis.
+description: Use when writing or modifying Verilog/SystemVerilog RTL, or recording each child's file layout and constraint annotations; not for verification, lint, or synthesis.
 ---
 
 # RTL Design
 
-Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatcher over `manifest.json`'s child roster: the per-child sub-Tasks author the RTL; deterministic finalize scripts then produce `filelist.txt`, `README.md` (top-module declaration + SGDC/SDC constraint-annotation notes), the `.child_reports.json` ledger, and `result.json` from their reaped reports. You never author or read RTL yourself.
+Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatcher over `manifest.json`'s child roster: the per-child sub-Tasks author the RTL; deterministic finalize scripts then produce `rtl-files.json` (per-child file layout), `constraint-annotations.json` (per-child SGDC/SDC annotations), and `result.json` from their reaped reports. You never author or read RTL yourself.
 
 **Load mode:** this skill runs main-thread, invoked via `Skill(veripower:rtl-design)` by its caller (not dispatched as a Task subagent). It uses the Task tool for one fan-out wave (one Level-1 sub-Task per child unit, including the top-integration child); finalize is then deterministic main-thread scripts, not a sub-Task. You never author RTL inline.
 
@@ -13,13 +13,13 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 
 - Write new RTL for a module.
 - Modify existing RTL (bug fix, PPA tuning, or architecture change).
-- Maintain `filelist.txt` or the RTL directory structure.
-- Record the top-module declaration and SDC / SGDC constraint-annotation notes in `README.md`.
+- Maintain the RTL directory structure.
+- Record each child's SDC / SGDC constraint annotations.
 
 ## Iron Rule
 
-- Every RTL file on disk MUST appear in `filelist.txt` (contract violation — a missing `filelist.txt` entry hides source files from consumers).
-- **No child RTL in the main thread:** every child (including the top-integration child) is dispatched in the fan-out wave. You consume each sub-Task's `files[]` paths only (the scripts aggregate them into `filelist.txt`) and **MUST NOT read the dispatched child's** `.v`/`.sv` content back into your context — child RTL would otherwise compound across the long-lived main thread. There is no inline TOP authoring: even a single child is written by a sub-Task.
+- Every RTL file on disk MUST appear in `rtl-files.json` (contract violation — a missing entry hides source files from consumers, whose filelists are generated from it).
+- **No child RTL in the main thread:** every child (including the top-integration child) is dispatched in the fan-out wave. You consume each sub-Task's `files[]` paths only (the scripts aggregate them into `rtl-files.json`) and **MUST NOT read the dispatched child's** `.v`/`.sv` content back into your context — child RTL would otherwise compound across the long-lived main thread. There is no inline TOP authoring: even a single child is written by a sub-Task.
 - **No whole-design elaboration in any child sub-Task:** child sub-Tasks obey the elaboration / anti-reverse-read prohibitions in `references/child-task-contract.md` (a unit child may best-effort self-lint its own module only); integration/elaboration correctness is verified by downstream verification.
 - **`<child>.md §2 Interface` incomplete:** if the interface spec is missing or underspecified, write `status=fail` + `fail_reason="<child>.md §2 Interface incomplete"`; do not invent interfaces.
 - **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's task actually requires (scope is determined in Step 1); every file outside that scope MUST stay byte-identical to the prior run — a full rewrite on a narrow fix defeats the incremental kernel's per-file cascade.
@@ -56,9 +56,8 @@ When `{failing_result}` is injected, read additional context from the same direc
 | `result.json` | `references/result.schema.json` + envelope | This stage's status contract. |
 | `<top_module>.v` | Verilog-2001 | Top integration RTL — authored by the top-integration child sub-Task, never the main thread. |
 | `*.v` (per child; `*.vh` headers) | Verilog-2001 | Each child writes its `rtl_modules[]` into `.v` files of its own choosing (spec defines modules, not layout); the child's returned `files[]` is authoritative. **STRICT Verilog-2001** — a `.sv` extension or any SystemVerilog-only construct (`logic`/`always_ff`/`typedef`/…) is rejected by `check-conformance`'s dialect gate, because the kernel's downstream `rtl` selectors match `*.v` alone (a `.sv` artifact silently drops out of the dependency graph). |
-| `filelist.txt` | text (`#` comments + `+incdir+` + file path list) | Compile / synthesis input list — generated by `assemble` from the ledger. |
-| `README.md` | Custom markdown | Constraint-annotation note (SGDC + SDC) — generated by `assemble`; read by the lint-cdc and synthesis agents. TOP is not restated here: it is `manifest.module`. |
-| `.child_reports.json` | JSON ledger (`{<child>: {files, incdirs?, annotations}}`) | Reaped-report ledger — generated by `assemble`; the framework's `carry_self` carries it forward into a later repair run. |
+| `rtl-files.json` | `references/rtl-files.schema.json` | Per-child `files[]` + `incdirs[]` — written by `assemble` from the reaped reports. Every downstream filelist is generated from it (simulation, synthesis, lint-cdc); no stage parses a text file list. |
+| `constraint-annotations.json` | `references/constraint-annotations.schema.json` | Per-child SGDC + SDC annotations in the child's real module names — written by `assemble`; read by the lint-cdc and synthesis agents. |
 | `semantic-review.json` | `references/semantic-review.schema.json` | Gating per-child intent review (Step 4.4), aggregated by the main thread on every clean-gate finalize. |
 
 ## Workflow (pure-orchestrator; one fan-out wave + scripted finalize)
@@ -77,8 +76,8 @@ read up front — no `design.md`, no `<child>.md` body, no RTL, and no upstream 
 the per-child sub-Tasks read their own docs. (Step-1 source 3 below consults `{workdir}/changed-inputs.md`
 for scope when present.)
 
-The framework has already carried your previous round's RTL, filelist, README,
-`.child_reports.json`, and ledger files into the workdir — edit them in place. Read the
+The framework has already carried your previous round's RTL and the two sidecars
+into the workdir — edit them in place. Read the
 specification from the `design`/`manifest`/`children` locations named in `inputs.json`.
 
 Determine this round's edit scope from the first available source:
@@ -157,8 +156,8 @@ one file for them (`STATUS: DONE`+JSON → `{"status":"done",...}`; `STATUS: BLO
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py assemble --workdir {workdir} --manifest <manifest> --top <top_module> [--seeded]
 ```
 
-`assemble` builds the ledger/filelist/README and runs the post exit-gate in one step. A **build error**
-(malformed reports/ledger) yields a non-zero exit with a stderr message and **no stdout verdict** (distinct
+`assemble` writes the two sidecars and runs the post exit-gate in one step. A **build error**
+(malformed reports or sidecars) yields a non-zero exit with a stderr message and **no stdout verdict** (distinct
 from a gate-fail verdict); hand-write `{workdir}/result.json` as a `status=fail` envelope with the stderr as
 `fail_reason`, and stop. Otherwise it prints the exit-gate verdict JSON on stdout; exit code = truth
 (topology + blocked-child); a fail verdict stops the stage — Step 4.5's `finalize` writes it into
@@ -167,7 +166,7 @@ from a gate-fail verdict); hand-write `{workdir}/result.json` as a `status=fail`
 **4.3 Conformance gate + self-converge loop** (deterministic; runs EVERY invocation):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py check-conformance --workdir {workdir} --manifest <manifest> --top <top_module> --ledger {workdir}/.child_reports.json --interconnects <design>/interconnects.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py check-conformance --workdir {workdir} --manifest <manifest> --top <top_module> --interconnects <design>/interconnects.json
 ```
 
 On exit 0, go to 4.4. Exit 1 = spec↔RTL presence **or Verilog-2001 dialect** violations (each names a
@@ -190,10 +189,10 @@ child), so self-converge:
   the stage produces one result at exit, the re-dispatches are not externally visible, and no persistent
   "pending finalize" state carries across.
 - On convergence, rebuild a full-roster `fresh_reports.json` (all children `status=done`,
-  reconstructing each already-passing child's `files`/`annotations` entry from the current
-  `.child_reports.json` ledger — a `done` child without them fails `assemble` loud) and re-run
-  `assemble --seeded` over it + the converged ledger to refresh `artifacts[]`. Files a re-dispatched
-  child later superseded remain in the run's scratch workdir only — not in the ledger, so never promoted.
+  reconstructing each already-passing child's `files`/`annotations` entry from the sidecars
+  on disk — a `done` child without them fails `assemble` loud) and re-run
+  `assemble --seeded` over it to refresh `artifacts[]`. Files a re-dispatched child later
+  superseded remain in the run's scratch workdir only — not in the sidecars, so never promoted.
 
 **4.4 Semantic gate (gating)** — runs on EVERY finalize that reaches a clean 4.3 gate (not only on
 a first delivery; closes the gap where a module that failed C on attempt 1 — promoted-on-fail, then
@@ -247,7 +246,7 @@ loop or the 4.4 wave):
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir} --module {module} --top <top_module> --manifest <manifest>
 ```
 
-`finalize` re-derives the exit verdict in-process over the converged ledger (`status` + `fail_reason` +
+`finalize` re-derives the exit verdict in-process over the converged sidecars (`status` + `fail_reason` +
 `artifacts[]`, verbatim) and folds in the semantic gate from `semantic-review.json` (its verdict =
 `stage_specific.semantic_gate`, verbatim — including `spec_confidence`, folded through unchanged); a
 `semantic_gate=trip` flips a passing exit-verdict to
@@ -285,16 +284,15 @@ main-thread edit of RTL or intent.
 
 | Mistake | Fix |
 |---|---|
-| `filelist.txt` is out of sync with the RTL files on disk | the `assemble` verb generates `filelist.txt` from the ledger; if out of sync, re-run `assemble` (the main thread never edits it directly). |
-| `filelist.txt` uses `//` comments | SpyGlass does not recognize `//` comments; use `#` only. |
-| Constraint-annotation note not recorded | `README.md` MUST record both the SGDC and SDC sections. |
+| `rtl-files.json` is out of sync with the RTL files on disk | `assemble` writes it from the reaped reports; if out of sync, re-run `assemble` (the main thread never edits it directly). |
+| A child reports no annotations by omitting the category | Every SGDC/SDC category is present with an explicit `[]`; an omitted category and "none" are not the same claim, and the schema rejects the omission. |
 
 ## Completion Gate
 
 - [ ] `{workdir}/result.json` has been written (the framework validates it against the schema at stage completion; this gate does not re-run that check).
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] **Exit gate:** the `assemble` exit-gate exited 0 (or its fail verdict was written); `finalize` wrote the envelope from it (it owns `status` / `artifacts[]`; this gate does not restate the formula).
-- [ ] `{workdir}/.child_reports.json`, `{workdir}/filelist.txt`, and `{workdir}/README.md` were generated by the scripts (ledger / filelist / README respectively).
+- [ ] `{workdir}/rtl-files.json` and `{workdir}/constraint-annotations.json` were written by `assemble`.
 - [ ] **Conformance gate:** `check-conformance` exited 0 (or self-converged); a blocked re-dispatched child fails that round's `assemble` (blocked-child precedence) → the verdict was copied to `result.json` `status=fail`.
 - [ ] **Semantic gate (every clean-gate finalize):** the review wave ran, `semantic-review.json` was written + self-validated, the gate verdict was applied (clear → proceed; trip → locus-split per §4.4: an rtl-locus trip self-converges via child re-dispatch, a spec-locus / exhausted-BLOCKED trip → `status=fail` + locus-tagged `fail_reason` carrying `semantic_gate.{loci.spec, spec_confidence}`), and the `finalize` verb wrote `semantic_gate` + `semantic-review.json` into the envelope; BLOCKED/malformed reviewers recorded as "review unavailable" (not silently ok), so do NOT gate; a `gate=trip` was never overridden to pass.
 

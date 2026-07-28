@@ -138,8 +138,8 @@ _STAGE_FILES = {
     },
     "rtl-design": {
         "top.v": "module top; endmodule",
-        "filelist.txt": "top.v",
-        "README.md": "readme",
+        "rtl-files.json": '{"c": {"files": ["top.v"]}}',
+        "constraint-annotations.json": "{}",
     },
     "lint-cdc": {
         "lint-report.txt": "clean",

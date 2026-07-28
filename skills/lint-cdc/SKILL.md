@@ -17,7 +17,7 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 
 ## Iron Rule
 
-- The injected input locations (`<rtl>`, `<rtl_doc>`, `<sgdc_seed>` — from `inputs.json`) are read-only canonical: never modify anything under them (or any other stage's canonical output); the only files you write live under `{workdir}`. SGDC depth annotations belong to this stage's own carried file (`{workdir}/scripts/constraints.sgdc`, brought forward by `carry_self`); iterate only there, never write back to the spec source of truth.
+- The injected input locations (`<rtl>`, `<annotations>`, `<sgdc_seed>` — from `inputs.json`) are read-only canonical: never modify anything under them (or any other stage's canonical output); the only files you write live under `{workdir}`. SGDC depth annotations belong to this stage's own carried file (`{workdir}/scripts/constraints.sgdc`, brought forward by `carry_self`); iterate only there, never write back to the spec source of truth.
 - `{workdir}/scripts/constraints.sgdc` MUST be listed in `result.json.artifacts[]` — it then lands at the canonical path and `carry_self` carries it into the next run's workdir; without that entry the file is not promoted and depth annotations must re-converge from scratch.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
@@ -33,12 +33,12 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 
 ### External reference inputs
 
-Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>` (`rtl`/`rtl_doc` both resolve to the rtl-design stage root).
+Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>` (`rtl`/`annotations` both resolve to the rtl-design stage root).
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `<rtl>/filelist.txt` | text | RTL file list. |
-| `<rtl_doc>/README.md` | Custom markdown | Constraint-annotation note (SGDC section: `sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`). |
+| `<rtl>/rtl-files.json` | `skills/rtl-design/references/rtl-files.schema.json` | Per-child RTL file layout; the bootstrap generates `scripts/filelist.txt` from it. |
+| `<annotations>/constraint-annotations.json` | `skills/rtl-design/references/constraint-annotations.schema.json` | Per-child SGDC annotations (`sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`) in the child's real module names. |
 | `<sgdc_seed>/constraints/<TOP>.sgdc` | SGDC | Cold-bootstrap seed — copied to `{workdir}/scripts/constraints.sgdc` on a genuinely first run; unused when a carried `scripts/constraints.sgdc` already exists (`makefile-bootstrap.md`). |
 
 ## Output Artifacts
@@ -55,7 +55,7 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 
 ### Step 1: Read inputs and determine scope
 
-Pre-check the external references: `<rtl>/filelist.txt` and `<rtl_doc>/README.md` are present AND the SGDC seed is available (carried: `{workdir}/scripts/constraints.sgdc` already present, brought forward by `carry_self` before this run started → preferred; cold: `<sgdc_seed>/constraints/<TOP>.sgdc` exists → fallback; neither → missing). If any required file is missing, write `status=fail` with `fail_reason="external reference missing: <path>"` and exit.
+Pre-check the external references: `<rtl>/rtl-files.json` and `<annotations>/constraint-annotations.json` are present AND the SGDC seed is available (carried: `{workdir}/scripts/constraints.sgdc` already present, brought forward by `carry_self` before this run started → preferred; cold: `<sgdc_seed>/constraints/<TOP>.sgdc` exists → fallback; neither → missing). If any required file is missing, write `status=fail` with `fail_reason="external reference missing: <path>"` and exit.
 
 Determine this round's fix scope from the first available source:
 1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
@@ -72,17 +72,17 @@ Run:
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
 ```
 
-The script deploys the templates to `{workdir}` NO-CLOBBER — a `scripts/constraints.sgdc` / `scripts/waiver.tcl` already carried into the workdir by `carry_self` before this run started is never overwritten — substitutes the `MY_TOP` placeholder, and on a genuinely first run (no carried `scripts/constraints.sgdc`) fills it from the SGDC seed (cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `directive.md` does NOT count as "deployed"). When `--top` is omitted, infer it from `<rtl_doc>/README.md` or `<rtl>/filelist.txt` (inference failure aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files you edit are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.
+The script deploys the templates to `{workdir}` NO-CLOBBER — a `scripts/constraints.sgdc` / `scripts/waiver.tcl` already carried into the workdir by `carry_self` before this run started is never overwritten — substitutes the `MY_TOP` placeholder, and on a genuinely first run (no carried `scripts/constraints.sgdc`) fills it from the SGDC seed (cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `directive.md` does NOT count as "deployed"). When `--top` is omitted, it is read from `manifest.module` (a missing name aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files you edit are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.
 
 ### Step 3: Add RTL custom-synchronizer annotations
 
-Read the SGDC section of `<rtl_doc>/README.md`'s constraint-annotation note. Append `sync_cell -name <name>` for each custom synchronizer and `reset_synchronizer -name <name>` for each reset synchronizer to `scripts/constraints.sgdc`. If there are no custom synchronizers, skip this step.
+Read `<annotations>/constraint-annotations.json` and union the `sgdc` block across every child. Append `sync_cell -name <name>` for each name in `sync_cell` and `reset_synchronizer -name <name>` for each name in `reset_synchronizer` to `scripts/constraints.sgdc`. Every child reporting `[]` for both means there are no custom synchronizers — skip this step.
 
 ### Step 4: `make lint`
 
 runs SpyGlass lint and `collect_report.py`, which emits `lint-report.txt` (human) and `lint-violations.json` (structured: `counts` + `violations[]`, each with `severity` / `rule` / `file:line` / `message`). Read `lint-violations.json` and triage every `severity=error` entry:
 
-- Test-control-signal false positives — a violation on a signal held to a constant in functional/mission mode (`scan_en` / `test_mode` / `bypass` tied inactive), so the structural flag exists only in the test configuration → append `set_case_analysis <value> <port>` to `scripts/constraints.sgdc` (pin the functional value) and re-run `make lint` until they clear.
+- Test-control-signal false positives — a violation on a signal held to a constant in functional/mission mode (`scan_en` / `test_mode` / `bypass` tied inactive), so the structural flag exists only in the test configuration → append `set_case_analysis <value> <port>` to `scripts/constraints.sgdc` (pin the functional value) and re-run `make lint` until they clear. The children's `sgdc.set_case_analysis` entries already name their test-control ports and the functional value each takes — use those rather than guessing a value.
 - Real lint violations → leave for the waiver pass in Step 6.
 
 The script re-derives `counts` and `violations[]` on every run — you do not count by hand.
@@ -93,7 +93,7 @@ The script re-derives `counts` and `violations[]` on every run — you do not co
 
 runs SpyGlass CDC and `collect_report.py`, emitting `cdc-report.txt` + `cdc-violations.json`. Read `cdc-violations.json` and triage every `severity=error` entry:
 
-- Quasi-static cross-domain false positives (see the SGDC section of `<rtl_doc>/README.md`'s constraint-annotation note) → append `quasi_static -name <signal>` to `scripts/constraints.sgdc` and re-run `make cdc` until they clear.
+- Quasi-static cross-domain false positives (the children's `sgdc.quasi_static` entries name them) → append `quasi_static -name <signal>` to `scripts/constraints.sgdc` and re-run `make cdc` until they clear.
 - Real CDC violations → leave for the waiver pass in Step 6.
 
 The script re-derives the counts — you do not count by hand.
@@ -150,7 +150,7 @@ Every field in result.json is script-derived — the per-error `reason` comes fr
 
 | Mistake | Fix |
 |---|---|
-| Not reading the SGDC section of `<rtl_doc>/README.md`'s constraint-annotation note | After bootstrap, read it first to fill in `sync_cell` / `reset_synchronizer`. |
+| Not reading `<annotations>/constraint-annotations.json` | After bootstrap, read it first to fill in `sync_cell` / `reset_synchronizer`; the annotations are per-child, so union them across the whole roster. |
 | Force-overwriting an already-deployed target directory | The bootstrap treats an existing `{workdir}/Makefile` as "already deployed" and aborts; back up first, then process. |
 
 ## Completion Gate

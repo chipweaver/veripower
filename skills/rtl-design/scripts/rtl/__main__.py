@@ -3,7 +3,7 @@
 
 Verbs (one stage = one tool; see skills/rtl-design/SKILL.md for usage):
   check-partition   pre-dispatch coverage+purity gate (manifest+top)    (stdout: verdict; exit 0/1)
-  assemble          build ledger/filelist/README + post exit-gate       (stdout: verdict; exit 0/1)
+  assemble          write the two sidecars + post exit-gate             (stdout: verdict; exit 0/1)
   check-conformance spec<->RTL presence gate                            (stdout: verdict; exit 0/1)
   validate-review   semantic-review.json schema + gate                  (stdout: gate JSON; exit 0/1)
   finalize          assemble the lean result.json                       (exit 0 written / 2 BLOCKED)
@@ -44,7 +44,7 @@ def _cmd_assemble(a: argparse.Namespace) -> int:
 def _cmd_check_conformance(a: argparse.Namespace) -> int:
     from rtl import conformance
 
-    return conformance.run(a.workdir, a.manifest, a.top, a.ledger, a.interconnects)
+    return conformance.run(a.workdir, a.manifest, a.top, a.interconnects)
 
 
 def _cmd_validate_review(a: argparse.Namespace) -> int:
@@ -70,16 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--top", required=True)
     sp.set_defaults(func=_cmd_check_partition)
 
-    sp = sub.add_parser(
-        "assemble", help="build ledger/filelist/README + post exit-gate"
-    )
+    sp = sub.add_parser("assemble", help="write the two sidecars + post exit-gate")
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument("--manifest", required=True, type=Path)
     sp.add_argument("--top", required=True)
     sp.add_argument(
         "--seeded",
         action="store_true",
-        help="overlay onto the existing {workdir}/.child_reports.json (incremental/rework + the 4.3 loop)",
+        help="overlay onto the existing sidecars in {workdir} (incremental/rework + the 4.3 loop)",
     )
     sp.set_defaults(func=_cmd_assemble)
 
@@ -87,7 +85,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument("--manifest", required=True, type=Path)
     sp.add_argument("--top", required=True)
-    sp.add_argument("--ledger", required=True, type=Path)
     sp.add_argument("--interconnects", required=True, type=Path)
     sp.set_defaults(func=_cmd_check_conformance)
 

@@ -1,0 +1,22 @@
+{
+  "mac": {
+    "files": [
+      "mac.v"
+    ]
+  },
+  "systolic_reg": {
+    "files": [
+      "systolic_reg.v"
+    ]
+  },
+  "fifo": {
+    "files": [
+      "fifo.v"
+    ]
+  },
+  "tpu_top": {
+    "files": [
+      "tpu_top.v"
+    ]
+  }
+}

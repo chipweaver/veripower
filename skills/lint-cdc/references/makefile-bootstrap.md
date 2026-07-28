@@ -14,7 +14,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap \
 - The canonical `Design/lint-cdc/scripts/waiver.tcl` is carried into every new workdir verbatim by kernel.py's `carry_self`, BEFORE this verb runs — the human-reviewed waivers persisted by a prior run survive into each new deploy instead of being reset to the pristine template; the no-clobber deploy is what lets that carried file win.
 - RTL paths in `scripts/filelist.txt` are the ABSOLUTE rtl-design stage root injected into `<workdir>/inputs.json`'s `"rtl"` key (no relpath climb, no self-navigation).
 - An existing `{workdir}/Makefile` is treated as "already deployed" and the script aborts; a caller-placed `directive.md` inside the workdir does NOT count as "deployed".
-- When `--top` is omitted, the script infers it from `<rtl_doc>/README.md` or `<rtl>/filelist.txt`.
+- When `--top` is omitted, the script reads it from `manifest.module`.
 
 ## SGDC source selection
 

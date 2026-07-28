@@ -1,0 +1,54 @@
+{
+  "mac": {
+    "sgdc": {
+      "sync_cell": [],
+      "reset_synchronizer": [],
+      "set_case_analysis": [],
+      "quasi_static": []
+    },
+    "sdc": {
+      "create_generated_clock": [],
+      "set_multicycle_path": [],
+      "set_false_path": []
+    }
+  },
+  "systolic_reg": {
+    "sgdc": {
+      "sync_cell": [],
+      "reset_synchronizer": [],
+      "set_case_analysis": [],
+      "quasi_static": []
+    },
+    "sdc": {
+      "create_generated_clock": [],
+      "set_multicycle_path": [],
+      "set_false_path": []
+    }
+  },
+  "fifo": {
+    "sgdc": {
+      "sync_cell": [],
+      "reset_synchronizer": [],
+      "set_case_analysis": [],
+      "quasi_static": []
+    },
+    "sdc": {
+      "create_generated_clock": [],
+      "set_multicycle_path": [],
+      "set_false_path": []
+    }
+  },
+  "tpu_top": {
+    "sgdc": {
+      "sync_cell": [],
+      "reset_synchronizer": [],
+      "set_case_analysis": [],
+      "quasi_static": []
+    },
+    "sdc": {
+      "create_generated_clock": [],
+      "set_multicycle_path": [],
+      "set_false_path": []
+    }
+  }
+}

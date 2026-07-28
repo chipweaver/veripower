@@ -19,6 +19,21 @@ _SEM_CLEAR = {
 }
 
 
+def _write_state(d, ledger):
+    """rtl-design's two sidecars from the merged {child: {files, incdirs?, annotations}} shape."""
+    import json as _json
+
+    files, anns = {}, {}
+    for name, rec in ledger.items():
+        e = {"files": rec.get("files", [])}
+        if rec.get("incdirs"):
+            e["incdirs"] = rec["incdirs"]
+        files[name] = e
+        anns[name] = rec.get("annotations", {})
+    (d / "rtl-files.json").write_text(_json.dumps(files))
+    (d / "constraint-annotations.json").write_text(_json.dumps(anns))
+
+
 def _workdir(
     tmp_path, *, children=("mac",), top="tpu_top", semantic=_SEM_CLEAR, manifest=None
 ):
@@ -28,21 +43,27 @@ def _workdir(
     for c in children:
         (wd / f"{c}.v").write_text(f"module {c}; endmodule\n")
     (wd / f"{top}.v").write_text(f"module {top}; endmodule\n")
-    (wd / "filelist.txt").write_text(
-        "\n".join(f"{c}.v" for c in children) + f"\n{top}.v\n"
-    )
-    (wd / "README.md").write_text("## Constraint-annotation note\n")
 
-    # ledger (.child_reports.json) — rtl._ledger.load_ledger REQUIRES per record {files, annotations}
-    # with annotations.sgdc + annotations.sdc sub-blocks. NO `status` key (status lives in fresh).
     def _ann():
-        return {"sgdc": {}, "sdc": {}}
+        return {
+            "sgdc": {
+                "sync_cell": [],
+                "reset_synchronizer": [],
+                "set_case_analysis": [],
+                "quasi_static": [],
+            },
+            "sdc": {
+                "create_generated_clock": [],
+                "set_multicycle_path": [],
+                "set_false_path": [],
+            },
+        }
 
     ledger = {
         c: {"files": [f"{c}.v"], "annotations": _ann(), "incdirs": []} for c in children
     }
     ledger[top] = {"files": [f"{top}.v"], "annotations": _ann(), "incdirs": []}
-    (wd / ".child_reports.json").write_text(json.dumps(ledger))
+    _write_state(wd, ledger)
     # fresh_reports.json (all done) — the post exit-gate hard-requires fresh_reports.json.
     (wd / "fresh_reports.json").write_text(
         json.dumps({n: {"status": "done"} for n in ledger})
@@ -88,9 +109,8 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert {
         "mac.v",
         "tpu_top.v",
-        "filelist.txt",
-        "README.md",
-        ".child_reports.json",
+        "rtl-files.json",
+        "constraint-annotations.json",
     } <= paths
     assert "semantic-review.json" in paths and "result.json" not in paths
 
@@ -183,16 +203,15 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "loci": {"rtl": [], "spec": []},
         "spec_confidence": None,
     }
-    # artifacts — the real 8-entry set: 4 .v + filelist + README + ledger + semantic-review
+    # artifacts — the real 7-entry set: 4 .v + the two sidecars + semantic-review
     paths = {a["path"] for a in env["artifacts"]}
     assert paths == {
         "fifo.v",
         "mac.v",
         "systolic_reg.v",
         "tpu_top.v",
-        "filelist.txt",
-        "README.md",
-        ".child_reports.json",
+        "rtl-files.json",
+        "constraint-annotations.json",
         "semantic-review.json",
     }
     assert "result.json" not in paths

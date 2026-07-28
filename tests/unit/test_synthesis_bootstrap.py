@@ -66,7 +66,9 @@ def _run(skill_dst, workdir, *extra):
 
 def test_incdir_becomes_search_path_entry(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("+incdir+sub/inc\ntop.v\n")
+    (rtl / "rtl-files.json").write_text(
+        json.dumps({"c": {"files": ["top.v"], "incdirs": ["sub/inc"]}})
+    )
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     gen = (workdir / "scripts" / "rtl_load.tcl").read_text()
@@ -79,7 +81,7 @@ def test_incdir_becomes_search_path_entry(tmp_path):
 
 def test_define_and_dashf_still_skipped(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("+define+FOO=1\n-f other.f\ntop.v\n")
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     gen = (workdir / "scripts" / "rtl_load.tcl").read_text()
@@ -99,7 +101,7 @@ def test_rtl_load_gates_every_analyze(tmp_path):
     tests/contracts/test_dc_run_gates.py.
     """
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("a.v\nb.v\n")
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["a.v", "b.v"]}}))
     proc = _run(skill_dst, workdir, "--top", "a")
     assert proc.returncode == 0, proc.stderr
     gen = (workdir / "scripts" / "rtl_load.tcl").read_text()
@@ -113,7 +115,7 @@ def test_rtl_load_gates_every_analyze(tmp_path):
 
 def test_happy_path_substitutes_my_top(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("top.v\n")
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     # No spec SDC -> template branch; the placeholder must be announced (not silent).
@@ -128,7 +130,7 @@ def test_happy_path_substitutes_my_top(tmp_path):
 
 def test_sdc_source_of_truth_copied(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("top.v\n")
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     spec_con = tmp_path / "asic" / "M" / "Design" / "specification" / "constraints"
     spec_con.mkdir(parents=True)
     (spec_con / "top.sdc").write_text("# SENTINEL real sdc\ncreate_clock x\n")
@@ -141,22 +143,24 @@ def test_sdc_source_of_truth_copied(tmp_path):
 
 def test_empty_filelist_fail_closed(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("# only a comment\n+incdir+x\n")
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": []}}))
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 1
-    assert "no usable RTL entries" in proc.stderr
+    assert "lists no RTL files" in proc.stderr
 
 
 def test_missing_filelist_fail_closed(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)  # rtl dir exists, no filelist.txt
+    skill_dst, rtl, workdir = _mirror(tmp_path)  # rtl dir exists, no rtl-files.json
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 1
-    assert "missing" in proc.stderr and "filelist.txt" in proc.stderr
+    assert "missing" in proc.stderr and "rtl-files.json" in proc.stderr
 
 
 def test_top_read_from_manifest(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("some_other_name.v\n")
+    (rtl / "rtl-files.json").write_text(
+        json.dumps({"c": {"files": ["some_other_name.v"]}})
+    )
     assert _run(skill_dst, workdir).returncode == 0  # no --top
     # manifest.module wins; the filelist basename is not consulted at all
     assert "M_top" in (workdir / "env.sh").read_text()
@@ -164,7 +168,7 @@ def test_top_read_from_manifest(tmp_path):
 
 def test_cant_read_top_fail_closed(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("top.v\n")
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     spec = tmp_path / "asic" / "M" / "Design" / "specification"
     (spec / "manifest.json").unlink()
     proc = _run(skill_dst, workdir)  # no --top
@@ -174,7 +178,7 @@ def test_cant_read_top_fail_closed(tmp_path):
 
 def test_already_deployed_guard(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("top.v\n")
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     assert _run(skill_dst, workdir, "--top", "top").returncode == 0
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 1
@@ -186,7 +190,7 @@ def test_rtl_load_skips_double_slash_comment(tmp_path):
     # comments (skip set {#, //, blank, +/-}), so a '//skip_me.v' line is not
     # emitted as analyze. (Inference does NOT skip '//' — see the in-process test.)
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("//skip_me.v\ntop.v\n")
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     proc = _run(
         skill_dst, workdir, "--top", "top"
     )  # --top given so inference is bypassed
@@ -200,7 +204,7 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
     # BP12: a relative --workdir resolves against the CWD (the design-tree root), and
     # a trailing slash is stripped before path resolution.
     skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "filelist.txt").write_text("top.v\n")
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     proc = subprocess.run(
         [
             "python3",
@@ -225,7 +229,7 @@ def test_bootstrap_reanchors_rtl_load_to_absolute_from_inputs_json(tmp_path):
     # inputs.json "rtl" key — not by self-navigating tree_root/asic/<module>/....
     # rtl_load.tcl must bake the ABSOLUTE rtl root, never a relative "../.." climb.
     skill_dst, rtl_root, workdir = _mirror(tmp_path)
-    (rtl_root / "filelist.txt").write_text("top.v\n")
+    (rtl_root / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     tcl = (workdir / "scripts" / "rtl_load.tcl").read_text()

@@ -10,7 +10,7 @@ remain advisory (never gate). Findings are aggregated into `semantic-review.json
 ## Inputs (paths only — the main thread does not read these bodies)
 
 - Child unit name + its `manifest.children[<self>].rtl_modules[]` list.
-- The child's authored RTL `files[]` (from the ledger) — read these.
+- The child's authored RTL `files[]` (from `rtl-files.json`) — read these.
 - The child's per-child design doc, located via `manifest.children[<self>].doc` (the registry SSoT —
   the SAME path authoring uses; do NOT hardcode `Design/specification/<child>.md`, which can drift from
   the deployed layout). **Read its §2 Interface (and, for the top-integration child, the §3.1

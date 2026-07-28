@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from rtl._ledger import load_ledger
+from rtl._ledger import ANNOTATIONS_NAME, FILES_NAME, ledger_exists, load_ledger
 
 
 def _read_json(p: Path):
@@ -42,28 +42,31 @@ def coverage_verdict(manifest: Path, top: str):
     return "pass", None
 
 
-def post_verdict(manifest: Path, top: str, fresh: Path, ledger: Path):
+def post_verdict(manifest: Path, top: str, fresh: Path, workdir: Path):
     """The post exit verdict: coverage+purity + blocked-child precedence + the artifacts[]
     enumeration from the ledger. Returns (verdict_dict, rc). The single copy assemble's run()
     and result's build_result both reuse — no behavior change, only factored out."""
     status, reason = coverage_verdict(manifest, top)
-    if status == "fail" and not ledger.exists():
+    if status == "fail" and not ledger_exists(workdir):
         # Pre-dispatch coverage fail (no fan-out yet, so no ledger): surface the real coverage
         # reason (never None on a fail) so `finalize` can write it, instead of the generic
         # "requires fresh + ledger" message below. In assemble.run the ledger is always written
         # before this call, so this branch is reached only from the pre-dispatch finalize path.
         return {"status": "fail", "artifacts": [], "fail_reason": reason}, 1
-    if not (fresh.exists() and ledger.exists()):
+    if not (fresh.exists() and ledger_exists(workdir)):
         return (
             {
                 "status": "fail",
                 "artifacts": [],
-                "fail_reason": "post exit gate requires fresh_reports.json and the ledger",
+                "fail_reason": (
+                    f"post exit gate requires fresh_reports.json, {FILES_NAME} "
+                    f"and {ANNOTATIONS_NAME}"
+                ),
             },
             1,
         )
     fresh_data = _read_json(fresh)
-    ledger_data = load_ledger(ledger)
+    ledger_data = load_ledger(workdir)
     if status == "pass":
         blocked = {
             n: r.get("reason", "")
@@ -77,7 +80,7 @@ def post_verdict(manifest: Path, top: str, fresh: Path, ledger: Path):
             )
 
     files = sorted({f for rec in ledger_data.values() for f in rec["files"]})
-    paths = files + ["filelist.txt", "README.md", ".child_reports.json"]
+    paths = files + [FILES_NAME, ANNOTATIONS_NAME]
     artifacts = [{"path": p} for p in paths]
     verdict = {"status": status, "artifacts": artifacts}
     if reason:

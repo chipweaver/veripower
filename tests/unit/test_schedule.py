@@ -477,8 +477,8 @@ _OUTPUTS = {
     ],
     "rtl-design": [
         "Design/rtl-design/matvec.v",
-        "Design/rtl-design/filelist.txt",
-        "Design/rtl-design/README.md",
+        "Design/rtl-design/rtl-files.json",
+        "Design/rtl-design/constraint-annotations.json",
     ],
     "lint-cdc": ["Design/lint-cdc/lint-report.txt", "Design/lint-cdc/cdc-report.txt"],
     "synthesis": [

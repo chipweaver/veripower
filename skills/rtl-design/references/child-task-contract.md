@@ -74,5 +74,5 @@ re-dispatches you to fix it. End the response with `STATUS: DONE` + a single JSO
   Output Artifacts), so you
   are the source of truth for this. Omit the field (or `[]`) only when your files use no `` `include ``
   — that is the genuine "no include dirs" case, not a guess. A child that uses includes but omits
-  `incdirs` is a contract violation (the filelist will lack the `+incdir+`; the compile fails
-  downstream — do not omit).
+  `incdirs` is a contract violation (every downstream filelist is generated from `rtl-files.json`,
+  so a missing entry means a missing include path and the compile fails downstream — do not omit).

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veripower.local/skills/rtl-design/constraint-annotations.schema.json",
+  "title": "constraint-annotations.json — per-child SGDC/SDC annotations (authored by assemble from the reaped child reports)",
+  "description": "What each child's RTL implies for the constraint files, in the child's REAL module names so `sync_cell -name` matches the netlist. The lint-cdc and synthesis agents read this to fill scripts/constraints.sgdc and the SDC exceptions. Kept separate from rtl-files.json because simulation consumes only the file layout: bundling them would invalidate simulation on an annotation-only edit. Every category is present with an explicit empty array when a child has none — an omitted category and 'none' are not the same claim, and check-conformance verifies the reported module names are real. An empty object is a legitimate transient state before wave 2 has reaped any child; the roster requirement lives in the post exit gate.",
+  "type": "object",
+  "additionalProperties": {
+    "type": "object",
+    "required": [
+      "sgdc",
+      "sdc"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "sgdc": {
+        "type": "object",
+        "required": [
+          "sync_cell",
+          "reset_synchronizer",
+          "set_case_analysis",
+          "quasi_static"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "sync_cell": {
+            "description": "Module names of custom synchronizers this child authored.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "reset_synchronizer": {
+            "description": "Module names of reset synchronizers this child authored.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "set_case_analysis": {
+            "description": "Test-control ports held at a constant during analysis.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "port",
+                "value"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "port": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "value": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "quasi_static": {
+            "description": "Signals that cross domains but change only at configuration time.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "sdc": {
+        "type": "object",
+        "required": [
+          "create_generated_clock",
+          "set_multicycle_path",
+          "set_false_path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "create_generated_clock": {
+            "description": "Divider/PLL outputs this child generates: the module and the pin the clock leaves on. clocks.json marks the clock `generated` and defers the pin to here.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "module",
+                "pin"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "module": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "pin": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "set_multicycle_path": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "set_false_path": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}

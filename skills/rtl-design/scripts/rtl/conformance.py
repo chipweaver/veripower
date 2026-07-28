@@ -327,16 +327,15 @@ def check_dialect(workdir, ledger) -> list:
     return v
 
 
-def run(workdir, manifest, top, ledger, interconnects) -> int:
-    workdir, manifest, ledger, interconnects = (
+def run(workdir, manifest, top, interconnects) -> int:
+    workdir, manifest, interconnects = (
         Path(workdir),
         Path(manifest),
-        Path(ledger),
         Path(interconnects),
     )
     try:
         manifest_data = _read_json(manifest)
-        ledger_data = load_ledger(ledger)
+        ledger_data = load_ledger(workdir)
         interconnect_data = _read_json(interconnects)
     except (OSError, json.JSONDecodeError, LedgerError) as e:
         print(

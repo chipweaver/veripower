@@ -9,7 +9,24 @@ MAIN = ROOT / "skills/rtl-design/scripts/rtl/__main__.py"
 sys.path.insert(0, str(ROOT / "skills/rtl-design/scripts"))
 from rtl.conformance import _table_rows  # noqa: E402
 
-_ANN = {"sgdc": {}, "sdc": {}}
+
+def _ann(sgdc=None, sdc=None):
+    """The full 7-category annotation shape the schema requires, with overrides."""
+    return {
+        "sgdc": {
+            "sync_cell": [],
+            "reset_synchronizer": [],
+            "set_case_analysis": [],
+            "quasi_static": [],
+            **(sgdc or {}),
+        },
+        "sdc": {
+            "create_generated_clock": [],
+            "set_multicycle_path": [],
+            "set_false_path": [],
+            **(sdc or {}),
+        },
+    }
 
 
 def test_table_rows_honors_escaped_pipe():
@@ -19,11 +36,26 @@ def test_table_rows_honors_escaped_pipe():
     assert _table_rows(sec) == [{"Wire": "w1", "Producer": "p | q", "Consumer": "c1"}]
 
 
+def _write_state(d, ledger):
+    """rtl-design's two sidecars from the merged {child: {files, incdirs?, annotations}} shape."""
+    import json as _json
+
+    files, anns = {}, {}
+    for name, rec in ledger.items():
+        e = {"files": rec.get("files", [])}
+        if rec.get("incdirs"):
+            e["incdirs"] = rec["incdirs"]
+        files[name] = e
+        anns[name] = rec.get("annotations", {})
+    (d / "rtl-files.json").write_text(_json.dumps(files))
+    (d / "constraint-annotations.json").write_text(_json.dumps(anns))
+
+
 def _setup(tmp_path, children, ledger, files, wires=None):
     (tmp_path / "manifest.json").write_text(
         json.dumps({"module": "top", "children": children})
     )
-    (tmp_path / ".child_reports.json").write_text(json.dumps(ledger))
+    _write_state(tmp_path, ledger)
     (tmp_path / "interconnects.json").write_text(json.dumps(wires or []))
     for rel, content in files.items():
         p = tmp_path / rel
@@ -43,8 +75,6 @@ def _run(tmp_path, top="top"):
             str(tmp_path / "manifest.json"),
             "--top",
             top,
-            "--ledger",
-            str(tmp_path / ".child_reports.json"),
             "--interconnects",
             str(tmp_path / "interconnects.json"),
         ],
@@ -61,8 +91,8 @@ def test_module_presence_pass(tmp_path):
             {"name": "topc", "rtl_modules": ["top"]},
         ],
         {
-            "leaf": {"files": ["leaf.v"], "annotations": _ANN},
-            "topc": {"files": ["top.v"], "annotations": _ANN},
+            "leaf": {"files": ["leaf.v"], "annotations": _ann()},
+            "topc": {"files": ["top.v"], "annotations": _ann()},
         },
         {
             "leaf.v": "module leaf_m(input a); endmodule\n",
@@ -82,8 +112,8 @@ def test_module_presence_missing_fails(tmp_path):
             {"name": "topc", "rtl_modules": ["top"]},
         ],
         {
-            "leaf": {"files": ["leaf.v"], "annotations": _ANN},
-            "topc": {"files": ["top.v"], "annotations": _ANN},
+            "leaf": {"files": ["leaf.v"], "annotations": _ann()},
+            "topc": {"files": ["top.v"], "annotations": _ann()},
         },
         {
             "leaf.v": "module WRONG_NAME(input a); endmodule\n",
@@ -112,8 +142,8 @@ def test_string_embedded_comment_markers_do_not_swallow_real_decl(tmp_path):
             {"name": "topc", "rtl_modules": ["top"]},
         ],
         {
-            "leaf": {"files": ["leaf.v"], "annotations": _ANN},
-            "topc": {"files": ["top.v"], "annotations": _ANN},
+            "leaf": {"files": ["leaf.v"], "annotations": _ann()},
+            "topc": {"files": ["top.v"], "annotations": _ann()},
         },
         {
             "leaf.v": 'module pre; initial $display("/* %d", x); endmodule\n'
@@ -151,9 +181,9 @@ def test_annotation_reality_pass(tmp_path):
         {
             "leaf": {
                 "files": ["leaf.v"],
-                "annotations": {"sgdc": {"sync_cell": ["sync2"]}, "sdc": {}},
+                "annotations": _ann(sgdc={"sync_cell": ["sync2"]}),
             },
-            "topc": {"files": ["top.v"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ann()},
         },
         {
             "leaf.v": "module leaf_m; endmodule\nmodule sync2; endmodule\n",
@@ -175,9 +205,9 @@ def test_annotation_reality_phantom_name_fails(tmp_path):
         {
             "leaf": {
                 "files": ["leaf.v"],
-                "annotations": {"sgdc": {"sync_cell": ["sync_GHOST"]}, "sdc": {}},
+                "annotations": _ann(sgdc={"sync_cell": ["sync_GHOST"]}),
             },
-            "topc": {"files": ["top.v"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ann()},
         },
         {"leaf.v": "module leaf_m; endmodule\n", "top.v": "module top; endmodule\n"},
     )
@@ -202,16 +232,15 @@ def test_annotation_reality_create_generated_clock_phantom_fails(tmp_path):
         {
             "leaf": {
                 "files": ["leaf.v"],
-                "annotations": {
-                    "sgdc": {},
-                    "sdc": {
+                "annotations": _ann(
+                    sdc={
                         "create_generated_clock": [
                             {"module": "clkdiv_GHOST", "pin": "q"}
                         ]
-                    },
-                },
+                    }
+                ),
             },
-            "topc": {"files": ["top.v"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ann()},
         },
         {"leaf.v": "module leaf_m; endmodule\n", "top.v": "module top; endmodule\n"},
     )
@@ -233,9 +262,9 @@ def test_annotation_reality_commented_decl_does_not_satisfy(tmp_path):
         {
             "leaf": {
                 "files": ["leaf.v"],
-                "annotations": {"sgdc": {"sync_cell": ["sync2"]}, "sdc": {}},
+                "annotations": _ann(sgdc={"sync_cell": ["sync2"]}),
             },
-            "topc": {"files": ["top.v"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ann()},
         },
         {
             "leaf.v": "module leaf_m; endmodule\n// module sync2; endmodule\n",
@@ -260,12 +289,9 @@ def test_annotation_reality_reset_synchronizer_phantom_fails(tmp_path):
         {
             "leaf": {
                 "files": ["leaf.v"],
-                "annotations": {
-                    "sgdc": {"reset_synchronizer": ["rsync_GHOST"]},
-                    "sdc": {},
-                },
+                "annotations": _ann(sgdc={"reset_synchronizer": ["rsync_GHOST"]}),
             },
-            "topc": {"files": ["top.v"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ann()},
         },
         {"leaf.v": "module leaf_m; endmodule\n", "top.v": "module top; endmodule\n"},
     )
@@ -296,8 +322,8 @@ def test_top_integration_pass(tmp_path):
             {"name": "topc", "rtl_modules": ["top"]},
         ],
         {
-            "leaf": {"files": ["leaf.v"], "annotations": _ANN},
-            "topc": {"files": ["top.v"], "annotations": _ANN},
+            "leaf": {"files": ["leaf.v"], "annotations": _ann()},
+            "topc": {"files": ["top.v"], "annotations": _ann()},
         },
         {
             "leaf.v": "module leaf_m(output bus_ready); endmodule\n",
@@ -317,8 +343,8 @@ def test_top_integration_missing_instance_and_wire_fails(tmp_path):
             {"name": "topc", "rtl_modules": ["top"]},
         ],
         {
-            "leaf": {"files": ["leaf.v"], "annotations": _ANN},
-            "topc": {"files": ["top.v"], "annotations": _ANN},
+            "leaf": {"files": ["leaf.v"], "annotations": _ann()},
+            "topc": {"files": ["top.v"], "annotations": _ann()},
         },
         {
             "leaf.v": "module leaf_m(output bus_ready); endmodule\n",
@@ -355,9 +381,9 @@ def test_top_integration_reachability_is_child_grained(tmp_path):
             {"name": "c2", "rtl_modules": ["modZ"]},
         ],
         {
-            "topc": {"files": ["top.v"], "annotations": _ANN},
-            "c1": {"files": ["c1.v"], "annotations": _ANN},
-            "c2": {"files": ["c2.v"], "annotations": _ANN},
+            "topc": {"files": ["top.v"], "annotations": _ann()},
+            "c1": {"files": ["c1.v"], "annotations": _ann()},
+            "c2": {"files": ["c2.v"], "annotations": _ann()},
         },
         {
             "top.v": "module top; modA a(); endmodule\n",
@@ -382,7 +408,7 @@ def test_single_child_is_top_no_violations(tmp_path):
     _setup(
         tmp_path,
         [{"name": "only", "rtl_modules": ["top"]}],
-        {"only": {"files": ["top.v"], "annotations": _ANN}},
+        {"only": {"files": ["top.v"], "annotations": _ann()}},
         {"top.v": "module top(input a); endmodule\n"},
         wires=[],  # N=1: no inter-module wires
     )
@@ -400,7 +426,7 @@ def test_dialect_sv_extension_fails(tmp_path):
     _setup(
         tmp_path,
         [{"name": "only", "rtl_modules": ["top"]}],
-        {"only": {"files": ["top.sv"], "annotations": _ANN}},
+        {"only": {"files": ["top.sv"], "annotations": _ann()}},
         {"top.sv": "module top(input a); endmodule\n"},
     )
     r = _run(tmp_path)
@@ -419,7 +445,7 @@ def test_dialect_sv_keyword_in_v_file_fails(tmp_path):
     _setup(
         tmp_path,
         [{"name": "only", "rtl_modules": ["top"]}],
-        {"only": {"files": ["top.v"], "annotations": _ANN}},
+        {"only": {"files": ["top.v"], "annotations": _ann()}},
         {
             "top.v": "module top(input clk); logic q; always_ff @(posedge clk) q <= 1'b0; endmodule\n"
         },
@@ -441,7 +467,7 @@ def test_dialect_sv_keyword_in_comment_is_not_flagged(tmp_path):
     _setup(
         tmp_path,
         [{"name": "only", "rtl_modules": ["top"]}],
-        {"only": {"files": ["top.v"], "annotations": _ANN}},
+        {"only": {"files": ["top.v"], "annotations": _ann()}},
         {
             "top.v": "// internal logic partitions, always_comb-style; typedef note\n"
             "module top(input a); reg r; endmodule\n"
@@ -458,7 +484,7 @@ def test_dialect_v_vh_and_support_files_pass(tmp_path):
     _setup(
         tmp_path,
         [{"name": "only", "rtl_modules": ["top"]}],
-        {"only": {"files": ["top.v", "defs.vh", "rom.mem"], "annotations": _ANN}},
+        {"only": {"files": ["top.v", "defs.vh", "rom.mem"], "annotations": _ann()}},
         {
             "top.v": '`include "defs.vh"\nmodule top(input a); reg [7:0] r; endmodule\n',
             "defs.vh": "`define W 8\n",

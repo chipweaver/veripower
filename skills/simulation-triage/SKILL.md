@@ -66,7 +66,7 @@ for the failed-run directory named by that key (and likewise `<design>` / `<rtl>
 |---|---|
 | `<sim_run>` | The failed `simulation` run directory you are triaging (this round's target). Its **stage root** — the directory that holds the `runs/` folder `<sim_run>` sits in — carries the sim-stage `result.json` envelope; the failing test's `<test_id>.fsdb` lives inside `<sim_run>` itself. |
 | `<design>` | The `specification` stage root — holds `design.md`, the per-child `<child>.md`, and `manifest.json`. |
-| `<rtl>` | The `rtl-design` stage root — holds `filelist.txt` and the `*.v` sources. |
+| `<rtl>` | The `rtl-design` stage root — holds `rtl-files.json` and the `*.v` sources. |
 | `<plan>` | The `simulation-plan` stage root — holds `verification-plan.md` and `scaffold-specification.json`. |
 
 ### Read from the injected locations
@@ -79,7 +79,7 @@ Everything below is read relative to the injected keys above — nothing is self
 | `<sim_run>` (the failed-run directory) | The failed run's full working area — regression log, per-case UVM logs, coverage DB, KDB. |
 | `<sim_run>/<test_id>.fsdb` | The failing test's full-hierarchy FSDB (dumped by the sim stage; not promoted, gc'd on pass — only failing tests retain one). Query it read-only with `fsdbreport` (slash signal paths, `-bt`/`-et` window) for L1's waveform reinforcement (Step 2); if it is absent, empty, or truncated, degrade to log+code reasoning. |
 | `<design>/design.md` + `<design>/<child>.md` (via `<design>/manifest.json`) | Spec intent, to judge a spec-vague / RTL / plan discrepancy. |
-| RTL sources (via `<rtl>/filelist.txt`) | The DUT under test — read for L1 tracing (incl. FSDB signal-hierarchy discovery) and, read-only via `` `include``, for L2's experiment leaves. |
+| RTL sources (via `<rtl>/rtl-files.json`) | The DUT under test — read for L1 tracing (incl. FSDB signal-hierarchy discovery) and, read-only via `` `include``, for L2's experiment leaves. |
 | `<plan>/verification-plan.md` + `<plan>/scaffold-specification.json` | The refmodel/scoreboard's behavioral intent (golden reference) and the testpoints list — for classifying coverage gaps and keeping an L2 golden model semantically consistent with the UVM refmodel. |
 
 ## Output Artifacts
