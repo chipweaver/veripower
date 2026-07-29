@@ -265,7 +265,7 @@ def test_finalize_blocked_on_bad_waived_json(tmp_path):
     # malformed --waived JSON → exit 2 BLOCKED (never a status=fail result.json)
     wd = tmp_path
     (wd / "scaffold-specification.json").write_text(json.dumps(GOOD))
-    (wd / "verification-plan.md").write_text("# Plan\n| TP-1 | F-01 | x |\n")
+    (wd / "verification-plan.md").write_text("# Plan\n\nNarrative only.\n")
     (wd / "plan-review.json").write_text(
         json.dumps(
             {

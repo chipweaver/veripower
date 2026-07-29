@@ -23,17 +23,6 @@ _CLEAR_REVIEW = {
 }
 
 
-def _design(io_rows, clk_rows):
-    return (
-        "# m Design\n\n#### 1.4.1 Top-Level IO\n\n"
-        "| Signal | Direction | Width | Clock Domain | Interface Group | Protocol | Role | ResetPolarity | ResetKind |\n"
-        "|---|---|---|---|---|---|---|---|---|\n" + io_rows + "\n"
-        "### 1.6 Clocks and Frequencies\n\n"
-        "| Clock Name | Nominal Frequency (MHz) | SDC Period (ns) | Relationship | Generated | Role |\n"
-        "|---|---|---|---|---|---|\n" + clk_rows + "\n"
-    )
-
-
 def _spec_workdir(tmp_path):
     """A workdir derive_constraints() can run over (valid clocks.json + top-io.json) plus
     the finalize inputs (manifest/coverage/per-child md/spec-review)."""

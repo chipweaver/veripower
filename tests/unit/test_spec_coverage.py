@@ -268,12 +268,9 @@ def _struct_with_children(
     return cc.compute_structure(wd, manifest, child_texts=child_bodies)
 
 
-_CHILD_5 = (
-    "## §5 Verification Hints\n\n"
-    "| CheckID | SourceFeature | ImplementationDetail | Observable | ReferenceRule |\n"
-    "|---------|---------------|----------------------|------------|---------------|\n"
-    "| CHK-0 | F-00 | sum | y | rm |\n"
-)
+# The gate reads a child body as free text (token presence), never as a table. Keep the
+# fixture shaped like a real child doc: §5 is a pointer to check-hints/<child>.json.
+_CHILD_5 = "## §5 Verification Hints\n\nSee `check-hints/c.json`.\n"
 
 
 def test_rc_uncovered_feature_fails():
@@ -375,9 +372,7 @@ def test_end_to_end_multi_child_clean_workdir(tmp_path):
     child = (
         '---\nchild: {n}\nparent: core\nbrainstorm_anchor: "{a}"\n'
         "ports: []\nclocks: []\nfeatures:\n  - F-00\n---\n\n"
-        "## §5 Verification Hints\n\n"
-        "| CheckID | SourceFeature | ImplementationDetail | Observable | ReferenceRule |\n"
-        "|---|---|---|---|---|\n| CHK-0 | F-00 | sum | y | rm |\n"
+        "## §5 Verification Hints\n\nSee `check-hints/{n}.json`.\n"
     )
     (tmp_path / "core_top.md").write_text(child.format(n="core_top", a="lines 1-3"))
     (tmp_path / "core_b.md").write_text(child.format(n="core_b", a="lines 4-6"))
@@ -435,9 +430,7 @@ def test_end_to_end_impure_top_child_fails(tmp_path):
     child = (
         '---\nchild: core_top\nparent: core\nbrainstorm_anchor: "lines 1-6"\n'
         "ports: []\nclocks: []\nfeatures:\n  - F-00\n---\n\n"
-        "## §5 Verification Hints\n\n"
-        "| CheckID | SourceFeature | ImplementationDetail | Observable | ReferenceRule |\n"
-        "|---|---|---|---|---|\n| CHK-0 | F-00 | sum | y | rm |\n"
+        "## §5 Verification Hints\n\nSee `check-hints/core_top.json`.\n"
     )
     (tmp_path / "core_top.md").write_text(child)
     bs = tmp_path / "brainstorm.md"
