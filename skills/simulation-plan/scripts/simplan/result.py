@@ -1,6 +1,5 @@
 import datetime
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -10,26 +9,6 @@ STAGE = "simulation-plan"
 
 _REJECT_REASON = "user rejected plan"
 _WAIVED_CLASSIFICATIONS = {"false-positive", "accepted-risk"}
-
-
-def _extract_section(text: str, heading_pattern: str) -> str:
-    lines = text.splitlines()
-    capture = False
-    level: int | None = None
-    collected: list[str] = []
-    matcher = re.compile(heading_pattern)
-    for line in lines:
-        heading = re.match(r"^(#{1,6})\s+(.*)$", line)
-        if heading:
-            if capture and len(heading.group(1)) <= (level or 6):
-                break
-            if matcher.search(heading.group(2)):
-                capture = True
-                level = len(heading.group(1))
-                continue
-        if capture:
-            collected.append(line)
-    return "\n".join(collected).strip()
 
 
 def _now_iso() -> str:
@@ -57,16 +36,23 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def count_features(plan_md: str) -> int:
-    """feature_count = distinct F-NN feature IDs referenced in the §3 Testpoints Table
-    section (0 when the section is absent). Deliberately NOT a whole-document scan: a §5
-    revision note citing a dropped F-NN must not inflate the count across reworks — the
-    number means "features the current testpoints trace to". The \\b boundary + \\d+
-    excludes a bare 'F-' and 'Frame-01'. The heading pattern is anchored to the start
-    of the heading text (so '## 1.3 Overview of Testpoints strategy' cannot shadow the
-    real '## 3. Testpoints Table') and case-insensitive."""
-    section = _extract_section(plan_md, r"(?i)^\s*§?\s*3[.\s].*Testpoints?")
-    return len(set(re.findall(r"\bF-\d+\b", section)))
+def count_features(scaffold: dict) -> int:
+    """feature_count = distinct features the CURRENT testpoints trace to.
+
+    The trace runs testpoint → `covers[]` → check hint → `source_feature`, which
+    materialize-scaffold inlines into each testpoint, so the number is read off the same
+    structure the coverage gate checks. A scenario testpoint with `covers: []` traces to no
+    feature and contributes none — that is the honest reading of "features the testpoints
+    trace to", not an omission.
+    """
+    return len(
+        {
+            (h.get("source_feature") or "").strip()
+            for tp in scaffold.get("testpoints", [])
+            for h in tp.get("inlined_check_hints") or []
+            if (h.get("source_feature") or "").strip()
+        }
+    )
 
 
 def enumerate_artifacts(workdir) -> list:
@@ -145,7 +131,6 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
     scaffold = json.loads(
         (workdir / "scaffold-specification.json").read_text(encoding="utf-8")
     )
-    plan_md = (workdir / "verification-plan.md").read_text(encoding="utf-8")
     # Read as-is: review-vs-content freshness is a process invariant — the skill re-runs its
     # gate on the current plan before finalize (SKILL.md "Re-entry and completion"), not enforced here.
     review = json.loads((workdir / "plan-review.json").read_text(encoding="utf-8"))
@@ -162,7 +147,7 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
 
     if gate_ok:
         ss = {
-            "feature_count": count_features(plan_md),
+            "feature_count": count_features(scaffold),
             "testpoint_count": len(scaffold.get("testpoints", [])),
             "power_scenario_count": len(scaffold.get("power_scenarios", [])),
             "scaffold_summary": {

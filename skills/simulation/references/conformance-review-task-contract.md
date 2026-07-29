@@ -23,7 +23,7 @@ semantic review: an LLM intent reviewer whose output is used as a gate.
 - Immutable plan:
   - `<scaffold>/scaffold-specification.json` → `testpoints[].inlined_check_hints[]`
     (cycle-accurate check semantics; see `inlined-check-hints.md`).
-  - `<plan>/verification-plan.md` §3 Testpoints table, the single
+  - `<plan>/scaffold-specification.json`'s `testpoints[]` (`id` / `intent` / `bins` / `covers`), the single
     `Stimulus / Intent` column keyed by testpoint id — this is the authoritative intent
     source for testpoints whose `inlined_check_hints[]` is EMPTY. (`testpoints[].intent` is
     NOT a guaranteed schema field — `scaffold-specification.schema.json` testpoints item
@@ -53,7 +53,7 @@ exists.** For each testpoint, branch on whether its `inlined_check_hints[]` is e
     independent function of DUT inputs or prior/registered state. A no-op = `missing` with
     severity **`critical`** (the testpoint is effectively unverified; downstream will not
     catch it cheaply). When you call a no-op, you MUST cite the testpoint's intent from
-    `verification-plan.md` §3 and name the prediction it fails to make independently.
+    the testpoint's `intent` and name the prediction it fails to make independently.
   - **NOT a no-op (exempt):** an expected value computed from DUT input pins or from
     registered/prior-cycle state (Mealy/Moore feedback) — e.g.
     `exp = wb_cyc_i & wb_stb_i & ~wb_ack_o & int_ack` (derived from inputs + the `~wb_ack_o`

@@ -9,7 +9,7 @@ mismatch-as-uvm_info mode:
 
 **Derive the golden model from the plan, never from the RTL.** Every cycle-accurate refmodel /
 scoreboard check is authored from the testpoint's `implementation_detail` formula + `observable` /
-`reference_rule` (and `verification-plan.md` §3 intent for empty-hint testpoints) -- NOT by reading
+`reference_rule` (and the testpoint's own `intent` for empty-hint testpoints) -- NOT by reading
 the DUT RTL. A golden model reverse-engineered from the DUT mirrors the implementation (bugs
 included) and can never disagree. If a hint's `implementation_detail` is insufficient to author the
 check without consulting the RTL, that is an upstream plan gap -> emit the boundary-case

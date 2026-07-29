@@ -58,14 +58,22 @@ Each read-only upstream input's location is injected: read `inputs.json` in your
 Module name / Top / spec references.
 
 ## 2. Test Strategy
-Agent grouping / sequence design / RM type / scoreboard boundary.
+Agent grouping / sequence design / RM type / scoreboard boundary — as narrative. The rosters
+themselves (`agents[]` with mode + interface groups, `sequences[]`, `rm`, `scoreboard`) live in
+`scaffold-specification.json`; write why each boundary falls where it does, not a table of the
+fields you just authored there.
 
-## 3. Testpoints Table
-| TestpointID | FeatureID | Bins | Class | Suites | Stimulus / Intent | CoverageIntent |
-| ... | ... | ... | ... | ... | ... | ... |
+## 3. Testpoints
+The testpoints live in `scaffold-specification.json`'s `testpoints[]` — `id`, `intent`, `bins`,
+`covers`. Do not restate them as a table. Narrative that is not a per-testpoint field belongs
+here: how the testpoints partition the verification, which behaviors are deliberately left to
+downstream stages.
 
-## 4. Power Scenarios Materialization
-(Materialize each scenario per `references/power-scenarios-template.md`: reset sequence name / business_flow / low-power signals / DVFS frequency bands; equivalent scenarios share `sequence_ref` but keep independent IDs and `corner_intent`.)
+## 4. Power Scenarios
+The scenarios live in `scaffold-specification.json`'s `power_scenarios[]`, materialized per
+`references/power-scenarios-template.md`. Do not restate them as a table. Narrative that is not a
+per-scenario field belongs here: which module signals the low-power states drive, the DVFS
+frequency bands, why a scenario was materialized the way it was.
 
 ## 5. Revision Summary (append on a scoped revision when a real diff is present)
 Trigger context + revision highlights.
@@ -95,6 +103,11 @@ Authoring judgment the schema/validator cannot express:
   validator checks they resolve; you pick which agent is the RM input / the one observer.
 - `testpoints[].covers[]`: cluster the `check-hints/<child>.json` check_ids into testpoints
   (one-to-one / one-to-many / many-to-one; scenario testpoints you invent use `covers: []`).
+  This clustering is also the feature trace: `feature_count` is the distinct `source_feature`
+  behind a testpoint's covered checks, so a `covers: []` testpoint traces to no feature.
+- `testpoints[].intent`: what this testpoint drives and why. The downstream env and
+  conformance-fix children read it as the intent source, so write the situation being created,
+  not the check — `inlined_check_hints` already carries how each covered check is verified.
 - `skipped_checks[]`: any `check_hints[]` check_id covered by no testpoint MUST be listed here with
   a `reason` (e.g. `"static lint gate, no runtime testpoint"`), else the coverage gate fails.
 - `tests[].suites`: which suites run each test — `["smoke", "regress"]` or `["regress"]`.
@@ -215,8 +228,8 @@ When a `{failing_result}` carries multiple violation kinds, decide the primary e
 | Violation type | Primary edit target |
 |---|---|
 | Compile / smoke / regression class (behavioral or handshake errors) | `verification-plan.md` §2 (test strategy) + §5 (revision summary); `scaffold-specification.json.{rm, scoreboard}`. |
-| Coverage-hole bin not in testpoints (`gaps_not_in_testpoints` non-empty — missing testpoint) | `verification-plan.md` §3 testpoints table + `scaffold-specification.json.testpoints[]` (**add** entries / extend `bins` to cover the missing holes). |
-| Coverage-hole bin inside testpoints (`gaps_in_testpoints` non-empty), `simulation-triage` returns `root_cause: simulation-plan` (plan over-spec: a bin the RTL cannot legally reach) | `verification-plan.md` §3 testpoints table + `scaffold-specification.json.testpoints[]` (**narrow** `bins` to remove the unreachable values; if the whole testpoint is unreachable, delete it and record the over-spec attribution in §5 revision summary). |
+| Coverage-hole bin not in testpoints (`gaps_not_in_testpoints` non-empty — missing testpoint) | `scaffold-specification.json.testpoints[]` (**add** entries / extend `bins` to cover the missing holes) + `verification-plan.md` §3 narrative if the strategy changed. |
+| Coverage-hole bin inside testpoints (`gaps_in_testpoints` non-empty), `simulation-triage` returns `root_cause: simulation-plan` (plan over-spec: a bin the RTL cannot legally reach) | `scaffold-specification.json.testpoints[]` (**narrow** `bins` to remove the unreachable values; if the whole testpoint is unreachable, delete it and record the over-spec attribution in `verification-plan.md` §5 revision summary). |
 | Power-scenario failure | `verification-plan.md` §4 + `scaffold-specification.json.power_scenarios`. |
 
 ## Red Flags
@@ -231,7 +244,7 @@ When a `{failing_result}` carries multiple violation kinds, decide the primary e
 
 | Mistake | Fix |
 |---|---|
-| Content drift between `verification-plan.md` and `scaffold-specification.json` | The two must correspond one-to-one; changing one requires syncing the other. |
+| Restating `scaffold-specification.json` content in `verification-plan.md` | §2 / §3 / §4 point at the JSON and carry narrative only. A hand-copied roster, testpoint table or scenario table is a second home that nothing compares — write why, not what. |
 
 ## Completion Gate
 
@@ -239,7 +252,7 @@ When a `{failing_result}` carries multiple violation kinds, decide the primary e
 - **Semantic gate:** the Step-3 plan-adequacy gate cleared per the Step-4 approve precondition (or the review was `unavailable` and acknowledged); `stage_specific.plan_adequacy_gate` written; `plan-review.json` in `artifacts[]`.
 - **Human gate:** the user approved the review loop; `verification-plan.md` carries frontmatter `Status: approved` (`status=pass` only after approval).
 - **Finalize:** `simplan finalize` wrote `result.json` (Step 5), owning status / `plan_adequacy_gate` / `fail_reason` (on fail) / `artifacts[]`; its verdict is schema-validated externally, not by you.
-- **Plan consistency:** `verification-plan.md` has §1–§4 (a scoped revision adds §5 on a real diff), and its §3 testpoints / §4 power-scenarios counts match `scaffold-specification.json.testpoints[]` / `.power_scenarios[]`.
+- **Plan consistency:** `verification-plan.md` has §1–§4 (a scoped revision adds §5 on a real diff) and carries narrative only — §3 and §4 point at `scaffold-specification.json`'s `testpoints[]` / `power_scenarios[]` rather than restating them, so there are no counts to reconcile.
 - No Iron Rule or Red Flag was triggered.
 
 ## Return Contract

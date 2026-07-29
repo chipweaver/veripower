@@ -6,23 +6,19 @@ Load this template, materialize it per the module, and write the result into the
 
 | ID | Scenario | Clock | Reset | Data | Low power | Corner | Purpose |
 |----|----------|-------|-------|------|-----------|--------|---------|
-| S1 | Static leakage | off | reset | none | - | SS/125C | Leakage baseline. |
-| S2 | Clock-tree power | on | reset | none | - | TT | CTS evaluation. |
+| S1 | Static leakage | off | asserted | none | - | SS/125C | Leakage baseline. |
+| S2 | Clock-tree power | on | asserted | none | - | TT | CTS evaluation. |
 | S3a | Idle (low-power off) | on | de-asserted | no traffic | off | TT | Standby baseline. |
 | S3b | Idle (low-power on) | on | de-asserted | no traffic | on | TT | Standby optimization. |
 | S4a | 200MB/s (low-power off) | on | de-asserted | business flow | off | TT | Typical performance. |
 | S4b | 200MB/s (low-power on) | on | de-asserted | business flow | on | TT | Typical signoff. |
 | S5 | Peak / worst case | on | de-asserted | full-toggle | off | FF/125C | PDN / IR drop. |
 | S6 | DVFS switching transient | switching | de-asserted | business flow | switching | TT | di/dt. |
-| S7 | High-temperature leakage | off | reset | none | - | FF/125C | Worst leakage. |
+| S7 | High-temperature leakage | off | asserted | none | - | FF/125C | Worst leakage. |
 
 ## Per-module materialization guide
 
-Materialize each scenario's abstract description ("business flow," "low power," "DVFS switching," etc.) into an executable sequence per this module's specification. Write the result into **both** copies in sync:
-
-1. **`verification-plan.md` §4 9-Power-Scenarios Materialization** — human-readable review material; keep the 9-row table plus a per-row "materialization notes" paragraph (actual reset sequence name, transaction rate and sequence for business_flow, low-power signal names, DVFS frequency bands).
-
-2. **`scaffold-specification.json.power_scenarios`** — machine-read contract; each entry takes the form:
+Materialize each scenario's abstract description ("business flow," "low power," "DVFS switching," etc.) into an executable sequence per this module's specification. The result goes in **one** place — `scaffold-specification.json.power_scenarios` — with one entry per scenario:
 
 ```json
 {
@@ -39,7 +35,9 @@ Materialize each scenario's abstract description ("business flow," "low power," 
 }
 ```
 
-The two copies must correspond one-to-one — same number of entries, matching row IDs.
+`verification-plan.md` §4 points here and restates no field. What belongs in §4 is what an entry
+cannot hold: which module signals the low-power states drive, the DVFS frequency bands `switching`
+means for this module, and why a scenario was materialized the way it was.
 
 ## RTL-equivalent scenario deduplication
 

@@ -271,7 +271,7 @@ def test_inline_prefers_verbatim(tmp_path):
     sc_in = _scaffold(
         [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
     )
-    sc_in["testpoints"] = [{"id": "TP-0", "covers": ["CHK-00"]}]
+    sc_in["testpoints"] = [{"id": "TP-0", "intent": "i", "covers": ["CHK-00"]}]
     spec, sc = _write(tmp_path, _plan_with_hints(), sc_in)
     _run(spec, sc)
     tp = json.loads(sc.read_text())["testpoints"][0]
@@ -287,22 +287,26 @@ def test_inline_falls_back_to_summary_when_verbatim_empty(tmp_path):
     sc_in = _scaffold(
         [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
     )
-    sc_in["testpoints"] = [{"id": "TP-1", "covers": ["CHK-01"]}]
+    sc_in["testpoints"] = [{"id": "TP-1", "intent": "i", "covers": ["CHK-01"]}]
     spec, sc = _write(tmp_path, _plan_with_hints(), sc_in)
     _run(spec, sc)
     inlined = json.loads(sc.read_text())["testpoints"][0]["inlined_check_hints"][0]
     assert inlined["implementation_detail"] == "narrative only"
-    assert set(inlined.keys()) == {
-        "check_id",
-        "implementation_detail",
-    }  # all empty optionals dropped
+    assert (
+        set(inlined.keys())
+        == {
+            "check_id",
+            "source_feature",
+            "implementation_detail",
+        }
+    )  # empty optionals dropped; source_feature always rides along for the feature trace
 
 
 def test_inline_empty_covers_yields_empty_inline(tmp_path):
     sc_in = _scaffold(
         [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
     )
-    sc_in["testpoints"] = [{"id": "TP-IRQ", "covers": []}]
+    sc_in["testpoints"] = [{"id": "TP-IRQ", "intent": "i", "covers": []}]
     spec, sc = _write(tmp_path, _plan_with_hints(), sc_in)
     _run(spec, sc)
     assert json.loads(sc.read_text())["testpoints"][0]["inlined_check_hints"] == []
@@ -312,7 +316,7 @@ def test_inline_unknown_covers_fails_loud(tmp_path):
     sc_in = _scaffold(
         [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
     )
-    sc_in["testpoints"] = [{"id": "TP-X", "covers": ["CHK-99"]}]
+    sc_in["testpoints"] = [{"id": "TP-X", "intent": "i", "covers": ["CHK-99"]}]
     spec, sc = _write(tmp_path, _plan_with_hints(), sc_in)
     proc = _run(spec, sc, check=False)
     assert proc.returncode != 0
@@ -323,7 +327,7 @@ def test_inline_idempotent_over_nonempty_covers(tmp_path):
     sc_in = _scaffold(
         [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
     )
-    sc_in["testpoints"] = [{"id": "TP-0", "covers": ["CHK-00"]}]
+    sc_in["testpoints"] = [{"id": "TP-0", "intent": "i", "covers": ["CHK-00"]}]
     spec, sc = _write(tmp_path, _plan_with_hints(), sc_in)
     _run(spec, sc)
     first = sc.read_text()

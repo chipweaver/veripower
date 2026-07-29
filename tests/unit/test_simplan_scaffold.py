@@ -55,6 +55,7 @@ GOOD = {
     "testpoints": [
         {
             "id": "TP-1",
+            "intent": "drive TP-1 and observe it",
             "bins": ["a"],
             "covers": ["CHK-0"],
             "inlined_check_hints": [
@@ -62,7 +63,20 @@ GOOD = {
             ],
         }
     ],
-    "power_scenarios": [{"id": "S1", "sequence_ref": "smoke", "clock_state": "on"}],
+    "power_scenarios": [
+        {
+            "id": "S1",
+            "scenario": "Static leakage",
+            "clock_state": "off",
+            "reset_state": "asserted",
+            "data_state": "none",
+            "low_power_state": "off",
+            "corner_intent": "SS/125C",
+            "sequence_ref": "smoke",
+            "duration_cycles": 2000,
+            "purpose": "Leakage baseline",
+        }
+    ],
 }
 
 
@@ -274,6 +288,7 @@ def test_coverage_uncovered_check_fails(tmp_path):
     s["testpoints"] = [
         {
             "id": "TP-0",
+            "intent": "drive TP-0 and observe it",
             "covers": ["CHK-00"],
             "inlined_check_hints": [
                 {"check_id": "CHK-00", "implementation_detail": "x"}
@@ -296,6 +311,7 @@ def test_coverage_skip_passes(tmp_path):
     s["testpoints"] = [
         {
             "id": "TP-0",
+            "intent": "drive TP-0 and observe it",
             "covers": ["CHK-00"],
             "inlined_check_hints": [
                 {"check_id": "CHK-00", "implementation_detail": "x"}
@@ -316,6 +332,7 @@ def test_coverage_dangling_covers_fails(tmp_path):
     s["testpoints"] = [
         {
             "id": "TP-0",
+            "intent": "drive TP-0 and observe it",
             "covers": ["CHK-00", "CHK-99"],
             "inlined_check_hints": [
                 {"check_id": "CHK-00", "implementation_detail": "x"}
@@ -335,6 +352,7 @@ def test_coverage_fully_covered_passes(tmp_path):
     s["testpoints"] = [
         {
             "id": "TP-0",
+            "intent": "drive TP-0 and observe it",
             "covers": ["CHK-00", "CHK-01"],
             "inlined_check_hints": [
                 {"check_id": "CHK-00", "implementation_detail": "x"},

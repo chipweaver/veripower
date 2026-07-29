@@ -108,32 +108,74 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id"],
-        "additionalProperties": true,
+        "required": ["id", "intent", "covers"],
+        "additionalProperties": false,
         "properties": {
-          "id": {"type": "string"},
+          "id": {"type": "string", "minLength": 1},
+          "intent": {
+            "description": "What this testpoint drives and why — the stimulus/intent the env and conformance-fix children read as the intent source. Distinct from the checks: `inlined_check_hints` says how each covered check is verified, this says what situation is being created.",
+            "type": "string",
+            "minLength": 1
+          },
           "bins": {"type": "array"},
-          "covers": {"type": "array"},
+          "covers": {
+            "description": "The `check-hints/<child>.json` check_ids this testpoint verifies. Present with an explicit empty array on a scenario testpoint you invented — omitted and `[]` are not the same claim, and an empty one traces to no feature.",
+            "type": "array"
+          },
           "inlined_check_hints": {
-            "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the precise check semantics from the authored `check-hints/<child>.json`, materialized into this testpoint via its `covers[]`. `implementation_detail` is verbatim-if-present-else-summary.",
+            "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the precise check semantics from the authored `check-hints/<child>.json`, materialized into this testpoint via its `covers[]`. `implementation_detail` is verbatim-if-present-else-summary; `source_feature` is what `feature_count` traces through.",
             "type": "array",
             "items": {
               "type": "object",
               "required": ["check_id"],
               "additionalProperties": true,
-              "properties": {"check_id": {"type": "string"}}
+              "properties": {
+                "check_id": {"type": "string"},
+                "source_feature": {"type": "string"}
+              }
             }
           }
         }
       }
     },
     "power_scenarios": {
+      "description": "One entry per scenario materialized from references/power-scenarios-template.md's standard set. This is the only home — verification-plan.md §4 points here and restates no field. Two of these are load-bearing across the stage boundary: power-analysis's own result.schema.json REQUIRES corner_intent and duration_cycles, so an omitted one would surface as a downstream envelope failure rather than here.",
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id"],
-        "additionalProperties": true,
-        "properties": {"id": {"type": "string"}, "sequence_ref": {"type": "string"}}
+        "required": [
+          "id", "scenario", "clock_state", "reset_state", "data_state",
+          "low_power_state", "corner_intent", "sequence_ref", "duration_cycles", "purpose"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "scenario": {
+            "description": "The standard set's scenario name, materialized for this module (e.g. \"200MB/s (low-power off)\").",
+            "type": "string",
+            "minLength": 1
+          },
+          "clock_state": {"enum": ["on", "off", "switching"]},
+          "reset_state": {"enum": ["asserted", "de-asserted"]},
+          "data_state": {
+            "description": "Traffic level this scenario drives: none / no traffic / business_flow / full-toggle, per the standard set.",
+            "type": "string",
+            "minLength": 1
+          },
+          "low_power_state": {"enum": ["on", "off", "switching"]},
+          "corner_intent": {
+            "description": "PVT corner this scenario is annotated at (e.g. \"SS/125C\"). Equivalent scenarios reusing one sequence_ref keep distinct corner_intent — that is what the SAIF-per-ID dedup preserves.",
+            "type": "string",
+            "minLength": 1
+          },
+          "sequence_ref": {
+            "description": "A sequences[].name. The only field emit_power_tests reads; it groups by this and runs each group once.",
+            "type": "string",
+            "minLength": 1
+          },
+          "duration_cycles": {"type": "integer", "minimum": 1},
+          "purpose": {"type": "string", "minLength": 1}
+        }
       }
     },
     "skipped_checks": {

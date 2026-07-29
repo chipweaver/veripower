@@ -61,8 +61,10 @@ def _derive_reset(ports: list) -> dict:
 
 def _materialize_inline(check_hints: list, scaffold: dict) -> None:
     """Fill testpoints[].inlined_check_hints[] deterministically from covers[] + the hints.
-    implementation_detail = prefer(verbatim, summary). Fails loud on a covers[] check_id absent
-    from the hints (also the gate's reverse check). LLM authors covers[] (clustering) only."""
+    implementation_detail = prefer(verbatim, summary). `source_feature` rides along so the
+    testpoint→feature trace is answerable from this file alone (`feature_count`). Fails loud on
+    a covers[] check_id absent from the hints (also the gate's reverse check). LLM authors
+    covers[] (clustering) only."""
     by_id = {h["check_id"]: h for h in check_hints if h.get("check_id")}
     for tp in scaffold.get("testpoints", []):
         inlined = []
@@ -76,7 +78,11 @@ def _materialize_inline(check_hints: list, scaffold: dict) -> None:
             detail = (h.get("implementation_detail_verbatim") or "").strip() or (
                 h.get("implementation_detail") or ""
             ).strip()
-            entry = {"check_id": cid, "implementation_detail": detail}
+            entry = {
+                "check_id": cid,
+                "source_feature": h.get("source_feature", ""),
+                "implementation_detail": detail,
+            }
             for opt in ("observable", "reference_rule", "latency", "reset_behavior"):
                 v = (h.get(opt) or "").strip()
                 if v:

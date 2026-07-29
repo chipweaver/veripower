@@ -129,7 +129,7 @@ smoke gate still decides smoke pass/fail.
   compile filelist) — RTL-class issues belong to the RTL editing stage; do not exceed your authority.
 - **No RTL-source reads for authoring.** The behavioral reference for every refmodel / scoreboard /
   checker is the sim-plan exit docs (`scaffold-specification.json` `inlined_check_hints[]` +
-  `verification-plan.md` §3) -- the DUT RTL is NOT in this child's input set and MUST NOT be opened to
+  the testpoint's `intent`) -- the DUT RTL is NOT in this child's input set and MUST NOT be opened to
   understand a signal or derive an expected value. RTL participates only mechanically, through the
   compile filelist. A golden model reverse-engineered from the DUT mirrors the implementation (bugs
   included) and can never disagree -- circular verification. Reading RTL to author a check is a Rule A

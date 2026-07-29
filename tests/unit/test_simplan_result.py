@@ -46,14 +46,32 @@ GOOD = {
     "testpoints": [
         {
             "id": "TP-1",
+            "intent": "drive a write and observe the read-back",
             "bins": ["a"],
             "covers": ["CHK-0"],
             "inlined_check_hints": [
-                {"check_id": "CHK-0", "implementation_detail": "x"}
+                {
+                    "check_id": "CHK-0",
+                    "source_feature": "F-01",
+                    "implementation_detail": "x",
+                }
             ],
         }
     ],
-    "power_scenarios": [{"id": "S1", "sequence_ref": "smoke", "clock_state": "on"}],
+    "power_scenarios": [
+        {
+            "id": "S1",
+            "scenario": "Static leakage",
+            "clock_state": "off",
+            "reset_state": "asserted",
+            "data_state": "none",
+            "low_power_state": "off",
+            "corner_intent": "SS/125C",
+            "sequence_ref": "smoke",
+            "duration_cycles": 2000,
+            "purpose": "Leakage baseline",
+        }
+    ],
 }
 
 _REVIEW_CLEAR = {
@@ -65,9 +83,10 @@ _REVIEW_CLEAR = {
 }
 
 
-def _plan_md(features=("F-01", "F-02")):
-    rows = "\n".join(f"| TP-{i} | {f} | ... |" for i, f in enumerate(features))
-    return f"# Plan\n## 3. Testpoints Table\n| id | feature | desc |\n|---|---|---|\n{rows}\n"
+def _plan_md():
+    # §3 carries narrative + a pointer; the testpoints themselves live in the scaffold spec,
+    # which is where feature_count is derived from. Nothing parses this file.
+    return "# Plan\n## 3. Testpoints\nSee scaffold-specification.json testpoints[].\n"
 
 
 def _finalize_workdir(tmp_path, *, scaffold=None, plan_md=None, review=_REVIEW_CLEAR):
@@ -94,7 +113,7 @@ def test_build_result_pass_lean_shape(tmp_path):
     ss = env["stage_specific"]
     # GOOD has 2 agents / 1 sequence / 1 test / 1 testpoint / 1 power_scenario
     assert ss["testpoint_count"] == 1 and ss["power_scenario_count"] == 1
-    assert ss["feature_count"] == 2  # distinct F-NN in the plan md
+    assert ss["feature_count"] == 1  # GOOD's one testpoint traces to F-01
     assert ss["scaffold_summary"] == {
         "agent_count": 2,
         "sequence_count": 1,
@@ -187,47 +206,51 @@ def test_build_result_gate_trip_fully_waived_is_pass(tmp_path):
     )  # human-gate narration carried
 
 
-# ── feature_count derivation (distinct F-NN in the §3 Testpoints section) ────
-def test_count_features_distinct():
-    md = (
-        "## 3. Testpoints Table\n"
-        "| TP-1 | F-01 | x |\n| TP-2 | F-01 | y |\n| TP-3 | F-02 | z |\n"
-    )
-    assert vs.count_features(md) == 2  # F-01 counted once
+# ── feature_count derivation (testpoint → covers[] → hint → source_feature) ──
+def _tp(tp_id, feats, covers=None):
+    return {
+        "id": tp_id,
+        "intent": "i",
+        "covers": covers
+        if covers is not None
+        else [f"CHK-{i}" for i in range(len(feats))],
+        "inlined_check_hints": [
+            {"check_id": f"CHK-{i}", "source_feature": f} for i, f in enumerate(feats)
+        ],
+    }
 
 
-def test_count_features_zero_when_absent():
-    assert vs.count_features("# Plan\nno feature ids here\n") == 0
+def test_count_features_distinct_across_testpoints():
+    sc = {
+        "testpoints": [
+            _tp("TP-1", ["F-01"]),
+            _tp("TP-2", ["F-01"]),
+            _tp("TP-3", ["F-02"]),
+        ]
+    }
+    assert vs.count_features(sc) == 2  # F-01 counted once
 
 
-def test_count_features_ignores_non_fnn_tokens():
-    md = "## 3. Testpoints Table\nprose mentions F- and Frame-01 and F-12\n"
-    assert vs.count_features(md) == 1  # only F-12
+def test_count_features_distinct_within_one_testpoint():
+    # one testpoint clustering checks from two features traces to both
+    assert vs.count_features({"testpoints": [_tp("TP-1", ["F-01", "F-02"])]}) == 2
 
 
-def test_count_features_ignores_s5_revision_mentions():
-    # an F-NN cited only in the §5 revision note (e.g. a dropped testpoint's
-    # attribution) must not inflate the count across reworks
-    md = (
-        "## 3. Testpoints Table\n| TP-1 | F-01 | x |\n"
-        "## 5. Revision Summary\nremoved over-spec testpoint for F-99\n"
-    )
-    assert vs.count_features(md) == 1
+def test_count_features_zero_without_testpoints():
+    assert vs.count_features({}) == 0
+    assert vs.count_features({"testpoints": []}) == 0
 
 
-def test_count_features_not_shadowed_by_decoy_heading():
-    # a heading merely MENTIONING testpoints must not capture the section — the
-    # pattern anchors to the start of the heading text
-    md = (
-        "## 1.3 Overview of Testpoints strategy\nprose citing F-77\n"
-        "## 3. Testpoints Table\n| TP-1 | F-01 | x |\n| TP-2 | F-02 | y |\n"
-    )
-    assert vs.count_features(md) == 2  # F-01/F-02, not F-77
+def test_count_features_scenario_testpoint_traces_to_nothing():
+    # an invented scenario testpoint declares covers: [] — it verifies no authored check, so it
+    # traces to no feature. Counting it would claim spec coverage the plan does not have.
+    sc = {"testpoints": [_tp("TP-1", ["F-01"]), _tp("TP-SCENARIO", [], covers=[])]}
+    assert vs.count_features(sc) == 1
 
 
-def test_count_features_case_insensitive_heading():
-    md = "## 3. TESTPOINTS TABLE\n| TP-1 | F-01 | x |\n"
-    assert vs.count_features(md) == 1
+def test_count_features_ignores_blank_source_feature():
+    sc = {"testpoints": [_tp("TP-1", ["F-01", "", "   "])]}
+    assert vs.count_features(sc) == 1
 
 
 # ── artifacts[] enumeration (fixed 3-entry set, present-only, no self-listing) ─
@@ -281,7 +304,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     ss = env["stage_specific"]
     assert env["status"] == "pass"
     # counts — EXACT to the real run (asic/tpu_top result.json:11-19)
-    assert ss["feature_count"] == 5  # distinct F-01..F-05 in verification-plan.md
+    assert ss["feature_count"] == 5  # F-01..F-05, traced through the inlined hints
     assert ss["testpoint_count"] == 18  # len(scaffold.testpoints)
     assert ss["power_scenario_count"] == 9  # len(scaffold.power_scenarios)
     assert ss["scaffold_summary"] == {
