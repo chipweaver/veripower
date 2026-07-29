@@ -1,8 +1,0 @@
-suite_summary
-total_tests: 7
-passed_tests: 7
-failed_tests: 0
-manual_review_tests: 0
-not_run_tests: 0
-feature_coverage_percent: 100.0
-testcase_pass_rate_percent: 100.0
