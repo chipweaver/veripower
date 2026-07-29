@@ -56,7 +56,7 @@ def _manifest(*children):
 def _setup(tmp_path, *, fresh, children):
     wd = tmp_path / "runs" / "1"
     wd.mkdir(parents=True)
-    (wd / "fresh_reports.json").write_text(json.dumps(fresh))
+    (wd / "reaped-children.json").write_text(json.dumps(fresh))
     (tmp_path / "manifest.json").write_text(json.dumps(_manifest(*children)))
     return wd, tmp_path / "manifest.json"
 
@@ -139,7 +139,7 @@ def test_assemble_subset_rework_overlays_seeded(tmp_path):
     )
     assert _run(wd, man, top="top").returncode == 0
     # round 2: only 'leaf' re-dispatched, new file; --seeded carries 'topc' forward.
-    (wd / "fresh_reports.json").write_text(
+    (wd / "reaped-children.json").write_text(
         json.dumps(
             {"leaf": {"status": "done", "files": ["leaf_new.sv"], "annotations": _ANN}}
         )
@@ -164,7 +164,7 @@ def test_assemble_manifest_shrink_evicts_F2(tmp_path):
     led = _read_state(wd)
     led["gone"] = {"files": ["gone.sv"], "annotations": _ANN}
     _write_state(wd, led)
-    (wd / "fresh_reports.json").write_text(json.dumps({}))
+    (wd / "reaped-children.json").write_text(json.dumps({}))
     r = _run(wd, man, top="top", seeded=True)
     assert r.returncode == 0, r.stderr
     assert "gone" not in _read_state(wd)
@@ -326,7 +326,7 @@ def test_assemble_seeded_blocked_keeps_stale_entry_but_gate_fails(tmp_path):
     )
     assert _run(wd, man, top="top").returncode == 0  # round 1: both done
     # round 2: leaf now blocked; --seeded carries its stale round-1 entry.
-    (wd / "fresh_reports.json").write_text(
+    (wd / "reaped-children.json").write_text(
         json.dumps(
             {
                 "leaf": {"status": "blocked", "reason": "iface regressed"},

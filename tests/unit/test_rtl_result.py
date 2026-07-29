@@ -64,8 +64,8 @@ def _workdir(
     }
     ledger[top] = {"files": [f"{top}.v"], "annotations": _ann(), "incdirs": []}
     _write_state(wd, ledger)
-    # fresh_reports.json (all done) — the post exit-gate hard-requires fresh_reports.json.
-    (wd / "fresh_reports.json").write_text(
+    # reaped-children.json (all done) — the post exit-gate hard-requires reaped-children.json.
+    (wd / "reaped-children.json").write_text(
         json.dumps({n: {"status": "done"} for n in ledger})
     )
     (wd / "semantic-review.json").write_text(json.dumps(semantic))
@@ -223,11 +223,11 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
 
 def test_build_result_pre_dispatch_coverage_fail_routes_through_finalize(tmp_path):
     # F-A: a pre-dispatch check-partition coverage fail (no fan-out yet -> no ledger, no
-    # fresh_reports.json) routes through finalize and surfaces the REAL coverage reason, not
-    # the generic "requires fresh_reports.json and the ledger" pre-guard message. This exercises
+    # reaped-children.json) routes through finalize and surfaces the REAL coverage reason, not
+    # the generic "requires reaped-children.json and the ledger" pre-guard message. This exercises
     # partition.post_verdict's coverage short-circuit (status=fail AND no ledger).
     wd = tmp_path / "rtl-design"
-    wd.mkdir()  # empty: no ledger, no fresh_reports.json (pre-dispatch state)
+    wd.mkdir()  # empty: no ledger, no reaped-children.json (pre-dispatch state)
     man = {  # top module covered by 0 children -> coverage fail
         "module": "tpu_top",
         "children": [{"name": "mac", "doc": "mac.md", "rtl_modules": ["mac"]}],
@@ -242,7 +242,9 @@ def test_build_result_pre_dispatch_coverage_fail_routes_through_finalize(tmp_pat
     assert env["status"] == "fail"
     fr = env["stage_specific"]["fail_reason"]
     assert "covered by 0 children" in fr  # the real coverage reason, surfaced
-    assert "requires fresh_reports.json" not in fr  # NOT the generic pre-guard message
+    assert (
+        "requires reaped-children.json" not in fr
+    )  # NOT the generic pre-guard message
     assert (
         "semantic_gate" not in env["stage_specific"]
     )  # never reached the semantic gate

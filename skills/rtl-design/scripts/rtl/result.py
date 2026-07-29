@@ -51,7 +51,7 @@ def _exit_verdict(workdir: Path, top: str, manifest: Path) -> dict:
     """Re-derive the **post exit-gate** verdict IN-PROCESS over the converged on-disk state:
     {status, fail_reason?, artifacts[]}. Calls the same post_verdict() the legacy CLI uses,
     so the topology/blocked-child gate + artifact enumeration are not duplicated."""
-    return post_verdict(manifest, top, workdir / "fresh_reports.json", workdir)[0]
+    return post_verdict(manifest, top, workdir / "reaped-children.json", workdir)[0]
 
 
 def _locus_fail_reason(gate: dict) -> str:

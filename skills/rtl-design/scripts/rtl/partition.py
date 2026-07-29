@@ -59,7 +59,7 @@ def post_verdict(manifest: Path, top: str, fresh: Path, workdir: Path):
                 "status": "fail",
                 "artifacts": [],
                 "fail_reason": (
-                    f"post exit gate requires fresh_reports.json, {FILES_NAME} "
+                    f"post exit gate requires reaped-children.json, {FILES_NAME} "
                     f"and {ANNOTATIONS_NAME}"
                 ),
             },

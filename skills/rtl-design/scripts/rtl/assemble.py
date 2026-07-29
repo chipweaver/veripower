@@ -68,7 +68,7 @@ def merge_ledger(fresh: Path, manifest: Path, workdir: Path, seeded: bool) -> di
 
 def run(workdir, manifest, top, *, seeded=False) -> int:
     workdir, manifest = Path(workdir), Path(manifest)
-    fresh = workdir / "fresh_reports.json"
+    fresh = workdir / "reaped-children.json"
     try:
         merge_ledger(fresh, manifest, workdir, seeded)
     except (_BuildError, LedgerError, json.JSONDecodeError, OSError, KeyError) as e:

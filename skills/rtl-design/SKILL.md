@@ -144,7 +144,7 @@ than dispatched, keep waiting (do not finalize against a partial report set).
 
 ### Step 4: Finalize (scripts + gates + semantic gate) + result.json
 
-**4.1 Serialize reaped reports → `{workdir}/fresh_reports.json`** — your single transcription act: the
+**4.1 Serialize reaped reports → `{workdir}/reaped-children.json`** — your single transcription act: the
 finalize scripts read only disk, not your reap context, so dump each reaped child's `STATUS` + JSON to this
 one file for them (`STATUS: DONE`+JSON → `{"status":"done",...}`; `STATUS: BLOCKED <r>` →
 `{"status":"blocked","reason":"<r>"}`). A straight copy, no judgment.
@@ -182,13 +182,13 @@ child), so self-converge:
   fan-out wave). **manifest name is authoritative**: a child MUST author its
   `manifest.children[].rtl_modules[]` name verbatim (renaming is itself a violation `check #1` catches).
 - Re-run `assemble` **WITH `--seeded`** (CRITICAL — without it the round's subset-only
-  `fresh_reports.json` evicts every already-passing child via `merge_filter`'s roster∩fresh), then
+  `reaped-children.json` evicts every already-passing child via `merge_filter`'s roster∩fresh), then
   `check-conformance`. `assemble`'s verdict is authoritative every round exactly as in 4.2 — a non-zero
   `assemble` (blocked-child or topology) stops the stage with `status=fail` and does not fall through to
   `check-conformance`; otherwise loop until `check-conformance` passes. The loop is intra-stage scratch —
   the stage produces one result at exit, the re-dispatches are not externally visible, and no persistent
   "pending finalize" state carries across.
-- On convergence, rebuild a full-roster `fresh_reports.json` (all children `status=done`,
+- On convergence, rebuild a full-roster `reaped-children.json` (all children `status=done`,
   reconstructing each already-passing child's `files`/`annotations` entry from the sidecars
   on disk — a `done` child without them fails `assemble` loud) and re-run
   `assemble --seeded` over it to refresh `artifacts[]`. Files a re-dispatched child later
@@ -302,7 +302,7 @@ Main-thread skill: control returns directly to the caller; the caller decides ba
 
 Each dispatched per-child sub-Task ends with a harness-level `STATUS: DONE` + a `{"files": [...], "incdirs"?: [...], "annotations": {...}}` JSON line, or `STATUS: BLOCKED <reason>` (schema in `references/child-task-contract.md`).
 
-These signals are consumed by the rtl-design main thread (translated into `fresh_reports.json` for the finalize scripts), not by the caller. The caller only reads this skill's `result.json` envelope (`status ∈ {pass, fail}`).
+These signals are consumed by the rtl-design main thread (translated into `reaped-children.json` for the finalize scripts), not by the caller. The caller only reads this skill's `result.json` envelope (`status ∈ {pass, fail}`).
 
 ### Re-entry and completion
 
