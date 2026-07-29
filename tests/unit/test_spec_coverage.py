@@ -499,7 +499,7 @@ def test_frontmatter_missing_required_key_fails(tmp_path):
         "module": "m",
         "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
     }
-    fs = cc.compute_frontmatter_subset(tmp_path, manifest, "# m\n")
+    fs = cc.compute_frontmatter_subset(tmp_path, manifest)
     missing = {m["child"]: set(m["missing"]) for m in fs["missing_keys"]}
     assert "c" in missing and {"parent", "clocks"} <= missing["c"]
 
@@ -516,7 +516,7 @@ def test_frontmatter_all_required_keys_present_passes(tmp_path):
         "module": "m",
         "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
     }
-    fs = cc.compute_frontmatter_subset(tmp_path, manifest, "# m\n")
+    fs = cc.compute_frontmatter_subset(tmp_path, manifest)
     assert fs["missing_keys"] == []
 
 

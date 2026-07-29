@@ -159,10 +159,13 @@ def parse_frontmatter(sub_text: str) -> dict:
     return yaml.safe_load(m.group(1)) or {}
 
 
-def compute_frontmatter_subset(
-    workdir: Path, manifest: dict, main_design_text: str
-) -> dict:
-    """Frontmatter `ports / clocks / features` ⊆ main-design tables; all required keys present."""
+def compute_frontmatter_subset(workdir: Path, manifest: dict) -> dict:
+    """Each child's frontmatter `ports / clocks / features` ⊆ the authored sidecars.
+
+    Not a same-fact-twice check: the sidecars are specification's Wave-1 claim about the
+    boundary, the frontmatter is the child author's claim about which of it is theirs. Two
+    authors, two facts — so a cross-reference that does not resolve is a real defect.
+    """
     port_names = {
         p["name"] for p in load_sidecar(workdir, "top-io.json") if p.get("name")
     }
@@ -547,7 +550,7 @@ def run(workdir: str, brainstorm: str) -> int:
         for child in manifest["children"]
     }
     bs_cov = compute_brainstorm_coverage(manifest, brainstorm_text)
-    fm_sub = compute_frontmatter_subset(workdir_p, manifest, main_design_text)
+    fm_sub = compute_frontmatter_subset(workdir_p, manifest)
     tok = compute_token_survival(workdir_p, manifest, brainstorm_text, main_design_text)
     self_c = compute_self_containment(workdir_p, manifest, main_design_text)
     struct = compute_structure(
