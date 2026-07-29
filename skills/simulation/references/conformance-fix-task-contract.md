@@ -13,7 +13,7 @@ wrong-behavior, fake-green}`) so the TB checks adequately cover the testpoint in
 - `{workdir}` — already populated with `tb/uvm/**`.
 - `conformance-review.json` — the flagged findings, each carrying its `tp_id` / `category` / `location`.
 - The scaffold-spec `testpoints[].inlined_check_hints[]` (the check-intent source) — **read-only**.
-- `scaffold-specification.json`'s `testpoints[].intent` (the intent source) — **read-only**.
+- `tb-scaffold.json`'s `testpoints[].intent` (the intent source) — **read-only**.
 
 ## May change
 
@@ -22,7 +22,7 @@ wrong-behavior, fake-green}`) so the TB checks adequately cover the testpoint in
 
 ## Must NOT change (Iron Rule boundary)
 
-- `verification-plan.md` / `scaffold-specification.json` (the intent source, read-only upstream).
+- `verification-plan.md` / the plan sidecars (the intent source, read-only upstream).
   Never loosen a check to make the gate pass falsely.
 
 ## Direction

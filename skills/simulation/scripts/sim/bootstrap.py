@@ -26,6 +26,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from sim._plan import SCAFFOLD_NAME
+
 # This file: skills/simulation/scripts/sim/bootstrap.py
 #   parents[2] = skills/simulation   (-> templates/, ships with the skill)
 # The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
@@ -55,14 +57,14 @@ def _err(msg: str) -> None:
 
 
 def infer_top_from_scaffold(scaffold_dir: Path) -> str | None:
-    """Top module name from the injected `scaffold` input's scaffold-specification.json
+    """Top module name from the injected `scaffold` input's tb-scaffold.json
     (`top` — a REQUIRED field per its schema, skills/simulation-plan/references/
-    scaffold-specification.schema.json). Absent / unreadable / no `top` / non-identifier
+    tb-scaffold.schema.json). Absent / unreadable / no `top` / non-identifier
     -> None (fall back to the RTL filelist). Unlike the former specification/manifest.json
     read, `scaffold` IS a declared Rule.input (rules.RULES["simulation"].inputs["scaffold"]),
     so this coordinate's freshness is already covered by the kernel's own input-staleness
     check — no separate declaration needed."""
-    f = scaffold_dir / "scaffold-specification.json"
+    f = scaffold_dir / SCAFFOLD_NAME
     if not f.is_file():
         return None
     try:
@@ -106,7 +108,7 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
     rtl_dir = Path(inputs["rtl"])
     rtl_files_path = rtl_dir / "rtl-files.json"
 
-    # Read TOP (the declared `scaffold` input's scaffold-specification.json `top` field —
+    # Read TOP (the declared `scaffold` input's tb-scaffold.json `top` field —
     # a REQUIRED field, spec-input-contract) BEFORE the
     # prereq/guard. TOP comes from the scaffold: simulation does not declare specification
     # as an input, and `scaffold` already IS a declared one, so this is a coordinate the
@@ -116,7 +118,7 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         top = infer_top_from_scaffold(Path(inputs["scaffold"]))
     if not top:
         _err("cannot read top-module name; pass --top <name>")
-        _err("  scaffold-specification.json must carry a 'top' name.")
+        _err(f"  {SCAFFOLD_NAME} must carry a 'top' name.")
         return 1
 
     # Prerequisite: the rtl-design filelist must exist (the scaffold's RTL source).
@@ -172,20 +174,15 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
 
     # Step 3: render the UVM scaffold when --scaffold is provided (same path as render-scaffold).
     if scaffold:
-        scaffold_path = Path(scaffold)
-        if not scaffold_path.is_absolute():
-            scaffold_path = tree_root / scaffold_path
-        if not scaffold_path.is_file():
-            _err(f"missing scaffold-specification.json: {scaffold_path}")
-            return 1
+        plan_dir = Path(scaffold)
+        if not plan_dir.is_absolute():
+            plan_dir = tree_root / plan_dir
         from sim import scaffold as scaffold_mod
 
-        scaffold_mod.render(
-            scaffold_path, dest
-        )  # default template dir = templates/scaffold
-        print(f"[sim bootstrap] rendered UVM scaffold from {scaffold_path.name}")
+        scaffold_mod.render(plan_dir, dest)  # default template dir = templates/scaffold
+        print(f"[sim bootstrap] rendered UVM scaffold from {plan_dir}")
     else:
-        print("[sim bootstrap] --scaffold not supplied; deployed infra only.")
+        print("[sim bootstrap] --plan not supplied; deployed infra only.")
 
     print(f"[sim bootstrap] done — {dest}")
     print(f"  MODULE={module}  TOP={top}")

@@ -85,12 +85,23 @@ _REVIEW_CLEAR = {
 def _plan_md():
     # §3 carries narrative + a pointer; the testpoints themselves live in the scaffold spec,
     # which is where feature_count is derived from. Nothing parses this file.
-    return "# Plan\n## 3. Testpoints\nSee scaffold-specification.json testpoints[].\n"
+    return "# Plan\n## 3. Testpoints\nSee tb-scaffold.json testpoints[].\n"
+
+
+def _split(wd, scaffold):
+    """The plan's machine half is three files on disk; the tests author one dict."""
+    doc = dict(scaffold)
+    for name, key in (
+        ("sequences.json", "sequences"),
+        ("power-scenarios.json", "power_scenarios"),
+    ):
+        (wd / name).write_text(json.dumps(doc.pop(key, [])))
+    (wd / "tb-scaffold.json").write_text(json.dumps(doc))
 
 
 def _finalize_workdir(tmp_path, *, scaffold=None, plan_md=None, review=_REVIEW_CLEAR):
     wd = tmp_path
-    (wd / "scaffold-specification.json").write_text(json.dumps(scaffold or GOOD))
+    _split(wd, scaffold or GOOD)
     (wd / "verification-plan.md").write_text(plan_md or _plan_md())
     (wd / "plan-review.json").write_text(json.dumps(review))
     return wd
@@ -203,7 +214,9 @@ def test_enumerate_artifacts_fixed_set_present_only(tmp_path):
     arts = vs.enumerate_artifacts(wd)
     assert [a["path"] for a in arts] == [
         "verification-plan.md",
-        "scaffold-specification.json",
+        "tb-scaffold.json",
+        "sequences.json",
+        "power-scenarios.json",
         "plan-review.json",
     ]
     assert all(set(a) == {"path"} for a in arts)  # the path IS the identity
@@ -252,7 +265,9 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     paths = {a["path"] for a in env["artifacts"]}
     assert paths == {
         "verification-plan.md",
-        "scaffold-specification.json",
+        "tb-scaffold.json",
+        "sequences.json",
+        "power-scenarios.json",
         "plan-review.json",
     }
     assert "result.json" not in paths
@@ -264,7 +279,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
 def test_finalize_blocked_on_bad_waived_json(tmp_path):
     # malformed --waived JSON → exit 2 BLOCKED (never a status=fail result.json)
     wd = tmp_path
-    (wd / "scaffold-specification.json").write_text(json.dumps(GOOD))
+    _split(wd, GOOD)
     (wd / "verification-plan.md").write_text("# Plan\n\nNarrative only.\n")
     (wd / "plan-review.json").write_text(
         json.dumps(
@@ -283,7 +298,7 @@ def test_finalize_blocked_on_bad_waived_json(tmp_path):
 
 
 def test_finalize_blocked_on_internal_raise(tmp_path):
-    # missing scaffold-specification.json → build_result raises → caught → exit 2 BLOCKED
+    # missing tb-scaffold.json → build_result raises → caught → exit 2 BLOCKED
     assert vs.finalize(tmp_path, "m", waived_json=None, status=None, revision=None) == 2
 
 
@@ -312,7 +327,7 @@ def test_finalize_earlyfail_seeded_workdir_carries_products(tmp_path):
     # on a seeded rework workdir the present-only enumeration carries the prior
     # products, so a promoted early fail cannot GC canonical down to a hollow view
     (tmp_path / "verification-plan.md").write_text("PLAN", encoding="utf-8")
-    (tmp_path / "scaffold-specification.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "tb-scaffold.json").write_text("{}", encoding="utf-8")
     rc = vs.finalize(
         tmp_path,
         "m",
@@ -324,7 +339,7 @@ def test_finalize_earlyfail_seeded_workdir_carries_products(tmp_path):
     assert rc == 0
     env = json.loads((tmp_path / "result.json").read_text())
     paths = {a["path"] for a in env["artifacts"]}
-    assert paths == {"verification-plan.md", "scaffold-specification.json"}
+    assert paths == {"verification-plan.md", "tb-scaffold.json"}
     assert "plan_adequacy_gate" not in env["stage_specific"]
 
 

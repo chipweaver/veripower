@@ -81,7 +81,7 @@ def validate_ports(agents: list[dict], clk_port_name: str, rst_port_name: str) -
                 sys.exit(
                     f"scaffold: signal '{sig}' duplicated across agents "
                     f"(first declared in '{first_owner[sig]}', conflict in '{aname}'). "
-                    f"Adjust the agents' interface_groups in scaffold-specification.json so "
+                    f"Adjust the agents' interface_groups in tb-scaffold.json so "
                     f"the groups do not overlap, then re-run simulation-plan's materialize step "
                     f"(an agent's signals must be unique within the scaffold)."
                 )

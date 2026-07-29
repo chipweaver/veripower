@@ -9,7 +9,7 @@ review summary.
 - `{workdir}` — the **same** shared workdir the env-build child wrote in wave 1. It already holds the
   built TB (`tb/uvm/**`), the compiled `simv`, the env-phase artifacts, and
   `{workdir}/verify-handoff.json`.
-- scaffold-specification testpoints path: `<scaffold>/scaffold-specification.json` —
+- testpoints path: `<scaffold>/tb-scaffold.json` —
   read `testpoints[].bins[]` for coverage-gap classification (Rule B) and `testpoints[].id` to
   cross-reference `verify-handoff.json`. (`agents` / `sequences` / `tests` are already materialized;
   do not re-materialize.)
@@ -28,7 +28,7 @@ there.
    (urg-derived structural dims `line`/`cond`/`fsm`/`toggle` from the `aggregate` block) and compare
    against `defaults.yaml.coverage_thresholds`:
    - All dimensions meet threshold → go to summary.
-   - All uncovered bins map to `scaffold-specification.json.testpoints[].bins[]` → stimulus iterate
+   - All uncovered bins map to `tb-scaffold.json.testpoints[].bins[]` → stimulus iterate
      (add seeds / sequences / constraint parameters), round budget at
      `defaults.yaml.stimulus_iterate_max_rounds`; each round re-runs `make regress`.
    - Any uncovered bin **not** inside scaffold testpoints → route out: write `failure_phase=coverage`

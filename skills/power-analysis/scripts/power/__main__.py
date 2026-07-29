@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--scaffold",
         required=True,
-        help="scaffold-specification.json (power_scenarios[])",
+        help="the simulation-plan workdir (power-scenarios.json is read from it)",
     )
     sp.set_defaults(func=_cmd_finalize)
 

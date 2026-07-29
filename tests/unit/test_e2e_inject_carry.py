@@ -95,7 +95,9 @@ _STAGE_FILES = {
     },
     "simulation-plan": {
         "verification-plan.md": "plan v1",
-        "scaffold-specification.json": "{}",
+        "tb-scaffold.json": "{}",
+        "sequences.json": "[]",
+        "power-scenarios.json": "[]",
     },
     "rtl-design": {
         "top.v": "module top; endmodule",
@@ -235,24 +237,23 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
 def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     module = "m"
     _write_file(tmp_path, module, "brainstorm.md", "b1")
-    # A scaffold-specification.json with real content — the deployed
-    # emit_power_tests.py (shelled out to by the real power bootstrap below)
-    # enforces the sim-plan -> power cross-stage contract (power_scenarios[].
-    # sequence_ref must resolve to sequences[].name).
+    # Real sidecar content — the deployed emit_power_tests.py (shelled out to by the real
+    # power bootstrap below) enforces the sim-plan -> power cross-stage contract (a
+    # scenario's sequence_ref must resolve to a sequences.json name), which is now a
+    # cross-FILE check.
     simplan_files = {
         "verification-plan.md": "plan v1",
-        "scaffold-specification.json": json.dumps(
-            {
-                "sequences": [{"name": "idle_seq", "agent": "cpu"}],
-                "power_scenarios": [
-                    {
-                        "id": "S1",
-                        "sequence_ref": "idle_seq",
-                        "scenario": "idle",
-                        "duration_cycles": 1000,
-                    }
-                ],
-            }
+        "tb-scaffold.json": "{}",
+        "sequences.json": json.dumps([{"name": "idle_seq", "agent": "cpu"}]),
+        "power-scenarios.json": json.dumps(
+            [
+                {
+                    "id": "S1",
+                    "sequence_ref": "idle_seq",
+                    "scenario": "idle",
+                    "duration_cycles": 1000,
+                }
+            ]
         ),
     }
     # seed synthesis (netlist) + simulation (tb_env) + simulation-plan

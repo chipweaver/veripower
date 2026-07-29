@@ -68,7 +68,7 @@ def main():
     if not testlist_path.is_file():
         sys.exit(
             f"write_summary: missing {testlist_path}; "
-            "run sim bootstrap --scaffold <scaffold-specification.json> first to generate the scaffold"
+            "run sim bootstrap --plan <simulation-plan workdir> first to generate the scaffold"
         )
 
     testlist = json.loads(testlist_path.read_text(encoding="utf-8"))

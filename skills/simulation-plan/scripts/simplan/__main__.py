@@ -32,13 +32,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def _cmd_materialize_scaffold(a: argparse.Namespace) -> int:
     from simplan import materialize
 
-    return materialize.run(a.scaffold, a.spec)
+    return materialize.run(a.plan, a.spec)
 
 
 def _cmd_check_scaffold(a: argparse.Namespace) -> int:
     from simplan import scaffold
 
-    return scaffold.run(a.scaffold, a.spec)
+    return scaffold.run(a.plan, a.spec)
 
 
 def _cmd_validate_review(a: argparse.Namespace) -> int:
@@ -68,7 +68,12 @@ def build_parser() -> argparse.ArgumentParser:
         "materialize-scaffold",
         help="fill scaffold agent signals / clock / reset / inline hints",
     )
-    sp.add_argument("--scaffold", required=True, type=Path)
+    sp.add_argument(
+        "--plan",
+        required=True,
+        type=Path,
+        help="the simulation-plan workdir holding the sidecars",
+    )
     sp.add_argument(
         "--spec",
         required=True,
@@ -78,7 +83,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=_cmd_materialize_scaffold)
 
     sp = sub.add_parser("check-scaffold", help="structural + semantic + coverage gate")
-    sp.add_argument("--scaffold", required=True, type=Path)
+    sp.add_argument(
+        "--plan",
+        required=True,
+        type=Path,
+        help="the simulation-plan workdir holding the sidecars",
+    )
     sp.add_argument(
         "--spec",
         required=True,

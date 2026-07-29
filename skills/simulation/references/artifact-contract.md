@@ -9,7 +9,7 @@ the orchestrator, never by a sub-Task.
 ## Inputs (read)
 
 - `Verification/simulation-plan/verification-plan.md`
-- `Verification/simulation-plan/scaffold-specification.json` (**read-only** — basis for Rule A/B; the
+- `Verification/simulation-plan/tb-scaffold.json` and `sequences.json` (**read-only** — basis for Rule A/B; the
   env phase materializes `agents` / `sequences` / `tests` / `testpoints`; the `power_scenarios[]`
   field coexists but is not consumed here — it is read by power-analysis)
 - `Verification/simulation-plan/result.json` (gate)
@@ -120,6 +120,6 @@ no-clobber `bootstrap` deploys the full pristine template.
 
 ## Forbidden outputs
 
-- Do not write `verification-plan.md` / `scaffold-specification.json` (plan is a read-only external
+- Do not write `verification-plan.md` / the plan sidecars (plan is a read-only external
   reference).
 - Do not modify any file under `Design/rtl-design/`.

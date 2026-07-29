@@ -1,6 +1,6 @@
-"""The materialize-scaffold verb — fill scaffold-specification.json from the spec sidecars.
+"""The materialize-scaffold verb — fill tb-scaffold.json from the spec sidecars.
 
-Each agent in scaffold-specification.json is authored by the simulation-plan LLM as
+Each agent in tb-scaffold.json is authored by the simulation-plan LLM as
 {name, mode, interface_groups:[...]} — group NAMES only (top-io.json interface_group
 values). This verb fills each agent's interface.signals + transaction.fields
 deterministically from top-io.json (grouped by interface_group), so the
@@ -23,6 +23,7 @@ import json
 import sys
 from pathlib import Path
 
+from simplan._plan import SCAFFOLD_NAME
 from simplan.hints import HintsError, load_check_hints
 
 
@@ -180,12 +181,20 @@ def materialize(
     return scaffold
 
 
-def run(scaffold_path, spec_workdir) -> int:
+def run(plan_dir, spec_workdir) -> int:
     """One --spec path instead of one per sidecar: they all live in the specification
-    workdir, and the list would otherwise grow with every sidecar added."""
-    scaffold_path, spec = Path(scaffold_path), Path(spec_workdir)
+    workdir, and the list would otherwise grow with every sidecar added.
+
+    Reads tb-scaffold.json raw rather than through _plan.load_plan: this verb runs BEFORE
+    check-scaffold, on a file that does not validate yet (the fields it injects are the
+    schema's own required ones), and it touches nothing in the other two sidecars.
+    """
+    spec = Path(spec_workdir)
+    scaffold_path = Path(plan_dir) / SCAFFOLD_NAME
     try:
         scaffold = json.loads(scaffold_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        sys.exit(f"materialize-scaffold: {scaffold_path} not found.")
     except json.JSONDecodeError as e:
         sys.exit(f"materialize-scaffold: {scaffold_path} is not valid JSON: {e}")
     sidecars = {}

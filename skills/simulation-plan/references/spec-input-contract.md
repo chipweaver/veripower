@@ -6,7 +6,7 @@ Nothing derives them, and there is no intermediate cache to read instead. You au
 `verification-plan.md` **from that JSON**; do not re-read `design.md` / `<child>.md` into
 the main thread. This guide names the `design.md` columns only so you recognize where each
 sidecar field means, and maps them to the objects this stage authors
-(`scaffold-specification.json`: `agents` / `sequences` / `tests` / `testpoints[]` /
+(the plan sidecars: `agents` / `sequences` / `tests` / `testpoints[]` /
 `power_scenarios[]`, and `verification-plan.md`). It does not gate completeness: design-template's
 gate table plus `check-coverage` enforce that upstream, before this stage runs.
 
@@ -172,7 +172,7 @@ all children, which is why they are aggregated before the matrix is checked.
 
 ## Derivation rules
 
-- Derive `verification-plan.md` (human-readable review anchor) and `scaffold-specification.json`
+- Derive `verification-plan.md` (human-readable review anchor) and the plan sidecars
   (machine-read contract) from the fields above.
 - `features.json` alone gives you feature-traceability testpoints; transactions / agents /
   sequences / checks need `timing-scenarios.json`, `check-hints/*.json` and the §1.4 fields. There is no automatic generation; you

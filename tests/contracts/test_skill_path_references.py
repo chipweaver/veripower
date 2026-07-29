@@ -11,7 +11,7 @@ been renamed, moved, or deleted. Three categories of paths are tested:
                                        wherever it points)
 
 Deliberately excluded: bare names like `design.md`, `brainstorm.md`,
-`result.json`, `scaffold-specification.json`, `verification-plan.md`,
+`result.json`, `tb-scaffold.json`, `verification-plan.md`,
 `traceability.md`, `checklist.md`. These are runtime artifacts produced by
 the pipeline — they don't (and shouldn't) exist in the source tree, so a
 "does this file exist" check is meaningless.

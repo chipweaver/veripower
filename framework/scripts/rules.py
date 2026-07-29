@@ -84,7 +84,9 @@ RULES: dict[str, Rule] = {
         },
         outputs=(
             "verification-plan.md",
-            "scaffold-specification.json",
+            "tb-scaffold.json",
+            "sequences.json",
+            "power-scenarios.json",
             "plan-review.json",
         ),
         proof="simulation-plan",
@@ -209,7 +211,12 @@ RULES: dict[str, Rule] = {
             # NOT constraint-annotations.json: simulation consumes only the file layout,
             # so binding it would let an annotation-only edit falsely invalidate (D6/G4).
             "plan": ("Verification/simulation-plan/verification-plan.md",),
-            "scaffold": ("Verification/simulation-plan/scaffold-specification.json",),
+            # NOT power-scenarios.json: simulation builds no power test, so binding it
+            # would let a scenario-only edit falsely invalidate a full compile + regress.
+            "scaffold": (
+                "Verification/simulation-plan/tb-scaffold.json",
+                "Verification/simulation-plan/sequences.json",
+            ),
         },
         outputs=(
             "case-results-summary.md",
@@ -246,7 +253,12 @@ RULES: dict[str, Rule] = {
                 "Verification/simulation/rtl_filelist.f",
                 "Verification/simulation/tb/uvm/*",
             ),
-            "scaffold": ("Verification/simulation-plan/scaffold-specification.json",),
+            # sequences.json for the sequence_ref -> agent resolution, and the scenarios
+            # themselves; NOT tb-scaffold.json, whose testpoints/agents this stage never reads.
+            "scaffold": (
+                "Verification/simulation-plan/sequences.json",
+                "Verification/simulation-plan/power-scenarios.json",
+            ),
             "ppa": ("Design/specification/ppa.json",),
         },
         outputs=("reports_ptpx/*/power_hier.rpt",),

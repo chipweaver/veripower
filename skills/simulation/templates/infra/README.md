@@ -13,7 +13,7 @@ Invoked by the env-build child (dispatched at stage SOP Step 2):
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/simulation/scripts/sim/__main__.py bootstrap \
     --module <module-dir-name> --workdir <caller-provided per-run workdir> [--top <top-module-name>] \
-    --scaffold asic/<M>/Verification/simulation-plan/scaffold-specification.json
+    --plan asic/<M>/Verification/simulation-plan
 ```
 
 Bootstrap behavior:
@@ -21,7 +21,7 @@ Bootstrap behavior:
 1. Copy this directory to `{workdir}` NO-CLOBBER (a carried file already present, brought forward by `carry_self`, always wins over the template); sed-substitute `MY_TOP` / `MY_MODULE`.
 2. Generate `rtl_filelist.f` from the injected rtl-design `rtl-files.json` (paths prefixed by the absolute injected rtl-design root) — always regenerated, never no-clobbered.
 3. Create empty directories `tb/uvm/{interface,transaction,agent,checker,refmodel,env,seq,test,pkg,top}/`.
-4. When `--scaffold` is provided, the bootstrap verb renders the scaffold to generate the full UVM scaffold from `scaffold-specification.json` (agent / driver / monitor / refmodel / scoreboard / env / tb_top / tb_pkg / filelist / generated_tests / tests/testlist.json).
+4. When `--plan` is provided, the bootstrap verb renders the scaffold to generate the full UVM scaffold from `tb-scaffold.json` + `sequences.json` (agent / driver / monitor / refmodel / scoreboard / env / tb_top / tb_pkg / filelist / generated_tests / tests/testlist.json).
 
 If `{workdir}/Makefile` already exists, bootstrap treats it as a rework round (a prior round's TB carried forward by `carry_self`) and continues — the no-clobber deploy never overwrites it; hint files such as `directive.md`, placed by the caller when creating the workdir, do not constitute a Makefile.
 
@@ -60,6 +60,6 @@ make summary
 
 ## Notes
 
-- `verification-plan.md` / `scaffold-specification.json` live under `Verification/simulation-plan/`; simulation consumes them read-only — any modification is treated as a contract violation (see `references/repair-boundaries.md` and `references/coverage-iteration.md`).
+- `verification-plan.md` / the plan sidecars live under `Verification/simulation-plan/`; simulation consumes them read-only — any modification is treated as a contract violation (see `references/repair-boundaries.md` and `references/coverage-iteration.md`).
 - VCS / UVM entry needs `UVM_HOME`; `env.sh` errors out when it is missing.
 - The `RESULT` line format in `run_vcs_regression.sh` is consumed by `write_summary.py` — do not change field order or keywords.

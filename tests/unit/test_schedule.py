@@ -473,7 +473,9 @@ _OUTPUTS = {
     ],
     "simulation-plan": [
         "Verification/simulation-plan/verification-plan.md",
-        "Verification/simulation-plan/scaffold-specification.json",
+        "Verification/simulation-plan/tb-scaffold.json",
+        "Verification/simulation-plan/sequences.json",
+        "Verification/simulation-plan/power-scenarios.json",
     ],
     "rtl-design": [
         "Design/rtl-design/matvec.v",

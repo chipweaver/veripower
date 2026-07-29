@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from sim._gate import _load_thresholds, coverage_gate, thin_d1
+from sim._plan import load_plan
 from sim.review import compute_gate
 
 STAGE = "simulation"
@@ -47,10 +48,10 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def _final_gate(workdir: Path, scaffold: Path, thresholds: Path):
+def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path):
     """Reuse thin_d1 + coverage_gate IN-PROCESS to re-derive the compile/coverage verdict.
     Returns (ok, verdict, failure_phase, fail_reason). Earlier phase wins (thin-D1 -> compile)."""
-    scaffold_doc = json.loads(Path(scaffold).read_text(encoding="utf-8"))
+    scaffold_doc = load_plan(plan_dir)
     d1_errs = thin_d1(Path(workdir), scaffold_doc)
     thr = _load_thresholds(Path(thresholds))
     cov_path = Path(workdir) / "structural-coverage.json"

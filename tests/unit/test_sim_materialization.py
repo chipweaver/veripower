@@ -26,9 +26,10 @@ def _workdir(tmp_path, todo=False):
         "m_obs_agent.sv",
     ):
         (tmp_path / "tb/uvm/agent" / f).write_text("class x; endclass\n")
-    sp = tmp_path / "scaffold-specification.json"
-    sp.write_text(json.dumps(SCAFFOLD))
-    return tmp_path, sp
+    doc = dict(SCAFFOLD)
+    (tmp_path / "sequences.json").write_text(json.dumps(doc.pop("sequences", [])))
+    (tmp_path / "tb-scaffold.json").write_text(json.dumps(doc))
+    return tmp_path, tmp_path
 
 
 def _run(wd, sp):
@@ -39,7 +40,7 @@ def _run(wd, sp):
             "check-materialization",
             "--workdir",
             str(wd),
-            "--scaffold",
+            "--plan",
             str(sp),
         ],
         capture_output=True,

@@ -474,7 +474,7 @@ asic/<module>/
 │   ├── synthesis/            { result.json + out/*_syn.{v,sdc,sdf} / reports/qor.rpt + runs/<N>/ }
 │   └── timing-analysis/      { result.json + timing-report.txt / timing-actual.json + runs/<N>/ }
 └── Verification/
-│   ├── simulation-plan/      { result.json + verification-plan.md / scaffold-specification.json / plan-review.json + runs/<N>/ }
+│   ├── simulation-plan/      { result.json + verification-plan.md / tb-scaffold.json / sequences.json / power-scenarios.json / plan-review.json + runs/<N>/ }
 │   ├── simulation/           { result.json + env.sh / rtl_filelist.f / tb/uvm/* / case-results-summary.md /
 │   │                           conformance-review.json + runs/<N>/（失败 test 的 <test_id>.fsdb——pass 即回收，§7.3）}
 │   ├── simulation-triage/    { result.json + runs/<sim_run>/（分析；L2 时另有 experiment/）——proof=None }

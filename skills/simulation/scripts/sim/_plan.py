@@ -1,0 +1,34 @@
+"""sim._plan — read the simulation-plan sidecars this stage consumes.
+
+simulation-plan authors the plan as three files; this stage declares and reads two of them —
+`tb-scaffold.json` and `sequences.json`. `power-scenarios.json` is power-analysis's, and not
+declaring it is the point: a scenario-only edit must not invalidate a full compile + regress.
+
+The two are merged into one dict because that is the shape the renderer and the thin-D1 gate
+operate on (`module` from one, `sequences[]` from the other, in the same walk).
+
+Not validated here: simulation-plan schema-validates each when it writes them, and a stage
+does not reach into another skill's references/ (skills stay decoupled). A defect at this
+point is a missing or unreadable file, which the caller reports.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+SCAFFOLD_NAME = "tb-scaffold.json"
+SEQUENCES_NAME = "sequences.json"
+
+
+def paths(plan_dir) -> tuple[Path, Path]:
+    plan_dir = Path(plan_dir)
+    return plan_dir / SCAFFOLD_NAME, plan_dir / SEQUENCES_NAME
+
+
+def load_plan(plan_dir) -> dict:
+    """Merged {**tb-scaffold.json, "sequences": sequences.json}."""
+    scaffold_path, sequences_path = paths(plan_dir)
+    scaffold = json.loads(scaffold_path.read_text(encoding="utf-8"))
+    scaffold["sequences"] = json.loads(sequences_path.read_text(encoding="utf-8"))
+    return scaffold

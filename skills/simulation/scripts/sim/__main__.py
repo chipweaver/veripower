@@ -3,7 +3,7 @@
 
 Verbs (one stage = one tool; see skills/simulation/SKILL.md for usage):
   bootstrap             deploy infra + optional scaffold into a run workdir   (exit 0 / 1 / 2)
-  render-scaffold       render the UVM scaffold tree from a scaffold-spec      (exit 0 / non-zero raise)
+  render-scaffold       render the UVM scaffold tree from the plan sidecars    (exit 0 / non-zero raise)
   check-materialization thin-D1 presence gate (env-exit self-gate)            (stdout verdict; exit 0/1)
   validate-review       conformance-review.json schema + gate                 (stdout gate JSON; exit 0/1)
   finalize              assemble the lean result.json at the exit phase        (exit 0 written / 2 BLOCKED)
@@ -32,19 +32,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def _cmd_bootstrap(a: argparse.Namespace) -> int:
     from sim import bootstrap
 
-    return bootstrap.run(a.module, a.workdir, top=a.top, scaffold=a.scaffold)
+    return bootstrap.run(a.module, a.workdir, top=a.top, scaffold=a.plan)
 
 
 def _cmd_render_scaffold(a: argparse.Namespace) -> int:
     from sim import scaffold
 
-    return scaffold.render(a.scaffold, a.output_dir, a.template_dir)
+    return scaffold.render(a.plan, a.output_dir, a.template_dir)
 
 
 def _cmd_check_materialization(a: argparse.Namespace) -> int:
     from sim import materialization
 
-    return materialization.run(a.workdir, a.scaffold)
+    return materialization.run(a.workdir, a.plan)
 
 
 def _cmd_validate_review(a: argparse.Namespace) -> int:
@@ -56,9 +56,9 @@ def _cmd_validate_review(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from sim import result
 
-    if a.phase == "final" and not (a.scaffold and a.thresholds):
+    if a.phase == "final" and not (a.plan and a.thresholds):
         print(
-            "[sim finalize] ERROR: --scaffold and --thresholds are required for --phase final",
+            "[sim finalize] ERROR: --plan and --thresholds are required for --phase final",
             file=sys.stderr,
         )
         return 2
@@ -66,7 +66,7 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         a.workdir,
         a.module,
         phase=a.phase,
-        scaffold=a.scaffold,
+        scaffold=a.plan,
         thresholds=a.thresholds,
         conformance_review=a.conformance_review,
         verify_verdict=a.verify_verdict,
@@ -90,17 +90,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="RTL top (inferred from specification manifest.module, else rtl filelist, if omitted)",
     )
     sp.add_argument(
-        "--scaffold",
+        "--plan",
         type=Path,
         default=None,
-        help="scaffold-specification.json (renders the UVM scaffold when given)",
+        help="the simulation-plan workdir (renders the UVM scaffold when given)",
     )
     sp.set_defaults(func=_cmd_bootstrap)
 
     sp = sub.add_parser(
-        "render-scaffold", help="render the UVM scaffold tree from a scaffold-spec"
+        "render-scaffold", help="render the UVM scaffold tree from the plan sidecars"
     )
-    sp.add_argument("--scaffold", required=True, type=Path)
+    sp.add_argument("--plan", required=True, type=Path)
     sp.add_argument("--output-dir", required=True, type=Path)
     sp.add_argument("--template-dir", type=Path, default=None)
     sp.set_defaults(func=_cmd_render_scaffold)
@@ -109,7 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
         "check-materialization", help="thin-D1 presence gate (env-exit self-gate)"
     )
     sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument("--scaffold", required=True, type=Path)
+    sp.add_argument("--plan", required=True, type=Path)
     sp.set_defaults(func=_cmd_check_materialization)
 
     sp = sub.add_parser("validate-review", help="conformance-review.json schema + gate")
@@ -148,10 +148,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="observed schema failure_phase when the call-site spans several; defaults per --phase",
     )
     sp.add_argument(
-        "--scaffold",
+        "--plan",
         type=Path,
         default=None,
-        help="scaffold-specification.json (required for --phase final)",
+        help="the simulation-plan workdir (required for --phase final)",
     )
     sp.add_argument(
         "--thresholds",

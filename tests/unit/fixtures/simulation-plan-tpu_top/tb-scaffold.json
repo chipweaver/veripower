@@ -185,53 +185,6 @@
       }
     }
   ],
-  "sequences": [
-    {
-      "name": "tpu_top_apb_weight_load_seq",
-      "agent": "core",
-      "desc": "Program the four weights W00..W11 via APB writes to mem[0..3] (i_psel & i_penable & i_pwrite)."
-    },
-    {
-      "name": "tpu_top_data_in_stream_seq",
-      "agent": "data_in",
-      "desc": "Drive input pairs on in1/in2 with in1_en/in2_en asserted to push words into the two input FIFOs."
-    },
-    {
-      "name": "tpu_top_start_seq",
-      "agent": "core",
-      "desc": "Assert start to launch a compute pass; counter advances 1..5; deassert start at end of pass."
-    },
-    {
-      "name": "tpu_top_apb_result_read_seq",
-      "agent": "core",
-      "desc": "APB reads (i_psel & i_penable & !i_pwrite) to pop result words from fifo_result via o_prdata."
-    },
-    {
-      "name": "tpu_top_fifo_boundary_seq",
-      "agent": "data_in",
-      "desc": "Boundary stimulus on the input FIFOs: write past full / read at empty to exercise ignored writes/reads and modulo-8 pointer wrap."
-    },
-    {
-      "name": "tpu_top_rerun_seq",
-      "agent": "core",
-      "desc": "Re-assert start with no new weights/inputs so done rises again on existing pipeline/FIFO contents (SC-003)."
-    },
-    {
-      "name": "tpu_top_idle_seq",
-      "agent": "core",
-      "desc": "No traffic: start held low, no APB or data activity (power idle / clock-tree / leakage baseline)."
-    },
-    {
-      "name": "tpu_top_traffic_seq",
-      "agent": "data_in",
-      "desc": "Sustained business-flow traffic: continuous weight loads + input streams + start passes at the typical rate."
-    },
-    {
-      "name": "tpu_top_peak_toggle_seq",
-      "agent": "data_in",
-      "desc": "Worst-case full-toggle stimulus on all data inputs to maximize switching activity (PDN/IR-drop corner)."
-    }
-  ],
   "tests": [
     {
       "name": "tpu_top_mac_smoke_test",
@@ -242,7 +195,12 @@
         "tpu_top_data_in_stream_seq",
         "tpu_top_start_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "smoke",
+        "regress"
+      ],
+      "feature_name": "2×2 weight-stationary MAC array"
     },
     {
       "name": "tpu_top_full_compute_test",
@@ -253,7 +211,11 @@
         "tpu_top_data_in_stream_seq",
         "tpu_top_start_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "regress"
+      ],
+      "feature_name": "2×2 weight-stationary MAC array"
     },
     {
       "name": "tpu_top_skew_align_test",
@@ -262,7 +224,11 @@
       "seqs": [
         "tpu_top_data_in_stream_seq",
         "tpu_top_start_seq"
-      ]
+      ],
+      "suites": [
+        "regress"
+      ],
+      "feature_name": "Systolic input skew alignment"
     },
     {
       "name": "tpu_top_fifo_test",
@@ -274,7 +240,11 @@
         "tpu_top_fifo_boundary_seq",
         "tpu_top_start_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "regress"
+      ],
+      "feature_name": "8-entry input/result FIFOs"
     },
     {
       "name": "tpu_top_apb_regfile_test",
@@ -283,7 +253,12 @@
       "seqs": [
         "tpu_top_apb_weight_load_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "smoke",
+        "regress"
+      ],
+      "feature_name": "APB-style register file (weight load + result read-back)"
     },
     {
       "name": "tpu_top_counter_ctrl_test",
@@ -294,7 +269,11 @@
         "tpu_top_data_in_stream_seq",
         "tpu_top_start_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "regress"
+      ],
+      "feature_name": "`start`/counter control sequence and `done` generation (critical timing lock)"
     },
     {
       "name": "tpu_top_rerun_test",
@@ -306,7 +285,11 @@
         "tpu_top_start_seq",
         "tpu_top_rerun_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "regress"
+      ],
+      "feature_name": "`start`/counter control sequence and `done` generation (critical timing lock)"
     }
   ],
   "rm": {
@@ -808,120 +791,10 @@
       ]
     }
   ],
-  "power_scenarios": [
-    {
-      "id": "S1",
-      "scenario": "Static leakage",
-      "clock_state": "off",
-      "reset_state": "asserted",
-      "data_state": "none",
-      "low_power_state": "off",
-      "corner_intent": "SS@125C",
-      "sequence_ref": "tpu_top_idle_seq",
-      "duration_cycles": 2000,
-      "purpose": "Leakage baseline (clock off, in reset, no traffic)."
-    },
-    {
-      "id": "S2",
-      "scenario": "Clock-tree power",
-      "clock_state": "on",
-      "reset_state": "asserted",
-      "data_state": "none",
-      "low_power_state": "off",
-      "corner_intent": "TT@25C",
-      "sequence_ref": "tpu_top_idle_seq",
-      "duration_cycles": 2000,
-      "purpose": "Clock-tree / CTS evaluation (clock on, no data)."
-    },
-    {
-      "id": "S3a",
-      "scenario": "Idle (low-power off)",
-      "clock_state": "on",
-      "reset_state": "released",
-      "data_state": "no_traffic",
-      "low_power_state": "off",
-      "corner_intent": "TT@25C",
-      "sequence_ref": "tpu_top_idle_seq",
-      "duration_cycles": 5000,
-      "purpose": "Standby baseline."
-    },
-    {
-      "id": "S3b",
-      "scenario": "Idle (low-power on)",
-      "clock_state": "on",
-      "reset_state": "released",
-      "data_state": "no_traffic",
-      "low_power_state": "on",
-      "corner_intent": "TT@25C",
-      "sequence_ref": "tpu_top_idle_seq",
-      "duration_cycles": 5000,
-      "purpose": "Standby optimization (no module low-power controls; annotation only)."
-    },
-    {
-      "id": "S4a",
-      "scenario": "Typical traffic (low-power off)",
-      "clock_state": "on",
-      "reset_state": "released",
-      "data_state": "business_flow",
-      "low_power_state": "off",
-      "corner_intent": "TT@25C",
-      "sequence_ref": "tpu_top_traffic_seq",
-      "duration_cycles": 10000,
-      "purpose": "Typical performance."
-    },
-    {
-      "id": "S4b",
-      "scenario": "Typical traffic (low-power on)",
-      "clock_state": "on",
-      "reset_state": "released",
-      "data_state": "business_flow",
-      "low_power_state": "on",
-      "corner_intent": "TT@25C",
-      "sequence_ref": "tpu_top_traffic_seq",
-      "duration_cycles": 10000,
-      "purpose": "Typical signoff (no module low-power controls; annotation only)."
-    },
-    {
-      "id": "S5",
-      "scenario": "Peak / worst case",
-      "clock_state": "on",
-      "reset_state": "released",
-      "data_state": "full_toggle",
-      "low_power_state": "off",
-      "corner_intent": "FF@125C",
-      "sequence_ref": "tpu_top_peak_toggle_seq",
-      "duration_cycles": 10000,
-      "purpose": "PDN / IR drop."
-    },
-    {
-      "id": "S6",
-      "scenario": "DVFS switching transient",
-      "clock_state": "switching",
-      "reset_state": "released",
-      "data_state": "business_flow",
-      "low_power_state": "switching",
-      "corner_intent": "TT@25C",
-      "sequence_ref": "tpu_top_traffic_seq",
-      "duration_cycles": 10000,
-      "purpose": "di/dt (single nominal frequency; DVFS annotation only)."
-    },
-    {
-      "id": "S7",
-      "scenario": "High-temperature leakage",
-      "clock_state": "off",
-      "reset_state": "asserted",
-      "data_state": "none",
-      "low_power_state": "off",
-      "corner_intent": "FF@125C",
-      "sequence_ref": "tpu_top_idle_seq",
-      "duration_cycles": 2000,
-      "purpose": "Worst leakage."
-    }
-  ],
   "skipped_checks": [],
   "primary_clock": {
     "dut_port_name": "i_clk",
-    "period_ns": "10.0"
+    "period_ns": 10.0
   },
   "reset": {
     "dut_port_name": "i_rstn"

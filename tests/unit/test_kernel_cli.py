@@ -133,7 +133,9 @@ _STAGE_FILES = {
     },
     "simulation-plan": {
         "verification-plan.md": "plan v1",
-        "scaffold-specification.json": "{}",
+        "tb-scaffold.json": "{}",
+        "sequences.json": "[]",
+        "power-scenarios.json": "[]",
     },
     "rtl-design": {
         "top.v": "module top; endmodule",

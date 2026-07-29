@@ -93,17 +93,29 @@ def _spec(tmp_path, hints=None):
     return tmp_path
 
 
+def _split(tmp_path, scaffold):
+    """Project one in-memory plan dict onto the three on-disk sidecars the gate reads.
+    The tests keep authoring one dict because that is the shape the cross-array checks are
+    about; the split is a property of the files, not of the checks."""
+    doc = dict(scaffold)
+    for name, key in (
+        ("sequences.json", "sequences"),
+        ("power-scenarios.json", "power_scenarios"),
+    ):
+        (tmp_path / name).write_text(json.dumps(doc.pop(key, [])))
+    (tmp_path / "tb-scaffold.json").write_text(json.dumps(doc))
+
+
 def _run(tmp_path, scaffold, check=True, hints=None):
-    sc = tmp_path / "scaffold-specification.json"
-    sc.write_text(json.dumps(scaffold))
+    _split(tmp_path, scaffold)
     _spec(tmp_path, hints)
     return subprocess.run(
         [
             "python3",
             str(MAIN),
             "check-scaffold",
-            "--scaffold",
-            str(sc),
+            "--plan",
+            str(tmp_path),
             "--spec",
             str(tmp_path),
         ],
@@ -119,18 +131,18 @@ def test_good_scaffold_passes(tmp_path):
 
 
 def test_malformed_scaffold_json_fails_loud(tmp_path):
-    # A6: a JSON syntax error in scaffold-specification.json must fail loud with a
-    # fix-oriented message, not a raw traceback.
-    sc = tmp_path / "scaffold-specification.json"
-    sc.write_text("{ oops ]")
+    # A6: a JSON syntax error in a sidecar must fail loud with a fix-oriented message,
+    # not a raw traceback.
+    _split(tmp_path, GOOD)
+    (tmp_path / "tb-scaffold.json").write_text("{ oops ]")
     _spec(tmp_path, [])
     proc = subprocess.run(
         [
             "python3",
             str(MAIN),
             "check-scaffold",
-            "--scaffold",
-            str(sc),
+            "--plan",
+            str(tmp_path),
             "--spec",
             str(tmp_path),
         ],
@@ -392,7 +404,9 @@ def test_agent_name_needs_no_unwrapping():
     assert errs == []
 
 
-def test_default_schema_resolves():
-    # the package is scripts/simplan/, so _DEFAULT_SCHEMA needs one extra parent (SC6)
-    assert sc_mod._DEFAULT_SCHEMA.is_file()
-    assert sc_mod._DEFAULT_SCHEMA.name == "scaffold-specification.schema.json"
+def test_every_sidecar_schema_resolves():
+    # the package is scripts/simplan/, so _REFERENCES needs one extra parent (SC6)
+    from simplan import _plan
+
+    for _, schema_name, _ in _plan._FILES:
+        assert (_plan._REFERENCES / schema_name).is_file(), schema_name

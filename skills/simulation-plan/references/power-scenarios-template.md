@@ -1,6 +1,6 @@
 # Standard 9-Power-Scenarios Template
 
-Load this template, materialize it per the module, and write the result into the `verification-plan.md` power section and `scaffold-specification.json.power_scenarios`.
+Load this template, materialize it per the module, and write the result into the `verification-plan.md` power section and `power-scenarios.json`.
 
 ## Standard 9-scenarios table
 
@@ -18,7 +18,7 @@ Load this template, materialize it per the module, and write the result into the
 
 ## Per-module materialization guide
 
-Materialize each scenario's abstract description ("business flow," "low power," "DVFS switching," etc.) into an executable sequence per this module's specification. The result goes in **one** place — `scaffold-specification.json.power_scenarios` — with one entry per scenario:
+Materialize each scenario's abstract description ("business flow," "low power," "DVFS switching," etc.) into an executable sequence per this module's specification. The result goes in **one** place — `power-scenarios.json` — with one entry per scenario:
 
 ```json
 {
@@ -51,7 +51,7 @@ Corner (SS / TT / FF + temperature) **does not affect RTL simulation behavior** 
 
 ## Handling missing scenarios
 
-When the specification mentions a low-power feature (e.g., retention mode) that the standard 9-scenarios template does not cover, you should append supplementary scenarios (named S8, S9, …) at the end of `verification-plan.md` §4 and sync them into `scaffold-specification.json.power_scenarios`.
+When the specification mentions a low-power feature (e.g., retention mode) that the standard 9-scenarios template does not cover, you should append supplementary scenarios (named S8, S9, …) at the end of `verification-plan.md` §4 and sync them into `power-scenarios.json`.
 
 ## `sequence_ref` naming rules and `sequences[]` sync (cross-stage contract)
 

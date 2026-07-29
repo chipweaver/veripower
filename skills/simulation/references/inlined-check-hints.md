@@ -1,8 +1,8 @@
 # `inlined_check_hints[]` handling rules
 
-`scaffold-specification.json.testpoints[].inlined_check_hints[]` is the field where the
+`tb-scaffold.json.testpoints[].inlined_check_hints[]` is the field where the
 simulation-plan stage inlines the precise check semantics from the authored check hints
-directly into the testpoint (field description: `skills/simulation-plan/references/scaffold-specification.schema.json`). When
+directly into the testpoint (field description: `skills/simulation-plan/references/tb-scaffold.schema.json`). When
 materializing the TB / writing the refmodel and scoreboard, you MUST follow the
 rules below and are **not allowed** to silently downgrade to shadow-register mode or
 mismatch-as-uvm_info mode:
@@ -13,7 +13,7 @@ scoreboard check is authored from the testpoint's `implementation_detail` formul
 the DUT RTL. A golden model reverse-engineered from the DUT mirrors the implementation (bugs
 included) and can never disagree. If a hint's `implementation_detail` is insufficient to author the
 check without consulting the RTL, that is an upstream plan gap -> emit the boundary-case
-`STATUS: BLOCKED scaffold-specification.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`,
+`STATUS: BLOCKED tb-scaffold.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`,
 not a license to read the RTL.
 
 - For each testpoint with a **non-empty** `testpoint.inlined_check_hints[]`, the refmodel /
@@ -51,6 +51,6 @@ required — this branch covers scenario-class testpoints with no spec formula a
 `implementation_detail`)**: treat as an upstream simulation-plan contract violation (the sim-plan
 stage's coverage-matrix self-check should have caught this case), do NOT
 try to fill in the inline content on your own (to avoid silently downgrading by treating a contract
-gap as the "free functional choice" branch); instead, end with `STATUS: BLOCKED scaffold-specification.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`, so the
+gap as the "free functional choice" branch); instead, end with `STATUS: BLOCKED tb-scaffold.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`, so the
 orchestrator maps it to `status=fail` + `failure_phase="prerequisite"` and rework goes back to
 simulation-plan to fill in the fields.

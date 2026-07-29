@@ -211,7 +211,7 @@ Fan-out Dispatch Contract sub-block (§4.3.7) — do not belong here.
 
 | Candidate rule | Enters Iron Rule? | Criterion |
 |---|---|---|
-| `veripower:simulation` must not modify `scaffold-specification.json` | Yes | (a) plan is read-only upstream |
+| `veripower:simulation` must not modify the plan sidecars | Yes | (a) plan is read-only upstream |
 | `veripower:simulation-triage` must not write any files | Yes | (b) analysis/repair separation |
 | `veripower:specification` must not write `design.md` while `brainstorm.md` is `Status: draft` | Yes | (a) brainstorm-gate protocol |
 | Compilation failure retried blindly after a fix | No → Pitfalls | recoverable slip; analyze the log, then re-run |

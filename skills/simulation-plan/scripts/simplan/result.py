@@ -41,7 +41,9 @@ def enumerate_artifacts(workdir) -> list:
     workdir = Path(workdir)
     fixed = [
         "verification-plan.md",
-        "scaffold-specification.json",
+        "tb-scaffold.json",
+        "sequences.json",
+        "power-scenarios.json",
         "plan-review.json",
     ]
     return [{"path": p} for p in fixed if (workdir / p).is_file()]

@@ -18,7 +18,7 @@ Every stage produces exactly one `result.json` at `asic/<module>/<area>/<stage>/
 validates each `result.json` against `<skill>/references/result.schema.json`, which composes
 the cross-stage `framework/references/schemas/envelope.schema.json` via JSON-Schema `$ref`.
 
-`result.json` is **not** the stage's main artifact — design.md, scaffold-specification.json,
+`result.json` is **not** the stage's main artifact — design.md, the plan sidecars,
 RTL filelists, netlists, and reports are the substantive outputs. `result.json` is the
 metadata carrier that wraps them.
 

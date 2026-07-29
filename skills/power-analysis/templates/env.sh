@@ -23,7 +23,7 @@ export SDF_FILE="MY_SYN_OUT/${TOP}_syn.sdf"
 export TB_DIR="MY_SIM_DIR"
 export TB_FILELIST="${TB_DIR}/filelist.f"
 export TB_FILELIST_ABS="./tb_filelist_abs.f"
-export PLAN_PATH="MY_PLAN_DIR/scaffold-specification.json"
+export PLAN_DIR="MY_PLAN_DIR"
 
 export POWER_TESTS_DIR="./scaffold/power_tests"
 export POWER_FILELIST="./scaffold/power_filelist.f"

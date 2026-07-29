@@ -30,7 +30,9 @@ def _final_workdir(tmp_path):
         "m_obs_agent.sv",
     ):
         (wd / "tb/uvm/agent" / f).write_text("class x; endclass\n")
-    (wd / "scaffold-specification.json").write_text(json.dumps(SCAFFOLD))
+    doc = dict(SCAFFOLD)
+    (wd / "sequences.json").write_text(json.dumps(doc.pop("sequences", [])))
+    (wd / "tb-scaffold.json").write_text(json.dumps(doc))
     (wd / "structural-coverage.json").write_text(json.dumps(COV_PASS))
     (wd / "case-results.json").write_text(
         json.dumps({"total_tests": 3, "passed_tests": 3, "failed_tests": 0})
@@ -65,8 +67,8 @@ def test_final_pass_writes_result(tmp_path):
         wd,
         "--phase",
         "final",
-        "--scaffold",
-        str(wd / "scaffold-specification.json"),
+        "--plan",
+        str(wd),
         "--thresholds",
         str(DEFAULTS),
     )
@@ -87,8 +89,8 @@ def test_verify_handoff_promoted(tmp_path):
         wd,
         "--phase",
         "final",
-        "--scaffold",
-        str(wd / "scaffold-specification.json"),
+        "--plan",
+        str(wd),
         "--thresholds",
         str(DEFAULTS),
     )
@@ -110,8 +112,8 @@ def test_final_pass_missing_case_results_is_blocked(tmp_path):
         wd,
         "--phase",
         "final",
-        "--scaffold",
-        str(wd / "scaffold-specification.json"),
+        "--plan",
+        str(wd),
         "--thresholds",
         str(DEFAULTS),
     )
@@ -141,8 +143,8 @@ def test_final_thin_fail_is_compile(tmp_path):
         wd,
         "--phase",
         "final",
-        "--scaffold",
-        str(wd / "scaffold-specification.json"),
+        "--plan",
+        str(wd),
         "--thresholds",
         str(DEFAULTS),
     )
@@ -164,8 +166,8 @@ def test_final_coverage_fail(tmp_path):
         wd,
         "--phase",
         "final",
-        "--scaffold",
-        str(wd / "scaffold-specification.json"),
+        "--plan",
+        str(wd),
         "--thresholds",
         str(DEFAULTS),
     )
@@ -196,19 +198,19 @@ def test_early_exit_smoke(tmp_path):
 
 
 def test_final_requires_scaffold_thresholds_exit_2(tmp_path):
-    proc = _finalize(tmp_path, "--phase", "final")  # missing --scaffold/--thresholds
+    proc = _finalize(tmp_path, "--phase", "final")  # missing --plan/--thresholds
     assert proc.returncode == 2
     assert not (tmp_path / "result.json").exists()
 
 
 def test_finalize_blocked_exit_2(tmp_path):
-    # --phase final with a non-existent scaffold path -> build_result raises -> exit 2 (BLOCKED)
+    # --phase final with a non-existent plan dir -> build_result raises -> exit 2 (BLOCKED)
     proc = _finalize(
         tmp_path,
         "--phase",
         "final",
-        "--scaffold",
-        str(tmp_path / "nope.json"),
+        "--plan",
+        str(tmp_path / "nope"),
         "--thresholds",
         str(DEFAULTS),
     )

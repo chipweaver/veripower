@@ -48,9 +48,11 @@ SPEC = {
 
 
 def _write_spec(tmp_path, spec=SPEC):
-    p = tmp_path / "scaffold-specification.json"
-    p.write_text(json.dumps(spec))
-    return p
+    """The plan dir: the renderer reads tb-scaffold.json + sequences.json out of it."""
+    doc = dict(spec)
+    (tmp_path / "sequences.json").write_text(json.dumps(doc.pop("sequences", [])))
+    (tmp_path / "tb-scaffold.json").write_text(json.dumps(doc))
+    return tmp_path
 
 
 def _render_via_cli(tmp_path, spec=SPEC):
@@ -62,7 +64,7 @@ def _render_via_cli(tmp_path, spec=SPEC):
             "python3",
             str(MAIN),
             "render-scaffold",
-            "--scaffold",
+            "--plan",
             str(spec_path),
             "--output-dir",
             str(out),
@@ -181,8 +183,8 @@ def test_render_missing_scaffold_exits(tmp_path):
             "python3",
             str(MAIN),
             "render-scaffold",
-            "--scaffold",
-            str(tmp_path / "nope.json"),
+            "--plan",
+            str(tmp_path / "nope"),
             "--output-dir",
             str(out),
             "--template-dir",
@@ -191,7 +193,7 @@ def test_render_missing_scaffold_exits(tmp_path):
         capture_output=True,
         text=True,
     )
-    assert r.returncode != 0 and "missing scaffold-specification.json" in r.stderr
+    assert r.returncode != 0 and "missing tb-scaffold.json" in r.stderr
 
 
 def test_atomic_rollback_on_write_error(tmp_path, monkeypatch):

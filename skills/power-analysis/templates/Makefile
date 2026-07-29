@@ -4,7 +4,7 @@
 # Workdir:           asic/<module>/Verification/power-analysis/
 # External inputs:   Design/synthesis/out/<TOP>_syn.{v,sdc,sdf} + LIB_V + LIB_DB + UVM_HOME
 #                    Verification/simulation/{filelist.f, tb/uvm/} (read-only TB infra)
-#                    Verification/simulation-plan/scaffold-specification.json (power_scenarios[])
+#                    Verification/simulation-plan/{sequences,power-scenarios}.json
 # Outputs:           simv (GLS) + saif/<id>.saif
 #                    reports_ptpx/<id>/{power_hier,power_flat,switching_activity}.rpt
 # ==============================================================================
@@ -32,9 +32,9 @@ tb-shim:  ## Absolutize simulation/filelist.f for VCS invocation from this workd
 # without needing a re-bootstrap.
 refresh-tests:  ## Re-render UVM power test classes from current plan
 	@bash -c 'set -eo pipefail; cd "$(ROOT)"; source ./env.sh; \
-		[ -f "$$PLAN_PATH" ] || { echo "[refresh-tests] ERROR: PLAN_PATH not found: $$PLAN_PATH"; exit 1; }; \
+		[ -d "$$PLAN_DIR" ] || { echo "[refresh-tests] ERROR: PLAN_DIR not found: $$PLAN_DIR"; exit 1; }; \
 		python3 scripts/emit_power_tests.py \
-			--plan      "$$PLAN_PATH" \
+			--plan      "$$PLAN_DIR" \
 			--module    "$$MODULE" \
 			--out-dir   "$$POWER_TESTS_DIR" \
 			--filelist  "$$POWER_FILELIST" \
@@ -66,7 +66,7 @@ gls-run: gls-compile  ## Run simv per scenario → per-scenario SAIF files
 	@bash -c 'set -eo pipefail; cd "$(ROOT)"; source ./env.sh; \
 		[ -x ./simv ] || { echo "[gls-run] ERROR: ./simv not built (gls-compile failed?)"; exit 1; }; \
 		bash scripts/run_gls_power.sh \
-			--plan "$$PLAN_PATH" \
+			--plan "$$PLAN_DIR" \
 			--saif-dir saif/ \
 			--simv ./simv \
 			--log gls-run-log.txt'

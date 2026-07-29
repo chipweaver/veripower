@@ -5,7 +5,7 @@ description: Use when generating or evolving the verification plan, scaffold spe
 
 # Verification Planning
 
-Your sole responsibility: from `specification`, generate or evolve two artifacts — `verification-plan.md` (human-readable review anchor, with a testpoints section and a power-scenarios section) and `scaffold-specification.json` (machine-read contract, with `agents` / `sequences` / `tests` / `testpoints[]` / `power_scenarios[]`).
+Your sole responsibility: from `specification`, generate or evolve `verification-plan.md` (human-readable review anchor, with a testpoints section and a power-scenarios section) plus its machine half, three sidecars split by consumer: `tb-scaffold.json` (`agents` / `tests` / `testpoints[]` / `rm` / `scoreboard`), `sequences.json` (the roster both consumers read) and `power-scenarios.json` (power-analysis's alone).
 
 ## Iron Rule
 
@@ -13,7 +13,7 @@ Your boundary:
 
 - **Do not modify any file outside this run's workspace (`{workdir}`).**
 - **Do not read RTL source, do not invoke EDA tools.**
-- **Minimal edit on any re-dispatch with a prior valid `verification-plan.md` / `scaffold-specification.json` on disk.** Every section outside this round's scope (determined in Step 1) MUST stay byte-identical to the prior run.
+- **Minimal edit on any re-dispatch with a prior valid `verification-plan.md` / plan sidecars on disk.** Every section outside this round's scope (determined in Step 1) MUST stay byte-identical to the prior run.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -46,7 +46,9 @@ Each read-only upstream input's location is injected: read `inputs.json` in your
 |---|---|---|
 | `result.json` | `references/result.schema.json` + envelope | This stage's status contract. |
 | `verification-plan.md` | Custom markdown (section outline below); after the review loop carries frontmatter `Status: approved` | Human-readable review anchor for the Step-4 user loop. |
-| `scaffold-specification.json` | Custom JSON (field convention below) | Machine-read contract; the downstream simulation stage's bootstrap consumes it to materialize the TB. |
+| `tb-scaffold.json` | `references/tb-scaffold.schema.json` | What simulation builds the TB from; its bootstrap consumes it to materialize the UVM tree. |
+| `sequences.json` | `references/sequences.schema.json` | The sequence roster — the one part both simulation and power-analysis read. |
+| `power-scenarios.json` | `references/power-scenarios.schema.json` | The power scenarios, read by power-analysis alone. Its own file so a scenario-only edit does not invalidate simulation's proof. |
 | `plan-review.json` | `references/plan-review.schema.json` | Gating plan-adequacy review (Step 3); promoted to `artifacts[]`. |
 
 ### `verification-plan.md` section outline
@@ -59,18 +61,18 @@ Module name / Top / spec references.
 
 ## 2. Test Strategy
 Agent grouping / sequence design / RM type / scoreboard boundary — as narrative. The rosters
-themselves (`agents[]` with mode + interface groups, `sequences[]`, `rm`, `scoreboard`) live in
-`scaffold-specification.json`; write why each boundary falls where it does, not a table of the
+themselves (`agents[]` with mode + interface groups, `rm`, `scoreboard` in `tb-scaffold.json`;
+the roster in `sequences.json`) live there; write why each boundary falls where it does, not a table of the
 fields you just authored there.
 
 ## 3. Testpoints
-The testpoints live in `scaffold-specification.json`'s `testpoints[]` — `id`, `intent`, `bins`,
+The testpoints live in `tb-scaffold.json`'s `testpoints[]` — `id`, `intent`, `bins`,
 `covers`. Do not restate them as a table. Narrative that is not a per-testpoint field belongs
 here: how the testpoints partition the verification, which behaviors are deliberately left to
 downstream stages.
 
 ## 4. Power Scenarios
-The scenarios live in `scaffold-specification.json`'s `power_scenarios[]`, materialized per
+The scenarios live in `power-scenarios.json`, materialized per
 `references/power-scenarios-template.md`. Do not restate them as a table. Narrative that is not a
 per-scenario field belongs here: which module signals the low-power states drive, the DVFS
 frequency bands, why a scenario was materialized the way it was.
@@ -81,12 +83,12 @@ Trigger context + revision highlights.
 ## Document Control
 ```
 
-### `scaffold-specification.json` fields
+### Plan-sidecar fields
 
-You author (judgment): `module`, `top`, `agents[]` `{name, mode, interface_groups}`,
-`sequences[]`, `tests[]` `{name, feature, test_id, suites, seqs}`, `rm`, `scoreboard`,
-`testpoints[]` `{id, bins, intent, covers}`, `power_scenarios[]`, and `skipped_checks[]`
-`{check_id, reason}`.
+You author (judgment) — in `tb-scaffold.json`: `module`, `top`, `agents[]`
+`{name, mode, interface_groups}`, `tests[]` `{name, feature, test_id, suites, seqs}`, `rm`,
+`scoreboard`, `testpoints[]` `{id, bins, intent, covers}`, `skipped_checks[]` `{check_id, reason}`;
+in `sequences.json`: the roster; in `power-scenarios.json`: the scenarios.
 
 Script-injected by `simplan materialize-scaffold` (do NOT hand-author): each agent's
 `interface.signals` (all group signals) + `transaction.fields` (clk/rst excluded), `primary_clock`, `reset`,
@@ -94,8 +96,11 @@ each `testpoints[].inlined_check_hints[]` (materialized from `covers[]` + the ch
 `implementation_detail = verbatim-if-present-else-summary`), and each `tests[].feature_name`
 (the matching `features.json` entry's `name`, resolved through `tests[].feature`).
 
-Full structural shape: [`references/scaffold-specification.schema.json`](references/scaffold-specification.schema.json);
-`simplan check-scaffold` fails loud with fix-oriented messages.
+Full structural shape: [`tb-scaffold`](references/tb-scaffold.schema.json) /
+[`sequences`](references/sequences.schema.json) /
+[`power-scenarios`](references/power-scenarios.schema.json); `simplan check-scaffold` validates
+each against its own schema, then cross-checks them together and fails loud with fix-oriented
+messages.
 
 Authoring judgment the schema/validator cannot express:
 - `agents[].mode`: `active` for driver/master/driving agents; `passive` for monitor/slave/observer.
@@ -150,16 +155,16 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
 
 ### Step 2: Generate / update artifacts
 
-Produce `verification-plan.md` and `scaffold-specification.json` by running the pipeline below in order. When amending, keep testpoint IDs / sequence names / `power_scenarios.sequence_ref` stable: downstream coverage / scaffold / SAIF caches key off them, so renumbering one silently breaks the cache.
+Produce `verification-plan.md` and the three sidecars by running the pipeline below in order. When amending, keep testpoint IDs / sequence names / `power_scenarios.sequence_ref` stable: downstream coverage / scaffold / SAIF caches key off them, so renumbering one silently breaks the cache.
 
-**Author the judgment fields** into `scaffold-specification.json`, and write `verification-plan.md` per the section outline. Which fields are yours vs script-injected: the `scaffold-specification.json` fields section above. How to map spec fields to UVM objects (agents from interface groups, sequences from scenarios, tests from features, RM / scoreboard from the check hints): `references/spec-input-contract.md`.
+**Author the judgment fields** into the three sidecars, and write `verification-plan.md` per the section outline. Which fields are yours vs script-injected: the plan-sidecar fields section above. How to map spec fields to UVM objects (agents from interface groups, sequences from scenarios, tests from features, RM / scoreboard from the check hints): `references/spec-input-contract.md`.
 
-**Author power scenarios** per `references/power-scenarios-template.md` into `verification-plan.md` §4 and `scaffold-specification.json.power_scenarios`; every `sequence_ref` must resolve to a `sequences[].name` (add the `sequences[]` entry first when a scenario needs its own stimulus).
+**Author power scenarios** per `references/power-scenarios-template.md` into `verification-plan.md` §4 and `power-scenarios.json`; every `sequence_ref` must resolve to a `sequences[].name` (add the `sequences[]` entry first when a scenario needs its own stimulus).
 
 **Run `materialize-scaffold`** (every run) to fill the script-injected fields (see the fields section):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py materialize-scaffold --scaffold {workdir}/scaffold-specification.json --spec <design>
+python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py materialize-scaffold --plan {workdir} --spec <design>
 ```
 
 On a non-zero exit, read stderr for the cause, fix the scaffold or (for a clock defect) re-run specification — `clocks.json` is its output, not yours — and re-run.
@@ -167,7 +172,7 @@ On a non-zero exit, read stderr for the cause, fix the scaffold or (for a clock 
 **Run `check-scaffold`** (the gate; every pass) to validate the scaffold's structure, semantics, and coverage-matrix (every check_id covered-or-skipped; every `covers[]` resolves):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py check-scaffold --scaffold {workdir}/scaffold-specification.json --spec <design>
+python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py check-scaffold --plan {workdir} --spec <design>
 ```
 
 Fix and re-run on a non-zero exit.
@@ -229,10 +234,10 @@ When a `{failing_result}` carries multiple violation kinds, decide the primary e
 
 | Violation type | Primary edit target |
 |---|---|
-| Compile / smoke / regression class (behavioral or handshake errors) | `verification-plan.md` §2 (test strategy) + §5 (revision summary); `scaffold-specification.json.{rm, scoreboard}`. |
-| Coverage-hole bin not in testpoints (`gaps_not_in_testpoints` non-empty — missing testpoint) | `scaffold-specification.json.testpoints[]` (**add** entries / extend `bins` to cover the missing holes) + `verification-plan.md` §3 narrative if the strategy changed. |
-| Coverage-hole bin inside testpoints (`gaps_in_testpoints` non-empty), `simulation-triage` returns `root_cause: simulation-plan` (plan over-spec: a bin the RTL cannot legally reach) | `scaffold-specification.json.testpoints[]` (**narrow** `bins` to remove the unreachable values; if the whole testpoint is unreachable, delete it and record the over-spec attribution in `verification-plan.md` §5 revision summary). |
-| Power-scenario failure | `verification-plan.md` §4 + `scaffold-specification.json.power_scenarios`. |
+| Compile / smoke / regression class (behavioral or handshake errors) | `verification-plan.md` §2 (test strategy) + §5 (revision summary); `tb-scaffold.json.{rm, scoreboard}`. |
+| Coverage-hole bin not in testpoints (`gaps_not_in_testpoints` non-empty — missing testpoint) | `tb-scaffold.json.testpoints[]` (**add** entries / extend `bins` to cover the missing holes) + `verification-plan.md` §3 narrative if the strategy changed. |
+| Coverage-hole bin inside testpoints (`gaps_in_testpoints` non-empty), `simulation-triage` returns `root_cause: simulation-plan` (plan over-spec: a bin the RTL cannot legally reach) | `tb-scaffold.json.testpoints[]` (**narrow** `bins` to remove the unreachable values; if the whole testpoint is unreachable, delete it and record the over-spec attribution in `verification-plan.md` §5 revision summary). |
+| Power-scenario failure | `verification-plan.md` §4 + `power-scenarios.json`. |
 
 ## Red Flags
 
@@ -246,7 +251,7 @@ When a `{failing_result}` carries multiple violation kinds, decide the primary e
 
 | Mistake | Fix |
 |---|---|
-| Restating `scaffold-specification.json` content in `verification-plan.md` | §2 / §3 / §4 point at the JSON and carry narrative only. A hand-copied roster, testpoint table or scenario table is a second home that nothing compares — write why, not what. |
+| Restating sidecar content in `verification-plan.md` | §2 / §3 / §4 point at the JSON and carry narrative only. A hand-copied roster, testpoint table or scenario table is a second home that nothing compares — write why, not what. |
 
 ## Completion Gate
 
@@ -254,7 +259,7 @@ When a `{failing_result}` carries multiple violation kinds, decide the primary e
 - **Semantic gate:** the Step-3 plan-adequacy gate cleared per the Step-4 approve precondition (or the review was `unavailable` and acknowledged); `stage_specific.plan_adequacy_gate` written; `plan-review.json` in `artifacts[]`.
 - **Human gate:** the user approved the review loop; `verification-plan.md` carries frontmatter `Status: approved` (`status=pass` only after approval).
 - **Finalize:** `simplan finalize` wrote `result.json` (Step 5), owning status / `plan_adequacy_gate` / `fail_reason` (on fail) / `artifacts[]`; its verdict is schema-validated externally, not by you.
-- **Plan consistency:** `verification-plan.md` has §1–§4 (a scoped revision adds §5 on a real diff) and carries narrative only — §3 and §4 point at `scaffold-specification.json`'s `testpoints[]` / `power_scenarios[]` rather than restating them, so there are no counts to reconcile.
+- **Plan consistency:** `verification-plan.md` has §1–§4 (a scoped revision adds §5 on a real diff) and carries narrative only — §3 and §4 point at `tb-scaffold.json`'s `testpoints[]` / `power-scenarios.json` rather than restating them, so there are no counts to reconcile.
 - No Iron Rule or Red Flag was triggered.
 
 ## Return Contract
@@ -267,7 +272,7 @@ Your sole completion signal is `{workdir}/result.json` present with `status=pass
 
 - [`references/spec-input-contract.md`](references/spec-input-contract.md) — how the authored sidecars map to the scaffold objects this stage authors, with a worked APB example.
 - [`references/power-scenarios-template.md`](references/power-scenarios-template.md) — the standard 9-power-scenarios table + per-module materialization guide.
-- [`references/scaffold-specification.schema.json`](references/scaffold-specification.schema.json) — structural schema for `scaffold-specification.json` (the machine contract); enforced by `simplan check-scaffold`.
+- [`references/tb-scaffold.schema.json`](references/tb-scaffold.schema.json) / [`sequences.schema.json`](references/sequences.schema.json) / [`power-scenarios.schema.json`](references/power-scenarios.schema.json) — structural schemas for the plan sidecars (the machinification.json` (the machine contract); enforced by `simplan check-scaffold`.
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
 - [`references/plan-review.schema.json`](references/plan-review.schema.json) — gating plan-adequacy review schema (Step 3).
 - [`references/plan-review-task-contract.md`](references/plan-review-task-contract.md) — self-dispatched reviewer sub-Task contract (Step 3).

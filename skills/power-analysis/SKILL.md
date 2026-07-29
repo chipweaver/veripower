@@ -42,7 +42,7 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 |---|---|---|
 | `<tb_env>/filelist.f` | UVM filelist | TB infrastructure compile list (read-only). |
 | `<tb_env>/tb/uvm/**/*.sv` | UVM SystemVerilog | TB infrastructure, referenced by `filelist.f` (read indirectly). |
-| `<scaffold>/scaffold-specification.json` | simulation-plan schema | `power_scenarios[]` list (drives `emit_power_tests` + `run_gls_power`). |
+| `<scaffold>/power-scenarios.json` + `<scaffold>/sequences.json` | simulation-plan schema | the scenario list and the sequence roster it resolves against (drives `emit_power_tests` + `run_gls_power`). |
 | `<netlist>/out/<TOP>_syn.v` | structural Verilog | Synthesized netlist (VCS GLS compile + PT-PX `read_verilog`). |
 | `<netlist>/out/<TOP>_syn.sdc` | SDC | PT-PX `read_sdc` (constraint propagation). |
 | `<netlist>/out/<TOP>_syn.sdf` | SDF v3.0 | VCS SDF back-annotation delay + PT-PX `read_sdf` (state-dependent leakage). |
@@ -69,7 +69,7 @@ you interact with it only through the `make` targets.
 
 ### Step 1: Pre-check external references
 
-Confirm `<tb_env>/filelist.f` / `<scaffold>/scaffold-specification.json` (non-empty `power_scenarios[]`) / the synthesis trio (`<netlist>/out/<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"` and exit. When `{directive_path}` is injected, Read it first as a fix-scope hint.
+Confirm `<tb_env>/filelist.f` / `<scaffold>/power-scenarios.json` (non-empty) / the synthesis trio (`<netlist>/out/<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"` and exit. When `{directive_path}` is injected, Read it first as a fix-scope hint.
 
 ### Step 2: Bootstrap
 
@@ -101,7 +101,7 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
   ```bash
   python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
     --workdir {workdir} --module <module> \
-    --scaffold <scaffold>/scaffold-specification.json
+    --plan <scaffold>
   ```
 
   `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against the targets it reads itself from the injected `ppa` location (`inputs.json`) — an absent file skips the gate), folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.

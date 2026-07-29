@@ -34,7 +34,7 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
   your authority by fixing them here.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 - **Never read RTL source to author the TB.** The TB / refmodel / checker derive their behavior solely
-  from the sim-plan exit docs (`verification-plan.md` + `scaffold-specification.json`); the DUT RTL is
+  from the sim-plan exit docs (`verification-plan.md` + the plan sidecars); the DUT RTL is
   the thing under test, never the golden reference. Reading RTL to write a check makes the refmodel
   mirror the DUT -- circular verification that can never catch an RTL bug. RTL enters only mechanically,
   via the compile filelist. (Binding detail: `references/env-task-contract.md` / `references/inlined-check-hints.md`.)
@@ -59,7 +59,7 @@ below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
 |---|---|---|
 | `<rtl>/rtl-files.json` | `skills/rtl-design/references/rtl-files.schema.json` | Per-child DUT RTL file layout — bootstrap generates `rtl_filelist.f` from it (fails when missing); RTL enters only mechanically via that generated list (Iron Rule). |
 | `<plan>/verification-plan.md` | Custom markdown | env-build sub-Task input — passed by path; the main thread never reads the body. |
-| `<scaffold>/scaffold-specification.json` | Custom JSON | TB scaffold contract — sub-Task input; the main thread asserts existence only; also the `top` inference source for `sim bootstrap` (falls back to the `<rtl>` filelist). |
+| `<scaffold>/tb-scaffold.json` + `<scaffold>/sequences.json` | Custom JSON | TB scaffold contract — sub-Task input; the main thread asserts existence only; also the `top` inference source for `sim bootstrap` (falls back to the `<rtl>` filelist). |
 
 When `{failing_result}` is injected, you pass its path (and any
 `{directive_path}`) to the env-build sub-Task, which reads the failed stage's
@@ -97,7 +97,7 @@ finalize. The env / verify phase split of the workdir artifacts is in
 
 ### Step 1: Prerequisite + scope
 
-Assert the plan artifacts (`<plan>/verification-plan.md` + `<scaffold>/scaffold-specification.json`)
+Assert the plan artifacts (`<plan>/verification-plan.md` + `<scaffold>/tb-scaffold.json`)
 exist. If either is missing, run `sim finalize --workdir {workdir} --module <module> --phase
 prerequisite --fail-reason "external reference missing: <path>"` and return without dispatching. The
 main thread does not read the scaffold-spec / verification-plan body — only path existence.
@@ -219,7 +219,7 @@ contract's "Severity & gating"), computed by the script, not judged by eye. Appl
     There is no build step in this loop — the reviewer is a static check-adequacy review; a
     compile-breaking fix surfaces at the Step-5 verify wave. **No round cap** (exit is fixer-BLOCKED /
     convergence). The fix Task only tightens `tb/uvm/**` check logic — `verification-plan.md` /
-    `scaffold-specification.json` are the read-only intent source (Iron Rule), and a check is never
+    `tb-scaffold.json` are the read-only intent source (Iron Rule), and a check is never
     loosened to pass the gate.
   - **upstream** (`intent-defect` — the testpoint intent itself is wrong; no check change can fix
     it) **→ fail-out** (unchanged): run `sim finalize --workdir {workdir} --module <module> --phase
@@ -259,11 +259,11 @@ then branch on its verdict and write `status=fail` via finalize, **skipping Step
 
 - a `make regress` case failed → `sim finalize --phase regress --failure-phase regress
   --fail-reason "<…>" --verify-verdict <reaped, carries failing_cases>
-  --scaffold <scaffold>/scaffold-specification.json`;
+  --plan <scaffold>`;
 - Rule-B uncovered bins (`failure_phase=coverage` from the verify child) → `sim finalize
   --phase regress --failure-phase coverage --fail-reason "<…>" --verify-verdict <reaped,
   carries coverage_gaps + gaps_not_in_testpoints ∨ gaps_in_testpoints>
-  --scaffold <scaffold>/scaffold-specification.json`;
+  --plan <scaffold>`;
 - `STATUS: BLOCKED <reason>` → `sim finalize --phase verify-blocked --fail-reason
   "verify child BLOCKED: <reason>"`.
 
@@ -279,7 +279,7 @@ compile/coverage gate, the assembled `conformance-review.json`, and the reaped v
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize \
   --workdir {workdir} --module <module> --phase final \
-  --scaffold <scaffold>/scaffold-specification.json \
+  --plan <scaffold> \
   --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml \
   --conformance-review {workdir}/conformance-review.json \
   --verify-verdict {workdir}/<reaped-verify-verdict>.json

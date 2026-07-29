@@ -15,11 +15,12 @@ import sys
 from pathlib import Path
 
 from sim._gate import thin_d1
+from sim._plan import load_plan
 
 
-def run(workdir, scaffold) -> int:
+def run(workdir, plan_dir) -> int:
     workdir = Path(workdir).resolve()
-    scaffold_doc = json.loads(Path(scaffold).read_text(encoding="utf-8"))
+    scaffold_doc = load_plan(plan_dir)
     d1_errs = thin_d1(workdir, scaffold_doc)
     verdict = {
         "unmaterialized": [e for e in d1_errs if "missing" in e],

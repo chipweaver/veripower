@@ -14,7 +14,7 @@ Status: approved
 ## 2. Test Strategy
 
 ### Agents (UVM)
-The roster and each agent's mode + interface groups live in `scaffold-specification.json`'s
+The roster and each agent's mode + interface groups live in `tb-scaffold.json`'s
 `agents[]`. What they do: `data_in` drives the `in1`/`in2`/`in1_en`/`in2_en` input streams into the
 two input FIFOs. `core` drives the APB master (weight load + result read) and `start`, and its
 monitor observes **every** DUT output — `o_prdata`, `counter`, `o_full`, `o_empty`, `done`.
@@ -41,11 +41,11 @@ Functional: `tpu_top_apb_weight_load_seq` (core), `tpu_top_data_in_stream_seq` (
 
 ## 3. Testpoints
 
-The testpoints live in `scaffold-specification.json`'s `testpoints[]`. The partition follows the child boundary: MAC-array compute and partial-sum chaining, skew alignment, FIFO occupancy and flags, and the top's APB register path plus the `start`/counter control sequence. Reset behavior is a per-child testpoint rather than one module-wide one, because each child releases on its own path out of reset.
+The testpoints live in `tb-scaffold.json`'s `testpoints[]`. The partition follows the child boundary: MAC-array compute and partial-sum chaining, skew alignment, FIFO occupancy and flags, and the top's APB register path plus the `start`/counter control sequence. Reset behavior is a per-child testpoint rather than one module-wide one, because each child releases on its own path out of reset.
 
 ## 4. Power Scenarios
 
-The nine scenarios live in `scaffold-specification.json`'s `power_scenarios[]`. Two notes that are not per-scenario fields: this module has no low-power control signals, so every `low_power_state` is materialized `off` and S3b/S4b differ from S3a/S4a only in `corner_intent`; and `switching` has no DVFS band to name here, so S6 reuses the idle sequence and is annotated purely by corner.
+The nine scenarios live in `power-scenarios.json`. Two notes that are not per-scenario fields: this module has no low-power control signals, so every `low_power_state` is materialized `off` and S3b/S4b differ from S3a/S4a only in `corner_intent`; and `switching` has no DVFS band to name here, so S6 reuses the idle sequence and is annotated purely by corner.
 
 ## 5. Revision Summary
 

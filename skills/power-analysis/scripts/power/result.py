@@ -212,7 +212,9 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
     already carries every field of it. Never writes result.json."""
     workdir = Path(workdir)
 
-    scenarios = json.loads(Path(plan_path).read_text()).get("power_scenarios", [])
+    scenarios = json.loads(
+        (Path(plan_path) / "power-scenarios.json").read_text(encoding="utf-8")
+    )
     targets = json.loads(targets_json) if targets_json else []
 
     failures: list[dict] = []
@@ -495,7 +497,7 @@ def finalize(workdir, module, scaffold, ppa_targets) -> int:
     """Parse PT-PX reports, judge the power_mw PPA gate, write the lean result.json.
     exit 0 = written (pass or fail); exit 2 = BLOCKED (any internal raise) — never
     conflated with status=fail. (Owns the policy the deleted main() finalize branch had.)
-    `scaffold` is the scaffold-specification.json path (build_result's `plan_path`);
+    `scaffold` is the simulation-plan workdir (build_result's `plan_path`);
     `ppa_targets` is the ppa_targets JSON (build_result's `targets`)."""
     try:
         return build_result(workdir, module, scaffold, ppa_targets)

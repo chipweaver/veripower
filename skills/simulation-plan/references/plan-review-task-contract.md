@@ -13,7 +13,7 @@ main thread does NOT auto-fix the plan. Do not call the Task tool and do not cal
 - `Design/specification/design.md` (§1 behavior, §1.4 IO/interconnects, §1.5 waveforms)
   + each `Design/specification/check-hints/<child>.json` —
   the authoritative statement of what must be verified.
-- The plan under review: `{workdir}/scaffold-specification.json` — `testpoints[]` (`id` /
+- The plan under review: `{workdir}/tb-scaffold.json` — `testpoints[]` (`id` /
   `intent` / `bins` / `covers[]` / `inlined_check_hints[]`), `power_scenarios[]`,
   `skipped_checks[]` — plus `{workdir}/verification-plan.md`'s narrative for the strategy
   behind them. The testpoints themselves are in the JSON; the plan md restates none of them.

@@ -52,7 +52,7 @@ FEATURES = [
 
 def _write(tmp_path, hints, scaffold, clocks=None, top_io=None, features=None):
     """tmp_path doubles as the spec workdir: manifest + sidecars + check-hints/."""
-    sc = tmp_path / "scaffold-specification.json"
+    sc = tmp_path / "tb-scaffold.json"
     sc.write_text(json.dumps(scaffold))
     (tmp_path / "features.json").write_text(
         json.dumps(FEATURES if features is None else features)
@@ -78,8 +78,8 @@ def _run(spec, sc, check=True):
             "python3",
             str(MAIN),
             "materialize-scaffold",
-            "--scaffold",
-            str(sc),
+            "--plan",
+            str(sc.parent),
             "--spec",
             str(spec),
         ],

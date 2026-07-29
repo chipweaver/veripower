@@ -67,7 +67,7 @@ for the failed-run directory named by that key (and likewise `<design>` / `<rtl>
 | `<sim_run>` | The failed `simulation` run directory you are triaging (this round's target). Its **stage root** — the directory that holds the `runs/` folder `<sim_run>` sits in — carries the sim-stage `result.json` envelope; the failing test's `<test_id>.fsdb` lives inside `<sim_run>` itself. |
 | `<design>` | The `specification` stage root — holds `design.md`, the per-child `<child>.md`, and `manifest.json`. |
 | `<rtl>` | The `rtl-design` stage root — holds `rtl-files.json` and the `*.v` sources. |
-| `<plan>` | The `simulation-plan` stage root — holds `verification-plan.md` and `scaffold-specification.json`. |
+| `<plan>` | The `simulation-plan` stage root — holds `verification-plan.md` and the plan sidecars. |
 
 ### Read from the injected locations
 
@@ -80,7 +80,7 @@ Everything below is read relative to the injected keys above — nothing is self
 | `<sim_run>/<test_id>.fsdb` | The failing test's full-hierarchy FSDB (dumped by the sim stage; not promoted, gc'd on pass — only failing tests retain one). Query it read-only with `fsdbreport` (slash signal paths, `-bt`/`-et` window) for L1's waveform reinforcement (Step 2); if it is absent, empty, or truncated, degrade to log+code reasoning. |
 | `<design>/design.md` + `<design>/<child>.md` (via `<design>/manifest.json`) | Spec intent, to judge a spec-vague / RTL / plan discrepancy. |
 | RTL sources (via `<rtl>/rtl-files.json`) | The DUT under test — read for L1 tracing (incl. FSDB signal-hierarchy discovery) and, read-only via `` `include``, for L2's experiment leaves. |
-| `<plan>/verification-plan.md` + `<plan>/scaffold-specification.json` | The refmodel/scoreboard's behavioral intent (golden reference) and the testpoints list — for classifying coverage gaps and keeping an L2 golden model semantically consistent with the UVM refmodel. |
+| `<plan>/verification-plan.md` + `<plan>/tb-scaffold.json` | The refmodel/scoreboard's behavioral intent (golden reference) and the testpoints list — for classifying coverage gaps and keeping an L2 golden model semantically consistent with the UVM refmodel. |
 
 ## Output Artifacts
 
@@ -114,7 +114,7 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
 
 - Take evidence along the Step 1 branch path:
   - Log-anchor path (`regress` / `compile` / `smoke` / `prerequisite`): locate the first occurrence of `UVM_ERROR` / `UVM_FATAL` / timeout from `failing_cases[i].error_message` / `log_snippet` or `fail_reason` (falling back to the full log under `<sim_run>` when the envelope snippet is truncated).
-  - Coverage path (`coverage`): classify each gap bin by whether it falls inside the scaffold testpoints (`gaps_in_testpoints` is pre-split; cross-reference the testpoints list in `scaffold-specification.json`).
+  - Coverage path (`coverage`): classify each gap bin by whether it falls inside the scaffold testpoints (`gaps_in_testpoints` is pre-split; cross-reference the testpoints list in `tb-scaffold.json`).
   - Conformance path (`conformance`): there is no UVM_ERROR / gap-bin to anchor. Map each finding's `category` to a `root_cause_direction` via the "Conformance category → `root_cause_direction`" table in `references/fail-analysis-patterns.md`, then cluster + land one top-level `root_cause` per the existing attribution + tiebreak rule.
 - **Query the failing run's FSDB waveform** once the evidence above forms a hypothesis about which signal and cycle window is suspect: bare-call `fsdbreport <sim_run>/<test_id>.fsdb -s /<hier>/<signal> -bt <t0> -et <t1> -of h -o <out>` (slash-form hierarchical signal paths; discover the hierarchy from the RTL, or fall back to `fsdb2vcd <fsdb> -o x.vcd` and grep its `$scope`/`$var` lines for the scope list). Fold the resulting `Time | value` text into the forward analysis as fact — this is L1's own factual reinforcement (observing the real run), the same class as reading logs/code, not a new tier. On a missing, empty, or truncated FSDB (a failing run can truncate at the `$fatal` that ended it), degrade to log+code reasoning and do not escalate for that reason alone — but when the failing run's FSDB was expected yet is absent or unreadable, record `expected FSDB absent/unreadable — degraded to log+code` in `advisory.waveform.observation` (Step 5) so a systemic FSDB-dump failure stays observable instead of silently degrading forever.
 - Classify the fault type and `root_cause_direction` per the classification table in `references/fail-analysis-patterns.md` (including the coverage-gap row).

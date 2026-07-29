@@ -70,8 +70,10 @@ def _make_tree(
     plan = base / "Verification" / "simulation-plan"
     plan.mkdir(parents=True)
     if with_scaffold:
-        (plan / "scaffold-specification.json").write_text(
-            json.dumps(_VALID_SCAFFOLD if scaffold is None else scaffold)
+        doc = _VALID_SCAFFOLD if scaffold is None else scaffold
+        (plan / "sequences.json").write_text(json.dumps(doc.get("sequences", [])))
+        (plan / "power-scenarios.json").write_text(
+            json.dumps(doc.get("power_scenarios", []))
         )
     workdir = base / "Verification" / "power-analysis" / "runs" / "1"
     workdir.mkdir(parents=True)
@@ -217,7 +219,7 @@ def test_fail_closed_when_scaffold_missing(tmp_path):
     m, workdir, main = _make_tree(tmp_path, with_scaffold=False)
     r = _run(m, workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
-    assert "simulation-plan not found" in r.stderr
+    assert "simulation-plan sidecar not found" in r.stderr
     assert not (workdir / "Makefile").exists()
 
 

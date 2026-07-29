@@ -22,22 +22,18 @@ from sim import bootstrap  # noqa: E402
 
 # ── B1: TOP-inference helpers (in-process) ─────────────────────────────────────
 def test_top_from_scaffold_top_field(tmp_path):
-    # top is read from the declared `scaffold` input's scaffold-specification.json
+    # top is read from the declared `scaffold` input's tb-scaffold.json
     # `top` field (a REQUIRED field per its schema), not manifest.json
     # (specification is not a declared simulation input).
-    (tmp_path / "scaffold-specification.json").write_text(
+    (tmp_path / "tb-scaffold.json").write_text(
         json.dumps({"top": "my_top", "module": "m"})
     )
     assert bootstrap.infer_top_from_scaffold(tmp_path) == "my_top"
 
 
 def test_top_from_scaffold_absent_or_no_top(tmp_path):
-    assert (
-        bootstrap.infer_top_from_scaffold(tmp_path) is None
-    )  # no scaffold-specification.json
-    (tmp_path / "scaffold-specification.json").write_text(
-        json.dumps({"module": "m"})
-    )  # no top
+    assert bootstrap.infer_top_from_scaffold(tmp_path) is None  # no tb-scaffold.json
+    (tmp_path / "tb-scaffold.json").write_text(json.dumps({"module": "m"}))  # no top
     assert bootstrap.infer_top_from_scaffold(tmp_path) is None
 
 
@@ -47,11 +43,11 @@ def _mirror(
     rtl_files={"c": {"files": ["rtl/dut.v"], "incdirs": ["inc"]}},
     scaffold_top="dut",
 ):
-    """Seed the upstream rtl-design references + a scaffold-specification.json (`top`
+    """Seed the upstream rtl-design references + a tb-scaffold.json (`top`
     field) under a tmp design-tree root, and pre-populate workdir/inputs.json
     (rtl/plan/scaffold keys) the way kernel.py dispatch injects it at dispatch time
     (+ carry_self, which would already have placed any carried TB directly into
-    workdir before this verb runs). `scaffold_top=None` omits scaffold-specification.json
+    workdir before this verb runs). `scaffold_top=None` omits tb-scaffold.json
     entirely (models a TOP not inferrable from the declared `scaffold` input). Returns
     (main, workdir, module); deploy tests run `main` (the real shipped skill) with
     cwd=tmp_path, so the bootstrap anchors the design tree (and a relative --workdir)
@@ -64,9 +60,7 @@ def _mirror(
     plan_root = tmp_path / "asic" / module / "Verification" / "simulation-plan"
     plan_root.mkdir(parents=True)
     if scaffold_top is not None:
-        (plan_root / "scaffold-specification.json").write_text(
-            json.dumps({"top": scaffold_top})
-        )
+        (plan_root / "tb-scaffold.json").write_text(json.dumps({"top": scaffold_top}))
     workdir = tmp_path / "asic" / module / "Verification" / "simulation" / "runs" / "1"
     workdir.mkdir(parents=True)
     (workdir / "inputs.json").write_text(
@@ -184,10 +178,11 @@ def test_bootstrap_renders_scaffold_when_given(tmp_path):
             }
         ],
     }
-    spec_path = wd.parent / "scaffold-specification.json"  # any readable path
-    spec_path.parent.mkdir(parents=True, exist_ok=True)
-    spec_path.write_text(json.dumps(spec))
-    r = _run(main, module, wd, "--scaffold", str(spec_path))
+    plan_dir = wd.parent  # any readable dir doubles as the plan dir
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    (plan_dir / "sequences.json").write_text(json.dumps(spec.pop("sequences")))
+    (plan_dir / "tb-scaffold.json").write_text(json.dumps(spec))
+    r = _run(main, module, wd, "--plan", str(plan_dir))
     assert r.returncode == 0, r.stderr
     # interface files are named by module ({module}_{agent}_if.sv), not by top
     assert (wd / f"tb/uvm/interface/{module}_drv_if.sv").is_file()
@@ -214,7 +209,7 @@ def test_bootstrap_allows_hint_only_workdir(tmp_path):
 def test_bootstrap_unreadable_top_exit_1(tmp_path):
     main, wd, module = _mirror(
         tmp_path,
-        scaffold_top=None,  # no scaffold-specification.json -> nothing to read TOP from
+        scaffold_top=None,  # no tb-scaffold.json -> nothing to read TOP from
     )
     r = _run(main, module, wd)
     assert r.returncode == 1 and "read top" in r.stderr.lower()
@@ -229,8 +224,8 @@ def test_bootstrap_missing_rtl_files_exit_1(tmp_path):
 
 def test_bootstrap_missing_scaffold_file_exit_1(tmp_path):
     main, wd, module = _mirror(tmp_path)
-    r = _run(main, module, wd, "--scaffold", str(tmp_path / "nope.json"))
-    assert r.returncode == 1 and "scaffold-specification.json" in r.stderr
+    r = _run(main, module, wd, "--plan", str(tmp_path / "nope"))
+    assert r.returncode == 1 and "tb-scaffold.json" in r.stderr
 
 
 def test_bootstrap_chmods_scripts(tmp_path):

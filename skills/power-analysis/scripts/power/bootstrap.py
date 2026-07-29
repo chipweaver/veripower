@@ -20,7 +20,7 @@ DEPLOYED emit_power_tests.py (Tier-2 asset — shell-out-to-deployed, NOT a
 python->python subprocess-main; it enforces the sim-plan->power cross-stage
 contract and fails closed). Fail-closed on a missing template dir, an
 un-inferrable top, a missing synthesis netlist / simulation TB filelist /
-scaffold-specification.json, or an emit failure. Idempotency guard: aborts when
+simulation-plan's sidecars, or an emit failure. Idempotency guard: aborts when
 the workdir already has a Makefile.
 
 Exit codes (returned as int; __main__ does sys.exit):
@@ -109,16 +109,17 @@ def run(module: str, workdir, top: str | None = None) -> int:
     # three stage bootstraps (check before copy).
     syn_netlist = syn_out_dir / f"{top}_syn.v"
     sim_filelist = sim_dir / "filelist.f"
-    plan_path = plan_dir / "scaffold-specification.json"
+    plan_sidecars = [plan_dir / "sequences.json", plan_dir / "power-scenarios.json"]
     if not syn_netlist.is_file():
         _err(f"synthesis netlist not found: {syn_netlist}")
         return 1
     if not sim_filelist.is_file():
         _err(f"simulation TB filelist not found: {sim_filelist}")
         return 1
-    if not plan_path.is_file():
-        _err(f"simulation-plan not found: {plan_path}")
-        return 1
+    for p in plan_sidecars:
+        if not p.is_file():
+            _err(f"simulation-plan sidecar not found: {p}")
+            return 1
 
     # cp -R templates/. dest  (copy template CONTENTS into the workdir).
     shutil.copytree(_TEMPLATE_DIR, dest, dirs_exist_ok=True)
@@ -147,7 +148,7 @@ def run(module: str, workdir, top: str | None = None) -> int:
             sys.executable,
             str(dest / "scripts" / "emit_power_tests.py"),
             "--plan",
-            str(plan_path),
+            str(plan_dir),
             "--module",
             module,
             "--out-dir",

@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""Render UVM power test classes from scaffold-specification.json.
+"""Render UVM power test classes from the simulation-plan sidecars.
 
 Direction C: power-analysis does NOT define its own UVM sequence classes.
 Instead each rendered test class invokes the simulation-compiled
 ``{module}_{sequence_ref}_seq`` (already in ``{module}_tb_pkg``) through
 the corresponding agent's ``m_sequencer``.
 
-Reads ``power_scenarios[]``, dedups by ``sequence_ref``, renders one
+Reads ``power-scenarios.json``, dedups by ``sequence_ref``, renders one
 ``power_<seq>_test.sv`` per unique ``sequence_ref``. Writes
 ``power_filelist.f`` listing the generated test files only.
 
 Cross-stage contract enforced here:
-- ``power_scenarios[].sequence_ref`` MUST exist as ``sequences[].name``
-  in the same plan (else simulation TB has not compiled the seq class).
-- ``sequences[].agent`` MUST be non-empty (used to construct the env
+- a ``power-scenarios.json`` entry's ``sequence_ref`` MUST exist as a
+  ``sequences.json`` entry's ``name`` (else simulation TB has not compiled the
+  seq class).
+- that entry's ``agent`` MUST be non-empty (used to construct the env
   member field ``m_<agent>_agent`` for the sequencer handle).
 
 Either condition violated → script fails closed (exit 1).
@@ -67,7 +68,13 @@ def write_if_changed(path: Path, content: str) -> bool:
 def main() -> int:
     args = parse_args()
 
-    for label, path in [("plan", args.plan), ("test-tmpl", args.test_tmpl)]:
+    seq_path = args.plan / "sequences.json"
+    scen_path = args.plan / "power-scenarios.json"
+    for label, path in [
+        ("plan/sequences.json", seq_path),
+        ("plan/power-scenarios.json", scen_path),
+        ("test-tmpl", args.test_tmpl),
+    ]:
         if not path.is_file():
             print(
                 f"[emit_power_tests] ERROR: --{label} not found: {path}",
@@ -75,12 +82,11 @@ def main() -> int:
             )
             return 1
 
-    plan = json.loads(args.plan.read_text())
-    sequences = plan.get("sequences", [])
-    scenarios = plan.get("power_scenarios", [])
+    sequences = json.loads(seq_path.read_text())
+    scenarios = json.loads(scen_path.read_text())
 
-    # Build sequence_ref → agent map (sequences[].name → sequences[].agent).
-    # power_scenarios[].sequence_ref MUST appear in this map (cross-stage contract).
+    # Build sequence_ref → agent map (sequences.json name → agent).
+    # A scenario's sequence_ref MUST appear in this map (cross-stage contract).
     seq_to_agent: dict[str, str] = {}
     for s in sequences:
         name = s.get("name")
@@ -89,7 +95,7 @@ def main() -> int:
             continue
         if not agent:
             print(
-                f"[emit_power_tests] ERROR: sequences[].name={name!r} has no agent field "
+                f"[emit_power_tests] ERROR: sequences.json name={name!r} has no agent field "
                 f"— cannot resolve env member m_<agent>_agent.",
                 file=sys.stderr,
             )
@@ -108,12 +114,11 @@ def main() -> int:
         seen.add(seq)
         if seq not in seq_to_agent:
             print(
-                f"[emit_power_tests] ERROR: power_scenarios[].sequence_ref={seq!r} "
-                f"not found in sequences[].name — simulation TB has not compiled this "
-                f"seq class. Fix in Verification/simulation-plan/scaffold-specification.json: "
-                f"either add a matching entry to sequences[] (with name={seq!r} + an "
-                f"agent), or change power_scenarios[].sequence_ref to an existing "
-                f"sequences[].name. Field semantics: "
+                f"[emit_power_tests] ERROR: sequence_ref={seq!r} not found in "
+                f"sequences.json — simulation TB has not compiled this seq class. Fix in "
+                f"Verification/simulation-plan/: either add a matching sequences.json "
+                f"entry (name={seq!r} + an agent), or point the scenario's sequence_ref "
+                f"at an existing one. Field semantics: "
                 f"skills/simulation-plan/references/power-scenarios-template.md.",
                 file=sys.stderr,
             )

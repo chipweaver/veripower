@@ -221,8 +221,9 @@ def _make_workdir(tmp_path, scenarios, sizes, flats):
         if flats.get(sid) is not None:
             (rdir / "power_flat.rpt").write_text(flats[sid])
         (rdir / "switching_activity.rpt").write_text(_SA_RPT)
-    plan = tmp_path / "plan.json"
-    plan.write_text(_json.dumps({"power_scenarios": scenarios}))
+    plan = tmp_path / "plan"  # the simulation-plan workdir, as injected
+    plan.mkdir(exist_ok=True)
+    (plan / "power-scenarios.json").write_text(_json.dumps(scenarios))
     return wd, plan
 
 
@@ -401,19 +402,18 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
     )
     (rdir / "switching_activity.rpt").write_text("")
     (wd / "gls-compile-log.txt").write_text("VCS L-2016.06_Full64\n")
-    plan = tmp_path / "plan.json"
-    plan.write_text(
+    plan = tmp_path / "plan"
+    plan.mkdir()
+    (plan / "power-scenarios.json").write_text(
         _json.dumps(
-            {
-                "power_scenarios": [
-                    {
-                        "id": "S1",
-                        "sequence_ref": "idle_seq",
-                        "corner_intent": "TT@25C",
-                        "duration_cycles": 2000,
-                    }
-                ]
-            }
+            [
+                {
+                    "id": "S1",
+                    "sequence_ref": "idle_seq",
+                    "corner_intent": "TT@25C",
+                    "duration_cycles": 2000,
+                }
+            ]
         )
     )
     rc, data = p.run(plan, wd, "[]")
@@ -667,7 +667,7 @@ def test_golden_real_reports_lean_pass(tmp_path):
     wd = tmp_path / "wd"
     shutil.copytree(ROOT / "real", wd)
     rc = p.build_result(
-        wd, module="tpu_top", plan_path=str(ROOT / "plan.json"), targets="[]"
+        wd, module="tpu_top", plan_path=str(ROOT / "plan"), targets="[]"
     )
     assert rc == 0
     env = _json.loads((wd / "result.json").read_text())
@@ -714,9 +714,7 @@ def test_golden_is_schema_valid(tmp_path):
     ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
     wd = tmp_path / "wd"
     shutil.copytree(ROOT / "real", wd)
-    p.build_result(
-        wd, module="tpu_top", plan_path=str(ROOT / "plan.json"), targets="[]"
-    )
+    p.build_result(wd, module="tpu_top", plan_path=str(ROOT / "plan"), targets="[]")
     env = _json.loads((wd / "result.json").read_text())
     env_schema = _json.loads(
         (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()

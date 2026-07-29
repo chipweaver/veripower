@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sim render-scaffold: generate the full UVM scaffold from scaffold-specification.json.
+"""sim render-scaffold: generate the full UVM scaffold from the simulation-plan sidecars.
 
 Renders one tree of UVM source under <output-dir>/tb/uvm/ (interfaces, transactions, drivers,
 monitors, agents, sequences, tests, RM, scoreboard, env, tb_top, tb_pkg.sv, filelist.f,
@@ -26,17 +26,18 @@ from sim._guards import (
     _check_str_or_omitted,
     validate_ports,
 )
+from sim._plan import load_plan
+from sim._plan import paths as plan_paths
 from sim._render import (
     _field_declarations,
     _field_macros,
     _render_template_file,
     _signal_declarations,
-    read_text,
 )
 
 
-def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
-    spec = json.loads(read_text(plan_path))
+def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
+    spec = load_plan(plan_dir)
     module = spec["module"]
     top = spec["top"]
     agents = spec.get("agents", [])
@@ -287,7 +288,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
     pending.append((dest, content))
 
     # --- Tests (generated_tests.svh) ---
-    test_lines = ["// Auto-generated from scaffold-specification.json."]
+    test_lines = ["// Auto-generated from tb-scaffold.json."]
     for test in tests:
         tname = test["name"]
         feature = test.get("feature", "")
@@ -466,14 +467,14 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
     return 0
 
 
-def render(scaffold, out_dir, template_dir=None) -> int:
+def render(plan_dir, out_dir, template_dir=None) -> int:
     """Render the scaffold tree. Library entry for both the render-scaffold verb and the
-    bootstrap verb. Fail-loud (sys.exit) on a missing scaffold/template dir; returns
+    bootstrap verb. Fail-loud (sys.exit) on a missing sidecar/template dir; returns
     run_scaffold's int (0). A run_scaffold sys.exit / raise propagates to the caller."""
     out_dir = Path(out_dir).resolve()
-    scaffold_path = Path(scaffold).resolve()
-    if not scaffold_path.is_file():
-        sys.exit(f"scaffold: missing scaffold-specification.json: {scaffold_path}")
+    for p in plan_paths(plan_dir):
+        if not p.is_file():
+            sys.exit(f"scaffold: missing {p.name}: {p}")
     if template_dir:
         tmpl_dir = Path(template_dir).resolve()
     else:
@@ -482,4 +483,4 @@ def render(scaffold, out_dir, template_dir=None) -> int:
         )
     if not tmpl_dir.is_dir():
         sys.exit(f"scaffold: missing template directory: {tmpl_dir}")
-    return run_scaffold(scaffold_path, tmpl_dir, out_dir)
+    return run_scaffold(plan_dir, tmpl_dir, out_dir)

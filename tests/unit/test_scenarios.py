@@ -61,7 +61,9 @@ _OUTPUTS = {
     ],
     "simulation-plan": [
         "Verification/simulation-plan/verification-plan.md",
-        "Verification/simulation-plan/scaffold-specification.json",
+        "Verification/simulation-plan/tb-scaffold.json",
+        "Verification/simulation-plan/sequences.json",
+        "Verification/simulation-plan/power-scenarios.json",
     ],
     "rtl-design": [
         "Design/rtl-design/matvec.v",
@@ -83,6 +85,10 @@ _OUTPUTS = {
         "Verification/simulation/env.sh",
         "Verification/simulation/rtl_filelist.f",
         "Verification/simulation/tb/uvm/agent.sv",
+        "Verification/simulation/filelist.f",
+    ],
+    "power-analysis": [
+        "Verification/power-analysis/reports_ptpx/S1/power_hier.rpt",
     ],
 }
 
@@ -208,7 +214,7 @@ def _chain_through_simulation(module):
 def test_step1_scaffold_fix_keeps_upstream_proofs_valid(tmp_path, monkeypatch):
     """Round-1: after lint/synth/timing pass, a scaffold-only change re-invalidates
     ONLY the scaffold consumer (simulation) — lint/synth/timing proofs stay valid
-    because none of them consume scaffold-specification.json."""
+    because none of them consume the plan sidecars."""
     monkeypatch.chdir(tmp_path)
     m = "round1"
     _mk(m, "brainstorm.md", "b1")
@@ -228,8 +234,8 @@ def test_step1_scaffold_fix_keeps_upstream_proofs_valid(tmp_path, monkeypatch):
     for rule in ("lint-cdc", "synthesis", "timing-analysis", "simulation"):
         assert facts.proof_valid(m, evs, rule), f"{rule} should start valid"
 
-    # scaffold-only change: drift simulation-plan's scaffold-specification.json.
-    _mk(m, "Verification/simulation-plan/scaffold-specification.json", "scaffold-v2")
+    # scaffold-only change: drift simulation-plan's tb-scaffold.json.
+    _mk(m, "Verification/simulation-plan/tb-scaffold.json", "scaffold-v2")
     evs = facts.read_events(m)
 
     # BINDING: lint / synth / timing proofs stay valid (no scaffold in their inputs).
@@ -238,6 +244,47 @@ def test_step1_scaffold_fix_keeps_upstream_proofs_valid(tmp_path, monkeypatch):
     assert facts.proof_valid(m, evs, "timing-analysis")
     # only the scaffold consumer flips — proves the change actually bit.
     assert not facts.proof_valid(m, evs, "simulation")
+
+
+def test_plan_sidecars_invalidate_only_their_own_consumer(tmp_path, monkeypatch):
+    """The reason the plan's machine half is three files and not one.
+
+    simulation reads tb-scaffold.json + sequences.json; power-analysis reads
+    sequences.json + power-scenarios.json. A scenario-only edit must not cost a full
+    compile + smoke + regress + coverage that cannot even observe it, and a testpoint-only
+    edit must not cost a GLS + PT-PX run. Only sequences.json, which both genuinely read,
+    invalidates both.
+    """
+    monkeypatch.chdir(tmp_path)
+    m = "granularity"
+    _mk(m, "brainstorm.md", "b1")
+    for rule in (
+        "specification",
+        "simulation-plan",
+        "rtl-design",
+        "synthesis",
+        "simulation",
+        "power-analysis",
+    ):
+        _valid(m, rule, 1)
+    base = "Verification/simulation-plan"
+
+    def flip(sidecar, content):
+        _mk(m, f"{base}/{sidecar}", content)
+        evs = facts.read_events(m)
+        return facts.proof_valid(m, evs, "simulation"), facts.proof_valid(
+            m, evs, "power-analysis"
+        )
+
+    evs = facts.read_events(m)
+    assert facts.proof_valid(m, evs, "simulation")  # baseline: both start valid
+    assert facts.proof_valid(m, evs, "power-analysis")
+
+    assert flip("power-scenarios.json", "[1]") == (True, False)
+    _valid(m, "power-analysis", 2)  # re-establish before the next probe
+    assert flip("tb-scaffold.json", "{}") == (False, True)
+    _valid(m, "simulation", 2)
+    assert flip("sequences.json", "[2]") == (False, False)
 
 
 # ── Step 2 ──────────────────────────────────────────────────────────────────────

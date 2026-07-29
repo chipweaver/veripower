@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Iterate scaffold-specification.json's power_scenarios[], run simv per
+# Iterate the plan dir's power-scenarios.json, run simv per
 # scenario, and emit one SAIF per scenario. Dedup by sequence_ref via
 # hardlink (or copy fallback).
 set -euo pipefail

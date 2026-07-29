@@ -30,7 +30,7 @@ The power bootstrap verb deploys templates and the initial power tests in one sh
 
 - `${NETLIST}` / `${SDC_FILE}` / `${SDF_FILE}` — the synthesis trio (`<TOP>_syn.{v,sdc,sdf}`).
 - `${TB_FILELIST}` — UVM TB infrastructure raw filelist; `make tb-shim` rewrites it into `${TB_FILELIST_ABS}` (absolute-pathized) for VCS to consume across workdirs.
-- `${PLAN_PATH}` — `scaffold-specification.json` (`power_scenarios[]`).
+- `${PLAN_DIR}` — the simulation-plan workdir (`sequences.json` / `power-scenarios.json`).
 
 For the expanded path shapes, see the deployed `env.sh`.
 

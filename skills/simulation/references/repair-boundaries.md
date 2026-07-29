@@ -20,7 +20,7 @@ When `make simv` / `make smoke` fails, you may repair the files below within a *
 - `predict()` / `reset()` / state machine inside `tb/uvm/<module>/refmodel/<rm>_rm.sv`.
 - **Field semantics** and **constraint semantics** inside `tb/uvm/<module>/transaction/<a>_txn.sv` (a misspelled field name still counts as scaffold).
 - Any behavioral detail the plan describes as "should be so."
-- `verification-plan.md`, `scaffold-specification.json` (not TB code, but equally not modifiable — including the `testpoints[]` and `power_scenarios[]` fields within).
+- `verification-plan.md` and the plan sidecars (not TB code, but equally not modifiable — including `tb-scaffold.json`'s `testpoints[]` and `power-scenarios.json`).
 - `rtl_filelist.f` — bootstrap derives it from `rtl-files.json` and overwrites it every round. A wrong RTL path, `+incdir+` or file order is a defect in that file, which only a rtl-design rework reaches.
 
 ## Decision flow

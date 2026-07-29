@@ -1,58 +1,29 @@
-"""The check-scaffold gate — validate scaffold-specification.json (sim-plan Completion Gate).
+"""The check-scaffold gate — validate the three plan sidecars (sim-plan Completion Gate).
 
 Runs AFTER the materialize-scaffold verb (so agents[] carry materialize-injected
 interface/transaction, which the schema tolerates but does not deep-validate).
 Three layers (each runs only if the prior passed):
-  1. Structural — jsonschema Draft 2020-12 against scaffold-specification.schema.json
-     (types, enums, required, additionalProperties on authored objects).
-  2. Semantic — referential integrity the schema cannot express: observer /
-     rm.inports resolve (after stripping the canonical txn wrapper) to a declared
-     agent; sequences[].agent / tests[].seqs[] / power_scenarios[].sequence_ref
-     resolve to declared agents/sequences; option-c (observer omitted +
-     multiple agents -> fail).
+  1. Structural — `simplan._plan.load_plan` validates each of tb-scaffold.json /
+     sequences.json / power-scenarios.json against its own schema, then merges them.
+  2. Semantic — referential integrity no single schema can express, and which is why the
+     merge exists: observer / rm.inports resolve (after stripping the canonical txn
+     wrapper) to a declared agent; sequences[].agent / tests[].seqs[] /
+     power_scenarios[].sequence_ref resolve to declared agents/sequences; option-c
+     (observer omitted + multiple agents -> fail).
   3. Coverage — bidirectional matrix over the LLM judgment vs the authored check hints
      (required --spec): every check_id is covered by some testpoints[].covers[] or listed
      in skipped_checks[]; every non-empty covers[] entry resolves to a real check_id.
      Applied by run() after layers 1-2.
 
-Exits 0 with "check-scaffold: OK ..." on a clean scaffold; otherwise exits non-zero with a
+Exits 0 with "check-scaffold: OK ..." on a clean plan; otherwise exits non-zero with a
 readable, fix-oriented message to stderr. Pairs with simulation render-scaffold's thin
 consumer-side backstops (defense-in-depth for scaffolds that bypass this gate).
 """
 
-import json
 import sys
-from pathlib import Path
 
-from jsonschema import Draft202012Validator
-
+from simplan._plan import PlanError, load_plan
 from simplan.hints import HintsError, load_check_hints
-
-_DEFAULT_SCHEMA = (
-    Path(__file__).resolve().parent.parent.parent
-    / "references"
-    / "scaffold-specification.schema.json"
-)
-
-
-def _format_validation_errors(errors) -> str:
-    """Format up to 3 jsonschema errors as 'schema violation at $.path: msg (validator=...)'.
-    A standalone (~12 lines) helper per the project's 'small enough to duplicate'
-    convention — avoids a skills/ -> framework/ cross-package import with no other
-    consumer."""
-    head = errors[:3]
-    tail = len(errors) - len(head)
-    lines = []
-    for e in head:
-        path = "$" + "".join(
-            f"[{p!r}]" if isinstance(p, int) else f".{p}" for p in e.absolute_path
-        )
-        lines.append(
-            f"schema violation at {path}: {e.message} (validator={e.validator})"
-        )
-    if tail > 0:
-        lines.append(f"+{tail} more")
-    return "; ".join(lines)
 
 
 def semantic_errors(scaffold: dict) -> list:
@@ -168,45 +139,29 @@ def coverage_errors(scaffold: dict, check_hints: list) -> list:
     return errs
 
 
-def validate(scaffold: dict, schema: dict) -> list:
-    """Return human-readable errors ([] if valid). Structural first; semantic only if
-    structural passes (semantic assumes well-typed fields)."""
-    validator = Draft202012Validator(schema)
-    struct = sorted(
-        validator.iter_errors(scaffold), key=lambda e: list(e.absolute_path)
-    )
-    if struct:
-        return [_format_validation_errors(struct)]
-    return semantic_errors(scaffold)
-
-
-def run(scaffold_path, spec_workdir) -> int:
+def run(plan_dir, spec_workdir) -> int:
     """check-scaffold: 3-layer gate (structural -> semantic -> coverage, short-circuit).
     exit 0 with 'check-scaffold: OK ...' / exit 1 with a fix-oriented message to stderr."""
-    schema_path = _DEFAULT_SCHEMA
     try:
-        scaffold = json.loads(Path(scaffold_path).read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        sys.exit(f"check-scaffold: {scaffold_path} is not valid JSON: {e}")
-    try:
-        schema = json.loads(Path(schema_path).read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        sys.exit(f"check-scaffold: {schema_path} is not valid JSON: {e}")
+        plan = load_plan(plan_dir)
+    except PlanError as e:
+        sys.exit(f"check-scaffold: {e}")
     try:
         check_hints = load_check_hints(spec_workdir)
     except HintsError as e:
         sys.exit(f"check-scaffold: {e}")
-    errors = validate(scaffold, schema)
+    errors = semantic_errors(plan)
     if not errors:
-        errors = coverage_errors(scaffold, check_hints)
+        errors = coverage_errors(plan, check_hints)
     if errors:
         sys.exit(
-            "check-scaffold: scaffold-specification.json invalid:\n  - "
+            "check-scaffold: the plan sidecars are invalid:\n  - "
             + "\n  - ".join(errors)
-            + "\nFix scaffold-specification.json (re-author per SKILL.md scaffold-spec contract) and re-run."
+            + "\nFix them (re-author per SKILL.md's plan-sidecar contract) and re-run."
         )
     print(
-        f"check-scaffold: OK ({len(scaffold.get('agents', []))} agents, "
-        f"{len(scaffold.get('sequences', []))} sequences)"
+        f"check-scaffold: OK ({len(plan.get('agents', []))} agents, "
+        f"{len(plan.get('sequences', []))} sequences, "
+        f"{len(plan.get('power_scenarios', []))} power scenarios)"
     )
     return 0

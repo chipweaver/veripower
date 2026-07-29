@@ -478,7 +478,7 @@ asic/<module>/
 │   ├── synthesis/            { result.json + out/*_syn.{v,sdc,sdf} / reports/qor.rpt + runs/<N>/ }
 │   └── timing-analysis/      { result.json + timing-report.txt + runs/<N>/ }
 └── Verification/
-│   ├── simulation-plan/      { result.json + verification-plan.md / scaffold-specification.json / plan-review.json + runs/<N>/ }
+│   ├── simulation-plan/      { result.json + verification-plan.md / tb-scaffold.json / sequences.json / power-scenarios.json / plan-review.json + runs/<N>/ }
 │   ├── simulation/           { result.json + env.sh / rtl_filelist.f / tb/uvm/* / case-results-summary.md /
 │   │                           conformance-review.json + runs/<N>/ (<test_id>.fsdb per failing test — gc-on-pass, §7.3) }
 │   ├── simulation-triage/    { result.json + runs/<sim_run>/ (analysis; L2: experiment/) — proof=None }

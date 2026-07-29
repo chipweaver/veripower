@@ -11,11 +11,12 @@ the UVM scaffold, compile, and run the smoke suite.
   round's carried TB (the framework's `carry_self` ran before you were dispatched, before this
   workdir was ever handed to you); on a genuine first run it is empty.
 - `{module}` — module name.
-- scaffold-specification path: `<scaffold>/scaffold-specification.json` — the TB
-  scaffold contract. `agents` / `sequences` / `tests` are materialized into SV here;
-  `testpoints[].inlined_check_hints[]` triggers cycle-accurate refmodel / scoreboard checks (see
-  `inlined-check-hints.md`); `testpoints[].bins[]` and `power_scenarios[]` are not consumed in this
-  wave.
+- plan-sidecar dir: `<scaffold>/` — holds the two sidecars this stage declares,
+  `tb-scaffold.json` (the TB scaffold contract: `agents` / `tests` are materialized into SV
+  here, and `testpoints[].inlined_check_hints[]` triggers cycle-accurate refmodel / scoreboard
+  checks — see `inlined-check-hints.md`) and `sequences.json` (one seq class per entry).
+  `testpoints[].bins[]` is not consumed in this wave, and `power-scenarios.json` is not
+  declared here at all — it is power-analysis's.
 - verification-plan path: `<plan>/verification-plan.md` — the human-readable
   plan (review anchor for filling intent).
 - (rework only) `{failing_result}` — the failed stage's canonical `result.json` path; read its
@@ -32,7 +33,7 @@ the UVM scaffold, compile, and run the smoke suite.
 1. **Bootstrap + scaffold**:
 
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>] --scaffold scaffold-specification.json
+   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>] --plan <scaffold>
    ```
 
    Deploys infrastructure + scaffold to `{workdir}`, including functional sequence placeholders. All
@@ -43,20 +44,20 @@ the UVM scaffold, compile, and run the smoke suite.
    it deploys the complete pristine template.
 2. **Fill / reconcile scaffold** (bound by **Rule A**, see `repair-boundaries.md`): inside
    `{workdir}`, fill or reconcile every `TODO(` across driver / monitor / checker / RM / functional
-   seq / top against the current plan (`verification-plan.md` + `scaffold-specification.json`).
+   seq / top against the current plan (`verification-plan.md` + the plan sidecars).
    - **First run:** fill every rendered `TODO(` stub in the freshly bootstrapped tree.
    - **Rework (carried TB):** reconcile the carried TB to the current plan, confined to the
      orchestrator's resolved edit scope (a directive, a `{failing_result}`, or a
      `changed-inputs.md` change-set) — change only what that scope requires; checks / RM /
      scoreboard already matching the current plan are left byte-identical to the carried baseline.
    All writes happen only in `{workdir}`.
-   **Trust the rendered tree (U4):** the bootstrap verb (with `--scaffold`) renders an atomic, complete, self-describing
+   **Trust the rendered tree (U4):** the bootstrap verb (with `--plan`) renders an atomic, complete, self-describing
    stub tree. Learn structure and fill-conventions from the **rendered stubs and their TODO/header
    comments** (e.g. each stub's `// TODO(...)` states its config_db key, sequencer type, and intent),
    not by reverse-engineering the renderer (sim/scaffold.py). Reading the renderer source is a documented
    **fallback only** — when a stub comment is missing, self-contradictory, or conflicts with the
    observed structure. Do not whole-read `sim/scaffold.py` as a first resort.
-   **Reading discipline (U5):** do not whole-read `scaffold-specification.json` (it is large and the
+   **Reading discipline (U5):** do not whole-read `tb-scaffold.json` (it is large and the
    first read gets truncated by the token cap, forcing a costly re-read). Instead: take **structural
    facts** (interface signals, txn fields) from the **rendered stubs** (they are already materialized);
    read **check semantics per-testpoint** via `testpoints[].inlined_check_hints[]` (not the whole
@@ -75,7 +76,7 @@ the UVM scaffold, compile, and run the smoke suite.
 4. **Env-exit completeness self-gate (thin-D1)**: before reporting `STATUS: DONE`, run
 
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py check-materialization --workdir {workdir} --scaffold scaffold-specification.json
+   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py check-materialization --workdir {workdir} --plan <scaffold>
    ```
 
    This is a **presence** gate: it fails (non-zero) if any required scaffold SV file is missing
@@ -128,7 +129,7 @@ smoke gate still decides smoke pass/fail.
   the RTL source (see the no-RTL-source-read prohibition below; RTL enters only mechanically via the
   compile filelist) — RTL-class issues belong to the RTL editing stage; do not exceed your authority.
 - **No RTL-source reads for authoring.** The behavioral reference for every refmodel / scoreboard /
-  checker is the sim-plan exit docs (`scaffold-specification.json` `inlined_check_hints[]` +
+  checker is the sim-plan exit docs (`tb-scaffold.json` `inlined_check_hints[]` +
   the testpoint's `intent`) -- the DUT RTL is NOT in this child's input set and MUST NOT be opened to
   understand a signal or derive an expected value. RTL participates only mechanically, through the
   compile filelist. A golden model reverse-engineered from the DUT mirrors the implementation (bugs
@@ -168,7 +169,7 @@ smoke gate still decides smoke pass/fail.
     `STATUS: BLOCKED <compile|smoke> <locus>` — naming the failing phase first, then the semantic
     locus. Drives `failure_phase=compile|smoke`.
   - **Incomplete `inlined_check_hints[]`** (boundary-case fallback per `inlined-check-hints.md`):
-    `STATUS: BLOCKED scaffold-specification.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`
+    `STATUS: BLOCKED tb-scaffold.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`
     verbatim. Drives `failure_phase=prerequisite` (rework routes back to simulation-plan).
 
   `STATUS: BLOCKED` is a **harness-level** signal, distinct from the `result.json.status` enum
@@ -186,7 +187,7 @@ re-reading the full TB body. Shape:
   "module": "<module>",
   "testpoints": [
     {
-      "tp_id": "<TP-ID, matching scaffold-specification.json testpoints[].id>",
+      "tp_id": "<TP-ID, matching tb-scaffold.json testpoints[].id>",
       "asserts": "<one-line description of what this testpoint's check verifies>",
       "seqs": ["<seq-name>→<the bins it targets>", "..."]
     }
@@ -194,7 +195,7 @@ re-reading the full TB body. Shape:
 }
 ```
 
-- `tp_id` — the testpoint id, matching `scaffold-specification.json.testpoints[].id`.
+- `tp_id` — the testpoint id, matching `tb-scaffold.json.testpoints[].id`.
 - `asserts` — one line stating what the materialized check verifies (your check-intent in
   plain prose, e.g. `wb_ack_o follows wb_cyc_i & wb_stb_i, compared every clk edge`).
 - `seqs` — for each sequence you wired toward this testpoint, `<seq-name>→<bins>` naming the

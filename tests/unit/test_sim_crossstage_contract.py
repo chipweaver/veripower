@@ -14,9 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/simulation/scripts/sim/__main__.py"
 TEMPLATES = ROOT / "skills/simulation/templates/scaffold"
-FIXTURE = (
-    ROOT / "tests/unit/fixtures/simulation-plan-tpu_top/scaffold-specification.json"
-)
+FIXTURE = ROOT / "tests/unit/fixtures/simulation-plan-tpu_top"  # the plan dir
 
 
 def _render(tmp_path):
@@ -27,7 +25,7 @@ def _render(tmp_path):
             "python3",
             str(MAIN),
             "render-scaffold",
-            "--scaffold",
+            "--plan",
             str(FIXTURE),
             "--output-dir",
             str(out),
@@ -38,7 +36,9 @@ def _render(tmp_path):
         text=True,
     )
     assert r.returncode == 0, r.stderr
-    return out, json.loads(FIXTURE.read_text())
+    spec = json.loads((FIXTURE / "tb-scaffold.json").read_text())
+    spec["sequences"] = json.loads((FIXTURE / "sequences.json").read_text())
+    return out, spec
 
 
 def test_fixture_renders_clean(tmp_path):

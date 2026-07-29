@@ -26,7 +26,7 @@ Reasoning aid for classifying each case; surfaced as free-text `fault_type` valu
 | UVM fatal | `uvm_fatal` | phase / factory error | `tb` | Read the UVM error message; check component registration and connections. |
 | Assertion failure | `assertion_failure` | SVA / immediate assert fired | `rtl-design` | Locate the assertion; analyze the signal state at firing time. |
 | Randomization conflict | `randomization_conflict` | randomization failed | `tb` | Inspect the constraint block; simplify or relax constraints. |
-| Coverage gap | `coverage_gap` | `gaps_in_testpoints` / `gaps_not_in_testpoints` non-empty | `rtl-design` (gap inside testpoints but RTL unreachable) / `tb` (gap outside testpoints — plan is missing a testpoint) / `specification` (the coverage dimension itself is missing from the requirements) | Check whether the gap bin lives under `scaffold-specification.json.testpoints[].bins[]`. Not there → plan problem. There but `stimulus_iterate` is exhausted → RTL dead code or a spec-level missing dimension. |
+| Coverage gap | `coverage_gap` | `gaps_in_testpoints` / `gaps_not_in_testpoints` non-empty | `rtl-design` (gap inside testpoints but RTL unreachable) / `tb` (gap outside testpoints — plan is missing a testpoint) / `specification` (the coverage dimension itself is missing from the requirements) | Check whether the gap bin lives under `tb-scaffold.json.testpoints[].bins[]`. Not there → plan problem. There but `stimulus_iterate` is exhausted → RTL dead code or a spec-level missing dimension. |
 
 ## Conformance `category` → `root_cause_direction` (failure_phase=conformance)
 
@@ -92,7 +92,7 @@ specification               → stage: "specification"
 
 ### Fix-scope lens (simulation-plan vs simulation)
 
-The Symptom table above is the observed-symptom lens; the same four buckets are also reachable by **where the fix lands**. The one disambiguation it adds (not already crisp above): a fix confined entirely to `tb/uvm/**` scaffold/glue, needing no `verification-plan.md` / `scaffold-specification.json` change → `simulation` (rare — simulation usually absorbs this in its own scaffold-repair budget and never escalates); a fix that changes the plan-prescribed behavior → `simulation-plan`. (rtl-design and specification are already covered by the Symptom rows — not repeated here.)
+The Symptom table above is the observed-symptom lens; the same four buckets are also reachable by **where the fix lands**. The one disambiguation it adds (not already crisp above): a fix confined entirely to `tb/uvm/**` scaffold/glue, needing no `verification-plan.md` / plan-sidecar change → `simulation` (rare — simulation usually absorbs this in its own scaffold-repair budget and never escalates); a fix that changes the plan-prescribed behavior → `simulation-plan`. (rtl-design and specification are already covered by the Symptom rows — not repeated here.)
 
 ## L1 waveform query
 
