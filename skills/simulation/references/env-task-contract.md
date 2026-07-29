@@ -145,16 +145,17 @@ smoke gate still decides smoke pass/fail.
 ## Output
 
 - Write the full TB into the shared `{workdir}`: `Makefile`, `env.sh`, `filelist.f`,
-  `rtl_filelist.f`, `tb/uvm/**` (driver / monitor / checker / RM / sequences / top), `scripts/**`,
-  `tests/testlist.json`. `make smoke` then writes the smoke-suite `regression-log.txt` `RESULT`
-  lines + per-test `logs/<test>.status` files — surface these too, since the main-thread smoke gate
-  reads exactly them. These are the env-phase artifacts (artifact ownership split is in
-  `artifact-contract.md`); the full-regress / coverage / case-result artifacts are produced by the
-  verify child in wave 3 (it appends the regress `RESULT` lines to the env-written log), and
-  `result.json` is assembled by the orchestrator.
+  `tb/uvm/**` (driver / monitor / checker / RM / sequences / top), `scripts/**`,
+  `tests/testlist.json`. Not `rtl_filelist.f` — bootstrap derives that one. `make smoke` then
+  writes the smoke-suite `regression-log.txt` `RESULT` lines + per-test `logs/<test>.status`
+  files — surface these too, since the main-thread smoke gate reads exactly them. These are the
+  env-phase artifacts (artifact ownership split is in `artifact-contract.md`); the full-regress /
+  coverage / case-result artifacts are produced by the verify child in wave 3 (it appends the
+  regress `RESULT` lines to the env-written log), and `result.json` is assembled by the
+  orchestrator.
 - Emit `{workdir}/verify-handoff.json` — a per-testpoint check-intent digest (schema below) so the
   verify child gets check-intent without re-reading the whole TB.
-- End the response with `STATUS: DONE` + a single JSON line listing the files written:
+- End the response with `STATUS: DONE` + a single JSON line listing what is now in the workdir:
 
   ```json
   {"files": ["Makefile", "env.sh", "filelist.f", "rtl_filelist.f", "tb/uvm/", "scripts/", "tests/testlist.json", "regression-log.txt", "logs/", "verify-handoff.json"]}

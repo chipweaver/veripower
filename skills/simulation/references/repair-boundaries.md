@@ -11,7 +11,7 @@ When `make simv` / `make smoke` fails, you may repair the files below within a *
 - `tb/uvm/<module>/test/base_test.sv` — config_db set/get, env build_phase.
 - `tb/uvm/<module>/top/<top>_tb_top.sv` — DUT instantiation, interface instantiation, initial reset sequence, `uvm_config_db#(virtual ...)` set.
 - `pkg/tb_pkg.sv` — include order, imports.
-- `filelist.f`, `rtl_filelist.f` — paths, `+incdir+`, file order.
+- `filelist.f` — paths, `+incdir+`, file order.
 - `Makefile` — vcs options, `+UVM_TESTNAME` default.
 
 ## Not repairable (semantics / expected behavior) — no retry; end with `STATUS: BLOCKED`
@@ -21,6 +21,7 @@ When `make simv` / `make smoke` fails, you may repair the files below within a *
 - **Field semantics** and **constraint semantics** inside `tb/uvm/<module>/transaction/<a>_txn.sv` (a misspelled field name still counts as scaffold).
 - Any behavioral detail the plan describes as "should be so."
 - `verification-plan.md`, `scaffold-specification.json` (not TB code, but equally not modifiable — including the `testpoints[]` and `power_scenarios[]` fields within).
+- `rtl_filelist.f` — bootstrap derives it from `rtl-files.json` and overwrites it every round. A wrong RTL path, `+incdir+` or file order is a defect in that file, which only a rtl-design rework reaches.
 
 ## Decision flow
 
