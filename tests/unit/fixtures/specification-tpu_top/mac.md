@@ -1,7 +1,6 @@
 ---
 child: mac
 parent: tpu_top
-brainstorm_anchor: "lines 44-57"
 ports:
   - i_clk
   - i_rstn

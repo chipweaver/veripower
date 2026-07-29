@@ -1,7 +1,6 @@
 ---
 child: systolic_reg
 parent: tpu_top
-brainstorm_anchor: "lines 59-64"
 ports:
   - systolic_in1
   - systolic_in2

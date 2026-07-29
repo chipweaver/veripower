@@ -141,7 +141,7 @@ The objective coverage gate (`check-coverage`) and the manifest's per-child `bra
 - D6 must explicitly write `ppa_targets: []` even when PPA optimization is not pursued, distinguishing "asked and decided none" from "forgot to ask."
 - Open questions use numbering like `OQ-NN` so they remain locatable.
 
-Stable chapter headers + IDs let the manifest assign clean `brainstorm_anchor` ranges (every chapter must fall in some child's range — `brainstorm_coverage`) and keep the feature/clock/port subset checks cross-referenceable.
+Stable IDs keep the feature/clock/port subset checks cross-referenceable — those key on names (`F-NN`, a clock name, a port name), never on position. `brainstorm_anchor` still records which passage is primarily a child's, but nothing requires every chapter to fall inside some child's range: the spec-review reviewer reads the whole document, so a chapter no child claims is not a defect.
 
 ## Open-Question Usage Rules
 

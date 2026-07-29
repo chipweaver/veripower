@@ -135,14 +135,14 @@ Run `check-coverage` to gate the design.md and children before the review:
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py check-coverage --workdir {workdir} --brainstorm <brainstorm>/brainstorm.md
 ```
 
-It prints the coverage verdict to stdout (sub-blocks: `brainstorm_coverage` / `frontmatter_subset` / `token_survival` / `self_containment` / `structure`); exit 0 = pass. On a non-zero exit, **fix nothing yourself**; you only route to a rework sub-Task:
+It prints the verdict to stdout (sub-blocks: `anchor_resolvability` / `frontmatter_subset` / `structure`); exit 0 = pass. On a non-zero exit, **fix nothing yourself**; you only route to a rework sub-Task:
 - **coverage violations** (a verdict is on stdout): route by category (below), then re-run, looping until clean.
 - **a table could not be parsed** (it raised; stderr names the defect): route a Wave-1 rework, or early-fail if unresolvable.
 
 | Violation category | Rework target |
 |---|---|
 | `gaps` / `orphans`; `features_schema_violations`; `timing_scenarios_schema_violations`; period; Clock-Domain; `purity_violations`; `top_io_schema_violations`; `interconnects_schema_violations`; `width_violations`; `interconnect_violations`; `top_io_driver_violations` | Wave-1 rework (re-partition the manifest; the authored sidecars; `design.md` narrative) |
-| `token_survival`; `frontmatter_subset`; `self_containment`; `hint_column_violations`; feature coverage | the affected Wave-2 child rework |
+| `frontmatter_subset`; `hint_column_violations`; feature coverage | the affected Wave-2 child rework |
 
 **On a clean coverage gate, immediately run `derive-constraints`:**
 

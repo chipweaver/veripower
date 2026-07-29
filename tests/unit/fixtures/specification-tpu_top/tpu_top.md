@@ -1,7 +1,6 @@
 ---
 child: tpu_top
 parent: tpu_top
-brainstorm_anchor: "lines 82-160"
 ports:
   - "mem[0]"
   - "mem[1]"

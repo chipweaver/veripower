@@ -1,7 +1,6 @@
 ---
 child: fifo
 parent: tpu_top
-brainstorm_anchor: "lines 66-80"
 ports:
   - fifo_en
   - result_fifo_i_data

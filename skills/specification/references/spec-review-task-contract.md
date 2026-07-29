@@ -11,18 +11,23 @@ does NOT auto-fix design.md — a blocking finding is resolved by user-directed 
 
 ### Inputs (paths only — the main thread reads no body)
 - The child's per-child design doc, located via `manifest.children[<self>].doc`.
-- `asic/{module}/brainstorm.md`, read-scope = the child's `manifest.children[<self>].brainstorm_anchor`
-  slice — the frozen statement of *intent* to check faithfulness against.
+- `asic/{module}/brainstorm.md`, **read all of it** — the frozen statement of *intent* to check
+  faithfulness against. Read-scope was once the child's `brainstorm_anchor` slice; it is the whole
+  document because the slices do not cover it (on a real module 53% of the lines fell in no child's
+  anchor) and because slicing presumes the brainstorm's shape, which a human-authored dialogue does
+  not owe us. Your child's anchor still tells you which passage is PRIMARILY yours — start there,
+  but a formula or constraint stated anywhere in the document is in scope for judging whether your
+  child realizes the intent.
 - `design.md` path, read-scope §1.4 only (top IO / interconnects, **including the §1.4.x Encoding
   field and the §1.4.2.1 Inter-module Behavior Contract companion when present**), as both
   integration context and the conformance reference frame.
 
 ### Your job: skeptical intent review of the SPEC (NOT RTL / lint / PPA)
 You are a fresh reviewer. **Do not trust that the spec is correct because it is written.**
-Read the `<child>.md` against its `brainstorm_anchor` intent and against `design.md` §1.4. Three lenses:
+Read the `<child>.md` against the brainstorm intent (your anchor marks your primary passage; the document as a whole is the frame) and against `design.md` §1.4. Three lenses:
 - **`faithfulness`** (gating) — does `<child>.md` completely and correctly realize the brainstorm
   intent for this child, with nothing omitted, contradicted, or silently added? (reference frame =
-  brainstorm.md slice). Examples: a brainstorm-required mode/signal/behavior absent from the doc;
+  the whole brainstorm.md). Examples: a brainstorm-required mode/signal/behavior absent from the doc;
   a doc decision that contradicts a brainstorm requirement.
 - **`conformance`** (gating, reference frame = `design.md` §1.4.x Encoding) — for each **control/status**
   §1.4.x row this child consumes or drives:
@@ -64,7 +69,8 @@ Read the `<child>.md` against its `brainstorm_anchor` intent and against `design
   `faithfulness`. (Encoding presence/adequacy is NOT in this mechanical set — there is no
   deterministic encoding gate; it is the `conformance` lens above.)
 - RTL correctness (no RTL exists yet); lint / CDC / timing / area / power (downstream stages);
-  structural coverage (the `check-coverage` gate already covers it).
+  the deterministic cross-file checks `check-coverage` owns (frontmatter subsets, sidecar shapes,
+  top-partition purity, anchor resolvability).
 
 ### Output
 End with `STATUS: DONE` + a single JSON line, or `STATUS: BLOCKED <reason>`:

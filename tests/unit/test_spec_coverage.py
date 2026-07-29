@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
 sys.path.insert(0, str(ROOT / "skills/specification/scripts"))
-from spec.coverage import parse_anchor  # noqa: E402
+from spec.coverage import compute_anchor_resolvability, parse_anchor  # noqa: E402
 
 
 def test_parse_anchor_single_range():
@@ -34,248 +34,85 @@ def test_parse_anchor_garbage():
     assert parse_anchor("nonsense", 100) is None
 
 
-def test_token_survival_reads_each_child_once(tmp_path, monkeypatch):
-    """Child files are read once, not once-per-token."""
-    from spec import coverage as cc
-
-    child = tmp_path / "c.md"
-    child.write_text("body without the tokens", encoding="utf-8")
-    manifest = {
-        "module": "m",
-        "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
-    }
-    brainstorm = (
-        "assign a = b;\nassign c = d;\nassign e = f;\n"  # 3 distinct hard tokens
-    )
-    reads = {"n": 0}
-    orig = Path.read_text
-
-    def counting_read_text(self, *a, **k):
-        if self.name == "c.md":
-            reads["n"] += 1
-        return orig(self, *a, **k)
-
-    monkeypatch.setattr(Path, "read_text", counting_read_text)
-    cc.compute_token_survival(tmp_path, manifest, brainstorm, "main design no tokens")
-    assert reads["n"] == 1, f"child read {reads['n']}x; must be 1 (cached)"
+# ── anchor resolvability: the gating reviewer's read-scope must resolve ────────
+# The spec-review faithfulness lens reads brainstorm.md at this anchor. An anchor that does
+# not resolve makes a GATING reviewer judge a child against blank or wrong text and report
+# "no findings" — silent in the direction that matters. This check assumes nothing about the
+# brainstorm's shape, which is why it survived the cut that removed the three checks that did.
 
 
-def _bs(manifest, brainstorm):
-    from spec import coverage as cc
-
-    return cc.compute_brainstorm_coverage(manifest, brainstorm)
-
-
-def test_brainstorm_coverage_only_gaps_and_orphans():
-    bs = _bs(
-        {
-            "module": "m",
-            "children": [
-                {
-                    "name": "c",
-                    "doc": "c.md",
-                    "rtl_modules": ["c"],
-                    "brainstorm_anchor": "lines 1-5",
-                }
-            ],
-        },
-        "# A\n## B\nx\n## C\ny\n",
-    )  # chapters A(1),B(2),C(4); child covers 1-5
-    assert set(bs.keys()) == {"gaps", "orphans"}  # no covered_chapters / overlaps
-    assert bs["gaps"] == [] and bs["orphans"] == []
-
-
-def test_brainstorm_coverage_architecture_only_child_is_not_an_orphan():
-    # child-design-template.md offers "D4-architecture-only" as a legal brainstorm_anchor,
-    # for a child born of the architecture partitioning rather than of any one chapter. It
-    # claims no lines by design, so it must not read as a broken anchor: an orphan fails the
-    # whole gate, which would make such a module impossible to deliver.
-    bs = _bs(
-        {
-            "module": "m",
-            "children": [
-                {
-                    "name": "c",
-                    "doc": "c.md",
-                    "rtl_modules": ["c"],
-                    "brainstorm_anchor": "lines 1-5",
-                },
-                {
-                    "name": "m_top",
-                    "doc": "m_top.md",
-                    "rtl_modules": ["m"],
-                    "brainstorm_anchor": "D4-architecture-only",
-                },
-            ],
-        },
-        "# A\n## B\nx\n## C\ny\n",
-    )
-    assert bs["orphans"] == []
-    assert bs["gaps"] == []
-
-
-def test_brainstorm_coverage_gap_detected():
-    bs = _bs(
-        {
-            "module": "m",
-            "children": [
-                {
-                    "name": "c",
-                    "doc": "c.md",
-                    "rtl_modules": ["c"],
-                    "brainstorm_anchor": "lines 1-1",
-                }
-            ],
-        },
-        "# A\n## B\nx\n## C\ny\n",
-    )  # C at line 4 unclaimed → gap
-    assert "C" in bs["gaps"]
-
-
-def test_brainstorm_coverage_nonshared_overlap_passes():
-    # two children overlapping a shared cut-edge chapter must NOT fail
-    bs = _bs(
-        {
-            "module": "m",
-            "children": [
-                {
-                    "name": "a",
-                    "doc": "a.md",
-                    "rtl_modules": ["a"],
-                    "brainstorm_anchor": "lines 1-4",
-                },
-                {
-                    "name": "b",
-                    "doc": "b.md",
-                    "rtl_modules": ["b"],
-                    "brainstorm_anchor": "lines 3-6",
-                },
-            ],
-        },
-        "# A\n## B\nx\n## C\ny\n## D\nz\n",
-    )
-    assert bs["gaps"] == [] and bs["orphans"] == []  # overlap is not a failure
-
-
-def test_token_survival_catches_dropped_localparam(tmp_path):
-    from spec import coverage as cc
-
-    (tmp_path / "c.md").write_text("child body, no constants", encoding="utf-8")
-    manifest = {
-        "module": "m",
-        "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
-    }
-    brainstorm = "localparam DEPTH = 16;\nparameter WIDTH = 8;\n"
-    tok = cc.compute_token_survival(
-        tmp_path, manifest, brainstorm, "design.md without them"
-    )
-    missing = {m["missing_token"] for m in tok["missing_tokens"]}
-    assert any("DEPTH" in m for m in missing)
-    assert any("WIDTH" in m for m in missing)
-
-
-def test_token_survival_param_survives(tmp_path):
-    from spec import coverage as cc
-
-    (tmp_path / "c.md").write_text("uses localparam DEPTH = 16; here", encoding="utf-8")
-    manifest = {
-        "module": "m",
-        "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
-    }
-    tok = cc.compute_token_survival(
-        tmp_path, manifest, "localparam DEPTH = 16;\n", "main design"
-    )
-    assert tok["missing_tokens"] == []
-
-
-def test_self_containment_flags_by_reference_jump(tmp_path):
-    from spec import coverage as cc
-
-    (tmp_path / "c.md").write_text("ok body", encoding="utf-8")
-    manifest = {
-        "module": "m",
-        "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
-    }
-    design = "# m\nThe formula is defined; see brainstorm §sd_div for detail.\n"
-    sc = cc.compute_self_containment(tmp_path, manifest, design)
-    assert sc["by_reference_jumps"], "must flag 'see brainstorm'"
-
-
-def test_self_containment_flags_cross_child_link(tmp_path):
-    from spec import coverage as cc
-
-    (tmp_path / "a.md").write_text(
-        "see the sibling [b](b.md) for the handshake", encoding="utf-8"
-    )
-    (tmp_path / "b.md").write_text("ok", encoding="utf-8")
-    manifest = {
+def _man(*anchors):
+    return {
         "module": "m",
         "children": [
-            {"name": "a", "doc": "a.md", "rtl_modules": ["a"]},
-            {"name": "b", "doc": "b.md", "rtl_modules": ["b"]},
+            {
+                "name": f"c{i}",
+                "doc": f"c{i}.md",
+                "rtl_modules": [f"c{i}"],
+                "brainstorm_anchor": a,
+            }
+            for i, a in enumerate(anchors)
         ],
     }
-    sc = cc.compute_self_containment(tmp_path, manifest, "# m clean")
-    assert sc["cross_child_links"], "must flag a→b.md link"
 
 
-def test_self_containment_clean(tmp_path):
-    from spec import coverage as cc
+def _bs(n):
+    return "\n".join(f"line {i}" for i in range(1, n + 1))
 
-    (tmp_path / "a.md").write_text(
-        "self-contained; links only to [design](design.md)", encoding="utf-8"
+
+def test_anchor_resolvability_clean():
+    r = compute_anchor_resolvability(_man("lines 1-40", "lines 41-100"), _bs(100))
+    assert r == {"violations": []}
+
+
+def test_anchor_out_of_bounds_is_a_violation():
+    # Previously reachable but untested: the branch that catches an anchor pointing past the
+    # end of the file. A reviewer given lines 82-160 of a 109-line brainstorm reads a short
+    # tail and calls it the intent.
+    r = compute_anchor_resolvability(_man("lines 82-160"), _bs(109))
+    assert len(r["violations"]) == 1
+    assert "does not resolve" in r["violations"][0]["error"]
+    assert "109-line" in r["violations"][0]["error"]
+
+
+def test_anchor_unparseable_is_a_violation():
+    r = compute_anchor_resolvability(_man("total garbage, not a range"), _bs(100))
+    assert len(r["violations"]) == 1 and "unparseable" in r["violations"][0]["error"]
+
+
+def test_anchor_inverted_range_is_a_violation():
+    # A reversed range yields an empty slice, so the reviewer reads nothing and finds nothing.
+    r = compute_anchor_resolvability(_man("lines 40-10"), _bs(100))
+    assert (
+        len(r["violations"]) == 1 and "does not resolve" in r["violations"][0]["error"]
     )
-    manifest = {
-        "module": "m",
-        "children": [{"name": "a", "doc": "a.md", "rtl_modules": ["a"]}],
-    }
-    sc = cc.compute_self_containment(tmp_path, manifest, "# m clean body")
-    assert sc["by_reference_jumps"] == [] and sc["cross_child_links"] == []
 
 
-def test_self_containment_design_to_child_link_allowed(tmp_path):
-    # design.md (the parent overview/index) linking to a child is allowed — cross-child is children-only.
-    from spec import coverage as cc
+def test_anchor_zero_start_is_a_violation():
+    r = compute_anchor_resolvability(_man("lines 0-10"), _bs(100))
+    assert len(r["violations"]) == 1
 
-    (tmp_path / "a.md").write_text("clean child", encoding="utf-8")
-    manifest = {
-        "module": "m",
-        "children": [{"name": "a", "doc": "a.md", "rtl_modules": ["a"]}],
-    }
-    sc = cc.compute_self_containment(
-        tmp_path, manifest, "# m\nSee submodule [a](a.md).\n"
+
+def test_architecture_only_child_claims_nothing_and_is_allowed():
+    # It declares descent from the architecture partitioning rather than from any passage —
+    # the one anchor for which an empty slice is the correct answer.
+    r = compute_anchor_resolvability(_man("D4-architecture-only"), _bs(100))
+    assert r == {"violations": []}
+
+
+def test_anchors_need_not_cover_the_brainstorm():
+    # Deliberate: the removed gap check demanded every chapter be claimed, which on a real
+    # module needed a hand-written exemption list naming 5 of 9 chapters. Uncovered lines are
+    # not a defect — the reviewer reads the whole document regardless.
+    r = compute_anchor_resolvability(_man("lines 1-5"), _bs(500))
+    assert r == {"violations": []}
+
+
+def test_every_child_is_checked_not_just_the_first():
+    r = compute_anchor_resolvability(
+        _man("lines 1-10", "nonsense", "lines 900-999"), _bs(100)
     )
-    assert sc["cross_child_links"] == []
-
-
-def test_self_containment_brainstorming_word_not_flagged(tmp_path):
-    from spec import coverage as cc
-
-    (tmp_path / "a.md").write_text("ok", encoding="utf-8")
-    manifest = {
-        "module": "m",
-        "children": [{"name": "a", "doc": "a.md", "rtl_modules": ["a"]}],
-    }
-    # "refer to brainstorming ..." substring-matches "refer to brainstorm" without a
-    # word boundary; the \b guard must reject it (else legit prose false-fails).
-    sc = cc.compute_self_containment(
-        tmp_path, manifest, "# m\nWe refer to brainstorming best practices here.\n"
-    )
-    assert sc["by_reference_jumps"] == []
-
-
-def test_self_containment_direct_brainstorm_link_flagged(tmp_path):
-    from spec import coverage as cc
-
-    (tmp_path / "a.md").write_text(
-        "for context [here](brainstorm.md)", encoding="utf-8"
-    )
-    manifest = {
-        "module": "m",
-        "children": [{"name": "a", "doc": "a.md", "rtl_modules": ["a"]}],
-    }
-    sc = cc.compute_self_containment(tmp_path, manifest, "# m clean")
-    assert sc["by_reference_jumps"], "direct ](brainstorm.md) link must be flagged"
+    assert [v["child"] for v in r["violations"]] == ["c1", "c2"]
 
 
 # ---------- structure gate ----------
@@ -584,11 +421,10 @@ def test_end_to_end_multi_child_clean_workdir(tmp_path):
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
     cov = json.loads(proc.stdout)
     assert cov["status"] == "pass"
-    assert set(cov) >= {
-        "brainstorm_coverage",
+    assert set(cov) == {
+        "status",
+        "anchor_resolvability",
         "frontmatter_subset",
-        "token_survival",
-        "self_containment",
         "structure",
     }
 
@@ -914,62 +750,6 @@ def test_driver_skipped_without_child_texts():
     assert s["top_io_driver_violations"] == []
 
 
-# ── token-survival: PPA Targets chapter exemption (ppa.json single-home) ─────
-
-
-def test_token_survival_ppa_targets_section_exempt(tmp_path):
-    # a D6-only numeric like "0.5 ns" single-homes in ppa.json; demanding prose
-    # survival would deadlock against the design-template §1.1 no-restatement rule
-    from spec import coverage as cc
-
-    manifest = {"module": "m", "children": []}
-    brainstorm = (
-        "# B\n\n## PPA Targets\n\n- timing slack target 0.5 ns\n\n## Document Control\n"
-    )
-    tok = cc.compute_token_survival(
-        tmp_path, manifest, brainstorm, "main design, no tokens"
-    )
-    assert tok["missing_tokens"] == []
-
-
-def test_token_survival_ppa_token_elsewhere_still_required(tmp_path):
-    # only the PPA-chapter occurrence is exempt: the same token appearing in another
-    # chapter is still extracted there and must survive into design.md ∪ children
-    from spec import coverage as cc
-
-    manifest = {"module": "m", "children": []}
-    brainstorm = (
-        "# B\n\n## Clocks and Reset\n\nsampling window is 0.5 ns\n\n"
-        "## PPA Targets\n\n- slack target 0.5 ns\n"
-    )
-    tok = cc.compute_token_survival(tmp_path, manifest, brainstorm, "no tokens here")
-    assert {"missing_token": "0.5 ns"} in tok["missing_tokens"]
-
-
-# ---------- F4: duplicate brainstorm chapter titles must not mask an uncovered one ----------
-
-
-def test_brainstorm_coverage_duplicate_title_not_masked():
-    # two chapters share the title "Overview"; a child covering only the FIRST must not
-    # mask the SECOND (uncovered) one — the title must still surface in gaps.
-    bs = _bs(
-        {
-            "module": "m",
-            "children": [
-                {
-                    "name": "c",
-                    "doc": "c.md",
-                    "rtl_modules": ["c"],
-                    "brainstorm_anchor": "lines 1-3",
-                }
-            ],
-        },
-        "# Top\n## Overview\nbody\n## Middle\n## Overview\ntail\n",
-    )  # Top(1),Overview(2) covered by 1-3; Middle(4),Overview(5) uncovered
-    assert "Overview" in bs["gaps"], bs["gaps"]
-    assert "Middle" in bs["gaps"], bs["gaps"]
-
-
 # ---------- F5: ragged first data row must not yield false missing_column ----------
 
 
@@ -1066,41 +846,6 @@ def _hints_workdir(tmp_path, hints, child_body="# c\n\nbody\n"):
     return tmp_path, manifest
 
 
-def test_token_survival_reaches_into_check_hints(tmp_path):
-    # implementation_detail_verbatim is where brainstorm RTL formulas land, and it left
-    # <child>.md. A token present ONLY in the JSON must still count as survived.
-    from spec import coverage as cc
-
-    formula = "o_result <= (i_data * i_weight) + 32'd0"
-    hints = [{**_DEFAULT_HINTS[0], "implementation_detail_verbatim": formula}]
-    wd, manifest = _hints_workdir(tmp_path, hints)
-    assert formula not in (wd / "c.md").read_text()
-    assert formula not in (wd / "design.md").read_text()
-    r = cc.compute_token_survival(wd, manifest, f"# bs\n{formula}\n", _GOOD_DESIGN)
-    assert r["missing_tokens"] == []
-
-
-def test_token_survival_still_fails_when_token_is_nowhere(tmp_path):
-    from spec import coverage as cc
-
-    wd, manifest = _hints_workdir(tmp_path, _DEFAULT_HINTS)
-    r = cc.compute_token_survival(
-        wd, manifest, "# bs\nassign q = 8'hFF;\n", _GOOD_DESIGN
-    )
-    assert r["missing_tokens"]
-
-
-def test_self_containment_scans_check_hints(tmp_path):
-    # A by-reference jump is the same defect wherever it is written, so the scan followed
-    # the hints out of <child>.md.
-    from spec import coverage as cc
-
-    hints = [{**_DEFAULT_HINTS[0], "implementation_detail": "see brainstorm §mac"}]
-    wd, manifest = _hints_workdir(tmp_path, hints)
-    r = cc.compute_self_containment(wd, manifest, _GOOD_DESIGN)
-    assert any("check-hints/c.json" in v["file"] for v in r["by_reference_jumps"])
-
-
 # ---------- timing-scenarios.json contract ----------
 
 
@@ -1147,25 +892,3 @@ def test_source_feature_alias_is_rejected_not_reinterpreted():
     s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, hints=aliased)
     assert s["hint_column_violations"]
     assert any(g["feature_id"] == "F-00" for g in s["feature_coverage_gaps"])
-
-
-# ---------- F9: cross-child link detection with directory-prefixed docs ----------
-
-
-def test_self_containment_cross_child_link_with_dir_prefixed_doc(tmp_path):
-    from spec import coverage as cc
-
-    (tmp_path / "sub").mkdir()
-    (tmp_path / "sub" / "a.md").write_text("see sibling [b](b.md)", encoding="utf-8")
-    (tmp_path / "sub" / "b.md").write_text("ok", encoding="utf-8")
-    manifest = {
-        "module": "m",
-        "children": [
-            {"name": "a", "doc": "sub/a.md", "rtl_modules": ["a"]},
-            {"name": "b", "doc": "sub/b.md", "rtl_modules": ["b"]},
-        ],
-    }
-    sc = cc.compute_self_containment(tmp_path, manifest, "# m clean")
-    assert sc["cross_child_links"], (
-        "must detect cross-child link with dir-prefixed docs"
-    )

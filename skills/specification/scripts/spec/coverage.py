@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
-"""check-coverage — manifest-driven coverage + token-survival verifier.
+"""check-coverage — the deterministic cross-file gate for the specification stage.
 
-Prints the coverage verdict (JSON) to stdout, containing the `brainstorm_coverage`,
-`frontmatter_subset`, and `token_survival` sub-blocks. (The former §3/§4
-self-certification `fidelity_coverage` block is removed — those design.md sections
-had no downstream consumer and were LLM-self-attested; token-survival replaces them
-with an objective whole-brainstorm hard-token check.)
+Prints the verdict (JSON) to stdout with the `anchor_resolvability`, `frontmatter_subset`
+and `structure` sub-blocks.
+
+What this gate does NOT do, deliberately: judge whether design.md faithfully realizes the
+brainstorm. Three checks that tried — token survival over regex-extracted "hard tokens",
+a phrasing blacklist for by-reference jumps, and a per-chapter coverage census — were removed
+because each encoded a guess about the SHAPE of a human-authored dialogue, and each needed an
+escape hatch when the guess missed: a length cap, an English-only section-title exemption, a
+hand-written shared-subsection list. Fidelity is a semantic question against a reference frame,
+which is what the spec-review faithfulness lens is for; it now reads the whole brainstorm.
+
+What survives here assumes nothing about the brainstorm's shape: that each child's anchor
+resolves (the reviewer's read-scope must be real), that frontmatter names resolve against the
+authored sidecars, and the cross-field relations JSON Schema cannot express.
 
 Usage: ``python3 scripts/spec/__main__.py check-coverage --workdir {workdir} --brainstorm <module-root-brainstorm.md>``
 Exit: 0 if `status == "pass"`, 1 if `status == "fail"`.
@@ -19,24 +28,14 @@ import yaml
 
 from spec.sidecar import load_sidecar, validate_sidecar
 
-# ---------- brainstorm coverage ----------
-
-
-def parse_brainstorm_chapters_with_depth(brainstorm_text: str):
-    """Return list of `(line_no, header_title, depth)` for ATX headers."""
-    chapters = []
-    for i, line in enumerate(brainstorm_text.splitlines(), start=1):
-        m = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
-        if m:
-            chapters.append((i, m.group(2), len(m.group(1))))
-    return chapters
+# ---------- anchor resolvability (the gating reviewer's read-scope) ----------
 
 
 def parse_anchor(anchor_str: str, brainstorm_lines: int):
     """Parse anchor; return a list of `(start, end)` ranges, or `None` when unparseable.
 
     The empty list is distinct from `None`: it means a well-formed anchor that claims no
-    brainstorm lines. Caller writes an `orphans` entry only on `None`. Accepted forms:
+    brainstorm lines. Accepted forms:
       * ``lines X-Y``
       * ``lines X-end``
       * ``lines X-Y, X'-Y'`` (comma-separated disjoint ranges)
@@ -56,28 +55,30 @@ def parse_anchor(anchor_str: str, brainstorm_lines: int):
     return ranges
 
 
-def compute_brainstorm_coverage(
-    manifest: dict, brainstorm_text: str, max_depth: int = 2
-):
-    """`max_depth` defaults to 2 (`#` + `##` headers only)."""
-    chapters = [
-        (ln, t)
-        for ln, t, d in parse_brainstorm_chapters_with_depth(brainstorm_text)
-        if d <= max_depth
-    ]
+def compute_anchor_resolvability(manifest: dict, brainstorm_text: str) -> dict:
+    """Every child's `brainstorm_anchor` must resolve to a real slice of the brainstorm.
+
+    This is not a coverage check — it does not ask whether the brainstorm is fully claimed,
+    and it assumes nothing about the document's shape (no chapter headings, no language, no
+    token forms). It asks the one question the anchor's consumer depends on: the spec-review
+    reviewer's faithfulness lens reads `brainstorm.md` AT this anchor
+    (references/spec-review-task-contract.md), so an unparseable, out-of-bounds or inverted
+    anchor makes a GATING reviewer judge a child against blank or wrong text and report "no
+    findings". That failure is silent in the direction that matters; nothing else catches it.
+
+    An inverted or zero-based range is caught the same way: both give the reviewer a slice it
+    reads as empty or wrong, the same silent failure as pointing past the end.
+    """
     total = len(brainstorm_text.splitlines())
-    shared = set(manifest.get("shared_subsections") or [])
-    # Key by (line_no, title): two chapters can share a title, and keying by title alone
-    # would let a COVERED same-titled chapter mask a distinct UNCOVERED one.
-    claimers = {(ln, t): [] for ln, t in chapters}
-    orphans = []
+    violations: list[dict] = []
     for child in manifest["children"]:
-        anchor = parse_anchor(child["brainstorm_anchor"], total)
+        raw = child["brainstorm_anchor"]
+        anchor = parse_anchor(raw, total)
         if anchor is None:
-            orphans.append(
+            violations.append(
                 {
                     "child": child["name"],
-                    "anchor": child["brainstorm_anchor"],
+                    "anchor": raw,
                     "error": (
                         "anchor unparseable; expected 'lines X-Y' / 'lines X-end' / "
                         "'lines X-Y, X'-Y'' / 'D4-architecture-only'"
@@ -85,25 +86,24 @@ def compute_brainstorm_coverage(
                 }
             )
             continue
-        if any(s > total or e > total for s, e in anchor):
-            orphans.append(
+        if not anchor:
+            # The empty list comes only from `D4-architecture-only`, the one anchor for which
+            # claiming no passage is correct: that child descends from the architecture
+            # partitioning, not from any part of the brainstorm.
+            continue
+        bad = [(s, e) for s, e in anchor if s < 1 or e > total or s > e]
+        if bad:
+            violations.append(
                 {
                     "child": child["name"],
-                    "anchor": child["brainstorm_anchor"],
-                    "error": f"anchor out of bounds (brainstorm has {total} lines)",
+                    "anchor": raw,
+                    "error": (
+                        f"anchor does not resolve against a {total}-line brainstorm "
+                        f"(offending range(s): {bad})"
+                    ),
                 }
             )
-            continue
-        for ln, title in chapters:
-            if any(s <= ln <= e for s, e in anchor):
-                claimers[(ln, title)].append(child["name"])
-    # Report titles (dedup, order-preserving); a title is a gap iff SOME instance of it is
-    # unclaimed and it is not a shared subsection.
-    gaps: list[str] = []
-    for (ln, title), cs in claimers.items():
-        if not cs and title not in shared and title not in gaps:
-            gaps.append(title)
-    return {"gaps": gaps, "orphans": orphans}
+    return {"violations": violations}
 
 
 # ---------- frontmatter subset (English canonical anchors) ----------
@@ -143,7 +143,6 @@ def load_check_hints(workdir: Path, child: str) -> list[dict]:
 _REQUIRED_FM_KEYS = (
     "child",
     "parent",
-    "brainstorm_anchor",
     "ports",
     "clocks",
     "features",
@@ -201,140 +200,6 @@ def compute_frontmatter_subset(workdir: Path, manifest: dict) -> dict:
         "features_violations": features_v,
         "missing_keys": missing_keys_v,
     }
-
-
-# ---------- self-containment (no by-reference jumps + no cross-child links) ----------
-
-# By-reference-jump patterns (the script owns the set incl. CJK fallbacks; SKILL.md
-# prose stays English per the Bilingual Invariant).
-# Word boundaries on the ASCII alternatives prevent false positives like "see brainstorming"
-# or "see spec D10"; CJK alternatives are left as-is (no word-boundary semantics needed).
-_BY_REF_RE = re.compile(
-    r"(see\s+brainstorm\b|see\s+spec\s+D\d\b|refer\s+to\s+brainstorm\b|referenced\s+in\s+brainstorm\b"
-    r"|见\s*brainstorm|参见\s*brainstorm|见\s*spec\s*D\d|参考\s*brainstorm)",
-    re.IGNORECASE,
-)
-_MD_LINK_RE = re.compile(r"\]\(([^)#]+\.md)(?:#[^)]*)?\)")
-_LINK_WHITELIST = {"design.md", "child-design-template.md"}
-
-
-def compute_self_containment(
-    workdir: Path, manifest: dict, main_design_text: str
-) -> dict:
-    """design.md ∪ children must be self-contained: no by-reference jumps to the
-    brainstorm (prose pattern or a direct ](brainstorm.md) link), and no <child>.md
-    markdown-link to another <child>.md (the cross-child scan is over children only)."""
-    # Compare on basenames: link targets are basename-normalized (below), so child_docs
-    # and the source name must be too — else a directory-prefixed child["doc"]
-    # (e.g. "sub/b.md") would never match a `](b.md)` link and cross-child links slip through.
-    child_docs = {Path(child["doc"]).name for child in manifest["children"]}
-    by_ref: list[dict] = []
-    cross: list[dict] = []
-    docs = [("design.md", main_design_text, False)]
-    for child in manifest["children"]:
-        docs.append(
-            (child["doc"], (workdir / child["doc"]).read_text(encoding="utf-8"), True)
-        )
-    # A by-reference jump is the same defect wherever it is written, hints included.
-    for hp in sorted((workdir / "check-hints").glob("*.json")):
-        docs.append((f"check-hints/{hp.name}", hp.read_text(encoding="utf-8"), False))
-    for name, text, is_child in docs:
-        name_base = Path(name).name
-        for m in _BY_REF_RE.finditer(text):
-            by_ref.append({"file": name, "hit": m.group(0)})
-        for lm in _MD_LINK_RE.finditer(text):
-            target = lm.group(1).split("/")[-1]
-            if target == "brainstorm.md":
-                by_ref.append({"file": name, "hit": lm.group(0)})
-                continue
-            # cross-child link: flagged only when the SOURCE is a child (spec: "in each <child>.md")
-            if (
-                is_child
-                and target not in _LINK_WHITELIST
-                and target in child_docs
-                and target != name_base
-            ):
-                cross.append({"file": name, "link": target})
-    return {"by_reference_jumps": by_ref, "cross_child_links": cross}
-
-
-# ---------- token survival (objective; replaces §3/§4 self-cert) ----------
-
-# Hard-token regex: fenced code blocks, assign/always RTL, sized literals (N'hXX),
-# timing (N.N ns), and parameter/localparam numeric definitions — the design
-# constants the refmodel/testbench depend on.
-#
-# TEMP bound (always-body length cap): a prose-embedded, backtick-quoted
-# `always @(...)` with no nearby `;` makes the unbounded `[^;]+;` run away to a
-# distant semicolon (here L167→L456 = 21KB, L1114→L2066 = 61KB), spanning many
-# unrelated sections — an unsatisfiable false-positive token. Real inline RTL
-# always-statements terminate within <200 chars; multi-line always blocks live
-# inside fenced ```code``` and are captured by the first alternative. Capping the
-# body at {1,200} drops only the prose runaways. Revisit: anchor `always` to code
-# context instead of a raw length cap.
-_HARD_TOKEN_RE = re.compile(
-    r"(```[\s\S]*?```"
-    r"|assign\s+\w+\s*=[^;]+;"
-    r"|always\s*@\([^)]+\)[^;]{1,200};"
-    r"|(?:parameter|localparam)\s+(?:\[[^\]]*\]\s*)?\w+\s*=\s*[^;,\n]+"
-    r"|\b\d+'[hbdo]\w+"
-    r"|\b\d+\.\d+\s*ns)"
-)
-
-
-def _strip_ppa_targets_section(brainstorm_text: str) -> str:
-    """Remove the brainstorm's `PPA Targets` chapter (checklist Section Layout, D6)
-    before hard-token extraction. PPA numbers legitimately live ONLY in ppa.json (the
-    design-template §1.1 single-home rule), so a D6-only token like `0.5 ns` must not
-    demand prose survival in design.md ∪ children — that demand and the single-home
-    rule would otherwise deadlock the Step-6 loop. A token that ALSO appears outside
-    the PPA chapter is still extracted from its other occurrence and must survive."""
-    out: list[str] = []
-    skipping, skip_depth = False, 0
-    for line in brainstorm_text.splitlines():
-        m = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
-        if m:
-            depth = len(m.group(1))
-            if skipping and depth <= skip_depth:
-                skipping = False
-            if not skipping and re.search(r"PPA\s+Targets", m.group(2), re.IGNORECASE):
-                skipping, skip_depth = True, depth
-                continue
-        if not skipping:
-            out.append(line)
-    return "\n".join(out)
-
-
-def compute_token_survival(
-    workdir: Path, manifest: dict, brainstorm_text: str, main_design_text: str
-) -> dict:
-    """Every hard token in the WHOLE brainstorm — minus the `PPA Targets` chapter
-    (see _strip_ppa_targets_section: its numerics single-home in ppa.json) — must
-    appear (substring) in design.md ∪ children. Objective + ungameable; guards the
-    verbatim-RTL contract.
-    """
-    brainstorm_text = _strip_ppa_targets_section(brainstorm_text)
-    # Read each child body once, not once-per-token. check-hints/<child>.json is part of the
-    # haystack: implementation_detail_verbatim is where brainstorm RTL formulas land, and
-    # survival is about the information, not the file format holding it.
-    child_texts = [
-        (workdir / child["doc"]).read_text(encoding="utf-8")
-        for child in manifest["children"]
-    ]
-    hint_texts = [
-        p.read_text(encoding="utf-8")
-        for p in sorted((workdir / "check-hints").glob("*.json"))
-    ]
-    haystacks = [main_design_text, *child_texts, *hint_texts]
-    missing: list[dict] = []
-    seen: set[str] = set()
-    for tok in _HARD_TOKEN_RE.findall(brainstorm_text):
-        if tok in seen:
-            continue
-        seen.add(tok)
-        if not any(tok in h for h in haystacks):
-            missing.append({"missing_token": tok[:80]})
-    return {"missing_tokens": missing}
 
 
 # ---------- structural gate (presence, gated columns, freq↔period, clock domain) ----------
@@ -549,10 +414,8 @@ def run(workdir: str, brainstorm: str) -> int:
         child["name"]: (workdir_p / child["doc"]).read_text(encoding="utf-8")
         for child in manifest["children"]
     }
-    bs_cov = compute_brainstorm_coverage(manifest, brainstorm_text)
+    anchors = compute_anchor_resolvability(manifest, brainstorm_text)
     fm_sub = compute_frontmatter_subset(workdir_p, manifest)
-    tok = compute_token_survival(workdir_p, manifest, brainstorm_text, main_design_text)
-    self_c = compute_self_containment(workdir_p, manifest, main_design_text)
     struct = compute_structure(
         workdir_p, manifest, main_design_text, child_texts=child_bodies
     )
@@ -561,23 +424,17 @@ def run(workdir: str, brainstorm: str) -> int:
     struct["purity_violations"] = compute_purity(manifest)
 
     has_fail = bool(
-        bs_cov["gaps"]
-        or bs_cov["orphans"]
+        anchors["violations"]
         or fm_sub["ports_violations"]
         or fm_sub["clocks_violations"]
         or fm_sub["features_violations"]
         or fm_sub["missing_keys"]
-        or tok["missing_tokens"]
-        or self_c["by_reference_jumps"]
-        or self_c["cross_child_links"]
         or any(struct.values())
     )
     coverage = {
         "status": "fail" if has_fail else "pass",
-        "brainstorm_coverage": bs_cov,
+        "anchor_resolvability": anchors,
         "frontmatter_subset": fm_sub,
-        "token_survival": tok,
-        "self_containment": self_c,
         "structure": struct,
     }
     print(json.dumps(coverage, ensure_ascii=False, indent=2))

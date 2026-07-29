@@ -91,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--brainstorm",
         required=True,
         type=Path,
-        help="module-root brainstorm.md, passed explicitly because it lives outside the workdir",
+        help="module-root brainstorm.md, passed explicitly because it lives outside the workdir. Only its LINE COUNT is used, to check each child anchor resolves — this gate does not inspect its content",
     )
     sp.set_defaults(func=_cmd_check_coverage)
 

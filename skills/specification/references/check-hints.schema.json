@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/specification/check-hints.schema.json",
   "title": "check-hints/<child>.json — one child's verification check hints (authored, never derived)",
-  "description": "One file per child, authored by that child's wave-2 sub-Task: children are written in parallel, so a shared file would be a write conflict. check_id is unique across all children (enforced when the files are aggregated), source_feature resolves to a features.json id (check-coverage), and implementation_detail_verbatim is the sole downstream source of cycle-accurate refmodel formulas — token survival is what enforces it. Field names match the scaffold's inlined_check_hints[], so the injection is a verbatim copy.",
+  "description": "One file per child, authored by that child's wave-2 sub-Task: children are written in parallel, so a shared file would be a write conflict. check_id is unique across all children (enforced when the files are aggregated), source_feature resolves to a features.json id (check-coverage), and implementation_detail_verbatim is the sole downstream source of cycle-accurate refmodel formulas, judged by the spec-review faithfulness lens. Field names match the scaffold's inlined_check_hints[], so the injection is a verbatim copy.",
   "type": "array",
   "minItems": 1,
   "items": {
@@ -32,12 +32,7 @@
         "minLength": 1
       },
       "implementation_detail_verbatim": {
-        "description": "The brainstorm-original RTL formula or token, uncompressed — or the narrative-only marker when the brainstorm states no formula. Optional in shape; token survival is what actually enforces it.",
-        "type": "string",
-        "minLength": 1
-      },
-      "brainstorm_anchor": {
-        "description": "Optional traceability pointer (e.g. L46). No script consumes it.",
+        "description": "The brainstorm-original RTL formula or token, uncompressed — or a plain statement that the brainstorm gives no formula. Optional in shape. Its fidelity is judged by the spec-review faithfulness lens against the WHOLE brainstorm — the only reader that can tell a compressed paraphrase from the original, and the only one that can tell whether a formula landed in the right child's hint at all.",
         "type": "string",
         "minLength": 1
       },

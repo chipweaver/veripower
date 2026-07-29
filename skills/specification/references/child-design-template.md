@@ -8,7 +8,6 @@ Every sub-design file `{workdir}/<child>.md` follows this structure (Surface 1 c
 ---
 child: <child_name>                # required; equals manifest.children[].name
 parent: <module_name>              # required
-brainstorm_anchor: "lines X-Y"     # required; or "lines X-end" / "lines X-Y, X'-Y'" / "D4-architecture-only"
 ports:                             # required (may be empty). cross-out ports only
   - <port_name>                    #   each must appear in main §1.4.1 ∪ §1.4.2
 clocks:                            # required (may be empty)
@@ -62,7 +61,6 @@ Schema: `references/check-hints.schema.json`. A JSON array, one object per check
     "source_feature": "F-...",
     "implementation_detail": "<=20-word summary",
     "implementation_detail_verbatim": "brainstorm-verbatim RTL formula or token",
-    "brainstorm_anchor": "L<N>",
     "observable": "<observable signal>",
     "reference_rule": "<RM rule>",
     "latency": "<=N cycle",
@@ -77,6 +75,6 @@ Schema: `references/check-hints.schema.json`. A JSON array, one object per check
 | `source_feature` | Required. A `features.json` `id`. |
 | `implementation_detail` / `observable` / `reference_rule` | Required and non-empty. |
 | `implementation_detail_verbatim` | Optional in shape, load-bearing in fact — see below. |
-| `brainstorm_anchor` / `latency` / `reset_behavior` | Optional. |
+| `latency` / `reset_behavior` | Optional. |
 
-**Critical**: `implementation_detail_verbatim` is the **only** source of cycle-accurate refmodel formulas for downstream simulation-plan / simulation. It must preserve brainstorm-original tokens (not summary-compressed) — contain `assign` / `always` / `<=` / a literal numeric, or carry the marker `(narrative-only; see L<N>-<M>)` when the brainstorm states no formula. `check-coverage`'s token-survival check requires every brainstorm hard token (`assign` / `always` / sized literals / timing) to survive into `design.md ∪ <child>.md ∪ check-hints/*.json`, so brainstorm formulas land here verbatim.
+**Critical**: `implementation_detail_verbatim` is the **only** source of cycle-accurate refmodel formulas for downstream simulation-plan / simulation. It must preserve the brainstorm's own wording, not a summary of it; when the brainstorm states no formula for a check, say so plainly rather than inventing one. No shape is prescribed — a formula looks however the brainstorm wrote it. What holds this is the spec-review faithfulness lens reading your `<child>.md` against the whole brainstorm: it is the only reader that can tell a compressed paraphrase from the original, and the only one that can tell whether a formula landed in the right child's hint.

@@ -33,16 +33,5 @@
       ],
       "brainstorm_anchor": "lines 82-160"
     }
-  ],
-  "shared_subsections": [
-    "tpu_top Brainstorm",
-    "Overview",
-    "Functions & Features",
-    "Clocks & Reset",
-    "Architecture Candidates",
-    "Timing Scenarios",
-    "PPA Targets",
-    "Verification Inputs Readiness",
-    "Document Control"
   ]
 }

@@ -102,7 +102,7 @@ Single clock domain; no CDC. Reset `i_rstn` is asynchronous, active-low (`negedg
 
 ### 1.7 Submodule Index
 
-The child registry is `manifest.json` in this same directory — one entry per child, carrying `name` / `doc` / `rtl_modules` / `brainstorm_anchor` / `role`.
+The child registry is `manifest.json` in this same directory — one entry per child, carrying `name` / `doc` / `rtl_modules` / `brainstorm_anchor`.
 
 ## 2. Document Control
 
