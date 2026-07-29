@@ -105,7 +105,6 @@ def finalize(workdir, module, json_file, json_stdin, schema_override) -> int:
 
     status = "pass" if payload.get("analysis_state") == "complete" else "fail"
     env = {
-        "schema_version": 1,
         "stage": STAGE,
         "module": module,
         "produced_at": _now_iso(),

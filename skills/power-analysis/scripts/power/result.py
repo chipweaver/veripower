@@ -403,7 +403,6 @@ def _now_iso() -> str:
 
 def _envelope(module, *, status, stage_specific, artifacts) -> dict:
     return {
-        "schema_version": 1,
         "stage": STAGE,
         "module": module,
         "produced_at": _now_iso(),

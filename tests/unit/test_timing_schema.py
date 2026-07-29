@@ -11,7 +11,6 @@ _TIMING_OK = {
 
 def _validate(stage_specific, status="pass"):
     result = {
-        "schema_version": 1,
         "stage": "timing-analysis",
         "module": "M",
         "produced_at": "2026-06-08T00:00:00Z",

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-triage/result.schema.json",
-  "title": "simulation-triage result.json contract (schema_version 1)",
+  "title": "simulation-triage result.json contract",
   "description": "Complete contract for asic/<module>/Verification/simulation-triage/result.json (Task C7: folds the retired standalone analysis.schema.json — and the per-run analysis.json + top-level analysis.json pointer double-file mechanism it gated — into this single result.json's stage_specific; single source of truth from here on). stage_specific carries the two-tier analysis verbatim: the routing tier (analysis_state/root_cause/confidence) that the kernel's reap-time triage consumes (root_cause picks the rework target) to mint a diagnosis event, recording confidence as-is; the disposition reliability gate then auto-routes or escalates on that confidence. The advisory tier (advisory.{level, fix_direction, findings[], waveform, experiment}) forwarded to the rework target as directive context — persisted, non-gating. analysis_state discriminates: 'complete' carries root_cause + confidence; 'skipped' carries skipped_reason. confidence is a hard, gating routing field: high auto-routes, medium/low escalate to the operator.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},

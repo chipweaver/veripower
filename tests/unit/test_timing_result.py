@@ -259,8 +259,7 @@ def test_build_result_pass_lean_shape(tmp_path):
     wd = _workdir(tmp_path)
     assert sp.build_result(wd, module="tpu_top", top="tpu_top") == 0
     env = json.loads((wd / "result.json").read_text())
-    assert (env["schema_version"], env["stage"], env["module"]) == (
-        1,
+    assert (env["stage"], env["module"]) == (
         "timing-analysis",
         "tpu_top",
     )

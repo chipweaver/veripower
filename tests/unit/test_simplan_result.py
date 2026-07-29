@@ -75,7 +75,6 @@ GOOD = {
 }
 
 _REVIEW_CLEAR = {
-    "schema_version": 1,
     "stage": "simulation-plan",
     "module": "tpu_top",
     "reviewed_testpoints": ["TP-1"],
@@ -104,8 +103,7 @@ def test_build_result_pass_lean_shape(tmp_path):
         == 0
     )
     env = json.loads((wd / "result.json").read_text())
-    assert (env["schema_version"], env["stage"], env["module"]) == (
-        1,
+    assert (env["stage"], env["module"]) == (
         "simulation-plan",
         "tpu_top",
     )
@@ -271,7 +269,6 @@ def test_finalize_blocked_on_bad_waived_json(tmp_path):
     (wd / "plan-review.json").write_text(
         json.dumps(
             {
-                "schema_version": 1,
                 "stage": "simulation-plan",
                 "module": "m",
                 "reviewed_testpoints": ["TP-1"],

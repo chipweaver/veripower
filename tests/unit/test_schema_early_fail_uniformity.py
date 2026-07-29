@@ -36,7 +36,6 @@ def test_schema_validates_minimum_fail_envelope(stage):
         stage_specific["failure_phase"] = "compile"
 
     result = {
-        "schema_version": 1,
         "stage": stage,
         "module": "M",
         "produced_at": "2026-05-12T00:00:00Z",
@@ -71,7 +70,6 @@ _PPA_FAIL_NUMBERS = {
 
 def _fail_result(stage, stage_specific):
     return {
-        "schema_version": 1,
         "stage": stage,
         "module": "M",
         "produced_at": "2026-06-15T00:00:00Z",

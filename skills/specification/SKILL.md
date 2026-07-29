@@ -45,7 +45,7 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 |---|---|---|
 | `result.json` | `references/result.schema.json` + `framework/references/schemas/envelope.schema.json` | This stage's status contract. |
 | `design.md` | Custom markdown (section template in `references/design-template.md`) | Design document (overview §1.1–1.6 + §1.7 submodule index). §1.6 carries a pointer to `clocks.json`, not a clock table. |
-| `manifest.json` | Custom JSON (child registry) | Child-partition SSoT (`module`, `children[]` with `name` / `doc` / `rtl_modules[]` / `brainstorm_anchor` / `role`); consumed by simulation-plan / rtl-design. |
+| `manifest.json` | Custom JSON (child registry) | Child-partition SSoT (`module`, `children[]` with `name` / `doc` / `rtl_modules[]` / `brainstorm_anchor`); consumed by simulation-plan / rtl-design. |
 | `<child>.md × N` | Custom markdown (template in `references/child-design-template.md`) | Per-child sub-design (frontmatter + §1–§5); consumed by rtl-design (§2/§3). |
 | `check-hints/<child>.json × N` | `references/check-hints.schema.json` | Per-child verification check hints, authored by that child's Wave-2 sub-Task (one file each: children run in parallel); consumed by simulation-plan. |
 | `ppa.json` | `references/ppa.schema.json` | PPA-targets SSoT, authored by Wave 1 from brainstorm D6 (`[]` when none); declared input of synthesis / power-analysis. |
@@ -229,7 +229,7 @@ Your sole completion signal is `{workdir}/result.json` present with `status=pass
 - [`references/design-template.md`](references/design-template.md) — design.md section template + minimum field completeness gate table.
 - [`references/sdc-template.md`](references/sdc-template.md) — SDC generated-output reference (what `derive-constraints` emits).
 - [`references/sgdc-template.md`](references/sgdc-template.md) — SGDC generated-output reference (what `derive-constraints` emits).
-- [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema (`schema_version: 1`).
+- [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
 - [`references/ppa.schema.json`](references/ppa.schema.json) — the `ppa.json` PPA-targets sidecar schema (the cross-stage PPA dim namespace).
 - [`references/spec-review.schema.json`](references/spec-review.schema.json) — gating semantic-review schema (Wave 3, Step 7).
 - [`references/decompose-task-contract.md`](references/decompose-task-contract.md) — Wave-1 decompose sub-Task contract (Step 2).

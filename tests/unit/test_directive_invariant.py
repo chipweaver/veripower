@@ -128,7 +128,6 @@ def test_i5_not_promoted_to_canonical(tmp_path, monkeypatch) -> None:
     workdir = r["workdir"]
     _write_file("M1", f"{workdir}/design.md", "design v1")
     result = {
-        "schema_version": 1,
         "stage": "specification",
         "module": "M1",
         "produced_at": _now_iso(),

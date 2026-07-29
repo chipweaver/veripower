@@ -101,7 +101,6 @@ def _dispatch_write_reap(tmp_path, module, rule, files, *, objective="delivery")
     for rel, content in files.items():
         _write_file(module, f"{workdir}/{rel}", content)
     result = {
-        "schema_version": 1,
         "stage": rule,
         "module": module,
         "produced_at": _now_iso(),
@@ -230,7 +229,7 @@ def test_full_mini_loop_dispatch_result_reap_decide(tmp_path, monkeypatch):
 
 def test_reap_schema_violation_blocks_and_skips_promote(tmp_path, monkeypatch):
     # result.json parses and carries status=pass, but violates the stage schema
-    # (missing the required envelope fields stage/module/produced_at/schema_version
+    # (missing the required envelope fields stage/module/produced_at
     # and the pass-path stage_specific.top_module/ppa_targets) -> the reap records
     # a blocked outcome with reason schema_violation and promote is NOT called: a
     # malformed-but-status-bearing result.json must never mint a valid proof.
@@ -471,7 +470,6 @@ def _dispatch_triage(tmp_path, module, sim_run):
 
 def _write_triage_result(module, workdir, *, status, stage_specific):
     result = {
-        "schema_version": 1,
         "stage": "simulation-triage",
         "module": module,
         "produced_at": _now_iso(),
@@ -1052,7 +1050,6 @@ def test_reap_stale_produced_at_blocked_no_promote(tmp_path, monkeypatch):
     for rel, content in _STAGE_FILES["specification"].items():
         _write_file(module, f"{workdir}/{rel}", content)
     result = {
-        "schema_version": 1,
         "stage": "specification",
         "module": module,
         "produced_at": "2026-07-10T00:00:00Z",  # predates the just-made dispatch
@@ -1085,7 +1082,6 @@ def test_reap_same_second_produced_at_not_misjudged(tmp_path, monkeypatch):
     for rel, content in _STAGE_FILES["specification"].items():
         _write_file(module, f"{workdir}/{rel}", content)
     result = {
-        "schema_version": 1,
         "stage": "specification",
         "module": module,
         "produced_at": dispatch_ts[:19] + "Z",  # dispatch second, microseconds dropped
@@ -1109,7 +1105,6 @@ def test_reap_unparseable_produced_at_blocked(tmp_path, monkeypatch):
     for rel, content in _STAGE_FILES["specification"].items():
         _write_file(module, f"{workdir}/{rel}", content)
     result = {
-        "schema_version": 1,
         "stage": "specification",
         "module": module,
         "produced_at": "yesterday-ish",  # schema-legal string, not a timestamp

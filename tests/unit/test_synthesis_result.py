@@ -270,8 +270,7 @@ def test_build_result_pass_lean_shape(tmp_path):
         == 0
     )
     env = json.loads((wd / "result.json").read_text())
-    assert (env["schema_version"], env["stage"], env["module"]) == (
-        1,
+    assert (env["stage"], env["module"]) == (
         "synthesis",
         "tpu_top",
     )

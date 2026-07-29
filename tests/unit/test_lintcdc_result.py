@@ -62,8 +62,7 @@ def test_envelope_pass_lean_shape(tmp_path):
     wd = _clean_workdir(tmp_path)
     assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
     env = json.loads((wd / "result.json").read_text())
-    assert (env["schema_version"], env["stage"], env["module"]) == (
-        1,
+    assert (env["stage"], env["module"]) == (
         "lint-cdc",
         "tpu_top",
     )

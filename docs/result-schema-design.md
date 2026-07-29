@@ -26,7 +26,7 @@ metadata carrier that wraps them.
 
 | Role | What it carries | Who reads it |
 |---|---|---|
-| **R1 — Completion certificate** | "This stage finished, here is the verdict." Fields: `stage`, `status`, `produced_at`, `schema_version`, `module` | `kernel.py` for outcome/status bookkeeping |
+| **R1 — Completion certificate** | "This stage finished, here is the verdict." Fields: `stage`, `status`, `produced_at`, `module` | `kernel.py` for outcome/status bookkeeping |
 | **R2 — Artifact manifest** | "Here is where my outputs live." Fields: `artifacts[].path` (and optional per-item metadata) | `kernel.py`'s reap-time `promote()` (hardlinking); downstream consumers locating files |
 | **R3 — Structured handoff** | "Here is small machine-readable data downstream needs at envelope-read time." Fields: `stage_specific.*` | downstream code (Orchestrator, subagents) and downstream LLMs |
 
@@ -107,20 +107,18 @@ scope its fix list, not by the router to choose one.
 
 ## 8. Process for changing a schema
 
-**`schema_version` tracks the cross-stage envelope contract, not per-stage `stage_specific`.**
-`schema_version` is the completion-certificate (R1) contract version — the cross-stage
-`result.json` shape every stage shares. It is pinned once in `envelope.schema.json`
-(`const: 1`) and inherited by all stage schemas via `allOf`; no consumer branches on its value.
+**`result.json` carries no version stamp.** It used to: `schema_version` was pinned
+`{"const": 1}` in the envelope and required of every stage, and the process here described when
+to bump it. Nothing ever branched on the value — this document said so in the same breath as
+prescribing the bump — and the project replaces wholesale rather than shipping compatibility
+shims, so the bump the protocol described was never going to happen. A `result.json` is
+regenerated every run; the schema on disk is the contract, and a stale envelope fails it
+directly rather than being recognised by a marker.
 
-A change confined to one stage's `stage_specific` (R3) is versioned by that stage's own
-`result.schema.json` — NOT by `schema_version`. Bumping a shared marker for a stage-local
-change would diverge it across stages for a reader that does not exist.
-
-Only a change to the shared envelope itself — a universal R1/R2 field in `envelope.schema.json`,
-the `status` enum, or the artifact-manifest shape — warrants a `schema_version` bump, because
-that changes what every stage's `result.json` must look like. A change to a `description`
-string (no shape, `required`, or type change) is not a contract change and never bumps
-`schema_version`.
+The four review records (`spec-review` / `semantic-review` / `conformance-review` /
+`plan-review`) DO keep `schema_version`, and for the reason the envelope did not: they are
+LLM judgments, not re-derivable, and an old one on disk cannot be regenerated to match a new
+shape. A durable record that outlives its schema needs to say which schema it was written to.
 
 When adding or removing a `stage_specific` field, co-update the stage's `result.schema.json`,
 SKILL.md prose, test fixtures, and any consumer in the same change (single-owner repo — no

@@ -48,7 +48,6 @@ class TestPromoteAtomic:
         # All artifact paths declared in result.json
         all_artifacts = [{"path": p} for p in (artifacts_list + dir_artifacts)]
         rj = {
-            "schema_version": 1,
             "stage": stage,
             "module": "foo",
             "produced_at": "2026-04-27T00:00:00Z",
@@ -103,7 +102,6 @@ class TestPromoteAtomic:
         run2.mkdir()
         (run2 / "report.txt").write_text("v2 content")
         rj = {
-            "schema_version": 1,
             "stage": "lint-cdc",
             "module": "foo",
             "produced_at": "2026-04-27T01:00:00Z",
@@ -130,7 +128,6 @@ class TestPromoteAtomic:
         (run2 / "reports" / "v2-area.txt").write_text("v2 area report")
         (run2 / "reports" / "v2-timing.txt").write_text("v2 timing report")
         rj = {
-            "schema_version": 1,
             "stage": "lint-cdc",
             "module": "foo",
             "produced_at": "2026-04-27T01:00:00Z",
@@ -158,7 +155,6 @@ class TestPromoteAtomic:
         run2 = store._result_path("foo", "lint-cdc").parent / "runs" / "2"
         run2.mkdir()
         rj = {
-            "schema_version": 1,
             "stage": "lint-cdc",
             "module": "foo",
             "produced_at": "2026-04-27T01:00:00Z",
@@ -229,7 +225,6 @@ class TestPromoteAtomic:
         # symlink: run_dir/symlink_to_external → external
         os.symlink(str(external), str(run_dir / "symlink_to_external"))
         rj = {
-            "schema_version": 1,
             "stage": "lint-cdc",
             "module": "foo",
             "produced_at": "2026-04-27",

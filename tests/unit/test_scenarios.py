@@ -252,7 +252,6 @@ def _triage(module, sim_run, root_cause, confidence):
     )
     assert d["ok"], d
     result = {
-        "schema_version": 1,
         "stage": "simulation-triage",
         "module": module,
         "produced_at": _now_iso(),

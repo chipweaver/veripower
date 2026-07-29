@@ -9,7 +9,7 @@
 | Section range | Responsibility |
 |---|---|
 | 1.1–1.6 Overview sections | Function, interfaces, timing, frequencies, architecture partitioning; 1:1 consistent with each D-dimension field in brainstorm.md; on conflict, this section is the single upper-layer authority. `constraints/<TOP>.{sdc,sgdc}` is regenerated from §1.6 by `derive-constraints`, never hand-edited. |
-| 1.7 Submodule Index | A pointer to `manifest.json`, which is the child registry (`name` / `doc` / `rtl_modules` / `brainstorm_anchor` / `role`) — this section restates none of it. The per-submodule implementation detail (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.) lives in the child docs. |
+| 1.7 Submodule Index | A pointer to `manifest.json`, which is the child registry (`name` / `doc` / `rtl_modules` / `brainstorm_anchor`) — this section restates none of it. The per-submodule implementation detail (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.) lives in the child docs. |
 | 2 Document control | Version, revision notes, the corresponding (frozen / approved) brainstorm.md. |
 
 ## Rendering Conventions
@@ -36,7 +36,7 @@ in prose; synthesis / power-analysis bind to that file directly).
 
 ### 1.2 Module Structure
 
-The child roster lives in `manifest.json` (`name` / `doc` / `rtl_modules` / `role`). Do not
+The child roster lives in `manifest.json` (`name` / `doc` / `rtl_modules`). Do not
 restate it as a table. Narrative that is not a per-child field belongs here, plus the one thing
 the manifest cannot hold — the architecture diagram: dataflow direction, which cut edges carry
 backpressure, why the partition falls where it does.
@@ -218,7 +218,6 @@ array, one object per clock:
 | `freq_mhz` / `period_ns` | Required **numbers** (not strings). `period_ns` must equal `1000 / freq_mhz` — enforced by `check-coverage`. |
 | `relationship` | Required, one of `primary` / `synchronous-related` / `async`. `async` drives `set_clock_groups -asynchronous` (SDC) and a distinct `-domain` (SGDC). **Exactly one `primary`** — it is the TB main clock; `derive-constraints` fails loud otherwise. |
 | `generated` | Optional (default `false`). `true` for a divider/PLL output with no top-level port: `derive-constraints` emits **no** `create_clock` and records a `create_generated_clock`-deferred-to-RTL note in its place. |
-| `role` | Optional free text for human / agent readers. No script parses it. |
 
 `additionalProperties` is `false`: a mistyped key fails at write time, in front of you.
 
@@ -228,12 +227,12 @@ array, one object per clock:
 ### 1.7 Submodule Index
 
 The child registry is `manifest.json` in this same directory — one entry per child, carrying
-`name` / `doc` / `rtl_modules` / `brainstorm_anchor` / `role`.
+`name` / `doc` / `rtl_modules` / `brainstorm_anchor`.
 ```
 
 Point at the manifest and write nothing else here. A restated index is four columns each of
-which is verbatim a manifest field, with nothing comparing the two — and a diverged `role` cell
-is invisible until a reader trusts the wrong one.
+which is verbatim a manifest field, with nothing comparing the two — and a diverged cell is
+invisible until a reader trusts the wrong one.
 
 For every module (N≥1) each child's detail lives in its own `<child>.md` (per
 `child-design-template.md`), authored by wave-2 — which always dispatches one sub-Task per child

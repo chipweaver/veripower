@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/power-analysis/result.schema.json",
-  "title": "power-analysis result.json contract (schema_version 1, merged GLS+PT-PX, SAIF flow)",
+  "title": "power-analysis result.json contract (merged GLS+PT-PX, SAIF flow)",
   "description": "Complete contract for asic/<module>/Verification/power-analysis/result.json. On status=pass, stage_specific requires saif_artifacts + compile_info + failures + ppa_actual + violations + power_by_corner (compile_info carries vcs_version only). On status=fail, stage_specific.{fail_reason, failure_kind} are required (if/then below); fail_reason is the one-line failure narrative. The heavy pass-shape is dropped on early-fail (external-reference / license / bootstrap paths). failure_kind classifies infra (GLS/PTPX not run) / tooling (failures[] populated with phase × category × error_summary) / ppa (power_mw exceeds target). ppa_actual / violations / power_by_corner carry PT averaged power_mw + three components for PPA gating; on a PPA-gate fail (failure_kind=ppa) ppa_actual and violations are required (if/then below).",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},

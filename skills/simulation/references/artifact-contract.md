@@ -69,7 +69,6 @@ share it).
 
 ```json
 {
-  "schema_version": 1,
   "stage": "simulation",
   "module": "<M>",
   "produced_at": "<ISO8601>",

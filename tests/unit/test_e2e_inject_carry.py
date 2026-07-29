@@ -140,7 +140,6 @@ def _dispatch_write_reap(tree_root, module, rule, files, *, objective="delivery"
     for rel, content in files.items():
         _write_file(tree_root, module, f"{workdir}/{rel}", content)
     result = {
-        "schema_version": 1,
         "stage": rule,
         "module": module,
         "produced_at": _now_iso(),
@@ -188,7 +187,6 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     for rel, content in _STAGE_FILES["rtl-design"].items():
         _write_file(tmp_path, module, f"{d1['workdir']}/{rel}", content)
     result1 = {
-        "schema_version": 1,
         "stage": "rtl-design",
         "module": module,
         "produced_at": _now_iso(),
@@ -321,7 +319,6 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     for rel, content in _STAGE_FILES["power-analysis"].items():
         _write_file(tmp_path, module, f"{d['workdir']}/{rel}", content)
     result = {
-        "schema_version": 1,
         "stage": "power-analysis",
         "module": module,
         "produced_at": _now_iso(),
@@ -398,7 +395,6 @@ def test_relocation_invariance_consumer_reanchors(tmp_path):
     for rel, content in _STAGE_FILES["synthesis"].items():
         _write_file(tree_a, module, f"{d_a['workdir']}/{rel}", content)
     result = {
-        "schema_version": 1,
         "stage": "synthesis",
         "module": module,
         "produced_at": _now_iso(),

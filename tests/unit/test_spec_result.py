@@ -16,7 +16,6 @@ _ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
 _FIX = Path(__file__).resolve().parent / "fixtures" / "specification-tpu_top"
 
 _CLEAR_REVIEW = {
-    "schema_version": 1,
     "stage": "specification",
     "module": "m",
     "reviewed_children": ["mac"],
@@ -104,8 +103,7 @@ def test_build_result_pass_lean_shape(tmp_path):
         == 0
     )
     env = json.loads((wd / "result.json").read_text())
-    assert (env["schema_version"], env["stage"], env["module"]) == (
-        1,
+    assert (env["stage"], env["module"]) == (
         "specification",
         "tpu_top",
     )
@@ -244,7 +242,6 @@ def test_golden_waived_flagged_finding_passes(tmp_path):
     (wd / "spec-review.json").write_text(
         json.dumps(
             {
-                "schema_version": 1,
                 "stage": "specification",
                 "module": "tpu_top",
                 "reviewed_children": ["mac"],
@@ -291,7 +288,6 @@ def test_golden_unwaived_flagged_blocks_pass(tmp_path):
     (wd / "spec-review.json").write_text(
         json.dumps(
             {
-                "schema_version": 1,
                 "stage": "specification",
                 "module": "tpu_top",
                 "reviewed_children": ["mac"],
@@ -372,7 +368,6 @@ def test_finalize_valid_waiver_still_passes(tmp_path):
     (wd / "spec-review.json").write_text(
         json.dumps(
             {
-                "schema_version": 1,
                 "stage": "specification",
                 "module": "tpu_top",
                 "reviewed_children": ["mac"],
@@ -673,7 +668,6 @@ def test_precondition_downgrade_not_preempted_by_missing_ppa(tmp_path):
     (wd / "spec-review.json").write_text(
         json.dumps(
             {
-                "schema_version": 1,
                 "stage": "specification",
                 "module": "tpu_top",
                 "reviewed_children": ["mac"],

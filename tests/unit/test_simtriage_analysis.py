@@ -102,7 +102,6 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
     env = json.loads((tmp_path / "result.json").read_text())
     assert env["stage"] == "simulation-triage"
     assert env["module"] == "M"
-    assert env["schema_version"] == 1
     assert env["status"] == "pass"
     assert env["artifacts"] == []
     assert env["stage_specific"] == {

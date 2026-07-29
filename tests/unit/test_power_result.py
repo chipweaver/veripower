@@ -390,8 +390,7 @@ def test_build_result_pass_lean_shape(tmp_path):
     )
     assert p.build_result(wd, module="tpu_top", plan_path=str(plan), targets="[]") == 0
     env = _json.loads((wd / "result.json").read_text())
-    assert (env["schema_version"], env["stage"], env["module"]) == (
-        1,
+    assert (env["stage"], env["module"]) == (
         "power-analysis",
         "tpu_top",
     )
@@ -629,8 +628,7 @@ def test_golden_real_reports_lean_pass(tmp_path):
     env = _json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     # With B3 fixed (Task 1), the gate parses the real 4-sig-fig reports clean -> pass.
-    assert (env["schema_version"], env["stage"], env["module"]) == (
-        1,
+    assert (env["stage"], env["module"]) == (
         "power-analysis",
         "tpu_top",
     )

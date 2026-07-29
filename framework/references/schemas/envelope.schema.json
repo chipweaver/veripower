@@ -4,14 +4,13 @@
   "title": "result.json envelope",
   "description": "Common envelope wrapping every stage's result.json (stage, module, produced_at, status, artifacts, stage_specific).",
   "type": "object",
-  "required": ["stage", "module", "produced_at", "status", "schema_version", "artifacts", "stage_specific"],
+  "required": ["stage", "module", "produced_at", "status", "artifacts", "stage_specific"],
   "additionalProperties": true,
   "properties": {
     "stage":          {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","simulation-triage"]},
     "module":         {"type": "string"},
     "produced_at":    {"type": "string"},
     "status":         {"type": "string", "enum": ["pass", "fail"]},
-    "schema_version": {"const": 1},
     "artifacts": {
       "description": "Output paths produced by this stage, each promoted into the stage's canonical dir. result.json is promoted automatically and MUST NOT be self-listed here — self-listing collides with the canonical result.json during promote (FileExistsError).",
       "type": "array",

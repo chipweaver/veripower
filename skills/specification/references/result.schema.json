@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/specification/result.schema.json",
-  "title": "specification result.json contract (schema_version 1)",
+  "title": "specification result.json contract",
   "description": "Complete contract for asic/<module>/Design/specification/result.json. On status=pass, stage_specific carries top_module (the <TOP>.sdc/.sgdc filename anchor) and the spec_gate verdict; on status=fail it carries fail_reason (the one-line failure narrative). top_module may be absent on an early-fail path that never reached scaffold-derivation.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},

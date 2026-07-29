@@ -557,5 +557,6 @@ or two skills need is a sign the information belongs in those skills' `reference
 instead.
 
 **Coordination requirements:** if a field change affects `result.json` shape, coordinate with
-the relevant `result.schema.json` and bump `schema_version` per `result-schema-design.md §8`.
+the relevant `result.schema.json` (there is no version stamp to bump — see
+`result-schema-design.md §8`).
 If the change affects frontmatter fields, run veripower-review to validate — there is no deterministic frontmatter test.

@@ -21,7 +21,7 @@ soft hint; the hard guarantee is `check-coverage`'s purity gate.
 
 ## Write
 - `manifest.json` — `module`; `children[]` with `name` / `doc` / `rtl_modules[]` (REQUIRED, ≥1) /
-  `brainstorm_anchor` / `role`; optional `shared_subsections[]`.
+  `brainstorm_anchor`; optional `shared_subsections[]`.
 - `design.md` §1.1–1.7 overview (narrative only; each section points at its sidecar), per
   `references/design-template.md`. §1.3 / §1.5 / §1.6 carry narrative — and, for §1.5, the
   waveform diagrams — plus a pointer to `features.json` / `timing-scenarios.json` /
