@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate coverage-summary.txt and case-results-summary.md.
+"""Generate case-results.json plus its two rendered views.
 
 Goal: stable PASS / FAIL / MANUAL_REVIEW / NOT_RUN per testcase.
 Coverage closure and full traceability are preserved in the output but are NOT
@@ -34,26 +34,21 @@ def load_results(log_path):
     """Parse regression-log.txt and return list of result dicts.
 
     Stable RESULT line format (see run_vcs_regression.sh):
-        RESULT <test_id> <PASS|FAIL|MANUAL_REVIEW> feature=<id> [...]
+        RESULT <test_id> <PASS|FAIL|MANUAL_REVIEW> [...]
+
+    The feature a test traces to is NOT on this line: it is in testlist.json, keyed by the same
+    test_id, and carrying it through bash would be a second copy nothing compares.
     """
     if not log_path.is_file():
         sys.exit(
             f"write_summary: missing {log_path}; run `make smoke` or `make regress` first"
         )
     results = []
-    pattern = re.compile(
-        r"^RESULT\s+(\S+)\s+(PASS|FAIL|MANUAL_REVIEW)\s+feature=(\S+)(?:\s+.*)?$"
-    )
+    pattern = re.compile(r"^RESULT\s+(\S+)\s+(PASS|FAIL|MANUAL_REVIEW)(?:\s+.*)?$")
     for line in log_path.read_text(encoding="utf-8").splitlines():
         match = pattern.match(line.strip())
         if match:
-            results.append(
-                {
-                    "test_id": match.group(1),
-                    "status": match.group(2),
-                    "feature_id": match.group(3),
-                }
-            )
+            results.append({"test_id": match.group(1), "status": match.group(2)})
     return results
 
 
@@ -66,6 +61,7 @@ def main():
     root = Path(args.verification_dir).resolve()
     testlist_path = root / "tests" / "testlist.json"
     log_path = root / "regression-log.txt"
+    counts_path = root / "case-results.json"
     coverage_path = root / "coverage-summary.txt"
     summary_path = root / "case-results-summary.md"
 
@@ -80,10 +76,11 @@ def main():
     result_by_test = {item["test_id"]: item for item in results}
 
     tests = testlist.get("tests", [])
-    feature_names = {}
+    # test_by_id is how a RESULT line reaches its feature: the log carries only test_id.
+    test_by_id = {}
     feature_to_tests = defaultdict(list)
     for test in tests:
-        feature_names[test["feature_id"]] = test["feature_name"]
+        test_by_id[test["test_id"]] = test
         feature_to_tests[test["feature_id"]].append(test)
 
     # Counts — MANUAL_REVIEW is treated as "executed but needs human review".
@@ -93,7 +90,11 @@ def main():
     manual_review = sum(1 for r in results if r["status"] == "MANUAL_REVIEW")
     not_run = sum(1 for t in tests if t["test_id"] not in result_by_test)
 
-    executed_pass_features = {r["feature_id"] for r in results if r["status"] == "PASS"}
+    executed_pass_features = {
+        test_by_id[r["test_id"]]["feature_id"]
+        for r in results
+        if r["status"] == "PASS" and r["test_id"] in test_by_id
+    }
     total_features = len(feature_to_tests)
     feature_coverage = (
         0.0
@@ -103,19 +104,26 @@ def main():
     testcase_pass_rate = 0.0 if total == 0 else 100.0 * passed / total
 
     # -----------------------------------------------------------------------
-    # coverage-summary.txt
+    # case-results.json + coverage-summary.txt
     # -----------------------------------------------------------------------
-    coverage_text = (
-        f"suite_summary\n"
-        f"total_tests: {total}\n"
-        f"passed_tests: {passed}\n"
-        f"failed_tests: {failed}\n"
-        f"manual_review_tests: {manual_review}\n"
-        f"not_run_tests: {not_run}\n"
-        f"feature_coverage_percent: {feature_coverage:.1f}\n"
-        f"testcase_pass_rate_percent: {testcase_pass_rate:.1f}\n"
+    counts = {
+        "total_tests": total,
+        "passed_tests": passed,
+        "failed_tests": failed,
+        "manual_review_tests": manual_review,
+        "not_run_tests": not_run,
+        "feature_coverage_percent": round(feature_coverage, 1),
+        "testcase_pass_rate_percent": round(testcase_pass_rate, 1),
+    }
+    # case-results.json is the structured home; the two summaries below are rendered views of
+    # it for a human. `sim finalize` reads this rather than re-parsing the rendered text.
+    counts_path.write_text(
+        json.dumps(counts, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    write_text(coverage_path, coverage_text)
+    write_text(
+        coverage_path,
+        "suite_summary\n" + "".join(f"{k}: {v}\n" for k, v in counts.items()),
+    )
 
     if args.coverage_only:
         return 0
@@ -142,8 +150,9 @@ def main():
     for item in results:
         if item["status"] in ("FAIL", "MANUAL_REVIEW"):
             action = "Fix" if item["status"] == "FAIL" else "Review"
+            fid = test_by_id.get(item["test_id"], {}).get("feature_id", "-")
             action_rows.append(
-                f"| {item['test_id']} | {item['feature_id']} | {item['status']} "
+                f"| {item['test_id']} | {fid} | {item['status']} "
                 f"| {action}; see run_logs/{item['test_id']}.log |"
             )
     for test in tests:

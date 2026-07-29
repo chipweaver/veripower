@@ -76,7 +76,7 @@ finalize. The env / verify phase split of the workdir artifacts is in
 |---|---|---|---|
 | `result.json` | `references/result.schema.json` + envelope | main thread | This stage's status contract (`failure_phase` / `coverage_gaps`, etc.). |
 | `Makefile` / `env.sh` / `filelist.f` / `rtl_filelist.f` / `tb/uvm/` / `scripts/` / `tests/testlist.json` | per `artifact-contract.md` | env-build | TB infra + materialized UVM (bound by Rule A). |
-| `regression-log.txt` / `structural-coverage.json` / `coverage-summary.txt` / `case-results-summary.md` | per `artifact-contract.md` | verify | Regression log + machine-readable structural coverage (gate source for `sim finalize`) + summaries. |
+| `regression-log.txt` / `structural-coverage.json` / `case-results.json` / `coverage-summary.txt` / `case-results-summary.md` | per `artifact-contract.md` | verify | Regression log + machine-readable structural coverage (gate source for `sim finalize`) + the suite counts and their two rendered views. |
 | `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest for the verify phase, written fresh every round. |
 | `conformance-review.json` | per `references/conformance-review.schema.json` | conformance gate (main thread) | Per-testpoint check-adequacy findings (gate source for Step 4); promoted advisory artifact. |
 
@@ -291,7 +291,7 @@ via `enumerate_artifacts` — both are written fresh every round (Step 4 / Step 
 `finalize --phase final` reuses the host's own `thin_d1` + `coverage_gate` in-process for the
 exit-code gate (thin-D1 fail → `failure_phase=compile`, coverage fail → `failure_phase=coverage`,
 earlier phase wins), derives the informational pass-summary (`total_cases`/`passed`/`failed` from
-`coverage-summary.txt`, `coverage_summary` from `structural-coverage.json.aggregate`,
+`case-results.json`, `coverage_summary` from `structural-coverage.json.aggregate`,
 `conformance_gate` + `conformance_advisory[]` from `conformance-review.json` with each advisory `note`
 copied verbatim from the finding `summary`, `stimulus_iterations` from the reaped verify verdict),
 enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status

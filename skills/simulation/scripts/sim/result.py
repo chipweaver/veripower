@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import datetime
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -135,22 +134,23 @@ def build_result(
 
 
 # --- pass-summary derivations (Task 2) ---------------------------------------
-_KV = re.compile(r"^(\w+):\s*(\S+)\s*$", re.M)
-
-
 def read_case_counts(workdir: Path) -> dict:
-    f = Path(workdir) / "coverage-summary.txt"
+    """The suite counts, read from write_summary's structured output.
+
+    NOT from coverage-summary.txt: that file is one of two rendered views of this data for a
+    human, and re-parsing a rendering to recover numbers the same tool already had in hand is
+    the round trip this reads instead of repeating.
+    """
+    f = Path(workdir) / "case-results.json"
     # Reached only on the pass path, where `make summary` must have run; an absent
-    # summary is a broken pipeline step, not a benign absence -> fail loud (BLOCKED).
+    # file is a broken pipeline step, not a benign absence -> fail loud (BLOCKED).
     if not f.is_file():
-        raise FileNotFoundError(f"coverage-summary.txt missing on the pass path: {f}")
-    kv = dict(_KV.findall(f.read_text(encoding="utf-8")))
+        raise FileNotFoundError(f"case-results.json missing on the pass path: {f}")
+    counts = json.loads(f.read_text(encoding="utf-8"))
 
     def n(k):
-        try:
-            return int(kv[k])
-        except (KeyError, ValueError):
-            return None
+        v = counts.get(k)
+        return v if isinstance(v, int) else None
 
     return {
         "total": n("total_tests"),
@@ -214,6 +214,7 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
         "verify-handoff.json",
         "conformance-review.json",
         "structural-coverage.json",
+        "case-results.json",
         "coverage-summary.txt",
         "case-results-summary.md",
     ]  # envelope.schema forbids listing result.json itself; excluded by construction

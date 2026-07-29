@@ -32,8 +32,12 @@ def _final_workdir(tmp_path):
         (wd / "tb/uvm/agent" / f).write_text("class x; endclass\n")
     (wd / "scaffold-specification.json").write_text(json.dumps(SCAFFOLD))
     (wd / "structural-coverage.json").write_text(json.dumps(COV_PASS))
+    (wd / "case-results.json").write_text(
+        json.dumps({"total_tests": 3, "passed_tests": 3, "failed_tests": 0})
+    )
+    # the rendered sibling: written by write_summary, read by a human, parsed by nobody
     (wd / "coverage-summary.txt").write_text(
-        "total_tests: 3\npassed_tests: 3\nfailed_tests: 0\n"
+        "suite_summary\ntotal_tests: 3\npassed_tests: 3\nfailed_tests: 0\n"
     )
     return wd
 
@@ -96,11 +100,12 @@ def test_verify_handoff_promoted(tmp_path):
     assert "conformance-review.json" in paths  # a sibling handoff IS also promoted
 
 
-def test_final_pass_missing_summary_is_blocked(tmp_path):
-    # S4: a missing coverage-summary.txt on the pass path is a broken pipeline step;
-    # finalize must fail loud (exit 2 BLOCKED), not write null counts.
+def test_final_pass_missing_case_results_is_blocked(tmp_path):
+    # S4: a missing case-results.json on the pass path is a broken pipeline step;
+    # finalize must fail loud (exit 2 BLOCKED), not write null counts. Deleting only the
+    # rendered coverage-summary.txt would NOT block — nothing reads it.
     wd = _final_workdir(tmp_path)
-    (wd / "coverage-summary.txt").unlink()
+    (wd / "case-results.json").unlink()
     proc = _finalize(
         wd,
         "--phase",

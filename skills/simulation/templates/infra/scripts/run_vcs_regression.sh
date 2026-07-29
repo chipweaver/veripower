@@ -7,11 +7,12 @@
 # status file (simv crash before report_phase) → FAIL.
 #
 # RESULT line format (stable contract consumed by write_summary.py):
-#   RESULT <test_id> <PASS|FAIL|MANUAL_REVIEW> feature=<feature_id> \
+#   RESULT <test_id> <PASS|FAIL|MANUAL_REVIEW> \
 #          uvm_testname=<name> log=<path>
 #
-# DO NOT change the token order or keyword names without also updating
-# write_summary.py load_results() and ipd-stage-sim/references/artifact-contract.md.
+# The token order and keyword names are paired with write_summary.py's load_results(); the
+# pairing is checked by tests/unit/test_infra_summary.py, which derives a line from the echo
+# below and parses it with the real script rather than trusting this comment.
 set -euo pipefail
 
 MODE="${1:-regress}"
@@ -85,7 +86,7 @@ run_selected_tests() {
 		echo "# seed: $SEED"
 	} >"$regression_log"
 
-	while IFS='|' read -r test_id uvm_testname feature_id; do
+	while IFS='|' read -r test_id uvm_testname; do
 		[[ -n "$test_id" ]] || continue
 		local test_seed log_path status_path cov_dir cov_name status fsdb_path simv_rc
 		test_seed="$SEED"
@@ -127,7 +128,7 @@ run_selected_tests() {
 			fi
 		fi
 		# RESULT line format is a stable contract — see file header before changing.
-		echo "RESULT $test_id $status feature=$feature_id uvm_testname=$uvm_testname log=$log_path" >>"$regression_log"
+		echo "RESULT $test_id $status uvm_testname=$uvm_testname log=$log_path" >>"$regression_log"
 	done <<<"$selected"
 }
 

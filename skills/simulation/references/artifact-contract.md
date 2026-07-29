@@ -47,7 +47,8 @@ share it).
 |------|------|------|
 | `regression-log.txt` | same | `make regress` **appends** the full-regress `RESULT` lines to the env-written log. |
 | `structural-coverage.json` | same | Urg-derived structural coverage (`aggregate` dims `line`/`cond`/`fsm`/`toggle` + `per_module`); this is the gate source read by `sim finalize`. |
-| `coverage-summary.txt` | same | Human-readable coverage summary (no longer the gate source; the gate source is `structural-coverage.json` + `sim finalize`). |
+| `case-results.json` | same | The suite counts (`total_tests` / `passed_tests` / `failed_tests` / `manual_review_tests` / `not_run_tests` + the two percentages), derived by `write_summary.py` from `regression-log.txt` ∪ `testlist.json`. The structured home: `sim finalize` reads its counts from here, never from the two rendered views below. |
+| `coverage-summary.txt` | same | A rendered view of `case-results.json` for a human (not the coverage gate source — that is `structural-coverage.json` + `sim finalize`). |
 | `case-results-summary.md` | same | Review summary. |
 | `<test_id>.fsdb` | run-dir root (NOT `logs/`) | Full-hierarchy FSDB waveform of a **failing** test's run (`-ucli` `$fsdbDumpvars`), for `simulation-triage` L1 waveform query. Per-run, large, **not promoted** (triage reads it via `sim_run`); gc-on-pass deletes it for passing tests, so only failing tests retain one. |
 
@@ -85,6 +86,7 @@ share it).
     {"path": "tests/testlist.json",      "kind": "testlist"},
     {"path": "regression-log.txt",       "kind": "regression_log"},
     {"path": "structural-coverage.json", "kind": "coverage"},
+    {"path": "case-results.json",        "kind": "case_results"},
     {"path": "coverage-summary.txt",     "kind": "coverage_summary"},
     {"path": "case-results-summary.md",  "kind": "summary"}
   ],
