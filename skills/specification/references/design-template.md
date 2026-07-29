@@ -1,6 +1,6 @@
 # design.md Section Template
 
-`{workdir}/design.md` is the **design source of truth** produced by this skill: §1.1–1.6 describe the module as a whole (function, interfaces, timing, frequencies, architecture partitioning), and the §1.7 submodule index points to each child's `<child>.md`, where the per-submodule implementation detail lives. All external consumers (RTL implementation / constraint generation / verification derivation / synthesis / power / timing signoff, etc.) read from `design.md` and these child docs.
+`{workdir}/design.md` is the **design source of truth** produced by this skill: §1.1–1.6 describe the module as a whole (function, interfaces, timing, frequencies, architecture partitioning), and §1.7 points at `manifest.json`, whose `doc` field locates each child's `<child>.md`, where the per-submodule implementation detail lives. All external consumers (RTL implementation / constraint generation / verification derivation / synthesis / power / timing signoff, etc.) read from `design.md` and these child docs.
 
 > **`design.md` self-containment principle**: all critical invariants from brainstorm (RTL formulas / interface timing / numeric parameters / implementation constraints / overlay explicit spec supplement sections) must be inlined verbatim into `design.md`. **By-reference jumps are forbidden** (such as "see brainstorm §sd_clock_divider IO Ports" / "see spec D2" / "refer to brainstorm section sd_controller_wb" / "see brainstorm §X"). The downstream skill input lists do not literally include `brainstorm.md`; by-reference = information loss, which causes false-fail under cycle-accurate `===` checks. Enforced by `check-coverage`.
 
@@ -9,7 +9,7 @@
 | Section range | Responsibility |
 |---|---|
 | 1.1–1.6 Overview sections | Function, interfaces, timing, frequencies, architecture partitioning; 1:1 consistent with each D-dimension field in brainstorm.md; on conflict, this section is the single upper-layer authority. `constraints/<TOP>.{sdc,sgdc}` is regenerated from §1.6 by `derive-constraints`, never hand-edited. |
-| 1.7 Submodule Index | Pointer table to each child's `<child>.md` (name / doc / brainstorm anchor / role); the per-submodule implementation detail (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.) lives in those child docs, not here. On conflict between an overview table and a child doc, **fix the overview first**. |
+| 1.7 Submodule Index | A pointer to `manifest.json`, which is the child registry (`name` / `doc` / `rtl_modules` / `brainstorm_anchor` / `role`) — this section restates none of it. The per-submodule implementation detail (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.) lives in the child docs. |
 | 2 Document control | Version, revision notes, the corresponding (frozen / approved) brainstorm.md. |
 
 ## Rendering Conventions
@@ -35,17 +35,16 @@ PPA targets: see `ppa.json` (numeric target values live there only — do not re
 in prose; synthesis / power-analysis bind to that file directly).
 
 ### 1.2 Module Structure
-(Architecture diagram + table of submodules and primary functions.)
+
+The child roster lives in `manifest.json` (`name` / `doc` / `rtl_modules` / `role`). Do not
+restate it as a table. Narrative that is not a per-child field belongs here, plus the one thing
+the manifest cannot hold — the architecture diagram: dataflow direction, which cut edges carry
+backpressure, why the partition falls where it does.
 
 ```mermaid
 flowchart LR
   A[Sub-A] --> B[Sub-B] --> C[Sub-C]
 ```
-
-| Submodule | Primary Function |
-|---|---|
-| Sub-A | … |
-| Sub-B | … |
 
 ### 1.3 Feature Table
 
@@ -228,15 +227,17 @@ array, one object per clock:
 ```markdown
 ### 1.7 Submodule Index
 
-See `manifest.json` for the authoritative child registry. This table lists child names + brainstorm anchors as a quick reference (concrete content lives in per-child `<child>.md` files; see `child-design-template.md`).
-
-| child name | doc | brainstorm_anchor | role |
-|------------|-----|-------------------|------|
-| sub_a | `sub_a.md` | lines 40-80 | … |
-| sub_b | `sub_b.md` | lines 81-120 | … |
+The child registry is `manifest.json` in this same directory — one entry per child, carrying
+`name` / `doc` / `rtl_modules` / `brainstorm_anchor` / `role`.
 ```
 
-For every module (N≥1) the parent `design.md` keeps only this §1.7 index; each child's detail lives in its own `<child>.md` (per `child-design-template.md`), authored by wave-2 — which always dispatches one sub-Task per child (N=1 → ×1, never an inlined submodule body in `design.md`).
+Point at the manifest and write nothing else here. A restated index is four columns each of
+which is verbatim a manifest field, with nothing comparing the two — and a diverged `role` cell
+is invisible until a reader trusts the wrong one.
+
+For every module (N≥1) each child's detail lives in its own `<child>.md` (per
+`child-design-template.md`), authored by wave-2 — which always dispatches one sub-Task per child
+(N=1 → ×1, never an inlined submodule body in `design.md`).
 
 ## Minimum Field Completeness Gate Table
 

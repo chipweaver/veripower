@@ -22,10 +22,13 @@ soft hint; the hard guarantee is `check-coverage`'s purity gate.
 ## Write
 - `manifest.json` — `module`; `children[]` with `name` / `doc` / `rtl_modules[]` (REQUIRED, ≥1) /
   `brainstorm_anchor` / `role`; optional `shared_subsections[]`.
-- `design.md` §1.1–1.6 overview (narrative only; §1.4.1 / §1.4.2 point at their sidecars) +
-  §1.7 submodule index, per `references/design-template.md`. §1.3 / §1.5 / §1.6 carry narrative
-  — and, for §1.5, the waveform diagrams — plus a pointer to `features.json` /
-  `timing-scenarios.json` / `clocks.json`. **No feature, scenario or clock table.**
+- `design.md` §1.1–1.7 overview (narrative only; each section points at its sidecar), per
+  `references/design-template.md`. §1.3 / §1.5 / §1.6 carry narrative — and, for §1.5, the
+  waveform diagrams — plus a pointer to `features.json` / `timing-scenarios.json` /
+  `clocks.json`; §1.4.1 / §1.4.2 point at `top-io.json` / `interconnects.json`; §1.2 keeps the
+  architecture diagram and §1.7 points at `manifest.json`. **No feature, scenario, clock,
+  port, interconnect or submodule table** — you are writing the manifest and the sidecars, so
+  a table here would be a second hand-written home for fields you just authored.
 - `ppa.json` — the D6 `ppa_targets` **verbatim** as a JSON array of `{dim, target}` (`[]` when D6
   declares none or was not reached).
 - `top-io.json` — one object per top-level port (`name` / `direction` / `width` / `clock_domain` /

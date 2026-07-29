@@ -43,13 +43,6 @@ flowchart LR
 
 The top module `tpu_top` instantiates four MAC cells, one skew register, and three FIFOs, and implements inline the APB-style register file, the `start`/counter control FSM, the counter-routed result mux, and `done` generation.
 
-| Submodule | RTL Module | Instances | Primary Function |
-|---|---|---|---|
-| mac | `mac` | `mac_00`, `mac_01`, `mac_10`, `mac_11` | Registered multiply-accumulate cell: `o_result <= (i_data * i_weight) + i_pre_result`; `o_data_next <= i_data`. Forms the 2×2 weight-stationary array. |
-| systolic_reg | `systolic_reg` | `systolic_reg` (×1) | Aligns the two input streams for the diagonal wavefront: `out1` = `in1` delayed 1 cycle; `out2` = `in2` delayed 2 cycles. |
-| fifo | `fifo` | `fifo_00`, `fifo_01`, `fifo_result` | 8-entry, 32-bit, pointer-based single-clock FIFO; combinational read. Two input FIFOs and one result FIFO. |
-| tpu_top | `tpu_top` | top | Integration parent: instantiates all leaves; inline APB-style register file (weight load + result read-back), `start`/counter control FSM, result routing mux, `done` generation. |
-
 ### 1.3 Feature Table
 
 The feature list lives in `features.json` (the spine child §5 `SourceFeature` rows and testpoints refer to).
@@ -109,14 +102,7 @@ Single clock domain; no CDC. Reset `i_rstn` is asynchronous, active-low (`negedg
 
 ### 1.7 Submodule Index
 
-See `manifest.json` for the authoritative child registry. This table lists child names + brainstorm anchors as a quick reference (concrete content lives in per-child `<child>.md` files).
-
-| child name | doc | brainstorm_anchor | role |
-|------------|-----|-------------------|------|
-| mac | `mac.md` | lines 44-57 | Registered MAC cell: `o_result <= (i_data * i_weight) + i_pre_result`, `o_data_next <= i_data`; instantiated 4× (`mac_00`/`mac_01`/`mac_10`/`mac_11`). |
-| systolic_reg | `systolic_reg.md` | lines 59-64 | Skew aligner: `out1` = `in1` delayed 1 cycle (`delay10`); `out2` = `in2` delayed 2 cycles (`delay20`→`delay21`). |
-| fifo | `fifo.md` | lines 66-80 | 8-entry 32-bit pointer-based single-clock FIFO, combinational read; instantiated 3× (`fifo_00`/`fifo_01`/`fifo_result`). |
-| tpu_top | `tpu_top.md` | lines 82-160 | Top integration: instantiates all leaves; inline APB-style register file, `start`/counter FSM, result routing mux, `done` generation. |
+The child registry is `manifest.json` in this same directory — one entry per child, carrying `name` / `doc` / `rtl_modules` / `brainstorm_anchor` / `role`.
 
 ## 2. Document Control
 
