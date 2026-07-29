@@ -10,7 +10,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap \
 ```
 
 - Deploys into the directory given by `--workdir` (typically `asic/<module>/Design/synthesis/runs/<N>/`, supplied by the caller). A relative `--workdir` resolves against the working tree root (the CWD, i.e. the directory containing `asic/`).
-- Replaces the `MY_TOP` placeholder in: `env.sh`, `constraints.sdc` (when no source of truth is present).
+- Replaces the `MY_TOP` placeholder in `env.sh`.
 - Replaces the `MY_RTL_DIR` placeholder in `scripts/dc_run.tcl` with the ABSOLUTE rtl-design stage root, read from the injected `<workdir>/inputs.json` `"rtl"` key (no self-navigation, no relpath).
 - Generates `scripts/rtl_load.tcl` from `<rtl>/rtl-files.json` (each `files[]` entry wrapped as `analyze -format sverilog -define SYNTHESIS [list <RTL_DIR>/<entry>]`, `<RTL_DIR>` being that same absolute root; `-define SYNTHESIS` is passed per `analyze`).
 - Emits each child's `incdirs[]` onto `search_path` in `scripts/rtl_load.tcl`, rebased `<RTL_DIR>/<dir>`.
@@ -25,10 +25,10 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap \
 
 | Source of truth present | Behaviour |
 |---|---|
-| Yes | Copy it to `constraints.sdc` (no `MY_TOP` substitution needed — the source is already bound to a specific top). |
-| No | Use the template `templates/constraints.sdc` and substitute `MY_TOP`; IO delays / timing exceptions must then be filled in by hand. |
+| Yes | Copy it to `constraints.sdc`, verbatim — the source is already bound to a specific top, so nothing is substituted into it. |
+| No | **Fail closed** (exit 1) BEFORE deploying anything, so the workdir stays clean and the retry is not blocked by the already-deployed guard. There is deliberately no template fallback: a template SDC declares a clock `clk` at 10 ns on ports `clk`/`rst_n`, and on a design with different port names `get_ports clk` matches nothing — the run would be unconstrained and dc_shell would report a large positive slack, i.e. a passing PPA verdict from constraints nobody wrote. |
 
-In either case, `MY_TOP` inside `env.sh` is substituted.
+`MY_TOP` inside `env.sh` is substituted in the success path.
 
 ## LIB_DB setup
 

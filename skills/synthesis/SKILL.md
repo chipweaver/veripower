@@ -42,7 +42,7 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 |---|---|---|
 | `<rtl>/rtl-files.json` | `skills/rtl-design/references/rtl-files.schema.json` | Per-child RTL file layout; the bootstrap generates `scripts/rtl_load.tcl` from it. |
 | `<annotations>/constraint-annotations.json` | `skills/rtl-design/references/constraint-annotations.schema.json` | Per-child SDC annotations (`create_generated_clock` / `set_multicycle_path` / `set_false_path`). |
-| `<sdc>/constraints/<TOP>.sdc` | SDC | SDC source of truth (optional) — bootstrap seeds the working `constraints.sdc` from it, else the template placeholder. |
+| `<sdc>/constraints/<TOP>.sdc` | SDC | SDC source of truth — bootstrap copies it to the working `constraints.sdc`. Required: it is what makes the timing numbers mean anything, so bootstrap fails closed without it rather than deploying a template that would constrain a clock port the design does not have. |
 | `LIB_DB` (env) | std cell Liberty `.db` path | Set before any run (Step 3) — `env.sh` / Makefile fail loudly when unset. |
 
 When `{failing_result}` is injected, read additional context from the same directory as the trigger file; field names come from the triggering stage's own `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. PPA targets (`area_um2` / `timing_slack_ns` dimensions) are read by `synthesis finalize` itself from the injected `ppa` location (`inputs.json`) — nothing is injected in the prompt.
@@ -63,7 +63,7 @@ When `{failing_result}` is injected, read additional context from the same direc
 
 ### Step 1: Read inputs and determine scope
 
-Pre-check the external references: `<rtl>/rtl-files.json` (naming ≥1 RTL file) and `<annotations>/constraint-annotations.json` are both present. If either is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if `rtl-files.json` names no files, write `fail_reason="external reference missing: <rtl>/rtl-files.json (no RTL entries)"` and exit.
+Pre-check the external references: `<rtl>/rtl-files.json` (naming ≥1 RTL file), `<annotations>/constraint-annotations.json` and `<sdc>/constraints/<TOP>.sdc` are all present. If any is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if `rtl-files.json` names no files, write `fail_reason="external reference missing: <rtl>/rtl-files.json (no RTL entries)"` and exit.
 
 Determine this round's fix scope from the first available source:
 1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.

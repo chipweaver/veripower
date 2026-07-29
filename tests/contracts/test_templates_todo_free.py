@@ -1,4 +1,4 @@
-# tests/unit/test_templates_todo_free.py
+# tests/contracts/test_templates_todo_free.py
 """A completed TB must carry zero "TODO" anywhere, so the canonical templates may contain "TODO"
 ONLY in real fill markers (`// TODO(...)` or the no-seq test's `// TODO: Start sequences here.`),
 never in infra base classes or provenance headers."""

@@ -17,8 +17,11 @@ from pathlib import Path
 import yaml
 
 # Policy: ANY "TODO" in a materialized TB == unfinished work -> fail (a completed TB carries zero
-# "TODO" anywhere). Canonical templates carry no non-marker "TODO" prose (base_seq.sv uses NOTE),
-# so the only "TODO" left in a generated file is an UNFILLED fill marker — exactly what we fail on.
+# "TODO" anywhere) — the deliberate deliverable rule the env child's contract states as "any TODO
+# marker survives in tb/uvm/**". The broad match rests on canonical templates carrying no
+# non-marker "TODO" prose (base_seq.sv uses NOTE), which is not left to this comment:
+# tests/contracts/test_templates_todo_free.py asserts it over every shipped template, so a
+# template edit that broke it fails there rather than failing every run of this gate.
 _TODO_RE = re.compile(r"TODO")
 
 

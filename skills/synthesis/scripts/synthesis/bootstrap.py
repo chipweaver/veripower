@@ -182,26 +182,35 @@ def run(workdir, top: str | None = None) -> int:
         )
         return 1
 
+    # SDC source of truth, checked BEFORE the deploy: there is no template fallback, and a
+    # failure after copytree would leave the Makefile that the already-deployed guard above
+    # then refuses to redeploy over — the workdir would block its own retry.
+    #
+    # No fallback because the template constraints.sdc is a COMPLETE, runnable constraint set
+    # naming a clock `clk` at 10 ns and ports `clk`/`rst_n`. On a design whose clock port is
+    # anything else, `get_ports clk` matches nothing, the run is effectively unconstrained, and
+    # dc_shell reports a large positive slack — a PASSING PPA verdict derived from constraints
+    # nobody wrote, which is worse than no run at all. specification always emits
+    # constraints/<TOP>.sdc, so an absent one means a broken pipeline or a --top that does not
+    # match the manifest.
+    user_sdc = Path(inputs["sdc"]) / "constraints" / f"{top}.sdc"
+    if not user_sdc.is_file():
+        _err(f"SDC source of truth not found: {user_sdc}")
+        _err(
+            "  specification's derive-constraints writes constraints/<TOP>.sdc; check that "
+            "it ran and that --top matches manifest.module."
+        )
+        return 1
+
     shutil.copytree(_TEMPLATE_DIR, dest, dirs_exist_ok=True)
 
-    # SDC source-of-truth: reuse the spec-stage SDC verbatim when present (already
-    # bound to this top — no MY_TOP sub). env.sh is substituted in both branches.
     env_sh = dest / "env.sh"
-    user_sdc = Path(inputs["sdc"]) / "constraints" / f"{top}.sdc"
-    if user_sdc.is_file():
-        shutil.copyfile(user_sdc, dest / "constraints.sdc")
-        print(
-            f"[synthesis bootstrap] using "
-            f"Design/specification/constraints/{top}.sdc -> constraints.sdc"
-        )
-        _sub(env_sh, "MY_TOP", top)
-    else:
-        _sub(env_sh, "MY_TOP", top)
-        _sub(dest / "constraints.sdc", "MY_TOP", top)
-        print(
-            "[synthesis bootstrap] no spec SDC; deployed PLACEHOLDER constraints.sdc "
-            "(clk=10ns, ports clk/rst_n) — fill it per design.md §1.4 in Step 4."
-        )
+    shutil.copyfile(user_sdc, dest / "constraints.sdc")
+    print(
+        f"[synthesis bootstrap] using "
+        f"Design/specification/constraints/{top}.sdc -> constraints.sdc"
+    )
+    _sub(env_sh, "MY_TOP", top)
 
     _sub(dest / "scripts" / "dc_run.tcl", "MY_RTL_DIR", str(rtl_dir))
 

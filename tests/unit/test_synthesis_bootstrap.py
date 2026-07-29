@@ -36,6 +36,12 @@ def _mirror(tmp_path):
     workdir.mkdir(parents=True)
     spec.mkdir(parents=True, exist_ok=True)
     (spec / "manifest.json").write_text(json.dumps({"module": "M_top", "children": []}))
+    # The SDC source of truth is REQUIRED (bootstrap fails closed without it); specification
+    # always emits it, so the fixture does too. test_missing_spec_sdc_fails_closed removes it.
+    con = spec / "constraints"
+    con.mkdir(parents=True, exist_ok=True)
+    for t_ in ("top", "M_top", "a"):
+        (con / f"{t_}.sdc").write_text(f"# spec sdc for {t_}\ncreate_clock x\n")
     (workdir / "inputs.json").write_text(
         json.dumps(
             {"rtl": str(rtl), "sdc": str(spec), "ppa": str(spec), "manifest": str(spec)}
@@ -113,13 +119,28 @@ def test_rtl_load_gates_every_analyze(tmp_path):
     assert ungated == [], ungated
 
 
+def test_missing_spec_sdc_fails_closed(tmp_path):
+    # The template constraints.sdc is a COMPLETE runnable SDC naming clock `clk` at 10 ns and
+    # ports clk/rst_n. Deploying it on a design with different port names leaves the run
+    # effectively unconstrained, and dc_shell then reports a large positive slack — a PASSING
+    # PPA verdict from constraints nobody wrote. Refuse instead.
+    skill_dst, rtl, workdir = _mirror(tmp_path)
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
+    (tmp_path / "asic/M/Design/specification/constraints/top.sdc").unlink()
+    proc = _run(skill_dst, workdir, "--top", "top")
+    assert proc.returncode != 0
+    assert "SDC source of truth not found" in proc.stderr
+    # and nothing was deployed, so the already-deployed guard cannot block the retry
+    assert not (workdir / "Makefile").exists()
+    assert not (workdir / "constraints.sdc").exists()
+    assert _run(skill_dst, workdir, "--top", "M_top").returncode == 0  # retry works
+
+
 def test_happy_path_substitutes_my_top(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
-    # No spec SDC -> template branch; the placeholder must be announced (not silent).
-    assert "PLACEHOLDER constraints.sdc" in proc.stdout
     env_sh = (workdir / "env.sh").read_text()
     assert "MY_TOP" not in env_sh and "top" in env_sh
     cfg = (workdir / "scripts" / "config.tcl").read_text()
@@ -132,13 +153,13 @@ def test_sdc_source_of_truth_copied(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     spec_con = tmp_path / "asic" / "M" / "Design" / "specification" / "constraints"
-    spec_con.mkdir(parents=True)
     (spec_con / "top.sdc").write_text("# SENTINEL real sdc\ncreate_clock x\n")
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     con = (workdir / "constraints.sdc").read_text()
-    assert "SENTINEL" in con and "MY_TOP" not in con
-    assert "PLACEHOLDER" not in proc.stdout  # spec-SDC branch must not warn
+    assert (
+        "SENTINEL" in con and "MY_TOP" not in con
+    )  # copied verbatim, never substituted
 
 
 def test_empty_filelist_fail_closed(tmp_path):
