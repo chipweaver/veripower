@@ -3,8 +3,7 @@
 Used by the power-analysis skill to populate result.json's stage_specific:
   - parse_total_power_mw       → ppa_actual[].value (mW)
   - parse_three_components     → power_by_corner[].{internal,switching,leakage}_mw
-  - parse_annotation_coverage  → power_by_corner[].toggle_rate
-  - parse_toggle_region        → power_by_corner[].toggle_region
+  - parse_annotation_rate      → power_by_corner[].saif_annotation_rate
 
 Source files:
   - power_flat.rpt            ← from `report_power -verbose` (no -hierarchy);
@@ -142,49 +141,56 @@ def parse_three_components(path: Path | str) -> dict[str, float] | None:
     }
 
 
-# ── parse_annotation_coverage ──────────────────────────────────
+# ── parse_annotation_rate ──────────────────────────────────────
 
-# PrimeTime PX prints various forms; this regex targets the summary-style
-# "Annotated cell percentage = N%" line if the version emits it. When the
-# version emits only a multi-column table form, this returns None and the
-# caller (typically writing toggle_rate=null) does not treat that as fatal.
-_ANNOTATION_RE = re.compile(
-    r"Annotated\s+cell\s+percentage\s*=\s*([0-9]*\.?[0-9]+)\s*%",
-    re.IGNORECASE,
+# `report_switching_activity` reports annotation provenance as a table, and prints the
+# same table twice — once under "Switching Activity Overview Statistics" and once under
+# "Static Probability Overview Statistics". Only the first describes toggle activity, so
+# the section header is the anchor; matching the first " Nets " row would be luck.
+#
+#   Object Type   From Activity File (%)  From SSA (%)  …  Not Annotated(%)   Total
+#    Nets         155931(100.00%)         0(0.00%)      …  0(0.00%)           155936
+#
+# The " Nets " row is the aggregate; the "Nets Driven by" rows below partition it.
+# templates/scripts/ptpx.tcl reads the same row for its in-run "annotated 0%" gate; that one
+# needs only >0 so it uses the printed percentage. Anything learned about this table's shape
+# has to land in both — PT is the only host for the Tcl half, so they cannot share code.
+_SWITCHING_SECTION_RE = re.compile(
+    r"Switching\s+Activity\s+Overview\s+Statistics(?P<body>.*?)(?=Static\s+Probability|\Z)",
+    re.IGNORECASE | re.DOTALL,
 )
+# A cell is count(pct%); the width-0 rows print "0(0%)" rather than "0(0.00%)".
+_NETS_ROW_RE = re.compile(
+    r"^\s*Nets\s+((?:\d+\(\s*[\d.]+%\)\s+){8})(\d+)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_CELL_COUNT_RE = re.compile(r"(\d+)\(\s*[\d.]+%\)")
 
 
-def parse_annotation_coverage(path: Path | str) -> float | None:
-    """Return annotation coverage as fraction in [0,1], or None."""
+def parse_annotation_rate(path: Path | str) -> float | None:
+    """Fraction of nets whose switching activity came from the SAIF, or None.
+
+    Derived from the row's counts rather than its printed percentage: PT rounds the cell
+    to two decimals, so 155931 of 155936 prints as "100.00%" and a small shortfall would
+    be invisible. The eight category counts must sum to the row's Total — a reconciliation
+    the report affords for free, and the thing that makes this parser worth having rather
+    than a transcription. A sum that does not reconcile means the column set moved, so the
+    rate is unknown (None) rather than a number derived from a misread row.
+    """
     text = _read(path)
     if text is None:
         return None
-    m = _ANNOTATION_RE.search(text)
-    if not m:
+    section = _SWITCHING_SECTION_RE.search(text)
+    if not section:
         return None
-    return float(m.group(1)) / 100.0
-
-
-# ── parse_toggle_region ────────────────────────────────────────
-
-_TOGGLE_REGION_RE = re.compile(
-    r"SAIF\s+time\s+interval\s*=\s*([0-9]+)\s+to\s+([0-9]+)\s*(ns|ps|us)?",
-    re.IGNORECASE,
-)
-
-
-def parse_toggle_region(path: Path | str) -> str | None:
-    """Return toggle region as '<start><unit>-<end><unit>', or None."""
-    text = _read(path)
-    if text is None:
+    row = _NETS_ROW_RE.search(section.group("body"))
+    if not row:
         return None
-    m = _TOGGLE_REGION_RE.search(text)
-    if not m:
+    counts = [int(c) for c in _CELL_COUNT_RE.findall(row.group(1))]
+    total = int(row.group(2))
+    if len(counts) != 8 or total <= 0 or sum(counts) != total:
         return None
-    start = m.group(1)
-    end = m.group(2)
-    unit = (m.group(3) or "ns").lower()
-    return f"{start}{unit}-{end}{unit}"
+    return counts[0] / total
 
 
 _VCS_VER_RE = re.compile(r"\b([A-Z]-\d{4}\.\d{2}(?:-SP\d+)?(?:_Full64)?)\b")
@@ -226,8 +232,7 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
 
         total = parse_total_power_mw(flat)
         three = parse_three_components(flat)
-        rate = parse_annotation_coverage(sa)
-        region = parse_toggle_region(sa)
+        rate = parse_annotation_rate(sa)
 
         scenario_failed = False
 
@@ -307,8 +312,7 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
                 "internal_mw": None if scenario_failed else internal,
                 "switching_mw": None if scenario_failed else switching,
                 "leakage_mw": None if scenario_failed else leakage,
-                "toggle_rate": rate,
-                "toggle_region": region,
+                "saif_annotation_rate": rate,
                 "corner_intent": corner,
                 "sequence_ref": seq,
             }

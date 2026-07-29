@@ -107,34 +107,83 @@ def test_parse_three_components_missing(tmp_path):
     assert p.parse_three_components(rpt) is None
 
 
-def test_parse_annotation_coverage_averaged(tmp_path):
-    """In SAIF-averaged mode, PT emits 'Annotated cell percentage = NNNN%'."""
-    rpt = _write_rpt(
-        tmp_path,
-        """
-        Annotated cell percentage  = 87.45%
-    """,
+# ── annotation rate ──
+# The predecessor of this parser looked for "Annotated cell percentage = N%", a line real
+# report_switching_activity output does not contain, so it returned None on every real run
+# while its tests passed against hand-written text invented to match it. Hence the first
+# test here runs on the committed real report: a parser of vendor output is only tested
+# once it has met vendor output.
+
+_REAL_SA = (
+    REPO_ROOT
+    / "tests/unit/fixtures/power-tpu_top/real/reports_ptpx/S1/switching_activity.rpt"
+)
+
+
+def test_parse_annotation_rate_on_the_real_report():
+    assert p.parse_annotation_rate(_REAL_SA) == pytest.approx(1.0)
+
+
+def _sa_rpt(tmp_path, nets_row, static_nets_row=None):
+    """A switching_activity.rpt carrying the two same-shaped tables PT prints."""
+    head = (
+        ' {kind} Overview Statistics for "top"\n'
+        "------------------------------------------------------------\n"
+        "                  From Activity     From         From         From"
+        "                                                         Not\n"
+        "Object Type       File (%)          SSA (%)      SCA (%)      Clock (%)"
+        "    Default (%)     Propagated(%)   Implied(%)      Annotated(%)    Total\n"
+        "------------------------------------------------------------\n"
     )
-    cov = p.parse_annotation_coverage(rpt)
-    assert cov == pytest.approx(0.8745, rel=1e-3)
+    text = ""
+    if nets_row is not None:
+        text += head.format(kind="Switching Activity") + nets_row + "\n"
+    if static_nets_row is not None:
+        text += head.format(kind="Static Probability") + static_nets_row + "\n"
+    rpt = tmp_path / "switching_activity.rpt"
+    rpt.write_text(text)
+    return rpt
 
 
-def test_parse_annotation_coverage_missing(tmp_path):
-    rpt = _write_rpt(tmp_path, "nothing here")
-    assert p.parse_annotation_coverage(rpt) is None
-
-
-def test_parse_toggle_region(tmp_path):
-    rpt = _write_rpt(
-        tmp_path,
-        """
-        ...
-        SAIF time interval = 0 to 10000 ns
-        ...
-    """,
+def _row(from_file, implied, total):
+    z = "0(0.00%)"
+    pct = 100.0 * from_file / total if total else 0.0
+    return (
+        f" Nets             {from_file}({pct:.2f}%)   {z}     {z}     {z}     {z}"
+        f"        {z}        {implied}(0.00%)        {z}        {total}"
     )
-    region = p.parse_toggle_region(rpt)
-    assert region == "0ns-10000ns"
+
+
+def test_annotation_rate_comes_from_the_counts_not_the_printed_percent(tmp_path):
+    # PT rounds the cell to two decimals, so 155931 of 155936 prints as "100.00%". The
+    # shortfall is the whole point of the field, so the count must win over the percentage.
+    rpt = _sa_rpt(tmp_path, _row(155931, 5, 155936))
+    assert "100.00%" in rpt.read_text()  # the report really does say 100
+    assert p.parse_annotation_rate(rpt) == pytest.approx(155931 / 155936)
+    assert p.parse_annotation_rate(rpt) < 1.0
+
+
+def test_annotation_rate_none_when_only_the_static_probability_table_is_present(
+    tmp_path,
+):
+    # Both tables carry a " Nets " row and both reconcile, so a parser that took the first
+    # row it found would report static probability as if it were switching activity. On a
+    # full report that lands on the right row by ordering luck; on a truncated one it does
+    # not, and a wrong number here silently mis-qualifies power_mw.
+    rpt = _sa_rpt(tmp_path, None, static_nets_row=_row(100, 0, 100))
+    assert p.parse_annotation_rate(rpt) is None
+
+
+def test_annotation_rate_none_when_the_row_does_not_reconcile(tmp_path):
+    # Columns summing to something other than Total means the column set moved; a rate
+    # derived from a misread row would be worse than no rate.
+    rpt = _sa_rpt(tmp_path, _row(80, 5, 100))
+    assert p.parse_annotation_rate(rpt) is None
+
+
+def test_annotation_rate_none_when_absent_or_unreadable(tmp_path):
+    assert p.parse_annotation_rate(tmp_path / "nope.rpt") is None
+    assert p.parse_annotation_rate(_write_rpt(tmp_path, "nothing here")) is None
 
 
 def _flat_rpt(total_mw, internal=None, switching=None, leakage=None):
@@ -149,7 +198,12 @@ def _flat_rpt(total_mw, internal=None, switching=None, leakage=None):
     return "\n".join(lines) + "\n"
 
 
-_SA_RPT = "Annotated cell percentage = 95.00%\nSAIF time interval = 0 to 1000 ns\n"
+# Real report shape, so the end-to-end path exercises the parser the same way a run does.
+_SA_RPT = (
+    ' Switching Activity Overview Statistics for "top"\n'
+    "Object Type       File (%)   SSA   SCA   Clock   Default   Propagated   Implied"
+    "   Not Annotated   Total\n" + _row(95, 5, 100) + "\n"
+)
 _VCS_LOG = "Chronologic VCS simulator copyright ...\nVersion L-2016.06_Full64\n"
 
 
@@ -209,6 +263,8 @@ def test_run_pass_within_targets(tmp_path):
         == 2
     )
     assert data["compile_info"] == {"vcs_version": "L-2016.06_Full64"}
+    # The field that qualifies power_mw must survive the whole run, not just the parser.
+    assert [c["saif_annotation_rate"] for c in data["power_by_corner"]] == [0.95, 0.95]
     assert "failure_kind" not in data
 
 

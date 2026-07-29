@@ -86,15 +86,15 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["scenario_id", "power_mw", "internal_mw", "switching_mw", "leakage_mw", "toggle_rate", "toggle_region", "corner_intent", "sequence_ref"],
+                "required": ["scenario_id", "power_mw", "internal_mw", "switching_mw", "leakage_mw", "saif_annotation_rate", "corner_intent", "sequence_ref"],
                 "properties": {
                   "scenario_id":   {"type": "string"},
                   "power_mw":      {"type": ["number", "null"]},
                   "internal_mw":   {"type": ["number", "null"]},
                   "switching_mw":  {"type": ["number", "null"]},
                   "leakage_mw":    {"type": ["number", "null"]},
-                  "toggle_rate":   {"type": ["number", "null"]},
-                  "toggle_region": {"type": ["string", "null"]},
+                  "saif_annotation_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1,
+                                           "description": "Fraction of nets whose switching activity came from the SAIF, from switching_activity.rpt. Qualifies power_mw: the same number at 0.2 is mostly tool defaults, at 1.0 it is measured. null = not determinable from the report."},
                   "corner_intent": {"type": "string"},
                   "sequence_ref":  {"type": "string"}
                 }

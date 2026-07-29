@@ -137,7 +137,10 @@ foreach entry [split $saif_list " "] {
             if {[regexp -line {Annotated\s+cell\s+percentage\s*=\s*([0-9.]+)\s*%} $_content -> _pct]} {
                 if {$_pct > 0.0} { set _coverage_ok 1 }
             }
-            # Fallback for PT versions that omit the "Annotated cell percentage" line.
+            # The table row is what this flow's PT actually emits — no observed report
+            # carries the "Annotated cell percentage" line, so this branch is the live one.
+            # The precise rate is parsed post-run by power/result.py (saif_annotation_rate);
+            # the >0 test here needs only the printed percentage.
             if {!$_coverage_ok} {
                 if {[regexp -line {^\s*Nets\s+([0-9]+)\(([0-9.]+)%\)} $_content -> _ncount _npct]} {
                     if {$_npct > 0.0} { set _coverage_ok 1 }
