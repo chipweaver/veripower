@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "skills" / "rtl-design" / "scripts"))
 from rtl import result as ve  # noqa: E402
 
 _SEM_CLEAR = {
+    "schema_version": 1,
     "stage": "rtl-design",
     "module": "tpu_top",
     "reviewed_children": ["mac"],
@@ -114,6 +115,7 @@ def test_build_result_pass_lean_shape(tmp_path):
 
 def test_build_result_fail_on_semantic_trip(tmp_path):
     sem = {
+        "schema_version": 1,
         "stage": "rtl-design",
         "module": "tpu_top",
         "reviewed_children": ["mac"],
@@ -157,7 +159,7 @@ def test_build_result_fail_on_exit_topology_verbatim(tmp_path):
     )  # never reached the semantic gate
 
 
-# ── golden test against the real tpu_top run (Task 3) ────────────────────────
+# ── golden test against the real tpu_top run ─────────────────────────────────
 from jsonschema import Draft202012Validator  # noqa: E402
 from referencing import Registry, Resource  # noqa: E402
 
@@ -217,7 +219,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
 
 
 def test_build_result_pre_dispatch_coverage_fail_routes_through_finalize(tmp_path):
-    # F-A: a pre-dispatch check-partition coverage fail (no fan-out yet -> no ledger, no
+    # A pre-dispatch check-partition coverage fail (no fan-out yet -> no ledger, no
     # reaped-children.json) routes through finalize and surfaces the REAL coverage reason, not
     # the generic "requires reaped-children.json and the ledger" pre-guard message. This exercises
     # partition.post_verdict's coverage short-circuit (status=fail AND no ledger).
@@ -246,7 +248,7 @@ def test_build_result_pre_dispatch_coverage_fail_routes_through_finalize(tmp_pat
     _validate_envelope(env)  # schema-valid status=fail envelope
 
 
-# ── New: finalize() BLOCKED wrapper + CLI dispatch ───────────────────────────
+# ── finalize() BLOCKED wrapper + CLI dispatch ────────────────────────────────
 def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
     # finalize() wraps build_result(): any internal raise -> exit 2 (BLOCKED), never
     # status=fail. (The deleted main() owned this except; it moves to finalize().)
@@ -255,6 +257,65 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
 
     monkeypatch.setattr(ve, "build_result", boom)
     assert ve.finalize(tmp_path, "tpu_top", "tpu_top", tmp_path / "manifest.json") == 2
+
+
+def test_finalize_blocked_on_schema_invalid_semantic_review(tmp_path, capsys):
+    # The oracle backstop. rules.py declares semantic-review.json this stage's oracle, the kernel
+    # validates only result.json at reap, and nothing forces the validate-review run in the
+    # semantic gate — so a doc the schema rejects must BLOCK here rather than reduce through
+    # compute_gate's .get() defaults to gate=clear + status=pass.
+    wd, manifest = _workdir(
+        tmp_path, semantic={"findings": []}
+    )  # required keys all missing
+    assert ve.finalize(wd, "tpu_top", "tpu_top", manifest) == 2
+    assert "semantic-review invalid" in capsys.readouterr().err
+    assert not (wd / "result.json").exists()
+
+
+def test_artifacts_are_full_roster_on_a_subset_reap(tmp_path):
+    # The conformance self-converge loop's last round reaps only the re-dispatched children, so
+    # reaped-children.json is a subset. artifacts[] is enumerated from the two sidecars (the full
+    # merged ledger), never from the reaped set — which is why no full-roster rebuild of
+    # reaped-children.json is needed before finalize.
+    wd, manifest = _workdir(tmp_path, children=("mac", "ctrl"))
+    (wd / "reaped-children.json").write_text(json.dumps({"mac": {"status": "done"}}))
+    assert ve.build_result(wd, module="tpu_top", top="tpu_top", manifest=manifest) == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "pass"
+    assert {"mac.v", "ctrl.v", "tpu_top.v"} <= {a["path"] for a in env["artifacts"]}
+
+
+def test_fail_reason_writes_the_envelope_and_keeps_the_readable_baseline(tmp_path):
+    # The build-error exit: reaped-children.json is malformed, so no verdict is derivable, but the
+    # carried sidecars are fine. finalize must write the fail envelope itself (never the agent by
+    # hand — a hand-written envelope that violates result.schema.json reaps as blocked, not as a
+    # routable fail) AND keep enumerating the readable baseline, because promote treats artifacts[]
+    # as the new canonical view and deletes what it omits.
+    wd, manifest = _workdir(tmp_path)
+    (wd / "reaped-children.json").write_text("{ not json")
+    assert (
+        ve.finalize(wd, "tpu_top", "tpu_top", manifest, fail_reason="reports malformed")
+        == 0
+    )
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    assert env["stage_specific"] == {"fail_reason": "reports malformed"}
+    assert {"mac.v", "tpu_top.v", "rtl-files.json", "constraint-annotations.json"} == {
+        a["path"] for a in env["artifacts"]
+    }
+    _validate_envelope(env)
+
+
+def test_fail_reason_with_unreadable_sidecars_yields_no_artifacts(tmp_path):
+    # Nothing is knowable about the baseline, so artifacts[] is empty rather than a guess.
+    wd, manifest = _workdir(tmp_path)
+    (wd / "rtl-files.json").write_text("{ not json")
+    assert (
+        ve.finalize(wd, "tpu_top", "tpu_top", manifest, fail_reason="sidecar broken")
+        == 0
+    )
+    env = json.loads((wd / "result.json").read_text())
+    assert (env["status"], env["artifacts"]) == ("fail", [])
 
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):

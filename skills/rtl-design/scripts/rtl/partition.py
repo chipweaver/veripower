@@ -2,9 +2,10 @@
 """rtl exit gate — top-module coverage + purity (pre) and blocked-child precedence +
 artifacts enumeration (post).
 
-Two verdicts, one cohesive module (they were adjacent and coupled in the source):
-  coverage_verdict(manifest, top)        -> (status, reason)   # pre: manifest+top only
-  post_verdict(manifest, top, fresh, ledger) -> (verdict, rc)  # post: + blocked-child + artifacts
+Two verdicts over one shared coverage rule:
+  coverage_verdict(manifest, top)              -> (status, reason)  # pre: manifest+top only
+  post_verdict(manifest, top, fresh, workdir)  -> (verdict, rc)     # post: + blocked-child
+  ledger_artifacts(workdir)                    -> artifacts[]       # the enumeration both use
 
 `run()` is the `check-partition` verb (the pre gate) — a one-line verdict JSON on stdout,
 status truth = exit code (0 pass / 1 fail). `assemble` and `result` import `post_verdict`.
@@ -42,10 +43,17 @@ def coverage_verdict(manifest: Path, top: str):
     return "pass", None
 
 
+def ledger_artifacts(workdir: Path) -> list:
+    """The artifacts[] enumeration: every child's files plus the two sidecars, in the envelope
+    shape. Raises LedgerError when the sidecars are unreadable."""
+    files = sorted({f for rec in load_ledger(workdir).values() for f in rec["files"]})
+    return [{"path": p} for p in files + [FILES_NAME, ANNOTATIONS_NAME]]
+
+
 def post_verdict(manifest: Path, top: str, fresh: Path, workdir: Path):
     """The post exit verdict: coverage+purity + blocked-child precedence + the artifacts[]
     enumeration from the ledger. Returns (verdict_dict, rc). The single copy assemble's run()
-    and result's build_result both reuse — no behavior change, only factored out."""
+    and result's build_result both reuse."""
     status, reason = coverage_verdict(manifest, top)
     if status == "fail" and not ledger_exists(workdir):
         # Pre-dispatch coverage fail (no fan-out yet, so no ledger): surface the real coverage
@@ -54,10 +62,15 @@ def post_verdict(manifest: Path, top: str, fresh: Path, workdir: Path):
         # before this call, so this branch is reached only from the pre-dispatch finalize path.
         return {"status": "fail", "artifacts": [], "fail_reason": reason}, 1
     if not (fresh.exists() and ledger_exists(workdir)):
+        # Reachable with the sidecars present but reaped-children.json gone. A fail envelope
+        # promotes like a passing one and promote deletes every canonical entry artifacts[] omits,
+        # so still enumerate a readable ledger: never under-report a live baseline into a wipe.
         return (
             {
                 "status": "fail",
-                "artifacts": [],
+                "artifacts": ledger_artifacts(workdir)
+                if ledger_exists(workdir)
+                else [],
                 "fail_reason": (
                     f"post exit gate requires reaped-children.json, {FILES_NAME} "
                     f"and {ANNOTATIONS_NAME}"
@@ -66,7 +79,6 @@ def post_verdict(manifest: Path, top: str, fresh: Path, workdir: Path):
             1,
         )
     fresh_data = _read_json(fresh)
-    ledger_data = load_ledger(workdir)
     if status == "pass":
         blocked = {
             n: r.get("reason", "")
@@ -79,10 +91,7 @@ def post_verdict(manifest: Path, top: str, fresh: Path, workdir: Path):
                 f"{n}: {m}" for n, m in blocked.items()
             )
 
-    files = sorted({f for rec in ledger_data.values() for f in rec["files"]})
-    paths = files + [FILES_NAME, ANNOTATIONS_NAME]
-    artifacts = [{"path": p} for p in paths]
-    verdict = {"status": status, "artifacts": artifacts}
+    verdict = {"status": status, "artifacts": ledger_artifacts(workdir)}
     if reason:
         verdict["fail_reason"] = reason
     return verdict, (0 if status == "pass" else 1)

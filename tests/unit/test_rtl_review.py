@@ -263,7 +263,7 @@ def test_mixed_locus_trip_partitions_loci(tmp_path):
     assert v["loci"] == {"rtl": ["c1"], "spec": ["c2"]}
 
 
-# ── compute_gate() direct, in-process — locks the X1 pure-fn extraction (Task 1.5) ───
+# ── compute_gate() direct, in-process: the pure reduction finalize reuses without a subprocess ──
 import sys  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "skills" / "rtl-design" / "scripts"))

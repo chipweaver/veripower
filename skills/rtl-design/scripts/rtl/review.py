@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """rtl validate-review — producer self-gate for the gating semantic-review.json artifact.
 
-Validates the file against references/semantic-review.schema.json (Draft 2020-12),
-then computes the
-gate verdict (the mechanical category x severity reduction over the findings,
-partitioned by fix_locus) and prints it as a one-line JSON the main thread copies --
-so the gate is script-owned, not judged by eye. `compute_gate` is reused in-process
-by the finalize verb (rtl.result).
+Validates the file against references/semantic-review.schema.json (Draft 2020-12), then computes
+the gate verdict (the mechanical category x severity reduction over the findings, partitioned by
+fix_locus) and prints it as a one-line JSON the main thread routes on -- so the gate is
+script-owned, not judged by eye. Nothing is copied: the finalize verb re-runs the same
+load_validated + compute_gate in-process (rtl.result) and writes the verdict itself.
 """
 
 from __future__ import annotations
@@ -38,8 +37,8 @@ _CONFIDENCE_RANK = {"low": 0, "medium": 1, "high": 2}
 
 def compute_gate(doc: dict) -> dict:
     """Pure gate reduction over an already-valid semantic-review doc: the mechanical
-    category x severity filter partitioned by fix_locus. No schema/consistency checks here
-    (main() does those first; finalize calls this over the validated semantic-review.json)."""
+    category x severity filter partitioned by fix_locus. No schema checks here -- both callers
+    (validate, and finalize via load_validated) validate before reducing."""
     findings = doc.get("findings", [])
     gating = [
         f
@@ -88,24 +87,56 @@ def compute_gate(doc: dict) -> dict:
     }
 
 
+class ReviewError(Exception):
+    """semantic-review.json is unreadable or schema-invalid: no gate may be reduced from it."""
+
+
+def schema_errors(doc: dict) -> list:
+    """Every schema violation in `doc`, one message per error, outermost path first."""
+    schema = json.loads(_SCHEMA.read_text(encoding="utf-8"))
+    return [
+        f"semantic-review invalid at {'/'.join(str(p) for p in err.path) or '<root>'}: "
+        f"{err.message}"
+        for err in sorted(
+            Draft202012Validator(schema).iter_errors(doc), key=lambda e: list(e.path)
+        )
+    ]
+
+
+def load_validated(review_path) -> dict:
+    """Read + schema-validate semantic-review.json, or raise ReviewError.
+
+    The deterministic backstop the finalize verb reduces the gate over. compute_gate reads
+    `findings` through .get() defaults, so an empty or malformed doc would otherwise fold in as
+    gate=clear; nothing forces the skill to have run the validate-review verb first, and the
+    kernel schema-validates only result.json at reap. This is the sole check standing between a
+    hand-written oracle artifact and status=pass.
+    """
+    target = Path(review_path)
+    try:
+        doc = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        raise ReviewError(f"cannot read {target}: {e}") from e
+    errors = schema_errors(doc)
+    if errors:
+        raise ReviewError("; ".join(errors))
+    return doc
+
+
 def validate(review_path) -> int:
     target = Path(review_path)
     try:
-        schema = json.loads(_SCHEMA.read_text(encoding="utf-8"))
         doc = json.loads(target.read_text(encoding="utf-8"))
+        errors = schema_errors(doc)
     except (OSError, json.JSONDecodeError) as e:
         print(
             f"semantic-review validate: cannot read {target} or schema: {e}",
             file=sys.stderr,
         )
         return 1
-    errors = sorted(
-        Draft202012Validator(schema).iter_errors(doc), key=lambda e: list(e.path)
-    )
     if errors:
-        for err in errors:
-            loc = "/".join(str(p) for p in err.path) or "<root>"
-            print(f"semantic-review invalid at {loc}: {err.message}", file=sys.stderr)
+        for msg in errors:
+            print(msg, file=sys.stderr)
         return 1
     print(json.dumps(compute_gate(doc)))
     return 0

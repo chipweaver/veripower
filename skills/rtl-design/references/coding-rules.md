@@ -4,7 +4,7 @@ Applies to: `**/*.v` / `**/*.vh`
 
 ## General Constraints
 
-- **Strict Verilog-2001 only — no SystemVerilog.** Do not use SV types (`logic`/`bit`/`byte`/`int` → use `wire`/`reg`/`integer`), SV always-blocks (`always_ff`/`always_comb`/`always_latch` → use `always @(posedge …)` / `always @*`), or SV constructs (`typedef`/`enum`/`struct`/`union`/`interface`/`package`/`modport`/`import`/`unique`/`priority`). RTL files are `.v` (headers `.vh`), never `.sv`/`.svh`. `check-conformance`'s dialect gate enforces this, and the kernel's downstream `rtl` selectors match `*.v` alone. Do not use non-standard extensions unsupported by the toolchain
+- **Strict Verilog-2001 only — no SystemVerilog.** RTL files are `.v` (headers `.vh`), never `.sv`/`.svh`: the kernel's downstream `rtl` selectors match `*.v` alone, so a `.sv` file silently drops out of the dependency graph, and `check-conformance` rejects the extension for exactly that reason. The **content** being V2001 is on you — no gate decides it, and the downstream tools would happily compile SystemVerilog. The common substitutions are types (`logic`/`bit`/`byte`/`int` → `wire`/`reg`/`integer`), always-blocks (`always_ff`/`always_comb`/`always_latch` → `always @(posedge …)` / `always @*`), and constructs with no V2001 equivalent at all (`typedef`/`enum`/`struct`/`union`/`interface`/`package`/`modport`/`import`/`unique`/`priority`) — a cheat sheet for the common cases, not a complete list of what the language forbids you. Do not use non-standard extensions unsupported by the toolchain
 - Do not use Verilog/VHDL/SV reserved words as signal, module, or parameter names
 - Code must be synthesizable: no `#delay`, `initial` blocks driving synthesizable logic, or simulation-only statements (`$display`, etc.) in synthesizable RTL
 
@@ -13,22 +13,21 @@ Applies to: `**/*.v` / `**/*.vh`
 - Clear and consistent naming; names should be self-explanatory; follow project-wide naming conventions (case, prefixes/suffixes)
 - Distinguish signal direction and type: use uniform prefixes/suffixes for input/output, clock/reset, enable/data
 - Parameters and macros: UPPER_CASE with underscores; local signals: lower_case with underscores
-- No single-letter signal names (except loop variables in testbenches)
+- No single-letter signal names; a `generate`/`for` loop index is the one exception
 
 ## Module Partitioning
 
 - Single responsibility per module/interface; avoid deep nesting, break complex combinational logic into named intermediate signals
 - Separate sequential and combinational logic clearly; avoid mixing unrelated logic in the same `always` block
 - Header files (`*.vh`): centralize macros and parameters; avoid circular includes
-- Cross-clock domain synchronizers, tri-state drivers, and other special structures must be encapsulated as separate modules/files
+- Cross-clock domain synchronizers, tri-state drivers, and other special structures must be encapsulated as separate modules/files. This one is load-bearing, not style: a `sync_cell` / `reset_synchronizer` annotation has to name a real module, so a synchronizer inlined into surrounding logic cannot be annotated at all, and `check-conformance`'s annotation-reality check rejects any name that is not an actual module in your RTL
 
 ## Coding Constraints
 
 ### General
 
 - One statement per line; explicit `begin...end` even for single statements
-- No combinational feedback loops; multipliers/dividers and large operators must follow project cell library and constraints — do not casually instantiate DesignWare (DW)
-- Signed/unsigned operations must be explicitly declared; watch for width and sign extension when mixing
+- No combinational feedback loops
 
 ### Port & Signal Declarations
 
@@ -88,7 +87,7 @@ end
 - **Separate combinational and sequential logic**: next-state logic (`always @*`) and state register (`always @(posedge clk or negedge rst_n)`) in separate blocks
 - Use `case` for state transitions; state encoding via `parameter`/`localparam` — no hardcoded numbers
 - FSM must have a `default` branch pointing to a safe state (prevent runaway)
-- Low-power: prefer Gray code for frequently transitioning states; one-hot/one-cold for small FSMs; minimize encoding bits
+- Low-power encoding: prefer Gray code for frequently transitioning adjacent states; one-hot/one-cold for small FSMs; minimize encoding bits
 - Avoid redundant states; avoid high bit-flip counts between frequently transitioning states
 
 ### RAM Coding
@@ -98,13 +97,13 @@ end
 - Read/write addresses must not overflow; no simultaneous read/write conflict on the same address without explicit arbitration
 - Data read out over multiple consecutive cycles must be registered first
 - Encapsulate RAM models in a single file; ASIC RAM, FPGA RAM, and behavioral model in the same file, differentiated by macros (e.g., `` `ifdef SYNTHESIS ``)
-- Size guidelines (TSMC 65nm reference): dual-port RAM >= 1024 bits or single-port RAM >= 16x32 bits, use standard-cell RAM; smaller, use a register file. Avoid fragmented small RAMs; merge into larger blocks. Prefer single-port RAM for area/power
+- **Sizing.** Prefer single-port RAM (smaller area than dual-port); use dual-port only when genuinely needed. Above roughly 1024 bits dual-port or 16x32 bits single-port, use standard-cell RAM; below it, a register file. Merge fragmented small RAMs into larger blocks, and prefer high-density cells. These crossover numbers are a 65nm-class rule of thumb: the flow binds its actual library at deployment time through `LIB_DB`, so let the deployed library's own datasheet win where it disagrees
 
 ### Data Path
 
 - Signed/unsigned operations must be explicitly declared and annotated; watch for sign extension and width alignment when mixing
 - Add-then-multiply vs. multiply-then-add (MAC) differ in area/timing — choose per design requirements and comment the rationale
-- No casual DesignWare (DW) component instantiation without project review
+- Multipliers, dividers, and other large operators must follow the project's cell library and constraints; no casual DesignWare (DW) component instantiation without project review
 - Write RTL in a style friendly to synthesis tool data-path optimization (resource sharing, retiming)
 
 ## Comment Conventions
@@ -116,16 +115,14 @@ end
 
 ## Low-Power Design
 
+**Advisory, this section and Low-Cost Design below.** No gate checks either one: `synthesis` and `power-analysis` only measure the outcome against the PPA targets. So never trade away behavior your `<child>.md §2` specifies in order to satisfy one of these — deviating from §2 intent is a semantic-gate finding that fails the stage, while a missed power or area optimization is not.
+
 - **Clock gating**: use module-level ICG; support automatic gating for sub-modules inside complex modules; minimize clock-gating cascade depth; RTL style must be friendly to synthesis tool auto-inference of clock gating
-- **Memory**: minimize memory size and unnecessary read/writes; gate clock, chip-select, and address for memories; encode address buses (e.g., Gray code) to reduce toggle power; bank large memories with high-bit address decode, shutting inactive banks; use low-power memory cells from project PDK
-- **FSM**: Gray code for frequently switching adjacent states; minimize encoding bits; avoid redundant states and high-toggle transitions
+- **Memory**: gate clock, chip-select, and address for memories; encode address buses (e.g., Gray code) to reduce toggle power; bank large memories with high-bit address decode, shutting inactive banks; use the deployed library's low-power memory cells (FSM encoding and RAM sizing are covered under FSM Coding and RAM Coding above)
 - **Operand isolation & early computation**: gate operands when not computing to prevent idle toggling; use early computation to pre-calculate and latch data, reducing redundant computation on critical paths; reduce logic depth of high-toggle signals; hold don't-care signals at their last value rather than forcing 0/1; use parallel structures and pipelining to lower frequency requirements
 
 ## Low-Cost Design
 
-- Minimize on-chip memory (SRAM/ROM) total; evaluate SRAM vs. register file for area/power
-- Avoid fragmented SRAMs; use consolidated SRAMs instead of scattered FIFOs and register groups
-- Use high-density memory (HD/UHD from project PDK)
+- Minimize total on-chip memory (SRAM/ROM), and consolidate scattered FIFOs and register groups into shared SRAMs rather than many small ones
 - Minimize intermediate storage — use computation results immediately where possible
-- Prefer **single-port RAM** (smaller area than dual-port); dual-port only when truly needed
-- Clean read/write arbitration design — avoid unnecessary protection logic overhead
+- Keep read/write arbitration clean, so no protection logic is needed to compensate for it

@@ -10,10 +10,10 @@ Verbs (one stage = one tool; see skills/rtl-design/SKILL.md for usage):
 
 Thin dispatcher: each subcommand parses its own flags and calls into the rtl.*
 library. Library imports are deferred into each handler (NOT top-level) so --help
-and verb dispatch run during incremental per-task TDD, before the sibling modules
-exist. A top-level `from rtl import partition, assemble, …` would ImportError until
-every verb is built. Keep them lazy. (Library modules themselves use top-level
-absolute imports; only this thin dispatcher defers.)
+and verb dispatch keep working when a sibling module is absent or unimportable —
+a top-level `from rtl import partition, assemble, …` would take the whole CLI down
+with it. (Library modules themselves use top-level absolute imports; only this thin
+dispatcher defers.)
 """
 
 import argparse
@@ -56,7 +56,7 @@ def _cmd_validate_review(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from rtl import result
 
-    return result.finalize(a.workdir, a.module, a.top, a.manifest)
+    return result.finalize(a.workdir, a.module, a.top, a.manifest, a.fail_reason)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -77,7 +77,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--seeded",
         action="store_true",
-        help="overlay onto the existing sidecars in {workdir} (incremental/rework + the 4.3 loop)",
+        help="overlay onto the existing sidecars in {workdir} (incremental/rework, and every "
+        "round of the conformance self-converge loop)",
     )
     sp.set_defaults(func=_cmd_assemble)
 
@@ -101,6 +102,12 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         type=Path,
         help="Design/specification/manifest.json",
+    )
+    sp.add_argument(
+        "--fail-reason",
+        default=None,
+        help="one-line reason for an early exit no on-disk state can express (a malformed "
+        "reaped-children.json or sidecar); writes the status=fail envelope directly",
     )
     sp.set_defaults(func=_cmd_finalize)
 

@@ -3,8 +3,8 @@
 
 The reaped child reports become rtl-files.json + constraint-annotations.json; every
 downstream filelist is generated from the former and the constraint annotations are read
-from the latter, so this verb renders no text projection of either. The 4.3 conformance
-loop re-runs `assemble --seeded` every round, so this is safe to re-call.
+from the latter, so this verb renders no text projection of either. The conformance
+self-converge loop re-runs `assemble --seeded` every round, so this is safe to re-call.
 
 stdout/exit contract:
   * BUILD ERROR (malformed/contract-violating reports or state): exit 1, message on

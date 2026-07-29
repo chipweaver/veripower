@@ -57,7 +57,7 @@ def test_merge_emits_manifest_order_not_reap_order():
     )
 
 
-def test_merge_filters_removed_child_F2():
+def test_merge_filters_a_child_removed_from_the_manifest():
     # manifest shrank: 'c' is gone from the roster -> evicted from merged ledger
     seeded = {"a": _rec(["a.sv"]), "c": _rec(["c.sv"])}
     out = merge_filter(seeded, {}, ["a"])

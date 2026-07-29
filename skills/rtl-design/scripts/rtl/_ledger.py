@@ -1,9 +1,9 @@
 """rtl._ledger — the two authored sidecars this stage emits, and the merge helper.
 
 `rtl-files.json` (per-child files + incdirs) and `constraint-annotations.json` (per-child
-SGDC/SDC annotations) together hold everything the reaped child reports carry. They are
-split because their consumers are: simulation needs only the file layout, so bundling would
-invalidate it on an annotation-only edit.
+SGDC/SDC annotations) together hold everything the reaped child reports carry. They are split
+because their consumers are: simulation declares only the file layout, so bundling the two would
+invalidate simulation's proof on an annotation-only edit.
 
 In memory the two are one dict, child -> {files, incdirs?, annotations}, because that is
 the shape the child reports arrive in and the shape merge_filter operates on. On disk they

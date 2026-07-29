@@ -15,7 +15,9 @@ remain advisory (never gate). Findings are aggregated into `semantic-review.json
   the SAME path authoring uses; do NOT hardcode `Design/specification/<child>.md`, which can drift from
   the deployed layout). **Read its §2 Interface (and, for the top-integration child, the §3.1
   instantiation map wires the `interconnects.json` edges)** as the statement of *intent* to check against.
-- `design.md` path, read-scope §1.4 only (top IO / interconnects), for cross-checking integration intent.
+- `design.md` path, read-scope §1.4 only, for cross-checking integration **intent** (including §1.4.2.1's
+  inter-module behavior contract). The mechanical edge list is not your job: the deterministic
+  `check-conformance` gate already matched every `interconnects.json` wire against the top child's RTL.
 
 ## Your job: skeptical intent review (NOT lint / PPA / syntax)
 
@@ -35,10 +37,13 @@ so the operator knows where to fix, and routes future automation):
   itself, which this child cannot fix from RTL (e.g. an interface width that cannot hold the value §2
   requires). Do not flag `spec` for something the RTL alone can fix.
 
-- **`confidence` (fix_locus=spec 时 REQUIRED，其它可省)** — 你对"这确实是 spec/`<child>.md` 的意图缺陷、
-  需上游修"这一归因的把握：`high` = 接口/意图矛盾是硬证据（如宽度装不下 §2 要求的值）；`medium`/`low` = 也可能
-  RTL 侧还能补救。**rtl-design 无 triage 复核，这个 confidence 是上游路由前唯一的可信度闸** —— 不确定就给
-  `low`，让 kernel 转人工，而不是硬把一次 spec 重建赌出去。
+- **`confidence`, on every `fix_locus: "spec"` finding** (omit it elsewhere): how sure you are of the
+  attribution that this really is a `design.md` / `<child>.md` intent defect needing an upstream fix.
+  `high` = the interface or intent contradiction is hard evidence (a width that cannot hold the value §2
+  requires); `medium` / `low` = the RTL side might still be able to salvage it. rtl-design has no triage
+  re-check, so this is the only trust signal the upstream route gets: when unsure give `low` and let the
+  kernel escalate to a human, rather than betting a spec rebuild on it. An omitted `confidence` is read as
+  `low` for exactly that reason, so leaving it out never buys a stronger route.
 
 **Out of scope (do NOT report):** synthesizability / timing / area / power (downstream stages);
 lint / CDC rule violations (lint-cdc); pure syntax (the child self-lints); spec↔RTL *presence*
@@ -61,6 +66,6 @@ End the response with `STATUS: DONE` + a single JSON line, or `STATUS: BLOCKED <
   `important` = real concern worth a look; `minor` = nit. Calibrate — not everything is critical.
 - **`fix_locus` is required on every finding you emit** (`rtl` or `spec`). The main thread cannot route a
   finding without it; any finding you emit without `fix_locus` is rejected by the schema.
-- **`confidence` is required whenever `fix_locus: "spec"`** (omit it otherwise) — see the confidence
-  guidance above. The main thread folds the minimum `confidence` across your spec-locus findings into
-  `semantic_gate.spec_confidence` for the kernel's upstream-route gate.
+- **`confidence` belongs on every `fix_locus: "spec"` finding** (omit it otherwise): see the guidance
+  above. The minimum `confidence` across your spec-locus findings becomes
+  `semantic_gate.spec_confidence`, which gates the kernel's upstream route.

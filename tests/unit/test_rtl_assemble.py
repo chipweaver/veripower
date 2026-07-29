@@ -151,7 +151,7 @@ def test_assemble_subset_rework_overlays_seeded(tmp_path):
     assert ledger["topc"]["files"] == ["top.sv"]  # carried forward via --seeded
 
 
-def test_assemble_manifest_shrink_evicts_F2(tmp_path):
+def test_assemble_manifest_shrink_evicts_the_dropped_child(tmp_path):
     wd, man = _setup(
         tmp_path,
         fresh={
@@ -284,7 +284,10 @@ def test_assemble_malformed_seeded_sidecar_build_error(tmp_path):
     r = _run(wd, man, top="top", seeded=True)
     assert r.returncode == 1
     assert r.stdout.strip() == ""  # build error -> no gate verdict on stdout
-    assert "rtl-files.json" in r.stderr and "files" in r.stderr
+    # discriminating: the schema-violation wording + JSON pointer, not merely the path echoed
+    # back by a read failure (which would also contain "rtl-files.json").
+    assert "rtl-files.json schema violation at $.stale" in r.stderr
+    assert "'files' is a required property" in r.stderr
     assert json.loads((wd / "rtl-files.json").read_text()) == {"stale": {"bogus": 1}}
 
 
@@ -307,7 +310,7 @@ def test_assemble_done_child_malformed_annotations_build_error(tmp_path):
 
 
 def test_assemble_seeded_blocked_keeps_stale_entry_but_gate_fails(tmp_path):
-    # Source-faithful (C2): a child 'done' in a prior round (in the seeded ledger) that returns
+    # A child 'done' in a prior round (in the seeded ledger) that returns
     # 'blocked' in the new fresh is NOT evicted by the merge — its stale entry survives. This is
     # intentional (source never evicts a roster child present in seeded); the blocked child is
     # caught by post_verdict's fresh-based blocked-child precedence (status=fail) + SKILL.md 4.3's

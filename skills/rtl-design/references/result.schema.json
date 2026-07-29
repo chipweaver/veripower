@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/rtl-design/result.schema.json",
   "title": "rtl-design result.json contract",
-  "description": "Complete contract for asic/<module>/Design/rtl-design/result.json. Canonical handoff to consumers is via rtl-files.json (per-child file layout, from which every downstream filelist is generated) and constraint-annotations.json (per-child SGDC/SDC annotations, read by the lint-cdc and synthesis agents) at the canonical path Design/rtl-design/; stage_specific has no pass-required fields. TOP is not restated here: it is manifest.module, which specification authors and every consumer declares as an input. On status=fail, stage_specific.fail_reason is required (if/then below) — the one-line failure narrative.",
+  "description": "Complete contract for asic/<module>/Design/rtl-design/result.json. stage_specific has no pass-required fields: on a pass it carries the semantic_gate verdict, and on status=fail it requires fail_reason (if/then below), the one-line failure narrative. The stage's substance is handed off through its promoted sidecars, not through this envelope, and TOP is not restated here: it is manifest.module, which every consumer declares as an input.",
   "allOf": [
     {
       "$ref": "https://veripower.local/schemas/envelope.schema.json"

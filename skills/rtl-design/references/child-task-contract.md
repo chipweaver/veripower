@@ -7,10 +7,12 @@ below. Do not call the Task tool (no Level-2 dispatch).
 ## Inputs (paths only — the main thread does not read these bodies)
 
 - Child unit name + its `manifest.children[<self>].rtl_modules[]` list.
-- `{workdir}/<child>.md` (full per-child sub-design — you are its sole consumer; self-contained:
+- Your per-child design doc, at the path the main thread hands you from `manifest.children[<self>].doc`
+  (the registry SSoT; nothing is copied into `{workdir}`, so never guess a workdir-local path). It is the
+  full per-child sub-design and you are its sole consumer, self-contained:
   `frontmatter.ports` = injected `interconnects.json` cut-edges, `frontmatter.clocks` ⊆ `clocks.json`;
-  the top-integration child's §3.1 instantiation map wires those same edges).
-- `references/coding-rules.md` path + `constraints/<TOP>.{sdc,sgdc}` paths.
+  the top-integration child's §3.1 instantiation map wires those same edges.
+- `${CLAUDE_SKILL_DIR}/references/coding-rules.md` — the RTL coding rules your files must follow.
 - `top-io.json` and `interconnects.json` paths — the boundary and the cut edges. Read them for
   `set_case_analysis` (← `top-io.json`), `quasi_static` (← `interconnects.json`) and top wiring.
   Do **not** read `design.md`; its overview is narrative you do not need.
@@ -34,9 +36,10 @@ below. Do not call the Task tool (no Level-2 dispatch).
 
 Write your `rtl_modules[]` into one or more `.v` files of your choosing (one file
 may hold multiple modules). **STRICT Verilog-2001** — no SystemVerilog: not the `.sv`/`.svh`
-extension, and not SV-only constructs (`logic`/`always_ff`/`always_comb`/`typedef`/`enum`/
-`struct`/`interface`/`package`/…); `check-conformance`'s dialect gate rejects them and
-re-dispatches you to fix it. End the response with `STATUS: DONE` + a single JSON line, or
+extension (`check-conformance` rejects it and re-dispatches you, because the kernel's `rtl`
+selectors match `*.v` alone), and not SV-only constructs (`logic`/`always_ff`/`always_comb`/
+`typedef`/`enum`/`struct`/`interface`/`package`/…) — that half is your discipline, per
+`references/coding-rules.md`; no gate decides it. End the response with `STATUS: DONE` + a single JSON line, or
 `STATUS: BLOCKED <reason>` (e.g. `<child>.md §2 Interface incomplete`).
 
 ```json
