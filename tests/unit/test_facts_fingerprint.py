@@ -66,6 +66,44 @@ def test_cache_roundtrip_and_invalidation(tmp_path):
     assert facts.fingerprint_cached(f, tmp_path) != fp1
 
 
+def test_cache_file_is_parsed_at_most_once_per_process(tmp_path, monkeypatch):
+    # One `kernel.py status` makes ~80 fingerprint_cached calls over ~40 distinct paths.
+    # Parsing the whole cache per call costs more than the sha256 it saves on a small
+    # artifact, so the parse happens once and later calls hit the in-memory dict.
+    for name in ("a.v", "b.v"):
+        (tmp_path / name).write_text(name)
+    facts._LOADED.pop(str(tmp_path), None)
+    reads = []
+    orig_read = Path.read_text
+
+    def counting_read(self, *a, **k):
+        reads.append(self.name)
+        return orig_read(self, *a, **k)
+
+    monkeypatch.setattr(Path, "read_text", counting_read)
+    for _ in range(4):
+        for name in ("a.v", "b.v"):
+            facts.fingerprint_cached(tmp_path / name, tmp_path)
+    assert reads.count(".fingerprint-cache.json") == 1
+
+
+def test_cache_survives_across_processes(tmp_path, monkeypatch):
+    # The disk file is what lets the next kernel invocation skip re-hashing a large netlist
+    # or SDF, so a fresh process must hit on what this one wrote.
+    f = tmp_path / "a.v"
+    f.write_text("module a; endmodule\n")
+    fp = facts.fingerprint_cached(f, tmp_path)
+    facts._LOADED.clear()  # a fresh process: memo empty, disk file intact
+
+    def refuse(_path):
+        raise AssertionError(
+            "re-hashed a file the previous process already fingerprinted"
+        )
+
+    monkeypatch.setattr(facts, "fingerprint", refuse)
+    assert facts.fingerprint_cached(f, tmp_path) == fp
+
+
 def test_cached_symlink_not_followed_and_no_collision(tmp_path):
     # file-first then link
     root = tmp_path / "r1"

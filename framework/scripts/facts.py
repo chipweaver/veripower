@@ -71,14 +71,28 @@ def _cache_path(module_root: Path) -> Path:
     return module_root / ".fingerprint-cache.json"
 
 
+_LOADED: dict[str, dict] = {}
+
+
 def _load_cache(module_root: Path) -> dict:
-    try:
-        data = json.loads(_cache_path(module_root).read_text())
-    except (OSError, json.JSONDecodeError):
-        return {}
-    # Pure speed cache (§1.1/§5.1): valid JSON of the wrong shape (list/scalar root) is
-    # corruption — recompute, never crash. Per-entry shape is checked at the hit site.
-    return data if isinstance(data, dict) else {}
+    """The module's cache dict, parsed from disk at most once per process.
+
+    One `kernel.py status` calls fingerprint_cached ~80 times over ~40 distinct paths, so
+    re-reading and re-parsing the whole file per call would cost more than the sha256 it
+    saves on a small artifact, and half the calls repeat a path this process already hashed.
+    The returned dict is the live one: fingerprint_cached's writes land here and are written
+    through to disk, which is what lets the next process skip hashing a large netlist or SDF.
+    """
+    key = str(module_root)
+    if key not in _LOADED:
+        try:
+            data = json.loads(_cache_path(module_root).read_text())
+        except (OSError, json.JSONDecodeError):
+            data = {}
+        # Pure speed cache (§1.1/§5.1): valid JSON of the wrong shape (list/scalar root) is
+        # corruption — recompute, never crash. Per-entry shape is checked at the hit site.
+        _LOADED[key] = data if isinstance(data, dict) else {}
+    return _LOADED[key]
 
 
 def fingerprint_cached(path: Path, module_root: Path) -> str:
