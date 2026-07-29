@@ -41,12 +41,32 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name"],
+        "required": ["name", "feature", "test_id", "suites"],
         "additionalProperties": false,
         "properties": {
           "name": {"type": "string"},
-          "feature": {"type": "string"},
-          "test_id": {"type": "string"},
+          "feature": {
+            "description": "The features.json id this test exercises. Required: it is the key materialize-scaffold resolves feature_name through, and the only thing that makes a result traceable.",
+            "type": "string",
+            "minLength": 1
+          },
+          "test_id": {
+            "description": "Stable per-test identifier; the regression log keys results by it.",
+            "type": "string",
+            "minLength": 1
+          },
+          "suites": {
+            "description": "Which suites run this test. YOUR judgment as the plan author, not a script's: `make smoke` runs the smoke set, `make regress` runs everything. A smoke test is one whose failure means the design is broken badly enough that running the rest is pointless — pick them by that, not by position in the list.",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"enum": ["smoke", "regress"]}
+          },
+          "feature_name": {
+            "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the matching features.json entry's `name`, verbatim. It is what the Feature column of case-results-summary.md prints, so a human reads this rather than a bare id.",
+            "type": "string",
+            "minLength": 1
+          },
           "seqs": {"type": "array", "items": {"type": "string"}}
         }
       }

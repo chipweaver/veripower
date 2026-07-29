@@ -242,7 +242,12 @@
         "tpu_top_data_in_stream_seq",
         "tpu_top_start_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "smoke",
+        "regress"
+      ],
+      "feature_name": "2×2 weight-stationary MAC array"
     },
     {
       "name": "tpu_top_full_compute_test",
@@ -253,7 +258,11 @@
         "tpu_top_data_in_stream_seq",
         "tpu_top_start_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "regress"
+      ],
+      "feature_name": "2×2 weight-stationary MAC array"
     },
     {
       "name": "tpu_top_skew_align_test",
@@ -262,7 +271,11 @@
       "seqs": [
         "tpu_top_data_in_stream_seq",
         "tpu_top_start_seq"
-      ]
+      ],
+      "suites": [
+        "regress"
+      ],
+      "feature_name": "Systolic input skew alignment"
     },
     {
       "name": "tpu_top_fifo_test",
@@ -274,7 +287,11 @@
         "tpu_top_fifo_boundary_seq",
         "tpu_top_start_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "regress"
+      ],
+      "feature_name": "8-entry input/result FIFOs"
     },
     {
       "name": "tpu_top_apb_regfile_test",
@@ -283,7 +300,12 @@
       "seqs": [
         "tpu_top_apb_weight_load_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "smoke",
+        "regress"
+      ],
+      "feature_name": "APB-style register file (weight load + result read-back)"
     },
     {
       "name": "tpu_top_counter_ctrl_test",
@@ -294,7 +316,11 @@
         "tpu_top_data_in_stream_seq",
         "tpu_top_start_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "regress"
+      ],
+      "feature_name": "`start`/counter control sequence and `done` generation (critical timing lock)"
     },
     {
       "name": "tpu_top_rerun_test",
@@ -306,7 +332,11 @@
         "tpu_top_start_seq",
         "tpu_top_rerun_seq",
         "tpu_top_apb_result_read_seq"
-      ]
+      ],
+      "suites": [
+        "regress"
+      ],
+      "feature_name": "`start`/counter control sequence and `done` generation (critical timing lock)"
     }
   ],
   "rm": {

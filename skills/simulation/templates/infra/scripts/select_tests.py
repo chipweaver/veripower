@@ -2,7 +2,7 @@
 """Select tests from testlist.json by mode (smoke / regress / single).
 
 Output: one pipe-delimited row per selected test:
-    {test_id}|{uvm_testname}|{feature_id}|{class}
+    {test_id}|{uvm_testname}|{feature_id}
 
 Modes:
 - single  → match by test_id OR uvm_testname (first match wins)
@@ -44,7 +44,7 @@ def main() -> int:
     if not selected:
         return 2
     for t in selected:
-        print("{test_id}|{uvm_testname}|{feature_id}|{class}".format(**t))
+        print("{test_id}|{uvm_testname}|{feature_id}".format(**t))
     return 0
 
 

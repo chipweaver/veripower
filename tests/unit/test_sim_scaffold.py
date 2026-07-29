@@ -32,7 +32,16 @@ SPEC = {
         },
     ],
     "sequences": [{"name": "smoke", "agent": "drv"}],
-    "tests": [{"name": "t_smoke", "seqs": ["smoke"], "feature": "F-1"}],
+    "tests": [
+        {
+            "name": "t_smoke",
+            "seqs": ["smoke"],
+            "feature": "F-1",
+            "test_id": "T-1",
+            "suites": ["smoke", "regress"],
+            "feature_name": "Register write path",
+        }
+    ],
     "scoreboard": {"compare_txn": "m_obs_txn"},
     "rm": {"inports": ["m_drv_txn"]},
 }
@@ -78,15 +87,35 @@ def test_render_scaffold_full_tree(tmp_path):
     assert (out / "tests/testlist.json").is_file()
 
 
-def test_testlist_field_format_and_smoke_budget(tmp_path):
+def test_testlist_carries_the_authored_suites_and_feature_name(tmp_path):
+    # Nothing here is invented: suites is the plan author's judgment and feature_name is
+    # injected by materialize-scaffold from features.json. This verb only copies them.
     r, out = _render_via_cli(tmp_path)
     tl = json.loads((out / "tests/testlist.json").read_text())
     assert tl["module"] == "m" and tl["top"] == "m_top"
     entry = tl["tests"][0]
-    for k in ("test_id", "uvm_testname", "feature_id", "class", "suites", "seqs"):
-        assert k in entry
+    assert set(entry) == {
+        "test_id",
+        "uvm_testname",
+        "feature_id",
+        "feature_name",
+        "suites",
+        "seqs",
+    }
     assert entry["uvm_testname"] == "m_t_smoke_test"
-    assert "smoke" in entry["suites"]  # first 2 tests get smoke
+    assert entry["suites"] == SPEC["tests"][0]["suites"]
+    assert entry["feature_name"] == SPEC["tests"][0]["feature_name"]
+    assert entry["feature_name"] != entry["feature_id"]
+
+
+def test_testlist_missing_authored_field_fails_loud(tmp_path):
+    import copy
+
+    spec = copy.deepcopy(SPEC)
+    del spec["tests"][0]["suites"]
+    r, out = _render_via_cli(tmp_path, spec=spec)
+    assert r.returncode != 0
+    assert "suites" in r.stderr
 
 
 def test_obs_name_strip_wires_rm_and_scoreboard(tmp_path):

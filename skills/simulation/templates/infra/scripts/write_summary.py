@@ -34,7 +34,7 @@ def load_results(log_path):
     """Parse regression-log.txt and return list of result dicts.
 
     Stable RESULT line format (see run_vcs_regression.sh):
-        RESULT <test_id> <PASS|FAIL|MANUAL_REVIEW> feature=<id> class=<cls> [...]
+        RESULT <test_id> <PASS|FAIL|MANUAL_REVIEW> feature=<id> [...]
     """
     if not log_path.is_file():
         sys.exit(
@@ -42,7 +42,7 @@ def load_results(log_path):
         )
     results = []
     pattern = re.compile(
-        r"^RESULT\s+(\S+)\s+(PASS|FAIL|MANUAL_REVIEW)\s+feature=(\S+)\s+class=(\S+)(?:\s+.*)?$"
+        r"^RESULT\s+(\S+)\s+(PASS|FAIL|MANUAL_REVIEW)\s+feature=(\S+)(?:\s+.*)?$"
     )
     for line in log_path.read_text(encoding="utf-8").splitlines():
         match = pattern.match(line.strip())
@@ -52,7 +52,6 @@ def load_results(log_path):
                     "test_id": match.group(1),
                     "status": match.group(2),
                     "feature_id": match.group(3),
-                    "class": match.group(4),
                 }
             )
     return results

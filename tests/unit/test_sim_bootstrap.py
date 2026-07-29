@@ -173,7 +173,16 @@ def test_bootstrap_renders_scaffold_when_given(tmp_path):
             }
         ],
         "sequences": [{"name": "smoke", "agent": "drv"}],
-        "tests": [{"name": "t", "seqs": ["smoke"]}],
+        "tests": [
+            {
+                "name": "t",
+                "seqs": ["smoke"],
+                "feature": "F-1",
+                "test_id": "T-1",
+                "suites": ["regress"],
+                "feature_name": "Register write path",
+            }
+        ],
     }
     spec_path = wd.parent / "scaffold-specification.json"  # any readable path
     spec_path.parent.mkdir(parents=True, exist_ok=True)

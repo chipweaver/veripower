@@ -36,10 +36,27 @@ CLOCKS = [
 ]
 
 
-def _write(tmp_path, hints, scaffold, clocks=None, top_io=None):
+FEATURES = [
+    {
+        "id": "F-01",
+        "name": "Register write path",
+        "description": "d",
+        "mode_interface": "m",
+        "priority": "must",
+        "happy_path": "h",
+        "corner_cases": "c",
+        "negative_cases": "n",
+    }
+]
+
+
+def _write(tmp_path, hints, scaffold, clocks=None, top_io=None, features=None):
     """tmp_path doubles as the spec workdir: manifest + sidecars + check-hints/."""
     sc = tmp_path / "scaffold-specification.json"
     sc.write_text(json.dumps(scaffold))
+    (tmp_path / "features.json").write_text(
+        json.dumps(FEATURES if features is None else features)
+    )
     (tmp_path / "manifest.json").write_text(
         json.dumps({"module": "m", "children": [{"name": "c", "doc": "c.md"}]})
     )
@@ -312,3 +329,54 @@ def test_inline_idempotent_over_nonempty_covers(tmp_path):
     first = sc.read_text()
     _run(spec, sc)
     assert sc.read_text() == first  # re-materializing the inline is stable
+
+
+def _scaffold_with_tests(tests):
+    sc = _scaffold([{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}])
+    sc["tests"] = tests
+    return sc
+
+
+def test_feature_name_injected_from_features_json(tmp_path):
+    # The Feature column of case-results-summary.md is generated from this; before the
+    # injection existed the scaffold fabricated feature_name = feature, so that column was
+    # identically the FeatureID column.
+    sc_in = _scaffold_with_tests(
+        [{"name": "t1", "feature": "F-01", "test_id": "T-01", "suites": ["smoke"]}]
+    )
+    spec, sc = _write(tmp_path, HINTS, sc_in)
+    _run(spec, sc)
+    got = json.loads(sc.read_text())["tests"][0]
+    assert got["feature_name"] == "Register write path"
+    assert got["feature_name"] != got["feature"]
+
+
+def test_feature_name_unknown_id_fails_loud(tmp_path):
+    sc_in = _scaffold_with_tests(
+        [{"name": "t1", "feature": "F-99", "test_id": "T-01", "suites": ["regress"]}]
+    )
+    spec, sc = _write(tmp_path, HINTS, sc_in)
+    proc = _run(spec, sc, check=False)
+    assert proc.returncode != 0
+    assert "F-99" in proc.stderr
+
+
+def test_feature_name_absent_feature_fails_loud(tmp_path):
+    sc_in = _scaffold_with_tests(
+        [{"name": "t1", "test_id": "T-01", "suites": ["regress"]}]
+    )
+    spec, sc = _write(tmp_path, HINTS, sc_in)
+    proc = _run(spec, sc, check=False)
+    assert proc.returncode != 0
+    assert "feature" in proc.stderr
+
+
+def test_feature_name_reinjection_is_stable(tmp_path):
+    sc_in = _scaffold_with_tests(
+        [{"name": "t1", "feature": "F-01", "test_id": "T-01", "suites": ["smoke"]}]
+    )
+    spec, sc = _write(tmp_path, HINTS, sc_in)
+    _run(spec, sc)
+    first = sc.read_text()
+    _run(spec, sc)
+    assert sc.read_text() == first

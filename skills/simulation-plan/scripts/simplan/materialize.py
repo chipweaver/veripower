@@ -85,7 +85,32 @@ def _materialize_inline(check_hints: list, scaffold: dict) -> None:
         tp["inlined_check_hints"] = inlined
 
 
-def materialize(check_hints: list, scaffold: dict, clocks: list, ports: list) -> dict:
+def _inject_feature_names(scaffold: dict, features: list) -> None:
+    """Resolve each test's feature id to the authored features.json name.
+
+    An unresolvable id is a plan defect, not a missing optional: the Feature column of
+    case-results-summary.md is generated from this, and a bare id there is what this
+    injection exists to prevent.
+    """
+    by_id = {f["id"]: f["name"] for f in features if f.get("id")}
+    for test in scaffold.get("tests", []):
+        fid = (test.get("feature") or "").strip()
+        if not fid:
+            sys.exit(
+                f"materialize-scaffold: test {test.get('name', '<unnamed>')!r} has no "
+                f"'feature'. Every test names the features.json id it exercises."
+            )
+        if fid not in by_id:
+            sys.exit(
+                f"materialize-scaffold: test {test.get('name', '<unnamed>')!r} references "
+                f"unknown feature {fid!r}. Valid ids in features.json: {sorted(by_id)}."
+            )
+        test["feature_name"] = by_id[fid]
+
+
+def materialize(
+    check_hints: list, scaffold: dict, clocks: list, ports: list, features: list
+) -> dict:
     exclude = _clk_rst_signal_names(ports)
     by_group: dict[str, list[dict]] = {}
     for s in ports:
@@ -148,6 +173,7 @@ def materialize(check_hints: list, scaffold: dict, clocks: list, ports: list) ->
     scaffold["primary_clock"] = _derive_primary_clock(clocks)
     scaffold["reset"] = _derive_reset(ports)
     _materialize_inline(check_hints, scaffold)
+    _inject_feature_names(scaffold, features)
     return scaffold
 
 
@@ -160,7 +186,7 @@ def run(scaffold_path, spec_workdir) -> int:
     except json.JSONDecodeError as e:
         sys.exit(f"materialize-scaffold: {scaffold_path} is not valid JSON: {e}")
     sidecars = {}
-    for name in ("clocks.json", "top-io.json"):
+    for name in ("clocks.json", "top-io.json", "features.json"):
         path = spec / name
         try:
             sidecars[name] = json.loads(path.read_text(encoding="utf-8"))
@@ -173,7 +199,11 @@ def run(scaffold_path, spec_workdir) -> int:
     except HintsError as e:
         sys.exit(f"materialize-scaffold: {e}")
     scaffold = materialize(
-        check_hints, scaffold, sidecars["clocks.json"], sidecars["top-io.json"]
+        check_hints,
+        scaffold,
+        sidecars["clocks.json"],
+        sidecars["top-io.json"],
+        sidecars["features.json"],
     )
     scaffold_path.write_text(
         json.dumps(scaffold, indent=2, ensure_ascii=False), encoding="utf-8"

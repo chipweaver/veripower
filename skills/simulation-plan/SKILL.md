@@ -76,13 +76,15 @@ Trigger context + revision highlights.
 ### `scaffold-specification.json` fields
 
 You author (judgment): `module`, `top`, `agents[]` `{name, mode, interface_groups}`,
-`sequences[]`, `tests[]`, `rm`, `scoreboard`, `testpoints[]` `{id, bins, intent, covers}`,
-`power_scenarios[]`, and `skipped_checks[]` `{check_id, reason}`.
+`sequences[]`, `tests[]` `{name, feature, test_id, suites, seqs}`, `rm`, `scoreboard`,
+`testpoints[]` `{id, bins, intent, covers}`, `power_scenarios[]`, and `skipped_checks[]`
+`{check_id, reason}`.
 
 Script-injected by `simplan materialize-scaffold` (do NOT hand-author): each agent's
-`interface.signals` (all group signals) + `transaction.fields` (clk/rst excluded), `primary_clock`, `reset`, and each
-`testpoints[].inlined_check_hints[]` (materialized from `covers[]` + the check hints,
-`implementation_detail = verbatim-if-present-else-summary`).
+`interface.signals` (all group signals) + `transaction.fields` (clk/rst excluded), `primary_clock`, `reset`,
+each `testpoints[].inlined_check_hints[]` (materialized from `covers[]` + the check hints,
+`implementation_detail = verbatim-if-present-else-summary`), and each `tests[].feature_name`
+(the matching `features.json` entry's `name`, resolved through `tests[].feature`).
 
 Full structural shape: [`references/scaffold-specification.schema.json`](references/scaffold-specification.schema.json);
 `simplan check-scaffold` fails loud with fix-oriented messages.
@@ -95,6 +97,15 @@ Authoring judgment the schema/validator cannot express:
   (one-to-one / one-to-many / many-to-one; scenario testpoints you invent use `covers: []`).
 - `skipped_checks[]`: any `check_hints[]` check_id covered by no testpoint MUST be listed here with
   a `reason` (e.g. `"static lint gate, no runtime testpoint"`), else the coverage gate fails.
+- `tests[].suites`: which suites run each test — `["smoke", "regress"]` or `["regress"]`.
+  `make smoke` is the fast pre-check, `make regress` runs everything. A **smoke** test is one
+  whose failure means the design is broken badly enough that running the rest is pointless
+  (the datapath itself, or the register path every other test loads its stimulus through).
+  Pick them by that, not by position in `tests[]` — most modules need two or three.
+- `tests[].feature`: the `features.json` id this test exercises. Required, and it must resolve:
+  `materialize-scaffold` reads the feature's real `name` through it, and that name is what the
+  Feature column of `case-results-summary.md` shows a human. A test whose id does not resolve
+  fails `materialize-scaffold` loud.
 
 ## Workflow
 

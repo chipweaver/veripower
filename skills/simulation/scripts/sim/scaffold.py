@@ -416,29 +416,28 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
 
     # --- testlist.json ---
     # Field format must match run_vcs_regression.sh:
-    #   "{test_id}|{uvm_testname}|{feature_id}|{class}".format(**test)
-    # Also needs: suites (["smoke","regress"] or ["regress"])
+    #   "{test_id}|{uvm_testname}|{feature_id}".format(**test)
     testlist_entries: list[dict] = []
-    smoke_budget = 2
     for test in tests:
         tname = test["name"]
-        feature = test.get("feature", "")
-        test_id = test.get("test_id", tname)
-        uvm_testname = f"{module}_{tname}_test"
-        # First N tests get smoke suite
-        if smoke_budget > 0:
-            suites = ["smoke", "regress"]
-            smoke_budget -= 1
-        else:
-            suites = ["regress"]
+        missing = [
+            k
+            for k in ("test_id", "feature", "feature_name", "suites")
+            if not test.get(k)
+        ]
+        if missing:
+            sys.exit(
+                f"scaffold: test {tname!r} is missing {missing}. Rerun simulation-plan: "
+                f"suites is authored there and feature_name is injected by "
+                f"materialize-scaffold; simplan check-scaffold requires all four."
+            )
         testlist_entries.append(
             {
-                "test_id": test_id,
-                "uvm_testname": uvm_testname,
-                "feature_id": feature,
-                "feature_name": feature,
-                "class": "happy",
-                "suites": suites,
+                "test_id": test["test_id"],
+                "uvm_testname": f"{module}_{tname}_test",
+                "feature_id": test["feature"],
+                "feature_name": test["feature_name"],
+                "suites": test["suites"],
                 "seqs": test.get("seqs", []),
             }
         )

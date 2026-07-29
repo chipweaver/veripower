@@ -51,7 +51,11 @@ there.
 
 Writes are confined to `tb/uvm/seq/*` + `tests/testlist.json` (Rule B). This is **not**
 pure append-only: Rule B may tune the constraint params of an **existing** seq, and testlist entries
-are appended (do not change the semantics of existing testlist entries). The env child's checker / RM
+are appended (do not change the semantics of existing testlist entries). An appended entry carries
+the same six fields the scaffold emits — `test_id`, `uvm_testname`, `feature_id`, `feature_name`,
+`suites`, `seqs` — copying `feature_id` / `feature_name` verbatim from the entry whose coverage gap
+it is closing; `write_summary.py` reads all six unconditionally, so an entry missing one aborts the
+summary. The env child's checker / RM
 / scaffold structure (driver / monitor / checker / refmodel / top / agent / env / test) is
 **read-only reference** in this wave — do not edit it; a regress failure rooted there routes out
 instead.
