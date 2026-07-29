@@ -182,17 +182,11 @@ def run(workdir, top: str | None = None) -> int:
         )
         return 1
 
-    # SDC source of truth, checked BEFORE the deploy: there is no template fallback, and a
-    # failure after copytree would leave the Makefile that the already-deployed guard above
-    # then refuses to redeploy over — the workdir would block its own retry.
-    #
-    # No fallback because the template constraints.sdc is a COMPLETE, runnable constraint set
-    # naming a clock `clk` at 10 ns and ports `clk`/`rst_n`. On a design whose clock port is
-    # anything else, `get_ports clk` matches nothing, the run is effectively unconstrained, and
-    # dc_shell reports a large positive slack — a PASSING PPA verdict derived from constraints
-    # nobody wrote, which is worse than no run at all. specification always emits
-    # constraints/<TOP>.sdc, so an absent one means a broken pipeline or a --top that does not
-    # match the manifest.
+    # Checked BEFORE the deploy: a failure after copytree would leave the Makefile that the
+    # already-deployed guard above then refuses to redeploy over — the workdir would block its
+    # own retry. Fail closed rather than fall back to any default constraint set: a run whose
+    # clock port matches nothing is unconstrained, and dc_shell then reports a large positive
+    # slack — a PASSING PPA verdict from constraints nobody wrote.
     user_sdc = Path(inputs["sdc"]) / "constraints" / f"{top}.sdc"
     if not user_sdc.is_file():
         _err(f"SDC source of truth not found: {user_sdc}")

@@ -835,9 +835,9 @@ def test_signoff_gate_blocks_on_out_of_band_added_input(tmp_path, monkeypatch):
 
 
 # ── §F: the fail path shares the pass path's condition 3 ──────────────────────
-# _fail_is_fresh used to reimplement conditions 2/3/4 and had drifted in two opposite
-# directions: anchored on the outcome instead of the dispatch (too loose) and missing the
-# live-pin conjunct (too tight). These pin the three scenarios that separate the two.
+# Condition 3 leans two ways when re-derived: anchored on the outcome instead of the dispatch
+# it is too loose, without the live-pin conjunct too tight. These pin the three scenarios that
+# separate them.
 
 
 def _pin_oracle(module, ref, fp="sha256:x", reason="endorse"):

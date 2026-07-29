@@ -2,7 +2,7 @@
 """The deployed regression-summary chain: select_tests.py and write_summary.py.
 
 Both are templates deployed into a simulation workdir, so nothing else in the suite executes
-them — a change to either was previously only checked by reading it. These run them.
+them. These do.
 
 The last test is the point of the file: `run_vcs_regression.sh` writes the RESULT line and
 write_summary.py parses it, across a language boundary, and the shell's own header says "DO NOT

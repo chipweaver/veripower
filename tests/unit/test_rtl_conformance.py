@@ -432,14 +432,10 @@ def test_dialect_sv_extension_fails(tmp_path):
 
 
 def test_dialect_gate_judges_the_extension_not_the_content(tmp_path):
-    # The gate used to scan 27 SystemVerilog-only reserved words inside .v files. It no longer
-    # does, and this pins that deliberately rather than leaving it to drift back: a `.v` file
-    # matches the kernel's `*.v` selectors whatever it contains — which is the entire failure
-    # the gate exists to prevent — and every downstream tool is configured to accept
-    # SystemVerilog (`analyze -format sverilog`, `vcs -sverilog`, SpyGlass `language_mode
-    # mixed`). A 27-word blacklist also could not stand in for a ~250-word language: a sample
-    # of 47 equally common SV-only words slipped past 43 of them. Writing V2001 stays a coding
-    # rule; it is not something this gate can decide.
+    # Pinned so a content scan does not drift back in: a `.v` file matches the kernel's `*.v`
+    # selectors whatever it contains — the entire failure this gate exists to prevent — and
+    # every downstream tool accepts SystemVerilog (`analyze -format sverilog`, `vcs -sverilog`,
+    # SpyGlass `language_mode mixed`). Writing V2001 is a coding rule, not this gate's call.
     _setup(
         tmp_path,
         [{"name": "only", "rtl_modules": ["top"]}],

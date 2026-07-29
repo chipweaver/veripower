@@ -215,13 +215,9 @@ def check_dialect(workdir, ledger) -> list:
     dependency graph — it did once, as the run-1 pipeline deadlock. That failure is about the
     EXTENSION, and this checks the extension.
 
-    It used to also scan for 27 SystemVerilog-only reserved words, on the same stated rationale.
-    That scan protected nothing: a `.v` file matches the glob whatever it contains, and every
-    downstream tool is configured to accept SystemVerilog anyway (`analyze -format sverilog`,
-    `vcs -sverilog`, SpyGlass `language_mode mixed`). It also could not do what it claimed —
-    a 47-word sample of equally common SV-only reserved words slipped past 43 of them, because
-    a 27-entry blacklist cannot stand in for a ~250-word language. Writing V2001 remains a
-    coding rule; it is not a thing this gate can decide.
+    The dialect INSIDE a `.v` file is a coding rule, not something this gate can decide: the
+    glob matches whatever the file contains, and every downstream tool accepts SystemVerilog
+    (`analyze -format sverilog`, `vcs -sverilog`, SpyGlass `language_mode mixed`).
 
     Scans the ledger's OWN files only, so the sim TB `.sv` is never in scope; non-HDL support
     files (.mem/.h/…) are ignored. A violation names its `child`, so the self-converge loop

@@ -108,11 +108,9 @@ def test_parse_three_components_missing(tmp_path):
 
 
 # ── annotation rate ──
-# The predecessor of this parser looked for "Annotated cell percentage = N%", a line real
-# report_switching_activity output does not contain, so it returned None on every real run
-# while its tests passed against hand-written text invented to match it. Hence the first
-# test here runs on the committed real report: a parser of vendor output is only tested
-# once it has met vendor output.
+# A parser of vendor output is only tested once it has met vendor output — hand-written text
+# can be invented to match whatever the regex happens to want. Hence the first test below runs
+# on the committed real report.
 
 _REAL_SA = (
     REPO_ROOT

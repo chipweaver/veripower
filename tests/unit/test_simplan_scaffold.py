@@ -386,9 +386,8 @@ from simplan import scaffold as sc_mod  # noqa: E402
 
 
 def test_agent_name_needs_no_unwrapping():
-    # The producer gate and the consumer resolve `observer` / `inports` by looking the value up
-    # in agents[] verbatim. There is no transform to keep byte-identical across the two skills,
-    # so a name that used to be mangled by the txn-wrapper strip now resolves.
+    # The producer gate and the consumer both resolve `observer` / `inports` by looking the
+    # value up in agents[] verbatim — no transform to keep byte-identical across two skills.
     errs = sc_mod.semantic_errors(
         {
             "module": "m",

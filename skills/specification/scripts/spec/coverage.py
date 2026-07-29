@@ -5,16 +5,14 @@ Prints the verdict (JSON) to stdout with the `anchor_resolvability`, `frontmatte
 and `structure` sub-blocks.
 
 What this gate does NOT do, deliberately: judge whether design.md faithfully realizes the
-brainstorm. Three checks that tried — token survival over regex-extracted "hard tokens",
-a phrasing blacklist for by-reference jumps, and a per-chapter coverage census — were removed
-because each encoded a guess about the SHAPE of a human-authored dialogue, and each needed an
-escape hatch when the guess missed: a length cap, an English-only section-title exemption, a
-hand-written shared-subsection list. Fidelity is a semantic question against a reference frame,
-which is what the spec-review faithfulness lens is for; it now reads the whole brainstorm.
+brainstorm. That is a semantic question against a reference frame, so it belongs to the
+spec-review faithfulness lens, which reads the whole brainstorm. A deterministic check would
+have to guess the SHAPE of a human-authored dialogue, and every such guess needs an escape
+hatch the first time it misses.
 
-What survives here assumes nothing about the brainstorm's shape: that each child's anchor
-resolves (the reviewer's read-scope must be real), that frontmatter names resolve against the
-authored sidecars, and the cross-field relations JSON Schema cannot express.
+Nothing here assumes anything about that shape: each child's anchor resolves (the reviewer's
+read-scope must be real), frontmatter names resolve against the authored sidecars, and the
+cross-field relations JSON Schema cannot express.
 
 Usage: ``python3 scripts/spec/__main__.py check-coverage --workdir {workdir} --brainstorm <module-root-brainstorm.md>``
 Exit: 0 if `status == "pass"`, 1 if `status == "fail"`.

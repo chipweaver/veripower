@@ -1,15 +1,13 @@
 """sim._plan — read the simulation-plan sidecars this stage consumes.
 
-simulation-plan authors the plan as three files; this stage declares and reads two of them —
-`tb-scaffold.json` and `sequences.json`. `power-scenarios.json` is power-analysis's, and not
-declaring it is the point: a scenario-only edit must not invalidate a full compile + regress.
+simulation-plan authors the plan as three files; this stage declares and reads `tb-scaffold.json`
+and `sequences.json` (rules.py). They are merged into one dict because that is the shape the
+renderer and the thin-D1 gate operate on — `module` from one, `sequences[]` from the other, in
+the same walk.
 
-The two are merged into one dict because that is the shape the renderer and the thin-D1 gate
-operate on (`module` from one, `sequences[]` from the other, in the same walk).
-
-Not validated here: simulation-plan schema-validates each when it writes them, and a stage
-does not reach into another skill's references/ (skills stay decoupled). A defect at this
-point is a missing or unreadable file, which the caller reports.
+Not validated here: simulation-plan schema-validates each when it writes them, and a stage does
+not reach into another skill's references/ (skills stay decoupled). A defect at this point is a
+missing or unreadable file, which the caller reports.
 """
 
 from __future__ import annotations

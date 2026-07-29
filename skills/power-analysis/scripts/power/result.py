@@ -143,18 +143,14 @@ def parse_three_components(path: Path | str) -> dict[str, float] | None:
 
 # ── parse_annotation_rate ──────────────────────────────────────
 
-# `report_switching_activity` reports annotation provenance as a table, and prints the
-# same table twice — once under "Switching Activity Overview Statistics" and once under
-# "Static Probability Overview Statistics". Only the first describes toggle activity, so
-# the section header is the anchor; matching the first " Nets " row would be luck.
+# `report_switching_activity` prints the same table twice — under "Switching Activity Overview
+# Statistics" and under "Static Probability Overview Statistics". Only the first describes
+# toggle activity, so the section header is the anchor; matching the first " Nets " row would
+# be luck. That row is the aggregate, the "Nets Driven by" rows below partition it, and its
+# cells are `count(pct%)` ending in a bare Total.
 #
-#   Object Type   From Activity File (%)  From SSA (%)  …  Not Annotated(%)   Total
-#    Nets         155931(100.00%)         0(0.00%)      …  0(0.00%)           155936
-#
-# The " Nets " row is the aggregate; the "Nets Driven by" rows below partition it.
-# templates/scripts/ptpx.tcl reads the same row for its in-run "annotated 0%" gate; that one
-# needs only >0 so it uses the printed percentage. Anything learned about this table's shape
-# has to land in both — PT is the only host for the Tcl half, so they cannot share code.
+# templates/scripts/ptpx.tcl reads the same row for its in-run "annotated 0%" gate, needing
+# only >0. PT is the only host for the Tcl half, so anything learned here must land there too.
 _SWITCHING_SECTION_RE = re.compile(
     r"Switching\s+Activity\s+Overview\s+Statistics(?P<body>.*?)(?=Static\s+Probability|\Z)",
     re.IGNORECASE | re.DOTALL,

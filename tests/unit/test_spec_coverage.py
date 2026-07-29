@@ -37,8 +37,8 @@ def test_parse_anchor_garbage():
 # ── anchor resolvability: the gating reviewer's read-scope must resolve ────────
 # The spec-review faithfulness lens reads brainstorm.md at this anchor. An anchor that does
 # not resolve makes a GATING reviewer judge a child against blank or wrong text and report
-# "no findings" — silent in the direction that matters. This check assumes nothing about the
-# brainstorm's shape, which is why it survived the cut that removed the three checks that did.
+# "no findings" — silent in the direction that matters. It assumes nothing about the
+# brainstorm's shape.
 
 
 def _man(*anchors):
@@ -66,9 +66,8 @@ def test_anchor_resolvability_clean():
 
 
 def test_anchor_out_of_bounds_is_a_violation():
-    # Previously reachable but untested: the branch that catches an anchor pointing past the
-    # end of the file. A reviewer given lines 82-160 of a 109-line brainstorm reads a short
-    # tail and calls it the intent.
+    # A reviewer given lines 82-160 of a 109-line brainstorm reads a short tail and calls it
+    # the intent.
     r = compute_anchor_resolvability(_man("lines 82-160"), _bs(109))
     assert len(r["violations"]) == 1
     assert "does not resolve" in r["violations"][0]["error"]
@@ -101,9 +100,7 @@ def test_architecture_only_child_claims_nothing_and_is_allowed():
 
 
 def test_anchors_need_not_cover_the_brainstorm():
-    # Deliberate: the removed gap check demanded every chapter be claimed, which on a real
-    # module needed a hand-written exemption list naming 5 of 9 chapters. Uncovered lines are
-    # not a defect — the reviewer reads the whole document regardless.
+    # Uncovered lines are not a defect: the reviewer reads the whole document regardless.
     r = compute_anchor_resolvability(_man("lines 1-5"), _bs(500))
     assert r == {"violations": []}
 
@@ -826,7 +823,7 @@ def test_scenarios_blank_required_field_rejected(tmp_path):
     assert v and v[0]["at"].endswith(".expected")
 
 
-# ---------- F8: §5 SourceFeature aliases are no longer honored ----------
+# ---------- F8: §5 SourceFeature aliases are rejected ----------
 
 
 def test_source_feature_alias_is_rejected_not_reinterpreted():

@@ -3,6 +3,7 @@ import json
 import sys
 from pathlib import Path
 
+from simplan._plan import SIDECAR_NAMES
 from simplan.review import gate_verdict
 
 STAGE = "simulation-plan"
@@ -39,13 +40,7 @@ def enumerate_artifacts(workdir) -> list:
     """Fixed simulation-plan artifact set, present-only, with kinds (plan-review.json promotes
     per the SKILL plan-adequacy review). Never lists result.json (self) — the envelope schema forbids it."""
     workdir = Path(workdir)
-    fixed = [
-        "verification-plan.md",
-        "tb-scaffold.json",
-        "sequences.json",
-        "power-scenarios.json",
-        "plan-review.json",
-    ]
+    fixed = ["verification-plan.md", *SIDECAR_NAMES, "plan-review.json"]
     return [{"path": p} for p in fixed if (workdir / p).is_file()]
 
 

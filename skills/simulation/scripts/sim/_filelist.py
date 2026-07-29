@@ -27,8 +27,8 @@ def load_rtl_files(rtl_root) -> dict:
 def write_rtl_filelist(rtl_files: dict, dst, rtl_root: str) -> None:
     """One `+incdir+` line per include dir, then one path per RTL file.
 
-    Children are emitted in name order and files in their declared order within a child,
-    matching what the upstream text filelist used to emit.
+    Children are emitted in name order and files in their declared order within a child, so
+    the compile order is deterministic.
     """
     incdirs: list[str] = []
     files: list[str] = []

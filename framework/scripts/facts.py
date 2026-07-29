@@ -358,12 +358,11 @@ def proof_fresh_except_verdict(
 
     proof_valid adds `verdict == pass`; schedule._fail_is_fresh adds the transitive
     input-closure check. Both ask the same question of these three conditions, so they ask it
-    here. The fail path used to carry its own copy of condition 3 and the two had drifted in
-    OPPOSITE directions: it anchored on the outcome instead of the dispatch (too loose — a bare
-    re-reap whitewashed a stale fail into a fresh one, and the scheduler then dispatched
-    upstream rework on a verdict whose judge had just been reopened), and it omitted the
-    live-pin conjunct (too tight — a re-pinned oracle made a genuinely fresh fail look stale,
-    losing the repair path). A deliberate semantic would not lean both ways at once.
+    here — and condition 3 is the one that must not be re-derived per caller, because it leans
+    two ways: anchored on the outcome instead of the dispatch it is too loose (a bare re-reap
+    whitewashes a stale fail, and the scheduler then dispatches upstream rework on a verdict
+    whose judge was just reopened); without the live-pin conjunct it is too tight (a re-pinned
+    oracle makes a genuinely fresh fail look stale, losing the repair path).
     """
     proof = next((p for p in outcome["proofs"] if p["name"] == proof_name), None)
     if proof is None:

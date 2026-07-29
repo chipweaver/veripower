@@ -1,15 +1,15 @@
-"""simplan._plan — the three authored plan sidecars, and the merge helper.
+"""simplan._plan — the plan's three sidecars: their names, their schemas, and the merge.
 
 `tb-scaffold.json` (what simulation builds the TB from), `sequences.json` (the roster both
-consumers read) and `power-scenarios.json` (power-analysis's alone) together hold everything
-the plan carries in machine form. They are split because their consumers are: simulation
-declares only the first two, so bundling the scenarios would make a power-scenario-only edit
-invalidate simulation's proof and force a full compile + regress it cannot even observe.
+consumers read) and `power-scenarios.json` (power-analysis's alone) together hold everything the
+plan carries in machine form. They are three files so each consumer declares only what it reads
+(rules.py).
 
-In memory the three are one dict, because that is the shape the referential-integrity checks
-operate on — `power_scenarios[].sequence_ref` and `tests[].seqs[]` both resolve against
-`sequences[]`. On disk they are three files, each validated against its own schema and each
-separately declarable as a downstream input.
+The name-to-schema table lives here rather than in either verb: materialize-scaffold runs before
+check-scaffold, so it must not import from the gate, and result.py enumerates the same set a
+third time. load_plan then merges them, because one dict is the shape the referential-integrity
+checks operate on — `power_scenarios[].sequence_ref` and `tests[].seqs[]` both resolve against
+`sequences[]`. Each file is still validated against its own schema on the way in.
 """
 
 from __future__ import annotations
@@ -29,6 +29,8 @@ _FILES = (
     (SEQUENCES_NAME, "sequences.schema.json", "sequences"),
     (SCENARIOS_NAME, "power-scenarios.schema.json", "power_scenarios"),
 )
+
+SIDECAR_NAMES = tuple(name for name, _, _ in _FILES)
 
 _REFERENCES = Path(__file__).resolve().parent.parent.parent / "references"
 
