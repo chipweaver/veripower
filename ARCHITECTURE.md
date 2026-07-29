@@ -356,7 +356,7 @@ flowchart TD
 
 ### 5.3 Fresh-failure disposition and the reliability gate
 
-A failure is only actionable while it is *fresh* (`schedule._fail_is_fresh`): its fail proof must be fresh in every respect except its verdict — recorded inputs and outputs still match disk, its oracle un-reopened, **and** every proof in its transitive `input_closure` currently valid. If the closure has a stale or missing proof, the upstream is still settling, so the failure is *stale* and defers to forward re-verification rather than being routed. (This uses artifact edges only — `sort_prereqs`/`ADVISORY_ORDER` never enter it.)
+A failure is only actionable while it is *fresh* (`schedule._fail_is_fresh`): its fail proof must be fresh in every respect except its verdict — `facts.proof_fresh_except_verdict`, conditions 2/3/4 of §4.4 exactly as the pass path applies them, so a reopened oracle invalidates a fail verdict on the same anchor and with the same live-pin exception it invalidates a pass one — **and** every proof in its transitive `input_closure` currently valid. If the closure has a stale or missing proof, the upstream is still settling, so the failure is *stale* and defers to forward re-verification rather than being routed. (This uses artifact edges only — `sort_prereqs`/`ADVISORY_ORDER` never enter it.)
 
 For a fresh failure, `_disposition` chooses one of three dispositions:
 

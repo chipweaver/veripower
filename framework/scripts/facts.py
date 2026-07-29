@@ -337,16 +337,22 @@ def oracle_grade(module: str, events: list[dict], rule) -> str:
     return "human" if live[-1]["content_fingerprint"] == current else "proposed"
 
 
-def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:
-    """spec §1.3: a proof is currently valid iff verdict==pass AND every recorded input
-    version matches disk AND its oracle ref was not reopened after the proof landed AND
-    every recorded output version matches disk (condition 4)."""
-    hit = _proof_outcome(events, proof_name)
-    if hit is None:
-        return False
-    idx, outcome = hit
-    proof = next(p for p in outcome["proofs"] if p["name"] == proof_name)
-    if proof["verdict"] != "pass":
+def proof_fresh_except_verdict(
+    module: str, events: list[dict], proof_name: str, idx: int, outcome: dict
+) -> bool:
+    """Conditions 2, 3 and 4 of §1.3 validity — everything except the verdict itself.
+
+    proof_valid adds `verdict == pass`; schedule._fail_is_fresh adds the transitive
+    input-closure check. Both ask the same question of these three conditions, so they ask it
+    here. The fail path used to carry its own copy of condition 3 and the two had drifted in
+    OPPOSITE directions: it anchored on the outcome instead of the dispatch (too loose — a bare
+    re-reap whitewashed a stale fail into a fresh one, and the scheduler then dispatched
+    upstream rework on a verdict whose judge had just been reopened), and it omitted the
+    live-pin conjunct (too tight — a re-pinned oracle made a genuinely fresh fail look stale,
+    losing the repair path). A deliberate semantic would not lean both ways at once.
+    """
+    proof = next((p for p in outcome["proofs"] if p["name"] == proof_name), None)
+    if proof is None:
         return False
     root = module_root(module)
     rule = rules.RULES[proof_name]
@@ -371,6 +377,20 @@ def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:
         if _reopened_after(events, oref, anchor) and not _live_pin_exists(events, oref):
             return False
     return True
+
+
+def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:
+    """spec §1.3: a proof is currently valid iff verdict==pass AND every recorded input
+    version matches disk AND its oracle ref was not reopened after the proof landed AND
+    every recorded output version matches disk (condition 4)."""
+    hit = _proof_outcome(events, proof_name)
+    if hit is None:
+        return False
+    idx, outcome = hit
+    proof = next(p for p in outcome["proofs"] if p["name"] == proof_name)
+    if proof["verdict"] != "pass":
+        return False
+    return proof_fresh_except_verdict(module, events, proof_name, idx, outcome)
 
 
 def stale_inputs(module: str, events: list[dict], rule: str) -> list[str]:

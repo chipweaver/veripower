@@ -831,3 +831,119 @@ def test_signoff_gate_blocks_on_out_of_band_added_input(tmp_path, monkeypatch):
     gate = facts.signoff_gate("m", facts.read_events("m"))
     assert gate is not None
     assert "new input" in gate.lower() and "sneaky.v" in gate
+
+
+# ── §F: the fail path shares the pass path's condition 3 ──────────────────────
+# _fail_is_fresh used to reimplement conditions 2/3/4 and had drifted in two opposite
+# directions: anchored on the outcome instead of the dispatch (too loose) and missing the
+# live-pin conjunct (too tight). These pin the three scenarios that separate the two.
+
+
+def _pin_oracle(module, ref, fp="sha256:x", reason="endorse"):
+    facts.append_event(
+        module,
+        {
+            "type": "pin",
+            "oracle_ref": ref,
+            "content_fingerprint": fp,
+            "provenance": "p",
+            "reason": reason,
+        },
+        TS,
+    )
+
+
+def _reopen_oracle(module, ref):
+    facts.append_event(
+        module, {"type": "reopen", "pin_ref": ref, "reason": "revoke"}, TS
+    )
+
+
+def _spec_fail_proof(module):
+    root = facts.module_root(module)
+    return [
+        {
+            "name": "specification",
+            "verdict": "fail",
+            "inputs": {"brainstorm.md": facts.fingerprint(root / "brainstorm.md")},
+            "oracle": {"ref": "spec-review", "grade": "proposed"},
+        }
+    ]
+
+
+def test_fail_stale_when_reopen_lands_during_the_run(tmp_path, monkeypatch):
+    # S1: the oracle is reopened between dispatch and outcome, so the verdict this run
+    # produced was judged by an oracle nobody stands behind by the time it lands.
+    monkeypatch.chdir(tmp_path)
+    _write("m", "brainstorm.md", "b1")
+    _pin_oracle("m", "spec-review")
+    _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:ignored"})
+    _reopen_oracle("m", "spec-review")
+    _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
+    events = facts.read_events("m")
+    idx, outcome = facts._proof_outcome(events, "specification")
+    assert not schedule._fail_is_fresh("m", events, "specification", idx, outcome)
+
+
+def test_fail_stays_stale_after_a_bare_re_reap(tmp_path, monkeypatch):
+    # S2: F5 on the fail path. A re-reap appends a later outcome for the SAME run — it
+    # re-executes nothing and re-pins nothing, so it must not launder the fail into a fresh
+    # one. Anchoring condition 3 on the dispatch is what makes the second outcome irrelevant.
+    monkeypatch.chdir(tmp_path)
+    _write("m", "brainstorm.md", "b1")
+    _pin_oracle("m", "spec-review")
+    _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:ignored"})
+    _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
+    _reopen_oracle("m", "spec-review")
+    _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))  # bare re-reap
+    events = facts.read_events("m")
+    idx, outcome = facts._proof_outcome(events, "specification")
+    assert not schedule._fail_is_fresh("m", events, "specification", idx, outcome)
+
+
+def test_fail_fresh_again_after_a_re_pin(tmp_path, monkeypatch):
+    # S3: the other direction. A human re-endorses the oracle after reopening it; the fail
+    # verdict is trustworthy again, so the repair path must come back rather than the fail
+    # being written off as stale.
+    monkeypatch.chdir(tmp_path)
+    _write("m", "brainstorm.md", "b1")
+    _pin_oracle("m", "spec-review")
+    _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:ignored"})
+    _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
+    _reopen_oracle("m", "spec-review")  # AFTER the outcome, so the old anchor saw it
+    _pin_oracle("m", "spec-review", fp="sha256:y", reason="re-endorse")
+    events = facts.read_events("m")
+    idx, outcome = facts._proof_outcome(events, "specification")
+    assert schedule._fail_is_fresh("m", events, "specification", idx, outcome)
+
+
+def test_re_reap_does_not_dispatch_upstream_rework(tmp_path, monkeypatch):
+    # The harm S2 causes once the failed rule routes somewhere. simulation-plan's failures
+    # route to specification, so laundering a stale fail into a fresh one sent a directive-
+    # carrying rework at the upstream design doc — on the authority of a simulation-plan
+    # verdict whose judge had just been reopened. Stale re-verifies simulation-plan itself.
+    monkeypatch.chdir(tmp_path)
+    _valid_chain_through_simulation("m")
+    root = facts.module_root("m")
+    plan_proof = [
+        {
+            "name": "simulation-plan",
+            "verdict": "fail",
+            "inputs": {
+                "Design/specification/design.md": facts.fingerprint(
+                    root / "Design/specification/design.md"
+                )
+            },
+            "oracle": {"ref": "plan-review", "grade": "proposed"},
+        }
+    ]
+    _pin_oracle("m", "plan-review")
+    _dispatch("m", "simulation-plan", 2, {"Design/specification/design.md": "sha256:i"})
+    _outcome("m", "simulation-plan", 2, "fail", {}, plan_proof)
+    _reopen_oracle("m", "plan-review")
+    _outcome("m", "simulation-plan", 2, "fail", {}, plan_proof)  # bare re-reap
+    a = schedule.decide("m")
+    assert a["action"] == "DISPATCH"
+    assert a["rule"] == "simulation-plan", (
+        f"a stale fail must re-verify its own rule, not rework upstream; got {a['rule']}"
+    )

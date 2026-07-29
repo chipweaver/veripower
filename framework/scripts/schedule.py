@@ -53,33 +53,15 @@ def _latest_fail(events: list[dict], rule: str) -> tuple[int, dict] | None:
 def _fail_is_fresh(
     module: str, events: list[dict], rule: str, idx: int, outcome: dict
 ) -> bool:
-    """§3.4 fresh failure = the fail proof is fresh EXCEPT its verdict: recorded inputs
-    match disk (condition 2), recorded outputs match disk (condition 4), oracle not
-    reopened since (condition 3), AND every proof in the TRANSITIVE input closure is
-    currently valid — closure has stale/missing = upstream still propagating, so the
-    fail is STALE and goes to forward re-verify instead. Artifact edges only:
+    """§3.4 fresh failure = the fail proof is fresh EXCEPT its verdict, AND every proof in the
+    TRANSITIVE input closure is currently valid — closure has stale/missing = upstream still
+    propagating, so the fail is STALE and goes to forward re-verify instead.
+
+    Conditions 2/3/4 are facts.proof_fresh_except_verdict, the same three the pass path uses;
+    that is the point of asking there rather than here. Artifact edges only:
     sort_prereqs/ADVISORY_ORDER must NEVER appear in this path (spec §2)."""
-    root = facts.module_root(module)
-    proof = next((p for p in outcome["proofs"] if p["name"] == rule), None)
-    if proof is None:
+    if not facts.proof_fresh_except_verdict(module, events, rule, idx, outcome):
         return False
-    # condition 2: own recorded inputs
-    for path, recorded in proof.get("inputs", {}).items():
-        if not facts.versions_match(
-            recorded, facts.fingerprint_cached(root / path, root)
-        ):
-            return False
-    # condition 4: own recorded outputs (hand-edited fail-run product = stale fail)
-    for path, recorded in outcome.get("outputs", {}).items():
-        if not facts.versions_match(
-            recorded, facts.fingerprint_cached(root / path, root)
-        ):
-            return False
-    # condition 3: oracle not reopened at/after this outcome's position
-    r = rules.RULES[rule]
-    if r.oracle and facts._reopened_after(events, proof["oracle"]["ref"], idx):
-        return False
-    # transitive input-closure proofs all valid (multi-hop propagation)
     for upstream in rules.input_closure(rule):
         ur = rules.RULES[upstream]
         if ur.proof and not facts.proof_valid(module, events, ur.proof):
