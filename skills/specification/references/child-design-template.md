@@ -48,9 +48,9 @@ Async interaction / back-pressure / error handling / exception paths (prose).
 
 ## §5 Verification Hints
 
-The hints live in `check-hints/<child>.md`'s JSON sibling — `check-hints/<child>.json`, one
-file per child because children are authored in parallel. Keep this section as a pointer to
-it; narrative about *why* a check exists belongs in §3 / §4.
+The hints live in `check-hints/<child>.json`, one file per child because children are authored
+in parallel. Keep this section as a pointer to it; narrative about *why* a check exists belongs
+in §3 / §4.
 
 Schema: `references/check-hints.schema.json`. A JSON array, one object per check:
 

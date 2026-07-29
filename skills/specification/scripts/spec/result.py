@@ -187,7 +187,7 @@ def build_result(workdir, module, ppa_targets, waived, status, fail_reason=None)
     """Assemble the lean specification result.json.
 
     pass path, in order: re-run derive_constraints() in-process: the promoted
-    SDC/SGDC are finalize's own regeneration from the current clocks.json + §1.4.1 table
+    SDC/SGDC are finalize's own regeneration from the current clocks.json + top-io.json
     (authoritative; Step 6 already generated them clean from the same source, so this
     BLOCKs only on an illegitimate post-Step-6 edit) → re-derive spec_gate from
     the on-disk spec-review.json and enforce the approve precondition (an unmet one

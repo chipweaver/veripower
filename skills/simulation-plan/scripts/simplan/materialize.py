@@ -1,13 +1,13 @@
 """The materialize-scaffold verb — fill scaffold-specification.json from the spec sidecars.
 
 Each agent in scaffold-specification.json is authored by the simulation-plan LLM as
-{name, mode, interface_groups:[...]} — group NAMES only (from design.md §1.4.1 Interface
-Group). This verb fills each agent's interface.signals + transaction.fields
+{name, mode, interface_groups:[...]} — group NAMES only (top-io.json interface_group
+values). This verb fills each agent's interface.signals + transaction.fields
 deterministically from top-io.json (grouped by interface_group), so the
 LLM never hand-transcribes signal names/widths. Clock/reset signals (identified by their
-gated §1.4.1 Role) are kept in interface.signals but excluded from transaction.fields —
+top-io.json role) are kept in interface.signals but excluded from transaction.fields —
 they must never be rand txn fields. It also derives primary_clock (from clocks.json
-relationship=="primary" clock) and reset (from the §1.4.1 role=="reset" interface) and
+relationship=="primary" clock) and reset (from the top-io.json role=="reset" entry) and
 writes them into the scaffold, and materializes each testpoints[].inlined_check_hints[]
 from the testpoint's covers[] + the authored check hints (implementation_detail =
 verbatim-if-present-else-summary). Fails loud (SystemExit) when an agent omits

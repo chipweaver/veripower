@@ -147,7 +147,7 @@ def check_top_integration(workdir, manifest, top, ledger, interconnects) -> list
         child_text[c["name"]] = _child_text(workdir, crec) if crec else ""
     text = child_text[
         topc["name"]
-    ]  # top-integration child RTL (for the §1.4.2 wire check)
+    ]  # top-integration child RTL (for the interconnects.json wire check)
     reachable, frontier = set(), [top]
     while frontier:
         mod = frontier.pop()

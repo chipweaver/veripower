@@ -117,21 +117,8 @@ def test_every_child_is_checked_not_just_the_first():
 
 # ---------- structure gate ----------
 
-_GOOD_DESIGN = (
-    "# m Design\n\n"
-    "### 1.3 Feature Table\n\n"
-    "The feature list lives in `features.json`.\n\n"
-    "#### 1.4.1 Top-Level IO\n\nPorts live in `top-io.json`.\n\n"
-    "#### 1.4.2 Inter-module Interconnects\n\nWires live in `interconnects.json`.\n\n"
-    "### 1.5 Interface Timing Scenarios\n\n"
-    "Scenario rows live in `timing-scenarios.json`.\n\n"
-    "### 1.6 Clocks and Frequencies\n\n"
-    "Clock definitions live in `clocks.json` (the sole numeric + relationship source).\n"
-)
-
-
-# compute_structure reads clocks.json out of the workdir, so the in-memory-design helpers
-# below need a throwaway workdir to hold it.
+# compute_structure reads every input out of the workdir's sidecars, so the helpers below
+# need a throwaway workdir to hold them.
 _DEFAULT_CLOCKS = [
     {
         "name": "clk",
@@ -210,27 +197,25 @@ def _clocks_wd(clocks=None, features=None, ports=None, wires=None):
     return d
 
 
-def _struct(design, manifest=None, clocks=None, features=None, ports=None, wires=None):
+def _struct(manifest=None, clocks=None, features=None, ports=None, wires=None):
     from spec import coverage as cc
 
     manifest = manifest or {
         "module": "m",
         "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
     }
-    return cc.compute_structure(
-        _clocks_wd(clocks, features, ports, wires), manifest, design
-    )
+    return cc.compute_structure(_clocks_wd(clocks, features, ports, wires), manifest)
 
 
 def test_structure_clean_passes():
-    s = _struct(_GOOD_DESIGN)
+    s = _struct()
     assert all(not v for v in s.values()), s
 
 
 def test_structure_rb_period_freq_mismatch():
     # 1000/100 = 10, not 8 — the one clock check the schema cannot express.
     bad = [{**_DEFAULT_CLOCKS[0], "period_ns": 8.0}]
-    assert _struct(_GOOD_DESIGN, clocks=bad)["period_violations"]
+    assert _struct(clocks=bad)["period_violations"]
 
 
 def test_structure_rf_clock_domain_not_in_clocks_json():
@@ -238,18 +223,18 @@ def test_structure_rf_clock_domain_not_in_clocks_json():
         _port("clk", "input", "clock"),
         _port("din", "input", "data", domain="clk_x"),
     ]
-    assert _struct(_GOOD_DESIGN, ports=bad)["clock_domain_violations"]
+    assert _struct(ports=bad)["clock_domain_violations"]
 
 
 def test_structure_children_zero_fails():
-    s = _struct(_GOOD_DESIGN, manifest={"module": "m", "children": []})
+    s = _struct(manifest={"module": "m", "children": []})
     assert s["manifest_violations"]
 
 
 def test_structure_no_clocks_json_does_not_cascade_domain_violations():
     # With clocks.json absent, do NOT emit a spurious clock_domain_violation for every
     # §1.4.1 row — that absence is derive-constraints' fail-loud to report.
-    s = _struct(_GOOD_DESIGN, clocks=_NO_CLOCKS)
+    s = _struct(clocks=_NO_CLOCKS)
     assert s["clock_domain_violations"] == []
 
 
@@ -265,7 +250,7 @@ _DEFAULT_HINTS = [
 
 
 def _struct_with_children(
-    design, child_bodies, clocks=None, features=None, hints=None, ports=None, wires=None
+    child_bodies, clocks=None, features=None, hints=None, ports=None, wires=None
 ):
     import json
 
@@ -280,7 +265,7 @@ def _struct_with_children(
         (hd / f"{n}.json").write_text(
             json.dumps(_DEFAULT_HINTS if hints is None else hints)
         )
-    return cc.compute_structure(wd, manifest, design, child_texts=child_bodies)
+    return cc.compute_structure(wd, manifest, child_texts=child_bodies)
 
 
 _CHILD_5 = (
@@ -294,33 +279,33 @@ _CHILD_5 = (
 def test_rc_uncovered_feature_fails():
     # features.json has F-00; the child's hints reference only F-99 → F-00 uncovered
     orphan = [{**_DEFAULT_HINTS[0], "source_feature": "F-99"}]
-    s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, hints=orphan)
+    s = _struct_with_children({"c": _CHILD_5}, hints=orphan)
     assert any("F-00" in g["feature_id"] for g in s["feature_coverage_gaps"])
 
 
 def test_rc_covered_feature_passes():
     bodies = {"c": _CHILD_5}  # references F-00
-    s = _struct_with_children(_GOOD_DESIGN, bodies)
+    s = _struct_with_children(bodies)
     assert s["feature_coverage_gaps"] == []
 
 
 def test_child_hint_missing_required_field_fails():
     lean = [{k: v for k, v in _DEFAULT_HINTS[0].items() if k != "reference_rule"}]
-    s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, hints=lean)
+    s = _struct_with_children({"c": _CHILD_5}, hints=lean)
     v = s["hint_column_violations"]
     assert v and v[0]["child"] == "c" and "reference_rule" in v[0]["error"]
 
 
 def test_child_hint_misspelled_key_fails():
     bad = [{**_DEFAULT_HINTS[0], "obserable": "y"}]
-    s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, hints=bad)
+    s = _struct_with_children({"c": _CHILD_5}, hints=bad)
     v = s["hint_column_violations"]
     assert v and "obserable" in v[0]["error"]
 
 
 def test_structure_clean_with_children_passes():
     # A fully-formed design + a conformant child §5 yields zero violations in ALL keys.
-    s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5})
+    s = _struct_with_children({"c": _CHILD_5})
     assert all(not v for v in s.values()), s
 
 
@@ -382,9 +367,6 @@ def test_end_to_end_multi_child_clean_workdir(tmp_path):
             }
         )
     )
-    (tmp_path / "design.md").write_text(
-        _GOOD_DESIGN
-    )  # the module-level fixture from earlier tasks
     (tmp_path / "features.json").write_text(json.dumps(_DEFAULT_FEATURES))
     (tmp_path / "clocks.json").write_text(json.dumps(_DEFAULT_CLOCKS))
     (tmp_path / "timing-scenarios.json").write_text(json.dumps(_DEFAULT_SCENARIOS))
@@ -450,7 +432,6 @@ def test_end_to_end_impure_top_child_fails(tmp_path):
             }
         )
     )
-    (tmp_path / "design.md").write_text(_GOOD_DESIGN)
     child = (
         '---\nchild: core_top\nparent: core\nbrainstorm_anchor: "lines 1-6"\n'
         "ports: []\nclocks: []\nfeatures:\n  - F-00\n---\n\n"
@@ -565,26 +546,9 @@ def test_purity_missing_module_field():
 
 # ---------- §1.4.2 interconnect completeness ----------
 
-_DESIGN_142 = (  # one fully-pinned §1.4.2 wire (Width + Clock Domain)
-    "# m Design\n\n"
-    "#### 1.4.2 Inter-module Interconnects\n\n"
-    "| Wire | Producer (RTL module) | Consumer (RTL module) | Width | Clock Domain "
-    "| Protocol | Timing Constraint | Notes |\n"
-    "|------|-----------------------|-----------------------|-------|--------------"
-    "|----------|-------------------|-------|\n"
-    "| score_S | pe_array | row_reduce | 32 | clk | stream | t | fp32 |\n\n"
-    "### 1.6 Clocks and Frequencies\n\n"
-    "Clock definitions live in `clocks.json` (the sole numeric + relationship source).\n"
-)
-
 
 def test_interconnect_clean_passes():
-    assert _struct(_DESIGN_142)["interconnect_violations"] == []
-
-
-def test_interconnect_n1_none_is_clean():
-    # _GOOD_DESIGN's §1.4.2 is the prose sentinel "(none — N=1)" with no table rows.
-    assert _struct(_GOOD_DESIGN)["interconnect_violations"] == []
+    assert _struct()["interconnect_violations"] == []
 
 
 def test_interconnect_missing_width_is_a_schema_violation():
@@ -598,7 +562,7 @@ def test_interconnect_missing_width_is_a_schema_violation():
             "clock_domain": "clk",
         }
     ]
-    s = _struct(_GOOD_DESIGN, wires=bad)
+    s = _struct(wires=bad)
     assert s["interconnects_schema_violations"]
     assert "width" in s["interconnects_schema_violations"][0]["error"]
 
@@ -614,16 +578,13 @@ def test_interconnect_clock_not_in_clocks_json():
             "clock_domain": "clk_x",
         }
     ]
-    iv = _struct(_GOOD_DESIGN, wires=bad)["interconnect_violations"]
+    iv = _struct(wires=bad)["interconnect_violations"]
     assert any(
         v.get("wire") == "score_S" and v.get("clock_domain") == "clk_x" for v in iv
     )
 
 
 # ---------- §1.4.1 top-IO Owner (deterministic) ----------
-
-
-_IO_DESIGN = "# m\n\n#### 1.4.1 Top-Level IO\n\nPorts live in `top-io.json`.\n"
 
 
 def _io_fm(name, ports):
@@ -648,10 +609,7 @@ def _driver(ports, bodies, manifest=None):
     from spec import coverage as cc
 
     return cc.compute_structure(
-        _clocks_wd(ports=ports),
-        manifest or _IO_MANIFEST,
-        _IO_DESIGN,
-        child_texts=bodies,
+        _clocks_wd(ports=ports), manifest or _IO_MANIFEST, child_texts=bodies
     )["top_io_driver_violations"]
 
 
@@ -694,7 +652,7 @@ def test_driver_owner_missing_is_a_schema_violation():
         "other": _io_fm("other", []),
     }
     st = cc.compute_structure(
-        _clocks_wd(ports=_row(None)), _IO_MANIFEST, _IO_DESIGN, child_texts=bodies
+        _clocks_wd(ports=_row(None)), _IO_MANIFEST, child_texts=bodies
     )
     assert st["top_io_schema_violations"]
     assert "owner" in st["top_io_schema_violations"][0]["error"]
@@ -745,7 +703,7 @@ def test_driver_skipped_without_child_texts():
     from spec import coverage as cc
 
     s = cc.compute_structure(
-        _clocks_wd(ports=_row("drv")), _IO_MANIFEST, _IO_DESIGN
+        _clocks_wd(ports=_row("drv")), _IO_MANIFEST
     )  # child_texts=None
     assert s["top_io_driver_violations"] == []
 
@@ -758,7 +716,6 @@ def test_driver_skipped_without_child_texts():
 
 def test_missing_children_key_clean_verdict(tmp_path):
     (tmp_path / "manifest.json").write_text(json.dumps({"module": "m"}))  # no children
-    (tmp_path / "design.md").write_text(_GOOD_DESIGN)
     bs = tmp_path / "brainstorm.md"
     bs.write_text("# A\nx\n")
     proc = subprocess.run(
@@ -824,7 +781,7 @@ def test_features_coverage_intent_optional(tmp_path):
 def test_empty_features_json_is_a_schema_violation_not_a_coverage_gap():
     # minItems 1. With no ids to cover, feature_coverage_gaps must stay quiet rather than
     # blame the children for a defect that belongs to features.json.
-    s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, features=[])
+    s = _struct_with_children({"c": _CHILD_5}, features=[])
     assert s["features_schema_violations"] and s["feature_coverage_gaps"] == []
 
 
@@ -834,7 +791,6 @@ def test_empty_features_json_is_a_schema_violation_not_a_coverage_gap():
 def _hints_workdir(tmp_path, hints, child_body="# c\n\nbody\n"):
     import json
 
-    (tmp_path / "design.md").write_text(_GOOD_DESIGN)
     (tmp_path / "c.md").write_text(child_body)
     (tmp_path / "features.json").write_text(json.dumps(_DEFAULT_FEATURES))
     (tmp_path / "clocks.json").write_text(json.dumps(_DEFAULT_CLOCKS))
@@ -889,6 +845,6 @@ def test_source_feature_alias_is_rejected_not_reinterpreted():
             "sourcefeature": "F-00",
         }
     ]
-    s = _struct_with_children(_GOOD_DESIGN, {"c": _CHILD_5}, hints=aliased)
+    s = _struct_with_children({"c": _CHILD_5}, hints=aliased)
     assert s["hint_column_violations"]
     assert any(g["feature_id"] == "F-00" for g in s["feature_coverage_gaps"])

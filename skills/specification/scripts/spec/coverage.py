@@ -202,12 +202,10 @@ def compute_frontmatter_subset(workdir: Path, manifest: dict) -> dict:
     }
 
 
-# ---------- structural gate (presence, gated columns, freq↔period, clock domain) ----------
+# ---------- structural gate (presence, gated fields, freq↔period, clock domain) ----------
 
 
-def compute_structure(
-    workdir: Path, manifest: dict, main_design_text: str, child_texts=None
-) -> dict:
+def compute_structure(workdir: Path, manifest: dict, child_texts=None) -> dict:
     """Cross-file and cross-field checks the sidecar schemas cannot express.
 
     Everything about one sidecar's own shape — required fields, types, enums, and the two
@@ -408,17 +406,13 @@ def run(workdir: str, brainstorm: str) -> int:
     # KeyError traceback from the downstream `manifest["children"]` accesses.
     manifest["children"] = manifest.get("children") or []
     brainstorm_text = Path(brainstorm).read_text(encoding="utf-8")
-    main_design_text = (workdir_p / "design.md").read_text(encoding="utf-8")
-
     child_bodies = {
         child["name"]: (workdir_p / child["doc"]).read_text(encoding="utf-8")
         for child in manifest["children"]
     }
     anchors = compute_anchor_resolvability(manifest, brainstorm_text)
     fm_sub = compute_frontmatter_subset(workdir_p, manifest)
-    struct = compute_structure(
-        workdir_p, manifest, main_design_text, child_texts=child_bodies
-    )
+    struct = compute_structure(workdir_p, manifest, child_texts=child_bodies)
     # Fold top-integration purity into the structure sub-block; the existing
     # `or any(struct.values())` in has_fail (below) picks it up — no has_fail change needed.
     struct["purity_violations"] = compute_purity(manifest)

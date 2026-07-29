@@ -71,25 +71,24 @@ the children divide the datapath belongs here.
 > event timeline, a sequencing, a co-assertion or mutual-exclusion among control strobes), that joint
 > contract MUST be stated **once** in the `##### 1.4.2.1` companion below, NOT left implicit in one
 > child's body (where sibling children and their per-child reviewers cannot see it).
-> - A behavior fully captured by a single wire's own row (a plain valid/ready handshake, a
+> - A behavior fully captured by a single wire's own entry (a plain valid/ready handshake, a
 >   single-clock latency) needs no companion.
 > - Form adapts to the module: a phase-sequenced datapath states an ordered operating-phase table;
->   a handshake/arbitration module states the co-assertion / mutual-exclusion rule in prose. Per-wire
->   `Timing Constraint` cells and control-bus `Encoding` symbols then reference the names declared in
->   the companion.
+>   a handshake/arbitration module states the co-assertion / mutual-exclusion rule in prose. A wire's
+>   `timing_constraint` and a control bus's `encoding` in `interconnects.json` then reference the
+>   names declared in the companion.
 > - This pins the *statement* of the contract and the *resolvability* of references to it; the
 >   *correctness* of the co-assertions / relative offsets / mutual-exclusion is design judgment
 >   (advisory soundness + downstream RTL/sim), not pinned here.
 
 ##### 1.4.2.1 Inter-module Behavior Contract
 
-Present **only** when §1.4.2 wires share a joint contract (see the Inter-module Behavior Contract
-rule above); omit entirely otherwise. Place it here, **after** the §1.4.2 wire table and its column
-notes, so the §1.4.2 wire-table parse is unaffected.
+Present **only** when the `interconnects.json` wires share a joint contract (see the Inter-module
+Behavior Contract rule above); omit entirely otherwise.
 
 Worked example A — a **phase-sequenced datapath** states an ordered operating-phase timeline;
-control buses project onto it (each `Encoding` symbol names its canonical phase(s)) and per-wire
-`Timing Constraint` windows reference these phase names:
+control buses project onto it (each `encoding` symbol names its canonical phase(s)) and per-wire
+`timing_constraint` windows reference these phase names:
 
 | # | Phase | Cycles | Notes (projection / co-assertion / boundary, as applicable) |
 |---|-------|--------|-------------------------------------------------------------|
@@ -107,7 +106,7 @@ phase table). E.g. a TX/RX start mux:
 
 ### 1.5 Interface Timing Scenarios
 
-Subdivide by **interface group**; diagrams may be hand-drawn ASCII (preferred) / wavedrom / tool-exported image (rendering and textual-description requirements per §Rendering Conventions). Each scenario row's fields are also subject to "minimum field completeness."
+Subdivide by **interface group**; diagrams may be hand-drawn ASCII (preferred) / wavedrom / tool-exported image (rendering and textual-description requirements per §Rendering Conventions). Each scenario entry's fields are also subject to "minimum field completeness."
 
 #### Example: a configuration-port write transaction (hand-drawn ASCII)
 

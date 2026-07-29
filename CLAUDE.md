@@ -27,7 +27,7 @@ Per-module work tree under `asic/<module>/`:
 - `Design/specification/manifest.json` — child registry SSoT (every module, N≥1; contains `module` and `children[]` with `name` / `doc` / `rtl_modules[]` / `brainstorm_anchor`).
 - `Design/specification/ppa.json` — PPA targets emitted by specification; a declared input of `synthesis` and `power-analysis` (they read it themselves — nothing is injected into their prompts). `rtl-design` gets targets only via its Orchestrator-authored directive.
 - `Design/specification/spec-review.json` — gating per-child spec intent review (`faithfulness` vs brainstorm blocks; `conformance` vs the §1.4.x pinned Encoding + §1.4.2.1 inter-module behavior contract (encoding decode/adequacy + behavior-contract name-resolution) blocks; `soundness` — micro-arch realizability + observed cross-interface inconsistency — is advisory must-acknowledge) produced by specification's Step-7 semantic gate (schema `skills/specification/references/spec-review.schema.json`).
-- `Design/specification/<child>.md × N` — per-child sub-design (frontmatter + §1–§5 strong structure including 9-column §5 Verification Hints).
+- `Design/specification/<child>.md × N` — per-child sub-design (frontmatter + §1–§5 strong structure; §5 Verification Hints points to `check-hints/<child>.json`).
 
 Result-envelope schemas: `framework/references/schemas/`.
 
