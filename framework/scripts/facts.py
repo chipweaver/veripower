@@ -554,3 +554,67 @@ def signoff_gate(module: str, events: list[dict]) -> str | None:
             # trust boundary (the daily delivery/repair path keeps the cheap recorded-set check).
             return f"signoff blocked: {proof} has unverified new input(s) {added}"
     return None
+
+
+def signoff_basis(module: str, events: list[dict]) -> list[dict]:
+    """What the human is endorsing, per proof — the projection the signoff gate never showed.
+
+    The gate answers "may this be signed"; it says nothing about WHAT. Signoff is where a
+    human converts machine self-assessment into signoff-grade trust (ARCHITECTURE §2), and a
+    transfer of responsibility only holds if the person can see which proposition they are
+    taking on. Every field below is here because it participates in DEFINING that proposition,
+    and nothing is here merely because it was recorded:
+
+    - `oracle.grade` is the trust class. `tool` and `human` are different claims about the
+      same numbers, and which one this is decides what the signature adds.
+    - `oracle.pinned_fingerprint` (human grade only) is WHAT was endorsed. A pin names a
+      content fingerprint; without it "an oracle graded human" does not say human-endorsed
+      *what*.
+    - `tool_versions` — "timing meets" is not a claim about RTL, it is a claim about RTL under
+      a given library and tool. Recorded at reap from the environment, so it is the weaker of
+      the two homes tool identity has; the version the report itself states lives in that
+      stage's own result.json.
+    - `inputs` — the proposition is about these bytes. The paths say what the verdict was
+      about; their fingerprints are in the log, and the kernel re-checks them on every query,
+      so a reviewer does not re-verify by hand.
+
+    Nothing new is computed: this reads the event log the gate already reads. Order follows
+    FORWARD_PRIORITY, never a set — a signoff record whose row order varied by hash seed
+    would not be a record.
+    """
+    basis: list[dict] = []
+    for proof_name in rules.FORWARD_PRIORITY:
+        hit = _proof_outcome(events, proof_name)
+        if hit is None:
+            continue
+        _, outcome = hit
+        proof = next((p for p in outcome["proofs"] if p["name"] == proof_name), None)
+        if proof is None:
+            continue
+        rule = rules.RULES[proof_name]
+        oracle: dict = {"ref": rule.oracle[0] if rule.oracle else None}
+        oracle["grade"] = oracle_grade(module, events, rule) if rule.oracle else None
+        if oracle["grade"] == "human":
+            live = [
+                e
+                for i, e in enumerate(events)
+                if e["type"] == "pin"
+                and e["oracle_ref"] == rule.oracle[0]
+                and not any(
+                    r["type"] == "reopen" and r["pin_ref"] == rule.oracle[0]
+                    for r in events[i + 1 :]
+                )
+            ]
+            if live:
+                oracle["pinned_fingerprint"] = live[-1]["content_fingerprint"]
+        inputs = sorted(proof.get("inputs", {}))
+        basis.append(
+            {
+                "proof": proof_name,
+                "run": outcome["run"],
+                "oracle": oracle,
+                "tool_versions": outcome.get("tool_versions", {}),
+                "inputs": {"count": len(inputs), "paths": inputs},
+            }
+        )
+    return basis

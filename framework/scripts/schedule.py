@@ -333,6 +333,9 @@ def decide(
             reason = facts.signoff_gate(module, events)
             if reason is not None:
                 return {"action": "ESCALATE", "reason": reason}
+            # "go stamp" is where the human decides; hand them the proposition, not just
+            # the permission (facts.signoff_basis).
+            return {"action": "DONE", "basis": facts.signoff_basis(module, events)}
         return {"action": "DONE"}
     return {
         "action": "ESCALATE",

@@ -466,9 +466,17 @@ def cmd_signoff(module, provenance, reason):
     reason_blocked = facts.signoff_gate(module, events)
     if reason_blocked is not None:
         return {"ok": False, "error": reason_blocked}
+    # basis BEFORE the append: what is being endorsed is the state the gate just cleared,
+    # not the state that includes the endorsement.
+    basis = facts.signoff_basis(module, events)
     ev = {"type": "signoff", "provenance": provenance, "reason": reason}
     facts.append_event(module, ev, _now())
-    return {"ok": True, "module": module, "provenance": provenance}
+    return {
+        "ok": True,
+        "module": module,
+        "provenance": provenance,
+        "basis": basis,
+    }
 
 
 def cmd_status(module):

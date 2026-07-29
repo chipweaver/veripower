@@ -309,6 +309,15 @@ def test_signoff_close_end_to_end(tmp_path, monkeypatch):
     )
     assert s["ok"] is True
     assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is True
+    # and the verb hands back WHAT was signed, not just that it worked: every proof, its
+    # oracle's live grade, and for a human grade the fingerprint the pin named.
+    basis = {b["proof"]: b for b in s["basis"]}
+    assert set(basis) == set(a["basis"][i]["proof"] for i in range(len(a["basis"])))
+    for b in basis.values():
+        assert b["oracle"]["grade"] in ("tool", "human")
+        if b["oracle"]["grade"] == "human":
+            assert b["oracle"]["pinned_fingerprint"].startswith("sha256:")
+        assert b["inputs"]["count"] == len(b["inputs"]["paths"])
 
 
 def test_reopen_drops_a_landed_signoff(tmp_path, monkeypatch):

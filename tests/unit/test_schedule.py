@@ -946,3 +946,91 @@ def test_re_reap_does_not_dispatch_upstream_rework(tmp_path, monkeypatch):
     assert a["rule"] == "simulation-plan", (
         f"a stale fail must re-verify its own rule, not rework upstream; got {a['rule']}"
     )
+
+
+# ── §O: the gate says whether; the basis says what ────────────────────────────
+def _all_valid_and_pinned(module):
+    _build_all_valid(module, 1)
+    for rule in rules.FORWARD_PRIORITY:
+        if rules.RULES[rule].oracle[1] == "proposed":
+            _pin(module, rule)
+    assert facts.signoff_gate(module, facts.read_events(module)) is None
+
+
+def test_basis_covers_every_proof_in_forward_order(tmp_path, monkeypatch):
+    # A signoff record whose row order varied by hash seed would not be a record.
+    monkeypatch.chdir(tmp_path)
+    _all_valid_and_pinned("m")
+    basis = facts.signoff_basis("m", facts.read_events("m"))
+    assert [b["proof"] for b in basis] == list(rules.FORWARD_PRIORITY)
+
+
+def test_basis_grades_each_oracle_and_names_what_a_human_endorsed(
+    tmp_path, monkeypatch
+):
+    # The two things a signature rests on: which trust class each oracle is, and — for the
+    # human ones — the content fingerprint the pin actually named. "graded human" without
+    # the fingerprint does not say human-endorsed WHAT.
+    monkeypatch.chdir(tmp_path)
+    _all_valid_and_pinned("m")
+    events = facts.read_events("m")
+    by_proof = {b["proof"]: b for b in facts.signoff_basis("m", events)}
+    for rule_name, rule in rules.RULES.items():
+        if rule_name not in by_proof:
+            continue
+        o = by_proof[rule_name]["oracle"]
+        assert o["ref"] == rule.oracle[0]
+        assert o["grade"] in ("tool", "human")
+        if rule.oracle[1] == "proposed":
+            # pinned here, so human — and the fingerprint must be the oracle's CURRENT content
+            assert o["grade"] == "human"
+            assert o["pinned_fingerprint"] == facts.oracle_content_fp("m", rule)
+        else:
+            # a tool oracle is never pinned; claiming a fingerprint would invent an endorsement
+            assert o["grade"] == "tool"
+            assert "pinned_fingerprint" not in o
+
+
+def test_basis_drops_the_fingerprint_when_the_pin_is_reopened(tmp_path, monkeypatch):
+    # Withdrawing the endorsement must withdraw the claim that something was endorsed, not
+    # leave a stale fingerprint standing next to a downgraded grade.
+    monkeypatch.chdir(tmp_path)
+    _all_valid_and_pinned("m")
+    assert (
+        facts.signoff_basis("m", facts.read_events("m"))[0]["oracle"]["grade"]
+        == "human"
+    )
+    _reopen("m", rules.RULES["specification"].oracle[0])
+    spec = facts.signoff_basis("m", facts.read_events("m"))[0]
+    assert spec["oracle"]["grade"] == "proposed"
+    assert "pinned_fingerprint" not in spec["oracle"]
+
+
+def test_basis_names_the_input_set_each_verdict_was_about(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _all_valid_and_pinned("m")
+    events = facts.read_events("m")
+    by_proof = {b["proof"]: b for b in facts.signoff_basis("m", events)}
+    spec = by_proof["specification"]
+    assert spec["inputs"]["paths"] == ["brainstorm.md"]
+    assert spec["inputs"]["count"] == 1
+    # and it matches what the proof actually recorded, not a re-derivation from rules.py
+    _, outcome = facts._proof_outcome(events, "specification")
+    proof = next(p for p in outcome["proofs"] if p["name"] == "specification")
+    assert spec["inputs"]["paths"] == sorted(proof["inputs"])
+
+
+def test_decide_signoff_done_carries_the_basis(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _all_valid_and_pinned("m")
+    a = schedule.decide("m", objective="signoff")
+    assert a["action"] == "DONE"
+    assert [b["proof"] for b in a["basis"]] == list(rules.FORWARD_PRIORITY)
+
+
+def test_decide_signoff_escalate_carries_no_basis(tmp_path, monkeypatch):
+    # Nothing is being endorsed when the gate blocks; a basis there would read as an offer.
+    monkeypatch.chdir(tmp_path)
+    _build_all_valid("m", 1)  # proposed oracles -> gate blocks
+    a = schedule.decide("m", objective="signoff")
+    assert a["action"] == "ESCALATE" and "basis" not in a
