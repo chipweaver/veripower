@@ -213,3 +213,38 @@ def test_finalize_blocked_exit_2(tmp_path):
         str(DEFAULTS),
     )
     assert proc.returncode == 2
+
+
+# ── envelope shape of the two object arrays triage reads ──────────────────────
+_RESULT_SCHEMA = ROOT / "skills/simulation/references/result.schema.json"
+_CONF_SCHEMA = ROOT / "skills/simulation/references/conformance-review.schema.json"
+
+
+def _ss_props():
+    s = json.loads(_RESULT_SCHEMA.read_text())
+    return s["allOf"][1]["properties"]["stage_specific"]["properties"]
+
+
+def test_conformance_findings_mirrors_its_source_schema():
+    # finalize copies the gating subset of conformance-review.json's findings[] verbatim, so the
+    # envelope must not describe it more loosely than the file it came from — a severity or
+    # category the source rejects would otherwise become valid one file later.
+    mine = _ss_props()["conformance_findings"]["items"]
+    theirs = json.loads(_CONF_SCHEMA.read_text())["properties"]["findings"]["items"]
+    assert sorted(mine["required"]) == sorted(theirs["required"])
+    assert mine["additionalProperties"] is False
+    for field, spec in theirs["properties"].items():
+        if "enum" in spec:
+            assert mine["properties"][field]["enum"] == spec["enum"], field
+
+
+def test_failing_cases_pins_what_triage_reads():
+    # simulation-triage resolves run_logs/<test_id>.log and anchors Step 1 on error_message; both
+    # must be required, and the entry closed so a producer typo fails here rather than silently
+    # giving triage nothing to read.
+    item = _ss_props()["failing_cases"]["items"]
+    assert sorted(item["required"]) == ["error_message", "test_id"]
+    assert item["additionalProperties"] is False
+    assert (
+        "log_snippet" in item["properties"]
+    )  # optional: triage falls back to the full log

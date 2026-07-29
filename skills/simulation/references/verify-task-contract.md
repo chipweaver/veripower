@@ -87,6 +87,11 @@ instead.
   {"failure_phase": "coverage", "coverage_gaps": ["..."], "gaps_not_in_testpoints": ["..."]}
   ```
 
+  On a `regress` route-out each failing case is one `failing_cases[]` entry, and its shape is
+  pinned by `references/result.schema.json` — `test_id` (how triage reaches
+  `run_logs/<test_id>.log`) and `error_message` (its log anchor) are required, `log_snippet` is
+  optional. A misspelled key fails the envelope rather than leaving triage with nothing to read.
+
   (omit the failure fields on a clean pass; emit `stimulus_iterations` / coverage summary counts
   instead) — or `STATUS: BLOCKED <one-line reason>` on a program exception. `STATUS: BLOCKED` is a
   **harness-level** signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the

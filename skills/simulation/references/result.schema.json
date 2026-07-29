@@ -13,11 +13,44 @@
           "properties": {
             "failure_phase": {"type": "string", "enum": ["prerequisite", "compile", "smoke", "regress", "coverage", "conformance"]},
             "fail_reason": {"type": "string", "minLength": 1},
-            "failing_cases": {"type": "array", "items": {"type": "object"}},
+            "failing_cases": {
+              "description": "One entry per case that failed this run, written by the verify child and read by simulation-triage. The shape is declared here because the triage contract names these fields: without test_id it cannot reach run_logs/<test_id>.log, and error_message is the log anchor its Step-1 reasoning starts from.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["test_id", "error_message"],
+                "additionalProperties": false,
+                "properties": {
+                  "test_id": {"type": "string", "minLength": 1},
+                  "error_message": {"type": "string", "minLength": 1},
+                  "log_snippet": {
+                    "description": "Optional: the tail around the first UVM_ERROR / UVM_FATAL. Triage falls back to the full per-case log when it is absent or truncated.",
+                    "type": "string"
+                  }
+                }
+              }
+            },
             "coverage_gaps": {"type": "array", "items": {"type": "string"}},
             "gaps_not_in_testpoints": {"type": "array", "items": {"type": "string"}},
             "gaps_in_testpoints": {"type": "array", "items": {"type": "string"}},
-            "conformance_findings": {"type": "array", "items": {"type": "object"}}
+            "conformance_findings": {
+              "description": "The gating subset of conformance-review.json's findings[], copied verbatim by finalize. Same shape as its source (references/conformance-review.schema.json): re-declaring it here keeps the envelope from un-validating a structure that was validated one file earlier. `category` is the reasoning key simulation-triage attributes on when there is no log to anchor.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["tp_id", "severity", "category", "location", "summary"],
+                "additionalProperties": false,
+                "properties": {
+                  "tp_id": {"type": "string", "minLength": 1},
+                  "severity": {"enum": ["critical", "important", "minor"]},
+                  "category": {
+                    "enum": ["missing", "wrong-behavior", "fake-green", "unverifiable-arch", "intent-defect", "unavailable"]
+                  },
+                  "location": {"type": "string", "minLength": 1},
+                  "summary": {"type": "string", "minLength": 1}
+                }
+              }
+            }
           },
           "additionalProperties": true
         }
