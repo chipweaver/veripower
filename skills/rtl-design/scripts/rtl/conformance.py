@@ -110,55 +110,6 @@ def check_annotation_reality(workdir, ledger) -> list:
 # ---- interconnects.json wire names ----
 
 
-def _extract_section(text: str, heading_regex: str) -> str:
-    out, in_sec, depth = [], False, None
-    pat = re.compile(heading_regex)
-    for line in text.splitlines():
-        h = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
-        if h:
-            d = len(h.group(1))
-            if pat.search(h.group(2)):
-                in_sec, depth = True, d
-                continue
-            if in_sec and d <= depth:
-                break
-        if in_sec:
-            out.append(line)
-    return "\n".join(out)
-
-
-_PIPE = re.compile(r"(?<!\\)\|")
-
-
-def _split_row(line: str) -> list:
-    """Split a Markdown table row on UNescaped '|' (a literal pipe in a cell is
-    written '\\|'); unescape '\\|' -> '|' and trim each cell. Without honoring the
-    escape, a cell quoting a pipe over-splits and every column after it shifts right."""
-    parts = _PIPE.split(line.strip())
-    if parts and parts[0] == "":
-        parts = parts[1:]
-    if parts and parts[-1] == "":
-        parts = parts[:-1]
-    return [p.replace("\\|", "|").strip() for p in parts]
-
-
-def _table_rows(section_text: str) -> list:
-    rows, header = [], None
-    for line in section_text.splitlines():
-        if not line.strip().startswith("|"):
-            if header is not None:
-                break
-            continue
-        cells = _split_row(line)
-        if header is None:
-            header = cells
-            continue
-        if all(c.startswith("-") or c == "" for c in cells):
-            continue
-        rows.append(dict(zip(header, cells)))
-    return rows
-
-
 def _interconnect_wires(interconnects: list) -> list:
     """Wire names from interconnects.json. Every entry is a real cut edge — an N=1 module
     writes an empty array rather than a placeholder row, so there is nothing to exempt."""

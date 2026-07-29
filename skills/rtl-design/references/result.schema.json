@@ -32,7 +32,7 @@
                 "loci",
                 "spec_confidence"
               ],
-              "$comment": "Stores the validate-review verb's stdout verdict verbatim (no transform). flagged.category is the GATING subset {missing,wrong-behavior} -- kept in sync with _GATING_CATEGORIES in rtl/review.py; over-engineering/unavailable/minor never appear here. spec_confidence is the MINIMUM confidence over every fix_locus=spec finding (not just the gating subset), null if none -- rtl-design has no triage, so this is the sole upstream-route trust signal the kernel gets on a spec-locus trip (route.py).",
+              "$comment": "Stores the validate-review verb's stdout verdict verbatim (no transform). flagged.category is the GATING subset {missing,wrong-behavior}, the same set as _GATING_CATEGORIES in rtl/review.py -- their agreement is asserted by tests/unit/test_rtl_result.py, not left to this note; over-engineering/unavailable/minor never appear here. spec_confidence is the MINIMUM confidence over every fix_locus=spec finding (not just the gating subset), null if none -- rtl-design has no triage, so this is the sole upstream-route trust signal the kernel gets on a spec-locus trip (route.py).",
               "properties": {
                 "gate": {
                   "enum": [

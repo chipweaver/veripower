@@ -312,3 +312,20 @@ def test_finalize_cli_happy_path(tmp_path):
         "pass",
         "tpu_top",
     )
+
+
+def test_gating_categories_match_the_schema_enum():
+    # result.schema.json's $comment says flagged.category is "kept in sync with
+    # _GATING_CATEGORIES in rtl/review.py". That is the only thing that held them together;
+    # this is the check. A category added to one side and not the other would either be
+    # dropped from the envelope or rejected by it.
+    from rtl.review import _GATING_CATEGORIES
+
+    schema = json.loads(
+        (ROOT / "skills/rtl-design/references/result.schema.json").read_text()
+    )
+    ss = schema["allOf"][1]["properties"]["stage_specific"]["properties"]
+    enum = ss["semantic_gate"]["properties"]["flagged"]["items"]["properties"][
+        "category"
+    ]["enum"]
+    assert set(enum) == _GATING_CATEGORIES

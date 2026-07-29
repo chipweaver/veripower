@@ -7,7 +7,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/rtl-design/scripts/rtl/__main__.py"
 sys.path.insert(0, str(ROOT / "skills/rtl-design/scripts"))
-from rtl.conformance import _table_rows  # noqa: E402
 
 
 def _ann(sgdc=None, sdc=None):
@@ -27,13 +26,6 @@ def _ann(sgdc=None, sdc=None):
             **(sdc or {}),
         },
     }
-
-
-def test_table_rows_honors_escaped_pipe():
-    # A literal '|' inside a §1.4.2 cell is markdown-escaped as '\|' and MUST NOT split
-    # the column; the parser must unescape it back to '|'.
-    sec = "| Wire | Producer | Consumer |\n|---|---|---|\n| w1 | p \\| q | c1 |\n"
-    assert _table_rows(sec) == [{"Wire": "w1", "Producer": "p | q", "Consumer": "c1"}]
 
 
 def _write_state(d, ledger):
