@@ -292,14 +292,10 @@ def test_inline_falls_back_to_summary_when_verbatim_empty(tmp_path):
     _run(spec, sc)
     inlined = json.loads(sc.read_text())["testpoints"][0]["inlined_check_hints"][0]
     assert inlined["implementation_detail"] == "narrative only"
-    assert (
-        set(inlined.keys())
-        == {
-            "check_id",
-            "source_feature",
-            "implementation_detail",
-        }
-    )  # empty optionals dropped; source_feature always rides along for the feature trace
+    assert set(inlined.keys()) == {
+        "check_id",
+        "implementation_detail",
+    }  # all empty optionals dropped
 
 
 def test_inline_empty_covers_yields_empty_inline(tmp_path):

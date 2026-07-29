@@ -94,7 +94,6 @@ def test_build_result_pass_lean_shape(tmp_path):
     )
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
-    assert ss["top_module"] == "tpu_top"
     assert ss["semantic_gate"] == {
         "gate": "clear",
         "flagged": [],
@@ -195,7 +194,6 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "pass"
-    assert ss["top_module"] == "tpu_top"
     # semantic_gate — exact to the real run (clear: the one over-engineering finding never gates)
     assert ss["semantic_gate"] == {
         "gate": "clear",

@@ -13,27 +13,24 @@
           "additionalProperties": true,
           "properties": {
             "fail_reason":  {"type": "string", "minLength": 1},
+            "ppa_gate_skipped": {
+              "type": "boolean",
+              "description": "true when ppa_targets is empty (specification declared no power_mw target); status=pass is then vacuous, not a true PPA gate pass. Kept where the other write-only power fields went: it is not a record of what happened, it says WHICH proposition passed — 'power_mw <= target' with no target is a different claim, and a signoff reviewer endorsing it needs to see that."
+            },
             "failure_kind": {"type": "string", "enum": ["infra", "tooling", "ppa"], "description": "Failure category on status=fail. infra = external reference / trigger / license / bootstrap missing (GLS/PTPX not run); tooling = GLS/PTPX errors (failures[] populated with phase × category × error_summary); ppa = power_mw exceeds target."},
             "saif_artifacts": {
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["id", "saif_path", "canonical_path", "format", "corner_intent", "sequence_ref", "duration_cycles", "size_bytes"],
+                "required": ["id", "saif_path", "corner_intent", "sequence_ref", "duration_cycles"],
                 "properties": {
                   "id":              {"type": "string"},
                   "saif_path":       {"type": "string"},
-                  "canonical_path":  {"type": "string"},
-                  "format":          {"const": "saif"},
                   "corner_intent":   {"type": "string"},
                   "sequence_ref":    {"type": "string"},
-                  "duration_cycles": {"type": "integer", "minimum": 1},
-                  "size_bytes":      {"type": "integer", "minimum": 1}
+                  "duration_cycles": {"type": "integer", "minimum": 1}
                 }
               }
-            },
-            "ppa_gate_skipped": {
-              "type": "boolean",
-              "description": "true when ppa_targets is empty (specification declared no power_mw target); status=pass is then vacuous, not a true PPA gate pass."
             },
             "compile_info": {
               "type": "object",
@@ -89,7 +86,7 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["scenario_id", "power_mw", "internal_mw", "switching_mw", "leakage_mw", "toggle_rate", "toggle_region", "corner_intent", "sequence_ref", "analysis_mode"],
+                "required": ["scenario_id", "power_mw", "internal_mw", "switching_mw", "leakage_mw", "toggle_rate", "toggle_region", "corner_intent", "sequence_ref"],
                 "properties": {
                   "scenario_id":   {"type": "string"},
                   "power_mw":      {"type": ["number", "null"]},
@@ -99,8 +96,7 @@
                   "toggle_rate":   {"type": ["number", "null"]},
                   "toggle_region": {"type": ["string", "null"]},
                   "corner_intent": {"type": "string"},
-                  "sequence_ref":  {"type": "string"},
-                  "analysis_mode": {"const": "averaged"}
+                  "sequence_ref":  {"type": "string"}
                 }
               }
             }

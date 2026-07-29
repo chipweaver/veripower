@@ -105,8 +105,8 @@ Authoring judgment the schema/validator cannot express:
   agents feed the RM and which single one the scoreboard observes.
 - `testpoints[].covers[]`: cluster the `check-hints/<child>.json` check_ids into testpoints
   (one-to-one / one-to-many / many-to-one; scenario testpoints you invent use `covers: []`).
-  This clustering is also the feature trace: `feature_count` is the distinct `source_feature`
-  behind a testpoint's covered checks, so a `covers: []` testpoint traces to no feature.
+  The clustering is also what makes a testpoint traceable: a `covers: []` testpoint verifies no
+  authored check, so it traces to no feature — say so deliberately, do not use it as a default.
 - `testpoints[].intent`: what this testpoint drives and why. The downstream env and
   conformance-fix children read it as the intent source, so write the situation being created,
   not the check — `inlined_check_hints` already carries how each covered check is verified.

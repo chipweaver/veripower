@@ -111,17 +111,10 @@ def test_build_result_pass_lean_shape(tmp_path):
     )
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
-    # GOOD has 2 agents / 1 sequence / 1 test / 1 testpoint / 1 power_scenario
-    assert ss["testpoint_count"] == 1 and ss["power_scenario_count"] == 1
-    assert ss["feature_count"] == 1  # GOOD's one testpoint traces to F-01
-    assert ss["scaffold_summary"] == {
-        "agent_count": 2,
-        "sequence_count": 1,
-        "test_count": 1,
-    }
     assert ss["plan_adequacy_gate"] == {"gate": "clear", "flagged": [], "must_ack": []}
-    # lean shape: no narration when not passed; no fail_reason on pass
-    assert "revision" not in ss and "fail_reason" not in ss
+    # lean shape: the gate verdict is the whole of it. The scaffold-array counts this used to
+    # carry were re-derivable from the scaffold spec and read by nobody.
+    assert set(ss) == {"plan_adequacy_gate"}
 
 
 def test_build_result_fail_on_user_reject(tmp_path):
@@ -206,65 +199,17 @@ def test_build_result_gate_trip_fully_waived_is_pass(tmp_path):
     )  # human-gate narration carried
 
 
-# ── feature_count derivation (testpoint → covers[] → hint → source_feature) ──
-def _tp(tp_id, feats, covers=None):
-    return {
-        "id": tp_id,
-        "intent": "i",
-        "covers": covers
-        if covers is not None
-        else [f"CHK-{i}" for i in range(len(feats))],
-        "inlined_check_hints": [
-            {"check_id": f"CHK-{i}", "source_feature": f} for i, f in enumerate(feats)
-        ],
-    }
-
-
-def test_count_features_distinct_across_testpoints():
-    sc = {
-        "testpoints": [
-            _tp("TP-1", ["F-01"]),
-            _tp("TP-2", ["F-01"]),
-            _tp("TP-3", ["F-02"]),
-        ]
-    }
-    assert vs.count_features(sc) == 2  # F-01 counted once
-
-
-def test_count_features_distinct_within_one_testpoint():
-    # one testpoint clustering checks from two features traces to both
-    assert vs.count_features({"testpoints": [_tp("TP-1", ["F-01", "F-02"])]}) == 2
-
-
-def test_count_features_zero_without_testpoints():
-    assert vs.count_features({}) == 0
-    assert vs.count_features({"testpoints": []}) == 0
-
-
-def test_count_features_scenario_testpoint_traces_to_nothing():
-    # an invented scenario testpoint declares covers: [] — it verifies no authored check, so it
-    # traces to no feature. Counting it would claim spec coverage the plan does not have.
-    sc = {"testpoints": [_tp("TP-1", ["F-01"]), _tp("TP-SCENARIO", [], covers=[])]}
-    assert vs.count_features(sc) == 1
-
-
-def test_count_features_ignores_blank_source_feature():
-    sc = {"testpoints": [_tp("TP-1", ["F-01", "", "   "])]}
-    assert vs.count_features(sc) == 1
-
-
 # ── artifacts[] enumeration (fixed 3-entry set, present-only, no self-listing) ─
-def test_enumerate_artifacts_fixed_set_with_kinds(tmp_path):
+def test_enumerate_artifacts_fixed_set_present_only(tmp_path):
     wd = _finalize_workdir(tmp_path)
     arts = vs.enumerate_artifacts(wd)
-    by_path = {a["path"]: a.get("kind") for a in arts}
-    assert by_path == {
-        "verification-plan.md": "plan",
-        "scaffold-specification.json": "scaffold",
-        "plan-review.json": "plan-review",
-    }
-    assert "result.json" not in by_path
-    assert all((wd / p).is_file() for p in by_path)
+    assert [a["path"] for a in arts] == [
+        "verification-plan.md",
+        "scaffold-specification.json",
+        "plan-review.json",
+    ]
+    assert all(set(a) == {"path"} for a in arts)  # the path IS the identity
+    assert all((wd / a["path"]).is_file() for a in arts)
 
 
 # ── golden: lean shape + schema, against the real tpu_top run ────────────────
@@ -303,15 +248,6 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "pass"
-    # counts — EXACT to the real run (asic/tpu_top result.json:11-19)
-    assert ss["feature_count"] == 5  # F-01..F-05, traced through the inlined hints
-    assert ss["testpoint_count"] == 18  # len(scaffold.testpoints)
-    assert ss["power_scenario_count"] == 9  # len(scaffold.power_scenarios)
-    assert ss["scaffold_summary"] == {
-        "agent_count": 2,
-        "sequence_count": 9,
-        "test_count": 7,
-    }
     assert ss["plan_adequacy_gate"] == {"gate": "clear", "flagged": [], "must_ack": []}
     assert ss["revision"] == rev  # human-gate narration carried through
     # artifacts: the 3-entry set (plan-review.json staged → promoted)

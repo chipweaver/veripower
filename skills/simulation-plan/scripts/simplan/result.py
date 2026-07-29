@@ -36,47 +36,28 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def count_features(scaffold: dict) -> int:
-    """feature_count = distinct features the CURRENT testpoints trace to.
-
-    The trace runs testpoint → `covers[]` → check hint → `source_feature`, which
-    materialize-scaffold inlines into each testpoint, so the number is read off the same
-    structure the coverage gate checks. A scenario testpoint with `covers: []` traces to no
-    feature and contributes none — that is the honest reading of "features the testpoints
-    trace to", not an omission.
-    """
-    return len(
-        {
-            (h.get("source_feature") or "").strip()
-            for tp in scaffold.get("testpoints", [])
-            for h in tp.get("inlined_check_hints") or []
-            if (h.get("source_feature") or "").strip()
-        }
-    )
-
-
 def enumerate_artifacts(workdir) -> list:
     """Fixed simulation-plan artifact set, present-only, with kinds (plan-review.json promotes
     per the SKILL plan-adequacy review). Never lists result.json (self) — the envelope schema forbids it."""
     workdir = Path(workdir)
     fixed = [
-        ("verification-plan.md", "plan"),
-        ("scaffold-specification.json", "scaffold"),
-        ("plan-review.json", "plan-review"),
+        "verification-plan.md",
+        "scaffold-specification.json",
+        "plan-review.json",
     ]
-    return [{"path": p, "kind": k} for p, k in fixed if (workdir / p).is_file()]
+    return [{"path": p} for p in fixed if (workdir / p).is_file()]
 
 
 def build_result(workdir, module, *, waived, status, revision, fail_reason=None) -> int:
     """Assemble the lean simulation-plan result.json from the workdir.
 
-    pass path: re-derives the counts (scaffold arrays + distinct-F-NN in the plan md §3)
-    and the plan-adequacy gate verdict (gate_verdict over the on-disk plan-review.json)
-    in-process, and enforces the approve precondition (a tripped-and-unwaived gate
-    downgrades to a written status=fail).
+    pass path: re-derives the plan-adequacy gate verdict (gate_verdict over the on-disk
+    plan-review.json) in-process, and enforces the approve precondition (a tripped-and-unwaived
+    gate downgrades to a written status=fail). It carries no scaffold-array counts: they were
+    re-derivable from the scaffold spec and read by nobody.
 
     fail path (user reject, or an early-fail exit carrying fail_reason): NEVER reads the
-    plan/scaffold — an early-fail workdir may hold neither, and a raise here would turn
+    plan-review record — an early-fail workdir may hold none, and a raise here would turn
     a routable fail into a BLOCKED. plan_adequacy_gate is included iff plan-review.json
     is PRESENT — an absent record is the legitimate early-fail case (before the plan-adequacy review), but a
     present-and-corrupt record raises (finalize → exit 2), so corruption surfaces instead
@@ -128,9 +109,6 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
         )
         return 0
 
-    scaffold = json.loads(
-        (workdir / "scaffold-specification.json").read_text(encoding="utf-8")
-    )
     # Read as-is: review-vs-content freshness is a process invariant — the skill re-runs its
     # gate on the current plan before finalize (SKILL.md "Re-entry and completion"), not enforced here.
     review = json.loads((workdir / "plan-review.json").read_text(encoding="utf-8"))
@@ -147,14 +125,6 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
 
     if gate_ok:
         ss = {
-            "feature_count": count_features(scaffold),
-            "testpoint_count": len(scaffold.get("testpoints", [])),
-            "power_scenario_count": len(scaffold.get("power_scenarios", [])),
-            "scaffold_summary": {
-                "agent_count": len(scaffold.get("agents", [])),
-                "sequence_count": len(scaffold.get("sequences", [])),
-                "test_count": len(scaffold.get("tests", [])),
-            },
             "plan_adequacy_gate": gate,
         }
         artifacts = enumerate_artifacts(workdir)

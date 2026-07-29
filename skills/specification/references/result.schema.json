@@ -14,8 +14,7 @@
             "type": "object",
             "required": ["path"],
             "properties": {
-              "path":   {"type": "string", "minLength": 1},
-              "kind":   {"type": "string"}
+              "path":   {"type": "string", "minLength": 1}
             }
           }
         },

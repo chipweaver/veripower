@@ -70,7 +70,7 @@ def build_result(workdir, module, top, manifest) -> int:
     Re-derives the exit verdict in-process (status/fail_reason/artifacts, verbatim), then on a
     passing exit folds in the semantic gate via the pure compute_gate() (in-process, no subprocess,
     no schema-gate re-hit). A semantic gate=trip flips a passing exit to fail with a locus-tagged
-    fail_reason. Adds top_module, drops the free-text note. result.json is fully script-derived —
+    fail_reason, drops the free-text note. result.json is fully script-derived —
     no agent input (run narration lives in events.jsonl). Returns 0 (result.json written, pass or
     fail). A raise → main() exit 2 (BLOCKED). Field set per the field-necessity verdict (Task 0)."""
     workdir, manifest = Path(workdir), Path(manifest)
@@ -79,10 +79,7 @@ def build_result(workdir, module, top, manifest) -> int:
 
     if exit_v.get("status") != "pass":
         # topology / blocked-child fail — verbatim verdict; the semantic gate was never reached.
-        ss = {
-            "top_module": top,
-            "fail_reason": exit_v.get("fail_reason", "rtl exit gate failed"),
-        }
+        ss = {"fail_reason": exit_v.get("fail_reason", "rtl exit gate failed")}
         _write_result(
             workdir,
             _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
@@ -96,17 +93,13 @@ def build_result(workdir, module, top, manifest) -> int:
     gate = compute_gate(review)
     artifacts.append({"path": "semantic-review.json"})
     if gate.get("gate") == "trip":
-        ss = {
-            "top_module": top,
-            "semantic_gate": gate,
-            "fail_reason": _locus_fail_reason(gate),
-        }
+        ss = {"semantic_gate": gate, "fail_reason": _locus_fail_reason(gate)}
         _write_result(
             workdir,
             _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
         )
         return 0
-    ss = {"top_module": top, "semantic_gate": gate}
+    ss = {"semantic_gate": gate}
     _write_result(
         workdir,
         _envelope(module, status="pass", stage_specific=ss, artifacts=artifacts),

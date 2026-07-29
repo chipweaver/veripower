@@ -156,35 +156,31 @@ def compute_spec_gate(workdir: Path, waived: list) -> dict:
 
 
 def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
-    """Fixed specification artifact set, present-only, with kinds. NEVER lists brainstorm.md
+    """Fixed specification artifact set, present-only. NEVER lists brainstorm.md
     (module-root, outside the workdir — would break promote()) or result.json (self)."""
     workdir = Path(workdir)
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
     fixed = [
-        ("design.md", "design"),
-        ("manifest.json", "manifest"),
-        ("spec-review.json", "spec-review"),
-        (f"constraints/{top}.sdc", "sdc"),
-        (f"constraints/{top}.sgdc", "sgdc"),
-        ("ppa.json", "ppa"),
-        ("clocks.json", "clocks"),
-        ("features.json", "features"),
-        ("timing-scenarios.json", "timing-scenarios"),
-        ("top-io.json", "top-io"),
-        ("interconnects.json", "interconnects"),
+        "design.md",
+        "manifest.json",
+        "spec-review.json",
+        f"constraints/{top}.sdc",
+        f"constraints/{top}.sgdc",
+        "ppa.json",
+        "clocks.json",
+        "features.json",
+        "timing-scenarios.json",
+        "top-io.json",
+        "interconnects.json",
     ]
-    child_docs = [
-        (c["doc"], "child-design") for c in manifest.get("children", []) if c.get("doc")
-    ]
+    child_docs = [c["doc"] for c in manifest.get("children", []) if c.get("doc")]
     child_hints = [
-        (f"check-hints/{c['name']}.json", "check-hints")
+        f"check-hints/{c['name']}.json"
         for c in manifest.get("children", [])
         if c.get("name")
     ]
     return [
-        {"path": p, "kind": k}
-        for p, k in fixed + child_docs + child_hints
-        if (workdir / p).is_file()
+        {"path": p} for p in fixed + child_docs + child_hints if (workdir / p).is_file()
     ]
 
 

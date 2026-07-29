@@ -250,8 +250,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir}
 `artifacts[]`, verbatim) and folds in the semantic gate from `semantic-review.json` (its verdict =
 `stage_specific.semantic_gate`, verbatim — including `spec_confidence`, folded through unchanged); a
 `semantic_gate=trip` flips a passing exit-verdict to
-`status=fail` with a locus-tagged `fail_reason` (spec-rooted named first, else the rtl-local fallback — after §4.4's rtl-locus self-converge loop a pure rtl-locus trip has already converged to `clear` or failed via `assemble` blocked-child precedence before reaching this fold, so the reason folded here is normally spec-rooted). It adds
-`top_module` (= `manifest.module`, audit-only) and writes the complete envelope; the free-text run
+`status=fail` with a locus-tagged `fail_reason` (spec-rooted named first, else the rtl-local fallback — after §4.4's rtl-locus self-converge loop a pure rtl-locus trip has already converged to `clear` or failed via `assemble` blocked-child precedence before reaching this fold, so the reason folded here is normally spec-rooted). It writes the complete envelope; the free-text run
 narration is NOT in result.json (it belongs in events.jsonl). Exit 0 = result.json written (status pass
 or fail). A non-zero finalize exit is a program exception (BLOCKED).
 

@@ -248,12 +248,9 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
                 {
                     "id": sid,
                     "saif_path": f"saif/{sid}.saif",
-                    "canonical_path": f"saif/_dedup/{seq}.saif",
-                    "format": "saif",
                     "corner_intent": corner,
                     "sequence_ref": seq,
                     "duration_cycles": dur,
-                    "size_bytes": size,
                 }
             )
 
@@ -315,7 +312,6 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
                 "toggle_region": region,
                 "corner_intent": corner,
                 "sequence_ref": seq,
-                "analysis_mode": "averaged",
             }
         )
 
@@ -389,7 +385,7 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
 
 STAGE = "power-analysis"
 
-# These 7 keys (everything the sidecar carries except `verdict`) fold straight through.
+# Everything the sidecar carries except `verdict` folds straight through.
 _FOLD_KEYS = (
     "saif_artifacts",
     "compile_info",

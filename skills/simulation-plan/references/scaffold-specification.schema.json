@@ -131,16 +131,13 @@
             "type": "array"
           },
           "inlined_check_hints": {
-            "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the precise check semantics from the authored `check-hints/<child>.json`, materialized into this testpoint via its `covers[]`. `implementation_detail` is verbatim-if-present-else-summary; `source_feature` is what `feature_count` traces through.",
+            "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the precise check semantics from the authored `check-hints/<child>.json`, materialized into this testpoint via its `covers[]`. `implementation_detail` is verbatim-if-present-else-summary. The feature a testpoint traces to is NOT copied in: the plan-review reviewer resolves it from covers[] + the authored check hints, both of which it already reads.",
             "type": "array",
             "items": {
               "type": "object",
               "required": ["check_id"],
               "additionalProperties": true,
-              "properties": {
-                "check_id": {"type": "string"},
-                "source_feature": {"type": "string"}
-              }
+              "properties": {"check_id": {"type": "string"}}
             }
           }
         }

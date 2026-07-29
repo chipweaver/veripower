@@ -123,7 +123,7 @@ def test_build_result_pass_lean_shape(tmp_path):
     )  # PPA lives in the ppa.json sidecar, not the envelope
     assert "notes" not in ss and "fail_reason" not in ss  # lean shape
     assert json.loads((wd / "ppa.json").read_text()) == []  # sidecar written on pass
-    assert {"path": "ppa.json", "kind": "ppa"} in env["artifacts"]
+    assert {"path": "ppa.json"} in env["artifacts"]
 
 
 def test_build_result_override_writes_ppa_sidecar(tmp_path):
@@ -155,7 +155,7 @@ def test_build_result_reject_status_writes_fail(tmp_path):
 
 
 # ── artifacts[] enumeration tests (Task 3) ─────────────────────────────────
-def test_enumerate_artifacts_present_only_with_kinds(tmp_path):
+def test_enumerate_artifacts_present_only(tmp_path):
     wd = _spec_workdir(tmp_path)
     constraints.derive_constraints(
         wd
@@ -165,16 +165,20 @@ def test_enumerate_artifacts_present_only_with_kinds(tmp_path):
     m["children"].append({"name": "fifo", "doc": "fifo.md", "rtl_modules": ["fifo"]})
     (wd / "manifest.json").write_text(json.dumps(m))
     arts = result.enumerate_artifacts(wd, top="tpu_top")
-    by_path = {a["path"]: a.get("kind") for a in arts}
-    assert by_path["design.md"] == "design"
-    assert by_path["manifest.json"] == "manifest"
-    assert by_path["spec-review.json"] == "spec-review"
-    assert by_path["mac.md"] == "child-design" and by_path["fifo.md"] == "child-design"
-    assert by_path["constraints/tpu_top.sdc"] == "sdc"
-    assert by_path["constraints/tpu_top.sgdc"] == "sgdc"
-    assert by_path["clocks.json"] == "clocks"
-    assert "brainstorm.md" not in by_path and "result.json" not in by_path
-    assert all((wd / p).is_file() for p in by_path)  # present-only
+    paths = {a["path"] for a in arts}
+    assert {
+        "design.md",
+        "manifest.json",
+        "spec-review.json",
+        "mac.md",
+        "fifo.md",
+        "constraints/tpu_top.sdc",
+        "constraints/tpu_top.sgdc",
+        "clocks.json",
+    } <= paths
+    assert all(set(a) == {"path"} for a in arts)  # the path IS the identity
+    assert "brainstorm.md" not in paths and "result.json" not in paths
+    assert all((wd / p).is_file() for p in paths)  # present-only
 
 
 # ── golden test against the real tpu_top run (lean shape + γ-floor + schema) ─
