@@ -119,7 +119,7 @@ check_timing succeeded.
 def _write(tmp_path, text):
     rep = tmp_path / "timing-report.txt"
     rep.write_text(text)
-    return rep, tmp_path / "timing-actual.json"
+    return rep
 
 
 # ── parse-unit tests ─────────────────────────────────────────────────────────
@@ -153,9 +153,9 @@ def test_parse_coverage_defaults_zero_when_absent():
 
 # ── run() exit-code + verdict contract ─────────────────────────────────────────
 def test_run_clean_pass(tmp_path):
-    rep, out = _write(tmp_path, _SETUP_MET + _HOLD_MET + _CHECK_TIMING_CLEAN)
-    assert sp.run(rep, out) == 0
-    data = json.loads(out.read_text())
+    rep = _write(tmp_path, _SETUP_MET + _HOLD_MET + _CHECK_TIMING_CLEAN)
+    rc, data = sp.run(rep)
+    assert rc == 0
     assert data["verdict"] == "pass"
     assert data["violations"] == []
     assert data["timing"]["setup"]["met"] is True
@@ -164,9 +164,9 @@ def test_run_clean_pass(tmp_path):
 
 def test_run_marker_keyed_fail_on_displayed_zero(tmp_path):
     # F1: must FAIL despite hold slack displaying 0.00; actual ~ 0.00 here.
-    rep, out = _write(tmp_path, _SETUP_MET + _HOLD_VIOLATED_ZERO + _CHECK_TIMING)
-    assert sp.run(rep, out) == 0
-    data = json.loads(out.read_text())
+    rep = _write(tmp_path, _SETUP_MET + _HOLD_VIOLATED_ZERO + _CHECK_TIMING)
+    rc, data = sp.run(rep)
+    assert rc == 0
     assert data["verdict"] == "fail"
     assert data["timing"]["hold"]["met"] is False
     v = [x for x in data["violations"] if x["dim"] == "timing_hold"]
@@ -177,9 +177,9 @@ def test_run_marker_keyed_fail_on_displayed_zero(tmp_path):
 
 def test_run_negative_number_recorded_with_sig_digits4(tmp_path):
     # significant_digits=4: the recorded worst_slack_ns is the real negative value.
-    rep, out = _write(tmp_path, _SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING)
-    assert sp.run(rep, out) == 0
-    data = json.loads(out.read_text())
+    rep = _write(tmp_path, _SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING)
+    rc, data = sp.run(rep)
+    assert rc == 0
     assert data["timing"]["hold"]["worst_slack_ns"] < 0
     v = [x for x in data["violations"] if x["dim"] == "timing_hold"][0]
     assert v["actual"] < 0
@@ -187,25 +187,24 @@ def test_run_negative_number_recorded_with_sig_digits4(tmp_path):
 
 def test_run_coverage_recorded_not_gated(tmp_path):
     # 756 no-clock pins are recorded but do NOT change a passing verdict.
-    rep, out = _write(tmp_path, _SETUP_MET + _HOLD_MET + _CHECK_TIMING)
-    assert sp.run(rep, out) == 0
-    data = json.loads(out.read_text())
+    rep = _write(tmp_path, _SETUP_MET + _HOLD_MET + _CHECK_TIMING)
+    rc, data = sp.run(rep)
+    assert rc == 0
     assert data["verdict"] == "pass"
     assert data["timing"]["coverage"]["register_pins_no_clock"] == 756
 
 
 def test_run_missing_report_exit1(tmp_path):
-    out = tmp_path / "timing-actual.json"
-    assert sp.run(tmp_path / "nope.txt", out) == 1
-    assert not out.exists()
+    rc, payload = sp.run(tmp_path / "nope.txt")
+    assert rc == 1 and payload is None
 
 
 def test_run_no_slack_line_exit3(tmp_path):
     # A -delay max section present but with no slack line -> unparseable, never pass.
     broken = re.sub(r"slack \(MET\)\s+2\.93", "", _SETUP_MET)
-    rep, out = _write(tmp_path, broken + _HOLD_MET + _CHECK_TIMING_CLEAN)
-    assert sp.run(rep, out) == 3
-    assert not out.exists()
+    rep = _write(tmp_path, broken + _HOLD_MET + _CHECK_TIMING_CLEAN)
+    rc, payload = sp.run(rep)
+    assert rc == 3 and payload is None  # no verdict on a parse surprise
 
 
 def test_run_marker_vs_sign_contradiction_exit3(tmp_path):
@@ -215,9 +214,9 @@ def test_run_marker_vs_sign_contradiction_exit3(tmp_path):
         "slack (MET)                                        -0.5000",
         _SETUP_MET,
     )
-    rep, out = _write(tmp_path, contradiction + _HOLD_MET + _CHECK_TIMING_CLEAN)
-    assert sp.run(rep, out) == 3
-    assert not out.exists()
+    rep = _write(tmp_path, contradiction + _HOLD_MET + _CHECK_TIMING_CLEAN)
+    rc, payload = sp.run(rep)
+    assert rc == 3 and payload is None  # no verdict on a parse surprise
 
 
 def test_run_violated_marker_with_positive_slack_exit3(tmp_path):
@@ -228,9 +227,9 @@ def test_run_violated_marker_with_positive_slack_exit3(tmp_path):
         "slack (VIOLATED)                                     2.5000",
         _HOLD_MET,
     )
-    rep, out = _write(tmp_path, _SETUP_MET + contradiction + _CHECK_TIMING_CLEAN)
-    assert sp.run(rep, out) == 3
-    assert not out.exists()
+    rep = _write(tmp_path, _SETUP_MET + contradiction + _CHECK_TIMING_CLEAN)
+    rc, payload = sp.run(rep)
+    assert rc == 3 and payload is None  # no verdict on a parse surprise
 
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):
@@ -364,7 +363,7 @@ def test_parse_clock_port_first_sdc(tmp_path):
 
 
 def test_enumerate_artifacts_present_only_no_self(tmp_path):
-    for rel in ["run_sta.tcl", "config.tcl", "timing-report.txt", "timing-actual.json"]:
+    for rel in ["run_sta.tcl", "config.tcl", "timing-report.txt"]:
         (tmp_path / rel).write_text("x")
     (tmp_path / "result.json").write_text("{}")  # must NOT self-list
     paths = [a["path"] for a in sp.enumerate_artifacts(tmp_path)]
@@ -372,7 +371,6 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
         "run_sta.tcl",
         "config.tcl",
         "timing-report.txt",
-        "timing-actual.json",
     ]
     assert "result.json" not in paths
     assert all((tmp_path / p).is_file() for p in paths)  # only present files
@@ -423,7 +421,6 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "run_sta.tcl",
         "config.tcl",
         "timing-report.txt",
-        "timing-actual.json",
     ]
     assert "result.json" not in paths
     assert env["produced_at"].endswith("Z")

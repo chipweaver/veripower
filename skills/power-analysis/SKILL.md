@@ -96,7 +96,7 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 
   Write `status=fail` + `failure_kind` (`infra` for missing-reference/license; else `tooling`) + `failures[].{phase, category, error_summary}` + `fail_reason`. **Write only the failure facts (`phase` / `category`); do NOT assign any rework or routing target — target selection is owned downstream, outside this stage.**
 
-- **`make` exited 0** → run the parser's finalize subcommand; do not run the parser separately, fold `power-actual.json` by hand, or hand-assemble the envelope:
+- **`make` exited 0** → run the parser's finalize subcommand; do not run the parser separately or hand-assemble the envelope:
 
   ```bash
   python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
@@ -104,7 +104,7 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
     --scaffold <scaffold>/scaffold-specification.json
   ```
 
-  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against the targets it reads itself from the injected `ppa` location (`inputs.json`) — an absent file skips the gate), writes `power-actual.json`, folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against the targets it reads itself from the injected `ppa` location (`inputs.json`) — an absent file skips the gate), folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
   `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); `infra` (external reference / license missing) is written by the Step-1 pre-check before finalize runs, and on the `make`-non-zero VCS-compile triage above you also write the `failures[]`/`failure_kind` directly (the gate never runs there).
 
@@ -144,6 +144,6 @@ As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `
 - [`templates/scaffold/power_test.sv.tmpl`](templates/scaffold/power_test.sv.tmpl) — UVM test template (placeholders `MODULE` / `AGENT_NAME` / `SEQUENCE_REF` / `TOP` / `SCENARIO_ID` / `SCENARIO_DESC` / `DURATION_CYCLES`; contains `$set_gate_level_monitoring + $toggle_*`).
 - `scripts/power/__main__.py bootstrap` — bootstrap verb (invocation contract: Step 2 + `--help`).
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
-- `scripts/power/__main__.py finalize` — PT-PX report parser + PPA verdict verb (assembles `power-actual.json` then result.json; exit code is the pass/fail truth — mirrors the `synthesis` CLI's `finalize`; invocation contract: Step 3 + `--help`).
+- `scripts/power/__main__.py finalize` — PT-PX report parser + PPA verdict verb (parses, judges, then writes result.json; exit code is the pass/fail truth — mirrors the `synthesis` CLI's `finalize`; invocation contract: Step 3 + `--help`).
 - [`${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/references/power-scenarios-template.md`](../simulation-plan/references/power-scenarios-template.md) — `power_scenarios` field semantics.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.

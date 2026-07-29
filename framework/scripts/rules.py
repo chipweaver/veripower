@@ -193,7 +193,7 @@ RULES: dict[str, Rule] = {
             "netlist": ("Design/synthesis/out/*_syn.v",),
             "sdc": ("Design/synthesis/out/*_syn.sdc",),
         },
-        outputs=("timing-report.txt", "timing-actual.json"),
+        outputs=("timing-report.txt",),
         proof="timing-analysis",
         oracle=("pt-shell", "tool"),
         params=("directive",),

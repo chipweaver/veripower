@@ -14,7 +14,9 @@ Exit codes (each non-zero also prints a greppable FAIL=<token> on stderr):
      (MET with slack < -eps / VIOLATED with slack > +eps)  -> FAIL=unparseable
   2  usage error                                          -> ERROR: usage
 
-`timing-actual.json` is written ONLY on exit 0.
+The judged payload is returned in-process to build_result; it is not written to a sidecar,
+because result.json already carries every field of it and the only reader was one line below
+the write.
 
 FORMAT — grounded against pt2016 (M-2016.12-SP1) sdc_controller reports. Bare
 `report_timing -delay max|min` prints the worst path per group; each block ends in
@@ -121,20 +123,16 @@ def parse_coverage(text: str) -> dict:
     }
 
 
-def run(report_path, out_path) -> int:
+def run(report_path) -> tuple[int, dict | None]:
+    """Classify + judge. Returns (rc, payload); payload is None on any non-zero rc."""
     report_path = Path(report_path)
-    out_path = Path(out_path)
-
-    # Write-fresh-or-nothing.
-    if out_path.exists():
-        out_path.unlink()
 
     if not report_path.is_file():
         print(
             f"[timing finalize] FAIL=missing report not found: {report_path}",
             file=sys.stderr,
         )
-        return 1
+        return 1, None
 
     text = report_path.read_text(errors="replace")
     try:
@@ -145,7 +143,7 @@ def run(report_path, out_path) -> int:
             f"[timing finalize] FAIL=unparseable {exc}: {report_path}",
             file=sys.stderr,
         )
-        return 3
+        return 3, None
 
     coverage = parse_coverage(text)
 
@@ -175,9 +173,7 @@ def run(report_path, out_path) -> int:
         "timing": {"setup": setup, "hold": hold, "coverage": coverage},
         "violations": violations,
     }
-    out_path.write_text(json.dumps(payload, indent=2) + "\n")
-    sys.stdout.write(f"[timing finalize] Written: {out_path} (verdict={verdict})\n")
-    return 0
+    return 0, payload
 
 
 STAGE = "timing-analysis"
@@ -252,7 +248,6 @@ def enumerate_artifacts(workdir: Path) -> list:
         "run_sta.tcl",
         "config.tcl",
         "timing-report.txt",
-        "timing-actual.json",
     ]
     # envelope.schema forbids listing result.json itself; excluded by construction.
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
@@ -264,9 +259,8 @@ def build_result(workdir, module, top) -> int:
     Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED)."""
     workdir = Path(workdir)
     report = workdir / "timing-report.txt"
-    sidecar = workdir / "timing-actual.json"
 
-    rc = run(report, sidecar)  # reuse the gate verbatim
+    rc, actual = run(report)  # reuse the gate verbatim
     if rc != 0:
         token = (
             "missing" if rc == 1 else "unparseable"
@@ -287,7 +281,6 @@ def build_result(workdir, module, top) -> int:
         )
         return 0
 
-    actual = json.loads(sidecar.read_text())  # the tool's own artifact (in-process)
     status = "pass" if actual["verdict"] == "pass" else "fail"
     report_text = report.read_text(errors="replace")
     ss = {

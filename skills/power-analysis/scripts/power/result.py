@@ -199,13 +199,12 @@ def _parse_vcs_version(log_path: Path | str) -> str:
     return m.group(1) if m else "unknown"
 
 
-def run(plan_path, workdir, targets_json, out_path) -> int:
-    """Assemble + judge → power-actual.json. exit 0 = parsed+judged (incl ppa-miss);
-    non-zero = deterministic data failure (FAIL=<token> on stderr). Never writes result.json."""
+def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
+    """Assemble + judge. Returns (rc, payload): rc 0 = parsed+judged (incl ppa-miss), non-zero =
+    deterministic data failure (FAIL=<token> on stderr). The payload is returned on BOTH paths —
+    build_result folds it either way — and never written to a sidecar, because result.json
+    already carries every field of it. Never writes result.json."""
     workdir = Path(workdir)
-    out_path = Path(out_path)
-    if out_path.exists():
-        out_path.unlink()
 
     scenarios = json.loads(Path(plan_path).read_text()).get("power_scenarios", [])
     targets = json.loads(targets_json) if targets_json else []
@@ -328,7 +327,6 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
             "violations": [],
             "power_by_corner": power_by_corner,
         }
-        out_path.write_text(json.dumps(payload, indent=2) + "\n")
         f0 = failures[0]
         summ = f0["error_summary"]
         if "!=" in summ:
@@ -343,7 +341,7 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
             f"[power finalize] FAIL={token}:{f0.get('id', '')} {summ}",
             file=sys.stderr,
         )
-        return 1
+        return 1, payload
 
     violations: list[dict] = []
     for entry in ppa_actual:
@@ -378,14 +376,12 @@ def run(plan_path, workdir, targets_json, out_path) -> int:
         payload["failure_kind"] = "ppa"
     if not targets:
         payload["ppa_gate_skipped"] = True
-    out_path.write_text(json.dumps(payload, indent=2) + "\n")
-    print(f"[power finalize] Written: {out_path} (verdict={verdict})")
-    return 0
+    return 0, payload
 
 
 STAGE = "power-analysis"
 
-# Everything the sidecar carries except `verdict` folds straight through.
+# Everything the payload carries except `verdict` folds straight through.
 _FOLD_KEYS = (
     "saif_artifacts",
     "compile_info",
@@ -421,10 +417,10 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def _fold(sidecar: dict) -> dict:
-    """Copy through the keys the sidecar actually carries (ppa_gate_skipped only
+def _fold(payload: dict) -> dict:
+    """Copy through the keys the payload actually carries (ppa_gate_skipped only
     appears when targets=[]); never invent absent keys."""
-    return {k: sidecar[k] for k in _FOLD_KEYS if k in sidecar}
+    return {k: payload[k] for k in _FOLD_KEYS if k in payload}
 
 
 def _tooling_reason(data: dict) -> str:
@@ -451,22 +447,19 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
         "gls-run-log.txt",
         "ptpx.log",
         "make.out",
-        "power-actual.json",
     ]  # files AND dirs; envelope.schema forbids self-listing result.json (excluded by construction)
     return [{"path": pth} for pth in candidates if (workdir / pth).exists()]
 
 
 def build_result(workdir, module, plan_path, targets) -> int:
     """Assemble the lean power-analysis result.json. Reuses run() for the PT-PX gate
-    (in-process, per-scenario assembly verbatim); the sidecar ALREADY carries the 7
+    (in-process, per-scenario assembly verbatim); its payload ALREADY carries the
     stage_specific fields + verdict, so this is thin — fold the fields through, set
     status/failure_kind/fail_reason, enumerate artifacts, write the envelope.
     Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED)."""
     workdir = Path(workdir)
-    sidecar = workdir / "power-actual.json"
 
-    rc = run(plan_path, workdir, targets, sidecar)  # reuse the gate verbatim
-    data = json.loads(sidecar.read_text())  # sidecar written on exit 0 AND exit 1
+    rc, data = run(plan_path, workdir, targets)  # reuse the gate verbatim
     ss = _fold(data)
 
     if rc != 0:

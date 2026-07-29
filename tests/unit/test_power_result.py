@@ -198,10 +198,8 @@ def test_run_pass_within_targets(tmp_path):
             "S2": _flat_rpt(1.10, 0.45, 0.55, 0.10),
         },
     )
-    out = tmp_path / "power-actual.json"
-    rc = p.run(plan, wd, _json.dumps([{"dim": "power_mw", "target": 1.2}]), out)
+    rc, data = p.run(plan, wd, _json.dumps([{"dim": "power_mw", "target": 1.2}]))
     assert rc == 0
-    data = _json.loads(out.read_text())
     assert data["verdict"] == "pass"
     assert data["violations"] == []
     assert (
@@ -224,15 +222,12 @@ def test_run_ppa_miss_is_exit0_fail(tmp_path):
             "S2": _flat_rpt(1.85, 0.62, 0.95, 0.28),
         },
     )
-    out = tmp_path / "power-actual.json"
-    rc = p.run(
+    rc, data = p.run(
         plan,
         wd,
         _json.dumps([{"dim": "power_mw", "target": 1.2, "scenario_id": "S2"}]),
-        out,
     )
     assert rc == 0
-    data = _json.loads(out.read_text())
     assert data["verdict"] == "fail" and data["failure_kind"] == "ppa"
     assert data["violations"] == [
         {
@@ -251,10 +246,8 @@ def test_run_empty_targets_sets_gate_skipped(tmp_path):
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
-    out = tmp_path / "power-actual.json"
-    rc = p.run(plan, wd, "[]", out)
+    rc, data = p.run(plan, wd, "[]")
     assert rc == 0
-    data = _json.loads(out.read_text())
     assert data["verdict"] == "pass" and data["ppa_gate_skipped"] is True
     assert data["ppa_actual"][0]["value"] == pytest.approx(0.42)
 
@@ -266,11 +259,9 @@ def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
         sizes={"S1": 0},  # no saif file
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )  # flat parses fine
-    out = tmp_path / "power-actual.json"
-    rc = p.run(plan, wd, "[]", out)
+    rc, data = p.run(plan, wd, "[]")
     assert rc != 0
     assert "FAIL=saif_empty:S1" in capsys.readouterr().err
-    data = _json.loads(out.read_text())
     assert data["failure_kind"] == "tooling"
     assert data["failures"][0]["category"] == "saif_dump"
     assert (
@@ -285,22 +276,20 @@ def test_run_report_missing_token(tmp_path, capsys):
     wd, plan = _make_workdir(
         tmp_path, _SCEN[:1], sizes={"S1": 2000}, flats={"S1": None}
     )  # power_flat.rpt absent
-    out = tmp_path / "power-actual.json"
-    rc = p.run(plan, wd, "[]", out)
+    rc, data = p.run(plan, wd, "[]")
     assert rc != 0
     assert "FAIL=report_missing:S1" in capsys.readouterr().err  # P5
-    assert _json.loads(out.read_text())["ppa_actual"][0]["value"] is None
+    assert data["ppa_actual"][0]["value"] is None
 
 
 def test_run_unparseable_total_token(tmp_path, capsys):
     wd, plan = _make_workdir(
         tmp_path, _SCEN[:1], sizes={"S1": 2000}, flats={"S1": "no power numbers here\n"}
     )
-    out = tmp_path / "power-actual.json"
-    rc = p.run(plan, wd, "[]", out)
+    rc, data = p.run(plan, wd, "[]")
     assert rc != 0
     assert "FAIL=unparseable:S1" in capsys.readouterr().err
-    assert _json.loads(out.read_text())["ppa_actual"][0]["value"] is None
+    assert data["ppa_actual"][0]["value"] is None
 
 
 def test_run_three_component_invariant_break(tmp_path, capsys):
@@ -310,23 +299,27 @@ def test_run_three_component_invariant_break(tmp_path, capsys):
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(9.99, 0.05, 0.02, 0.35)},
     )  # total != sum
-    out = tmp_path / "power-actual.json"
-    rc = p.run(plan, wd, "[]", out)
+    rc, data = p.run(plan, wd, "[]")
     assert rc != 0
     assert "FAIL=invariant" in capsys.readouterr().err
 
 
-def test_run_unlinks_stale_out(tmp_path):
+def test_run_returns_a_payload_on_both_exit_paths(tmp_path):
+    # was "unlinks the stale sidecar". There is no file to go stale; what build_result needs is
+    # that the payload comes back on the data-failure path too, since it folds either way.
     wd, plan = _make_workdir(
         tmp_path,
         _SCEN[:1],
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
-    out = tmp_path / "power-actual.json"
-    out.write_text("STALE")
-    p.run(plan, wd, "[]", out)
-    assert "STALE" not in out.read_text()
+    rc, data = p.run(plan, wd, "[]")
+    assert rc == 0 and data["verdict"] == "pass"
+    wd_bad, plan_bad = _make_workdir(
+        tmp_path / "bad", _SCEN[:1], sizes={"S1": 0}, flats={}
+    )
+    rc, data = p.run(plan_bad, wd_bad, "[]")
+    assert rc != 0 and data["failures"]  # the fold source exists on the failure path
 
 
 # ── Task 1: B3 invariant tolerance ────────────────────────────────────────────
@@ -367,9 +360,7 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
             }
         )
     )
-    out = wd / "power-actual.json"
-    rc = p.run(plan, wd, "[]", out)
-    data = _json.loads(out.read_text())
+    rc, data = p.run(plan, wd, "[]")
     # Before the fix: rc==1, failures[0].category=="ptpx_data" (invariant). After: clean pass.
     assert rc == 0, (
         f"4-sig-fig rounding must not trip the invariant; failures={data.get('failures')}"
@@ -591,7 +582,6 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
         "gls-run-log.txt",
         "ptpx.log",
         "make.out",
-        "power-actual.json",
     ]:
         (wd / f).write_text("x")
     for d in ["scripts", "scaffold", "simv.daidir", "saif", "reports_ptpx"]:
@@ -604,7 +594,6 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
         "scripts",
         "saif",
         "reports_ptpx",
-        "power-actual.json",
         "simv.daidir",
     ]:
         assert expect in paths
@@ -654,7 +643,7 @@ def test_golden_real_reports_lean_pass(tmp_path):
     )  # every scenario parsed
     assert "notes" not in ss  # lean: dropped
     paths = [a["path"] for a in env["artifacts"]]
-    assert "reports_ptpx" in paths and "power-actual.json" in paths
+    assert "reports_ptpx" in paths
     assert "result.json" not in paths
 
 

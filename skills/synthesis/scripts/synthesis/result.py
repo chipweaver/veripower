@@ -7,7 +7,7 @@ Single owner of the synthesis "PPA self-check" step. Given a reports dir, run():
      Slack = min across all Timing Path Group blocks, NOT the first listed),
   4. cross-check the worst slack against the design WNS / violating-path summary,
   5. judge area<=area_target and slack>=slack_target (each target optional),
-  6. on success write --out (ppa-actual.json) with verdict + ppa_actual + violations.
+  6. on success return the verdict + ppa_actual + violations to build_result in-process.
 
 Exit codes (each non-zero also prints a greppable FAIL=<token> on stderr):
   0  extracted + judged (incl. a vacuous no-targets pass and a legitimate
@@ -68,13 +68,9 @@ def parse_wns_summary(text: str) -> dict | None:
     return {"wns": float(m.group(1)), "violating_paths": int(m.group(3))}
 
 
-def run(reports_dir, out_path, area_target, slack_target) -> int:
+def run(reports_dir, area_target, slack_target) -> tuple[int, dict | None]:
+    """Parse + judge. Returns (rc, payload); payload is None on any non-zero rc."""
     reports_dir = Path(reports_dir)
-    out_path = Path(out_path)
-
-    # Write-fresh-or-nothing: clear any prior output up front.
-    if out_path.exists():
-        out_path.unlink()
 
     area_rpt = reports_dir / "area.rpt"
     qor_rpt = reports_dir / "qor.rpt"
@@ -84,7 +80,7 @@ def run(reports_dir, out_path, area_target, slack_target) -> int:
                 f"[synthesis finalize] FAIL=missing required report not found: {rpt}",
                 file=sys.stderr,
             )
-            return 1
+            return 1, None
 
     area = parse_area_um2(area_rpt.read_text(errors="replace"))
     if area is None:
@@ -92,7 +88,7 @@ def run(reports_dir, out_path, area_target, slack_target) -> int:
             f"[synthesis finalize] FAIL=unparseable no 'Total cell area' line in {area_rpt}",
             file=sys.stderr,
         )
-        return 3
+        return 3, None
 
     qor_text = qor_rpt.read_text(errors="replace")
     worst = parse_worst_slack_ns(qor_text)
@@ -101,7 +97,7 @@ def run(reports_dir, out_path, area_target, slack_target) -> int:
             f"[synthesis finalize] FAIL=unparseable no 'Critical Path Slack' line in {qor_rpt}",
             file=sys.stderr,
         )
-        return 3
+        return 3, None
     n_groups = len(_SLACK_RE.findall(qor_text))
 
     # WNS cross-check: only a *present-and-contradictory* design summary trips exit 3.
@@ -116,7 +112,7 @@ def run(reports_dir, out_path, area_target, slack_target) -> int:
                 f"(WNS={summary['wns']}, violating_paths={summary['violating_paths']}): {qor_rpt}",
                 file=sys.stderr,
             )
-            return 3
+            return 3, None
 
     # Judge — each target is optional; a missing target is not gated.
     violations: list[dict] = []
@@ -140,9 +136,7 @@ def run(reports_dir, out_path, area_target, slack_target) -> int:
         ],
         "violations": violations,
     }
-    out_path.write_text(json.dumps(payload, indent=2) + "\n")
-    sys.stdout.write(f"[synthesis finalize] Written: {out_path} (verdict={verdict})\n")
-    return 0
+    return 0, payload
 
 
 # ── finalize: assemble the lean result.json (v4 stage-CLI-tool) ──────────────
@@ -183,9 +177,8 @@ def build_result(workdir, module, top, area_target, slack_target) -> int:
     Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED)."""
     workdir = Path(workdir)
     reports = workdir / "reports"
-    sidecar = workdir / "ppa-actual.json"
 
-    rc = run(reports, sidecar, area_target, slack_target)  # reuse the gate verbatim
+    rc, actual = run(reports, area_target, slack_target)  # reuse the gate verbatim
     if rc != 0:
         token = (
             "missing" if rc == 1 else "unparseable"
@@ -206,8 +199,7 @@ def build_result(workdir, module, top, area_target, slack_target) -> int:
         )
         return 0
 
-    ppa = json.loads(sidecar.read_text())  # the tool's own artifact (in-process)
-    status = "pass" if ppa["verdict"] == "pass" else "fail"
+    status = "pass" if actual["verdict"] == "pass" else "fail"
     area_text = (reports / "area.rpt").read_text(errors="replace")
     ss = {
         "top_module": top,
@@ -219,8 +211,8 @@ def build_result(workdir, module, top, area_target, slack_target) -> int:
             for d, t in (("area_um2", area_target), ("timing_slack_ns", slack_target))
             if t is not None
         ],
-        "ppa_actual": ppa["ppa_actual"],
-        "violations": ppa["violations"],
+        "ppa_actual": actual["ppa_actual"],
+        "violations": actual["violations"],
     }
     if status == "fail":
         ss["failure_kind"] = "ppa"
@@ -277,7 +269,6 @@ def enumerate_artifacts(workdir, top: str) -> list[dict]:
         "reports/check_design.rpt",
         "constraints.sdc",
         "run.log",
-        "ppa-actual.json",
         "scripts/dc_run.tcl",
         "scripts/rtl_load.tcl",
         "scripts/config.tcl",

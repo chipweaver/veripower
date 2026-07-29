@@ -117,7 +117,7 @@ def _stage(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR):
     reports.mkdir(parents=True, exist_ok=True)
     (reports / "area.rpt").write_text(area)
     (reports / "qor.rpt").write_text(qor)
-    return reports, tmp_path / "ppa-actual.json"
+    return reports
 
 
 # ── parsing units ────────────────────────────────────────────────────────────
@@ -166,34 +166,34 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
 
 # ── run() exit-code contract ──────────────────────────────────────────────────
 def test_run_slack_min_regression(tmp_path):
-    reports, out = _stage(tmp_path)
-    assert sp.run(reports, out, None, None) == 0
-    data = json.loads(out.read_text())
+    reports = _stage(tmp_path)
+    rc, data = sp.run(reports, None, None)
+    assert rc == 0
     slack = [a for a in data["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]
     assert slack["value"] == pytest.approx(0.95)
     assert slack["value"] != pytest.approx(16.99)
 
 
 def test_run_area_disambiguation(tmp_path):
-    reports, out = _stage(tmp_path)
-    assert sp.run(reports, out, None, None) == 0
-    data = json.loads(out.read_text())
+    reports = _stage(tmp_path)
+    rc, data = sp.run(reports, None, None)
+    assert rc == 0
     area = [a for a in data["ppa_actual"] if a["dim"] == "area_um2"][0]
     assert area["value"] == pytest.approx(65018.219263)
 
 
 def test_run_verdict_pass(tmp_path):
-    reports, out = _stage(tmp_path)
-    assert sp.run(reports, out, 70000.0, 0.5) == 0
-    data = json.loads(out.read_text())
+    reports = _stage(tmp_path)
+    rc, data = sp.run(reports, 70000.0, 0.5)
+    assert rc == 0
     assert data["verdict"] == "pass"
     assert data["violations"] == []
 
 
 def test_run_verdict_fail_ppa_exit0(tmp_path):
-    reports, out = _stage(tmp_path)
-    assert sp.run(reports, out, None, 2.0) == 0  # PPA miss is still exit 0
-    data = json.loads(out.read_text())
+    reports = _stage(tmp_path)
+    rc, data = sp.run(reports, None, 2.0)
+    assert rc == 0  # PPA miss is still exit 0
     assert data["verdict"] == "fail"
     assert data["violations"] == [
         {"dim": "timing_slack_ns", "target": 2.0, "actual": pytest.approx(0.95)}
@@ -201,55 +201,54 @@ def test_run_verdict_fail_ppa_exit0(tmp_path):
 
 
 def test_run_no_targets_vacuous_pass(tmp_path):
-    reports, out = _stage(tmp_path)
-    assert sp.run(reports, out, None, None) == 0
-    data = json.loads(out.read_text())
+    reports = _stage(tmp_path)
+    rc, data = sp.run(reports, None, None)
+    assert rc == 0
     assert data["verdict"] == "pass"
     assert data["violations"] == []
 
 
 def test_run_violated_slack(tmp_path):
-    reports, out = _stage(tmp_path, qor=QOR_VIOLATED)
-    assert sp.run(reports, out, None, 0.0) == 0
-    data = json.loads(out.read_text())
+    reports = _stage(tmp_path, qor=QOR_VIOLATED)
+    rc, data = sp.run(reports, None, 0.0)
+    assert rc == 0
     assert data["verdict"] == "fail"
     slack = [a for a in data["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]
     assert slack["value"] == pytest.approx(-0.5)
 
 
 def test_run_unparseable_area_exit3(tmp_path):
-    reports, out = _stage(tmp_path, area=AREA_NO_TOTAL)
-    assert sp.run(reports, out, None, None) == 3
-    assert not out.exists()
+    reports = _stage(tmp_path, area=AREA_NO_TOTAL)
+    rc, payload = sp.run(reports, None, None)
+    assert rc == 3 and payload is None  # no verdict on a parse surprise
 
 
 def test_run_unparseable_qor_exit3(tmp_path):
-    reports, out = _stage(tmp_path, qor=QOR_NO_GROUP)
-    assert sp.run(reports, out, None, None) == 3
-    assert not out.exists()
+    reports = _stage(tmp_path, qor=QOR_NO_GROUP)
+    rc, payload = sp.run(reports, None, None)
+    assert rc == 3 and payload is None  # no verdict on a parse surprise
 
 
 def test_run_missing_report_exit1(tmp_path):
     reports = tmp_path / "reports"
     reports.mkdir()
-    assert sp.run(reports, tmp_path / "ppa-actual.json", None, None) == 1
+    assert sp.run(reports, None, None) == (1, None)
 
 
-def test_run_removes_stale_on_failure(tmp_path):
-    reports, out = _stage(tmp_path)
-    assert sp.run(reports, out, None, None) == 0
-    assert out.exists()
-    # now corrupt the area report and re-run -> exit 3, stale out gone
+def test_run_returns_no_verdict_after_a_parse_failure(tmp_path):
+    # was "removes the stale sidecar": the write-fresh-or-nothing guarantee now lives in the
+    # return value — a failed parse yields no payload for build_result to fold.
+    reports = _stage(tmp_path)
+    assert sp.run(reports, None, None)[1] is not None
     (reports / "area.rpt").write_text(AREA_NO_TOTAL)
-    assert sp.run(reports, out, None, None) == 3
-    assert not out.exists()
+    assert sp.run(reports, None, None) == (3, None)
 
 
 def test_run_wns_cross_check_contradiction_exit3(tmp_path):
     # negative per-group slack but a clean design summary -> exit 3 (review S3)
-    reports, out = _stage(tmp_path, qor=QOR_CONTRADICT)
-    assert sp.run(reports, out, None, None) == 3
-    assert not out.exists()
+    reports = _stage(tmp_path, qor=QOR_CONTRADICT)
+    rc, payload = sp.run(reports, None, None)
+    assert rc == 3 and payload is None  # no verdict on a parse surprise
 
 
 # ── finalize / build_result (v4 stage-CLI-tool) ───────────────────────────────

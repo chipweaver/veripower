@@ -80,14 +80,14 @@ The TCL uses absolute paths (set by bootstrap) and its `redirect` writes `{workd
 
 ### Step 4: Build `{workdir}/result.json` (mandatory)
 
-Run the parser's finalize subcommand; do not run the parser separately, fold `timing-actual.json` by hand, or hand-assemble the envelope:
+Run the parser's finalize subcommand; do not run the parser separately or hand-assemble the envelope:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
   --workdir {workdir} --module <module> --top <top_module>
 ```
 
-`finalize` reuses the parser's timing gate (classifies each direction on the report's `(MET)`/`(VIOLATED)` marker — never the displayed number — and judges pass = setup MET and hold MET), writes `timing-actual.json`, derives the reproducibility header (tool from the report `Version:` line / lib_db from `config.tcl` / clock from the synthesis SDC), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+`finalize` reuses the parser's timing gate (classifies each direction on the report's `(MET)`/`(VIOLATED)` marker — never the displayed number — and judges pass = setup MET and hold MET), derives the reproducibility header (tool from the report `Version:` line / lib_db from `config.tcl` / clock from the synthesis SDC), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
 `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); you write `failure_kind=infra` in the Step-1 pre-check (PT never ran — external ref / license missing) before finalize runs.
 

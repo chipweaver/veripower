@@ -62,7 +62,6 @@ make clean        # Cleans intermediate artifacts and report files
 | `reports/power.rpt` | Synthesis-stage power estimate (the power-analysis stage judges power_mw; this stage only scans it once). |
 | `reports/check_design.rpt` | `check_design` output. |
 | `run.log` | DC run log. |
-| `ppa-actual.json` | Structured PPA record (`verdict` + `ppa_actual[]` + `violations[]`) from `synthesis finalize`. |
 
 ## Placeholder substitution
 

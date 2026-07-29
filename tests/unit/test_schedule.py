@@ -489,7 +489,6 @@ _OUTPUTS = {
     ],
     "timing-analysis": [
         "Design/timing-analysis/timing-report.txt",
-        "Design/timing-analysis/timing-actual.json",
     ],
     "simulation": [
         "Verification/simulation/case-results-summary.md",
