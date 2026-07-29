@@ -204,46 +204,28 @@ def check_module_presence(workdir, manifest, ledger) -> list:
 # ledger, never the testbench). coding-rules already forbids using any reserved word as an
 # identifier, so a whole-word hit (comments/strings masked) is a genuine SV construct, not a
 # collision with a legitimately-named V2001 signal.
-_SV_ONLY_KEYWORDS = (
-    "logic",
-    "bit",
-    "byte",
-    "shortint",
-    "int",
-    "longint",
-    "packed",
-    "always_ff",
-    "always_comb",
-    "always_latch",
-    "typedef",
-    "enum",
-    "struct",
-    "union",
-    "interface",
-    "endinterface",
-    "modport",
-    "package",
-    "endpackage",
-    "program",
-    "endprogram",
-    "class",
-    "endclass",
-    "import",
-    "export",
-    "unique",
-    "priority",
-)
 
 
 def check_dialect(workdir, ledger) -> list:
-    """Strict Verilog-2001 producer gate (rtl-design only). Every child RTL source in the ledger
-    must be a `.v` file (or `.vh` header) — NOT `.sv`/`.svh` — and carry no SystemVerilog-only
-    construct. Rationale: the kernel's downstream `rtl` selectors match `*.v` ALONE, so a `.sv`
-    artifact silently drops out of the derived dependency graph (it did — the run-1 pipeline
-    deadlock), and coding-rules mandates V2001. Scans the ledger's OWN files only, so the sim TB
-    `.sv` is never in scope; non-HDL support files (.mem/.h/…) are ignored. Comment/string content
-    is masked (shared `_strip_comments`), so a `logic` inside a comment is not a violation. A
-    violation names its `child`, so 4.3's self-converge loop re-dispatches that child to fix it."""
+    """File-extension gate: every child RTL source must be `.v` (or a `.vh` header), never
+    `.sv`/`.svh`.
+
+    The constraint this enforces is mechanical and singular: the kernel's downstream `rtl`
+    selectors match `*.v` ALONE, so a `.sv` artifact silently drops out of the derived
+    dependency graph — it did once, as the run-1 pipeline deadlock. That failure is about the
+    EXTENSION, and this checks the extension.
+
+    It used to also scan for 27 SystemVerilog-only reserved words, on the same stated rationale.
+    That scan protected nothing: a `.v` file matches the glob whatever it contains, and every
+    downstream tool is configured to accept SystemVerilog anyway (`analyze -format sverilog`,
+    `vcs -sverilog`, SpyGlass `language_mode mixed`). It also could not do what it claimed —
+    a 47-word sample of equally common SV-only reserved words slipped past 43 of them, because
+    a 27-entry blacklist cannot stand in for a ~250-word language. Writing V2001 remains a
+    coding rule; it is not a thing this gate can decide.
+
+    Scans the ledger's OWN files only, so the sim TB `.sv` is never in scope; non-HDL support
+    files (.mem/.h/…) are ignored. A violation names its `child`, so the self-converge loop
+    re-dispatches that child to fix it."""
     v = []
     for name, rec in ledger.items():
         for f in rec.get("files", []):
@@ -259,22 +241,7 @@ def check_dialect(workdir, ledger) -> list:
                 )
                 continue  # extension already disqualifies; skip the token scan
             if suffix not in (".v", ".vh"):
-                continue  # non-HDL support file (.mem/.h/…) — out of the dialect gate's scope
-            p = workdir / f
-            if not p.exists():
-                continue  # a missing file surfaces as a module_presence violation, not here
-            text = _strip_comments(p.read_text(encoding="utf-8", errors="replace"))
-            for kw in _SV_ONLY_KEYWORDS:
-                if _has_token(text, kw):
-                    v.append(
-                        {
-                            "child": name,
-                            "kind": "dialect",
-                            "file": f,
-                            "sv_construct": kw,
-                            "reason": f"SystemVerilog-only construct '{kw}' — RTL must be Verilog-2001",
-                        }
-                    )
+                continue  # non-HDL support file (.mem/.h/…) — out of the gate's scope
     return v
 
 

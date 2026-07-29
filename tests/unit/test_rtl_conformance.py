@@ -181,7 +181,7 @@ def test_annotation_reality_pass(tmp_path):
             "leaf.v": "module leaf_m; endmodule\nmodule sync2; endmodule\n",
             "top.v": "module top; leaf_m u0(); sync2 u1(); endmodule\n",
         },
-    )  # instantiate siblings so check_top_integration is clean once Task 3 lands
+    )  # instantiate siblings so the top-integration reachability check is clean
     r = _run(tmp_path)
     assert r.returncode == 0
     assert json.loads(r.stdout)["violations"] == []
@@ -431,38 +431,21 @@ def test_dialect_sv_extension_fails(tmp_path):
     )
 
 
-def test_dialect_sv_keyword_in_v_file_fails(tmp_path):
-    # A .v extension does not make the content Verilog-2001: SystemVerilog-only constructs
-    # (`logic`, `always_ff`, …) inside a .v file must still be rejected.
+def test_dialect_gate_judges_the_extension_not_the_content(tmp_path):
+    # The gate used to scan 27 SystemVerilog-only reserved words inside .v files. It no longer
+    # does, and this pins that deliberately rather than leaving it to drift back: a `.v` file
+    # matches the kernel's `*.v` selectors whatever it contains — which is the entire failure
+    # the gate exists to prevent — and every downstream tool is configured to accept
+    # SystemVerilog (`analyze -format sverilog`, `vcs -sverilog`, SpyGlass `language_mode
+    # mixed`). A 27-word blacklist also could not stand in for a ~250-word language: a sample
+    # of 47 equally common SV-only words slipped past 43 of them. Writing V2001 stays a coding
+    # rule; it is not something this gate can decide.
     _setup(
         tmp_path,
         [{"name": "only", "rtl_modules": ["top"]}],
         {"only": {"files": ["top.v"], "annotations": _ann()}},
         {
             "top.v": "module top(input clk); logic q; always_ff @(posedge clk) q <= 1'b0; endmodule\n"
-        },
-    )
-    r = _run(tmp_path)
-    assert r.returncode == 1
-    constructs = {
-        x.get("sv_construct")
-        for x in json.loads(r.stdout)["violations"]
-        if x["kind"] == "dialect"
-    }
-    assert "logic" in constructs and "always_ff" in constructs
-
-
-def test_dialect_sv_keyword_in_comment_is_not_flagged(tmp_path):
-    # False-positive guard: an SV keyword appearing ONLY in a comment (comments/strings are
-    # masked by the shared _strip_comments) must NOT trip the dialect gate — real RTL
-    # legitimately says "logic partitions" in prose.
-    _setup(
-        tmp_path,
-        [{"name": "only", "rtl_modules": ["top"]}],
-        {"only": {"files": ["top.v"], "annotations": _ann()}},
-        {
-            "top.v": "// internal logic partitions, always_comb-style; typedef note\n"
-            "module top(input a); reg r; endmodule\n"
         },
     )
     r = _run(tmp_path)
