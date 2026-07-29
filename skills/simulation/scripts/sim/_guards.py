@@ -4,7 +4,7 @@
 Reads the canonical agent I/O shape that simulation-plan's materialize step produces
 (agent["interface"]["signals"] / agent["transaction"]["fields"]) and fails loud — rather
 than emitting a degenerate/garbage TB — on an empty interface (root cause A), a non-string
-compare_txn, a non-list inports/seqs, or a signal colliding with / duplicated across the
+observer, a non-list inports/seqs, or a signal colliding with / duplicated across the
 clk/reset ports. Primary enforcement is the simulation-plan scaffold gate; these guard the
 primitives for any direct/gate-bypass caller. Per-stage copy (campaign §3 — no shared lib).
 """
@@ -33,12 +33,12 @@ def _agent_io(agent: dict) -> tuple[list[dict], list[dict]]:
     return signals, fields
 
 
-def _check_str_or_omitted(value, field: str, module: str) -> None:
-    """Backstop: scoreboard.compare_txn must be a single '<module>_<agent>_txn' string (or omitted).
-    A list/dict reaching the bare .replace() crashes with an opaque AttributeError; fail loud instead."""
+def _check_str_or_omitted(value, field: str) -> None:
+    """Backstop: scoreboard.observer must be a single agent name (or omitted). A list/dict would
+    otherwise be compared against agent names and silently never match."""
     if value not in (None, "") and not isinstance(value, str):
         sys.exit(
-            f"scaffold: {field} must be a single '{module}_<agent>_txn' string (or omitted), "
+            f"scaffold: {field} must be a single agents[].name string (or omitted), "
             f"got {type(value).__name__} {value!r}. Re-run simulation-plan (scaffold gate). "
             f"See skills/simulation-plan/SKILL.md scaffold-spec contract."
         )

@@ -5,10 +5,10 @@ interface/transaction, which the schema tolerates but does not deep-validate).
 Three layers (each runs only if the prior passed):
   1. Structural — jsonschema Draft 2020-12 against scaffold-specification.schema.json
      (types, enums, required, additionalProperties on authored objects).
-  2. Semantic — referential integrity the schema cannot express: compare_txn /
+  2. Semantic — referential integrity the schema cannot express: observer /
      rm.inports resolve (after stripping the canonical txn wrapper) to a declared
      agent; sequences[].agent / tests[].seqs[] / power_scenarios[].sequence_ref
-     resolve to declared agents/sequences; option-c (compare_txn omitted +
+     resolve to declared agents/sequences; option-c (observer omitted +
      multiple agents -> fail).
   3. Coverage — bidirectional matrix over the LLM judgment vs the authored check hints
      (required --spec): every check_id is covered by some testpoints[].covers[] or listed
@@ -55,21 +55,10 @@ def _format_validation_errors(errors) -> str:
     return "; ".join(lines)
 
 
-def _obs_name(value: str, module: str) -> str:
-    """Strip the canonical txn wrapper to recover the agent name. Mirrors simulation render-scaffold's
-    consume-side strip EXACTLY (same global .replace) so the gate accepts/rejects precisely
-    what the consumer resolves. Known, accepted limitation (mirrored on both sides): an agent
-    name that itself contains the module prefix or '_txn' is mangled — such names are
-    pathological, and the gate rejects the unresolved result loudly. A hand-written oracle
-    test pins the normal-case behavior."""
-    return value.replace(f"{module}_", "").replace("_txn", "")
-
-
 def semantic_errors(scaffold: dict) -> list:
     """Referential-integrity checks the JSON Schema cannot express: name uniqueness,
-    compare_txn/inports/sequences.agent/tests.seqs/power_scenarios.sequence_ref resolution,
-    and option-c (compare_txn omitted with multiple agents). Returns human-readable errors."""
-    module = scaffold.get("module", "")
+    observer/inports/sequences.agent/tests.seqs/power_scenarios.sequence_ref resolution,
+    and option-c (observer omitted with multiple agents). Returns human-readable errors."""
     agents = scaffold.get("agents", [])
     agent_name_list = [a.get("name") for a in agents]
     agent_names = set(agent_name_list)
@@ -91,31 +80,30 @@ def semantic_errors(scaffold: dict) -> list:
         )
 
     sb = scaffold.get("scoreboard") or {}
-    cmp_txn = sb.get("compare_txn")
-    if cmp_txn in (None, ""):
+    observer = sb.get("observer")
+    if observer in (None, ""):
         if len(agents) > 1:
             errs.append(
-                f"scoreboard.compare_txn omitted but {len(agents)} agents declared — ambiguous "
+                f"scoreboard.observer omitted but {len(agents)} agents declared — ambiguous "
                 f"observer (the scaffold would silently compare the last agent's stream). Name "
-                f"the observer agent explicitly, e.g. '{module}_<agent>_txn'. "
+                f"the observer agent explicitly. "
                 f"Agents: {sorted(n for n in agent_names if n)}."
             )
     else:
-        obs = _obs_name(cmp_txn, module)
-        if obs not in agent_names:
+        if observer not in agent_names:
             errs.append(
-                f"scoreboard.compare_txn {cmp_txn!r} resolves to agent {obs!r}, not in agents[] "
+                f"scoreboard.observer {observer!r} is not in agents[] "
                 f"{sorted(n for n in agent_names if n)}. It names the ONE observer agent whose "
-                f"txn the scoreboard compares — not a DUT signal list or free description."
+                f"monitor stream the scoreboard compares — an agent name, not a txn type, a DUT "
+                f"signal list or a free description."
             )
 
-    for txn in (scaffold.get("rm") or {}).get("inports", []):
-        ag = _obs_name(txn, module)
+    for ag in (scaffold.get("rm") or {}).get("inports", []):
         if ag not in agent_names:
             errs.append(
-                f"rm.inports entry {txn!r} resolves to agent {ag!r}, not in agents[] "
-                f"{sorted(n for n in agent_names if n)}. inports name the agent txns feeding the "
-                f"RM — not reset/arbitrary signals."
+                f"rm.inports entry {ag!r} is not in agents[] "
+                f"{sorted(n for n in agent_names if n)}. inports name the agents feeding the "
+                f"RM — an agent name, not a txn type or an arbitrary signal."
             )
 
     for s in scaffold.get("sequences", []):

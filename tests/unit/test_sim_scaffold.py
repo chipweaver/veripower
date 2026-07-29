@@ -42,8 +42,8 @@ SPEC = {
             "feature_name": "Register write path",
         }
     ],
-    "scoreboard": {"compare_txn": "m_obs_txn"},
-    "rm": {"inports": ["m_drv_txn"]},
+    "scoreboard": {"observer": "obs"},
+    "rm": {"inports": ["drv"]},
 }
 
 
@@ -118,8 +118,9 @@ def test_testlist_missing_authored_field_fails_loud(tmp_path):
     assert "suites" in r.stderr
 
 
-def test_obs_name_strip_wires_rm_and_scoreboard(tmp_path):
-    # Cross-stage _obs_name contract: m_drv_txn -> inport "drv"; m_obs_txn -> observer "obs".
+def test_inport_and_observer_wiring(tmp_path):
+    # rm.inports / scoreboard.observer name agents verbatim; the txn TYPE is built from the
+    # name here, so nothing un-wraps anything.
     r, out = _render_via_cli(tmp_path)
     assert r.returncode == 0, r.stderr
     rm = (out / "tb/uvm/refmodel/m_rule_rm.sv").read_text()

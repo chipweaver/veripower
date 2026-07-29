@@ -4,10 +4,11 @@
 Renders one tree of UVM source under <output-dir>/tb/uvm/ (interfaces, transactions, drivers,
 monitors, agents, sequences, tests, RM, scoreboard, env, tb_top, tb_pkg.sv, filelist.f,
 generated_tests.svh, tests/testlist.json) — each with TODO markers for the simulation agent to
-fill. Consumes the scaffold-spec shape simulation-plan's materialize step produces; the cross-stage
-_obs_name strip (`.replace(f"{module}_","").replace("_txn","")`) is held byte-identical to the
-producer gate. Both the bootstrap verb (first render) and this standalone re-render entry call
-run_scaffold (one code path, two entries — the overwrite-guarded re-render path).
+fill. Consumes the scaffold-spec shape simulation-plan's materialize step produces: `rm.inports`
+and `scoreboard.observer` name agents, and the `<module>_<agent>_txn` type is built here, so
+nothing has to un-wrap a name to recover the identity inside it. Both the bootstrap verb (first
+render) and this standalone re-render entry call run_scaffold (one code path, two entries — the
+overwrite-guarded re-render path).
 """
 
 from __future__ import annotations
@@ -87,9 +88,8 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
     rm_name = rm_cfg.get("name", "rule_rm")
     sb_name = sb_cfg.get("name", "scoreboard")
     # Determine the observer agent (passive agent whose txn is compared by scoreboard)
-    raw_cmp = sb_cfg.get("compare_txn", "")
-    _check_str_or_omitted(raw_cmp, "scoreboard.compare_txn", module)
-    obs_agent = (raw_cmp or "").replace(f"{module}_", "").replace("_txn", "")
+    obs_agent = sb_cfg.get("observer", "")
+    _check_str_or_omitted(obs_agent, "scoreboard.observer")
     if not obs_agent and agents:
         # Default: last agent if not specified
         obs_agent = agents[-1]["name"]
@@ -178,9 +178,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
     rm_imp_lines: list[str] = []
     rm_imp_new_lines: list[str] = []
     rm_write_lines: list[str] = []
-    for inport_txn in rm_inports:
-        # Extract agent name from txn name (e.g. "ctrl_txn" → "ctrl")
-        inport_agent = inport_txn.replace(f"{module}_", "").replace("_txn", "")
+    for inport_agent in rm_inports:
         imp_name = f"ai_{inport_agent}"
         txn_type = f"{module}_{inport_agent}_txn"
         rm_imp_decl_macros.append(f"`uvm_analysis_imp_decl(_{inport_agent})")
@@ -265,8 +263,7 @@ def run_scaffold(plan_path: Path, template_dir: Path, out_dir: Path) -> int:
                 f"    m_{aname}_agent.ap.connect(m_scoreboard.analysis_export);"
             )
         # Connect inport agents to RM
-        for inport_txn in rm_inports:
-            inport_agent = inport_txn.replace(f"{module}_", "").replace("_txn", "")
+        for inport_agent in rm_inports:
             if aname == inport_agent:
                 imp_name = f"ai_{inport_agent}"
                 agent_connect_lines.append(

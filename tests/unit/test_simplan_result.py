@@ -39,8 +39,8 @@ GOOD = {
     ],
     "sequences": [{"name": "smoke", "agent": "drv", "desc": "smoke"}],
     "tests": [{"name": "t_smoke", "feature": "F1", "test_id": "T1", "seqs": ["smoke"]}],
-    "rm": {"name": "m_rm", "inports": ["m_drv_txn"]},
-    "scoreboard": {"name": "m_sb", "compare_txn": "m_obs_txn"},
+    "rm": {"name": "m_rm", "inports": ["drv"]},
+    "scoreboard": {"name": "m_sb", "observer": "obs"},
     "primary_clock": {"dut_port_name": "clk", "period_ns": "10.0"},
     "reset": {"dut_port_name": "rst_n"},
     "testpoints": [

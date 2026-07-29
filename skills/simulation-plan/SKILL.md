@@ -99,8 +99,10 @@ Full structural shape: [`references/scaffold-specification.schema.json`](referen
 
 Authoring judgment the schema/validator cannot express:
 - `agents[].mode`: `active` for driver/master/driving agents; `passive` for monitor/slave/observer.
-- `rm.inports` / `scoreboard.compare_txn`: name the agent txn(s) (`<module>_<agent>_txn`); the
-  validator checks they resolve; you pick which agent is the RM input / the one observer.
+- `rm.inports` / `scoreboard.observer`: name the **agent** (`agents[].name`), not its txn type.
+  render-scaffold builds `<module>_<agent>_txn` where it needs the type, so writing the type
+  here would only be un-wrapped again. The validator checks the names resolve; you pick which
+  agents feed the RM and which single one the scoreboard observes.
 - `testpoints[].covers[]`: cluster the `check-hints/<child>.json` check_ids into testpoints
   (one-to-one / one-to-many / many-to-one; scenario testpoints you invent use `covers: []`).
   This clustering is also the feature trace: `feature_count` is the distinct `source_feature`

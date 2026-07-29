@@ -3,8 +3,8 @@
 
 Renders the COMMITTED producer-owned materialized fixture (simplan's real output shape) through
 render-scaffold and asserts every field simulation CONSUMES, with expectations DERIVED FROM the
-fixture (agent names, RM file name, _obs_name strip across RM-inport + env-connect + observer,
-interface signal widths, primary_clock/reset port names). This locks the CONSUMER end; producer
+fixture (agent names, RM file name, the RM-inport + env-connect + observer wiring, interface
+signal widths, primary_clock/reset port names). This locks the CONSUMER end; producer
 generation is owned by the already-settled simplan stage (which owns/regenerates this fixture)."""
 
 import json
@@ -17,12 +17,6 @@ TEMPLATES = ROOT / "skills/simulation/templates/scaffold"
 FIXTURE = (
     ROOT / "tests/unit/fixtures/simulation-plan-tpu_top/scaffold-specification.json"
 )
-
-
-def _obs(
-    txn, module
-):  # mirror the cross-stage _obs_name strip to derive expectations from the fixture
-    return txn.replace(f"{module}_", "").replace("_txn", "")
 
 
 def _render(tmp_path):
@@ -74,19 +68,18 @@ def test_agent_io_shape_consumed(tmp_path):
             assert fld["name"] in txn, f"{ag['name']}: field {fld['name']} not rendered"
 
 
-def test_obs_name_strip_inports_and_observer(tmp_path):
+def test_inport_and_observer_wiring(tmp_path):
     out, spec = _render(tmp_path)
     module = spec["module"]
     rm_name = spec["rm"].get("name", "rule_rm")
     rm = (out / "tb/uvm/refmodel" / f"{module}_{rm_name}.sv").read_text()
     env = (out / "tb/uvm/env" / f"{module}_env.sv").read_text()
-    for txn in spec["rm"]["inports"]:  # RM-inport + env-connect sites
-        agent = _obs(txn, module)
+    for agent in spec["rm"]["inports"]:  # RM-inport + env-connect sites
         assert f"write_{agent}" in rm, f"RM missing write_{agent}"
         assert f"m_{agent}_agent.ap.connect(m_rm.ai_{agent})" in env, (
             f"env missing inport connect for {agent}"
         )
-    obs = _obs(spec["scoreboard"]["compare_txn"], module)  # observer site
+    obs = spec["scoreboard"]["observer"]  # observer site
     assert f"m_{obs}_agent.ap.connect(m_scoreboard.analysis_export)" in env, (
         f"env missing observer connect for {obs}"
     )

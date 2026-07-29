@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-plan/scaffold-specification.schema.json",
   "title": "scaffold-specification.json contract (post-materialize)",
-  "description": "Structural contract for asic/<module>/Verification/simulation-plan/scaffold-specification.json, validated at the sim-plan Completion Gate AFTER the materialize-scaffold verb has run. Strongly validates LLM-authored fields; tolerates (does not deep-validate) the interface/transaction objects materialize-scaffold injects into agents[] (their content is owned by materialize-scaffold + sim/_guards._agent_io). Referential integrity (compare_txn/inports/seqs/sequence_ref resolving to declared agents/sequences) is NOT expressible here; the check-scaffold gate's semantic layer enforces it.",
+  "description": "Structural contract for asic/<module>/Verification/simulation-plan/scaffold-specification.json, validated at the sim-plan Completion Gate AFTER the materialize-scaffold verb has run. Strongly validates LLM-authored fields; tolerates (does not deep-validate) the interface/transaction objects materialize-scaffold injects into agents[] (their content is owned by materialize-scaffold + sim/_guards._agent_io). Referential integrity (observer/inports/seqs/sequence_ref resolving to declared agents/sequences) is NOT expressible here; the check-scaffold gate's semantic layer enforces it.",
   "type": "object",
   "required": ["module", "top", "agents", "sequences", "tests", "rm", "scoreboard", "primary_clock", "reset", "testpoints", "power_scenarios"],
   "additionalProperties": true,
@@ -76,7 +76,11 @@
       "additionalProperties": false,
       "properties": {
         "name": {"type": "string"},
-        "inports": {"type": "array", "items": {"type": "string"}}
+        "inports": {
+          "description": "The agents[].name values whose monitor streams feed the RM — one analysis_imp port each. Name the AGENT, not its transaction type: render-scaffold builds the type as <module>_<agent>_txn where it needs one, so a name written here in txn form would have to be un-wrapped and re-wrapped to reach the same string.",
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
       }
     },
     "scoreboard": {
@@ -84,7 +88,11 @@
       "additionalProperties": false,
       "properties": {
         "name": {"type": "string"},
-        "compare_txn": {"type": "string"}
+        "observer": {
+          "description": "The ONE agents[].name whose monitor stream the scoreboard compares against the RM. Omitted only when a single agent is declared; with more than one, omitting it is ambiguous and the gate rejects it.",
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "primary_clock": {

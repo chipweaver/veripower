@@ -27,16 +27,16 @@ def test_agent_io_empty_signals_exits():
 
 def test_check_str_rejects_nonstr():
     with pytest.raises(SystemExit):
-        _guards._check_str_or_omitted(["a"], "scoreboard.compare_txn", "m")
-    _guards._check_str_or_omitted(None, "scoreboard.compare_txn", "m")  # omitted ok
-    _guards._check_str_or_omitted("m_obs_txn", "scoreboard.compare_txn", "m")  # str ok
+        _guards._check_str_or_omitted(["a"], "scoreboard.observer")
+    _guards._check_str_or_omitted(None, "scoreboard.observer")  # omitted ok
+    _guards._check_str_or_omitted("obs", "scoreboard.observer")  # str ok
 
 
 def test_check_list_rejects_nonlist():
     with pytest.raises(SystemExit):
-        _guards._check_list_or_omitted("m_ctrl_txn", "rm.inports")
+        _guards._check_list_or_omitted("ctrl", "rm.inports")
     _guards._check_list_or_omitted(None, "rm.inports")  # omitted ok
-    _guards._check_list_or_omitted(["m_ctrl_txn"], "rm.inports")  # list ok
+    _guards._check_list_or_omitted(["ctrl"], "rm.inports")  # list ok
 
 
 def test_validate_ports_clk_collision():

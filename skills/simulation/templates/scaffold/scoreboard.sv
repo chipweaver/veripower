@@ -25,7 +25,7 @@ class {{MODULE}}_{{SB_NAME}} extends uvm_scoreboard;
     check_txn(txn);
   endfunction
 
-  // CONVENTION: compares the observer agent's txn (scoreboard.compare_txn -> obs_agent) against the RM prediction; increment a real mismatch counter (uvm_error, never $fatal).
+  // CONVENTION: compares the observer agent's txn (scoreboard.observer names the agent) against the RM prediction; increment a real mismatch counter (uvm_error, never $fatal).
   // TODO(scoreboard): Compare observed txn against RM prediction.
   virtual function void check_txn({{MODULE}}_{{OBS_AGENT}}_txn txn);
     {{MODULE}}_{{OBS_AGENT}}_txn expected = rm.predict();

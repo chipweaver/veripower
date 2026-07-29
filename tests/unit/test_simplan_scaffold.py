@@ -48,8 +48,8 @@ GOOD = {
             "seqs": ["smoke"],
         }
     ],
-    "rm": {"name": "m_rm", "inports": ["m_drv_txn"]},
-    "scoreboard": {"name": "m_sb", "compare_txn": "m_obs_txn"},
+    "rm": {"name": "m_rm", "inports": ["drv"]},
+    "scoreboard": {"name": "m_sb", "observer": "obs"},
     "primary_clock": {"dut_port_name": "clk", "period_ns": 10.0},
     "reset": {"dut_port_name": "rst_n"},
     "testpoints": [
@@ -147,16 +147,16 @@ def test_injected_interface_transaction_tolerated(tmp_path):
 
 
 # ---- structural ----
-def test_compare_txn_list_fails(tmp_path):
+def test_observer_list_fails(tmp_path):
     s = copy.deepcopy(GOOD)
-    s["scoreboard"]["compare_txn"] = ["a", "b"]
+    s["scoreboard"]["observer"] = ["a", "b"]
     proc = _run(tmp_path, s, check=False)
-    assert proc.returncode != 0 and "compare_txn" in proc.stderr
+    assert proc.returncode != 0 and "observer" in proc.stderr
 
 
 def test_inports_string_fails(tmp_path):
     s = copy.deepcopy(GOOD)
-    s["rm"]["inports"] = "m_drv_txn"
+    s["rm"]["inports"] = "drv"
     proc = _run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "inports" in proc.stderr
 
@@ -204,32 +204,32 @@ def test_missing_primary_clock_fails(tmp_path):
 
 
 # ---- semantic ----
-def test_compare_txn_unknown_agent_fails(tmp_path):
+def test_observer_unknown_agent_fails(tmp_path):
     s = copy.deepcopy(GOOD)
-    s["scoreboard"]["compare_txn"] = "m_nope_txn"
+    s["scoreboard"]["observer"] = "nope"
     proc = _run(tmp_path, s, check=False)
-    assert proc.returncode != 0 and "compare_txn" in proc.stderr
+    assert proc.returncode != 0 and "observer" in proc.stderr
 
 
-def test_compare_txn_omitted_single_agent_passes(tmp_path):
+def test_observer_omitted_single_agent_passes(tmp_path):
     s = copy.deepcopy(GOOD)
     s["agents"] = [s["agents"][0]]  # single agent: drv
     s["sequences"] = [{"name": "smoke", "agent": "drv"}]
-    s["rm"]["inports"] = ["m_drv_txn"]
-    del s["scoreboard"]["compare_txn"]
+    s["rm"]["inports"] = ["drv"]
+    del s["scoreboard"]["observer"]
     assert _run(tmp_path, s).returncode == 0
 
 
-def test_compare_txn_omitted_multi_agent_fails(tmp_path):
+def test_observer_omitted_multi_agent_fails(tmp_path):
     s = copy.deepcopy(GOOD)
-    del s["scoreboard"]["compare_txn"]
+    del s["scoreboard"]["observer"]
     proc = _run(tmp_path, s, check=False)
-    assert proc.returncode != 0 and "compare_txn" in proc.stderr  # option-c
+    assert proc.returncode != 0 and "observer" in proc.stderr  # option-c
 
 
 def test_inports_unknown_agent_fails(tmp_path):
     s = copy.deepcopy(GOOD)
-    s["rm"]["inports"] = ["m_ghost_txn"]
+    s["rm"]["inports"] = ["ghost"]
     proc = _run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "inports" in proc.stderr
 
@@ -267,9 +267,7 @@ def test_sequence_ref_non_string_fails(tmp_path):
 def test_duplicate_agent_name_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["agents"][1]["name"] = "drv"  # both agents now named "drv"
-    s["scoreboard"]["compare_txn"] = (
-        "m_drv_txn"  # keep refs resolving so only the dup fires
-    )
+    s["scoreboard"]["observer"] = "drv"  # keep refs resolving so only the dup fires
     proc = _run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "duplicated" in proc.stderr
 
@@ -368,19 +366,30 @@ def test_coverage_fully_covered_passes(tmp_path):
     assert proc.returncode == 0
 
 
-# ── in-process: _obs_name oracle (§8 — byte-identical to simulation render-scaffold) + schema path ──
+# ── in-process: identity is the agent name itself + schema path ───────────────
 import sys  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "skills" / "simulation-plan" / "scripts"))
 from simplan import scaffold as sc_mod  # noqa: E402
 
 
-def test_obs_name_oracle():
-    # Hand-written expected (NOT the expression re-typed): the canonical '<module>_<agent>_txn'
-    # strip must match simulation's render-scaffold consume-side strip EXACTLY (spec §8).
-    assert sc_mod._obs_name("m_obs_txn", "m") == "obs"
-    assert sc_mod._obs_name("obs", "m") == "obs"
-    assert sc_mod._obs_name("m_wb_slave_agent_txn", "m") == "wb_slave_agent"
+def test_agent_name_needs_no_unwrapping():
+    # The producer gate and the consumer resolve `observer` / `inports` by looking the value up
+    # in agents[] verbatim. There is no transform to keep byte-identical across the two skills,
+    # so a name that used to be mangled by the txn-wrapper strip now resolves.
+    errs = sc_mod.semantic_errors(
+        {
+            "module": "m",
+            "agents": [{"name": "m_wb_txn_agent"}],
+            "sequences": [],
+            "tests": [],
+            "rm": {"inports": ["m_wb_txn_agent"]},
+            "scoreboard": {"observer": "m_wb_txn_agent"},
+            "testpoints": [],
+            "power_scenarios": [],
+        }
+    )
+    assert errs == []
 
 
 def test_default_schema_resolves():

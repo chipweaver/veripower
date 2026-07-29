@@ -312,13 +312,13 @@
   "rm": {
     "name": "tpu_top_rm",
     "inports": [
-      "tpu_top_data_in_txn",
-      "tpu_top_core_txn"
+      "data_in",
+      "core"
     ]
   },
   "scoreboard": {
     "name": "tpu_top_scoreboard",
-    "compare_txn": "tpu_top_core_txn"
+    "observer": "core"
   },
   "testpoints": [
     {
