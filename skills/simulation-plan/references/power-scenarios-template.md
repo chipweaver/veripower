@@ -1,11 +1,6 @@
 # Standard 9-Power-Scenarios Template
 
-Load this table, materialize each row for this module, and write the result into
-`verification-plan.md` §4 and `power-scenarios.json`. No gate checks that a scenario came from
-this set — `check-scaffold` only resolves `sequence_ref` — so loading the table first is the whole
-discipline. Authoring from memory drops rows silently.
-
-## Standard 9-scenarios table
+Materialize every row below for this module.
 
 | ID | Scenario | Clock | Reset | Data | Low power | Corner | Purpose |
 |----|----------|-------|-------|------|-----------|--------|---------|
@@ -19,43 +14,16 @@ discipline. Authoring from memory drops rows silently.
 | S6 | DVFS switching transient | switching | de-asserted | business flow | switching | TT | di/dt. |
 | S7 | High-temperature leakage | off | asserted | none | - | FF/125C | Worst leakage. |
 
-## Where each row lands
+A row's abstract states are a claim about this module, so they go in `verification-plan.md` §4 with
+the note that resolves them: which signals `low power` drives here, what frequency band `switching`
+means, what stimulus `business flow` reduces to. The machine half goes in `power-scenarios.json` per
+its schema. **A row you drop needs that note as much as a row you keep** — "this module has no
+retention control, so S3b has nothing to switch" is the answer a reviewer is looking for, and no
+gate will ask for it.
 
-The table's abstract columns are a statement about the module, not machine input: nothing reads
-them, and reading them is a human's job. They go in `verification-plan.md` §4, next to the note
-that says how the row was materialized — which signals `low power` drives on this module, what
-frequency band `switching` means here, what stimulus `business flow` reduces to, and why a row was
-dropped as inapplicable. A row you keep and a row you drop both need that sentence.
+Rows that reduce to the same RTL stimulus share one `sequence_ref` and stay distinct by `id` and
+`corner_intent` — S1 and S7 are the standing example: clock off, no traffic, different corner only.
 
-What crosses into `power-scenarios.json` is only what power-analysis reads:
-
-```json
-{"id": "S4a", "sequence_ref": "<module>_traffic_200mbps_seq",
- "duration_cycles": 10000, "corner_intent": "TT"}
-```
-
-## RTL-equivalent scenario deduplication
-
-Some rows produce identical RTL-layer stimulus and differ only in corner — S1 (SS/125C, clock=off)
-and S7 (FF/125C, clock=off) both reduce on RTL to "clock off + no traffic". Keep independent `id`
-and `corner_intent`, and **reuse the same `sequence_ref`**: consumers group by `sequence_ref`, run
-each group once, produce a SAIF per `id` (via hardlinks), and let later tools annotate by
-`corner_intent`.
-
-Corner (SS / TT / FF + temperature) does not affect RTL simulation behavior — RTL simulation is
-corner-agnostic. `corner_intent` tells the consumer which corner the SAIF should be interpreted
-under, and tells you which rows need their own stimulus versus which are corner variants of one.
-
-## `sequence_ref` naming rules and `sequences[]` sync (cross-stage contract)
-
-`power_scenarios[].sequence_ref` references `sequences[].name` — not an independent namespace. SV
-classes are materialized only from `sequences[]`, so `check-scaffold` rejects a `sequence_ref`
-resolving to no `sequences[].name` (and downstream, no SV class would exist for it).
-
-| Situation | How to fill |
-|---|---|
-| Power scenario stimulus equals some functional sequence | `sequence_ref` = that functional sequence's `sequences[].name`. |
-| Power scenario needs independent stimulus (typical: clock-off / sustained idle / sustained saturated traffic / DVFS switching) | First add a new entry to `sequences[]` (`name` + `agent`), then point `sequence_ref` at that `name`. |
-
-`sequences[]` is the materialization list (functional + power union); `tests[]` and
-`power_scenarios[]` are consumption indices into that one pool.
+The rows that usually need stimulus no functional sequence provides are the clock-off ones,
+sustained idle, sustained saturated traffic, and DVFS switching. Add the `sequences[]` entry first,
+then point `sequence_ref` at its name.

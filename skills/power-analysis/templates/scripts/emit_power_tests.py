@@ -119,7 +119,7 @@ def main() -> int:
                 f"Verification/simulation-plan/: either add a matching sequences.json "
                 f"entry (name={seq!r} + an agent), or point the scenario's sequence_ref "
                 f"at an existing one. Field semantics: "
-                f"skills/simulation-plan/references/power-scenarios-template.md.",
+                f"skills/simulation-plan/references/power-scenarios.schema.json.",
                 file=sys.stderr,
             )
             return 1
