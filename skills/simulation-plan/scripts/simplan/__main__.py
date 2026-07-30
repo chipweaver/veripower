@@ -4,7 +4,6 @@
 Verbs (one stage = one tool; see skills/simulation-plan/SKILL.md for usage):
   materialize-scaffold  fill scaffold signals/clock/reset/inline (writes scaffold; exit 0; fail-loud)
   check-scaffold        structural+semantic+coverage gate        (exit 0 OK / 1 fix-message)
-  validate-review       plan-review.json schema + gate           (stdout: gate JSON; exit 0/1)
   finalize              assemble the lean result.json            (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the simplan.*
@@ -41,19 +40,13 @@ def _cmd_check_scaffold(a: argparse.Namespace) -> int:
     return scaffold.run(a.plan, a.spec)
 
 
-def _cmd_validate_review(a: argparse.Namespace) -> int:
-    from simplan import review
-
-    return review.validate(a.review)
-
-
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from simplan import result
 
     return result.finalize(
         a.workdir,
         a.module,
-        waived_json=a.waived,
+        a.spec,
         status=a.status,
         revision=a.revision,
         fail_reason=a.fail_reason,
@@ -98,14 +91,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.set_defaults(func=_cmd_check_scaffold)
 
-    sp = sub.add_parser("validate-review", help="plan-review.json schema + gate")
-    sp.add_argument("--review", required=True, type=Path)
-    sp.set_defaults(func=_cmd_validate_review)
-
     sp = sub.add_parser("finalize", help="assemble the lean result.json")
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument("--module", required=True)
-    sp.add_argument("--waived", default=None, help="JSON array of human waiver objects")
+    sp.add_argument(
+        "--spec",
+        required=True,
+        type=Path,
+        help="the specification workdir: the pass path re-runs check-scaffold against it",
+    )
     sp.add_argument(
         "--status",
         choices=["pass", "fail"],

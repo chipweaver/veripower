@@ -1,22 +1,15 @@
 """The materialize-scaffold verb — fill tb-scaffold.json from the spec sidecars.
 
-Each agent in tb-scaffold.json is authored by the simulation-plan LLM as
-{name, mode, interface_groups:[...]} — group NAMES only (top-io.json interface_group
-values). This verb fills each agent's interface.signals + transaction.fields
-deterministically from top-io.json (grouped by interface_group), so the
-LLM never hand-transcribes signal names/widths. Clock/reset signals (identified by their
-top-io.json role) are kept in interface.signals but excluded from transaction.fields —
-they must never be rand txn fields. It also derives primary_clock (from clocks.json
-relationship=="primary" clock) and reset (from the top-io.json role=="reset" entry) and
-writes them into the scaffold, and materializes each testpoints[].inlined_check_hints[]
-from the testpoint's covers[] + the authored check hints (implementation_detail =
-verbatim-if-present-else-summary). Fails loud (SystemExit) when an agent omits
-interface_groups, names an unknown group, has a duplicate group,
-an interface row has an empty Role, there is no primary-relationship clock, there is no
-reset-role port, or a testpoint's covers[] names a check_id no child authored.
+Which fields it injects, and that they are never hand-authored, is on each field in
+references/tb-scaffold.schema.json. What is not visible there:
 
-Pairs with: simulation's render-scaffold verb consumes the materialized interface.signals /
-transaction.fields via its _agent_io() helper.
+- Clock/reset signals stay in interface.signals but are excluded from transaction.fields.
+  A rand txn field driving the clock would fight the bench's own clock generator.
+- Every injection is a verbatim copy, never an abstraction: the LLM authoring covers[] and
+  interface_groups is the only judgment in the loop, and a renamed signal or a paraphrased
+  check would break the `===` comparison the downstream refmodel is built to make.
+- Pairs with simulation's render-scaffold, which consumes interface.signals /
+  transaction.fields via its _agent_io() helper.
 """
 
 import json
@@ -34,13 +27,6 @@ def _clk_rst_signal_names(ports: list) -> set:
 
 
 def _derive_primary_clock(clocks: list) -> dict:
-    """primary_clock from clocks.json. No normalization or coercion: clocks.schema.json
-    pins the fields and derive-constraints has already validated them upstream."""
-    if not isinstance(clocks, list) or not clocks:
-        sys.exit(
-            "materialize-scaffold: clocks.json is empty or not a JSON array — "
-            "primary_clock cannot be derived. Re-run specification."
-        )
     primary = next((c for c in clocks if c.get("relationship") == "primary"), None)
     if primary is None:
         sys.exit(

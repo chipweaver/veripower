@@ -174,7 +174,7 @@ _STAGE_FILES = {
 # `proposed` until someone actually pins them; writing the record is not endorsing it.
 _ORACLE_CONTENT = {
     "specification": {"spec-review/core.md": "spec review v1"},
-    "simulation-plan": {"plan-review.json": "plan review v1"},
+    "simulation-plan": {"plan-review/review.md": "plan review v1"},
     "rtl-design": {"semantic-review.json": "semantic review v1"},
     "simulation": {"tb/uvm/refmodel/ref.sv": "// refmodel v1"},
 }

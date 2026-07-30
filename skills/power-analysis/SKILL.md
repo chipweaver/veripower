@@ -151,9 +151,9 @@ As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `
 - `templates/scripts/build_tb_filelist_abs.py` — absolute-path rewrite of the simulation filelist (consumed across stages by GLS; make-internal).
 - `templates/scripts/run_gls_power.sh` — per-scenario `simv` dispatch (dedup via hardlink; make-internal).
 - `templates/scripts/ptpx.tcl` — PT-PX averaged main script (`read_saif` + 0% annotation hard gate; make-internal).
-- [`templates/scaffold/power_test.sv.tmpl`](templates/scaffold/power_test.sv.tmpl) — UVM test template (placeholders `MODULE` / `AGENT_NAME` / `SEQUENCE_REF` / `TOP` / `SCENARIO_ID` / `SCENARIO_DESC` / `DURATION_CYCLES`; contains `$set_gate_level_monitoring + $toggle_*`).
+- [`templates/scaffold/power_test.sv.tmpl`](templates/scaffold/power_test.sv.tmpl) — UVM test template (placeholders `MODULE` / `AGENT_NAME` / `SEQUENCE_REF` / `TOP` / `SCENARIO_ID` / `DURATION_CYCLES`; contains `$set_gate_level_monitoring + $toggle_*`).
 - `scripts/power/__main__.py bootstrap` — bootstrap verb (invocation contract: Step 2 + `--help`).
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
 - `scripts/power/__main__.py finalize` — PT-PX report parser + PPA verdict verb (parses, judges, then writes result.json; exit code is the pass/fail truth — mirrors the `synthesis` CLI's `finalize`; invocation contract: Step 3 + `--help`).
-- [`${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/references/power-scenarios-template.md`](../simulation-plan/references/power-scenarios-template.md) — `power_scenarios` field semantics.
+- [`${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/references/power-scenarios-template.md`](../simulation-plan/references/power-scenarios-template.md) — the standard scenario set and how a row is materialized; the four fields you read are `simulation-plan/references/power-scenarios.schema.json`.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.

@@ -1,23 +1,21 @@
-"""The check-scaffold gate — validate the three plan sidecars (sim-plan Completion Gate).
+"""The check-scaffold gate — validate the three plan sidecars.
 
-Runs AFTER the materialize-scaffold verb (so agents[] carry materialize-injected
-interface/transaction, which the schema tolerates but does not deep-validate).
-Three layers (each runs only if the prior passed):
-  1. Structural — `simplan._plan.load_plan` validates each of tb-scaffold.json /
-     sequences.json / power-scenarios.json against its own schema, then merges them.
-  2. Semantic — referential integrity no single schema can express, and which is why the
-     merge exists: observer / rm.inports resolve (after stripping the canonical txn
-     wrapper) to a declared agent; sequences[].agent / tests[].seqs[] /
-     power_scenarios[].sequence_ref resolve to declared agents/sequences; option-c
-     (observer omitted + multiple agents -> fail).
-  3. Coverage — bidirectional matrix over the LLM judgment vs the authored check hints
-     (required --spec): every check_id is covered by some testpoints[].covers[] or listed
-     in skipped_checks[]; every non-empty covers[] entry resolves to a real check_id.
-     Applied by run() after layers 1-2.
+Runs AFTER the materialize-scaffold verb, so agents[] carry the injected
+interface/transaction objects, which the schema tolerates but does not deep-validate.
 
-Exits 0 with "check-scaffold: OK ..." on a clean plan; otherwise exits non-zero with a
-readable, fix-oriented message to stderr. Pairs with simulation render-scaffold's thin
-consumer-side backstops (defense-in-depth for scaffolds that bypass this gate).
+The three layers short-circuit because each makes the next readable: a schema violation
+makes the referential checks meaningless, and one unresolved name makes the coverage join
+unreadable. The merge in `_plan.load_plan` exists for the middle layer — the referential
+integrity spans all three files (`power_scenarios[].sequence_ref` and `tests[].seqs[]` both
+resolve against `sequences[]`), so no single schema can express it.
+
+finalize re-runs the whole thing in-process at Step 5. That is affordable because every
+layer is a set operation over the workdir's own files plus the authored check hints, and it
+is what makes the verdict part of the proof rather than a dev-time lint: a clean gate at
+Step 2 stays true unless an artifact was edited afterwards.
+
+Pairs with simulation render-scaffold's thin consumer-side backstops (defense-in-depth for
+scaffolds that bypass this gate).
 """
 
 import sys
@@ -79,7 +77,7 @@ def semantic_errors(scaffold: dict) -> list:
 
     for s in scaffold.get("sequences", []):
         ag = s.get("agent")
-        if ag is not None and ag not in agent_names:
+        if ag not in agent_names:
             errs.append(
                 f"sequences[{s.get('name')!r}].agent {ag!r} not in agents[] "
                 f"{sorted(n for n in agent_names if n)}."
@@ -95,7 +93,7 @@ def semantic_errors(scaffold: dict) -> list:
 
     for ps in scaffold.get("power_scenarios", []):
         ref = ps.get("sequence_ref")
-        if ref is not None and ref not in seq_names:
+        if ref not in seq_names:
             errs.append(
                 f"power_scenarios[{ps.get('id')!r}].sequence_ref {ref!r} not in sequences[] "
                 f"{sorted(n for n in seq_names if n)}."
@@ -139,29 +137,31 @@ def coverage_errors(scaffold: dict, check_hints: list) -> list:
     return errs
 
 
-def run(plan_dir, spec_workdir) -> int:
-    """check-scaffold: 3-layer gate (structural -> semantic -> coverage, short-circuit).
-    exit 0 with 'check-scaffold: OK ...' / exit 1 with a fix-oriented message to stderr."""
+def verdict(plan_dir, spec_workdir) -> list:
+    """Every violation the 3-layer gate finds, as a list of readable errors (empty = clean).
+    Short-circuits: a structural failure makes the later layers meaningless, and one
+    unresolved name makes the coverage join unreadable. finalize re-runs this in-process, so
+    the layers live here rather than inside run()."""
     try:
         plan = load_plan(plan_dir)
     except PlanError as e:
-        sys.exit(f"check-scaffold: {e}")
+        return [str(e)]
     try:
         check_hints = load_check_hints(spec_workdir)
     except HintsError as e:
-        sys.exit(f"check-scaffold: {e}")
-    errors = semantic_errors(plan)
-    if not errors:
-        errors = coverage_errors(plan, check_hints)
+        return [str(e)]
+    return semantic_errors(plan) or coverage_errors(plan, check_hints)
+
+
+def run(plan_dir, spec_workdir) -> int:
+    """check-scaffold: 3-layer gate (structural -> semantic -> coverage, short-circuit).
+    exit 0 with 'check-scaffold: OK ...' / exit 1 with a fix-oriented message to stderr."""
+    errors = verdict(plan_dir, spec_workdir)
     if errors:
         sys.exit(
             "check-scaffold: the plan sidecars are invalid:\n  - "
             + "\n  - ".join(errors)
             + "\nFix them (re-author per SKILL.md's plan-sidecar contract) and re-run."
         )
-    print(
-        f"check-scaffold: OK ({len(plan.get('agents', []))} agents, "
-        f"{len(plan.get('sequences', []))} sequences, "
-        f"{len(plan.get('power_scenarios', []))} power scenarios)"
-    )
+    print("check-scaffold: OK")
     return 0

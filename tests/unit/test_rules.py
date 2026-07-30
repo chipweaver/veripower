@@ -136,7 +136,7 @@ def test_carry_no_carry_fields_and_values():
     assert rules.RULES["specification"].carry == ("**",)
     assert rules.RULES["specification"].no_carry == ("spec-review/*.md",)
     assert rules.RULES["simulation-plan"].carry == ("**",)
-    assert rules.RULES["simulation-plan"].no_carry == ("plan-review.json",)
+    assert rules.RULES["simulation-plan"].no_carry == ("plan-review/*.md",)
     assert rules.RULES["rtl-design"].carry == ("**",)
     assert rules.RULES["rtl-design"].no_carry == ("semantic-review.json",)
     assert rules.RULES["simulation"].carry == ("**",)

@@ -36,15 +36,9 @@ def _ports(workdir: Path) -> list[dict]:
     row (it declares polarity and kind) and the width-vs-name rule are validated on read;
     check-crossrefs owns only the cross-file joins."""
     try:
-        ports = read_sidecar(workdir, "top-io.json")
+        return read_sidecar(workdir, "top-io.json")
     except SidecarError as exc:
         _fail(str(exc))
-    if not ports:
-        _fail(
-            f"{workdir / 'top-io.json'} missing or empty: the specification stage authors it "
-            "(design.md §1.4.1 carries only a pointer); see references/top-io.schema.json"
-        )
-    return ports
 
 
 _SGDC_SYNC_DOMAIN = "sync"
@@ -55,8 +49,9 @@ def _clock_partition(clocks: list[dict]) -> tuple[list[str], list[str]]:
     non-generated clocks.json entries into (sync_names, async_names), preserving table order.
     `_async_clock_groups` (SDC) and `_sgdc_clock_domains` (SGDC) must render this ONE
     partition in their respective native syntaxes — computing it twice is how the two
-    formats silently diverge, the exact defect this prevents. Returns ([], []) when there is
-    nothing to declare (fewer than 2 non-generated clocks, or none async)."""
+    formats silently diverge, the exact defect this prevents. ([], []) when there is nothing
+    to declare (fewer than 2 non-generated clocks, or none async), which both callers render
+    as their own empty result."""
     non_gen = [c for c in clocks if not c["generated"]]
     async_names = [c["name"] for c in non_gen if c["relationship"] == "async"]
     if not (async_names and len(non_gen) >= 2):
@@ -69,10 +64,8 @@ def _async_clock_groups(clocks: list[dict]) -> list[str]:
     """`-group ...` fragments for `set_clock_groups -asynchronous` (SDC only — see
     `_sgdc_clock_domains` for the SGDC-native equivalent; SpyGlass's SGDC parser rejects
     `set_clock_groups` as an unknown command, confirmed on SpyGlass_vL-2016.06). Renders
-    the shared `_clock_partition`; returns [] when it is empty."""
+    the shared `_clock_partition`."""
     sync_names, async_names = _clock_partition(clocks)
-    if not async_names:
-        return []
     groups = []
     if sync_names:
         groups.append("-group [get_clocks {" + " ".join(sync_names) + "}]")
@@ -90,10 +83,8 @@ def _sgdc_clock_domains(clocks: list[dict]) -> dict[str, str]:
     gets its own distinct domain (its own name — SpyGlass already treats separately-named
     clocks with no `-domain` as separate domains by default, so this makes that relationship
     explicit/self-documenting rather than changing the CDC verdict). Renders the shared
-    `_clock_partition`; returns {} when it is empty."""
+    `_clock_partition`."""
     sync_names, async_names = _clock_partition(clocks)
-    if not async_names:
-        return {}
     if sync_names and _SGDC_SYNC_DOMAIN in async_names:
         # An async clock literally named "sync" would get -domain sync and be silently
         # merged into the synchronous group — a false-negative CDC hole. Fail loudly;
@@ -199,11 +190,7 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
 
 def derive_constraints(workdir: Path) -> dict:
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
-    top = manifest.get(
-        "module"
-    )  # <TOP> pinned to manifest.module (== finalize top_module)
-    if not top:
-        _fail("manifest.json missing 'module' (the <TOP> name)")
+    top = manifest["module"]  # <TOP> pinned to manifest.module (== finalize top_module)
     clocks = load_clocks(workdir)
     ports = _ports(workdir)
     sdc = generate_sdc(top, clocks, ports)

@@ -8,7 +8,6 @@ MAIN = ROOT / "skills/simulation-plan/scripts/simplan/__main__.py"
 _VERBS = (
     "materialize-scaffold",
     "check-scaffold",
-    "validate-review",
     "finalize",
 )
 
@@ -35,3 +34,9 @@ def test_cli_no_verb_exits_2():
 def test_seed_verb_removed(tmp_path):
     r = _run("seed", "--workdir", str(tmp_path))
     assert r.returncode != 0  # argparse rejects an unknown subcommand
+
+
+def test_validate_review_verb_removed(tmp_path):
+    # The plan-adequacy review is prose the reviewer writes; nothing reduces it to a verdict.
+    r = _run("validate-review", "--review", str(tmp_path / "plan-review.json"))
+    assert r.returncode != 0

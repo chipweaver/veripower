@@ -44,19 +44,22 @@ def _write_ppa_json(workdir: Path, ppa_targets: list) -> None:
 
 
 def _top_from_manifest(workdir: Path) -> str:
-    """<TOP> = manifest.module — the same source derive_constraints pins; read directly on
-    the fail path, which never runs the derivation. With no manifest there is no artifact set
-    to enumerate, so an unreadable one raises (finalize → exit 2 BLOCKED)."""
+    """<TOP> = manifest.module — the same source derive_constraints reads; needed on the fail
+    path, which never runs the derivation. Indexed, not defaulted: <TOP> names the two
+    constraint files in artifacts[], so a roster this could not resolve would promote a fail
+    with those entries silently filtered out. Raising makes it BLOCKED. The one site that
+    reports an absent manifest.module as a defect is check_purity, at the partition gate."""
     manifest = json.loads((Path(workdir) / "manifest.json").read_text(encoding="utf-8"))
-    top = manifest.get("module")
-    if not top:
-        raise ValueError("manifest.json missing 'module' (the <TOP> name)")
-    return top
+    return manifest["module"]
 
 
 def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
     """Fixed specification artifact set, present-only. NEVER lists brainstorm.md
-    (module-root, outside the workdir — would break promote()) or result.json (self)."""
+    (module-root, outside the workdir — would break promote()) or result.json (self).
+
+    Indexes the manifest rather than defaulting around it: a roster this could not read would
+    otherwise promote a fail whose artifacts[] omits every child doc, and promote GCs what the
+    envelope does not list. Raising instead makes that BLOCKED (finalize → exit 2)."""
     workdir = Path(workdir)
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
     fixed = [
@@ -71,17 +74,10 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
         "top-io.json",
         "interconnects.json",
     ]
-    child_docs = [c["doc"] for c in manifest.get("children", []) if c.get("doc")]
-    child_hints = [
-        f"check-hints/{c['name']}.json"
-        for c in manifest.get("children", [])
-        if c.get("name")
-    ]
-    child_reviews = [
-        f"spec-review/{c['name']}.md"
-        for c in manifest.get("children", [])
-        if c.get("name")
-    ]
+    children = manifest["children"]
+    child_docs = [c["doc"] for c in children]
+    child_hints = [f"check-hints/{c['name']}.json" for c in children]
+    child_reviews = [f"spec-review/{c['name']}.md" for c in children]
     return [
         {"path": p}
         for p in fixed + child_docs + child_hints + child_reviews
@@ -98,10 +94,9 @@ def build_result(workdir, module, ppa_targets, status, fail_reason=None) -> int:
     fail path runs neither: an early-fail's inputs may be incomplete, and derive_constraints'
     fail-loud exit would turn a routable fail into a BLOCKED.
 
-    The semantic review is NOT re-judged here. It is prose under spec-review/, promoted and
-    fingerprinted as this stage's proposed oracle; a script re-reducing it to a verdict would
-    only be checking a record against the same agent's own --status, and pin/signoff is where
-    that endorsement is actually held to account."""
+    The semantic review is NOT re-judged here, and re-adding that would not buy a check: a
+    verdict re-derived from the record would be checked against the --status of the same
+    caller that assembled the record."""
     workdir = Path(workdir)
 
     if status == "fail":

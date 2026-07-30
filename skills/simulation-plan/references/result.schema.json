@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-plan/result.schema.json",
   "title": "simulation-plan result.json contract",
-  "description": "Complete contract for asic/<module>/Verification/simulation-plan/result.json. On status=pass, stage_specific carries the plan_adequacy_gate verdict; on status=fail, fail_reason (the one-line failure narrative).",
+  "description": "Complete contract for asic/<module>/Verification/simulation-plan/result.json. No verdict derived from the plan-adequacy review reaches this envelope: it is prose under plan-review/, promoted as-is.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
@@ -13,39 +13,7 @@
           "properties": {
             "fix_owner": {"type": "string", "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."},
             "fail_reason":          {"type": "string",  "minLength": 1},
-            "plan_adequacy_gate": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["gate"],
-              "properties": {
-                "gate":     {"enum": ["trip", "clear"]},
-                "flagged":  {"type": "array", "items": {
-                  "type": "object",
-                  "properties": {
-                    "tp_id":    {"type": "string"},
-                    "lens":     {"type": "string"},
-                    "severity": {"type": "string"}
-                  }
-                }},
-                "must_ack": {"type": "array", "items": {
-                  "type": "object",
-                  "properties": {
-                    "tp_id":    {"type": "string"},
-                    "severity": {"type": "string"}
-                  }
-                }},
-                "waived": {"type": "array", "items": {
-                  "type": "object",
-                  "properties": {
-                    "tp_id":          {"type": "string"},
-                    "lens":           {"type": "string"},
-                    "location":       {"type": "string"},
-                    "classification": {"enum": ["false-positive", "accepted-risk"]},
-                    "reason":         {"type": "string"}
-                  }
-                }}
-              }
-            }
+            "revision":             {"type": "string",  "minLength": 1}
           },
           "additionalProperties": true
         }
