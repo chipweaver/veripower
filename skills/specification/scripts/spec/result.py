@@ -8,7 +8,6 @@ from jsonschema import Draft202012Validator
 
 from spec.constraints import derive_constraints
 from spec.crossrefs import verdict as crossrefs_verdict
-from spec.crossrefs import violated_keys
 
 STAGE = "specification"
 
@@ -199,10 +198,10 @@ def build_result(workdir, module, ppa_targets, status, fail_reason=None) -> int:
 
     xrefs = crossrefs_verdict(workdir)
     if xrefs["status"] == "fail":
+        listed = "; ".join(f"{v['where']}: {v['what']}" for v in xrefs["violations"])
         raise ValueError(
-            "check-crossrefs no longer passes at finalize: "
-            f"{', '.join(violated_keys(xrefs))}. Step 5 left it clean, so an artifact was "
-            "edited after the gate — re-run check-crossrefs and repair, do not finalize."
+            f"check-crossrefs no longer passes at finalize — {listed}. Step 5 left it clean, "
+            "so an artifact was edited after the gate: repair it, do not finalize."
         )
 
     info = derive_constraints(

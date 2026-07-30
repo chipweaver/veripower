@@ -131,14 +131,7 @@ Run `check-crossrefs`. It is the one check this stage's fan-out makes necessary:
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py check-crossrefs --workdir {workdir}
 ```
 
-It prints the verdict to stdout — `unresolved` (a name written in one file that the owning file does not have) and `orphans` (a target nothing refers to); exit 0 = pass. On a non-zero exit, **fix nothing yourself**; you only route to a rework sub-Task:
-- **a verdict on stdout**: route by key (below), then re-run, looping until clean.
-- **a sidecar is malformed** (it raised; stderr names the file and every violation in it): route a Wave-1 rework, or early-fail if unresolvable. Sidecar shape is validated wherever a verb reads the file, so this can also surface earlier, at `derive-ports` or `derive-constraints`.
-
-| Verdict key | Rework target |
-|---|---|
-| `unresolved.port_clock_domains`; `unresolved.wire_clock_domains` | Wave-1 rework (the authored sidecars) |
-| `unresolved.child_ports` / `child_clocks` / `child_features` / `missing_frontmatter_keys`; `orphans.features_without_check`; `orphans.outputs_without_driver` | the affected Wave-2 child rework |
+Exit 0 = pass. Otherwise it names every disagreement it found — which file wrote a name, and which file was supposed to have it. **Fix nothing yourself**: read what it says, decide which of the two files is wrong (the child may have mistyped a port, or the boundary may be missing it), and route the rework to whoever authored that file — Wave 1 for a sidecar, the affected child for a `<child>.md` or its check hints. Re-run, looping until clean; if a defect is unresolvable, close via early-fail.
 
 **On a clean cross-reference gate, immediately run `derive-constraints`:**
 

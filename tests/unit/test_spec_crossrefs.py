@@ -1,10 +1,10 @@
 """check-crossrefs: the join fan-out makes necessary.
 
-Two questions, neither answerable by any single author: does a name written in one file
-resolve against the file that owns it (`unresolved`), and is there a target nothing refers to
-(`orphans`). A sidecar's own shape is not tested here — that is read-time, see
-test_spec_sidecar.py — and neither is top-partition purity, which is decided at the partition
-gate (test_spec_ports.py + the contract test).
+One question, unanswerable by any single author: does what one file wrote agree with the file
+that owns it. Each test asserts on the violation an agent actually reads — where + what — not
+on an internal key, because that sentence IS the interface. A sidecar's own shape is not tested
+here (read-time, see test_spec_sidecar.py) and neither is top-partition purity (decided at the
+partition gate — test_spec_ports.py + the contract test).
 """
 
 import json
@@ -107,17 +107,26 @@ def _verdict(tmp_path, **kw):
     return crossrefs.verdict(_workdir(tmp_path, **kw))
 
 
-# ---------- unresolved: a name that the owning file does not have ----------
+def _said(v, where_frag, what_frag):
+    """Did the verdict say this, in the words the agent reads?"""
+    return [
+        x
+        for x in v["violations"]
+        if where_frag in x["where"] and what_frag in x["what"]
+    ]
+
+
+# ---------- a name the owning file does not have ----------
 
 
 def test_clean_workdir_passes(tmp_path):
     v = _verdict(tmp_path)
-    assert v["status"] == "pass", v
+    assert v == {"status": "pass", "violations": []}
 
 
 def test_child_port_not_in_any_boundary_sidecar(tmp_path):
     v = _verdict(tmp_path, children={"c": _fm(ports=["ghost"])})
-    assert v["unresolved"]["child_ports"] == [{"child": "c", "port": "ghost"}]
+    assert _said(v, "c.md frontmatter ports", "'ghost' is in neither top-io.json")
 
 
 def test_child_port_may_name_an_interconnect_wire(tmp_path):
@@ -131,26 +140,24 @@ def test_child_port_may_name_an_interconnect_wire(tmp_path):
         }
     ]
     v = _verdict(tmp_path, children={"c": _fm(ports=["score_S"])}, wires=wires)
-    assert v["unresolved"]["child_ports"] == []
+    assert v["status"] == "pass", v
 
 
 def test_child_clock_not_in_clocks_json(tmp_path):
     v = _verdict(tmp_path, children={"c": _fm(clocks=["clk_x"])})
-    assert v["unresolved"]["child_clocks"] == [{"child": "c", "clock_name": "clk_x"}]
+    assert _said(v, "c.md frontmatter clocks", "'clk_x' is not in clocks.json")
 
 
 def test_child_feature_not_in_features_json(tmp_path):
     v = _verdict(tmp_path, children={"c": _fm(features=["F-00", "F-99"])})
-    assert v["unresolved"]["child_features"] == [{"child": "c", "feature_id": "F-99"}]
+    assert _said(v, "c.md frontmatter features", "'F-99' is not in features.json")
 
 
 def test_missing_frontmatter_key_is_reported(tmp_path):
-    # An absent key would make its subset check vacuously true, so presence is the guard.
+    # An absent key would make its check pass vacuously, so presence is the guard.
     body = "---\nports: []\nfeatures:\n  - F-00\n---\n\nbody\n"
     v = _verdict(tmp_path, children={"c": body})
-    assert v["unresolved"]["missing_frontmatter_keys"] == [
-        {"child": "c", "missing": ["clocks"]}
-    ]
+    assert _said(v, "c.md frontmatter", "no 'clocks' key")
 
 
 def test_port_clock_domain_not_in_clocks_json(tmp_path):
@@ -159,9 +166,7 @@ def test_port_clock_domain_not_in_clocks_json(tmp_path):
         _port("din", "input", "data", domain="clk_x"),
     ]
     v = _verdict(tmp_path, ports=bad)
-    assert v["unresolved"]["port_clock_domains"] == [
-        {"signal": "din", "clock_domain": "clk_x"}
-    ]
+    assert _said(v, "top-io.json din", "clock_domain 'clk_x' is not in clocks.json")
 
 
 def test_wire_clock_domain_not_in_clocks_json(tmp_path):
@@ -176,38 +181,35 @@ def test_wire_clock_domain_not_in_clocks_json(tmp_path):
         }
     ]
     v = _verdict(tmp_path, wires=bad)
-    assert v["unresolved"]["wire_clock_domains"] == [
-        {"wire": "score_S", "clock_domain": "clk_x"}
-    ]
+    assert _said(v, "interconnects.json score_S", "clock_domain 'clk_x' is not in")
 
 
-# ---------- orphans: a target nothing refers to ----------
+# ---------- a target nothing refers to ----------
 
 
-def test_feature_no_hint_references_is_an_orphan(tmp_path):
+def test_feature_no_hint_references_is_reported(tmp_path):
     orphan = [{**_HINTS[0], "source_feature": "F-99"}]
     v = _verdict(tmp_path, hints=orphan)
-    assert v["orphans"]["features_without_check"] == [{"feature_id": "F-00"}]
+    assert _said(v, "features.json F-00", "nothing verifies it")
 
 
 def test_feature_referenced_by_one_child_is_covered(tmp_path):
-    # Emergent across children: the second child covers what the first one skipped.
-    children = {"a": _fm(), "b": _fm()}
-    v = _verdict(tmp_path, children=children)
-    assert v["orphans"]["features_without_check"] == []
+    # Emergent across children: the coverage is the union of what all of them wrote.
+    v = _verdict(tmp_path, children={"a": _fm(), "b": _fm()})
+    assert v["status"] == "pass", v
 
 
-def test_output_no_child_claims_is_an_orphan(tmp_path):
+def test_output_no_child_claims_is_reported(tmp_path):
     # The defect no single child's author can see: each knows only its own claim.
     ports = [*_PORTS, _port("sig_o", "output", "data", width=8, group="g")]
     v = _verdict(tmp_path, ports=ports)
-    assert v["orphans"]["outputs_without_driver"] == [{"signal": "sig_o"}]
+    assert _said(v, "top-io.json sig_o", "nothing drives it")
 
 
 def test_output_claimed_by_a_child_passes(tmp_path):
     ports = [*_PORTS, _port("sig_o", "output", "data", width=8, group="g")]
     v = _verdict(tmp_path, children={"c": _fm(ports=["sig_o"])}, ports=ports)
-    assert v["orphans"]["outputs_without_driver"] == []
+    assert v["status"] == "pass", v
 
 
 def test_multiple_claimants_are_not_asked_about(tmp_path):
@@ -216,14 +218,19 @@ def test_multiple_claimants_are_not_asked_about(tmp_path):
     ports = [*_PORTS, _port("sig_o", "output", "data", width=8, group="g")]
     children = {"a": _fm(ports=["sig_o"]), "b": _fm(ports=["sig_o"])}
     v = _verdict(tmp_path, children=children, ports=ports)
-    assert v["orphans"]["outputs_without_driver"] == []
+    assert v["status"] == "pass", v
 
 
-def test_an_unclaimed_input_is_not_an_orphan(tmp_path):
+def test_an_unclaimed_input_is_not_reported(tmp_path):
     # Which inputs a child reads is its own decision, declared nowhere else.
     ports = [*_PORTS, _port("in_i", "input", "data", width=8, group="g")]
     v = _verdict(tmp_path, ports=ports)
-    assert v["orphans"]["outputs_without_driver"] == []
+    assert v["status"] == "pass", v
+
+
+def test_every_disagreement_is_reported_not_just_the_first(tmp_path):
+    v = _verdict(tmp_path, children={"c": _fm(ports=["ghost"], clocks=["clk_x"])})
+    assert len(v["violations"]) == 2, v
 
 
 # ---------- the verb ----------
@@ -238,25 +245,21 @@ def _run(workdir):
 
 
 def test_verb_prints_the_verdict_and_exits_zero(tmp_path):
-    wd = _workdir(
-        tmp_path, children={"core_top": _fm(), "core_b": _fm()}
-    )  # N=2, both clean
+    wd = _workdir(tmp_path, children={"core_top": _fm(), "core_b": _fm()})
     proc = _run(wd)
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
-    v = json.loads(proc.stdout)
-    assert v["status"] == "pass"
-    assert set(v) == {"status", "unresolved", "orphans"}
+    assert json.loads(proc.stdout) == {"status": "pass", "violations": []}
 
 
 def test_verb_exits_one_on_a_violation(tmp_path):
     wd = _workdir(tmp_path, children={"c": _fm(ports=["ghost"])})
     proc = _run(wd)
     assert proc.returncode == 1, (proc.stdout, proc.stderr)
-    assert json.loads(proc.stdout)["unresolved"]["child_ports"]
+    assert "ghost" in proc.stdout
 
 
 def test_verb_raises_on_a_malformed_sidecar(tmp_path):
-    # Shape is a read-time defect, so it surfaces on stderr, not as a verdict key.
+    # Shape is a read-time defect, so it surfaces as the reader's error, not as a violation.
     wd = _workdir(tmp_path)
     (wd / "features.json").write_text("[]")  # minItems 1
     proc = _run(wd)
