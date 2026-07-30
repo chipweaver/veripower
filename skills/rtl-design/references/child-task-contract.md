@@ -17,17 +17,18 @@ below. Do not call the Task tool (no Level-2 dispatch).
   `set_case_analysis` (← `top-io.json`), `quasi_static` (← `interconnects.json`) and top wiring.
 - `clocks.json` path (specification workdir) — the clock definitions. Read it for
   `create_generated_clock`: a `"generated": true` entry is a divider/PLL output whose
-  `create_generated_clock` pin is YOUR RTL's to name, deliberately deferred by specification. **Every child reads `top-io.json`** (which of its ports are yours is your own doc's frontmatter claim,
-  so all children read it rather than risk silently dropping a top-IO-derived `set_case_analysis`).
+  `create_generated_clock` pin is YOUR RTL's to name, deliberately deferred by specification.
+  **Every child reads `top-io.json`**: which of its ports are yours is your own doc's frontmatter
+  claim — so read it even when you drive nothing.
 
-## Prohibitions (read carefully)
+## Prohibitions
 
 - **Do not reverse-read your interface into existence.** Your ports come from the
   `top-io.json` / `interconnects.json` / `<child>.md §2` contract — never from an external
   verification harness (a reference top, `Makefile`, or `*_defines` from the verification
-  environment) reverse-read until they line up. That harness is one author's guess at the
-  contract; the contract is the contract, and it is what your siblings were handed too.
-  Integration/elaboration correctness itself is verified downstream by lint-cdc.
+  environment) reverse-read until they line up. Your siblings were handed that same contract,
+  and it is the only reason their RTL and yours meet. Integration correctness itself is verified
+  downstream by lint-cdc.
 
 ## Output
 
@@ -52,7 +53,7 @@ selectors match `*.v` alone), and not SV-only constructs (`logic`/`always_ff`/`a
 }
 ```
 
-## Annotation rules (read carefully — these feed lint-cdc + synthesis)
+## Annotation rules (these feed lint-cdc + synthesis)
 
 - Report **only structures you authored**, using your **real RTL names** (the module
   name you actually wrote, not a design.md placeholder). This is the whole point — `sync_cell -name`
@@ -67,9 +68,8 @@ selectors match `*.v` alone), and not SV-only constructs (`logic`/`always_ff`/`a
   the **top-integration** child reports cross-domain `quasi_static` + test-control `set_case_analysis`
   (it owns the interconnect). Empty lists `[]` when a category genuinely has none.
 - `incdirs`: list the include dirs your authored files `` `include `` from. You **author your own
-  file/include layout** (specification defines RTL modules, not file layout — see this skill's
-  Output Artifacts), so you
-  are the source of truth for this. Omit the field (or `[]`) only when your files use no `` `include ``
+  file/include layout** (specification defines RTL modules, not file layout). Omit the field
+  (or `[]`) only when your files use no `` `include ``
   — that is the genuine "no include dirs" case, not a guess. A child that uses includes but omits
   `incdirs` is a contract violation (every downstream filelist is generated from `rtl-files.json`,
   so a missing entry means a missing include path and the compile fails downstream — do not omit).

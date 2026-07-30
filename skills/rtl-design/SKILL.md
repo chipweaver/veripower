@@ -54,17 +54,12 @@ Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream 
 ## Workflow
 
 Three machine contracts bracket this stage: what `dispatch.json` hands you, what the fan-out
-sub-Tasks return, and what `finalize` hands back. Between them the actions are yours to
-sequence — each names what it reads and writes, and every script fails loud on a missing
-input, so none of this is an execution order to be walked.
+sub-Tasks return, and what `finalize` hands back. The actions between them are yours to sequence.
 
 ### Entry contract
 
-Read `{workdir}/dispatch.json`. Its `inputs` table maps each read-only upstream input to its
-location, so `<key>` denotes that location and you read `<key>/<subpath>`; every key resolves to
-the specification stage root, so `<design>` reaches its sibling JSON sidecars too.
-
-Three keys narrow this round — when either narrowing key is present, the scope is the union of both:
+`dispatch.json`'s `inputs` table resolves the upstream locations (Input Artifacts above). Three
+further keys narrow this round — with either narrowing key present, the scope is the union of both:
 
 - `caused_by` — the `result.json` of each upstream failure this round answers. Read each, and its
   sibling `reports/` or `reports_*/` when the failure is a PPA miss, since a bottleneck is located
@@ -102,8 +97,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py check-partition --manifest <
 ```
 
 Exit code is the truth (0 ok / 1 fail). Non-zero means the manifest's top-integration child is
-bundled or miscovered: run `finalize`, which surfaces that `fail_reason` into a `status=fail`
-`result.json`, then return without paying for a doomed fan-out.
+bundled or miscovered: run `finalize` and return without dispatching.
 
 **Once every dispatched child has reported, land the reports and build the sidecars.** Dump each
 reaped child's `STATUS` + JSON to `{workdir}/reaped-children.json` — the scripts read disk, not
@@ -135,8 +129,7 @@ into `{workdir}/semantic-review.json` (schema
   `fix_locus ∈ {rtl, spec}`).
 - `STATUS: BLOCKED`, or malformed/unparseable JSON → record a `{child, severity:"minor",
   category:"unavailable", location:"-", summary:"review unavailable: <reason>"}` finding (the
-  `unavailable` marker is the only finding with no `fix_locus`). Never silently treated as ok, but
-  a DISTINCT category from substantive concerns.
+  `unavailable` marker is the only finding with no `fix_locus`).
 - The whole wave unusable (nothing assemblable at all, e.g. total dispatch failure) → do NOT gate:
   write the minimal doc with one `unavailable` finding, note it in the completion summary, carry on.
 
@@ -151,9 +144,7 @@ main-thread fix, NOT a re-dispatch). On exit 0 it prints
 `{"gate":"trip"|"clear","flagged":[{child,category,severity,fix_locus}…],"loci":{"rtl":[…],"spec":[…]},"spec_confidence":"high"|"medium"|"low"|null}`
 — the mechanical `category × severity` reduction partitioned by `fix_locus`, the same one
 `finalize` re-computes in-process and writes verbatim as `stage_specific.semantic_gate`.
-`spec_confidence` is the **minimum** `confidence` over every `fix_locus=spec` finding, not just the
-gating subset (reviewer-reported, defaulting to `low` when omitted; `null` when there is no
-spec-locus finding at all). Advisory findings (`over-engineering` at any severity, `minor`,
+Advisory findings (`over-engineering` at any severity, `minor`,
 `unavailable`) never trip; they are recorded, with a `⚠ <child> <category>` line in the completion
 summary.
 
@@ -164,9 +155,7 @@ reviewer re-judges every round. `design.md` / `<child>.md` stay the immovable in
 fixer edits only its own child's RTL. Re-run `assemble` **WITH `--seeded`** every round — without
 it this round's subset-only `reaped-children.json` becomes the whole ledger and every
 already-passing child is dropped. A non-zero `assemble` (blocked-child or topology) stops the stage
-and does not fall through to the review wave. There is no round cap, and the loop is intra-stage
-scratch: the stage produces one result at exit. Files a re-dispatched child superseded stay in the
-run's scratch workdir, never in the sidecars, so they are never promoted.
+and does not fall through to the review wave. There is no round cap.
 
 **A spec-locus trip you cannot fix from RTL — fail-out.** `loci.spec` non-empty means the defect is
 in the intent source, so no child's RTL can close it: go straight to `finalize`, which folds the
