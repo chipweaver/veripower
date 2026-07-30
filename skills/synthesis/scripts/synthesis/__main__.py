@@ -57,9 +57,7 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     slack_target = next(
         (t["target"] for t in targets if t["dim"] == "timing_slack_ns"), None
     )
-    return result.finalize(
-        a.workdir, a.module, a.top, area_target, slack_target, a.fix_owner
-    )
+    return result.finalize(a.workdir, a.module, area_target, slack_target, a.fix_owner)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -82,9 +80,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument("--module", required=True)
-    sp.add_argument(
-        "--top", required=True, help="top module (required; finalize cannot infer it)"
-    )
     sp.add_argument(
         "--fix-owner",
         default=None,

@@ -171,9 +171,7 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def build_result(
-    workdir, module, top, area_target, slack_target, fix_owner=None
-) -> int:
+def build_result(workdir, module, area_target, slack_target, fix_owner=None) -> int:
     """Assemble the lean synthesis result.json. Reuses run() for the PPA gate
     (in-process), then derives the header + artifacts + writes the envelope.
     Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED).
@@ -190,7 +188,6 @@ def build_result(
             "missing" if rc == 1 else "unparseable"
         )  # run(): 1=missing, 3=unparseable
         ss = {
-            "top_module": top,
             "fail_reason": _FAIL_REASON[token],
             "failure_kind": "tooling",
         }
@@ -202,7 +199,7 @@ def build_result(
                 module,
                 status="fail",
                 stage_specific=ss,
-                artifacts=enumerate_artifacts(workdir, top),
+                artifacts=enumerate_artifacts(workdir),
             ),
         )
         return 0
@@ -210,7 +207,6 @@ def build_result(
     status = "pass" if actual["verdict"] == "pass" else "fail"
     area_text = (reports / "area.rpt").read_text(errors="replace")
     ss = {
-        "top_module": top,
         "tool": parse_tool(area_text),
         "lib_db": read_lib_db(workdir),
         "clock": parse_clock(workdir),
@@ -233,7 +229,7 @@ def build_result(
             module,
             status=status,
             stage_specific=ss,
-            artifacts=enumerate_artifacts(workdir, top),
+            artifacts=enumerate_artifacts(workdir),
         ),
     )
     return 0
@@ -265,12 +261,24 @@ def parse_clock(workdir):
     return {"name": m.group(1), "period_ns": float(m.group(2))} if m else None
 
 
-def enumerate_artifacts(workdir, top: str) -> list[dict]:
+def enumerate_artifacts(workdir) -> list[dict]:
+    """Every promotable file this run produced, present-only.
+
+    The DC outputs are matched by the same `out/*_syn.*` glob rules.py declares them
+    with, not by a caller-supplied top name: a name that disagreed with the one
+    dc_shell actually wrote would drop the netlist from artifacts[] silently, and
+    promote publishes exactly what artifacts[] lists — a status=pass canonical stage
+    root with no netlist, which the two downstream rules then cannot be dispatched on.
+    """
     workdir = Path(workdir)
+    out = sorted(
+        p.relative_to(workdir).as_posix()
+        for ext in ("v", "sdc", "sdf")
+        for p in workdir.glob(f"out/*_syn.{ext}")
+        if p.is_file()
+    )
     candidates = [
-        f"out/{top}_syn.v",
-        f"out/{top}_syn.sdc",
-        f"out/{top}_syn.sdf",
+        *out,
         "reports/qor.rpt",
         "reports/area.rpt",
         "reports/timing_setup.rpt",
@@ -286,12 +294,12 @@ def enumerate_artifacts(workdir, top: str) -> list[dict]:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def finalize(workdir, module, top, area_target, slack_target, fix_owner=None) -> int:
+def finalize(workdir, module, area_target, slack_target, fix_owner=None) -> int:
     """Parse DC reports, judge PPA, write the lean result.json. exit 0 = written
     (pass or fail); exit 2 = BLOCKED (any internal raise) — never conflated with
-    status=fail. (Owns the policy the deleted main() finalize branch had.)"""
+    status=fail."""
     try:
-        return build_result(workdir, module, top, area_target, slack_target, fix_owner)
+        return build_result(workdir, module, area_target, slack_target, fix_owner)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[synthesis finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2

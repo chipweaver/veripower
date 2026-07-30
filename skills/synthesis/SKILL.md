@@ -125,8 +125,7 @@ Run the parser's finalize subcommand; do not hand-assemble the envelope or extra
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
-  --workdir {workdir} --module <module> --top <top_module> \
-  [--fix-owner <rule>]
+  --workdir {workdir} --module <module> [--fix-owner <rule>]
 ```
 
 `finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`) against the targets at the injected `ppa` location, derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
@@ -156,7 +155,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
 - [ ] `{workdir}/result.json` has been written and passes schema validation.
 - [ ] No Iron Rule or Red Flag was triggered.
 - [ ] The `result.json.status` decision has been written (`pass` or `fail`; the envelope does not accept blocked); on `fail`, `stage_specific.{fail_reason, failure_kind}` are required.
-- [ ] result.json was written by `synthesis finalize` (it owns status / ppa_actual / artifacts / failure_kind / the reproducibility header).
+- [ ] result.json was written by `synthesis finalize` (it owns status / ppa_actual / artifacts / failure_kind / the reproducibility header, and matches the netlist trio by glob rather than by a name you pass).
 - [ ] `scripts/rtl_load.tcl` matches `<rtl>/rtl-files.json`.
 - [ ] `create_generated_clock` covers every `sdc.create_generated_clock` entry in `<annotations>/constraint-annotations.json` (every child reporting `[]` means there are none).
 - [ ] `set_false_path` / `set_multicycle_path` cover the exception paths that file annotates.

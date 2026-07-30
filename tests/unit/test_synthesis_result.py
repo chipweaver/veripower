@@ -155,13 +155,23 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
         text=True,
     )
     assert r.returncode == 2  # argparse: missing --module
-    # missing --top (required; finalize cannot infer it — design §5.2)
+    # --top is not a flag at all: the netlist trio is matched by glob
     r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--workdir", str(tmp_path), "--module", "m"],
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(tmp_path),
+            "--module",
+            "m",
+            "--top",
+            "m",
+        ],
         capture_output=True,
         text=True,
     )
-    assert r.returncode == 2  # argparse: missing --top
+    assert r.returncode == 2 and "unrecognized arguments" in r.stderr
 
 
 # ── run() exit-code contract ──────────────────────────────────────────────────
@@ -263,10 +273,7 @@ def _workdir(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR):
 def test_build_result_pass_lean_shape(tmp_path):
     wd = _workdir(tmp_path)
     assert (
-        sp.build_result(
-            wd, module="tpu_top", top="tpu_top", area_target=None, slack_target=None
-        )
-        == 0
+        sp.build_result(wd, module="tpu_top", area_target=None, slack_target=None) == 0
     )
     env = json.loads((wd / "result.json").read_text())
     assert (env["stage"], env["module"]) == (
@@ -287,10 +294,7 @@ def test_build_result_pass_lean_shape(tmp_path):
 def test_build_result_tooling_fail_on_unparseable(tmp_path):
     wd = _workdir(tmp_path, area=AREA_NO_TOTAL)  # parser run() returns 3
     assert (
-        sp.build_result(
-            wd, module="tpu_top", top="tpu_top", area_target=None, slack_target=None
-        )
-        == 0
+        sp.build_result(wd, module="tpu_top", area_target=None, slack_target=None) == 0
     )
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert (
@@ -339,11 +343,25 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
     for rel in ["out/tpu_top_syn.v", "reports/area.rpt", "constraints.sdc"]:
         (tmp_path / rel).write_text("x")
     (tmp_path / "result.json").write_text("{}")  # must NOT self-list
-    paths = [a["path"] for a in sp.enumerate_artifacts(tmp_path, top="tpu_top")]
+    paths = [a["path"] for a in sp.enumerate_artifacts(tmp_path)]
     assert "out/tpu_top_syn.v" in paths and "reports/area.rpt" in paths
     assert "constraints.sdc" in paths
     assert "result.json" not in paths
     assert all((tmp_path / p).is_file() for p in paths)  # only present files
+
+
+def test_enumerate_artifacts_matches_netlist_by_glob_not_by_a_passed_name(tmp_path):
+    # The netlist trio is whatever dc_shell wrote, so no caller-supplied top name can
+    # drop it: an omitted out/*_syn.v is a pass promoted with no netlist, leaving
+    # timing-analysis and power-analysis undispatchable.
+    (tmp_path / "out").mkdir()
+    (tmp_path / "reports").mkdir()
+    for rel in ("out/whatever_dc_wrote_syn.v", "out/whatever_dc_wrote_syn.sdc"):
+        (tmp_path / rel).write_text("x")
+    paths = [a["path"] for a in sp.enumerate_artifacts(tmp_path)]
+    assert "out/whatever_dc_wrote_syn.v" in paths
+    assert "out/whatever_dc_wrote_syn.sdc" in paths
+    assert "out/whatever_dc_wrote_syn.sdf" not in paths  # present-only, never invented
 
 
 # ── golden: lean shape against the real tpu_top run ───────────────────────────
@@ -356,10 +374,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     wd = tmp_path / "synthesis"
     shutil.copytree(_FIXTURE, wd)
     assert (
-        sp.build_result(
-            wd, module="tpu_top", top="tpu_top", area_target=None, slack_target=None
-        )
-        == 0
+        sp.build_result(wd, module="tpu_top", area_target=None, slack_target=None) == 0
     )
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
@@ -371,7 +386,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     assert ss["tool"] == "Design Compiler L-2016.03-SP1"  # report header, NOT "dc2016"
     assert ss["lib_db"] == "/home/eda/Foundry/TSMC.90/slow.db"
     assert ss["clock"] == {"name": "i_clk", "period_ns": 10.0}
-    assert ss["top_module"] == "tpu_top" and ss["ppa_targets"] == []
+    assert ss["ppa_targets"] == [] and "top_module" not in ss
     for k in ("rtl_filelist", "power_report", "timing_exceptions", "notes"):
         assert k not in ss
     paths = [a["path"] for a in env["artifacts"]]
@@ -390,9 +405,7 @@ def test_golden_is_schema_valid(tmp_path):
 
     wd = tmp_path / "synthesis"
     shutil.copytree(_FIXTURE, wd)
-    sp.build_result(
-        wd, module="tpu_top", top="tpu_top", area_target=None, slack_target=None
-    )
+    sp.build_result(wd, module="tpu_top", area_target=None, slack_target=None)
     env = json.loads((wd / "result.json").read_text())
     env_schema = json.loads(
         (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()
@@ -431,18 +444,16 @@ def test_finalize_cli_happy_path(tmp_path):
             str(wd),
             "--module",
             "tpu_top",
-            "--top",
-            "tpu_top",
         ],
         capture_output=True,
         text=True,
     )
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
-    assert (env["stage"], env["status"], env["stage_specific"]["top_module"]) == (
+    assert (env["stage"], env["module"], env["status"]) == (
         "synthesis",
-        "pass",
         "tpu_top",
+        "pass",
     )
 
 
@@ -478,8 +489,6 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
             "--workdir",
             str(wd),
             "--module",
-            "tpu_top",
-            "--top",
             "tpu_top",
         ],
         capture_output=True,
@@ -517,8 +526,6 @@ def test_finalize_cli_no_ppa_json_is_vacuous_pass(tmp_path):
             "--workdir",
             str(wd),
             "--module",
-            "tpu_top",
-            "--top",
             "tpu_top",
         ],
         capture_output=True,
