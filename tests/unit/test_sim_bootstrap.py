@@ -44,14 +44,14 @@ def _mirror(
     scaffold_top="dut",
 ):
     """Seed the upstream rtl-design references + a tb-scaffold.json (`top`
-    field) under a tmp design-tree root, and pre-populate workdir/inputs.json
+    field) under a tmp design-tree root, and pre-populate workdir/dispatch.json
     (rtl/plan/scaffold keys) the way kernel.py dispatch injects it at dispatch time
     (+ carry_self, which would already have placed any carried TB directly into
     workdir before this verb runs). `scaffold_top=None` omits tb-scaffold.json
     entirely (models a TOP not inferrable from the declared `scaffold` input). Returns
     (main, workdir, module); deploy tests run `main` (the real shipped skill) with
     cwd=tmp_path, so the bootstrap anchors the design tree (and a relative --workdir)
-    on the CWD. bootstrap reads the rtl-design / scaffold stage roots from inputs.json,
+    on the CWD. bootstrap reads the rtl-design / scaffold stage roots from dispatch.json,
     not by self-navigating tree_root/asic/<module>/Design/... or .../specification."""
     module = "tpu_top"
     rtl = tmp_path / "asic" / module / "Design" / "rtl-design"
@@ -63,9 +63,15 @@ def _mirror(
         (plan_root / "tb-scaffold.json").write_text(json.dumps({"top": scaffold_top}))
     workdir = tmp_path / "asic" / module / "Verification" / "simulation" / "runs" / "1"
     workdir.mkdir(parents=True)
-    (workdir / "inputs.json").write_text(
+    (workdir / "dispatch.json").write_text(
         json.dumps(
-            {"rtl": str(rtl), "plan": str(plan_root), "scaffold": str(plan_root)}
+            {
+                "inputs": {
+                    "rtl": str(rtl),
+                    "plan": str(plan_root),
+                    "scaffold": str(plan_root),
+                }
+            }
         )
     )
     return _MAIN, workdir, module
@@ -134,7 +140,7 @@ def test_bootstrap_writes_rtl_filelist_rebased(tmp_path):
 
 
 def test_rtl_filelist_reanchors_to_absolute(tmp_path):
-    # bootstrap reads the upstream rtl-design location from the injected inputs.json
+    # bootstrap reads the upstream rtl-design location from the injected dispatch.json
     # "rtl" key — not by self-navigating tree_root/asic/<module>/.... rtl_filelist.f
     # must bake the ABSOLUTE rtl root, never a relative climb.
     main, wd, module = _mirror(tmp_path)

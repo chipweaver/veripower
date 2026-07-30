@@ -544,10 +544,16 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
     assert diag["subject"] == {"proof": "simulation", "outcome_run": 7}
     assert diag["confidence"] == "high"
     # D5: fix_locus mapped from advisory.findings[].anchor; evidence includes the triage
-    # result.json plus the L2 experiment artifacts (no longer structurally empty).
+    # result.json plus the L2 experiment artifacts (no longer structurally empty). Every
+    # entry is anchored on THIS triage run's directory, which keeps the list module-relative
+    # throughout and immutable: canonical result.json is overwritten by the next triage,
+    # runs/<N>/ is not, and the artifacts are workdir-relative at the source.
     assert diag["fix_locus"] == ["matvec.v:42"]
-    assert "Verification/simulation-triage/result.json" in diag["evidence"]
-    assert "experiment/harness.sv" in diag["evidence"]
+    run_dir = f"Verification/simulation-triage/runs/{d['run']}"
+    assert diag["evidence"] == [
+        f"{run_dir}/result.json",
+        f"{run_dir}/experiment/harness.sv",
+    ]
 
     # non-blocked -> promoted to canonical
     canonical = (
@@ -877,31 +883,6 @@ def test_dispatch_consumer_in_virgin_module_rejected(tmp_path, monkeypatch):
 # ── C-group regression fixes (low-risk corners, kernel-review disposition) ──
 
 
-def test_dispatch_directive_byte_exact_transfer(tmp_path, monkeypatch):
-    # C1 / spec §3.4: the directive is a BYTE-EXACT transfer (triage forward forbids LLM
-    # rewrite; the recorded digest must match the source). read_text/write_text applies
-    # universal-newline translation (CRLF -> LF), so directive.md and its digest would drift.
-    monkeypatch.chdir(tmp_path)
-    _write_file("m", "brainstorm.md", "b1")
-    src = tmp_path / "directive_src.md"
-    src.write_bytes(b"line1\r\nline2\r\n")  # CRLF
-    d = _run_json(
-        tmp_path,
-        "dispatch",
-        "--module",
-        "m",
-        "--rule",
-        "specification",
-        "--directive",
-        str(src),
-    )
-    dst = facts.module_root("m") / d["workdir"] / "directive.md"
-    assert (
-        dst.read_bytes() == b"line1\r\nline2\r\n"
-    )  # byte-exact, no newline translation
-    assert d.get("ok", True)
-
-
 def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
     # C2 / spec §5.4: reap compares the oracle's current content against the LATEST pin
     # record, not ANY live pin. Two live pins (A then B, no reopen between); oracle content
@@ -1145,8 +1126,8 @@ def test_stale_result_reason_boundaries():
     assert f(None, "2026-07-10T00:00:00.000000Z") == "produced_at_unparseable"
 
 
-def test_dispatch_writes_inputs_json(tmp_path, monkeypatch):
-    # cold specification dispatch → workdir has inputs.json with the brainstorm location
+def test_dispatch_writes_dispatch_json(tmp_path, monkeypatch):
+    # cold specification dispatch → workdir has dispatch.json with the brainstorm location
     monkeypatch.chdir(tmp_path)
     (tmp_path / "asic" / "m").mkdir(parents=True)
     (tmp_path / "asic" / "m" / "brainstorm.md").write_text("bs")
@@ -1161,7 +1142,7 @@ def test_dispatch_writes_inputs_json(tmp_path, monkeypatch):
         "delivery",
     )
     wd = tmp_path / "asic" / "m" / r["workdir"]
-    table = json.loads((wd / "inputs.json").read_text())
+    table = json.loads((wd / "dispatch.json").read_text())["inputs"]
     assert table["brainstorm"] == str((tmp_path / "asic" / "m").resolve())
 
 
@@ -1187,7 +1168,7 @@ def test_dispatch_carries_author_previous_round(tmp_path, monkeypatch):
 
 
 def test_dispatch_injects_no_upstream_byte_copy(tmp_path, monkeypatch):
-    # §10 #2 (half a): a transformer dispatch writes ONLY inputs.json — the upstream RTL is
+    # §10 #2 (half a): a transformer dispatch writes ONLY dispatch.json — the upstream RTL is
     # injected as a location, never copied into the workdir. (Half b — editing canonical
     # invalidates the proof — is covered by test_facts_freshness input-change tests.)
     monkeypatch.chdir(tmp_path)
@@ -1208,7 +1189,7 @@ def test_dispatch_injects_no_upstream_byte_copy(tmp_path, monkeypatch):
         "delivery",
     )
     wd = tmp_path / "asic" / "m" / r["workdir"]
-    assert (wd / "inputs.json").is_file()
+    assert (wd / "dispatch.json").is_file()
     assert not (wd / "top.v").exists()  # upstream RTL injected, not copied
 
 

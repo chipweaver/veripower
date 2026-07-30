@@ -4,9 +4,9 @@
 Subprocess "mirror" tests of full deploy behavior (BP2-BP11 + the §8 cross-stage
 contract CS1). The mirror runs the real shipped skill with cwd set to a tmp
 design-tree root and builds the upstream asic/<module>/... references under it,
-pre-populating workdir/inputs.json (netlist/tb_env/scaffold/ppa keys) the way
+pre-populating workdir/dispatch.json (netlist/tb_env/scaffold/ppa keys) the way
 kernel.py dispatch injects it at dispatch time — bootstrap reads the upstream
-stage-root locations from inputs.json instead of self-navigating
+stage-root locations from dispatch.json instead of self-navigating
 tree_root/asic/<module>/Design|Verification/<stage>. Power has no rtl key (it
 never consumes rtl-design; TOP is inferred from the injected netlist's
 out/*_syn.v, same mechanism as timing.infer_top). The bootstrap shells out to the
@@ -47,9 +47,9 @@ def _make_tree(
     scaffold=None,
 ):
     """Build the upstream synthesis/tb_env/scaffold trees under a tmp design-tree
-    root, and pre-populate workdir/inputs.json (netlist/tb_env/scaffold/ppa keys)
+    root, and pre-populate workdir/dispatch.json (netlist/tb_env/scaffold/ppa keys)
     the way kernel.py dispatch injects it at dispatch time. Bootstrap reads the
-    upstream stage-root locations from inputs.json instead of self-navigating
+    upstream stage-root locations from dispatch.json instead of self-navigating
     tree_root/asic/<module>/Design|Verification/<stage> — power has no rtl key
     (it never consumes rtl-design; TOP is inferred from the injected netlist).
 
@@ -77,13 +77,15 @@ def _make_tree(
         )
     workdir = base / "Verification" / "power-analysis" / "runs" / "1"
     workdir.mkdir(parents=True)
-    (workdir / "inputs.json").write_text(
+    (workdir / "dispatch.json").write_text(
         json.dumps(
             {
-                "netlist": str(syn),
-                "tb_env": str(sim),
-                "scaffold": str(plan),
-                "ppa": str(base / "Design" / "specification"),
+                "inputs": {
+                    "netlist": str(syn),
+                    "tb_env": str(sim),
+                    "scaffold": str(plan),
+                    "ppa": str(base / "Design" / "specification"),
+                }
             }
         )
     )
@@ -123,9 +125,9 @@ def test_deploys_and_substitutes(tmp_path):
     assert 'TB_TOP="${TOP}_tb_top"' in env_sh
 
 
-def test_env_sh_uses_absolute_dirs_from_inputs_json(tmp_path):
+def test_env_sh_uses_absolute_dirs_from_dispatch_json(tmp_path):
     # MY_SYN_OUT / MY_SIM_DIR / MY_PLAN_DIR now come straight from the injected
-    # inputs.json stage roots (absolute) — no os.path.relpath, no '/../' hop,
+    # dispatch.json stage roots (absolute) — no os.path.relpath, no '/../' hop,
     # regardless of workdir depth.
     m, workdir, main = _make_tree(tmp_path)
     netlist_root = tmp_path / "asic" / m / "Design" / "synthesis"
@@ -141,13 +143,13 @@ def test_env_sh_uses_absolute_dirs_from_inputs_json(tmp_path):
 
 
 def test_top_inferred_from_netlist_not_rtl_design(tmp_path):
-    # no --top, no rtl key in inputs.json → TOP comes from synthesis out/<TOP>_syn.v
+    # no --top, no rtl key in dispatch.json → TOP comes from synthesis out/<TOP>_syn.v
     # (F4/O2(b)): assert bootstrap succeeds and never touches Design/rtl-design.
     m, workdir, main = _make_tree(tmp_path, top="dut")  # netlist -> dut_syn.v
     r = _run(m, workdir, main)  # no --top
     assert r.returncode == 0, r.stderr  # inferred TOP from the injected netlist
     assert "rtl" not in json.loads(
-        (workdir / "inputs.json").read_text()
+        (workdir / "dispatch.json").read_text()
     )  # power has no rtl key
     env_sh = (workdir / "env.sh").read_text()
     assert 'export TOP="${TOP:-dut}"' in env_sh

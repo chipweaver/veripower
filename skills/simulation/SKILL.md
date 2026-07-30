@@ -27,7 +27,7 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
 
 ## Iron Rule
 
-- The injected input locations (`<rtl>`, `<plan>`, `<scaffold>` — from `inputs.json`) are read-only
+- The injected input locations (`<rtl>`, `<plan>`, `<scaffold>` — from `dispatch.json`) are read-only
   canonical: never modify anything under them (or any other stage's canonical output); the only
   files you write live under `{workdir}`. Shared by both sub-Tasks — see each contract's
   Prohibitions. RTL-class issues in particular belong to the RTL editing stage — do not exceed
@@ -47,12 +47,10 @@ scripted finalize after Wave 3); the main thread never authors TB inline.
 |---|---|
 | `{workdir}` | Current run workspace root (shared by all sub-Tasks). |
 | `{module}` | Module name. |
-| `{failing_result}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, it is one of Step 1's edit-scope sources — passed to the env-build child to narrow this round's rewrite scope. |
-| `{directive_path}` | Optional. Fix-scope hint file — takes priority over `{failing_result}`; passed through to the env-build child. |
 
 ### External reference inputs
 
-Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`;
+Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream input to its location;
 below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
 
 | Path | Schema / Format | Use |
@@ -61,9 +59,9 @@ below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
 | `<plan>/verification-plan.md` | Custom markdown | env-build sub-Task input — passed by path; the main thread never reads the body. |
 | `<scaffold>/tb-scaffold.json` + `<scaffold>/sequences.json` | Custom JSON | TB scaffold contract — sub-Task input; the main thread asserts existence only; also the `top` inference source for `sim bootstrap` (falls back to the `<rtl>` filelist). |
 
-When `{failing_result}` is injected, you pass its path (and any
-`{directive_path}`) to the env-build sub-Task, which reads the failed stage's
-`stage_specific` to drive this round's rewrite scope.
+Whatever `dispatch.json` carries in `scope` / `caused_by` / `reasons`, you hand on to the
+env-build sub-Task as Step 1's resolved scope. It reads the failing envelope itself; you do
+not read a `stage_specific` body into the main thread.
 
 ## Output Artifacts
 
@@ -102,12 +100,8 @@ exist. If either is missing, run `sim finalize --workdir {workdir} --module <mod
 prerequisite --fail-reason "external reference missing: <path>"` and return without dispatching. The
 main thread does not read the scaffold-spec / verification-plan body — only path existence.
 
-Pre-gate `{failing_result}` readability before dispatching any wave: if the trigger path is
-unreadable, run `sim finalize --workdir {workdir} --module <module> --phase prerequisite
---fail-reason "failing_result not readable"` and return without dispatching.
-
-**Every round is homogeneous — there is no branch to select.** The framework's
-`carry_self` has already carried your previous round's TB (`Makefile` / `env.sh` / `filelist.f` /
+**Every round is homogeneous — there is no branch to select.** Your previous round's TB is
+already in `{workdir}` (`Makefile` / `env.sh` / `filelist.f` /
 `tb/uvm/**` / `scripts/**` / `tests/testlist.json` / `regression-log.txt` / `verify-handoff.json` —
 everything except `conformance-review.json`, which is deliberately never carried and is always
 re-derived) into `{workdir}` before you were dispatched, whenever a prior canonical run exists.
@@ -118,14 +112,16 @@ sequence: dispatch env-build (Step 2) → smoke gate (Step 3) → **re-judge con
 dispatched every round, never skipped) → verify (Step 5) → finalize (Step 6).
 
 Determine this round's edit scope for the env-build child (Step 2) from the first available source:
-1. `{directive_path}`'s fix-scope hint when injected — takes priority.
-2. Else, on a `{failing_result}`, its `stage_specific` fields (per that stage's result schema).
-3. Else, if `{workdir}/changed-inputs.md` is present, it lists the input files that changed since
-   this stage's last run — confine the env-build child's edits to what it implies. **Scope
-   discipline:** when `changed-inputs.md` shows only RTL changed and the plan did not drift, the
-   testbench is out of scope — preserve it byte-for-byte; conformance re-judges regardless, so
-   correctness never rests on this.
-4. Else (a first delivery, no prior canonical) the full TB — fill every rendered `TODO(`.
+1. `caused_by`, when present: the `result.json` of each upstream failure this round answers.
+   The child reads each and confines its edits to what they attribute.
+2. `scope`, when present: the input files that changed since this stage's last run, or the
+   anchors a diagnosis named — confine the child's edits to what they imply. **Scope
+   discipline:** when only RTL changed and the plan did not drift, the testbench is out of
+   scope; preserve it byte-for-byte. Conformance re-judges regardless, so correctness never
+   rests on this.
+3. `reasons`, when present: a human's judgment on this repair, handed through unchanged.
+4. Neither narrowing key, and `{workdir}` holds no carried TB (a first delivery): the full TB
+   — fill every rendered `TODO(`.
 
 **Workdir on entry.** `{workdir}` may already hold your previous round's carried TB (rework —
 `carry_self` ran before you were dispatched) or be genuinely empty (first run); either way the
@@ -143,8 +139,7 @@ the `bootstrap` verb and the `make` targets (`simv` / `smoke` / `regress` / `cov
 Dispatch one `Task(run_in_background=True)` — the env-build child — whose prompt points to
 [`references/env-task-contract.md`](references/env-task-contract.md) and hands over paths only
 (`{workdir}`, `{module}`, the scaffold-spec path, the verification-plan path, and Step 1's resolved
-scope — whichever of `{failing_result}` / `{directive_path}` / the `changed-inputs.md` change-set
-applied).
+scope — whichever of `dispatch.json`'s `caused_by` / `scope` / `reasons` was present).
 
 The env-build child self-gates its `STATUS: DONE` on a presence-only thin-D1 check
 (`sim check-materialization`: no surviving TODO, all required scaffold files present) so a
@@ -311,7 +306,7 @@ The `failure_phase` value table below documents which step decides each phase; f
 
 | failure_phase | First-failing phase | Companion fields (besides `fail_reason`) | Decided in |
 |---|---|---|---|
-| `prerequisite` | Step 1 reference missing, or `{failing_result}` unreadable; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | main thread |
+| `prerequisite` | Step 1 reference missing; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | main thread |
 | `compile` | `make simv` failed (no smoke status); or `sim finalize` thin-D1 file missing / `TODO(` residue | — | smoke gate (Step 3) / finalize (Step 6) |
 | `smoke` | `make smoke` ran but a `RESULT` line is not `PASS` | `failing_cases` | smoke gate (Step 3) |
 | `conformance` | Conformance gate (Step 4): an `intent-defect` finding at `critical`/`important`, or a self-locus (`missing`/`wrong-behavior`/`fake-green`) finding whose in-stage conformance-fix Task `BLOCKED`s — self-locus otherwise self-heals in-stage | `conformance_findings` | conformance gate (Step 4) |
@@ -348,8 +343,8 @@ sub-Task.
 
 - [ ] No Iron Rule was triggered.
 - [ ] Every round ran the same homogeneous sequence — no branch was taken; Step 2's env-build child
-      was dispatched unconditionally, and Step 1's edit scope (directive / `{failing_result}` /
-      `changed-inputs.md`) was resolved and handed to it.
+      was dispatched unconditionally, and Step 1's edit scope (whatever `dispatch.json` carried)
+      was resolved and handed to it.
 - [ ] The smoke gate (Step 3) was evaluated against the smoke run's own status (`regression-log.txt`
       `RESULT` lines / per-test `.status`), not the child's prose; the verify wave was dispatched only
       on a smoke pass.

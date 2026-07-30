@@ -16,8 +16,9 @@ declarable but no longer requires.
 ANY SKILL.md must exist in SOME stage's schema. Checked against the union
 of all stage schemas rather than each skill's own — because the SKILL.md
 of stage X legitimately cites `stage_specific.violations` etc. when
-describing the `{failing_result}` channel, which carries another stage's
-result.json. Self-citation vs. cross-stage citation isn't recoverable
+describing what to read out of a failing envelope named in its
+`dispatch.json` `caused_by`, which is another stage's result.json.
+Self-citation vs. cross-stage citation isn't recoverable
 from text alone without section-aware parsing. The looser bar still
 catches "field renamed/removed everywhere" drift — a token that vanished
 from every schema continues to be cited in some SKILL.md.

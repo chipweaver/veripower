@@ -28,12 +28,10 @@ Your boundary:
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{failing_result}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, supplies this round's repair scope (Step 1). |
-| `{directive_path}` | Optional. Fix-scope hint file (Orchestrator reasoning, or forwarded triage `result.json`); when present, Read it first. |
 
 ### External reference inputs
 
-Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>`. `brainstorm` is a PIPELINE_INPUT, so `<brainstorm>` resolves to the module root.
+Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream input to its location; below, `<key>` denotes that input's location, so you read `<key>/<subpath>`. `brainstorm` is a PIPELINE_INPUT, so `<brainstorm>` resolves to the module root.
 
 | Path | Schema / Format | Use |
 |---|---|---|
@@ -70,9 +68,9 @@ You are loaded on the main thread as a thin Level-0 dispatcher. You hold no docu
 
 ### Step 1: Entry — determine scope, pick the entry point
 
-Your previous round, if any, is already present in `{workdir}`; edit it in place. When `{directive_path}` is injected, Read it first: its `fix_locus` narrows the scope. Then branch on whether a `<child>.md` is already in `{workdir}`:
+Your previous round, if any, is already present in `{workdir}`; edit it in place. Read `{workdir}/dispatch.json` first: its `scope` narrows what this round may touch, its `caused_by` names the failing envelopes to read, and its `reasons` carries a human's judgment on the repair. Then branch on whether a `<child>.md` is already in `{workdir}`:
 
-- **A `<child>.md` is present:** a repair round. A `<child>.md` is Wave-2 output, written only *after* the Step-4 partition gate, so its presence proves the partition was gate-confirmed in a prior round. Scope is `{directive_path}`'s `fix_locus` when injected, otherwise the `{failing_result}`'s `stage_specific` attribution; Read that trigger once, and early-fail (`failing_result not readable: <path>`) if it cannot be read. Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6** and flow through Steps 7–9, ending at Step 9. Steps 2–5 (the partition) are skipped, since `manifest.json` is immutable after the partition gate; Step 7 (the semantic gate) re-runs on this pass, so the promoted gate is always fresh.
+- **A `<child>.md` is present:** a repair round. A `<child>.md` is Wave-2 output, written only *after* the Step-4 partition gate, so its presence proves the partition was gate-confirmed in a prior round. Scope is the union of `dispatch.json`'s `scope` and what the `caused_by` envelopes attribute; Read each envelope once. Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 6** and flow through Steps 7–9, ending at Step 9. Steps 2–5 (the partition) are skipped, since `manifest.json` is immutable after the partition gate; Step 7 (the semantic gate) re-runs on this pass, so the promoted gate is always fresh.
 - **No `<child>.md` in `{workdir}`:** no partition has been gate-confirmed yet (a first delivery, or a run interrupted or reset before that gate). Re-derive in full from Step 2 (a fresh partition, including the human partition gate), ending at Step 9. `design.md` or `manifest.json` alone do not qualify: they are Wave-1 output, written *before* the gate.
 
 **Early-fail exit.** Whenever a documented failure below cannot be resolved, close the run with the finalize early-fail entry, not a hand-assembled envelope:

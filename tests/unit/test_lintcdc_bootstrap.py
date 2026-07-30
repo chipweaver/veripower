@@ -9,11 +9,11 @@ on the CWD (matching kernel.py and the stage-subagent contract), independent of 
 the skill code lives. Neither verb shells out to any Tier-2 script — bootstrap is a
 pure deploy.
 
-`_make_tree` pre-populates workdir/inputs.json (rtl/annotations/sgdc_seed keys) the way
+`_make_tree` pre-populates workdir/dispatch.json (rtl/annotations/sgdc_seed keys) the way
 kernel.py dispatch injects it at dispatch time, and (when given `carried_sgdc` /
 `carried_waiver`) pre-places files directly into workdir/scripts/ the way kernel.py's
 carry_self does before this verb runs — bootstrap reads upstream locations from
-inputs.json and carried files from the workdir itself, instead of self-navigating
+dispatch.json and carried files from the workdir itself, instead of self-navigating
 tree_root/asic/<module>/Design/lint-cdc/scripts/... ."""
 
 import json
@@ -44,7 +44,7 @@ def _make_tree(
     sdc=None,
 ):
     """Build the upstream asic/<module>/... refs under a tmp design-tree root, and
-    pre-populate workdir/inputs.json (rtl/annotations/sgdc_seed keys) the way kernel.py
+    pre-populate workdir/dispatch.json (rtl/annotations/sgdc_seed keys) the way kernel.py
     dispatch injects it. `carried_sgdc` / `carried_waiver`, when given, pre-place
     scripts/constraints.sgdc / scripts/waiver.tcl directly INTO the workdir — the way
     kernel.py's carry_self does before this verb runs.
@@ -77,13 +77,15 @@ def _make_tree(
     (spec_root / "manifest.json").write_text(
         json.dumps({"module": "dut", "children": []})
     )
-    (workdir / "inputs.json").write_text(
+    (workdir / "dispatch.json").write_text(
         json.dumps(
             {
-                "rtl": str(rtl),
-                "annotations": str(rtl),
-                "sgdc_seed": str(spec_root),
-                "manifest": str(spec_root),
+                "inputs": {
+                    "rtl": str(rtl),
+                    "annotations": str(rtl),
+                    "sgdc_seed": str(spec_root),
+                    "manifest": str(spec_root),
+                }
             }
         )
     )
@@ -187,7 +189,7 @@ def test_filelist_synced_and_rebased(tmp_path):
 
 def test_filelist_reanchors_to_absolute_rtl(tmp_path):
     # BP13: bootstrap reads the upstream rtl-design location from the injected
-    # inputs.json "rtl" key — not by self-navigating tree_root/asic/<module>/....
+    # dispatch.json "rtl" key — not by self-navigating tree_root/asic/<module>/....
     # scripts/filelist.txt must bake the ABSOLUTE rtl root, never a relative climb.
     m, workdir, main = _make_tree(tmp_path, rtl_files={"c": {"files": ["rtl/dut.v"]}})
     rtl_root = _rtl_dir(workdir)

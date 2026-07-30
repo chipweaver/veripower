@@ -4,8 +4,8 @@
 Behavior-preserving deploy built from focused, unit-testable steps (campaign design
 §3.3): shutil.copy2 + str.replace do the per-file deploy + `sed -i` work (str.replace
 has no sed-delimiter hazard). Upstream locations (rtl-design, the specification SGDC
-seed) come from the injected `<workdir>/inputs.json` "rtl" / "sgdc_seed"
-keys, not by self-navigating tree_root/asic/<module>/Design/....
+seed) come from the injected `<workdir>/dispatch.json` `inputs` table ("rtl" /
+"sgdc_seed"), not by self-navigating tree_root/asic/<module>/Design/....
 
 Deploys templates/ into the caller-provided workdir
 (asic/<module>/Design/lint-cdc/runs/<N>/) NO-CLOBBER — a dest file already present
@@ -147,9 +147,9 @@ def run(workdir, top: str | None = None) -> int:
         dest = tree_root / dest
     dest = Path(str(dest).rstrip("/"))
 
-    # The rtl-design stage root is injected into inputs.json (dispatch-time), not
+    # The rtl-design stage root is injected into dispatch.json (dispatch-time), not
     # self-navigated via tree_root/asic/<module>/Design/rtl-design.
-    inputs = json.loads((dest / "inputs.json").read_text(encoding="utf-8"))
+    inputs = json.loads((dest / "dispatch.json").read_text(encoding="utf-8"))["inputs"]
     rtl_dir = Path(inputs["rtl"])
 
     # Resolve TOP BEFORE mkdir/guard (shell order).
@@ -161,8 +161,8 @@ def run(workdir, top: str | None = None) -> int:
         return 1
 
     dest.mkdir(parents=True, exist_ok=True)
-    # A caller may pre-create the workdir with hint files (directive.md
-    # etc.); only treat it as already-deployed when Makefile is present.
+    # Every fresh workdir already holds the kernel's dispatch.json; only treat it as
+    # already-deployed when a Makefile is present.
     if (dest / "Makefile").is_file():
         _err(f"already deployed (detected {dest / 'Makefile'})")
         _err(

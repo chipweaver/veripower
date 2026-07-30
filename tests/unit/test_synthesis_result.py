@@ -415,10 +415,12 @@ def test_finalize_cli_happy_path(tmp_path):
     wd = _workdir(
         tmp_path
     )  # stages reports/{area,qor}.rpt (constraints/config optional)
-    # finalize reads PPA targets via the injected inputs.json "ppa" key (no
+    # finalize reads PPA targets via the injected dispatch.json "ppa" key (no
     # sibling ppa.json here -> vacuous empty targets, same as the old absent-file
     # default).
-    (wd / "inputs.json").write_text(json.dumps({"ppa": str(tmp_path / "no-ppa")}))
+    (wd / "dispatch.json").write_text(
+        json.dumps({"inputs": {"ppa": str(tmp_path / "no-ppa")}})
+    )
     MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
     r = subprocess.run(
         [
@@ -444,11 +446,11 @@ def test_finalize_cli_happy_path(tmp_path):
     )
 
 
-# ── PPA targets read from the injected inputs.json "ppa" stage root ──────────
+# ── PPA targets read from the injected dispatch.json "ppa" stage root ──────────
 def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
     # No --area-target/--slack-target flags exist anymore: finalize reads the
     # PPA gate straight from the specification stage root's ppa.json, whose
-    # location comes from the injected inputs.json "ppa" key (not self-nav).
+    # location comes from the injected dispatch.json "ppa" key (not self-nav).
     module_root = tmp_path / "asic" / "tpu_top"
     wd = module_root / "Design" / "synthesis" / "runs" / "1"
     wd.mkdir(parents=True)
@@ -466,7 +468,7 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
             ]
         )
     )
-    (wd / "inputs.json").write_text(json.dumps({"ppa": str(spec_dir)}))
+    (wd / "dispatch.json").write_text(json.dumps({"inputs": {"ppa": str(spec_dir)}}))
     MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
     r = subprocess.run(
         [
@@ -495,7 +497,7 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
 
 def test_finalize_cli_no_ppa_json_is_vacuous_pass(tmp_path):
     # No sibling ppa.json at all (e.g. a first-ever run) -> [] targets, same as
-    # the old no-flags-passed default; never a crash. inputs.json (as kernel
+    # the old no-flags-passed default; never a crash. dispatch.json (as kernel
     # dispatch would inject it) is present; its "ppa" target just has no ppa.json.
     module_root = tmp_path / "asic" / "tpu_top"
     wd = module_root / "Design" / "synthesis" / "runs" / "1"
@@ -505,7 +507,7 @@ def test_finalize_cli_no_ppa_json_is_vacuous_pass(tmp_path):
     (reports / "area.rpt").write_text(SAMPLE_AREA)
     (reports / "qor.rpt").write_text(SAMPLE_QOR)
     spec_dir = module_root / "Design" / "specification"
-    (wd / "inputs.json").write_text(json.dumps({"ppa": str(spec_dir)}))
+    (wd / "dispatch.json").write_text(json.dumps({"inputs": {"ppa": str(spec_dir)}}))
     MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
     r = subprocess.run(
         [

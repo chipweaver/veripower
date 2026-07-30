@@ -25,9 +25,9 @@ def _mirror(tmp_path):
     (skill_dir, rtl_dir, workdir). skill_dir is the real shipped skill — deploy
     tests run it with cwd=tmp_path, so the bootstrap anchors the tree on the CWD.
 
-    Pre-populates workdir/inputs.json (rtl/sdc/ppa/manifest keys) the way kernel.py dispatch
+    Pre-populates workdir/dispatch.json (rtl/sdc/ppa/manifest keys) the way kernel.py dispatch
     injects it at dispatch time — bootstrap now reads upstream locations from
-    inputs.json instead of self-navigating tree_root/asic/<module>/Design/... ."""
+    dispatch.json instead of self-navigating tree_root/asic/<module>/Design/... ."""
     skill_dst = REPO_ROOT / "skills" / "synthesis"
     rtl = tmp_path / "asic" / "M" / "Design" / "rtl-design"
     rtl.mkdir(parents=True)
@@ -42,9 +42,16 @@ def _mirror(tmp_path):
     con.mkdir(parents=True, exist_ok=True)
     for t_ in ("top", "M_top", "a"):
         (con / f"{t_}.sdc").write_text(f"# spec sdc for {t_}\ncreate_clock x\n")
-    (workdir / "inputs.json").write_text(
+    (workdir / "dispatch.json").write_text(
         json.dumps(
-            {"rtl": str(rtl), "sdc": str(spec), "ppa": str(spec), "manifest": str(spec)}
+            {
+                "inputs": {
+                    "rtl": str(rtl),
+                    "sdc": str(spec),
+                    "ppa": str(spec),
+                    "manifest": str(spec),
+                }
+            }
         )
     )
     return skill_dst, rtl, workdir
@@ -245,9 +252,9 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
     assert (workdir / "scripts" / "config.tcl").is_file()
 
 
-def test_bootstrap_reanchors_rtl_load_to_absolute_from_inputs_json(tmp_path):
+def test_bootstrap_reanchors_rtl_load_to_absolute_from_dispatch_json(tmp_path):
     # BP13: bootstrap reads the upstream rtl-design location from the injected
-    # inputs.json "rtl" key — not by self-navigating tree_root/asic/<module>/....
+    # dispatch.json "rtl" key — not by self-navigating tree_root/asic/<module>/....
     # rtl_load.tcl must bake the ABSOLUTE rtl root, never a relative "../.." climb.
     skill_dst, rtl_root, workdir = _mirror(tmp_path)
     (rtl_root / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))

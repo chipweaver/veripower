@@ -103,7 +103,9 @@ def test_fresh_failure_with_reliable_triage_dispatches_fix_owner(tmp_path, monke
     )
     a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "rtl-design"
-    assert a["needs_directive"] is True and a["triage_forward"] is True
+    # The triage analysis reaches the fix owner as the per-run envelope named in
+    # caused_by, not as a copied hint: coordinates in, kernel resolves them to paths.
+    assert a["caused_by"] == [["simulation", 1]]
     assert a["diagnosis_refs"] == ["d1"]
 
 
@@ -163,7 +165,7 @@ def test_fresh_lintcdc_self_describing_failure_routes_by_category(
     # Fix round 1: the self-describing-failure branch — route.route composed inline on
     # stage_specific read from the failed rule's CANONICAL result.json (_route_kwargs).
     # lint-cdc fresh fail, failures[0].category=rtl_cdc -> input-provenance target
-    # rtl-design (U4), dispatched with needs_directive.
+    # rtl-design (U4), naming the lint-cdc failure it answers in caused_by.
     monkeypatch.chdir(tmp_path)
     _mk("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
@@ -191,7 +193,7 @@ def test_fresh_lintcdc_self_describing_failure_routes_by_category(
     )
     a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "rtl-design"
-    assert a["needs_directive"] is True
+    assert a["caused_by"] == [["lint-cdc", 1]]
 
 
 def test_fresh_rtldesign_spec_locus_high_dispatches_specification(
@@ -226,7 +228,7 @@ def test_fresh_rtldesign_spec_locus_high_dispatches_specification(
     )
     a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "specification"
-    assert a["needs_directive"] is True
+    assert a["caused_by"] == [["rtl-design", 1]]
 
 
 def test_delivery_no_overtake_but_repair_direct(tmp_path, monkeypatch):
@@ -397,7 +399,7 @@ def test_human_supersede_restores_auto_rebuild(tmp_path, monkeypatch):
     )
     a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "rtl-design"
-    assert a["diagnosis_refs"] == ["d2"] and a["triage_forward"] is False
+    assert a["diagnosis_refs"] == ["d2"] and a["caused_by"] == [["simulation", 1]]
 
 
 def test_new_outcome_deactivates_old_diagnosis(tmp_path, monkeypatch):

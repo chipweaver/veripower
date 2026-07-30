@@ -103,8 +103,8 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
     dest = Path(str(dest).rstrip("/"))
 
     # The rtl-design / scaffold (simulation-plan) stage roots are injected into
-    # inputs.json (dispatch-time), not self-navigated via tree_root/asic/<module>/....
-    inputs = json.loads((dest / "inputs.json").read_text(encoding="utf-8"))
+    # dispatch.json (dispatch-time), not self-navigated via tree_root/asic/<module>/....
+    inputs = json.loads((dest / "dispatch.json").read_text(encoding="utf-8"))["inputs"]
     rtl_dir = Path(inputs["rtl"])
     rtl_files_path = rtl_dir / "rtl-files.json"
 
@@ -126,8 +126,8 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
         _err(f"missing RTL file list: {rtl_files_path}")
         return 1
 
-    # Existence check: a caller may pre-create the workdir with hint files
-    # (directive.md etc.). A Makefile present means carry_self already brought a
+    # Existence check: every fresh workdir already holds the kernel's dispatch.json.
+    # A Makefile present means carry_self already brought a
     # prior round's TB forward — treat as REWORK (the no-clobber deploy below never
     # overwrites it), not an abort; absent means a genuine first run.
     dest.mkdir(parents=True, exist_ok=True)

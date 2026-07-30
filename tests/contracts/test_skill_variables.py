@@ -1,14 +1,16 @@
 """SKILL.md context-variable assertions.
 
 Rules:
-  - The `{var}` placeholders appearing in SKILL.md ⊆ canonical 4:
-    `{workdir}` / `{module}` / `{failing_result}` / `{directive_path}`.
+  - The `{var}` placeholders appearing in SKILL.md ⊆ canonical 2:
+    `{workdir}` / `{module}`. Everything else a round is about reaches the
+    skill through `{workdir}/dispatch.json`, which the kernel writes — so a
+    new per-dispatch fact is a key in that file, never a new placeholder.
   - SKILL.md must not hardcode `asic/<M>` / `asic/<module>` / `runs/<N>`
     paths; always use `{workdir}` and the other context variables.
   - Variables injected by the dispatcher template
-    (`stage-subagent.md.tpl`) must be a superset of the canonical 4;
-    template-only extras (`{mode}` / `{stage}` / `{run}` / `{skill}`) must
-    not appear in any SKILL.md.
+    (`stage-subagent.md.tpl`) must be a superset of the canonical 2;
+    template-only extras (`{stage}` / `{skill}`) must not appear in any
+    SKILL.md.
 """
 
 import re
@@ -20,8 +22,6 @@ from _skills_sot import PLUGIN_ROOT, SKILL_DIRS
 CANONICAL_VARS: set[str] = {
     "workdir",
     "module",
-    "failing_result",
-    "directive_path",
 }
 
 # Hardcoded path patterns (must not appear in SKILL.md).

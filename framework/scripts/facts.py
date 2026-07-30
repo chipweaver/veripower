@@ -409,7 +409,7 @@ def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:
 def stale_inputs(module: str, events: list[dict], rule: str) -> list[str]:
     """The recorded inputs of `rule`'s latest outcome whose version no longer matches
     disk — the kernel-computed "what changed since the last run" set a forward re-run
-    consumes for scope (written to `<workdir>/changed-inputs.md` at dispatch, see
+    consumes for scope (it seeds `dispatch.json`'s `scope` at dispatch, see
     kernel.cmd_dispatch). Reuses proof_valid's per-input comparison but COLLECTS the
     mismatches instead of short-circuiting on the first. PIPELINE_INPUTS are excluded
     (mirrors schedule._added_inputs). Empty when the rule never produced an outcome (a first

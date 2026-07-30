@@ -17,7 +17,8 @@
     "evidence": {"type": "array", "items": {"type": "string"}},
     "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
     "source": {"type": "string", "enum": ["triage", "human"]},
-    "provenance": {"type": "string", "description": "required when source=human"},
+    "provenance": {"type": "string", "description": "the bare identity that vouches for this diagnosis; required when source=human"},
+    "reason": {"type": "string", "pattern": ".*\\S.*", "description": "the reasoning behind the attribution; required when source=human, and carried verbatim into the fix owner's dispatch.json. A triage diagnosis has none: its analysis is its own result.json, referenced from evidence."},
     "supersedes": {"type": "string"}
   }
 }

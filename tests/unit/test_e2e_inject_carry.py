@@ -5,7 +5,7 @@ fresh workdir) and (2) a TRANSFORMER spanning four upstream stages
 (power-analysis), plus (3) the "relocation invariance" behavioral proof (spec
 §10 #5 — the REAL criterion, not just token-absence): move the whole canonical
 tree wholesale and the consumer still re-anchors, because it re-reads
-`inputs.json` every round instead of trusting a baked cross-stage path.
+`dispatch.json` every round instead of trusting a baked cross-stage path.
 
 Model: test_kernel_cli.py's `_run_json`/`_dispatch_write_reap` subprocess idiom
 (same per-stage minimal schema-valid `stage_specific`/output-file sets), scoped
@@ -164,7 +164,7 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     )
     assert spec["ok"] is True and spec["verdict"] == "pass", spec
 
-    # 2. dispatch rtl-design -> inputs.json's design/manifest/children all
+    # 2. dispatch rtl-design -> dispatch.json's design/manifest/children all
     # resolve to the SAME producer (specification) stage root, absolute.
     d1 = _run_json(
         tmp_path,
@@ -178,7 +178,7 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     )
     assert d1["ok"] is True, d1
     wd1 = tmp_path / "asic" / module / d1["workdir"]
-    table = json.loads((wd1 / "inputs.json").read_text())
+    table = json.loads((wd1 / "dispatch.json").read_text())["inputs"]
     spec_root = str((tmp_path / "asic" / module / "Design" / "specification").resolve())
     assert table["design"] == spec_root
     assert table["manifest"] == spec_root
@@ -268,7 +268,7 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
         outcome = _dispatch_write_reap(tmp_path, module, rule, files)
         assert outcome["ok"] is True and outcome["verdict"] == "pass", outcome
 
-    # dispatch power-analysis -> inputs.json spans all four keys as absolute
+    # dispatch power-analysis -> dispatch.json spans all four keys as absolute
     # stage roots
     d = _run_json(
         tmp_path,
@@ -282,7 +282,7 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     )
     assert d["ok"] is True, d
     wd = tmp_path / "asic" / module / d["workdir"]
-    table = json.loads((wd / "inputs.json").read_text())
+    table = json.loads((wd / "dispatch.json").read_text())["inputs"]
     base = str((tmp_path / "asic" / module).resolve())
     assert table["netlist"] == base + "/Design/synthesis"
     assert table["tb_env"] == base + "/Verification/simulation"
@@ -292,7 +292,7 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
         assert Path(table[key]).is_absolute()
 
     # EXECUTE: the real power bootstrap script, reading the kernel-injected
-    # inputs.json exactly as a real task dispatch would -> env.sh's *_DIR
+    # dispatch.json exactly as a real task dispatch would -> env.sh's *_DIR
     # substitutions are absolute stage roots, no relpath climb.
     br = subprocess.run(
         [
@@ -351,7 +351,7 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
 def test_relocation_invariance_consumer_reanchors(tmp_path):
     # spec §10 #5 (the REAL criterion — not "no relpath token"): move canonical
     # wholesale and the consumer still resolves, because it re-reads
-    # inputs.json each round instead of trusting a baked cross-stage path.
+    # dispatch.json each round instead of trusting a baked cross-stage path.
     module = "m"
     tree_a = tmp_path / "a"
     tree_a.mkdir()
@@ -421,7 +421,7 @@ def test_relocation_invariance_consumer_reanchors(tmp_path):
     tree_b = tmp_path / "b"
     shutil.copytree(tree_a, tree_b)
 
-    # Re-dispatch synthesis THERE -> a fresh run 2 whose inject_inputs
+    # Re-dispatch synthesis THERE -> a fresh run 2 whose write_dispatch
     # recomputes the rtl stage root against tree B's own cwd.
     d_b = _run_json(
         tree_b,

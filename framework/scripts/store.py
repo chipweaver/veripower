@@ -54,14 +54,30 @@ def _resolve_sim_run(root: Path, sim_run) -> str:
     return str(run_dir)
 
 
-def inject_inputs(module: str, rule: str, workdir, params=None) -> None:
-    """dispatch-time dual of promote: resolve each read-only input's location and write
-    it to <workdir>/inputs.json = {key: producer-canonical-stage-root (absolute)}.
+def write_dispatch(
+    module: str,
+    rule: str,
+    workdir,
+    params=None,
+    scope=None,
+    caused_by=None,
+    reasons=None,
+) -> None:
+    """dispatch-time dual of promote: write <workdir>/dispatch.json, the one thing the
+    kernel tells a run about itself. Four keys, and a key is written only when it carries
+    something:
 
-    Each key resolves to exactly one producer's canonical stage root; the consumer keeps
-    the producer-output subpath literal (out/, tb/uvm/, constraints/). PIPELINE_INPUTS
-    (external, no producer) resolve to the module root. A rule declaring 'sim_run' gets
-    an extra 'sim_run' key = <simulation-stage>/runs/<N> (triage)."""
+    - `inputs` = {key: producer-canonical-stage-root (absolute)} — always present. Each
+      key resolves to exactly one producer's canonical stage root; the consumer keeps the
+      producer-output subpath literal (out/, tb/uvm/, constraints/). PIPELINE_INPUTS
+      (external, no producer) resolve to the module root. A rule declaring 'sim_run' gets
+      an extra 'sim_run' key = <simulation-stage>/runs/<N> (triage).
+    - `scope` — module-relative paths, or <file>:<line> anchors, that narrow this round.
+    - `caused_by` — module-relative per-run result.json of each failure this round answers.
+    - `reasons` — verbatim human diagnosis reasoning.
+
+    The three narrowing keys are derived by the caller (cmd_dispatch); this function owns
+    only the file's shape."""
     r = rules.RULES[rule]
     root = Path("asic", module)
     module_root_abs = str(root.resolve())
@@ -79,8 +95,15 @@ def inject_inputs(module: str, rule: str, workdir, params=None) -> None:
         table[key] = str((root / Path(*rules.workdir_root(prod))).resolve())
     if params and "sim_run" in r.params and "sim_run" in params:
         table["sim_run"] = _resolve_sim_run(root, params["sim_run"])
-    (Path(workdir) / "inputs.json").write_text(
-        json.dumps(table, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    doc: dict = {"inputs": table}
+    if scope:
+        doc["scope"] = list(scope)
+    if caused_by:
+        doc["caused_by"] = list(caused_by)
+    if reasons:
+        doc["reasons"] = list(reasons)
+    (Path(workdir) / "dispatch.json").write_text(
+        json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
 
@@ -88,9 +111,7 @@ _CARRY_EXCLUDE = (
     "result.json",
     "runs",
     ".promote-tmp",
-    "inputs.json",
-    "directive.md",
-    "changed-inputs.md",
+    "dispatch.json",
 )
 
 

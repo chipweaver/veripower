@@ -110,10 +110,11 @@ def _disposition(
     all_fresh: list[tuple[str, dict]],
 ) -> dict:
     """Action for one FRESH failure (§3.4): auto-rebuild / triage / escalate.
-    all_fresh = every (rule, fail-outcome) fresh this round — used to merge every
-    reliable attribution sharing the chosen fix_owner into ONE dispatch (§3.3:
-    同 fix_owner 多条可靠归因合并注入同一 directive、逐条引用，无静默丢弃; the actual
-    directive merge is the Orchestrator's job at directive-writing time, Task C9)."""
+    all_fresh = every (rule, fail-outcome) fresh this round — used to merge every failure
+    that routes to the chosen fix_owner into ONE dispatch (§3.3: 同 fix_owner 多条归因合并、
+    逐条引用，无静默丢弃). The merge is a union of `caused_by` coordinates and
+    `diagnosis_refs`, which the kernel resolves to paths at dispatch, so "no silent drop"
+    is mechanical rather than an instruction to whoever writes the dispatch."""
     diags = _active_diagnoses(events, rule, outcome)
     if diags:
         latest = diags[-1]
@@ -121,19 +122,20 @@ def _disposition(
             fix_owner = latest["fix_owner"]
             if not facts.rule_available(module, events, fix_owner):
                 return {"action": "_defer_to_forward"}  # fix_owner inputs unavailable
-            refs, fwd = [], False
+            refs, caused_by = [], []
             for frule, fout in all_fresh:
                 for d in _active_diagnoses(events, frule, fout):
                     if _reliable(d) and d["fix_owner"] == fix_owner:
                         refs.append(d["id"])
-                        fwd = fwd or d["source"] == "triage"  # verbatim forward (§3.4)
+                        coord = [frule, fout["run"]]
+                        if coord not in caused_by:
+                            caused_by.append(coord)
             return {
                 "action": "DISPATCH",
                 "rule": fix_owner,
                 "execution": rules.RULES[fix_owner].execution,
-                "needs_directive": True,
                 "diagnosis_refs": refs,
-                "triage_forward": fwd,
+                "caused_by": caused_by,
             }
         # 现成归因但不可靠 (low confidence / self-pointing) -> 叫人, cited as candidates
         return {
@@ -170,11 +172,25 @@ def _disposition(
     target = r["decision"]
     if not facts.rule_available(module, events, target):
         return {"action": "_defer_to_forward"}
+    # Merge every OTHER fresh failure that is also self-describing and routes to this same
+    # target, so one rework round answers them together. Without it a co-failing stage is
+    # silently dropped and re-fails on the next pass — the same 无静默丢弃 rule the
+    # diagnosis branch above obeys. A rule with an active diagnosis is skipped (its own
+    # attribution decides its fix_owner), and so is `simulation`, whose failures are
+    # ambiguous by construction and belong to triage.
+    caused_by = [[rule, outcome["run"]]]
+    for frule, fout in all_fresh:
+        if frule == rule or frule == "simulation":
+            continue
+        if _active_diagnoses(events, frule, fout):
+            continue
+        if route.route(frule, **_route_kwargs(module, frule))["decision"] == target:
+            caused_by.append([frule, fout["run"]])
     return {
         "action": "DISPATCH",
         "rule": target,
         "execution": rules.RULES[target].execution,
-        "needs_directive": True,
+        "caused_by": caused_by,
     }
 
 

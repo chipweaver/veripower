@@ -14,7 +14,7 @@ export MODULE="${MODULE:-MY_MODULE}"
 
 # External reference paths — MY_SYN_OUT / MY_SIM_DIR / MY_PLAN_DIR are
 # substituted at bootstrap with the absolute stage-root paths injected via
-# inputs.json, so paths stay correct regardless of workdir depth (canonical
+# dispatch.json, so paths stay correct regardless of workdir depth (canonical
 # Verification/power-analysis/ vs runs/<N>/) without any relpath computation.
 export NETLIST="MY_SYN_OUT/${TOP}_syn.v"
 export SDC_FILE="MY_SYN_OUT/${TOP}_syn.sdc"

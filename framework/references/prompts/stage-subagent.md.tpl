@@ -3,8 +3,9 @@ You are dispatched as a Task subagent by VeriPower's design-flow orchestrator.
 Module:   {module}
 Stage:    {stage}
 Workdir:  {workdir}
-{Failing result: {failing_result}}?        # present on a repair dispatch; mode distinguished by whether this line exists
-{Directive: {directive_path}}?  # optional; sibling file (directive.md) carrying the fix-scope hint
+
+Every dispatch renders identically: what this round is about is in {workdir}/dispatch.json,
+written by the kernel, and the Skill tells you how to read it.
 
 To proceed: invoke Skill({skill}) and follow its guidance.
 

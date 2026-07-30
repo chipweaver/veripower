@@ -342,7 +342,7 @@ def test_read_lib_db_from_config_tcl(tmp_path):
 
 
 def test_parse_clock_port_first_sdc(tmp_path):
-    # The STA reads the SYNTHESIS SDC, whose location is injected into inputs.json
+    # The STA reads the SYNTHESIS SDC, whose location is injected into dispatch.json
     # (key "netlist" -> the synthesis stage root) the way kernel.py dispatch injects
     # it; lay out the workdir as runs/<N>/ under the module tree.
     wd = tmp_path / "asic" / "tpu_top" / "Design" / "timing-analysis" / "runs" / "3"
@@ -352,9 +352,9 @@ def test_parse_clock_port_first_sdc(tmp_path):
     (syn_dir / "out" / "tpu_top_syn.sdc").write_text(
         "create_clock [get_ports i_clk]  -period 10  -waveform {0 5}\n"
     )
-    (wd / "inputs.json").write_text(json.dumps({"netlist": str(syn_dir)}))
+    (wd / "dispatch.json").write_text(json.dumps({"inputs": {"netlist": str(syn_dir)}}))
     assert sp.parse_clock(wd, top="tpu_top") == {"name": "i_clk", "period_ns": 10.0}
-    # No inputs.json (e.g. a workdir that was never dispatched-into) -> gracefully
+    # No dispatch.json (e.g. a workdir that was never dispatched-into) -> gracefully
     # None, not a raise.
     assert sp.parse_clock(wd / "nope", top="tpu_top") is None
 
@@ -384,12 +384,12 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
 
     ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-tpu_top"
     # Fixture is rooted at Design/ (no `asic` path component — it would be .gitignored).
-    # Copy under a module-root wrapper, then inject inputs.json (the way kernel.py
+    # Copy under a module-root wrapper, then inject dispatch.json (the way kernel.py
     # dispatch does) so parse_clock resolves the synthesis SDC location.
     shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
     wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
     syn_dir = tmp_path / "module" / "Design" / "synthesis"
-    (wd / "inputs.json").write_text(json.dumps({"netlist": str(syn_dir)}))
+    (wd / "dispatch.json").write_text(json.dumps({"inputs": {"netlist": str(syn_dir)}}))
     assert sp.build_result(wd, module="tpu_top", top="tpu_top") == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
@@ -436,7 +436,7 @@ def test_golden_is_schema_valid(tmp_path):
     shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
     wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
     syn_dir = tmp_path / "module" / "Design" / "synthesis"
-    (wd / "inputs.json").write_text(json.dumps({"netlist": str(syn_dir)}))
+    (wd / "dispatch.json").write_text(json.dumps({"inputs": {"netlist": str(syn_dir)}}))
     sp.build_result(wd, module="tpu_top", top="tpu_top")
     env = json.loads((wd / "result.json").read_text())
     env_schema = json.loads(

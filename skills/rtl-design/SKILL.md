@@ -15,6 +15,7 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 - **No child RTL in the main thread:** every child (including the top-integration child) is dispatched in the fan-out wave. You consume each sub-Task's `files[]` paths only and **MUST NOT read the dispatched child's** `.v`/`.sv` content back into your context. There is no inline TOP authoring: even a single child is written by a sub-Task, and every fix lands through a child re-dispatch, never a main-thread edit.
 - **`design.md` and the per-child `<child>.md §1–§5` are an immovable boundary.** You never modify either, and no RTL-level adjustment overrides an architectural decision. If a fix would need one of them, stop this round with `status=fail`.
 - **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's scope requires (Step 1 determines it); every file outside that scope MUST stay byte-identical to the prior run. Modifying anything outside it is prohibited.
+- **Never silently sacrifice one acceptance target for another.** The PPA targets in `<design>/ppa.json` and the cycle budget in `design.md` can pull against each other: making a combinational divide iterative buys timing and spends latency. When you cannot satisfy both, report the numbers you actually achieved plus the trade-off in `result.json`, and let the caller decide. Quietly meeting one target by breaking another — timing, latency, or bit-exactness — is the failure mode this rule exists to stop.
 - **No whole-design elaboration in any child sub-Task:** child sub-Tasks obey the elaboration / anti-reverse-read prohibitions in `references/child-task-contract.md`; integration correctness is verified by downstream verification.
 - **`<child>.md §2 Interface` incomplete:** if the interface spec is missing or underspecified, the stage fails with `fail_reason="<child>.md §2 Interface incomplete"`; do not invent interfaces.
 - **Scripts are black boxes, never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr, stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
@@ -27,12 +28,10 @@ Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatch
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{failing_result}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, its `stage_specific.violations[]` supplies this round's fix scope (Step 1). |
-| `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content and the incremental diff. |
 
 ### External reference inputs
 
-Each read-only upstream input's location is injected: read `inputs.json` in your `{workdir}`, where `<key>` denotes that input's location, so you read `<key>/<subpath>`. Every key below resolves to the specification stage root, so `<design>` reaches its sibling JSON sidecars too.
+Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream input to its location, so `<key>` below denotes that location and you read `<key>/<subpath>`. Every key resolves to the specification stage root, so `<design>` reaches its sibling JSON sidecars too. The same file's `scope` / `caused_by` / `reasons` keys are what narrow this round (Step 1).
 
 | Path | Schema / Format | Use |
 |---|---|---|
@@ -40,6 +39,7 @@ Each read-only upstream input's location is injected: read `inputs.json` in your
 | `<design>/clocks.json` | `specification/references/clocks.schema.json` | Clock definitions. Passed by path to the child sub-Tasks — a `"generated": true` entry is the `create_generated_clock` the child must report; the main thread does not read it. |
 | `<manifest>/manifest.json` | JSON (`{module, children:[{name, doc, rtl_modules, brainstorm_anchor}]}`) | Child roster — drives the fan-out `N = len(children[])` (every child, incl. the top-integration child). |
 | `<children>/<child>.md` × N | Custom markdown (frontmatter + §1–§5) | Per-child sub-design: frontmatter (`ports` / `clocks` / `features` / `file_path`) + §2 Interface / §3 Internal Behavior drive per-child RTL derivation. |
+| `<design>/ppa.json` | `specification/references/ppa.schema.json` | The PPA targets this RTL must hit. Read each entry's `dim` and numeric `target` yourself, and bind the micro-architecture to them (a combinational divide that blows a timing target is a defect here, not at synthesis). |
 
 ## Output Artifacts
 
@@ -66,22 +66,27 @@ Read `manifest.json` (`.module` = `<top_module>`; the `children[]` dispatch rost
 `rtl_modules[]`). Nothing else is read up front: no `design.md`, no `<child>.md` body, no RTL, and no
 upstream `result.json`. The per-child sub-Tasks read their own docs.
 
-The framework has already carried your previous round's RTL and the two sidecars into the workdir; edit
-them in place.
+Your previous round's RTL and the two sidecars, if any, are already in `{workdir}`; edit them in place.
 
-Determine this round's edit scope from the first available source:
-1. `{directive_path}`'s `fix_locus` when injected: Read that sibling file first; authoritative.
-2. Else, on a `{failing_result}`, its `stage_specific.violations[]` (+ `ppa_actual[]` if present):
-   modify only the listed files. When `ppa_actual` is non-empty, also read the trigger's sibling
-   `reports/` or `reports_*/` subdirectory to locate the bottleneck RTL module. A trigger carrying
-   neither list (a coverage-rooted one, say) falls back to Step 2's module-wide mapping. If the trigger
-   is unreadable, run `finalize --fail-reason "failing_result not readable"` (Step 4.5) and exit.
-3. Else, if `{workdir}/changed-inputs.md` is present, it lists the input files that changed since
-   this stage's last run: map each to affected children (a `<child>.md` → that child; `design.md`
-   → module-wide). If it is absent or empty but the framework's carry brought forward a prior
-   canonical (a re-verify, not a first delivery), re-author no child: re-run Step 4's gate on the
-   carried RTL and finalize; every file stays byte-identical.
-4. Else (a first delivery, no prior canonical) ALL children.
+`{workdir}/dispatch.json` names this round's scope. When it carries either narrowing key, the scope is
+the union of both:
+
+- `caused_by`: the `result.json` of each upstream failure this round answers. Read each, and its
+  sibling `reports/` or `reports_*/` when the failure is a PPA miss, since a bottleneck is located in
+  the raw report and not in the envelope. Resolve what it names to a child and edit only those. This
+  is a pointer, not a boundary: if what you read puts the defect elsewhere, widen and record why in
+  `result.json`.
+- `scope`: module-relative paths, or `<file>:<line>` anchors, that this round should touch. Map each
+  to affected children (a `<child>.md` → that child; `design.md` → module-wide).
+- `reasons`, when present, is a human's judgment on this repair. It outranks your own reading of the
+  files; if you disagree, say so in `result.json` rather than acting against it.
+
+With neither narrowing key, decide on `{workdir}`:
+
+- it already holds RTL from a prior round, so this is a re-verify and not a first delivery: re-author
+  no child; re-run Step 4's gate on the RTL that is there, then finalize. Every file stays
+  byte-identical.
+- it holds no RTL: ALL children.
 
 Map the scope to affected children per Step 2.
 
@@ -99,15 +104,16 @@ check the Step 4.2 exit gate re-runs; the pre-dispatch run only spares a doomed 
 
 ### Step 2: map_to_child (when scope is narrower than all children)
 
-(Applies whenever Step 1 narrowed the scope: a directive, a `{failing_result}`, or a `changed-inputs.md` change-set. On
-a first delivery the scope is ALL children and this step is skipped.)
+(Applies whenever Step 1 narrowed the scope, i.e. `dispatch.json` carried a `scope` or a `caused_by`.
+On a first delivery the scope is ALL children and this step is skipped.)
 
 1. Read `manifest.json` and the frontmatter of each `<child>.md` listed under
    `manifest.children[].doc` (Grep `^---` block only, ~15 lines per child). This frontmatter read is
    the only extra read scope-mapping adds: not RTL, not `design.md`.
-2. For each `violations[]` entry, map to `affected_children[]` via the most specific available key:
-   - `frontmatter.file_path` matches the trigger's `file` field → that child;
-   - `frontmatter.features[]` contains a feature mentioned in the violation message → that child;
+2. For each scope entry — a `scope` path or anchor, or a file the `caused_by` envelope names — map to
+   `affected_children[]` via the most specific available key:
+   - `frontmatter.file_path` matches the named file → that child;
+   - `frontmatter.features[]` contains a feature mentioned alongside it → that child;
    - else fall back to "module-wide" (mark all children as affected).
 3. Dispatch behaviour:
    - If `affected_children[]` is a strict subset and the top-integration interconnect is unaffected:
@@ -147,7 +153,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py assemble --workdir {workdir}
 from a gate-fail verdict): run Step 4.5's `finalize` with `--fail-reason "<the stderr message>"` to record the
 `status=fail` envelope, and stop. Otherwise it prints the exit-gate verdict JSON on stdout; exit code = truth
 (topology + blocked-child); a fail verdict stops the stage, and Step 4.5's `finalize` writes it into
-`result.json`. Pass `--seeded` whenever the framework's carry brought forward a prior baseline (canonical
+`result.json`. Pass `--seeded` whenever a prior baseline is already in `{workdir}` (canonical
 existed), never on a first delivery's initial build.
 
 **4.3 Conformance gate + self-converge loop** (deterministic; runs EVERY invocation). Run

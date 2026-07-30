@@ -2,8 +2,8 @@
 lock for the inject+carry refactor's core invariant: no skill or framework
 script resolves a cross-stage location by constructing it itself. Every
 cross-stage reference must instead come from this round's injected
-`<workdir>/inputs.json` (the one legitimate exception being the design-flow
-Orchestrator, which has no injected inputs.json of its own and drives the
+`<workdir>/dispatch.json` (the one legitimate exception being the design-flow
+Orchestrator, which has no injected dispatch.json of its own and drives the
 whole tree directly via `kernel.py` CLI args — see the (d) allowlist below).
 
 Four checks, in increasing strength:
@@ -16,8 +16,8 @@ Four checks, in increasing strength:
   (c) no CODE construction of a "Design"/"Verification" cross-stage path
       segment, anywhere outside the one legitimate source: framework/scripts/
       rules.py's `Rule.workdir_root` / `Rule.inputs` declarations — the SSoT
-      registry `store.inject_inputs` itself reads to compute the absolute
-      stage roots it writes into inputs.json.
+      registry `store.write_dispatch` itself reads to compute the absolute
+      stage roots it writes into dispatch.json.
   (d) no `Design/<stage>/` or `Verification/<stage>/` slash-path prefix
       survives in any skills/*/SKILL.md outside a small justified allowlist.
 
@@ -72,8 +72,8 @@ def test_no_cross_stage_parents3_climb():
 # ── (c) no CODE construction of a cross-stage "Design"/"Verification" segment ─
 # The ONE legitimate source: framework/scripts/rules.py's Rule declarations
 # (Rule.workdir_root=("Design", <stage>) / Rule.inputs={...: ("Design/...",)}).
-# This is the SSoT registry — inject_inputs() itself reads it to compute the
-# absolute stage roots written into inputs.json. It is not a consumer
+# This is the SSoT registry — write_dispatch() itself reads it to compute the
+# absolute stage roots written into dispatch.json. It is not a consumer
 # bypassing injection; it is the declarative source injection is built from.
 # The whole-file exclusion below is sound only because rules.py's tuples are
 # DECLARATIVE data, not procedural path construction — if a future edit adds a
@@ -108,21 +108,8 @@ def test_no_code_cross_stage_path_construction():
 #        skills/*/SKILL.md, outside a small justified allowlist ─────────────
 # (file, 1-based line number) -> justification. Each entry inspected by hand.
 _SKILL_MD_ALLOWLIST = {
-    # design-flow is the Orchestrator: unlike a stage skill, it receives no
-    # injected inputs.json of its own — it drives the WHOLE tree directly via
-    # `kernel.py` CLI args, so a canonical stage path here is its own
-    # full-tree view, not a stage skill bypassing injection.
-    ("skills/design-flow/SKILL.md", 135): (
-        "orchestrator's PPA-directive-authoring instruction — design-flow "
-        "reads Design/specification/ppa.json itself (whole-tree view)"
-    ),
-    ("skills/design-flow/SKILL.md", 141): (
-        "orchestrator's own `kernel.py dispatch --directive "
-        "asic/{module}/Verification/simulation-triage/result.json` CLI arg "
-        "(whole-tree view)"
-    ),
     # advisory prose FORBIDDING the anti-pattern, not an instance of it.
-    ("skills/simulation-triage/SKILL.md", 62): (
+    ("skills/simulation-triage/SKILL.md", 63): (
         "prose instructing the skill to NEVER construct such a path itself — "
         "the guard-rail statement, not a violation of it"
     ),

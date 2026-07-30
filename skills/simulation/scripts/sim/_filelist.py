@@ -3,7 +3,7 @@
 
 The RTL file layout is authored upstream as JSON, so this GENERATES the VCS filelist
 rather than rewriting a text one. Paths are anchored at the absolute rtl-design stage
-root injected via inputs.json (not a relpath climb); include directories are emitted as
+root injected via dispatch.json (not a relpath climb); include directories are emitted as
 `+incdir+` here, which is the one place that prefix is ever written. Private lib for the
 bootstrap verb. Per-stage copy (campaign §3)."""
 

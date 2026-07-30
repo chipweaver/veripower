@@ -17,7 +17,7 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 
 ## Iron Rule
 
-- The injected input locations (`<rtl>`, `<annotations>`, `<sgdc_seed>` — from `inputs.json`) are read-only canonical: never modify anything under them (or any other stage's canonical output); the only files you write live under `{workdir}`. SGDC depth annotations belong to this stage's own carried file (`{workdir}/scripts/constraints.sgdc`, brought forward by `carry_self`); iterate only there, never write back to the spec source of truth.
+- The injected input locations (`<rtl>`, `<annotations>`, `<sgdc_seed>` — from `dispatch.json`) are read-only canonical: never modify anything under them (or any other stage's canonical output); the only files you write live under `{workdir}`. SGDC depth annotations belong to this stage's own carried file (`{workdir}/scripts/constraints.sgdc`, brought forward by `carry_self`); iterate only there, never write back to the spec source of truth.
 - `{workdir}/scripts/constraints.sgdc` MUST be listed in `result.json.artifacts[]` — it then lands at the canonical path and `carry_self` carries it into the next run's workdir; without that entry the file is not promoted and depth annotations must re-converge from scratch.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
@@ -29,11 +29,10 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC s
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the incremental diff. |
 
 ### External reference inputs
 
-Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>` (`rtl`/`annotations` both resolve to the rtl-design stage root).
+Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream input to its location, so `<key>` below denotes that location and you read `<key>/<subpath>` (`rtl`/`annotations` both resolve to the rtl-design stage root).
 
 | Path | Schema / Format | Use |
 |---|---|---|
@@ -58,11 +57,9 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 Pre-check the external references: `<rtl>/rtl-files.json` and `<annotations>/constraint-annotations.json` are present AND the SGDC seed is available (carried: `{workdir}/scripts/constraints.sgdc` already present, brought forward by `carry_self` before this run started → preferred; cold: `<sgdc_seed>/constraints/<TOP>.sgdc` exists → fallback; neither → missing). If any required file is missing, write `status=fail` with `fail_reason="external reference missing: <path>"` and exit.
 
 Determine this round's fix scope from the first available source:
-1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
-2. Else, if `{workdir}/changed-inputs.md` is present, it lists the input files that changed since this stage's last run — narrow the Step 4/5 triage to them. If it is absent or empty but a prior run was promoted (a re-verify), the lint tool still runs on the whole RTL — there is simply no change-set to narrow the triage to.
-3. Else (a first delivery, no prior canonical) everything.
+`{workdir}/dispatch.json`, when it carries a `scope` list, names the input files that changed since this stage's last run: narrow the Step 4/5 triage to them. Without it the triage covers everything, whether this is a first delivery or a re-verify of an already-promoted run; the lint tool runs on the whole RTL either way, so there is simply no change-set to narrow the triage to.
 
-Steps 2–7 are mechanically identical regardless of scope; the scope set here narrows only the Step 4/5 triage (a scoped run narrows to the `changed-inputs.md` set; a first delivery covers everything).
+Steps 2–7 are mechanically identical regardless of scope; the scope set here narrows only the Step 4/5 triage (a scoped run narrows to the `scope` set; an unscoped one covers everything).
 
 ### Step 2: Bootstrap
 
@@ -72,7 +69,7 @@ Run:
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
 ```
 
-The script deploys the templates to `{workdir}` NO-CLOBBER — a `scripts/constraints.sgdc` / `scripts/waiver.tcl` already carried into the workdir by `carry_self` before this run started is never overwritten — substitutes the `MY_TOP` placeholder, and on a genuinely first run (no carried `scripts/constraints.sgdc`) fills it from the SGDC seed (cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (a caller-placed `directive.md` does NOT count as "deployed"). When `--top` is omitted, it is read from `manifest.module` (a missing name aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files you edit are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.
+The script deploys the templates to `{workdir}` NO-CLOBBER — a `scripts/constraints.sgdc` / `scripts/waiver.tcl` already carried into the workdir by `carry_self` before this run started is never overwritten — substitutes the `MY_TOP` placeholder, and on a genuinely first run (no carried `scripts/constraints.sgdc`) fills it from the SGDC seed (cold → template priority; see `references/makefile-bootstrap.md`). If `{workdir}/Makefile` already exists, treat the workdir as deployed and abort (the kernel-written `dispatch.json` does NOT count as "deployed"). When `--top` is omitted, it is read from `manifest.module` (a missing name aborts with exit 1; stderr names the cause). The deployed `scripts/run_spyglass.sh`, `scripts/run.tcl`, `scripts/collect_report.py`, and `scripts/spyglass_lint.prj` are make-internal — `make lint` / `make cdc` is the interface, never the scripts directly; the only deployed files you edit are `scripts/constraints.sgdc` and `scripts/waiver.tcl`.
 
 ### Step 3: Add RTL custom-synchronizer annotations
 

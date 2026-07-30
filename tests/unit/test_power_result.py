@@ -528,7 +528,7 @@ def test_finalize_cli_happy_path(tmp_path):
     # End-to-end through _cmd_finalize (lazy handler import + --scaffold arg mapping
     # + the ppa.json sidecar read), not just in-process build_result. A handler typo
     # would pass every other test (which call build_result directly) but fail here.
-    # finalize reads PPA targets via the injected inputs.json "ppa" key (no sibling
+    # finalize reads PPA targets via the injected dispatch.json "ppa" key (no sibling
     # ppa.json here -> vacuous empty targets, same as the old absent-file default).
     wd, plan = _make_workdir(
         tmp_path,
@@ -536,7 +536,9 @@ def test_finalize_cli_happy_path(tmp_path):
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
-    (wd / "inputs.json").write_text(_json.dumps({"ppa": str(tmp_path / "no-ppa")}))
+    (wd / "dispatch.json").write_text(
+        _json.dumps({"inputs": {"ppa": str(tmp_path / "no-ppa")}})
+    )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
     r = subprocess.run(
         [
@@ -562,11 +564,11 @@ def test_finalize_cli_happy_path(tmp_path):
     )
 
 
-# ── PPA targets read from the injected inputs.json "ppa" stage root ──────────
+# ── PPA targets read from the injected dispatch.json "ppa" stage root ──────────
 def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
     # No --ppa-targets flag exists anymore: finalize reads the power_mw gate
     # straight from the specification stage root's ppa.json, whose location comes
-    # from the injected inputs.json "ppa" key (not self-nav via parents[3]).
+    # from the injected dispatch.json "ppa" key (not self-nav via parents[3]).
     module_root = tmp_path / "asic" / "tpu_top"
     wd, plan = _make_workdir(
         module_root / "Verification" / "power-analysis" / "runs",
@@ -588,7 +590,7 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
             ]
         )
     )
-    (wd / "inputs.json").write_text(_json.dumps({"ppa": str(spec_dir)}))
+    (wd / "dispatch.json").write_text(_json.dumps({"inputs": {"ppa": str(spec_dir)}}))
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
     r = subprocess.run(
         [

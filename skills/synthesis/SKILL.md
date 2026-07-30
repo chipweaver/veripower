@@ -17,7 +17,7 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 
 ## Iron Rule
 
-- The injected input locations (`<rtl>`, `<annotations>`, `<sdc>`, `<ppa>` — from `inputs.json`) are read-only canonical: never modify anything under them (or any other stage's canonical output); the only files you write live under `{workdir}`.
+- The injected input locations (`<rtl>`, `<annotations>`, `<sdc>`, `<ppa>` — from `dispatch.json`) are read-only canonical: never modify anything under them (or any other stage's canonical output); the only files you write live under `{workdir}`.
 - Timing exceptions MUST be supplemented iteratively after RTL becomes visible; they cannot be pre-written at the specification stage (contract violation — RTL port names cannot be known in advance).
 - Do not claim synthesis is complete when the DC license is missing — without a license, write `status=fail` + `fail_reason="DC license missing"`.
 - Do not claim synthesis is complete when the netlist (`out/<TOP>_syn.v`) does not exist — the netlist must land on disk.
@@ -31,12 +31,10 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{failing_result}` | Optional. The failed stage's canonical `result.json` path (`stage_specific` shape per that stage's schema); when present, its `stage_specific.violations[]` supplies this round's fix scope (Step 1). |
-| `{directive_path}` | Optional. Fix-scope hint file; Read it first — priority over the trigger content. |
 
 ### External reference inputs
 
-Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
+Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream input to its location, so `<key>` below denotes that location and you read `<key>/<subpath>`.
 
 | Path | Schema / Format | Use |
 |---|---|---|
@@ -45,7 +43,7 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 | `<sdc>/constraints/<TOP>.sdc` | SDC | SDC source of truth — bootstrap copies it to the working `constraints.sdc`. Required: it is what makes the timing numbers mean anything, so bootstrap fails closed without it rather than deploying a template that would constrain a clock port the design does not have. |
 | `LIB_DB` (env) | std cell Liberty `.db` path | Set before any run (Step 3) — `env.sh` / Makefile fail loudly when unset. |
 
-When `{failing_result}` is injected, read additional context from the same directory as the trigger file; field names come from the triggering stage's own `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. PPA targets (`area_um2` / `timing_slack_ns` dimensions) are read by `synthesis finalize` itself from the injected `ppa` location (`inputs.json`) — nothing is injected in the prompt.
+When `dispatch.json` carries a `caused_by`, read each envelope it names and the additional context in that envelope's own directory; field names come from the failing stage's `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. PPA targets (`area_um2` / `timing_slack_ns` dimensions) are read by `synthesis finalize` itself from the injected `ppa` location — nothing is injected in the prompt.
 
 ## Output Artifacts
 
@@ -66,10 +64,12 @@ When `{failing_result}` is injected, read additional context from the same direc
 Pre-check the external references: `<rtl>/rtl-files.json` (naming ≥1 RTL file), `<annotations>/constraint-annotations.json` and `<sdc>/constraints/<TOP>.sdc` are all present. If any is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if `rtl-files.json` names no files, write `fail_reason="external reference missing: <rtl>/rtl-files.json (no RTL entries)"` and exit.
 
 Determine this round's fix scope from the first available source:
-1. `{directive_path}`'s `fix_locus` when injected — Read that sibling file first; authoritative.
-2. Else, on a `{failing_result}`, its `stage_specific.violations[]` — if the trigger is unreadable, write `result.json` with `status=fail` + `stage_specific.fail_reason="failing_result not readable"` and exit.
-3. Else, if `{workdir}/changed-inputs.md` is present, it lists the input files that changed since this stage's last run — confine the Step 4/6 SDC / timing-exception edits to them. If it is absent or empty but a prior run was promoted (a re-verify), keep the scope empty — the synthesis run and PPA self-check (Steps 5/7/8) are unconditional regardless.
-4. Else (a first delivery) the full flow.
+`{workdir}/dispatch.json` names this round's scope. When it carries either narrowing key, the scope is the union of both:
+
+1. `caused_by`: the `result.json` of each upstream failure this round answers — its `stage_specific.violations[]` bound the Step 4/6 SDC / timing-exception edits.
+2. `scope`: module-relative paths, or `<file>:<line>` anchors, that this round should touch — confine those same edits to them.
+
+With neither, keep the scope empty, whether this is a first delivery or a re-verify of an already-promoted run: the synthesis run and PPA self-check (Steps 5/7/8) are unconditional regardless.
 
 **Scope confinement.** Steps 2–8 run in the same order regardless of scope and differ only in it: the SDC / timing-exception edits in Steps 4 and 6 stay confined to the scope set here. Steps 2–3 (bootstrap + `LIB_DB`) deploy the workdir — Step 2 aborts once `{workdir}` is already deployed, so a within-run re-entry is a no-op and any residue survives; Steps 5 / 7 / 8 (synthesis run, PPA self-check, `result.json` write) are unconditional.
 
@@ -111,14 +111,14 @@ Extract the violated paths from `reports/timing_setup.rpt`, keeping each path's 
 
 ### Step 7: Build `{workdir}/result.json` (mandatory)
 
-Run the parser's finalize subcommand; do not hand-assemble the envelope or extract/compare by hand. It reads the PPA targets itself from the injected `ppa` location (`inputs.json`) (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream; an absent file or dim leaves that dimension ungated) — you pass no target flags:
+Run the parser's finalize subcommand; do not hand-assemble the envelope or extract/compare by hand. It reads the PPA targets itself from the injected `ppa` location (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream; an absent file or dim leaves that dimension ungated) — you pass no target flags:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
   --workdir {workdir} --module <module> --top <top_module>
 ```
 
-`finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`) against the targets at the injected `ppa` location (`inputs.json`), derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+`finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`) against the targets at the injected `ppa` location, derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
 `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); you write `failure_kind=infra` on the pre-checks of Steps 1–5 (DC never ran — external ref / license / trigger) before finalize runs.
 

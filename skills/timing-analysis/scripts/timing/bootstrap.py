@@ -8,7 +8,7 @@ bootstrap: no filelist, no rtl_load generation, no relpath — timing substitute
 absolute paths.
 
 The upstream synthesis-stage-root location comes from the injected
-`<workdir>/inputs.json` "netlist" key, not by self-navigating
+`<workdir>/dispatch.json` `inputs."netlist"`, not by self-navigating
 tree_root/asic/<module>/Design/synthesis.
 
 Deploys templates/ into the caller-provided workdir
@@ -75,9 +75,11 @@ def run(workdir, top: str | None = None) -> int:
     if not workdir.is_absolute():
         workdir = tree_root / workdir
 
-    # The synthesis stage root is injected into inputs.json (dispatch-time), not
+    # The synthesis stage root is injected into dispatch.json (dispatch-time), not
     # self-navigated via tree_root/asic/<module>/Design/synthesis.
-    inputs = json.loads((workdir / "inputs.json").read_text(encoding="utf-8"))
+    inputs = json.loads((workdir / "dispatch.json").read_text(encoding="utf-8"))[
+        "inputs"
+    ]
     syn_dir = Path(inputs["netlist"])  # synthesis stage root
 
     # Resolve TOP from the single out/<TOP>_syn.v when not given.

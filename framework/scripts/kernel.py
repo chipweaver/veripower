@@ -37,9 +37,9 @@ def cmd_dispatch(
     module,
     rule,
     objective,
-    directive_path,
     diagnosis_refs,
     extra_params=None,
+    caused_by=None,
 ):
     """Re-checks dispatchability AT THIS INSTANT (decide→dispatch drift guard, §4.2):
     in-flight premise and input availability.
@@ -49,71 +49,75 @@ def cmd_dispatch(
 
     extra_params (parsed --params JSON object, e.g. {"sim_run": 5} for simulation-triage
     per rules.RULES[rule].params) is merged into the recorded dispatch event's `params`
-    BEFORE `directive`, so the two never collide (Task C7 — the generic complement to
-    schedule.py's disposition, which already computes {"sim_run": <run>} for triage but
-    had no CLI path to land it on the actual dispatch event)."""
+    (Task C7 — the generic complement to schedule.py's disposition, which already computes
+    {"sim_run": <run>} for triage but had no CLI path to land it on the actual dispatch
+    event).
+
+    caused_by is the list of (rule, run) failures this dispatch answers, from --caused-by.
+    It is what makes a dispatch a rework: the kernel resolves each to that run's own
+    result.json and names it in dispatch.json, so the fix owner reads the failing envelope
+    at a kernel-given path rather than navigating to it."""
     events = facts.read_events(module)
     if any(f["rule"] == rule for f in facts.in_flight(events)):
         return {"ok": False, "error": f"{rule} already in-flight"}
     if not facts.rule_available(module, events, rule):
         return {"ok": False, "error": f"{rule} inputs not available"}
-    # Mandatory declared params must be supplied via --params (the `directive` channel is
-    # optional and lands via --directive). Missing them mints a malformed event downstream:
-    # a triage without sim_run derives a diagnosis with subject.outcome_run=None -> schema
-    # violation AFTER the outcome already landed -> half-reap (F8a). Reject up front.
-    required_params = [p for p in rules.RULES[rule].params if p != "directive"]
-    missing = [p for p in required_params if not (extra_params and p in extra_params)]
+    # Mandatory declared params must be supplied via --params. Missing them mints a
+    # malformed event downstream: a triage without sim_run derives a diagnosis with
+    # subject.outcome_run=None -> schema violation AFTER the outcome already landed ->
+    # half-reap (F8a). Reject up front.
+    missing = [
+        p for p in rules.RULES[rule].params if not (extra_params and p in extra_params)
+    ]
     if missing:
         return {
             "ok": False,
             "error": f"{rule} dispatch missing required --params {missing} "
             f"(Rule.params={list(rules.RULES[rule].params)})",
         }
+    root = facts.module_root(module)
+    # Resolve the two rework channels BEFORE allocating a run: an unresolvable one is a
+    # caller error, and failing here leaves no half-created workdir behind.
+    caused_by_paths = []
+    for cb_rule, cb_run in caused_by or []:
+        rel = Path(*rules.workdir_root(cb_rule), "runs", str(cb_run), "result.json")
+        if not (root / rel).is_file():
+            return {
+                "ok": False,
+                "error": f"--caused-by {cb_rule}:{cb_run} has no result.json",
+            }
+        caused_by_paths.append(str(rel))
+    # A named diagnosis carries the two things no envelope holds: where its author says the
+    # fix lands, and (human-authored only) the reasoning behind it. An unknown ref would
+    # drop both silently, which is exactly the silent loss §3.3 forbids — reject instead.
+    by_id = {e["id"]: e for e in events if e["type"] == "diagnosis"}
+    scope = facts.stale_inputs(module, events, rule)
+    reasons = []
+    for ref in diagnosis_refs or []:
+        diag = by_id.get(ref)
+        if diag is None:
+            return {"ok": False, "error": f"unknown diagnosis ref {ref!r}"}
+        scope += [a for a in diag.get("fix_locus", []) if a not in scope]
+        if diag["source"] == "human" and diag.get("reason"):
+            reasons.append(diag["reason"])
     run = facts.runs_of(events, rule) + 1
     workdir = str(Path(*rules.workdir_root(rule), "runs", str(run)))
-    (facts.module_root(module) / workdir).mkdir(parents=True, exist_ok=True)
-    abs_workdir = facts.module_root(module) / workdir
-    store.inject_inputs(module, rule, abs_workdir, extra_params)  # WHERE injection
+    (root / workdir).mkdir(parents=True, exist_ok=True)
+    abs_workdir = root / workdir
     store.carry_self(module, rule, abs_workdir)  # self-carry (no-op unless Rule.carry)
-    # Forward scope signal: the kernel already computes which recorded inputs drifted from
-    # disk (that drift is what marks the proof stale and triggers this re-dispatch). Surface
-    # that set as a scope hint the skill's forward fallback reads — instead of the skill
-    # re-deriving it by diffing an upstream result.json envelope or reading design content in
-    # its main thread. Its OWN file, never appended to directive.md (a triage-forward directive
-    # is a byte-exact result.json a markdown append would corrupt). On a repair the skill's
-    # scope ladder prefers directive/failing_result, so a written-but-unused file here is inert.
-    changed = facts.stale_inputs(module, events, rule)
-    if changed:
-        (facts.module_root(module) / workdir / "changed-inputs.md").write_text(
-            "# Changed inputs\n\n"
-            "These input files changed since this stage's last run:\n\n"
-            + "".join(f"- {p}\n" for p in changed),
-            encoding="utf-8",
-        )
-    params: dict = dict(extra_params) if extra_params else {}
-    if directive_path:
-        dst = facts.module_root(module) / workdir / "directive.md"
-        # Byte-exact transfer (§3.4 禁 LLM 转写): read/write bytes, never text mode —
-        # universal-newline translation (CRLF -> LF) would drift both the file and its
-        # recorded digest from the source (e.g. a verbatim-forwarded triage result.json).
-        data = (
-            sys.stdin.buffer.read()
-            if directive_path == "-"
-            else Path(directive_path).read_bytes()
-        )
-        dst.write_bytes(data)
-        params["directive"] = {
-            "path": str(Path(workdir) / "directive.md"),
-            "digest": facts.fingerprint(dst),
-        }
+    store.write_dispatch(
+        module, rule, abs_workdir, extra_params, scope, caused_by_paths, reasons
+    )
     ev = {
         "type": "dispatch",
         "rule": rule,
         "run": run,
         "workdir": workdir,
-        "params": params,
+        "params": dict(extra_params) if extra_params else {},
         "objective": objective,
     }
+    if caused_by:
+        ev["caused_by"] = [[r, n] for r, n in caused_by]
     if rules.RULES[
         rule
     ].proof:  # only proof-producing rules record the input version table
@@ -322,11 +326,21 @@ def _derive_triage(env, dispatch):
     # artifacts -> diagnosis.evidence (§3.4 "L2 repro 经 diagnosis.evidence 引用"), and
     # per-finding anchors -> fix_locus. The triage result.json is the always-present primary
     # evidence record.
+    #
+    # Every entry is anchored on THIS triage run's own directory, which makes the list
+    # single-basis (module-relative throughout) and immutable: `advisory.experiment
+    # .artifacts[]` are workdir-relative by the triage skill's contract, and canonical
+    # result.json is overwritten by the next triage while runs/<N>/ persists. A later
+    # triage therefore cannot move the evidence a landed diagnosis rests on.
     advisory = ss.get("advisory", {})
-    triage_rj = str(
-        Path(*rules.RULES["simulation-triage"].workdir_root) / "result.json"
+    triage_run = (
+        Path(*rules.RULES["simulation-triage"].workdir_root)
+        / "runs"
+        / str(dispatch["run"])
     )
-    evidence = [triage_rj] + list(advisory.get("experiment", {}).get("artifacts", []))
+    evidence = [str(triage_run / "result.json")] + [
+        str(triage_run / a) for a in advisory.get("experiment", {}).get("artifacts", [])
+    ]
     fix_locus = [f["anchor"] for f in advisory.get("findings", []) if f.get("anchor")]
     diagnosis = {
         "type": "diagnosis",
@@ -353,6 +367,18 @@ def _derive_triage(env, dispatch):
 # gate, so a post-reap pin/reopen takes effect without a re-reap.
 
 
+def _module_relative(module, s):
+    """An absolute path under the module root becomes module-relative. Anything else — an
+    already-relative path, or a `<file>:<line>` anchor — is left alone. Both fix_locus and
+    evidence reach dispatch.json, where a mixed-basis list would be unreadable."""
+    if not s.startswith("/"):
+        return s
+    try:
+        return str(Path(s).resolve().relative_to(facts.module_root(module).resolve()))
+    except ValueError:
+        return s
+
+
 def cmd_diagnose(
     module,
     diag_id,
@@ -364,6 +390,7 @@ def cmd_diagnose(
     evidence,
     confidence,
     provenance,
+    reason,
     supersedes,
 ):
     """Human-authored diagnosis (source="human"). Structural correlates enforced here
@@ -373,8 +400,10 @@ def cmd_diagnose(
       the old is_dag_ancestor. Omitting fix_owner (self-pointing attribution) is
       always legal (P4): recorded as-is, disposition escalates it instead of
       auto-rebuilding.
-    - provenance is required for source=human (the schema's `required` array cannot
-      make a field conditionally required on another field's value)."""
+    - provenance and reason are both required for source=human (the schema's `required`
+      array cannot make a field conditionally required on another field's value).
+      provenance is the bare identity that vouches; reason is the reasoning, and it is
+      what dispatch.json carries verbatim to the fix owner."""
     if fix_owner and fix_owner not in rules.input_closure(subject_proof):
         return {
             "ok": False,
@@ -382,19 +411,22 @@ def cmd_diagnose(
         }
     if not provenance:
         return {"ok": False, "error": "diagnose requires --provenance (source=human)"}
+    if not reason or not reason.strip():
+        return {"ok": False, "error": "diagnose requires --reason (source=human)"}
     ev = {
         "type": "diagnosis",
         "id": diag_id,
         "subject": {"proof": subject_proof, "outcome_run": subject_run},
         "attribution": attribution,
-        "evidence": evidence or [],
+        "evidence": [_module_relative(module, e) for e in evidence or []],
         "source": "human",
         "provenance": provenance,
+        "reason": reason,
     }
     if fix_owner:
         ev["fix_owner"] = fix_owner
     if fix_locus:
-        ev["fix_locus"] = fix_locus
+        ev["fix_locus"] = [_module_relative(module, a) for a in fix_locus]
     if confidence:
         ev["confidence"] = confidence
     if supersedes:
@@ -523,7 +555,14 @@ def main():
     di.add_argument("--module", required=True)
     di.add_argument("--rule", required=True, choices=list(rules.RULES))
     di.add_argument("--objective", default="delivery")
-    di.add_argument("--directive", default=None)
+    di.add_argument(
+        "--caused-by",
+        action="append",
+        default=None,
+        metavar="RULE:RUN",
+        help="a failure this dispatch answers, e.g. --caused-by synthesis:1; repeat once "
+        "per failure so a multi-cause rework names them all",
+    )
     di.add_argument(
         "--diagnosis-refs",
         default=None,
@@ -551,6 +590,7 @@ def main():
     dg.add_argument("--evidence", nargs="+", required=True)
     dg.add_argument("--confidence", default=None, choices=["high", "medium", "low"])
     dg.add_argument("--provenance", required=True)
+    dg.add_argument("--reason", required=True)
     dg.add_argument("--supersedes", default=None)
     es = sub.add_parser("escalate")
     es.add_argument("--module", required=True)
@@ -583,6 +623,23 @@ def main():
         if getattr(args, "diagnosis_refs", None)
         else None
     )
+    caused_by = []
+    for spec in getattr(args, "caused_by", None) or []:
+        cb_rule, _, cb_run = spec.partition(":")
+        if cb_rule not in rules.RULES or not cb_run.isdigit() or int(cb_run) < 1:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"--caused-by {spec!r} is not <rule>:<run> with a known "
+                        f"rule and a positive run",
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+            return
+        caused_by.append((cb_rule, int(cb_run)))
     candidates = None
     if getattr(args, "candidates", None):
         try:
@@ -619,9 +676,9 @@ def main():
             args.module,
             args.rule,
             args.objective,
-            args.directive,
             refs,
             extra_params,
+            caused_by,
         ),
         "reap": lambda: cmd_reap(args.module, args.rule, args.run),
         "diagnose": lambda: cmd_diagnose(
@@ -635,6 +692,7 @@ def main():
             args.evidence,
             args.confidence,
             args.provenance,
+            args.reason,
             args.supersedes,
         ),
         "escalate": lambda: cmd_escalate(

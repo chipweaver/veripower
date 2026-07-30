@@ -32,8 +32,10 @@ def _read_ppa_targets(workdir, dims: set[str]) -> list:
     """PPA targets from the specification stage root's ppa.json sidecar (spec
     §4.3) — filtered to `dims` — replacing the old injected --ppa-targets CLI arg
     (power-analysis binds to this file as its acceptance standard). The stage root
-    comes from the injected `<workdir>/inputs.json` "ppa" key, not self-navigation."""
-    inputs = json.loads((Path(workdir) / "inputs.json").read_text(encoding="utf-8"))
+    comes from the injected `<workdir>/dispatch.json` `inputs."ppa"`, not self-navigation."""
+    inputs = json.loads((Path(workdir) / "dispatch.json").read_text(encoding="utf-8"))[
+        "inputs"
+    ]
     p = Path(inputs["ppa"]) / "ppa.json"
     if not p.is_file():
         return []

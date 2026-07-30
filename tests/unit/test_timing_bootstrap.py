@@ -8,9 +8,9 @@ under it. The
 bootstrap anchors the design tree on the CWD (matching kernel.py and the
 stage-subagent contract), independent of where the skill code lives.
 
-`_make_tree` pre-populates workdir/inputs.json (netlist/sdc keys) the way
+`_make_tree` pre-populates workdir/dispatch.json (netlist/sdc keys) the way
 kernel.py dispatch injects it at dispatch time — bootstrap reads the upstream
-synthesis-stage-root location from inputs.json instead of self-navigating
+synthesis-stage-root location from dispatch.json instead of self-navigating
 tree_root/asic/<module>/Design/synthesis.
 """
 
@@ -56,7 +56,7 @@ def _make_tree(
     with_sdc=True,
 ):
     """Build a synthesis output tree (netlist + SDC) under a tmp design-tree root,
-    and pre-populate workdir/inputs.json (netlist/sdc keys) the way kernel.py
+    and pre-populate workdir/dispatch.json (netlist/sdc keys) the way kernel.py
     dispatch injects it at dispatch time.
 
     Returns (module, workdir, main). Deploy tests run `main` (the real shipped skill)
@@ -71,8 +71,8 @@ def _make_tree(
         (syn / "out" / f"{top}_syn.sdc").write_text("# sdc\n")
     workdir = tmp_path / "asic" / m / "Design" / "timing-analysis" / "runs" / "1"
     workdir.mkdir(parents=True)
-    (workdir / "inputs.json").write_text(
-        json.dumps({"netlist": str(syn), "sdc": str(syn)})
+    (workdir / "dispatch.json").write_text(
+        json.dumps({"inputs": {"netlist": str(syn), "sdc": str(syn)}})
     )
     return m, workdir, _MAIN
 
@@ -123,9 +123,9 @@ def test_workdir_and_netlist_dir_are_absolute(tmp_path):
     assert "set WORKDIR     asic/" not in tcl  # the old tree-root-relative form is gone
 
 
-def test_run_sta_reads_absolute_netlist_from_inputs_json(tmp_path):
+def test_run_sta_reads_absolute_netlist_from_dispatch_json(tmp_path):
     # Bootstrap reads the upstream synthesis-stage-root location from the injected
-    # inputs.json "netlist" key — not by self-navigating
+    # dispatch.json "netlist" key — not by self-navigating
     # tree_root/asic/<module>/Design/synthesis. run_sta.tcl must bake the ABSOLUTE
     # netlist dir (NETLIST_DIR), never a MY_MODULE_ROOT placeholder or a baked
     # "Design/synthesis" self-nav path. $WORKDIR (a same-stage self-ref, F2) must

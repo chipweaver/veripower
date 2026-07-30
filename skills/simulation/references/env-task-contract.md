@@ -19,14 +19,13 @@ the UVM scaffold, compile, and run the smoke suite.
   declared here at all — it is power-analysis's.
 - verification-plan path: `<plan>/verification-plan.md` — the human-readable
   plan (review anchor for filling intent).
-- (rework only) `{failing_result}` — the failed stage's canonical `result.json` path; read its
-  `stage_specific` (field names per that stage's result schema) to narrow this round's rewrite scope.
-  The orchestrator has already pre-gated this path's readability (an unreadable trigger fails fast as
-  `failure_phase="prerequisite"` before you are dispatched), so you receive the path for
-  CONTENT only — do not re-classify readability.
-  If `{directive_path}` is also injected, read that sibling fix-scope hint first; it takes
-  priority over the trigger content. On a genuine first run (the workdir is freshly bootstrapped
-  with no carried TB), the only reference is the plan.
+- (rework only) the caller's resolved edit scope, as whichever of these the kernel put in this
+  run's `dispatch.json`: `caused_by` (the failing runs' own `result.json` paths — read each, and
+  narrow to what it attributes; field names come from that stage's result schema), `scope`
+  (module-relative paths or `<file>:<line>` anchors), and `reasons` (a human's judgment on the
+  repair, which outranks your own reading of the files). Every path was resolved by the kernel, so
+  it exists: read it for CONTENT and do not re-classify readability. On a genuine first run (the
+  workdir is freshly bootstrapped with no carried TB), the only reference is the plan.
 
 ## Work
 
@@ -47,8 +46,8 @@ the UVM scaffold, compile, and run the smoke suite.
    seq / top against the current plan (`verification-plan.md` + the plan sidecars).
    - **First run:** fill every rendered `TODO(` stub in the freshly bootstrapped tree.
    - **Rework (carried TB):** reconcile the carried TB to the current plan, confined to the
-     orchestrator's resolved edit scope (a directive, a `{failing_result}`, or a
-     `changed-inputs.md` change-set) — change only what that scope requires; checks / RM /
+     caller's resolved edit scope (whatever `dispatch.json` carried) — change only what that
+     scope requires; checks / RM /
      scoreboard already matching the current plan are left byte-identical to the carried baseline.
    All writes happen only in `{workdir}`.
    **Trust the rendered tree (U4):** the bootstrap verb (with `--plan`) renders an atomic, complete, self-describing

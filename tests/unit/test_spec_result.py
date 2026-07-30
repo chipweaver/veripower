@@ -514,14 +514,14 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
             ppa_targets=None,
             waived=[],
             status="fail",
-            fail_reason="failing_result not readable: /x/result.json",
+            fail_reason="external reference missing: /x/design.md",
         )
         == 0
     )
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     ss = env["stage_specific"]
-    assert ss["fail_reason"] == "failing_result not readable: /x/result.json"
+    assert ss["fail_reason"] == "external reference missing: /x/design.md"
     assert ss["top_module"] == "tpu_top"  # from manifest.module, no derivation run
     paths = {a["path"] for a in env["artifacts"]}
     assert {

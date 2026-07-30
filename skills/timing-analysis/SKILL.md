@@ -36,7 +36,7 @@ Only `{workdir}` / `{module}` are delivered. (See the Workflow rationale.)
 
 ### External reference inputs
 
-Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
+Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream input to its location, so `<key>` below denotes that location and you read `<key>/<subpath>`.
 
 | Path | Schema / Format | Use |
 |---|---|---|

@@ -8,7 +8,7 @@ no sed-delimiter hazard on '/'-containing paths).
 Deploys templates/ into the caller-provided workdir
 (asic/<module>/Verification/power-analysis/runs/<N>/). The upstream synthesis /
 simulation / simulation-plan stage-root locations come from the injected
-`<workdir>/inputs.json` "netlist" / "tb_env" / "scaffold" keys, not by
+`<workdir>/dispatch.json` `inputs` table ("netlist" / "tb_env" / "scaffold"), not by
 self-navigating tree_root/asic/<module>/Design|Verification/<stage> — power has no
 "rtl" key (it never consumes rtl-design). TOP is inferred from the injected
 netlist's out/*_syn.v (suffix '_syn.v' stripped, same mechanism as
@@ -84,10 +84,10 @@ def run(module: str, workdir, top: str | None = None) -> int:
         return 1
 
     # The synthesis / simulation / simulation-plan stage roots are injected into
-    # inputs.json (dispatch-time), not self-navigated via
+    # dispatch.json (dispatch-time), not self-navigated via
     # tree_root/asic/<module>/Design|Verification/<stage>. No "rtl" key — power
     # never consumes rtl-design.
-    inputs = json.loads((dest / "inputs.json").read_text(encoding="utf-8"))
+    inputs = json.loads((dest / "dispatch.json").read_text(encoding="utf-8"))["inputs"]
     syn_out_dir = Path(inputs["netlist"]) / "out"
     sim_dir = Path(inputs["tb_env"])
     plan_dir = Path(inputs["scaffold"])

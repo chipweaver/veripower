@@ -11,7 +11,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap \
 
 - Deploys into the directory given by `--workdir` (typically `asic/<module>/Design/synthesis/runs/<N>/`, supplied by the caller). A relative `--workdir` resolves against the working tree root (the CWD, i.e. the directory containing `asic/`).
 - Replaces the `MY_TOP` placeholder in `env.sh`.
-- Replaces the `MY_RTL_DIR` placeholder in `scripts/dc_run.tcl` with the ABSOLUTE rtl-design stage root, read from the injected `<workdir>/inputs.json` `"rtl"` key (no self-navigation, no relpath).
+- Replaces the `MY_RTL_DIR` placeholder in `scripts/dc_run.tcl` with the ABSOLUTE rtl-design stage root, read from the injected `<workdir>/dispatch.json` `inputs."rtl"` (no self-navigation, no relpath).
 - Generates `scripts/rtl_load.tcl` from `<rtl>/rtl-files.json` (each `files[]` entry wrapped as `analyze -format sverilog -define SYNTHESIS [list <RTL_DIR>/<entry>]`, `<RTL_DIR>` being that same absolute root; `-define SYNTHESIS` is passed per `analyze`).
 - Emits each child's `incdirs[]` onto `search_path` in `scripts/rtl_load.tcl`, rebased `<RTL_DIR>/<dir>`.
 - Generates `scripts/config.tcl` injecting `::env(TOP)` + `::env(LIB_DB)` (LIB_DB starts as the `FILL_IN_LIB_DB_PATH` placeholder).
@@ -21,7 +21,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap \
 
 ## SDC source-of-truth decision
 
-`synthesis bootstrap` looks up the source of truth `<sdc>/constraints/<TOP>.sdc` at deploy time (`<sdc>` = the injected `"sdc"` location, `inputs.json`):
+`synthesis bootstrap` looks up the source of truth `<sdc>/constraints/<TOP>.sdc` at deploy time (`<sdc>` = the injected `"sdc"` location, `dispatch.json`):
 
 | Source of truth present | Behaviour |
 |---|---|
@@ -75,7 +75,7 @@ It extracts `area_um2` (`area.rpt` "Total cell area") and `timing_slack_ns` (the
 **min** `Critical Path Slack` across all `qor.rpt` clock-group blocks — never the
 first listed), cross-checks the worst slack against the design `WNS` /
 violating-path summary, judges the gate against the targets it reads from
-`<ppa>/ppa.json` (`<ppa>` = the injected `"ppa"` location, `inputs.json`)
+`<ppa>/ppa.json` (`<ppa>` = the injected `"ppa"` location, `dispatch.json`)
 (`area_um2` <= target; `timing_slack_ns` >= target;
 each optional — an absent file or dim leaves that dimension ungated), and writes the lean
 `result.json`. Command exit is **0 = result.json written** (status pass or fail)

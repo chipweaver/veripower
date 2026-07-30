@@ -12,8 +12,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap \
 - Deploys into the directory passed via `--workdir` (typically `asic/<module>/Design/lint-cdc/runs/<N>/`, caller-provided). A relative `--workdir` resolves against the working tree root (the CWD, i.e. the directory containing `asic/`).
 - Substitutes the `MY_TOP` placeholder in: `env.sh`, `scripts/spyglass_lint.prj`, `scripts/constraints.sgdc`, `scripts/waiver.tcl` — except entries already present in the workdir (a carried file — see below — copied verbatim by `carry_self` before this verb runs), which are left untouched (no-clobber deploy).
 - The canonical `Design/lint-cdc/scripts/waiver.tcl` is carried into every new workdir verbatim by kernel.py's `carry_self`, BEFORE this verb runs — the human-reviewed waivers persisted by a prior run survive into each new deploy instead of being reset to the pristine template; the no-clobber deploy is what lets that carried file win.
-- RTL paths in `scripts/filelist.txt` are the ABSOLUTE rtl-design stage root injected into `<workdir>/inputs.json`'s `"rtl"` key (no relpath climb, no self-navigation).
-- An existing `{workdir}/Makefile` is treated as "already deployed" and the script aborts; a caller-placed `directive.md` inside the workdir does NOT count as "deployed".
+- RTL paths in `scripts/filelist.txt` are the ABSOLUTE rtl-design stage root injected into `<workdir>/dispatch.json`'s `inputs."rtl"` (no relpath climb, no self-navigation).
+- An existing `{workdir}/Makefile` is treated as "already deployed" and the script aborts; the kernel-written `dispatch.json` inside the workdir does NOT count as "deployed".
 - When `--top` is omitted, the script reads it from `manifest.module`.
 
 ## SGDC source selection
@@ -25,7 +25,7 @@ The lint-cdc bootstrap verb resolves the SGDC seed in carried → cold → templ
 | Path | Source | Trigger condition | Behavior |
 |---|---|---|---|
 | carried | `{workdir}/scripts/constraints.sgdc` | Already present in the workdir — `carry_self` copied the SGDC with depth annotations from a previous passing lint-cdc run's canonical (the run listed this entry in `result.json.artifacts[]`) BEFORE this verb ran. | Left untouched by the no-clobber deploy; do **not** substitute `MY_TOP`. The next iteration inherits every already-converged `sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`. |
-| cold | `<sgdc_seed>/constraints/<TOP>.sgdc` (injected `inputs.json` location) | No carried file yet, but the specification stage has persisted a seed. | Copy to `scripts/constraints.sgdc`; do **not** substitute `MY_TOP`. This round must re-iterate the depth annotations. |
+| cold | `<sgdc_seed>/constraints/<TOP>.sgdc` (injected `dispatch.json` location) | No carried file yet, but the specification stage has persisted a seed. | Copy to `scripts/constraints.sgdc`; do **not** substitute `MY_TOP`. This round must re-iterate the depth annotations. |
 | template | `templates/scripts/constraints.sgdc` | Neither carried nor cold available (ad-hoc invocation / template testing). | Use the template with `MY_TOP` substituted; clock / reset constraints must be added by hand. |
 
 `<sgdc_seed>/constraints/<TOP>.sgdc` is always the seed source of truth (specification persists it once, then it is frozen); you **do not** write back to that source of truth. The SGDC with depth annotations is listed in `result.json.artifacts[]` and lands at this stage's own canonical (`Design/lint-cdc/scripts/constraints.sgdc`), which `carry_self` uses as the next run's carry-forward anchor.

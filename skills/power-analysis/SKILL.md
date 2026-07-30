@@ -32,11 +32,10 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{directive_path}` | Optional on any dispatch. Fix-scope hint file; when present, Read it first. |
 
 ### External reference inputs
 
-Each read-only upstream input's location is injected — read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
+Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream input to its location, so `<key>` below denotes that location and you read `<key>/<subpath>`.
 
 | Path | Schema / Format | Use |
 |---|---|---|
@@ -50,7 +49,7 @@ Each read-only upstream input's location is injected — read `inputs.json` in y
 | `LIB_DB` (env) | std cell Liberty `.db`/`.lib` | PT-PX activity→power mapping (MUST match what was used at synthesis). |
 | `UVM_HOME` (env) | UVM library path | matches what TB infrastructure was built against. |
 
-PPA targets (entries on the `power_mw` dimension only) are read by `power finalize` itself from the injected `ppa` location (`inputs.json`) — nothing is injected in the prompt.
+PPA targets (entries on the `power_mw` dimension only) are read by `power finalize` itself from the injected `ppa` location — nothing is injected in the prompt.
 
 ## Output Artifacts
 
@@ -69,7 +68,7 @@ you interact with it only through the `make` targets.
 
 ### Step 1: Pre-check external references
 
-Confirm `<tb_env>/filelist.f` / `<scaffold>/power-scenarios.json` (non-empty) / the synthesis trio (`<netlist>/out/<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"` and exit. When `{directive_path}` is injected, Read it first as a fix-scope hint.
+Confirm `<tb_env>/filelist.f` / `<scaffold>/power-scenarios.json` (non-empty) / the synthesis trio (`<netlist>/out/<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"` and exit. When `{workdir}/dispatch.json` carries a `scope`, narrow this round's edits to what it names.
 
 ### Step 2: Bootstrap
 
@@ -104,7 +103,7 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
     --plan <scaffold>
   ```
 
-  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against the targets it reads itself from the injected `ppa` location (`inputs.json`) — an absent file skips the gate), folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against the targets it reads itself from the injected `ppa` location — an absent file skips the gate), folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
   `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); `infra` (external reference / license missing) is written by the Step-1 pre-check before finalize runs, and on the `make`-non-zero VCS-compile triage above you also write the `failures[]`/`failure_kind` directly (the gate never runs there).
 

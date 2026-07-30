@@ -6,8 +6,8 @@ reused verbatim from the two landed kernel suites the brief names:
     fingerprints and a per-run content marker so a rebuild genuinely drifts bytes;
   * test_kernel_cli.py — real kernel verbs (kernel.cmd_dispatch / cmd_reap with a
     crafted, schema-valid result.json) so triage mints a real diagnosis + a canonical
-    result.json, and dispatch writes a real directive.md.
-No mocks: every proof, fingerprint, directive, and diagnosis is produced by the
+    result.json, and dispatch writes a real dispatch.json.
+No mocks: every proof, fingerprint, scope, and diagnosis is produced by the
 landed facts/schedule/kernel code over a real asic/<module>/ tree.
 
 Each scenario replays a multi-step pipeline flow and asserts the BINDING per-step
@@ -294,7 +294,7 @@ def _triage(module, sim_run, root_cause, confidence):
     """Real triage dispatch+reap: crafted schema-valid result.json -> a promoted
     canonical result.json + a minted diagnosis event (kernel _derive_triage)."""
     d = kernel.cmd_dispatch(
-        module, "simulation-triage", "delivery", None, None, {"sim_run": sim_run}
+        module, "simulation-triage", "delivery", None, {"sim_run": sim_run}
     )
     assert d["ok"], d
     result = {
@@ -320,7 +320,7 @@ def _triage(module, sim_run, root_cause, confidence):
     return d
 
 
-def test_step2_repair_direct_hash_invariance_triage_forward(tmp_path, monkeypatch):
+def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatch):
     """Round-2: smoke fail -> triage(rtl-design, high) -> DISPATCH rtl-design ->
     the fix drifts only matvec.v -> the sim fail proof's recorded input drifts ->
     fail stale -> a repair forwards DIRECT to simulation, not rtl-design again."""
@@ -338,22 +338,22 @@ def test_step2_repair_direct_hash_invariance_triage_forward(tmp_path, monkeypatc
     d1_id = [e for e in evs if e["type"] == "diagnosis"][-1]["id"]
     a = schedule.decide(m)
     assert a["action"] == "DISPATCH" and a["rule"] == "rtl-design"
-    assert a["needs_directive"] is True and a["triage_forward"] is True
     assert a["diagnosis_refs"] == [d1_id]
+    assert a["caused_by"] == [["simulation", 1]]
 
-    # (d) triage-forward (§3.4): the directive handed to rtl-design is byte-identical
-    # to the triage result.json.
-    triage_rj = facts.module_root(m) / "Verification/simulation-triage/result.json"
-    dr = kernel.cmd_dispatch(m, "rtl-design", "delivery", str(triage_rj), None)
-    assert dr["ok"], dr
-    dispatch_ev = next(
-        e
-        for e in reversed(facts.read_events(m))
-        if e["type"] == "dispatch" and e["rule"] == "rtl-design"
+    # (d) the triage analysis reaches rtl-design as data, not as a copy: `caused_by` names
+    # the failing run's own envelope and `scope` carries the diagnosis's anchors. Nothing is
+    # transcribed, and the fix owner never navigates to another stage itself.
+    _mk(m, "Verification/simulation/runs/1/result.json", json.dumps({"status": "fail"}))
+    dr = kernel.cmd_dispatch(
+        m, "rtl-design", "delivery", a["diagnosis_refs"], None, [("simulation", 1)]
     )
-    directive_rel = dispatch_ev["params"]["directive"]["path"]
-    directive_bytes = (facts.module_root(m) / directive_rel).read_bytes()
-    assert directive_bytes == triage_rj.read_bytes()
+    assert dr["ok"], dr
+    doc = json.loads(
+        (facts.module_root(m) / dr["workdir"] / "dispatch.json").read_text()
+    )
+    assert doc["caused_by"] == ["Verification/simulation/runs/1/result.json"]
+    assert doc["scope"] == ["matvec.v:1"]  # the triage finding's anchor
 
     # the fix lands (run 2): outcome changes ONLY matvec.v; filelist/README untouched.
     _mk(m, "Design/rtl-design/matvec.v", "rtl-design:matvec.v:FIX")  # drift on disk
@@ -426,7 +426,7 @@ def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
     # forward re-dispatch with NO directive.
     a = schedule.decide(m)
     assert a["action"] == "DISPATCH" and a["rule"] == "specification"
-    assert "needs_directive" not in a  # directive-LESS forward
+    assert "caused_by" not in a  # a forward dispatch answers no failure
 
     # the producer carries prior outputs forward: it re-runs (run 2) re-emitting every
     # untouched artifact byte-for-byte (only design.md, the tweaked file, differs).
@@ -695,13 +695,19 @@ def test_step5_lintcdc_dispatchable_and_waiver_never_cached(tmp_path, monkeypatc
     assert facts.rule_available(m, facts.read_events(m), "lint-cdc")
 
 
-# ── Forward scope signal (changed-inputs.md) ─────────────────────────────────────
+# ── The four dispatch shapes (dispatch.json) ─────────────────────────────────────
 
 
-def test_forward_dispatch_writes_changed_inputs_md(tmp_path, monkeypatch):
-    """A forward re-dispatch — spec re-ran, drifting rtl-design's recorded inputs — drops a
-    kernel-computed `changed-inputs.md` scope hint into the run workdir listing the changed
-    declared inputs the skill's forward fallback narrows to (vs diffing an upstream envelope)."""
+def _dispatch_doc(module, workdir):
+    return json.loads(
+        (facts.module_root(module) / workdir / "dispatch.json").read_text()
+    )
+
+
+def test_forward_redispatch_scope_names_the_drifted_inputs(tmp_path, monkeypatch):
+    """Shape 2 — a forward re-dispatch: spec re-ran, drifting rtl-design's recorded inputs,
+    so `scope` names exactly those files. That drift is what invalidated the proof, and only
+    the kernel can compute it (the fingerprint table lives in the log)."""
     monkeypatch.chdir(tmp_path)
     m = "fwd-scope"
     _mk(m, "brainstorm.md", "b1")
@@ -714,22 +720,111 @@ def test_forward_dispatch_writes_changed_inputs_md(tmp_path, monkeypatch):
         m, facts.read_events(m), "rtl-design"
     )  # inputs drifted
 
-    d = kernel.cmd_dispatch(m, "rtl-design", "delivery", None, None)
+    d = kernel.cmd_dispatch(m, "rtl-design", "delivery", None)
     assert d["ok"], d
-    cim = facts.module_root(m) / d["workdir"] / "changed-inputs.md"
-    assert cim.is_file()
-    body = cim.read_text()
-    assert "Design/specification/design.md" in body
-    assert "Design/specification/child.md" in body
+    doc = _dispatch_doc(m, d["workdir"])
+    assert "Design/specification/design.md" in doc["scope"]
+    assert "Design/specification/child.md" in doc["scope"]
+    assert "caused_by" not in doc and "reasons" not in doc
 
 
-def test_first_dispatch_writes_no_changed_inputs_md(tmp_path, monkeypatch):
-    """A first delivery (no prior rtl-design outcome) writes NO changed-inputs.md — the skill
-    then falls to full scope, distinct from the empty-file 're-verify only' branch."""
+def test_first_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
+    """Shape 1 — a first delivery (no prior rtl-design outcome): `inputs` alone. The absent
+    narrowing keys are what send the skill to full scope; it then tells that apart from a
+    re-verify by whether the workdir already holds its own prior products."""
     monkeypatch.chdir(tmp_path)
     m = "fwd-first"
     _mk(m, "brainstorm.md", "b1")
     _valid(m, "specification", 1)  # spec present so rtl-design's inputs are available
-    d = kernel.cmd_dispatch(m, "rtl-design", "delivery", None, None)
+    d = kernel.cmd_dispatch(m, "rtl-design", "delivery", None)
     assert d["ok"], d
-    assert not (facts.module_root(m) / d["workdir"] / "changed-inputs.md").exists()
+    assert list(_dispatch_doc(m, d["workdir"])) == ["inputs"]
+
+
+def test_reverify_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
+    """Shape 4 — a re-verify: the oracle was reopened, so the proof is invalid with ZERO
+    input drift. Same empty-narrowing shape as a first delivery, and the skill separates the
+    two on disk: its prior products were carried in, so it re-derives its gate and rewrites
+    nothing."""
+    monkeypatch.chdir(tmp_path)
+    m = "reverify"
+    _mk(m, "brainstorm.md", "b1")
+    _valid(m, "specification", 1)
+    oref = rules.RULES["specification"].oracle[0]
+    facts.append_event(
+        m, {"type": "reopen", "pin_ref": oref, "reason": "re-examine"}, TS
+    )
+    assert not facts.proof_valid(m, facts.read_events(m), "specification")
+    assert facts.stale_inputs(m, facts.read_events(m), "specification") == []
+
+    d = kernel.cmd_dispatch(m, "specification", "delivery", None)
+    assert d["ok"], d
+    assert list(_dispatch_doc(m, d["workdir"])) == ["inputs"]
+    # carry_self brought the prior round's products in: that is the disk fact the skill
+    # branches on, and it is what makes this shape distinguishable from a first delivery.
+    assert (facts.module_root(m) / d["workdir"] / "design.md").is_file()
+
+
+def test_repair_dispatch_names_the_failure_and_the_human_reasoning(
+    tmp_path, monkeypatch
+):
+    """Shape 3 — a repair: `caused_by` names the failing run's own envelope, `scope` carries
+    the diagnosis's fix_locus, and `reasons` carries a human author's reasoning verbatim.
+    The envelope path is per-run, so a later run of the same stage cannot move it."""
+    monkeypatch.chdir(tmp_path)
+    m = "repair-shape"
+    _mk(m, "brainstorm.md", "b1")
+    _valid(m, "specification", 1)
+    _valid(m, "rtl-design", 1)
+    _fail(m, "synthesis", 1)
+    # reap promotes a failing run's envelope, so in production this path always exists.
+    _mk(m, "Design/synthesis/runs/1/result.json", json.dumps({"status": "fail"}))
+    r = kernel.cmd_diagnose(
+        m,
+        "diag-unit",
+        "synthesis",
+        1,
+        "specification",
+        "specification",
+        [str(facts.module_root(m).resolve() / "Design/specification/ppa.json")],
+        ["Design/synthesis/runs/1/reports/area.rpt"],
+        "high",
+        "operator",
+        "the area target's unit is wrong, not the RTL",
+        None,
+    )
+    assert r["ok"], r
+    # an absolute fix_locus the operator typed is rebased, so dispatch.json stays single-basis
+    diag = [e for e in facts.read_events(m) if e["type"] == "diagnosis"][-1]
+    assert diag["fix_locus"] == ["Design/specification/ppa.json"]
+
+    d = kernel.cmd_dispatch(
+        m, "specification", "repair", ["diag-unit"], None, [("synthesis", 1)]
+    )
+    assert d["ok"], d
+    doc = _dispatch_doc(m, d["workdir"])
+    assert doc["caused_by"] == ["Design/synthesis/runs/1/result.json"]
+    assert doc["scope"] == ["Design/specification/ppa.json"]
+    assert doc["reasons"] == ["the area target's unit is wrong, not the RTL"]
+    ev = next(
+        e
+        for e in reversed(facts.read_events(m))
+        if e["type"] == "dispatch" and e["rule"] == "specification"
+    )
+    assert ev["caused_by"] == [["synthesis", 1]]
+
+
+def test_repair_dispatch_rejects_an_unresolvable_channel(tmp_path, monkeypatch):
+    """Both rework channels fail closed. A dangling --caused-by would hand the worker a path
+    it cannot open; an unknown --diagnosis-refs would drop that diagnosis's fix_locus and
+    reasoning silently, which is the loss §3.3 forbids."""
+    monkeypatch.chdir(tmp_path)
+    m = "repair-guard"
+    _mk(m, "brainstorm.md", "b1")
+    _valid(m, "specification", 1)
+    r = kernel.cmd_dispatch(m, "rtl-design", "repair", None, None, [("synthesis", 9)])
+    assert not r["ok"] and "no result.json" in r["error"]
+    r = kernel.cmd_dispatch(m, "rtl-design", "repair", ["diag-nope"], None)
+    assert not r["ok"] and "unknown diagnosis ref" in r["error"]
+    # neither attempt allocated a run
+    assert facts.runs_of(facts.read_events(m), "rtl-design") == 0

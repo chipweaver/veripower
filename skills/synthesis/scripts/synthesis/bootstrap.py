@@ -4,7 +4,7 @@
 Behavior-preserving deploy built from focused, unit-testable steps (campaign design
 §3.3): shutil.copytree + str.replace do the `cp -a` + `sed -i` work. Upstream
 locations (rtl-design, specification SDC/PPA) come from the injected
-`<workdir>/inputs.json` — bootstrap re-anchors rtl_load.tcl / dc_run.tcl to the
+`<workdir>/dispatch.json` — bootstrap re-anchors rtl_load.tcl / dc_run.tcl to the
 ABSOLUTE producer stage root; no relpath, no self-navigation.
 
 Deploys templates/ into the caller-provided workdir
@@ -161,7 +161,7 @@ def run(workdir, top: str | None = None) -> int:
         dest = tree_root / dest
     dest = Path(str(dest).rstrip("/"))  # consistent path resolution
 
-    inputs = json.loads((dest / "inputs.json").read_text(encoding="utf-8"))
+    inputs = json.loads((dest / "dispatch.json").read_text(encoding="utf-8"))["inputs"]
     rtl_dir = Path(inputs["rtl"])
 
     if not top:
@@ -172,8 +172,8 @@ def run(workdir, top: str | None = None) -> int:
         return 1
 
     dest.mkdir(parents=True, exist_ok=True)
-    # A caller may pre-create the workdir with hint files (directive.md
-    # etc.); only treat it as already-deployed when Makefile is present.
+    # Every fresh workdir already holds the kernel's dispatch.json; only treat it as
+    # already-deployed when a Makefile is present.
     if (dest / "Makefile").is_file():
         _err(f"already deployed (detected {dest / 'Makefile'})")
         _err(

@@ -61,7 +61,6 @@ RULES: dict[str, Rule] = {
         proof="specification",
         oracle=("spec-review", "proposed"),
         oracle_selector="spec-review.json",
-        params=("directive",),
         carry=("**",),
         no_carry=("spec-review.json",),
     ),
@@ -92,7 +91,6 @@ RULES: dict[str, Rule] = {
         proof="simulation-plan",
         oracle=("plan-review", "proposed"),
         oracle_selector="plan-review.json",
-        params=("directive",),
         carry=("**",),
         no_carry=("plan-review.json",),
     ),
@@ -122,7 +120,6 @@ RULES: dict[str, Rule] = {
         proof="rtl-design",
         oracle=("semantic-review", "proposed"),
         oracle_selector="semantic-review.json",
-        params=("directive",),
         carry=("**",),
         no_carry=("semantic-review.json",),
     ),
@@ -153,7 +150,6 @@ RULES: dict[str, Rule] = {
         ),
         proof="lint-cdc",
         oracle=("spyglass-ruleset", "tool"),
-        params=("directive",),
         carry=("scripts/waiver.tcl", "scripts/constraints.sgdc"),
     ),
     "synthesis": Rule(
@@ -183,7 +179,6 @@ RULES: dict[str, Rule] = {
         ),
         proof="synthesis",
         oracle=("dc-shell", "tool"),
-        params=("directive",),
     ),
     "timing-analysis": Rule(
         name="timing-analysis",
@@ -198,7 +193,6 @@ RULES: dict[str, Rule] = {
         outputs=("timing-report.txt",),
         proof="timing-analysis",
         oracle=("pt-shell", "tool"),
-        params=("directive",),
     ),
     "simulation": Rule(
         name="simulation",
@@ -231,7 +225,6 @@ RULES: dict[str, Rule] = {
         oracle=("tb-refmodel", "proposed"),
         oracle_selector="tb/uvm/refmodel/*",  # pin endorses the JUDGE itself (spec §2) —
         # survives runs; content drift (LLM regenerates refmodel) drops the pin at reap
-        params=("directive",),
         carry=("**",),
         no_carry=("conformance-review.json",),
     ),
@@ -264,7 +257,6 @@ RULES: dict[str, Rule] = {
         outputs=("reports_ptpx/*/power_hier.rpt",),
         proof="power-analysis",
         oracle=("pt-shell", "tool"),
-        params=("directive",),
     ),
     "simulation-triage": Rule(
         name="simulation-triage",

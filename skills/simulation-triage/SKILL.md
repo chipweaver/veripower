@@ -14,7 +14,7 @@ You are dispatched as an ordinary kernel-scheduled rule (`rules.py`'s `simulatio
 other single-shot stages. **Canonical read-only, own-workdir writable**: free to read any
 canonical artifact; the only files you ever write live under your own `{workdir}` — a
 kernel-issued run directory keyed by its own triage dispatch count, unrelated to the
-failed simulation run you are analyzing (whose directory you read from `inputs.json`, below).
+failed simulation run you are analyzing (whose directory you read from `dispatch.json`, below).
 
 The landed `result.json`'s `stage_specific` carries two tiers:
 - **Routing tier** — `analysis_state` + `root_cause` + the gating `confidence`; the hard,
@@ -23,7 +23,8 @@ The landed `result.json`'s `stage_specific` carries two tiers:
   as-is — the disposition reliability gate then auto-routes or
   escalates on it.
 - **Advisory tier** (`advisory.{level, fix_direction, findings[], waveform, experiment}`) —
-  persisted evidence forwarded to the rework target as `directive`; informs the fix,
+  persisted evidence the rework target reads from this `result.json`, which the kernel names in
+  its `dispatch.json`; informs the fix,
   does not gate routing.
 
 ## When to Use
@@ -55,9 +56,9 @@ The landed `result.json`'s `stage_specific` carries two tiers:
 | `{module}` | Module name. |
 | `{workdir}` | Your own kernel-issued run workspace root; write `result.json` and (L2 only) `experiment/` here, nowhere else. |
 
-### Injected locations (`inputs.json`)
+### Injected locations (`dispatch.json`)
 
-Read `{workdir}/inputs.json` first — the kernel writes it at dispatch. It maps four keys to
+Read `{workdir}/dispatch.json` first — the kernel writes it at dispatch. Its `inputs` table maps four keys to
 absolute cross-stage locations; read those directly and never construct a module-root-relative
 `Verification/…` or `Design/…` path yourself. Throughout this skill, `<sim_run>` is shorthand
 for the failed-run directory named by that key (and likewise `<design>` / `<rtl>` / `<plan>`).

@@ -24,12 +24,10 @@ Your boundary:
 |---|---|
 | `{workdir}` | Current run workspace root. |
 | `{module}` | Module name. |
-| `{failing_result}` | Optional. The failed stage's canonical `result.json` path (field names per that stage's schema); when present, supplies this round's fix scope (Step 1). |
-| `{directive_path}` | Optional. Fix-scope hint file; Read it first (it overrides the trigger's attribution fields). |
 
 ### External reference inputs
 
-Each read-only upstream input's location is injected: read `inputs.json` in your `{workdir}`; below, `<key>` denotes that input's location, so you read `<key>/<subpath>` (`design`/`manifest`/`children` all resolve to the specification stage root).
+Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream input to its location; below, `<key>` denotes that input's location, so you read `<key>/<subpath>` (`design`/`manifest`/`children` all resolve to the specification stage root).
 
 | Path | Schema / Format | Use |
 |---|---|---|
@@ -138,12 +136,15 @@ Authoring judgment the schema/validator cannot express:
 
 Your previous round, if any, is already in `{workdir}`; edit it in place. Confirm `<design>/design.md` + `<manifest>/manifest.json` exist — do not read their bodies into the main thread; if a required input is missing, close the run with the early-fail exit below (`fail_reason="external reference missing: <path>"`).
 
-Determine this round's edit scope from the first of these that applies:
+`{workdir}/dispatch.json` names this round's scope. When it carries either narrowing key, the scope is the union of both:
 
-- `{directive_path}` carries a `fix_locus`: Read that sibling file first; it is authoritative.
-- a `{failing_result}` is injected: read the attribution structure and this round's revision context from the trigger file, amended per the Violation-type targeting table below; if the trigger is unreadable, close the run with the early-fail exit (`fail_reason="failing_result not readable: <path>"`).
-- `{workdir}/changed-inputs.md` is present: it lists the input files that changed since this stage's last run; amend only the plan sections its `design.md` / `<child>.md` paths map to.
-- a carried `{workdir}/verification-plan.md` has frontmatter `Status: approved` (a prior approved round, so a re-verify, not a first delivery): amend no section; re-run Step 3's gate on the carried plan and finalize; every section outside scope stays byte-identical.
+- `caused_by`: the `result.json` of each upstream failure this round answers. Read each and amend the plan per the Violation-type targeting table below. This is a pointer, not a boundary: if the gap sits elsewhere, widen and record why in `result.json`.
+- `scope`: module-relative paths, or `<file>:<line>` anchors, that this round should touch; amend only the plan sections its `design.md` / `<child>.md` paths map to.
+- `reasons`, when present, is a human's judgment on this repair; it outranks your own reading of the files.
+
+With neither narrowing key, decide on `{workdir}`:
+
+- a carried `verification-plan.md` has frontmatter `Status: approved` (a prior approved round, so a re-verify, not a first delivery): amend no section; re-run Step 3's gate on the carried plan and finalize; every section outside scope stays byte-identical.
 - otherwise (a first delivery, or a prior round interrupted before approval): full generation of plan + scaffold.
 
 **Early-fail exit.** Whenever a documented failure cannot be resolved, run finalize to close the run; never hand-assemble the envelope:
@@ -230,7 +231,7 @@ You supply only the human-gate outcome from Steps 1 and 4: `--waived` (`[]` if n
 
 ## Violation-type targeting (repair scope)
 
-When a `{failing_result}` carries multiple violation kinds, decide the primary edit target by kind:
+When `caused_by` names failures carrying multiple violation kinds, decide the primary edit target by kind:
 
 | Violation type | Primary edit target |
 |---|---|
@@ -244,7 +245,7 @@ When a `{failing_result}` carries multiple violation kinds, decide the primary e
 | Excuse | Reality |
 |---|---|
 | "Most check_hints are covered — close enough to pass" | `simplan check-scaffold` enforces the matrix: every `check_hints[]` check_id must be in some `testpoints[].covers[]` or in `skipped_checks[]`. It is not a self-judgment you can rationalize past. |
-| "This repair is automatic feedback — skip the review loop" | Every run runs the plan review loop; do not skip user approval because feedback came from a `{failing_result}`. |
+| "This repair is automatic feedback — skip the review loop" | Every run runs the plan review loop; do not skip user approval because the round was narrowed by a `caused_by`. |
 | "I already know which power scenarios this module needs — I'll author them directly instead of loading the 9-scenarios template" | The standard set in `references/power-scenarios-template.md` is the required coverage basis — load it first, then materialize. `simplan check-scaffold` only checks `sequence_ref` resolution and the check-hints matrix; it does **not** verify a scenario came from the standard set, so an invented or dropped scenario passes the gate. No machine backstop — the template is the discipline. |
 
 ## Pitfalls

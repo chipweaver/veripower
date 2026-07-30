@@ -23,7 +23,7 @@ Bootstrap behavior:
 3. Create empty directories `tb/uvm/{interface,transaction,agent,checker,refmodel,env,seq,test,pkg,top}/`.
 4. When `--plan` is provided, the bootstrap verb renders the scaffold to generate the full UVM scaffold from `tb-scaffold.json` + `sequences.json` (agent / driver / monitor / refmodel / scoreboard / env / tb_top / tb_pkg / filelist / generated_tests / tests/testlist.json).
 
-If `{workdir}/Makefile` already exists, bootstrap treats it as a rework round (a prior round's TB carried forward by `carry_self`) and continues — the no-clobber deploy never overwrites it; hint files such as `directive.md`, placed by the caller when creating the workdir, do not constitute a Makefile.
+If `{workdir}/Makefile` already exists, bootstrap treats it as a rework round (a prior round's TB carried forward by `carry_self`) and continues — the no-clobber deploy never overwrites it; the kernel's `dispatch.json`, written into every fresh workdir, does not constitute a Makefile.
 
 ## Template responsibilities
 
