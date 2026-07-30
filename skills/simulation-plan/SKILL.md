@@ -96,9 +96,11 @@ Steps 2–5; the branch decides how much of the plan you touch.
   paths map to. It is a pointer, not a boundary: if the gap sits elsewhere, widen and record why in
   `result.json`. `reasons`, when present, is a human's judgment on this repair and outranks your own
   reading of the files.
-- **`caused_by` absent:** a first delivery — generate the plan and all three sidecars. If
-  `{workdir}` already holds a partial round, the session was compacted or interrupted: that work is
-  yours to continue or redo, and artifacts on disk are not a gate you already passed.
+- **`caused_by` absent:** a first delivery — generate the plan and all three sidecars.
+
+Either way, a `{workdir}` already holding part of a round means the session was compacted or
+interrupted: that work is yours to continue or redo, and artifacts on disk are not a gate you
+already passed.
 
 **Early-fail exit.** Whenever a documented failure cannot be resolved, close the run with the
 finalize early-fail entry:
