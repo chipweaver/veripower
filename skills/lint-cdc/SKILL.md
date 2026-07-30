@@ -9,24 +9,14 @@ Your sole responsibility: run SpyGlass lint / CDC against the RTL and the SGDC, 
 depth annotations until the false positives clear, review the waivers, and close the run
 through the `lintcdc` CLI's `finalize` verb.
 
-## When to Use
-
-- First-time bring-up of the SpyGlass lint / CDC environment.
-- Run a lint or CDC check.
-- Analyze violations and add waivers.
-- Re-run lint / CDC after an RTL change.
-- Supplement SGDC depth annotations (`sync_cell` / `reset_synchronizer` / `set_case_analysis` / `quasi_static`).
-
 ## Iron Rule
 
-- The only files you write live under `{workdir}`. The injected input locations (`<rtl>`,
-  `<annotations>`, `<sgdc_seed>`) are read-only, as is every other stage's output: depth
-  annotations go into `{workdir}/scripts/constraints.sgdc`, never back into the SGDC seed
-  you read them against.
-- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented
+- Write only under `{workdir}`. Every injected input location is read-only, as is every other
+  stage's output.
+- **Scripts are black boxes, never Read their source.** Invoke them per this skill's documented
   command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol
-  (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a
-  suspected bug in a script itself.
+  (stderr, stdout verdict), not the source. Sole exception: debugging a suspected bug in a
+  script itself.
 
 ## Input Artifacts
 
@@ -46,11 +36,11 @@ location, so `<key>` below denotes that location and you read `<key>/<subpath>`
 
 Under `{workdir}`:
 
-- `result.json` — this stage's status contract, written by `finalize` (`references/result.schema.json` + `envelope.schema.json`).
-- `lint-report.txt` / `cdc-report.txt` — SpyGlass text reports, written by `make`.
-- `lint-violations.json` / `cdc-violations.json` — the structured reports you triage, written by `make`.
-- `scripts/constraints.sgdc` — the depth-annotation iteration site. **You edit it**, and it must appear in `result.json.artifacts[]`.
-- `scripts/waiver.tcl` — the reviewed waivers. **You edit it**, and it must appear in `result.json.artifacts[]`.
+- `result.json`: this stage's status contract, written by `finalize` (`references/result.schema.json` + `envelope.schema.json`).
+- `lint-report.txt` / `cdc-report.txt`: SpyGlass text reports, written by `make`.
+- `lint-violations.json` / `cdc-violations.json`: the structured reports you triage, written by `make`.
+- `scripts/constraints.sgdc`: the depth-annotation iteration site. **You edit it**, and it must appear in `result.json.artifacts[]`.
+- `scripts/waiver.tcl`: the waivers you accept. **You edit it**, and it must appear in `result.json.artifacts[]`.
 
 Those last two are carried into a fresh workdir from the previous round before you start, so
 they may already hold converged annotations and reviewed waivers when you open them. Treat
@@ -67,12 +57,14 @@ whole RTL regardless.
 
 ### Step 2: Bootstrap
 
+Run `bootstrap` to deploy the run scaffold into `{workdir}`:
+
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
 ```
 
-The script deploys the templates to `{workdir}` NO-CLOBBER, so a carried `scripts/constraints.sgdc`
-/ `scripts/waiver.tcl` is never overwritten; substitutes the `MY_TOP` placeholder; and on a
+It deploys the templates NO-CLOBBER, so an inherited `scripts/constraints.sgdc` /
+`scripts/waiver.tcl` is never overwritten; substitutes the `MY_TOP` placeholder; and on a
 genuinely first run fills `scripts/constraints.sgdc` from the SGDC seed. It aborts when
 `{workdir}/Makefile` already exists (the kernel-written `dispatch.json` does not count as
 "deployed"), and when `--top` is omitted it reads the name from `manifest.module`. Non-zero
@@ -91,12 +83,18 @@ for both means there are no custom synchronizers: skip this step.
 
 ### Step 4: `make lint`
 
-runs SpyGlass lint and `collect_report.py`, which emits `lint-report.txt` (human) and
-`lint-violations.json` (structured: `counts` + `violations[]`, each with `severity` / `rule` /
-`file:line` / `message`). It re-derives the counts on every run, so you never count by hand.
+Run `make lint` to get a lint report. It runs SpyGlass and then `collect_report.py`, which emits
+`lint-report.txt` (human) and `lint-violations.json` (structured: `counts` + `violations[]`, each
+with `severity` / `rule` / `file:line` / `message`). It re-derives the counts on every run, so you
+never count by hand.
+
+Prefer running lint before CDC so `set_case_analysis` converges first, or `make all` once for a
+single session that shares `elaborate`. `make cdc` does run standalone, but until the SGDC is
+stable it reports residual test-control noise.
+
 Read `lint-violations.json` and triage every `severity=error` entry:
 
-- Test-control-signal false positives — a violation on a signal held to a constant in
+- Test-control-signal false positives: a violation on a signal held to a constant in
   functional/mission mode (`scan_en` / `test_mode` / `bypass` tied inactive), so the structural
   flag exists only in the test configuration → append `set_case_analysis <value> <port>` to
   `scripts/constraints.sgdc` and re-run `make lint` until they clear. The children's
@@ -104,7 +102,7 @@ Read `lint-violations.json` and triage every `severity=error` entry:
   value each takes; use those rather than guessing a value.
 - Real lint violations → leave for the waiver pass in Step 6.
 
-**A non-zero `make` is authoritative — never infer success from the `*-violations.json`
+**A non-zero `make` is authoritative; never infer success from the `*-violations.json`
 presence.** It ends the run. Go straight to Step 7 and pass the root cause you just read on
 `collect_report.py`'s stderr as `--fail-reason`, because the parser deleted its sidecar and
 the combiner can no longer see why. Nothing parses that string, so write the cause you
@@ -133,8 +131,8 @@ spends a rework round on a stage that cannot fix it.
 
 ### Step 5: `make cdc`
 
-runs SpyGlass CDC and `collect_report.py`, emitting `cdc-report.txt` + `cdc-violations.json`.
-Read `cdc-violations.json` and triage every `severity=error` entry:
+Run `make cdc` to get a CDC report, emitting `cdc-report.txt` + `cdc-violations.json` the same
+way. Read `cdc-violations.json` and triage every `severity=error` entry:
 
 - Quasi-static cross-domain false positives (the children's `sgdc.quasi_static` entries name
   them) → append `quasi_static -name <signal>` to `scripts/constraints.sgdc` and re-run
@@ -145,10 +143,12 @@ A non-zero `make cdc` follows the Step-4 protocol.
 
 ### Step 6: Waivers
 
-Write each reviewed waiver to `scripts/waiver.tcl`; each entry carries `-rules` and
-`-comment "<reason>. Owner: <owner> Date: <yyyy-mm-dd>"`. `run.tcl` sources the file for both
-goals, so a waiver or a `set_option` written there applies to lint and CDC alike. Re-run the
-check whose violation you waived to verify it took effect.
+Write each waiver to `scripts/waiver.tcl`; every entry carries `-rules` and a
+`-comment "<why this violation is acceptable>"`. SpyGlass subtracts a waived message before the
+parser counts anything, so the reason is the only record of what you let through: `finalize`
+BLOCKS on an entry that has none. `run.tcl` sources the file for both goals, so a waiver or a
+`set_option` written there applies to lint and CDC alike. Re-run the check whose violation you
+waived to verify it took effect.
 
 Waivers you inherited are NOT pre-validated: an entry written against an old finding can
 silently swallow a NEW same-rule violation introduced by an RTL rework. On every run whose RTL
@@ -158,8 +158,8 @@ avoidable) and delete entries whose original finding no longer exists.
 
 ### Step 7: Write `{workdir}/result.json` (mandatory)
 
-Every run closes here, including the Step 4/5 early-fail. Never hand-assemble the envelope,
-recount, or copy the header by hand:
+Run `finalize` to write the envelope. Every run closes here, including the Step 4/5 early-fail,
+and you never hand-assemble it, recount, or copy the header by hand:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py finalize \
@@ -167,9 +167,9 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py finalize \
 ```
 
 It reads the two `*-violations.json` for the gate (`status=pass` iff both exist, meaning both
-`make` runs reached `collect_report.py` cleanly, AND `counts.error == 0` in both), copies the
-counts, reads the SpyGlass version off the report, reshapes the error-severity rows into
-`violations[]` (each `reason` from the parser's tool `message`), and enumerates `artifacts[]`.
+`make` runs reached `collect_report.py` cleanly, AND `counts.error == 0` in both), reads the
+SpyGlass version off the report, reshapes the error-severity rows into `violations[]` (each
+`reason` from the parser's tool `message`), and enumerates `artifacts[]`.
 
 The two flags carry what the report cannot: `--fix-owner` because no rule id says whose artifact
 must change, and `--fail-reason` because a `make` that died before the parser wrote its sidecar
@@ -178,19 +178,10 @@ declaration of failure, so pass it only when the run really failed. Everything e
 script-owned.
 
 Exit 0 = `result.json` written, whether the status is pass or fail. Exit 2 is BLOCKED, never a
-`status=fail`: an empty `--fail-reason`, or a program exception.
-
-## Decision Rules
-
-- Only `severity=error` items trigger `fail`; warning / info are treated as `pass`.
-- Prefer `make lint` first so `set_case_analysis` converges before `make cdc`, or `make all`
-  once (a single session sharing `elaborate`). `make cdc` runs standalone at the tool layer
-  (`cdc_setup` goals carry their own `elaborate`), but until the SGDC is stable it reports
-  residual false positives.
+`status=fail`: an unreasoned waiver, an empty `--fail-reason`, or a program exception.
 
 ## Return Contract
 
 As the last line, emit `STATUS: DONE` (when `result.json` has been written) or
-`STATUS: BLOCKED <one-line reason>` (when a program exception prevented the write). The harness
-uses this signal to fire the Task-completion notification; the caller then decides based on
-`result.json`.
+`STATUS: BLOCKED <one-line reason>` (when nothing could be written). What runs next is the
+caller's decision, taken from `result.json`, not yours.

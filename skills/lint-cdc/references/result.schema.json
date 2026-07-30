@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/lint-cdc/result.schema.json",
   "title": "lint-cdc result.json contract",
-  "description": "Complete contract for asic/<module>/Design/lint-cdc/result.json. stage_specific.violations[] carries the severity=error rows only (one record per id+rule+severity+reason), so it is required but empty on status=pass, and populated on a rule-based fail. It is not required on an infra/license early-fail, where no report was parsed at all. The all-severity account, with the per-severity counts, lives in the promoted lint-violations.json / cdc-violations.json, not here. On status=fail, stage_specific.fail_reason is required (if/then below): the failure narrative, read by the stage this round routes to and parsed by nothing.",
+  "description": "Complete contract for asic/<module>/Design/lint-cdc/result.json. stage_specific.violations[] carries the severity=error rows only (one record per id+rule+severity+reason), so it is required but empty on status=pass, and populated on a rule-based fail; it is not required on an infra/license early-fail, where no report was parsed at all. On status=fail, stage_specific.fail_reason is required (if/then below): the failure narrative, read by the stage this round routes to and parsed by nothing.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
