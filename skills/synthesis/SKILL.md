@@ -96,7 +96,7 @@ Deploys the templates into `{workdir}`, generates `scripts/rtl_load.tcl` + `scri
 ### Step 4: Edit `{workdir}/constraints.sdc`
 
 - Read `<annotations>/constraint-annotations.json` and union the `sdc` block across every child; add a `create_generated_clock` for each `{module, pin}` entry (if any).
-- Replace the `set_clock_uncertainty -setup` / `-hold` placeholder values with the values from the process library (when undocumented, keep setup=`0.2 ns` / hold=`0.0 ns` and add a note; pre-CTS hold = 0 — see `specification/references/sdc-template.md`).
+- Replace the `set_clock_uncertainty -setup` / `-hold` placeholder values with the values from the process library (each carries its own `;#` note in the generated file; when undocumented, keep setup=`0.2 ns` / hold=`0.0 ns` and add a note — pre-CTS hold = 0, and a single value for both would read every pre-CTS path as hold-VIOLATED).
 - Fill `set_drive` / `set_load` per the IO cell library (when there is no spec, keep the placeholders and add a note).
 - Confirm `set_input_delay` / `set_output_delay` (replace from the interface spec when available).
 

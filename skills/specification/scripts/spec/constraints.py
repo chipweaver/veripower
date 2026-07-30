@@ -126,6 +126,8 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     if groups:
         out.append("set_clock_groups -asynchronous " + " ".join(groups))
     out.append("")
+    # Split -setup / -hold rather than one value for both: a single value would apply the
+    # setup margin to hold too, turning every pre-CTS path into a false hold-VIOLATED.
     out.append(
         "set_clock_uncertainty -setup 0.2 [all_clocks]   ;# placeholder; replace per process library"
     )
