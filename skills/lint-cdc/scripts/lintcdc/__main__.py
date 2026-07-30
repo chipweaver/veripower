@@ -33,7 +33,7 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from lintcdc import result
 
-    return result.finalize(a.workdir, a.module, a.top, a.fix_owner)
+    return result.finalize(a.workdir, a.module, a.fix_owner)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -58,11 +58,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument("--module", required=True)
-    sp.add_argument(
-        "--top",
-        default=None,
-        help="top module; defaults to the report header / env.sh $TOP",
-    )
     sp.add_argument(
         "--fix-owner",
         default=None,
