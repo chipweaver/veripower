@@ -113,11 +113,6 @@ _SKILL_MD_ALLOWLIST = {
         "prose instructing the skill to NEVER construct such a path itself — "
         "the guard-rail statement, not a violation of it"
     ),
-    # lint-cdc's OWN canonical output path — same-stage self-reference.
-    ("skills/lint-cdc/SKILL.md", 8): (
-        "lint-cdc's own canonical output path "
-        "(Design/lint-cdc/scripts/constraints.sgdc) — same-stage, not cross-stage"
-    ),
 }
 
 
