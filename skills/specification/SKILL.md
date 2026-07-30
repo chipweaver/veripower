@@ -69,7 +69,7 @@ You are loaded on the main thread as a thin Level-0 dispatcher. You hold no docu
 
 Your previous round, if any, is already present in `{workdir}`; edit it in place. Read `{workdir}/dispatch.json` first — the kernel writes `scope` / `caused_by` / `reasons` **only when they carry something**, so their presence is what tells you which kind of round this is:
 
-- **`caused_by` present:** a repair round. This stage already shipped, and rtl-design / simulation-plan consumed the manifest, so the partition is not this round's to change. Scope is the union of `dispatch.json`'s `scope` and what the `caused_by` envelopes attribute; Read each envelope once. Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 5** and flow through Steps 6–8, ending at Step 8. Steps 2–4 are skipped. Step 6 re-runs on this pass, so the promoted review is always fresh.
+- **`caused_by` present:** a repair round. This stage already shipped, and rtl-design / simulation-plan consumed the manifest, so the partition is not this round's to change. Scope is the union of `dispatch.json`'s `scope` and what the `caused_by` envelopes attribute; Read each envelope once. Dispatch one design.md-level rework sub-Task, then re-enter at Step 5 and flow through to Step 8. Steps 2–4 are skipped. Step 6 re-runs on this pass, so the promoted review is always fresh.
 - **`caused_by` absent:** a first delivery. Re-derive from Step 2, ending at Step 8. If `{workdir}` already holds a partial round — the session was compacted or interrupted — that work is yours to continue or redo; artifacts on disk are not a gate you already passed.
 
 Do NOT infer the round from what is on disk. A `<child>.md` is present both in a repair round and halfway through a first one, so reading it as proof of a prior gate makes a resumed first run skip its own partition gate.
@@ -89,8 +89,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
 | 3 | script + human | `derive-ports` (per-child inter-module wires + top-partition purity) → partition gate | rework / early-fail; merge → Step 2 |
 | 4 | Wave 2 (sub-Task ×N) | one `<child>.md` per child | `STATUS: BLOCKED` → Fan-out Contract |
 | 5 | script | cross-reference gate + constraint derivation | → rework / early-fail |
-| 6 | Wave 3 (reviewers ×N) + script | semantic review → gate verdict | `trip` → Step 7 |
-| 7 | human | `design.md` gate | reject → Step 5; partition-rooted → Step 2 (first delivery) |
+| 6 | Wave 3 (reviewers ×N) | one `spec-review/<child>.md` per child | `STATUS: BLOCKED` → Fan-out Contract |
+| 7 | human | `design.md` gate | reject → re-run from where the feedback starts |
 | 8 | script | `finalize` → `result.json` | non-zero → BLOCKED |
 
 ### Step 2: Wave 1 — decompose
@@ -143,25 +143,21 @@ It generates `constraints/<TOP>.{sdc,sgdc}` from `clocks.json` + `top-io.json`. 
 
 ### Step 6: Wave 3 — semantic review
 
-On **every** pass through the main chain, dispatch **N per-child Level-1 reviewers** (one per `manifest.children[]`) per `references/spec-review-task-contract.md`, paths only. Each writes its own `{workdir}/spec-review/<child>.md`; you read no body and re-type nothing. What a finding must state lives in that contract — do not restate or reinterpret it here.
-
-Reap all N.
+Dispatch one Level-1 reviewer per `manifest.children[]` per `references/spec-review-task-contract.md`, passing paths. Each writes its own `{workdir}/spec-review/<child>.md`.
 
 ### Step 7: design.md gate (human)
 
 Path-handoff — present these to the user, echoing no body:
 
-- the `design.md` (+ per-child) paths and the coverage verdict;
+- the `design.md` (+ per-child) paths and the `check-crossrefs` verdict;
 - one `spec-review/<child>.md` path per child;
-- the `ppa.json` content **verbatim**: the numeric acceptance targets synthesis/power-analysis gate on, transcribed by Wave 1 with no other human-visible surface, and the approval covers them.
+- the `ppa.json` content **verbatim** — the numeric targets synthesis and power-analysis will gate on, with no other human-visible surface, so the approval has to cover the actual numbers.
 
-The user reads the reviewers' own words. You do not summarize the findings, rank them, or decide which ones matter — a review relayed through your summary is your judgment wearing the reviewer's name.
+You do not summarize the findings, rank them, or decide which ones matter: a review relayed through your summary is your judgment wearing the reviewer's name.
 
 If the user accepts a finding a reviewer called blocking, write their reason — **their words, not yours** — to `{workdir}/spec-review/decisions.md`. It is promoted with the review files, so what the user endorsed over a reviewer's objection, and why, is what `signoff` later pins.
 
-If the defect is rooted in the child partition rather than in a body, a design.md-only rework cannot clear it. On a **first delivery**, go back to Step 2 with the user's grouping feedback and re-run the waves — the Step-3 gate confirmed the partition on manifest metadata alone, and the bodies and reviews that could falsify it only exist now. On a **repair round**, the manifest has already been consumed downstream: close via early-fail (`requirements need revision`) and let the kernel re-dispatch, since invalidating downstream proofs is its decision, not yours.
-
-On reject: route a rework sub-Task, body off the main thread, then **re-enter the main chain at Step 5** and flow through 5→6→7 again. The rework's reviewers write fresh files, so a stale clean review cannot survive a body edit.
+On reject, re-run from wherever their feedback starts: a body change re-enters at Step 4, a partition change at Step 2. Bodies stay off the main thread — amend one by re-dispatching its wave.
 
 ### Step 8: Finalize (script, mandatory)
 
