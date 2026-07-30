@@ -69,11 +69,16 @@ def test_envelope_pass_lean_shape(tmp_path):
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
     assert ss["tool"] == "SpyGlass vL-2016.06"
-    assert ss["lint_counts"] == {"error": 0, "warning": 2, "info": 5}
-    assert ss["cdc_counts"] == {"error": 0, "warning": 0, "info": 14}
     assert ss["violations"] == []
     # lean: dropped fields absent
-    for k in ("note", "waivers", "sgdc_seed", "top_module"):
+    for k in (
+        "note",
+        "waivers",
+        "sgdc_seed",
+        "top_module",
+        "lint_counts",
+        "cdc_counts",
+    ):
         assert k not in ss
 
 
@@ -166,11 +171,16 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     # contract / header fields — exact to the real run
     assert env["status"] == "pass"
     assert ss["tool"] == "SpyGlass vL-2016.06"
-    assert ss["lint_counts"] == {"error": 0, "warning": 2, "info": 5}
-    assert ss["cdc_counts"] == {"error": 0, "warning": 0, "info": 14}
     assert ss["violations"] == []  # no error-severity rows -> empty, no reason derived
     # lean: dropped fields ABSENT
-    for k in ("note", "waivers", "sgdc_seed", "top_module"):
+    for k in (
+        "note",
+        "waivers",
+        "sgdc_seed",
+        "top_module",
+        "lint_counts",
+        "cdc_counts",
+    ):
         assert k not in ss
     # artifacts present + no self-listing; produced_at normalized
     paths = [a["path"] for a in env["artifacts"]]
@@ -314,6 +324,54 @@ def test_empty_fail_reason_is_blocked_not_a_fail(tmp_path):
     wd = _clean_workdir(tmp_path)
     assert rb.finalize(wd, "tpu_top", None, "   ") == 2
     assert not (wd / "result.json").exists()
+
+
+def test_unreasoned_waiver_is_blocked(tmp_path):
+    """A waiver is the only route from a real error to pass, and SpyGlass subtracts it before
+    the parser counts, so the envelope cannot distinguish a waived error from one that never
+    happened. An entry with no rationale must not be able to close the stage."""
+    wd = _clean_workdir(tmp_path)
+    (wd / "scripts").mkdir(exist_ok=True)
+    (wd / "scripts" / "waiver.tcl").write_text(
+        "# a real rule id, no reason given\nwaive -rules {W257}\n"
+    )
+    assert rb.finalize(wd, "tpu_top") == 2
+    assert not (wd / "result.json").exists()
+
+
+def test_empty_comment_waiver_is_blocked(tmp_path):
+    wd = _clean_workdir(tmp_path)
+    (wd / "scripts").mkdir(exist_ok=True)
+    (wd / "scripts" / "waiver.tcl").write_text('waive -rules {W257} -comment "   "\n')
+    assert rb.finalize(wd, "tpu_top") == 2
+
+
+def test_reasoned_waiver_passes_across_continuations_and_comments(tmp_path):
+    """The real shape: commented-out examples must not register as entries, and a live entry
+    is spread over backslash-continued lines with the -comment on the last one."""
+    wd = _clean_workdir(tmp_path)
+    (wd / "scripts").mkdir(exist_ok=True)
+    (wd / "scripts" / "waiver.tcl").write_text(
+        "# waive -rules {W391} \\\n"
+        '#       -comment "an example, not an entry"\n'
+        "set_option mthresh 8192\n"
+        "waive -rules {W257} \\\n"
+        "      -file {foo.v} \\\n"
+        '      -comment "synthesis ignores the delay; simulation-only model"\n'
+    )
+    assert rb.finalize(wd, "tpu_top") == 0
+    assert json.loads((wd / "result.json").read_text())["status"] == "pass"
+
+
+def test_shipped_waiver_template_satisfies_its_own_backstop(tmp_path):
+    """The deployed template must not itself be BLOCKED — its examples are commented out."""
+    wd = _clean_workdir(tmp_path)
+    (wd / "scripts").mkdir(exist_ok=True)
+    shutil.copy(
+        REPO_ROOT / "skills/lint-cdc/templates/scripts/waiver.tcl",
+        wd / "scripts" / "waiver.tcl",
+    )
+    assert rb.waiver_defects(wd) == []
 
 
 def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
