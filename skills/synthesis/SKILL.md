@@ -77,9 +77,9 @@ kernel-written `dispatch.json` does not count as "deployed"), and when `--top` i
 the name from `manifest.module`. Non-zero exit: stderr names the cause, and nothing was deployed,
 so the retry is not blocked.
 
-The deployed `Makefile`, `env.sh`, `scripts/dc_run.tcl` and `scripts/rtl_load.tcl` are
-make-internal. `make synthesis` is the interface; the only deployed files you edit are
-`constraints.sdc` and `scripts/config.tcl`.
+The deployed `Makefile`, `env.sh`, `scripts/dc_run.tcl`, `scripts/rtl_load.tcl` and
+`scripts/config.tcl` are make-internal. `make synthesis` is the interface; the only deployed file
+you edit is `constraints.sdc`.
 
 ### Step 3: Export `LIB_DB`
 
@@ -92,12 +92,13 @@ not a second way to set it. Exporting after Step 2 is fine.
 
 - Read `<annotations>/constraint-annotations.json` and union the `sdc` block across every child; add a `create_generated_clock` for each `{module, pin}` entry (if any).
 - Replace the `set_clock_uncertainty -setup` / `-hold` placeholder values with the values from the process library (each carries its own `;#` note in the generated file; when undocumented, keep setup=`0.2 ns` / hold=`0.0 ns` and add a note — pre-CTS hold = 0, and a single value for both would read every pre-CTS path as hold-VIOLATED).
-- Fill `set_drive` / `set_load` per the IO cell library (when there is no spec, keep the placeholders and add a note).
-- Confirm `set_input_delay` / `set_output_delay` (replace from the interface spec when available).
+- Confirm the `set_input_delay` / `set_output_delay` the file already carries per port (replace from the interface spec when available).
+- Add `set_drive` / `set_load` per the IO cell library. The specification SDC carries neither, so there is nothing to replace: add them when the library documents drive strengths and loads, and otherwise leave them out.
 
-Every placeholder value you leave in place needs a `# notes:` comment saying why, because this
-file is promoted and the next reader cannot tell a measured margin from a default. Do not guess
-port names from an interface spec you do not have.
+Every placeholder value you keep, and every constraint you decided not to add, needs a `# notes:`
+comment saying why, because this file is promoted and the next reader cannot tell a measured
+margin from a default or an omission from an oversight. Do not guess port names from an interface
+spec you do not have.
 
 ### Step 5: First synthesis run
 
