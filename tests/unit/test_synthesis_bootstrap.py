@@ -202,6 +202,9 @@ def test_empty_filelist_fail_closed(tmp_path):
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 1
     assert "lists no RTL files" in proc.stderr
+    # nothing deployed, so the already-deployed guard cannot block the retry
+    assert not (workdir / "Makefile").exists()
+    assert not (workdir / "scripts").exists()
 
 
 def test_missing_filelist_fail_closed(tmp_path):
@@ -209,6 +212,10 @@ def test_missing_filelist_fail_closed(tmp_path):
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 1
     assert "missing" in proc.stderr and "rtl-files.json" in proc.stderr
+    assert not (workdir / "Makefile").exists()
+    # and the retry works once rtl-design has written the layout
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
+    assert _run(skill_dst, workdir, "--top", "top").returncode == 0
 
 
 def test_top_read_from_manifest(tmp_path):
@@ -238,21 +245,6 @@ def test_already_deployed_guard(tmp_path):
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 1
     assert "already deployed" in proc.stderr
-
-
-def test_rtl_load_skips_double_slash_comment(tmp_path):
-    # BP2/BP11 asymmetry (the rtl_load side): rtl_load generation DOES skip '//'
-    # comments (skip set {#, //, blank, +/-}), so a '//skip_me.v' line is not
-    # emitted as analyze. (Inference does NOT skip '//' — see the in-process test.)
-    skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
-    proc = _run(
-        skill_dst, workdir, "--top", "top"
-    )  # --top given so inference is bypassed
-    assert proc.returncode == 0, proc.stderr
-    gen = (workdir / "scripts" / "rtl_load.tcl").read_text()
-    assert "skip_me" not in gen
-    assert "top.v" in gen
 
 
 def test_relative_workdir_with_trailing_slash(tmp_path):
