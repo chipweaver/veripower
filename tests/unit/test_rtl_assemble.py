@@ -350,8 +350,8 @@ def test_assemble_seeded_blocked_keeps_stale_entry_but_gate_fails(tmp_path):
     # A child 'done' in a prior round (in the seeded ledger) that returns
     # 'blocked' in the new fresh is NOT evicted by the merge — its stale entry survives. This is
     # intentional (source never evicts a roster child present in seeded); the blocked child is
-    # caught by post_verdict's fresh-based blocked-child precedence (status=fail) + SKILL.md 4.3's
-    # mid-loop BLOCKED interception, NOT by ledger eviction. So the gate FAILS though the stale
+    # caught by post_verdict's fresh-based blocked-child precedence (status=fail) + the
+    # semantic-gate loop's mid-round BLOCKED interception, NOT by ledger eviction. So the gate FAILS though the stale
     # entry remains (harmless — the stage is fail, so nothing promotes).
     wd, man = _setup(
         tmp_path,
