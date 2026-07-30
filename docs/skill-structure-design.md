@@ -70,8 +70,10 @@ same rule. *N copies = N drift anchors.*
 ### Principles
 
 **P1 — Single canonical home.** Every rule has exactly one canonical home; cross-references
-use markdown links, never duplication. The same principle applies to field-level content —
-see `skill-field-contract-design.md` for the field-placement application.
+use markdown links, never duplication. Applied to a rule's own placement, the home is whichever
+artifact a reader will consult anyway: the schema description for a field, the `--help` for a
+flag, the corpus of SKILL.md for an authoring convention. Prose that restates one of those is a
+second copy, and the copy is what goes stale.
 
 **P2 — Hard criteria plus soft signals.** Externalize when a hard criterion is met.
 Soft signals (concept orthogonality, evolution cadence difference) are reviewer hints only —
