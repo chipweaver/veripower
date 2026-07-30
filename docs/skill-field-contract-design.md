@@ -519,11 +519,16 @@ These conventions apply to every SKILL.md body and every `references/*.md` file:
   rewording over mid-sentence bold. Never XML tags (`<Bad>` / `<Good>`).
 - Every fenced code block carries a language tag: `markdown`, `bash`, `json`, `yaml`, etc.
 - A runnable script invocation goes in its own ` ```bash ` fenced block, not inline; the prose
-  around it describes what the command does and the non-zero-exit protocol. A skill names its
-  **own** `scripts/` and `references/` via `${CLAUDE_SKILL_DIR}/…`; the verbose
-  `${CLAUDE_PLUGIN_ROOT}/skills/<self>/…` is reserved for cross-skill and framework paths, plus
-  artifacts deployed into a workdir (a deployed `templates/` README is read where no skill is
-  active, so `${CLAUDE_SKILL_DIR}` does not resolve there).
+  around it describes what the command does and the non-zero-exit protocol. Path form follows
+  **who resolves the path**, not what kind of file it is. A path that will be expanded by a
+  shell, or handed to a context with no skill loaded, carries a variable: a runnable invocation
+  of the skill's own `scripts/` uses `${CLAUDE_SKILL_DIR}/…`, and `${CLAUDE_PLUGIN_ROOT}/…`
+  covers cross-skill and framework paths plus artifacts deployed into a workdir (a deployed
+  `templates/` README is read where no skill is active, so `${CLAUDE_SKILL_DIR}` does not resolve
+  there). A path the reading agent resolves for itself — this skill citing its own
+  `references/…`, including the contract path it hands a sub-Task it is composing the prompt for —
+  is written plainly relative to the skill, because nothing expands a shell variable on that path
+  and the agent already knows where its own skill lives.
 - Inline backticks for paths, filenames, command / script names and flags, schema field names,
   variable names: `{workdir}`, `result.json`, `STATUS: DONE`.
 - In SKILL.md, top-level Workflow steps are `### Step N:` headings (§4.3.7), not a numbered

@@ -92,7 +92,7 @@ Whenever you close a run with `status=fail`, decide who must act and pass it as
 `--fix-owner <rule>` to the combiner (Step 6). You are the only party that read the report, so
 you are the only one who can answer this, and the line a violation is reported at is not always
 the line that must change. Which rule family means whose artifact, with the measured evidence
-behind each: `${CLAUDE_SKILL_DIR}/references/attribution-rules.md`. When it does
+behind each: [`references/attribution-rules.md`](references/attribution-rules.md). When it does
 not resolve, omit the flag — an unnamed owner brings a human in, a wrong one spends a rework
 round on a stage that cannot fix it.
 
@@ -178,6 +178,6 @@ As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `
 ## Bundled References
 
 - [`references/makefile-bootstrap.md`](references/makefile-bootstrap.md) — Bootstrap and Makefile-target quick reference.
-- `${CLAUDE_SKILL_DIR}/references/attribution-rules.md` — which SpyGlass rule family means whose artifact must change; the `--fix-owner` decision.
+- [`references/attribution-rules.md`](references/attribution-rules.md) — which SpyGlass rule family means whose artifact must change; the `--fix-owner` decision.
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.
