@@ -63,10 +63,9 @@ def build_result(
     fail. The fail path does not run it: an early-fail workdir may hold no sidecars at all,
     and a fail-loud exit there would turn a routable fail into a BLOCKED.
 
-    The plan-adequacy review is NOT re-judged here. It is prose under plan-review/, promoted
-    and fingerprinted as this stage's proposed oracle; a script re-reducing it to a verdict
-    would only be checking a record against the same agent's own --status, and pin/signoff is
-    where that endorsement is actually held to account.
+    The plan-adequacy review is NOT re-judged here, and re-adding that would not buy a check:
+    a verdict re-derived from the record would be checked against the --status of the same
+    caller that assembled the record.
 
     The human-gate state (status=user-reject / revision) is passed in by the caller, NOT
     derivable from any artifact.

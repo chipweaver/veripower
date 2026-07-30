@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-plan/result.schema.json",
   "title": "simulation-plan result.json contract",
-  "description": "Complete contract for asic/<module>/Verification/simulation-plan/result.json. The plan-adequacy review is prose under plan-review/, promoted and fingerprinted as this stage's proposed oracle — no verdict derived from it reaches this envelope.",
+  "description": "Complete contract for asic/<module>/Verification/simulation-plan/result.json. No verdict derived from the plan-adequacy review reaches this envelope: it is prose under plan-review/, promoted as-is.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {

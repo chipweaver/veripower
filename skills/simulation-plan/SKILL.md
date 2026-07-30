@@ -38,7 +38,7 @@ Everything below is produced under `{workdir}`.
 | `tb-scaffold.json` | What simulation builds the TB from: `agents` / `tests` / `testpoints[]` / `rm` / `scoreboard` / `skipped_checks[]` |
 | `sequences.json` | The sequence roster — the one part both simulation and power-analysis read |
 | `power-scenarios.json` | The power scenarios, read by power-analysis alone. Its own file so a scenario-only edit does not invalidate simulation's proof |
-| `plan-review/review.md`, `plan-review/decisions.md` | The Step-3 review and the user's resolutions — this stage's proposed oracle |
+| `plan-review/review.md`, `plan-review/decisions.md` | The Step-3 review, and the user's resolution of anything it called blocking |
 | `result.json` | The status envelope, written only by `finalize` |
 
 Each sidecar's shape, and per field whether it is yours to author or script-injected, is
@@ -82,9 +82,10 @@ Trigger context + revision highlights.
 ### Step 1: Read inputs, determine scope
 
 Your previous round, if any, is already in `{workdir}`; edit it in place, touching only what this
-round requires. Rewriting an artifact this round did not change changes its fingerprint, which
-drops any human `pin` on it back to `proposed` — the next signature would land on text nobody
-reviewed. Confirm `<design>/design.md` + `<manifest>/manifest.json` exist; if a required input is
+round requires. Rewriting a sidecar this round did not change still changes its bytes, and
+`simulation` and `power-analysis` both declare those files as inputs — so a cosmetic rewrite costs a
+full TB recompile and regression downstream, for no change in content. Confirm
+`<design>/design.md` + `<manifest>/manifest.json` exist; if a required input is
 missing, close the run with the early-fail exit below
 (`fail_reason="external reference missing: <path>"`).
 
@@ -164,9 +165,7 @@ paths. It writes its own `{workdir}/plan-review/review.md`; you read no body and
 After dispatching, send a brief status and end the turn; reap before proceeding.
 
 A `STATUS: BLOCKED` reviewer is a crash, not a verdict: the review did not happen, so close the run
-via the early-fail exit with that as the reason rather than recording a review that did not run. An
-absent `plan-review/review.md` also leaves the oracle unreadable, so `signoff` could not pin this
-stage anyway.
+via the early-fail exit with that as the reason rather than recording a review that did not run.
 
 ### Step 4: User review loop (human)
 
@@ -179,10 +178,10 @@ your summary is your judgment wearing the reviewer's name.
 Then the user approves, requests changes, or rejects:
 
 - **approve**: if the user accepts a finding the reviewer called blocking, write their reason —
-  **their words, not yours** — to `{workdir}/plan-review/decisions.md`. It is promoted with the
-  review, so what the user endorsed over the reviewer's objection, and why, is what `signoff` later
-  pins. Nothing downstream re-checks testpoint-vs-spec (sim conformance judges TB-vs-testpoint), so
-  an accepted coverage gap is a terminal accept.
+  **their words, not yours** — to `{workdir}/plan-review/decisions.md`, so the override travels
+  with the review it overrode instead of living only in this session. Nothing downstream re-checks
+  testpoint-vs-spec (sim conformance judges TB-vs-testpoint), so an accepted coverage gap is a
+  terminal accept.
 - **request changes**: revise incrementally (return to Step 2), re-run Step 3, re-present.
 - **reject**: close the run with the Step-5 finalize, passing `--status fail` (it writes
   `fail_reason="user rejected plan"`).
@@ -201,8 +200,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
 You supply only the human-gate outcome: on a fail `--status fail` (with `--fail-reason` for a
 Step-1 early-fail; without, the user reject), and `--revision` on a scoped revision. finalize
 re-runs `check-scaffold` in-process — it was clean at Step 2, so a failure now means an artifact was
-edited after the gate: BLOCKED, not a routable fail. It does not re-judge the review; that is prose
-under `plan-review/`, promoted and fingerprinted as this stage's proposed oracle. Exit 0 =
+edited after the gate: BLOCKED, not a routable fail. Exit 0 =
 `result.json` written (status pass or fail); a non-zero exit is a program exception (BLOCKED, reason
 on stderr), not a `status=fail`.
 
