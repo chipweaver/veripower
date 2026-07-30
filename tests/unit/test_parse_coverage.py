@@ -59,6 +59,53 @@ def test_build_writes_structural_coverage_json(tmp_path):
     assert "L-2016.06" in data.get("urg_version", "")
 
 
+def test_parse_uncovered_names_branch_cond_and_fsm_items():
+    items = pc.parse_uncovered((FIX / "modinfo.txt").read_text())
+    # every "Not Covered" row in the fixture becomes exactly one named item
+    assert len(items) == 11
+    assert {i["kind"] for i in items} == {"branch", "cond", "fsm"}
+    assert {i["module"] for i in items} == {"mgpt_rmsnorm"}
+    # the branch a percentage cannot name: the QMAX clamp's taken side, with its source line
+    qmax = [i for i in items if i["line"] == 160 and i["kind"] == "branch"]
+    assert len(qmax) == 1
+    assert "QMAX" in qmax[0]["detail"]
+    # SUB-EXPRESSION blocks carry their own LINE and must not be dropped
+    assert any(i["kind"] == "cond" and i["line"] == 150 for i in items)
+    # FSM rows carry the transition name, not source text
+    assert any(i["kind"] == "fsm" and "->" in i["detail"] for i in items)
+
+
+def test_parse_uncovered_tolerates_unknown_format():
+    assert pc.parse_uncovered("Module : foo\nnothing recognisable here\n") == []
+
+
+def test_build_without_modinfo_yields_empty_uncovered(tmp_path):
+    """modinfo.txt is optional -- its absence must not fail the run or the gate."""
+    cov_dir = tmp_path / "cov_merge"
+    cov_dir.mkdir()
+    (cov_dir / "dashboard.txt").write_text((FIX / "dashboard.txt").read_text())
+    out = tmp_path / "structural-coverage.json"
+    assert pc.build(cov_dir, out) == 0
+    import json
+
+    assert json.loads(out.read_text())["uncovered"] == []
+
+
+def test_build_includes_uncovered_when_modinfo_present(tmp_path):
+    cov_dir = tmp_path / "cov_merge"
+    cov_dir.mkdir()
+    (cov_dir / "dashboard.txt").write_text((FIX / "dashboard.txt").read_text())
+    (cov_dir / "modlist.txt").write_text((FIX / "modlist.txt").read_text())
+    (cov_dir / "modinfo.txt").write_text((FIX / "modinfo.txt").read_text())
+    out = tmp_path / "structural-coverage.json"
+    assert pc.build(cov_dir, out) == 0
+    import json
+
+    data = json.loads(out.read_text())
+    assert len(data["uncovered"]) == 11
+    assert data["aggregate"]["fsm"] == pytest.approx(31.25)  # unchanged by the addition
+
+
 def test_build_fail_loud_when_dashboard_missing(tmp_path):
     cov_dir = tmp_path / "cov_merge"
     cov_dir.mkdir()  # no dashboard.txt

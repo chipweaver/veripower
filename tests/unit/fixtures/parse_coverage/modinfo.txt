@@ -1,0 +1,561 @@
+Module : mgpt_rmsnorm
+===============================================================================
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 81.57  98.78  72.22  67.81  83.33  85.71 
+
+Source File(s) : 
+
+/home/mhc/asic/microgpt_core/Design/rtl-design/mgpt_rmsnorm.v
+
+Module self-instances :
+
+SCORE  LINE   COND   TOGGLE FSM    BRANCH NAME                                         
+ 81.57  98.78  72.22  67.81  83.33  85.71 microgpt_core_tb_top.u_dut.u_datapath.u_rmsn 
+
+
+
+-------------------------------------------------------------------------------
+Line Coverage for Module : mgpt_rmsnorm
+
+             Line No.   Total   Covered  Percent
+TOTAL                       82       81    98.78
+ALWAYS             71       82       81    98.78
+
+70                          always @(posedge clk) begin
+71         1/1                  if (!resetn) begin
+72         4/4                      state <= S_IDLE; busy <= 1'b0; done <= 1'b0; scale_out <= 16'd0;
+73         2/2                      mean_sq_l <= 32'd0; r_l <= 16'd0;
+74         4/4                      div_cnt <= 6'd0; div_rem <= 0; div_q <= 0; div_bi <= 0;
+75         4/4                      sq_cnt <= 6'd0; sq_n <= 32'd0; sq_res <= 32'd0; sq_one <= 32'd0;
+76                              end else begin
+77         1/1                      done <= 1'b0;
+78                                  // ---- unsigned restoring divider, 4 quotient bits / cycle ----
+79         1/1                      if (div_cnt != 6'd0) begin
+80         1/1                          r_rem = div_rem;
+81         1/1                          r_q   = div_q;
+82                                      // sub-step 0 (MSB of the group of 4)
+83         1/1                          r_rem = (r_rem << 1) | div_a[div_bi];
+84         1/1                          q_b   = (r_rem >= div_b) ? 1'b1 : 1'b0;
+85         2/2                          if (q_b) r_rem = r_rem - div_b;
+                        MISSING_ELSE
+86         1/1                          r_q   = (r_q << 1) | q_b;
+87                                      // sub-step 1
+88         1/1                          r_rem = (r_rem << 1) | div_a[div_bi - 7'd1];
+89         1/1                          q_b   = (r_rem >= div_b) ? 1'b1 : 1'b0;
+90         2/2                          if (q_b) r_rem = r_rem - div_b;
+                        MISSING_ELSE
+91         1/1                          r_q   = (r_q << 1) | q_b;
+92                                      // sub-step 2
+93         1/1                          r_rem = (r_rem << 1) | div_a[div_bi - 7'd2];
+94         1/1                          q_b   = (r_rem >= div_b) ? 1'b1 : 1'b0;
+95         2/2                          if (q_b) r_rem = r_rem - div_b;
+                        MISSING_ELSE
+96         1/1                          r_q   = (r_q << 1) | q_b;
+97                                      // sub-step 3
+98         1/1                          r_rem = (r_rem << 1) | div_a[div_bi - 7'd3];
+99         1/1                          q_b   = (r_rem >= div_b) ? 1'b1 : 1'b0;
+100        2/2                          if (q_b) r_rem = r_rem - div_b;
+                        MISSING_ELSE
+101        1/1                          r_q   = (r_q << 1) | q_b;
+102                                     // commit
+103        1/1                          div_rem <= r_rem;
+104        1/1                          div_q   <= r_q;
+105        1/1                          div_bi  <= div_bi - 7'd4;
+106        1/1                          div_cnt <= div_cnt - 6'd1;
+107                                 end
+                        MISSING_ELSE
+108                                 // ---- integer sqrt, 1 bit / cycle ----
+109        1/1                      if (sq_cnt != 6'd0) begin
+110        1/1                          if (sq_n >= (sq_res + sq_one)) begin
+111        1/1                              sq_n   <= sq_n - (sq_res + sq_one);
+112        1/1                              sq_res <= (sq_res >> 1) + sq_one;
+113                                     end else begin
+114        1/1                              sq_res <= (sq_res >> 1);
+115                                     end
+116        1/1                          sq_one <= sq_one >> 2;
+117        1/1                          sq_cnt <= sq_cnt - 6'd1;
+118                                 end
+                        MISSING_ELSE
+119        1/1                      case (state)
+120                                     S_IDLE: begin
+121        1/1                              if (start) begin
+122        1/1                                  busy <= 1'b1;
+123                                             // launch divider: mean_sq = ss // 24
+124        1/1                                  div_a   <= ss_in[DDW-1:0];
+125        1/1                                  div_b   <= 40'd24;
+126        1/1                                  div_rem <= 0;
+127        1/1                                  div_q   <= 0;
+128        1/1                                  div_bi  <= DDW - 1;       // MSB index
+129        1/1                                  div_cnt <= ITER;
+130        1/1                                  state   <= S_DMEAN;
+131                                         end
+                        MISSING_ELSE
+132                                     end
+133                                     S_DMEAN: begin
+134        1/1                              if (div_cnt == 6'd0) begin
+135        1/1                                  mean_sq_l <= (div_q == 0) ? 32'd1 : div_q[31:0];   // floor >=1
+136                                             // launch isqrt: r = isqrt(mean_sq) (>=1)
+137        1/1                                  sq_n   <= (div_q == 0) ? 32'd1 : div_q[31:0];
+138        1/1                                  sq_res <= 32'd0;
+139        1/1                                  sq_one <= 32'h4000_0000;   // 1<<30
+140        1/1                                  sq_cnt <= 6'd16;
+141        1/1                                  state  <= S_ISQRT_RUN;
+142                                         end
+                        MISSING_ELSE
+143                                     end
+144                                     S_ISQRT_RUN: begin
+145                                         // sq_cnt counts 16 -> 0 ; result ready when it reaches 0
+146        1/1                              if (sq_cnt == 6'd0) begin
+147        1/1                                  r_l <= (sq_res[15:0] == 16'd0) ? 16'd1 : sq_res[15:0];  // floor >=1
+148                                             // launch divider: scale = 4194304 // r
+149        1/1                                  div_a   <= 40'd4194304;
+150        1/1                                  div_b   <= {24'd0, (sq_res[15:0] == 16'd0) ? 16'd1 : sq_res[15:0]};
+151        1/1                                  div_rem <= 0;
+152        1/1                                  div_q   <= 0;
+153        1/1                                  div_bi  <= DDW - 1;
+154        1/1                                  div_cnt <= ITER;
+155        1/1                                  state   <= S_DSCALE;
+156                                         end
+                        MISSING_ELSE
+157                                     end
+158                                     S_DSCALE: begin
+159        1/1                              if (div_cnt == 6'd0) begin
+160        1/1                                  scale_out <= (div_q[15:0] > QMAX) ? QMAX : div_q[15:0];
+161        1/1                                  done <= 1'b1;
+162        1/1                                  busy <= 1'b0;
+163        1/1                                  state <= S_IDLE;
+164                                         end
+                        MISSING_ELSE
+165                                     end
+166        0/1     ==>                  default: state <= S_IDLE;
+
+-------------------------------------------------------------------------------
+Cond Coverage for Module : mgpt_rmsnorm
+
+               Total   Covered  Percent
+Conditions         18       13    72.22
+Logical            18       13    72.22
+Non-Logical         0        0
+Event               0        0
+
+ LINE       84
+ EXPRESSION ((r_rem >= div_b) ? 1'b1 : 1'b0)
+             --------1-------
+
+-1- Status
+ 0  Covered
+ 1  Covered
+
+ LINE       89
+ EXPRESSION ((r_rem >= div_b) ? 1'b1 : 1'b0)
+             --------1-------
+
+-1- Status
+ 0  Covered
+ 1  Covered
+
+ LINE       94
+ EXPRESSION ((r_rem >= div_b) ? 1'b1 : 1'b0)
+             --------1-------
+
+-1- Status
+ 0  Covered
+ 1  Covered
+
+ LINE       99
+ EXPRESSION ((r_rem >= div_b) ? 1'b1 : 1'b0)
+             --------1-------
+
+-1- Status
+ 0  Covered
+ 1  Covered
+
+ LINE       135
+ EXPRESSION ((div_q == 0) ? 32'b1 : div_q[31:0])
+             ------1-----
+
+-1- Status
+ 0  Covered
+ 1  Not Covered
+
+ LINE       137
+ EXPRESSION ((div_q == 0) ? 32'b1 : div_q[31:0])
+             ------1-----
+
+-1- Status
+ 0  Covered
+ 1  Not Covered
+
+ LINE       147
+ EXPRESSION ((sq_res[15:0] == 16'b0) ? 16'b1 : sq_res[15:0])
+             -----------1-----------
+
+-1- Status
+ 0  Covered
+ 1  Not Covered
+
+ LINE       150
+ SUB-EXPRESSION ((sq_res[15:0] == 16'b0) ? 16'b1 : sq_res[15:0])
+                 -----------1-----------
+
+-1- Status
+ 0  Covered
+ 1  Not Covered
+
+ LINE       160
+ EXPRESSION ((div_q[15:0] > QMAX) ? QMAX : div_q[15:0])
+             ----------1---------
+
+-1- Status
+ 0  Covered
+ 1  Not Covered
+
+-------------------------------------------------------------------------------
+Toggle Coverage for Module : mgpt_rmsnorm
+                Total Covered Percent 
+Totals          23    8       34.78   
+Total Bits      988   670     67.81   
+Total Bits 0->1 494   335     67.81   
+Total Bits 1->0 494   335     67.81   
+
+                              
+Ports          7   6   85.71  
+Port Bits      170 160 94.12  
+Port Bits 0->1 85  80  94.12  
+Port Bits 1->0 85  80  94.12  
+
+                                
+Signals          16  2   12.50  
+Signal Bits      818 510 62.35  
+Signal Bits 0->1 409 255 62.35  
+Signal Bits 1->0 409 255 62.35  
+
+Port Details
+                 Toggle Toggle 1->0 Toggle 0->1 Direction 
+clk              Yes    Yes         Yes         INPUT     
+resetn           Yes    Yes         Yes         INPUT     
+start            Yes    Yes         Yes         INPUT     
+ss_in[63:0]      Yes    Yes         Yes         INPUT     
+busy             Yes    Yes         Yes         OUTPUT    
+done             Yes    Yes         Yes         OUTPUT    
+scale_out[10:0]  Yes    Yes         Yes         OUTPUT    
+scale_out[15:11] No     No          No          OUTPUT    
+
+Signal Details
+                 Toggle Toggle 1->0 Toggle 0->1 
+state[1:0]       Yes    Yes         Yes         
+state[2]         No     No          No          
+div_cnt[3:0]     Yes    Yes         Yes         
+div_cnt[5:4]     No     No          No          
+div_a[30:0]      Yes    Yes         Yes         
+div_a[39:31]     No     No          No          
+div_b[13:0]      Yes    Yes         Yes         
+div_b[39:14]     No     No          No          
+div_rem[12:0]    Yes    Yes         Yes         
+div_rem[40:13]   No     No          No          
+div_q[26:0]      Yes    Yes         Yes         
+div_q[39:27]     No     No          No          
+div_bi[6:0]      Yes    Yes         Yes         
+r_rem[12:0]      Yes    Yes         Yes         
+r_rem[40:13]     No     No          No          
+r_q[26:0]        Yes    Yes         Yes         
+r_q[39:27]       No     No          No          
+q_b              Yes    Yes         Yes         
+sq_cnt[4:0]      Yes    Yes         Yes         
+sq_cnt[5]        No     No          No          
+sq_n[26:0]       Yes    Yes         Yes         
+sq_n[31:27]      No     No          No          
+sq_res[26:0]     Yes    Yes         Yes         
+sq_res[31:27]    No     No          No          
+sq_one[0]        Yes    Yes         Yes         
+sq_one[1]        No     No          No          
+sq_one[2]        Yes    Yes         Yes         
+sq_one[3]        No     No          No          
+sq_one[4]        Yes    Yes         Yes         
+sq_one[5]        No     No          No          
+sq_one[6]        Yes    Yes         Yes         
+sq_one[7]        No     No          No          
+sq_one[8]        Yes    Yes         Yes         
+sq_one[9]        No     No          No          
+sq_one[10]       Yes    Yes         Yes         
+sq_one[11]       No     No          No          
+sq_one[12]       Yes    Yes         Yes         
+sq_one[13]       No     No          No          
+sq_one[14]       Yes    Yes         Yes         
+sq_one[15]       No     No          No          
+sq_one[16]       Yes    Yes         Yes         
+sq_one[17]       No     No          No          
+sq_one[18]       Yes    Yes         Yes         
+sq_one[19]       No     No          No          
+sq_one[20]       Yes    Yes         Yes         
+sq_one[21]       No     No          No          
+sq_one[22]       Yes    Yes         Yes         
+sq_one[23]       No     No          No          
+sq_one[24]       Yes    Yes         Yes         
+sq_one[25]       No     No          No          
+sq_one[26]       Yes    Yes         Yes         
+sq_one[27]       No     No          No          
+sq_one[28]       Yes    Yes         Yes         
+sq_one[29]       No     No          No          
+sq_one[30]       Yes    Yes         Yes         
+sq_one[31]       No     No          No          
+mean_sq_l[26:0]  Yes    Yes         Yes         
+mean_sq_l[31:27] No     No          No          
+r_l[13:0]        Yes    Yes         Yes         
+r_l[15:14]       No     No          No          
+
+
+-------------------------------------------------------------------------------
+FSM Coverage for Module : mgpt_rmsnorm
+Summary for FSM :: state
+            Total Covered Percent                         
+States      4     4       100.00  (Not included in score) 
+Transitions 6     5       83.33                           
+Sequences   0     0                                       
+
+State, Transition and Sequence Details for FSM :: state
+-------------------------------------------------------------------------------
+states      Line No. Covered 
+S_IDLE      72       Covered 
+S_DMEAN     130      Covered 
+S_ISQRT_RUN 141      Covered 
+S_DSCALE    155      Covered 
+
+transitions           Line No. Covered     
+S_IDLE->S_DMEAN       130      Covered     
+S_DMEAN->S_IDLE       72       Covered     
+S_DMEAN->S_ISQRT_RUN  141      Covered     
+S_ISQRT_RUN->S_IDLE   72       Not Covered 
+S_ISQRT_RUN->S_DSCALE 155      Covered     
+S_DSCALE->S_IDLE      72       Covered     
+
+sequences Covered 
+
+
+-------------------------------------------------------------------------------
+Branch Coverage for Module : mgpt_rmsnorm
+         Line No. Total Covered Percent 
+Branches          35    30      85.71   
+IF       71       35    30      85.71   
+
+
+71                 if (!resetn) begin
+                   -1-  
+72                     state <= S_IDLE; busy <= 1'b0; done <= 1'b0; scale_out <= 16'd0;
+                       ==>
+73                     mean_sq_l <= 32'd0; r_l <= 16'd0;
+74                     div_cnt <= 6'd0; div_rem <= 0; div_q <= 0; div_bi <= 0;
+75                     sq_cnt <= 6'd0; sq_n <= 32'd0; sq_res <= 32'd0; sq_one <= 32'd0;
+76                 end else begin
+77                     done <= 1'b0;
+78                     // ---- unsigned restoring divider, 4 quotient bits / cycle ----
+79                     if (div_cnt != 6'd0) begin
+                       -2-  
+80                         r_rem = div_rem;
+81                         r_q   = div_q;
+82                         // sub-step 0 (MSB of the group of 4)
+83                         r_rem = (r_rem << 1) | div_a[div_bi];
+84                         q_b   = (r_rem >= div_b) ? 1'b1 : 1'b0;
+                                                    -3-  
+                                                    ==>  
+                                                    ==>  
+85                         if (q_b) r_rem = r_rem - div_b;
+                           -4-  
+                           ==>
+                           MISSING_ELSE
+                           ==>
+86                         r_q   = (r_q << 1) | q_b;
+87                         // sub-step 1
+88                         r_rem = (r_rem << 1) | div_a[div_bi - 7'd1];
+89                         q_b   = (r_rem >= div_b) ? 1'b1 : 1'b0;
+                                                    -5-  
+                                                    ==>  
+                                                    ==>  
+90                         if (q_b) r_rem = r_rem - div_b;
+                           -6-  
+                           ==>
+                           MISSING_ELSE
+                           ==>
+91                         r_q   = (r_q << 1) | q_b;
+92                         // sub-step 2
+93                         r_rem = (r_rem << 1) | div_a[div_bi - 7'd2];
+94                         q_b   = (r_rem >= div_b) ? 1'b1 : 1'b0;
+                                                    -7-  
+                                                    ==>  
+                                                    ==>  
+95                         if (q_b) r_rem = r_rem - div_b;
+                           -8-  
+                           ==>
+                           MISSING_ELSE
+                           ==>
+96                         r_q   = (r_q << 1) | q_b;
+97                         // sub-step 3
+98                         r_rem = (r_rem << 1) | div_a[div_bi - 7'd3];
+99                         q_b   = (r_rem >= div_b) ? 1'b1 : 1'b0;
+                                                    -9-  
+                                                    ==>  
+                                                    ==>  
+100                        if (q_b) r_rem = r_rem - div_b;
+                           -10-  
+                           ==>
+                           MISSING_ELSE
+                           ==>
+101                        r_q   = (r_q << 1) | q_b;
+102                        // commit
+103                        div_rem <= r_rem;
+104                        div_q   <= r_q;
+105                        div_bi  <= div_bi - 7'd4;
+106                        div_cnt <= div_cnt - 6'd1;
+107                    end
+                       MISSING_ELSE
+                       ==>
+108                    // ---- integer sqrt, 1 bit / cycle ----
+109                    if (sq_cnt != 6'd0) begin
+                       -11-  
+110                        if (sq_n >= (sq_res + sq_one)) begin
+                           -12-  
+111                            sq_n   <= sq_n - (sq_res + sq_one);
+                               ==>
+112                            sq_res <= (sq_res >> 1) + sq_one;
+113                        end else begin
+114                            sq_res <= (sq_res >> 1);
+                               ==>
+115                        end
+116                        sq_one <= sq_one >> 2;
+117                        sq_cnt <= sq_cnt - 6'd1;
+118                    end
+                       MISSING_ELSE
+                       ==>
+119                    case (state)
+                       -13-  
+120                        S_IDLE: begin
+121                            if (start) begin
+                               -14-  
+122                                busy <= 1'b1;
+                                   ==>
+123                                // launch divider: mean_sq = ss // 24
+124                                div_a   <= ss_in[DDW-1:0];
+125                                div_b   <= 40'd24;
+126                                div_rem <= 0;
+127                                div_q   <= 0;
+128                                div_bi  <= DDW - 1;       // MSB index
+129                                div_cnt <= ITER;
+130                                state   <= S_DMEAN;
+131                            end
+                               MISSING_ELSE
+                               ==>
+132                        end
+133                        S_DMEAN: begin
+134                            if (div_cnt == 6'd0) begin
+                               -15-  
+135                                mean_sq_l <= (div_q == 0) ? 32'd1 : div_q[31:0];   // floor >=1
+                                                             -16-  
+                                                             ==>  
+                                                             ==>  
+136                                // launch isqrt: r = isqrt(mean_sq) (>=1)
+137                                sq_n   <= (div_q == 0) ? 32'd1 : div_q[31:0];
+                                                          -17-  
+                                                          ==>  
+                                                          ==>  
+138                                sq_res <= 32'd0;
+139                                sq_one <= 32'h4000_0000;   // 1<<30
+140                                sq_cnt <= 6'd16;
+141                                state  <= S_ISQRT_RUN;
+142                            end
+                               MISSING_ELSE
+                               ==>
+143                        end
+144                        S_ISQRT_RUN: begin
+145                            // sq_cnt counts 16 -> 0 ; result ready when it reaches 0
+146                            if (sq_cnt == 6'd0) begin
+                               -18-  
+147                                r_l <= (sq_res[15:0] == 16'd0) ? 16'd1 : sq_res[15:0];  // floor >=1
+                                                                  -19-  
+                                                                  ==>  
+                                                                  ==>  
+148                                // launch divider: scale = 4194304 // r
+149                                div_a   <= 40'd4194304;
+150                                div_b   <= {24'd0, (sq_res[15:0] == 16'd0) ? 16'd1 : sq_res[15:0]};
+151                                div_rem <= 0;
+152                                div_q   <= 0;
+153                                div_bi  <= DDW - 1;
+154                                div_cnt <= ITER;
+155                                state   <= S_DSCALE;
+156                            end
+                               MISSING_ELSE
+                               ==>
+157                        end
+158                        S_DSCALE: begin
+159                            if (div_cnt == 6'd0) begin
+                               -20-  
+160                                scale_out <= (div_q[15:0] > QMAX) ? QMAX : div_q[15:0];
+                                                                     -21-  
+                                                                     ==>  
+                                                                     ==>  
+161                                done <= 1'b1;
+162                                busy <= 1'b0;
+163                                state <= S_IDLE;
+164                            end
+                               MISSING_ELSE
+                               ==>
+165                        end
+166                        default: state <= S_IDLE;
+                           ==>
+
+Branches:
+
+-1- -2- -3- -4- -5- -6- -7- -8- -9- -10- -11- -12- -13-         -14- -15- -16- -17- -18- -19- -20- -21- Status      
+1   -   -   -   -   -   -   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   1   -   -   -   -   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   0   -   -   -   -   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   1   -   -   -   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   0   -   -   -   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   1   -   -   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   0   -   -   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   -   1   -   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   -   0   -   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   -   -   1   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   -   -   0   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   -   -   -   1   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   -   -   -   0   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   -   -   -   -   1   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   -   -   -   -   0   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   -   -   -   -   -   1    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   1   -   -   -   -   -   -   -   0    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   0   -   -   -   -   -   -   -   -    -    -    -            -    -    -    -    -    -    -    -    Covered     
+0   -   -   -   -   -   -   -   -   -    1    1    -            -    -    -    -    -    -    -    -    Covered     
+0   -   -   -   -   -   -   -   -   -    1    0    -            -    -    -    -    -    -    -    -    Covered     
+0   -   -   -   -   -   -   -   -   -    0    -    -            -    -    -    -    -    -    -    -    Covered     
+0   -   -   -   -   -   -   -   -   -    -    -    S_IDLE       1    -    -    -    -    -    -    -    Covered     
+0   -   -   -   -   -   -   -   -   -    -    -    S_IDLE       0    -    -    -    -    -    -    -    Covered     
+0   -   -   -   -   -   -   -   -   -    -    -    S_DMEAN      -    1    1    -    -    -    -    -    Not Covered 
+0   -   -   -   -   -   -   -   -   -    -    -    S_DMEAN      -    1    0    -    -    -    -    -    Covered     
+0   -   -   -   -   -   -   -   -   -    -    -    S_DMEAN      -    1    -    1    -    -    -    -    Not Covered 
+0   -   -   -   -   -   -   -   -   -    -    -    S_DMEAN      -    1    -    0    -    -    -    -    Covered     
+0   -   -   -   -   -   -   -   -   -    -    -    S_DMEAN      -    0    -    -    -    -    -    -    Covered     
+0   -   -   -   -   -   -   -   -   -    -    -    S_ISQRT_RUN  -    -    -    -    1    1    -    -    Not Covered 
+0   -   -   -   -   -   -   -   -   -    -    -    S_ISQRT_RUN  -    -    -    -    1    0    -    -    Covered     
+0   -   -   -   -   -   -   -   -   -    -    -    S_ISQRT_RUN  -    -    -    -    0    -    -    -    Covered     
+0   -   -   -   -   -   -   -   -   -    -    -    S_DSCALE     -    -    -    -    -    -    1    1    Not Covered 
+0   -   -   -   -   -   -   -   -   -    -    -    S_DSCALE     -    -    -    -    -    -    1    0    Covered     
+0   -   -   -   -   -   -   -   -   -    -    -    S_DSCALE     -    -    -    -    -    -    0    -    Covered     
+0   -   -   -   -   -   -   -   -   -    -    -    default      -    -    -    -    -    -    -    -    Not Covered 
+
+
+-------------------------------------------------------------------------------
+===============================================================================
+Module Instance : microgpt_core_tb_top.u_dut.u_datapath.u_rmsn
+===============================================================================
+
+Instance :
+
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 81.57  98.78  72.22  67.81  83.33  85.71 
+
+
+Instance's subtree :
+
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 81.57  98.78  72.22  67.81  83.33  85.71 
+
+
