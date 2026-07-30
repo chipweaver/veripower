@@ -3,19 +3,14 @@
 # Sourced by run.tcl exactly once per session on every SPYGLASS_STAGE (lint, cdc,
 # all), so both `waive` entries and `set_option`s here apply to lint and CDC alike.
 #
-# Waiver format:
+# Waiver format. The -comment is mandatory and the lint-cdc finalize verb BLOCKS
+# without it: SpyGlass subtracts a waived message before anything counts it, so this
+# text is the only surviving record of what was accepted and why.
 #   waive -rules {<rule-id>} \
 #         [-file {<file-name>}] \
 #         [-msg {<match-string>}] \
 #         [-regexp] \
-#         -comment "<rationale>. Owner: <name> Date: <yyyy-mm-dd>"
-#
-# Common rule IDs:
-#   W391           — unintended clock gating
-#   W528           — inconsistent drive strength
-#   W240           — case statement missing a default branch
-#   STARC05-1.3.1  — latch inference
-#   CDC-*          — CDC-related rules
+#         -comment "<why this violation is acceptable>"
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -25,7 +20,7 @@
 #       -file {MY_TOP.v} \
 #       -msg {clk} \
 #       -regexp \
-#       -comment "Clock port — expected behavior, not a W391 violation. Owner: <name> Date: yyyy-mm-dd"
+#       -comment "Gating is on the clock port itself, which is the intended structure here"
 
 # ------------------------------------------------------------------------------
 # Project-global waivers (rules already reviewed and accepted)

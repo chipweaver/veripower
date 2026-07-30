@@ -100,9 +100,6 @@ def run(workdir, module, *, fix_owner=None, fail_reason=None) -> int:
             "fail_reason": fail_reason
             or _gate_fail_reason(lint, cdc, lint_err, cdc_err),
         }
-        for key, doc in (("lint_counts", lint), ("cdc_counts", cdc)):
-            if doc is not None:
-                ss[key] = doc["counts"]
         if violations:
             # violations[] IS the failure account: every row carries rule + file:line +
             # reason. A summary field derived from it would restate it one key away, and a
@@ -116,12 +113,10 @@ def run(workdir, module, *, fix_owner=None, fail_reason=None) -> int:
             _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
         )
         return 0
-    ss = {
-        "tool": tool,
-        "lint_counts": lint["counts"],
-        "cdc_counts": cdc["counts"],
-        "violations": violations,
-    }
+    # No per-severity counts here: they are a reduction of the two promoted, fingerprinted
+    # *-violations.json, and nothing in the tree reads them. violations[] stays because
+    # synthesis reads it out of this envelope when a round routes off a lint-cdc failure.
+    ss = {"tool": tool, "violations": violations}
     _write(
         workdir,
         _envelope(module, status="pass", stage_specific=ss, artifacts=artifacts),
@@ -151,6 +146,50 @@ def _gate_fail_reason(lint, cdc, lint_err, cdc_err) -> str:
 # ---------------------------------------------------------------------------
 
 _VERSION_RE = re.compile(r"SpyGlass Version\s*:\s*SpyGlass_(\S+)")
+_WAIVE_RE = re.compile(r"^waive\b")
+_COMMENT_RE = re.compile(r'-comment\s+"([^"]*)"')
+
+
+def _logical_lines(text: str) -> list[str]:
+    """TCL lines with backslash continuations joined and whole-line comments dropped."""
+    out: list[str] = []
+    buf = ""
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not buf and s.startswith("#"):
+            continue
+        if s.endswith("\\"):
+            buf += s[:-1].rstrip() + " "
+            continue
+        out.append((buf + s).strip())
+        buf = ""
+    if buf:
+        out.append(buf.strip())
+    return out
+
+
+def waiver_defects(workdir: Path) -> list[str]:
+    """Active `waive` entries that do not say why, if any.
+
+    A waiver is the only route from a real error-severity violation to status=pass: SpyGlass
+    subtracts it before the parser ever counts, so the envelope cannot tell a waived error
+    from one that never happened. An entry with no rationale therefore converts a fail into a
+    pass and records nothing about what was accepted, which is the one thing a reader of this
+    proof later needs. Deterministic, so it is enforced rather than merely asked for.
+    """
+    f = Path(workdir) / "scripts" / "waiver.tcl"
+    if not f.is_file():
+        return []
+    defects = []
+    for ln in _logical_lines(f.read_text(errors="replace")):
+        if not _WAIVE_RE.match(ln):
+            continue
+        m = _COMMENT_RE.search(ln)
+        if m is None:
+            defects.append(f"no -comment: {ln[:90]}")
+        elif not m.group(1).strip():
+            defects.append(f"empty -comment: {ln[:90]}")
+    return defects
 
 
 def parse_tool(workdir: Path) -> str:
@@ -185,8 +224,8 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
 
 def finalize(workdir, module, fix_owner=None, fail_reason=None) -> int:
     """Assemble the lean lint-cdc result.json from the two *-violations.json + headers.
-    exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (an empty
-    --fail-reason, or any internal raise) — never conflated with status=fail."""
+    exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (an unreasoned
+    waiver, an empty --fail-reason, or any internal raise), never a status=fail."""
     if fail_reason is not None and not fail_reason.strip():
         print(
             "[lintcdc finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",
@@ -194,7 +233,17 @@ def finalize(workdir, module, fix_owner=None, fail_reason=None) -> int:
         )
         return 2
     try:
+        defects = waiver_defects(workdir)
+        if defects:
+            print(
+                "[lintcdc finalize] BLOCKED: every active waiver needs a -comment saying why "
+                "the violation is acceptable",
+                file=sys.stderr,
+            )
+            for d in defects:
+                print(f"  {d}", file=sys.stderr)
+            return 2
         return run(workdir, module, fix_owner=fix_owner, fail_reason=fail_reason)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        print(f"[lintcdc finalize] FAIL=internal {exc}", file=sys.stderr)
+        print(f"[lintcdc finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2
