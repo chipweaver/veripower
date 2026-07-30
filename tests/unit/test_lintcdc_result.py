@@ -60,7 +60,7 @@ def _clean_workdir(tmp_path, lint_err=0, cdc_err=0):
 
 def test_envelope_pass_lean_shape(tmp_path):
     wd = _clean_workdir(tmp_path)
-    assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
+    assert rb.run(wd, module="tpu_top") == 0
     env = json.loads((wd / "result.json").read_text())
     assert (env["stage"], env["module"]) == (
         "lint-cdc",
@@ -68,13 +68,12 @@ def test_envelope_pass_lean_shape(tmp_path):
     )
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
-    assert ss["top_module"] == "tpu_top"
     assert ss["tool"] == "SpyGlass vL-2016.06"
     assert ss["lint_counts"] == {"error": 0, "warning": 2, "info": 5}
     assert ss["cdc_counts"] == {"error": 0, "warning": 0, "info": 14}
     assert ss["violations"] == []
     # lean: dropped fields absent
-    for k in ("note", "waivers", "sgdc_seed"):
+    for k in ("note", "waivers", "sgdc_seed", "top_module"):
         assert k not in ss
 
 
@@ -99,7 +98,7 @@ def test_envelope_fail_on_lint_error(tmp_path):
             }
         )
     )
-    assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
+    assert rb.run(wd, module="tpu_top") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     ss = env["stage_specific"]
@@ -126,16 +125,6 @@ def test_parse_tool_from_lint_report(tmp_path):
     assert rb.parse_tool(tmp_path) == "SpyGlass vL-2016.06"
     (tmp_path / "lint-report.txt").write_text("no version line\n")
     assert rb.parse_tool(tmp_path) == "SpyGlass unknown"
-
-
-def test_read_top_from_report_header(tmp_path):
-    (tmp_path / "lint-report.txt").write_text("top:  tpu_top\n")
-    assert rb.read_top(tmp_path) == "tpu_top"
-
-
-def test_read_top_from_env_sh_fallback(tmp_path):
-    (tmp_path / "env.sh").write_text('TOP="${TOP:-tpu_top}"\n')
-    assert rb.read_top(tmp_path) == "tpu_top"
 
 
 # ---------------------------------------------------------------------------
@@ -171,18 +160,17 @@ FIX = Path(__file__).resolve().parent / "fixtures" / "lint-cdc-tpu_top"
 def test_golden_lean_against_real_tpu_top(tmp_path):
     wd = tmp_path / "lint-cdc"
     shutil.copytree(FIX, wd)
-    assert rb.run(wd, module="tpu_top", top=None) == 0
+    assert rb.run(wd, module="tpu_top") == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     # contract / header fields — exact to the real run
     assert env["status"] == "pass"
-    assert ss["top_module"] == "tpu_top"  # from the report header, derived
     assert ss["tool"] == "SpyGlass vL-2016.06"
     assert ss["lint_counts"] == {"error": 0, "warning": 2, "info": 5}
     assert ss["cdc_counts"] == {"error": 0, "warning": 0, "info": 14}
     assert ss["violations"] == []  # no error-severity rows -> empty, no reason derived
     # lean: dropped fields ABSENT
-    for k in ("note", "waivers", "sgdc_seed"):
+    for k in ("note", "waivers", "sgdc_seed", "top_module"):
         assert k not in ss
     # artifacts present + no self-listing; produced_at normalized
     paths = [a["path"] for a in env["artifacts"]]
@@ -198,7 +186,7 @@ def test_golden_is_schema_valid(tmp_path):
 
     wd = tmp_path / "asic" / "tpu_top" / "Design" / "lint-cdc"
     shutil.copytree(FIX, wd)
-    rb.run(wd, module="tpu_top", top=None)
+    rb.run(wd, module="tpu_top")
     result = json.loads((wd / "result.json").read_text())
     err = facts.validate_result("lint-cdc", result)
     assert err is None, f"golden lint-cdc result.json is not schema-valid: {err}"
@@ -230,7 +218,7 @@ def test_fail_envelope_is_schema_valid(tmp_path):
             }
         )
     )
-    assert rb.run(wd, module="tpu_top", top=None) == 0
+    assert rb.run(wd, module="tpu_top") == 0
     result = json.loads((wd / "result.json").read_text())
     err = facts.validate_result("lint-cdc", result)
     assert err is None, f"fail-path lint-cdc result.json is not schema-valid: {err}"
@@ -264,7 +252,7 @@ def test_fail_envelope_carries_the_agent_named_fix_owner(tmp_path):
             }
         )
     )
-    assert rb.run(wd, module="tpu_top", top="tpu_top", fix_owner="specification") == 0
+    assert rb.run(wd, module="tpu_top", fix_owner="specification") == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fix_owner"] == "specification"
 
@@ -273,7 +261,7 @@ def test_fail_envelope_omits_fix_owner_when_unnamed(tmp_path):
     """Absence is the signal decide reads as "this stage cannot tell", so an unnamed owner
     must not serialize as a present-but-empty key."""
     wd = _clean_workdir(tmp_path, cdc_err=1)
-    assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
+    assert rb.run(wd, module="tpu_top") == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert "fix_owner" not in ss
 
@@ -283,7 +271,7 @@ def test_fail_envelope_no_violations_omits_failures(tmp_path):
     # nothing to classify -> failures/failure_kind stay unset (not invented).
     wd = _clean_workdir(tmp_path)
     (wd / "lint-violations.json").unlink()
-    assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
+    assert rb.run(wd, module="tpu_top") == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
@@ -303,7 +291,7 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
         raise RuntimeError("synthetic")
 
     monkeypatch.setattr(rb, "run", boom)
-    assert rb.finalize(tmp_path, "tpu_top", None) == 2
+    assert rb.finalize(tmp_path, "tpu_top") == 2
 
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):

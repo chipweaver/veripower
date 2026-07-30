@@ -78,12 +78,11 @@ def _error_violations(doc: dict) -> list[dict]:
     return out
 
 
-def run(workdir, module, *, top, fix_owner=None) -> int:
+def run(workdir, module, *, fix_owner=None) -> int:
     workdir = Path(workdir)
     lint = _load_violations(workdir / "lint-violations.json")
     cdc = _load_violations(workdir / "cdc-violations.json")
     tool = parse_tool(workdir)
-    top_module = top or read_top(workdir)
     artifacts = enumerate_artifacts(workdir)
 
     # AND gate: both *-violations.json present (== both make runs reached collect_report
@@ -95,7 +94,6 @@ def run(workdir, module, *, top, fix_owner=None) -> int:
     violations = _error_violations(lint) + _error_violations(cdc)
     if lint is None or cdc is None or lint_err or cdc_err:
         ss: dict = {
-            "top_module": top_module,
             "tool": tool,
             "fail_reason": _gate_fail_reason(lint, cdc, lint_err, cdc_err),
         }
@@ -116,7 +114,6 @@ def run(workdir, module, *, top, fix_owner=None) -> int:
         )
         return 0
     ss = {
-        "top_module": top_module,
         "tool": tool,
         "lint_counts": lint["counts"],
         "cdc_counts": cdc["counts"],
@@ -151,11 +148,12 @@ def _gate_fail_reason(lint, cdc, lint_err, cdc_err) -> str:
 # ---------------------------------------------------------------------------
 
 _VERSION_RE = re.compile(r"SpyGlass Version\s*:\s*SpyGlass_(\S+)")
-_TOP_HDR_RE = re.compile(r"^top:\s*(\S+)", re.M)
-_ENV_TOP_RE = re.compile(r'TOP="?\$\{TOP:-([A-Za-z_][A-Za-z0-9_]*)\}"?')
 
 
 def parse_tool(workdir: Path) -> str:
+    """The ruleset version the report itself states. This stage's oracle IS the SpyGlass
+    ruleset, and the kernel's reap-time identity record scrapes only the library env vars,
+    so the envelope is the one place the ruleset that produced the proof is written down."""
     rpt = Path(workdir) / "lint-report.txt"
     if rpt.is_file():
         m = _VERSION_RE.search(rpt.read_text(errors="replace"))
@@ -164,20 +162,6 @@ def parse_tool(workdir: Path) -> str:
                 f"SpyGlass {m.group(1)}"  # SpyGlass_vL-2016.06 -> SpyGlass vL-2016.06
             )
     return "SpyGlass unknown"
-
-
-def read_top(workdir: Path):
-    rpt = Path(workdir) / "lint-report.txt"
-    if rpt.is_file():
-        m = _TOP_HDR_RE.search(rpt.read_text(errors="replace"))
-        if m and m.group(1) != "UNKNOWN":
-            return m.group(1)
-    env = Path(workdir) / "env.sh"
-    if env.is_file():
-        m = _ENV_TOP_RE.search(env.read_text(errors="replace"))
-        if m:
-            return m.group(1)
-    return None
 
 
 def enumerate_artifacts(workdir: Path) -> list[dict]:
@@ -196,12 +180,12 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def finalize(workdir, module, top, fix_owner=None) -> int:
+def finalize(workdir, module, fix_owner=None) -> int:
     """Assemble the lean lint-cdc result.json from the two *-violations.json + headers.
     exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (any internal
-    raise) — never conflated with status=fail. (Owns the policy the deleted main() had.)"""
+    raise) — never conflated with status=fail."""
     try:
-        return run(workdir, module, top=top, fix_owner=fix_owner)
+        return run(workdir, module, fix_owner=fix_owner)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[lintcdc finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2

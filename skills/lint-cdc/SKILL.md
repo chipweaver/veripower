@@ -162,15 +162,15 @@ Run the result combiner; do not hand-assemble the envelope, recount, or copy the
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py finalize \
-  --workdir {workdir} --module <module> [--top <TOP>] [--fix-owner <rule>]
+  --workdir {workdir} --module <module> [--fix-owner <rule>]
 ```
 
 It reads the two `*-violations.json` for the gate (`status=pass` iff both exist, meaning both
 `make` runs reached `collect_report.py` cleanly, AND `counts.error == 0` in both), copies the
-counts, derives the reproducibility header from the report, reshapes the error-severity rows
-into `violations[]` (each `reason` from the parser's tool `message`), and enumerates
-`artifacts[]`. `--fix-owner` is the only field it cannot derive; everything else is script-owned.
-Exit 0 = `result.json` written, whether the status is pass or fail. A non-zero exit is a program
+counts, reads the SpyGlass version off the report, reshapes the error-severity rows into
+`violations[]` (each `reason` from the parser's tool `message`), and enumerates `artifacts[]`.
+`--fix-owner` is the only field it cannot derive; everything else is script-owned. Exit 0 =
+`result.json` written, whether the status is pass or fail. A non-zero exit is a program
 exception, not a `status=fail`.
 
 The Step 4/5 early-fail is the one path that bypasses this verb: there you write the envelope
