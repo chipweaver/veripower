@@ -34,7 +34,7 @@ Everything below is produced under `{workdir}`.
 
 | Path | What it is |
 |---|---|
-| `verification-plan.md` | The review anchor (section outline below); carries frontmatter `Status: approved` once the user approves |
+| `verification-plan.md` | The review anchor the Step-4 gate is held over (section outline below) |
 | `tb-scaffold.json` | What simulation builds the TB from: `agents` / `tests` / `testpoints[]` / `rm` / `scoreboard` / `skipped_checks[]` |
 | `sequences.json` | The sequence roster — the one part both simulation and power-analysis read |
 | `power-scenarios.json` | The power scenarios, read by power-analysis alone. Its own file so a scenario-only edit does not invalidate simulation's proof |
@@ -89,22 +89,18 @@ missing, close the run with the early-fail exit below
 (`fail_reason="external reference missing: <path>"`).
 
 The kernel writes `scope` / `caused_by` / `reasons` into `dispatch.json` **only when they carry
-something**, so their presence is what tells you which kind of round this is:
+something**, so their presence is what tells you which kind of round this is. Either way you run
+Steps 2–5; the branch decides how much of the plan you touch.
 
-- **`caused_by` present:** a repair round. Read each named `result.json` and amend what it
-  attributes. It is a pointer, not a boundary: if the gap sits elsewhere, widen and record why in
-  `result.json`. When triage attributes a coverage hole to plan over-spec — a bin the RTL cannot
-  legally reach — **narrow** `bins` rather than chasing it, and delete the testpoint outright if
-  the whole thing is unreachable, recording the over-spec attribution in §5.
-- **`scope` present:** module-relative paths, or `<file>:<line>` anchors; amend only the plan
-  sections its `design.md` / `<child>.md` paths map to. With both keys present the scope is their
-  union.
-- **`reasons` present:** a human's judgment on this repair; it outranks your own reading of the
-  files.
-- **Neither narrowing key:** a re-verify if the carried `verification-plan.md` has frontmatter
-  `Status: approved` — amend no section, re-run Step 3 on the carried plan and finalize. Otherwise
-  a first delivery, or a round interrupted before approval: full generation. Artifacts on disk are
-  not a gate you already passed.
+- **`caused_by` present:** a repair round. Scope is the union of `dispatch.json`'s `scope` — the
+  module-relative paths or `<file>:<line>` anchors whose change invalidated the plan — and what the
+  `caused_by` envelopes attribute; read each envelope once, and amend only the plan sections those
+  paths map to. It is a pointer, not a boundary: if the gap sits elsewhere, widen and record why in
+  `result.json`. `reasons`, when present, is a human's judgment on this repair and outranks your own
+  reading of the files.
+- **`caused_by` absent:** a first delivery — generate the plan and all three sidecars. If
+  `{workdir}` already holds a partial round, the session was compacted or interrupted: that work is
+  yours to continue or redo, and artifacts on disk are not a gate you already passed.
 
 **Early-fail exit.** Whenever a documented failure cannot be resolved, close the run with the
 finalize early-fail entry, not a hand-assembled envelope:
@@ -136,7 +132,11 @@ before authoring, because no gate checks that a scenario came from the standard 
 scenario needs its own stimulus.
 
 When amending, keep testpoint IDs / sequence names / `sequence_ref` stable: downstream coverage /
-scaffold / SAIF caches key off them, so renumbering one silently breaks the cache.
+scaffold / SAIF caches key off them, so renumbering one silently breaks the cache. One amendment is
+counter-intuitive enough to name: when triage attributes a coverage hole to plan over-spec — a bin
+the RTL cannot legally reach — **narrow** `bins` rather than chasing the hole, and delete the
+testpoint outright if the whole thing is unreachable, recording the over-spec attribution in §5.
+Coverage does not fall; a bin that could never be hit was never coverage.
 
 **Run `materialize-scaffold`** (every run) to fill the script-injected fields:
 
