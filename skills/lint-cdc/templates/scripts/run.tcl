@@ -28,21 +28,21 @@ if {$_stage ne "lint" && $_stage ne "cdc" && $_stage ne "all"} {
 
 open_project scripts/spyglass_lint.prj
 
+# Measured on SpyGlass_vL-2016.06: a `waive` issued while a goal is current
+# applies to THAT goal only. Sourced after `current_goal lint/lint_rtl` it never
+# reached the CDC goals, on any SPYGLASS_STAGE; sourced after
+# `current_goal cdc/cdc_setup` it did not reach cdc_verify_struct either. Sourced
+# here, before any goal is current, it applies to every goal in the session and
+# leaves lint waiving unchanged.
+source scripts/waiver.tcl
+
 if {$_stage eq "lint" || $_stage eq "all"} {
     current_goal lint/lint_rtl
-    source scripts/waiver.tcl
     run_goal
 }
 
 if {$_stage eq "cdc" || $_stage eq "all"} {
     current_goal cdc/cdc_setup
-    # Standalone `make cdc`: the lint branch did not run, so nothing has sourced
-    # the waivers yet, and a CDC-only waive or set_option would be silently
-    # dropped. Under `all` they are already in effect (they survive the CDC
-    # re-elaborate), and re-sourcing would double every entry.
-    if {$_stage eq "cdc"} {
-        source scripts/waiver.tcl
-    }
     run_goal
     current_goal cdc/cdc_setup_check
     run_goal
