@@ -4,12 +4,10 @@ import sys
 from pathlib import Path
 
 from simplan._plan import SIDECAR_NAMES
-from simplan.review import gate_verdict
 
 STAGE = "simulation-plan"
 
 _REJECT_REASON = "user rejected plan"
-_WAIVED_CLASSIFICATIONS = {"false-positive", "accepted-risk"}
 
 
 def _now_iso() -> str:
@@ -41,63 +39,54 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 
 def enumerate_artifacts(workdir) -> list:
-    """Fixed simulation-plan artifact set, present-only, with kinds (plan-review.json promotes
-    per the SKILL plan-adequacy review). Never lists result.json (self) — the envelope schema forbids it."""
+    """Fixed simulation-plan artifact set, present-only. Never lists result.json (self) —
+    the envelope schema forbids it. Present-only keeps a seeded rework workdir carrying the
+    full prior product set, so a promoted fail cannot GC canonical down to a hollow view."""
     workdir = Path(workdir)
-    fixed = ["verification-plan.md", *SIDECAR_NAMES, "plan-review.json"]
+    fixed = [
+        "verification-plan.md",
+        *SIDECAR_NAMES,
+        "plan-review/review.md",
+        "plan-review/decisions.md",
+    ]
     return [{"path": p} for p in fixed if (workdir / p).is_file()]
 
 
 def build_result(
-    workdir, module, *, waived, status, revision, fail_reason=None, fix_owner=None
+    workdir, module, spec_workdir, *, status, revision, fail_reason=None, fix_owner=None
 ) -> int:
     """Assemble the lean simulation-plan result.json from the workdir.
 
-    pass path: re-derives the plan-adequacy gate verdict (gate_verdict over the on-disk
-    plan-review.json) in-process, and enforces the approve precondition (a tripped-and-unwaived
-    gate downgrades to a written status=fail). It carries no scaffold-array counts: they were
-    re-derivable from the scaffold spec and read by nobody.
+    The pass path re-runs check-scaffold in-process. It was clean at Step 2 and every layer
+    of it is a set operation over the plan sidecars plus the authored check hints, so a
+    failure now means an artifact was edited after the gate — BLOCKED rather than a routable
+    fail. The fail path does not run it: an early-fail workdir may hold no sidecars at all,
+    and a fail-loud exit there would turn a routable fail into a BLOCKED.
 
-    fail path (user reject, or an early-fail exit carrying fail_reason): NEVER reads the
-    plan-review record — an early-fail workdir may hold none, and a raise here would turn
-    a routable fail into a BLOCKED. plan_adequacy_gate is included iff plan-review.json
-    is PRESENT — an absent record is the legitimate early-fail case (before the plan-adequacy review), but a
-    present-and-corrupt record raises (finalize → exit 2), so corruption surfaces instead
-    of silently dropping the flagged/waiver record from the promoted fail. artifacts[]
-    stays the present-only enumeration, so a seeded rework workdir carries the full prior
-    product set and a promoted fail cannot GC canonical down to a hollow view.
+    The plan-adequacy review is NOT re-judged here. It is prose under plan-review/, promoted
+    and fingerprinted as this stage's proposed oracle; a script re-reducing it to a verdict
+    would only be checking a record against the same agent's own --status, and pin/signoff is
+    where that endorsement is actually held to account.
 
-    The human-gate state (waived / status=user-reject / revision) is passed in by the
-    caller, NOT derivable from any artifact.
+    The human-gate state (status=user-reject / revision) is passed in by the caller, NOT
+    derivable from any artifact.
     Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED)."""
     workdir = Path(workdir)
 
     if status == "fail":
-        review_present = (workdir / "plan-review.json").is_file()
-        if fail_reason is None and not review_present:
-            # A user reject can only follow the plan-adequacy review and user loop — the judged record must be on
-            # disk. A bare --status fail on a workdir that never ran the gate would
-            # fabricate a human rejection; force the caller to say what failed.
+        if (
+            fail_reason is None
+            and not (workdir / "plan-review" / "review.md").is_file()
+        ):
+            # A user reject can only follow the Step-3 review and the Step-4 loop, and the
+            # reviewer — not this caller — writes that file. A bare --status fail on a
+            # workdir where no review ran would fabricate a human rejection; force the
+            # caller to say what failed instead.
             raise ValueError(
-                "--status fail without --fail-reason is the user reject and "
-                "requires plan-review.json on disk; for an early fail pass --fail-reason"
-            )
-        if waived and not review_present:
-            # A waiver is a human trust record attached to a judged gate; with no
-            # plan-review.json there is no gate to attach it to — dropping it
-            # silently would lose the operator's classifications for the rework.
-            raise ValueError(
-                "--waived supplied but no plan-review.json on disk to attach it to"
+                "--status fail without --fail-reason is the user reject and requires "
+                "plan-review/review.md on disk; for an early fail pass --fail-reason"
             )
         ss = {"fail_reason": fail_reason or _REJECT_REASON}
-        if review_present:
-            review = json.loads(
-                (workdir / "plan-review.json").read_text(encoding="utf-8")
-            )
-            gate = gate_verdict(review)
-            if waived:
-                gate = {**gate, "waived": waived}
-            ss["plan_adequacy_gate"] = gate
         if revision:
             ss["revision"] = revision
         _write_result(
@@ -112,74 +101,38 @@ def build_result(
         )
         return 0
 
-    # Read as-is: review-vs-content freshness is a process invariant — the skill re-runs its
-    # gate on the current plan before finalize (SKILL.md "Re-entry and completion"), not enforced here.
-    review = json.loads((workdir / "plan-review.json").read_text(encoding="utf-8"))
+    from simplan.scaffold import verdict
 
-    gate = gate_verdict(review)
-    if waived:
-        gate = {**gate, "waived": waived}
-    # Approve precondition (SKILL.md, user review loop): pass iff gate clears OR every flagged is
-    # waived. Waiver pairing keys on (tp_id, lens) and ignores location, matching the
-    # SKILL's own gate granularity — intentional, not a defect.
-    flagged_ids = {(f.get("tp_id"), f.get("lens")) for f in gate.get("flagged", [])}
-    waived_ids = {(w.get("tp_id"), w.get("lens")) for w in (waived or [])}
-    gate_ok = gate["gate"] == "clear" or flagged_ids <= waived_ids
+    errors = verdict(workdir, spec_workdir)
+    if errors:
+        listed = "; ".join(errors)
+        raise ValueError(
+            f"check-scaffold no longer passes at finalize — {listed}. Step 2 left it clean, "
+            "so an artifact was edited after the gate: repair it, do not finalize."
+        )
 
-    if gate_ok:
-        ss = {
-            "plan_adequacy_gate": gate,
-        }
-        artifacts = enumerate_artifacts(workdir)
-    else:
-        ss = {
-            "fail_reason": "plan-adequacy gate tripped (see plan-review.json)",
-            "plan_adequacy_gate": gate,
-        }
-        artifacts = enumerate_artifacts(workdir)
+    ss = {}
     if revision:
         ss["revision"] = revision
     _write_result(
         workdir,
         _envelope(
             module,
-            status="pass" if gate_ok else "fail",
+            status="pass",
             stage_specific=ss,
-            artifacts=artifacts,
+            artifacts=enumerate_artifacts(workdir),
             fix_owner=fix_owner,
         ),
     )
     return 0
 
 
-def _waived_error(waived) -> str | None:
-    """Validate the parsed --waived array: each entry is a human waiver record and must
-    carry a non-empty tp_id/lens/reason and a known classification. A placeholder or
-    truncated entry is rejected loud — the waiver is a human-authored trust record, and
-    finalize must not launder an empty one into the promoted gate."""
-    if not isinstance(waived, list):
-        return f"--waived must be a JSON array, got {type(waived).__name__}"
-    for i, w in enumerate(waived):
-        if not isinstance(w, dict):
-            return f"--waived[{i}] must be an object, got {type(w).__name__}"
-        for key in ("tp_id", "lens", "reason"):
-            v = w.get(key)
-            if not isinstance(v, str) or not v.strip():
-                return f"--waived[{i}] missing non-empty {key!r}"
-        if w.get("classification") not in _WAIVED_CLASSIFICATIONS:
-            return (
-                f"--waived[{i}] classification {w.get('classification')!r} not in "
-                f"{sorted(_WAIVED_CLASSIFICATIONS)}"
-            )
-    return None
-
-
 def finalize(
-    workdir, module, *, waived_json, status, revision, fail_reason=None, fix_owner=None
+    workdir, module, spec_workdir, *, status, revision, fail_reason=None, fix_owner=None
 ) -> int:
     """Parse the human-gate outcome args, then build_result. exit 0 = result.json written
-    (pass or fail); exit 2 = BLOCKED (bad --waived JSON/content, empty --fail-reason, or
-    any internal raise) — never conflated with status=fail."""
+    (pass or fail); exit 2 = BLOCKED (empty --fail-reason, a re-run check-scaffold failure,
+    or any internal raise) — never conflated with status=fail."""
     if fail_reason is not None and not fail_reason.strip():
         print(
             "[simplan finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",
@@ -195,23 +148,10 @@ def finalize(
         )
         return 2
     try:
-        waived = json.loads(waived_json) if waived_json else None
-    except json.JSONDecodeError as exc:
-        print(
-            f"[simplan finalize] BLOCKED: --waived not valid JSON: {exc}",
-            file=sys.stderr,
-        )
-        return 2
-    if waived is not None:
-        err = _waived_error(waived)
-        if err:
-            print(f"[simplan finalize] BLOCKED: {err}", file=sys.stderr)
-            return 2
-    try:
         return build_result(
             workdir,
             module,
-            waived=waived,
+            spec_workdir,
             status=status,
             revision=revision,
             fail_reason=fail_reason,

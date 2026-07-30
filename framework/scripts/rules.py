@@ -77,20 +77,22 @@ RULES: dict[str, Rule] = {
             "features": ("Design/specification/features.json",),
             "check_hints": ("Design/specification/check-hints/*.json",),
             "top_io": ("Design/specification/top-io.json",),
-            "interconnects": ("Design/specification/interconnects.json",),
+            # NOT interconnects.json: cross-child wires are internal to the DUT, so no
+            # plan field derives from them, and binding it would let a wire-only edit
+            # invalidate the plan and its review.
         },
         outputs=(
             "verification-plan.md",
             "tb-scaffold.json",
             "sequences.json",
             "power-scenarios.json",
-            "plan-review.json",
+            "plan-review/*.md",  # review.md + the user's decisions.md
         ),
         proof="simulation-plan",
         oracle=("plan-review", "proposed"),
-        oracle_selector="plan-review.json",
+        oracle_selector="plan-review/*.md",
         carry=("**",),
-        no_carry=("plan-review.json",),
+        no_carry=("plan-review/*.md",),
     ),
     "rtl-design": Rule(
         name="rtl-design",

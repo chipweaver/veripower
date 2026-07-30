@@ -1,56 +1,58 @@
-# Plan adequacy review sub-Task contract (gating)
+# Plan adequacy review sub-Task contract
 
-The simulation-plan main thread self-dispatches ONE Level-1 `Task(run_in_background=True)` (a
-fresh plan-adequacy reviewer) AFTER `simplan check-scaffold` (structural +
-coverage-matrix) passes and BEFORE the user review loop. This review is **gating**:
-`coverage` findings at `severity ∈ {critical, important}` BLOCK `status=pass` until resolved;
-`adequacy` findings are advisory **must-acknowledge** (surfaced to the user, never block). The
-main thread does NOT auto-fix the plan. Do not call the Task tool and do not call `kernel.py`.
+The simulation-plan main thread dispatches one Level-1 reviewer (Step 3), AFTER
+`simplan check-scaffold` is green and BEFORE the user review loop. You write your findings to a
+file; the main thread never re-types them and never reads your body. A human resolves each
+blocker at the Step-4 gate. Do not call the Task tool: a sub-Task writes no events, so anything
+you dispatch is work the kernel cannot see or audit.
 
-## Inputs (paths only — the main thread reads no body)
-- `Design/specification/features.json` (the feature spine testpoints trace to)
-- `Design/specification/design.md` §1.5 timing scenarios (one sequence per scenario)
-- `Design/specification/design.md` (§1 behavior, §1.4 IO/interconnects, §1.5 waveforms)
-  + each `Design/specification/check-hints/<child>.json` —
-  the authoritative statement of what must be verified.
-- The plan under review: `{workdir}/tb-scaffold.json` — `testpoints[]` (`id` /
-  `intent` / `bins` / `covers[]` / `inlined_check_hints[]`), `power_scenarios[]`,
-  `skipped_checks[]` — plus `{workdir}/verification-plan.md`'s narrative for the strategy
-  behind them. The testpoints themselves are in the JSON; the plan md restates none of them.
+## Inputs (paths only)
+
+- `Design/specification/features.json` — the feature spine testpoints trace to.
+- `Design/specification/design.md` (§1 behavior, §1.4 IO/interconnects, §1.5 timing scenarios and
+  their waveforms), each `Design/specification/<child>.md`, and each
+  `Design/specification/check-hints/<child>.json` — the authoritative statement of what must be
+  verified.
+- The plan under review: `{workdir}/tb-scaffold.json` — `testpoints[]` (`id` / `intent` / `bins` /
+  `covers[]` / `inlined_check_hints[]`) and `skipped_checks[]` — plus `{workdir}/sequences.json`,
+  `{workdir}/power-scenarios.json`, and `{workdir}/verification-plan.md` for the strategy behind
+  them. The testpoints themselves are in the JSON; the plan md restates none of them.
 
 ## Your job: testpoint-adequacy review of the PLAN (NOT TB / RTL / coverage-run)
+
 You are a fresh, skeptical reviewer. **Do not trust that the plan is adequate because the
-structural coverage-matrix passed** (that only proves every check_id is covered-or-skipped). Two
-lenses:
-- **`coverage`** (gating; reference = spec) — does every spec behavior / failure mode / check
-  Verification Hint have a real testpoint, and is every `skipped_checks[]` entry's skip genuinely
-  justified against the spec (not hiding a real verification need)? A spec behavior with no
-  testpoint, or an unjustified skip, is `coverage`.
-- **`adequacy`** (advisory must-acknowledge; no reference — judgment) — does each testpoint's check
-  strategy actually verify the behavior? Flag vacuous strategies (a `no_predict` / mirror-the-output
-  check that can never disagree), or assertions too weak to catch the intended failure.
+structural coverage-matrix passed** — that only proves every check_id is covered-or-skipped, not
+that the testpoint covering it verifies anything. Two questions, in descending order of what they
+cost to find later:
 
-## Out of scope (do NOT report)
-- TB materialization / RTL correctness (downstream `simulation` conformance-review judges TB
-  checks vs testpoints; you judge testpoints vs spec); structural coverage-matrix completeness
-  (the `simplan check-scaffold` gate already covers it); lint / timing / power; over-engineering.
+- Does every spec behavior, failure mode, and check Verification Hint have a real testpoint, and
+  is every `skipped_checks[]` skip genuinely justified against the spec rather than hiding a
+  verification need?
+- Does each testpoint's check strategy actually verify the behavior its `intent` promises? A
+  `no_predict` or mirror-the-output check can never disagree with the DUT; an assertion can be too
+  weak to catch the failure it is aimed at; a testpoint's linked sequences can under-stimulate the
+  bound its intent names.
 
-## Severity & gating
-- `critical` — a spec behavior unverified / a check that verifies nothing, downstream won't catch
-  cheaply. `important` — a real concern worth blocking on. `minor` — a nit. Calibrate.
-- The main thread BLOCKS on `lens == coverage ∧ severity ∈ {critical, important}`; `adequacy`
-  (any severity) is must-acknowledge; `unavailable` never blocks — but report them all.
+Out of scope: TB materialization and RTL correctness (downstream `simulation` conformance-review
+judges TB checks vs testpoints; you judge testpoints vs spec); the structural coverage-matrix
+completeness `simplan check-scaffold` already owns; lint / timing / power. If you happen to see
+one of those, say so — but as an observation, not as your finding.
 
-## Output
-End with `STATUS: DONE` + a single JSON line (schema `references/plan-review.schema.json`), or
-`STATUS: BLOCKED <reason>`:
-```json
-{"stage": "simulation-plan", "module": "<module>",
- "findings": [{"tp_id": "<TP-ID | 'plan' for a spec-behavior gap tied to no single testpoint>",
-               "lens": "coverage|adequacy",
-               "severity": "critical|important|minor",
-               "location": "<plan ref | design.md / <child>.md §ref>", "summary": "<one line>"}]}
-```
-- If you cannot read the full plan/spec (context budget), do NOT silently pass: emit
-  `STATUS: BLOCKED context-budget: <what was unread>` so the main thread records it as
-  `unavailable` rather than a clean pass.
+## Output: `{workdir}/plan-review/review.md`
+
+Write the file yourself. Free prose, one section per finding, in whatever order serves the reader.
+Each finding states three things:
+
+- **What you compared against** — a named `design.md` §ref, a `features.json` id, a `check_id`, or
+  nothing (your own judgment). This is the single most useful thing you can tell the human: a
+  finding with a frame can be re-checked by anyone; one without it is your opinion, and is
+  resolved as such.
+- **Blocks or not** — would shipping this plan to `simulation` as-is leave a real behavior
+  unverified? Say it plainly. Nothing downstream re-checks testpoint-vs-spec, so a gap you wave
+  through here is a gap nobody catches later.
+- **Where and what** — the testpoint id (or the plan section, for a gap tied to no single
+  testpoint), and one line on what is wrong.
+
+Then end your turn with `STATUS: DONE` and the path you wrote, or `STATUS: BLOCKED <reason>` if
+something stopped you from writing it — including a context budget too small to read the whole
+plan and spec. Never write a file saying you found nothing when the truth is you could not look.
