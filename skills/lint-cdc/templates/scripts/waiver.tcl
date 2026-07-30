@@ -1,6 +1,7 @@
 # ==============================================================================
 # waiver.tcl — SpyGlass lint/CDC waiver definitions.
-# Sourced by run.tcl before the lint/lint_rtl goal (SPYGLASS_STAGE=lint or all).
+# Sourced by run.tcl exactly once per session on every SPYGLASS_STAGE (lint, cdc,
+# all), so both `waive` entries and `set_option`s here apply to lint and CDC alike.
 #
 # Waiver format:
 #   waive -rules {<rule-id>} \
