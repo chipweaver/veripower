@@ -53,29 +53,8 @@ The hints live in `check-hints/<child>.json`, one file per child because childre
 in parallel. Keep this section as a pointer to it; narrative about *why* a check exists belongs
 in §3 / §4.
 
-Schema: `references/check-hints.schema.json`. A JSON array, one object per check:
-
-```json
-[
-  {
-    "check_id": "CHK-...",
-    "source_feature": "F-...",
-    "implementation_detail": "<=20-word summary",
-    "implementation_detail_verbatim": "brainstorm-verbatim RTL formula or token",
-    "observable": "<observable signal>",
-    "reference_rule": "<RM rule>",
-    "latency": "<=N cycle",
-    "reset_behavior": "<reset value>"
-  }
-]
-```
-
-| Field | Rule |
-|---|---|
-| `check_id` | Required. Unique across **every** child, not just yours. |
-| `source_feature` | Required. A `features.json` `id`. |
-| `implementation_detail` / `observable` / `reference_rule` | Required and non-empty. |
-| `implementation_detail_verbatim` | Optional in shape, load-bearing in fact — see below. |
-| `latency` / `reset_behavior` | Optional. |
+Its shape — every field and which are required — is `references/check-hints.schema.json`. Two
+things the schema cannot tell you: `check_id` must be unique across **every** child, not just
+yours, and `source_feature` must be an id that exists in `features.json`.
 
 **Critical**: `implementation_detail_verbatim` is the **only** source of cycle-accurate refmodel formulas for downstream simulation-plan / simulation. It must preserve the brainstorm's own wording, not a summary of it; when the brainstorm states no formula for a check, say so plainly rather than inventing one. No shape is prescribed — a formula looks however the brainstorm wrote it. What holds this is the spec-review faithfulness lens reading your `<child>.md` against the whole brainstorm: it is the only reader that can tell a compressed paraphrase from the original, and the only one that can tell whether a formula landed in the right child's hint.

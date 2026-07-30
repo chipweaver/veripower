@@ -15,7 +15,7 @@
 
 | Section range | Responsibility |
 |---|---|
-| 1.1–1.6 Overview sections | Function, interfaces, timing, frequencies, architecture partitioning; 1:1 consistent with each D-dimension field in brainstorm.md; on conflict, this section is the single upper-layer authority. `constraints/<TOP>.{sdc,sgdc}` is regenerated from §1.6 by `derive-constraints`, never hand-edited. |
+| 1.1–1.6 Overview sections | Function, interfaces, timing, frequencies, architecture partitioning. On conflict with brainstorm.md, these sections are the upper-layer authority. |
 | 1.7 Submodule Index | A pointer to `manifest.json`, the child registry (`name` / `doc` / `rtl_modules` / `brainstorm_anchor`). The per-submodule implementation detail (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.) lives in the child docs. |
 | 2 Document control | Version, revision notes, the corresponding (frozen / approved) brainstorm.md. |
 
@@ -146,72 +146,6 @@ Clock definitions live in `clocks.json` (the sole numeric + relationship source;
 scheme, release-ordering constraints.
 ```
 
-## top-io.json (§1.4.1's machine half)
-
-Authored by Wave 1; schema `references/top-io.schema.json`. A JSON array, one object per port.
-
-| Field | Rule |
-|---|---|
-| `name` | Required. The netlist name **including its bit range** (`token_in[4:0]`) — emitted verbatim into `get_ports` / `abstract_port`. |
-| `direction` | Required: `input` / `output` / `inout`. |
-| `width` | Required **integer**. When `name` ends in `[h:l]`, the two must agree — checked when the file is read; an `[i]` index (a register-file element) makes no width claim and is skipped. |
-| `clock_domain` | Required. A `clocks.json` name. Clock and reset ports carry no IO delay; each `data` port gets `set_input/output_delay` against this domain. |
-| `interface_group` | Required. Groups ports into one TB agent / one vif. |
-| `role` | Required: `clock` / `reset` / `data`. `derive-constraints` branches on it. |
-| `reset_polarity` / `reset_kind` | **Required when `role` is `reset`** (schema-enforced): `0` = active-low / `1` = active-high; `sync` / `async`. |
-| `protocol` | Optional. |
-| `encoding` | A **control or status** port MUST pin its bit/field-to-symbol meaning: single-bit `0:<meaning>; 1:<meaning>`; multi-bit per field `bit[h:l] <name>: <code>:<symbol>; …`. For a phase/command code write the **consumer obligation**, not just a label (e.g. `3:PV (consumer re-preloads the stationary operand, then streams)`). A raw data / clock / reset port has none. Enforced by the spec-review `conformance` lens, NOT a deterministic gate. This entry is the single source — a child names the port, never re-describes the codes. |
-
-## interconnects.json (§1.4.2's machine half)
-
-Authored by Wave 1; schema `references/interconnects.schema.json`. A JSON array, one object
-per cut edge. An N=1 module writes `[]`.
-
-| Field | Rule |
-|---|---|
-| `wire` | Required. Not unique by itself: the same net may appear once per distinct endpoint pairing. |
-| `producers` / `consumers` | Required **arrays** of RTL module names. `const` marks a literal source with no owning module. `derive-ports` attributes each wire to the children whose `rtl_modules` appear here. |
-| `width` | Required integer. A heterogeneous control bundle cannot state one honest width — split it into per-field wires. |
-| `clock_domain` | Required. A `clocks.json` name; a phantom domain here hides a CDC path. |
-| `protocol` / `timing_constraint` / `notes` | Optional. |
-| `encoding` | A wire carrying an **encoded control/status value** MUST pin its bit/field-to-symbol meaning, same format and obligation rule as `top-io.json`. Producer and consumer read this one entry, so per-wire agreement is structural. Cross-**bus** consistency is not pinned here — that joint contract goes in the §1.4.2.1 companion. |
-
-## features.json (§1.3's machine half)
-
-Authored by Wave 1; schema `references/features.schema.json`. A JSON array, one object per
-feature. All fields are free prose — no script parses inside a field.
-
-| Field | Rule |
-|---|---|
-| `id` | Required. What `check-hints/<child>.json` `source_feature` values and testpoints refer to. |
-| `name` | Required. Short label; reaches the TB testlist and the human-read case-results summary. |
-| `description` | Required. What the feature is, including any RTL formula that pins it. |
-| `mode_interface` | Required. The interface group or operating mode exercised. |
-| `priority` | Required free text — the vocabulary is your project's, not the schema's. |
-| `happy_path` / `corner_cases` / `negative_cases` | Required and non-empty. |
-| `coverage_intent` | Optional. Absent means absent. |
-
-## clocks.json (§1.6's machine half)
-
-Authored by Wave 1 alongside `ppa.json`; schema `references/clocks.schema.json`. A JSON
-array, one object per clock:
-
-```json
-[
-  { "name": "clk",    "period_ns": 10.0, "relationship": "primary", "generated": false, "role": "primary clock" },
-  { "name": "clk_io", "period_ns": 20.0, "relationship": "async",   "generated": false, "role": "IO-domain clock" }
-]
-```
-
-| Field | Rule |
-|---|---|
-| `name` | Required. For a non-generated clock this is also the top-level port name `create_clock` binds to. |
-| `period_ns` | Required **number** (not a string). The sole statement of the clock's rate — nothing records the frequency separately, so nothing can disagree with it. |
-| `relationship` | Required, one of `primary` / `synchronous-related` / `async`. `async` drives `set_clock_groups -asynchronous` (SDC) and a distinct `-domain` (SGDC). **Exactly one `primary`** — it is the TB main clock; `derive-constraints` fails loud otherwise. |
-| `generated` | Optional (default `false`). `true` for a divider/PLL output with no top-level port: `derive-constraints` emits **no** `create_clock` and records a `create_generated_clock`-deferred-to-RTL note in its place. |
-
-`additionalProperties` is `false`: a mistyped key fails at write time, in front of you.
-
 ## Submodule Index Template (§1.7)
 
 ```markdown
@@ -221,21 +155,14 @@ The child registry is `manifest.json` in this same directory — one entry per c
 `name` / `doc` / `rtl_modules` / `brainstorm_anchor`.
 ```
 
-Point at the manifest and write nothing else here.
+Point at the manifest and write nothing else here. Each child's own detail lives in its
+`<child>.md`, per `child-design-template.md`.
 
-For every module (N≥1) each child's detail lives in its own `<child>.md` (per
-`child-design-template.md`), authored by wave-2 — which always dispatches one sub-Task per child
-(N=1 → ×1, never an inlined submodule body in `design.md`).
+## Where the rules live
 
-## What the gates check
-
-Each sidecar's own shape is its `references/*.schema.json`, field by field — read the schema, not
-a summary of it; it is enforced wherever a verb reads that file. What no schema can express is a
-relation *between* files, and that is `check-crossrefs`, whose verdict names each one by key.
-Nothing is restated here: a third hand-written copy of the same rules is the diverged-cell problem
-this template warns about everywhere else.
-
-> Derivation rules, UVM field mapping, and a complete derivation-chain example are owned by `veripower:simulation-plan`. You do not need to read them.
+A sidecar's own shape is its `references/*.schema.json`, field by field — read the schema, not a
+summary of it; it is enforced wherever a verb reads that file. A relation *between* files is what
+no schema can express, and that is `check-crossrefs`. Neither is restated here.
 
 ## Document Control
 

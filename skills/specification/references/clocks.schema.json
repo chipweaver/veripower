@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/specification/clocks.schema.json",
   "title": "clocks.json — the module's clock definitions (authored, never derived)",
-  "description": "The sole numeric + relationship source for constraints/<TOP>.{sdc,sgdc} and for the TB primary_clock. Authored by the specification stage's Wave 1; design.md §1.6 points here and carries no table. One obligation this schema cannot express is enforced on top of it: exactly one entry has relationship=='primary' (derive-constraints, fail-loud).",
+  "description": "The sole numeric + relationship source for constraints/<TOP>.{sdc,sgdc} and for the TB primary_clock. Exactly one entry is relationship=='primary'; JSON Schema cannot express that, so derive-constraints fails loud on it.",
   "type": "array",
   "minItems": 1,
   "items": {

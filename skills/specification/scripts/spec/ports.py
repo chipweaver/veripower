@@ -67,16 +67,12 @@ def derive_ports(workdir: Path) -> dict:
         sys.exit(f"derive-ports: {exc}")
     children = manifest.get("children")
     if not children:
-        sys.exit(
-            "derive-ports: manifest.children missing or empty — need >=1 child "
-            "(specification Completion Gate)."
-        )
+        sys.exit("derive-ports: manifest.children missing or empty — need >=1 child.")
     for child in children:
         if not child.get("rtl_modules"):
             sys.exit(
                 f"derive-ports: child {child.get('name')!r} has no rtl_modules[] — "
-                f"required to derive inter-module ports. manifest.children[].rtl_modules is a "
-                f"hard requirement (specification Completion Gate)."
+                f"required to derive inter-module ports."
             )
     # Purity reads rtl_modules, so it runs after the loop above has proved every child has it.
     for v in check_purity(manifest):
