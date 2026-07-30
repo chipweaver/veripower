@@ -57,44 +57,6 @@ def _write(workdir: Path, env: dict) -> None:
     )
 
 
-# SpyGlass rule family -> which KIND of check failed. Constraint/setup families fire when a
-# declaration is missing; crossing families fire on a real structural defect. Confirmed
-# against SpyGlass_vL-2016.06: Ac_unsync01 (cdc_smoke a->q crossing, policy clock-reset,
-# goal cdc/cdc_verify_struct) -> cdc; Clock_info03a + Setup_port01 (undeclared-clock
-# experiment: clk2 used in RTL but never `clock -name`d in the SGDC, goal
-# cdc/cdc_setup_check) -> constraint.
-#
-# This answers "what kind of check failed", which a rule name reliably decides. It does NOT
-# answer "whose artifact must change": a missing-declaration violation is REPORTED at the RTL
-# line that used the undeclared object while the fix belongs in the SGDC, and no prefix table
-# can adjudicate that. That reading is the agent's, and it lands in `fix_owner`.
-_RULE_FAILURE_KIND = {
-    "Clock_": "constraint",
-    "Reset_": "constraint",
-    "SGDC_": "constraint",
-    "Ac_unclocked": "constraint",
-    "Setup_": "constraint",
-    "Ac_unsync": "cdc",
-    "Ac_conv": "cdc",
-    "Ac_glitch": "cdc",
-    "Ac_sync": "cdc",
-    "Reconvergence": "cdc",
-}
-
-
-def _classify(violations: list[dict]) -> tuple[str, dict | None]:
-    """Return (failure_kind, matched_violation) — the violation whose rule prefix decided the
-    kind, so failures[0].rule can name IT (not merely violations[0], which may be a different,
-    unmatched rule). An unmatched set falls to "lint", which is what it descriptively is: an
-    error-severity lint finding. Unlike the retired owner-guessing default, this one implies
-    nothing about who must fix it."""
-    for v in violations:
-        for prefix, kind in _RULE_FAILURE_KIND.items():
-            if v.get("rule", "").startswith(prefix):
-                return kind, v
-    return "lint", None
-
-
 def _load_violations(path: Path):
     """Return the collect_report.py JSON, or None if absent (write-fresh-or-nothing unlinks
     it on a parser fail, so absence == that kind did not produce a clean report)."""
@@ -150,15 +112,11 @@ def run(workdir, module, *, top, fix_owner=None) -> int:
             if doc is not None:
                 ss[key] = doc["counts"]
         if violations:
+            # violations[] IS the failure account: every row carries rule + file:line +
+            # reason. A summary field derived from it would restate it one key away, and a
+            # rule prefix cannot answer the question that is NOT in it — whose artifact must
+            # change. That answer is fix_owner, which the agent names.
             ss["violations"] = violations
-            kind, matched = _classify(violations)
-            ss["failure_kind"] = kind
-            ss["failures"] = [
-                {
-                    "rule": (matched or violations[0])["rule"],
-                    "error_summary": ss["fail_reason"],
-                }
-            ]
         if fix_owner:
             ss["fix_owner"] = fix_owner
         _write(

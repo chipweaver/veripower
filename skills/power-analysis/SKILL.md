@@ -20,7 +20,7 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 - Power test classes (`power_<seq>_test.sv`) are **auto-generated** by this stage — do not hand-write them or reuse power tests from any other source. Internally, each test reuses the `{module}_<seq>_seq` class already compiled by simulation (the plan's `power_scenarios[].sequence_ref` and `sequences[].name` share a namespace); this stage does NOT render an independent sequence class (contract violation — multi-source power tests cause naming / semantic drift).
 - The TB emits SAIF directly via `$set_gate_level_monitoring + $toggle_*` — `$dumpfile / $dumpvars` are **forbidden** (architectural violation — the SAIF path does not go through VCD; direct toggle dump avoids intermediate-format loss).
 - `ptpx.tcl` locks `power_analysis_mode averaged` + `read_saif`.
-- On failure, `failures[].{phase, category, error_summary}` MUST be filled in (contract violation — missing categorization makes the root cause unidentifiable).
+- On failure, `failures[].{phase, error_summary}` MUST be filled in, and `--fix-owner` named whenever you can tell: `phase` says which flow step broke, `error_summary` what the log said, and `fix_owner` whose artifact must change. Leaving all three empty makes the failure unactionable.
 - `hier_separator` MUST be explicitly set to `"/"` at the top of `ptpx.tcl`: write both `catch {set_app_var hier_separator "/"}` + `set hier_separator "/"` — PT M-2016 treats this as a Tcl global (`set_app_var` reports CMD-104), while newer PT treats it as an application var; the default dot-separated value causes `strip_path` to silently mismatch (contract violation — power hierarchy paths become unresolvable).
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
@@ -82,18 +82,29 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 
 `cd {workdir} && make all >make.out 2>&1` (redirect keeps the multi-thousand-line VCS/PT logs out of context; each stage still tees to its own log file).
 
-- **`make` exited non-zero** → read a **bounded** slice of the failing stage's log (`gls-compile-log.txt` / `gls-run-log.txt` / `ptpx.log`) — never the whole dump. Determine the failure's **`category`**:
-  1. If a `make` step already printed `phase=<p> category=<x>` (SDF-0 → `phase=compile`/`category=sdf`; `SAIF empty` → `phase=run`/`category=saif_dump`; `annotated 0%` → `phase=ptpx`/`category=ptpx_data`; PT design-load → `phase=ptpx`/`category=netlist`|`sdf`), **copy both verbatim**.
-  2. Otherwise (a VCS compile error → all `phase=compile`) classify by the **named file's directory**:
+- **`make` exited non-zero** → read a **bounded** slice of the failing stage's log (`gls-compile-log.txt` / `gls-run-log.txt` / `ptpx.log`) — never the whole dump. Then:
+  1. If a `make` step already printed `phase=<p>`, copy it verbatim. It also prints a
+     `category=<x>` for the three conditions it detects itself (`SAIF empty` → `saif_dump`;
+     `annotated 0%` → `ptpx_data`; its own env → `tooling`) — copy that too when present.
+  2. Name the owner. You read the log, so you are the only party that can say whose artifact is
+     at fault, and nothing downstream re-derives it. Go by the file the error names:
 
-  | error names a file under… | category |
+  | error names a file under… | `--fix-owner` |
   |---|---|
-  | `<netlist>/out/*.v` | `netlist` |
-  | `<netlist>/out/*.sdf` | `sdf` |
-  | TB filelist roots (`<tb_env>/...`) or local `power_filelist.f` | `tb_uvm` |
-  | no named file / VCS flag / `UVM_HOME` / license error | `tooling` |
+  | `<netlist>/out/*.v` or `*.sdf` | `synthesis` |
+  | TB filelist roots (`<tb_env>/…`) or local `power_filelist.f` | `simulation` |
+  | `<scaffold>/power-scenarios.json` (a bad `sequence_ref`, a bogus scenario) | `simulation-plan` |
+  | no named file / VCS flag / `UVM_HOME` / license error | *(your own env — omit it)* |
 
-  Write `status=fail` + `failure_kind` (`infra` for missing-reference/license; else `tooling`) + `failures[].{phase, category, error_summary}` + `fail_reason`, and pass `--fix-owner <rule>`: the rule that must act. **You are the only party that read the log, so you are the one who can say whose artifact is at fault.** Name the producer of the input you found broken (`netlist`/`sdf` come from `synthesis`; `tb_uvm`/`gls_runtime`/`saif_dump`/`ptpx_data` from `simulation`; `plan` from `simulation-plan`; a `power_mw` miss is normally `rtl-design`, but check `<ppa>/ppa.json` is well formed before blaming the implementation). When your own environment broke, or you read the log and still cannot tell, omit it: an unnamed owner is how a human gets called in, and guessing wastes a full rework round on the wrong stage.
+  A `power_mw` miss is normally `rtl-design`, but read `<ppa>/ppa.json` first: a target whose unit
+  disagrees with the number stored in it makes a conforming design look over-budget, and then the
+  owner is `specification`.
+
+  Write `status=fail` + `failure_kind` (`infra` for missing-reference/license; else `tooling`) +
+  `failures[].{phase, error_summary}` + `fail_reason`, and `--fix-owner <rule>` per the table. When
+  your own environment broke, or you read the log and still cannot tell, **omit the owner**: an
+  unnamed owner is how a human gets called in, and a guess spends a full rework round on a stage
+  that cannot fix it.
 
 - **`make` exited 0** → run the parser's finalize subcommand; do not run the parser separately or hand-assemble the envelope:
 
@@ -111,7 +122,7 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 
 | Excuse | Reality |
 |---|---|
-| "Annotation/SAIF looks empty (0 elements / `size=0` / 0% annotated) but the flow ran — mark pass" | Each is a hard sanity failure: SDF 0 → `status=fail` `category=sdf`; SAIF `size=0` → `failures[]` `category=saif_dump`; PT-PX 0% → `exit 1` + `status=fail` `category=ptpx_data`. Silently passing on no annotation is power-data corruption. |
+| "Annotation/SAIF looks empty (0 elements / `size=0` / 0% annotated) but the flow ran — mark pass" | Each is a hard sanity failure: SDF 0 → `status=fail` + `--fix-owner synthesis`; SAIF `size=0` → `failures[]` `category=saif_dump`; PT-PX 0% → `exit 1` + `status=fail` `category=ptpx_data`. Silently passing on no annotation is power-data corruption. |
 | "`power_mw` is a little over target — pass" | PPA self-check is mandatory: a `power_mw` miss → `status=fail` + `violations[]` (one entry each), kept strictly separate from `failures[]` (`failures[]` = process/data failures; `violations[]` = PPA targets missed). |
 
 ## Pitfalls

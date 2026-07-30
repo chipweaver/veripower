@@ -88,16 +88,20 @@ human and the fix owner reading the envelope; it selects no target:
 
 | Field | Axis | Stages |
 |---|---|---|
-| `failure_kind` | what kind of check failed | lint-cdc, synthesis, timing-analysis, power-analysis |
-| `failures[].category` | which part of this stage's own flow broke | power-analysis |
+| `failure_kind` | the tool-level failure class no violation list can express | synthesis, timing-analysis, power-analysis |
+| `failures[].category` | a condition the parser detected itself | power-analysis |
 | `failure_phase` | pipeline position | simulation |
 
-A classifier earns its place only where the answer is decidable by the deriving code. `lint-cdc`
-reads `failure_kind` off the SpyGlass rule family, which reliably says whether a declaration is
-missing or a crossing is genuinely defective; it does **not** say whose artifact must change,
+A classifier earns its place only where the answer is decidable by the deriving code **and is
+not already in the envelope**. `lint-cdc` carries none on either count: its `violations[]` rows
+already give rule, `file:line` and reason, so any summary over them restates the same data one key
+away; and the one thing not in them — whose artifact must change — a rule prefix cannot decide,
 because a missing-declaration violation is reported at the RTL line that used the undeclared
-object while the fix belongs in the SGDC. `specification` carries no classifier and no
-`fix_owner`: its input closure is empty, so it could only ever name itself.
+object while the fix belongs in the SGDC. `power-analysis` keeps `category` narrowed to the three
+conditions its parser detects on its own (`saif_dump`, `ptpx_data`, `tooling`); the five values
+that named an upstream instead were a proxy for `fix_owner`, decoded by a table, and are retired.
+`specification` carries no classifier and no `fix_owner`: its input closure is empty, so it could
+only ever name itself.
 
 The failure-**detail** payload (`violations[]`, `failures[]`, `failing_cases[]` /
 `coverage_gaps[]`) is a separate concern again: consumed by the fix owner to scope its fix list.

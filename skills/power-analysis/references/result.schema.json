@@ -50,7 +50,7 @@
                 "properties": {
                   "id":            {"type": "string"},
                   "phase":         {"enum": ["compile", "run", "ptpx", "parse"]},
-                  "category":      {"enum": ["tooling", "sdf", "gls_runtime", "tb_uvm", "netlist", "plan", "saif_dump", "ptpx_data"], "description": "Failure root-cause class. tooling = this stage's own env/infra (incl. PT-side license, disambiguated by phase=ptpx); sdf/netlist = upstream synthesis artifacts; tb_uvm/gls_runtime/saif_dump/ptpx_data = TB infra or GLS/PTPX data; plan = power_scenarios[] data."},
+                  "category":      {"enum": ["tooling", "saif_dump", "ptpx_data"], "description": "What the parser itself detected, and only that: tooling = this stage's own env/infra (incl. PT-side license, disambiguated by phase=ptpx); saif_dump = the SAIF came out empty; ptpx_data = PT-PX annotated 0%. The five upstream-naming values this used to carry (netlist/sdf/tb_uvm/gls_runtime/plan) are retired: they encoded WHOSE artifact was at fault, which fix_owner now states directly instead of through a proxy a table had to decode."},
                   "error_summary": {"type": "string"},
                   "log_excerpt":      {"type": "string"}
                 }
