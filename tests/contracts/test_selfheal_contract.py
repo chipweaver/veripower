@@ -3,15 +3,18 @@ from pathlib import Path
 RTL = Path("skills/rtl-design/SKILL.md").read_text()
 
 
-def test_rtl_44_has_selfconverge_for_rtl_locus():
-    # rtl-locus 走 self-converge（不再 "no in-skill autofix"）
-    assert "self-converge" in RTL
+# Anchored on the two machine keys the branch reads, not on the prose naming it: the
+# invariant is where each locus gets repaired, and `loci.rtl` / `loci.spec` are what
+# validate-review actually emits, so they survive a rewording that keeps the behaviour.
+def test_rtl_rtl_locus_is_repaired_in_stage():
+    # rtl-locus 缺陷在本阶段重派修复（不再 "no in-skill autofix"）
+    assert "`loci.rtl`" in RTL and "re-dispatch" in RTL
     assert "no in-skill autofix" not in RTL
 
 
-def test_rtl_44_spec_locus_still_fails_out():
-    # spec-locus 仍 fail-out（走上游路由，不 stage 内硬修）
-    assert "loci.spec" in RTL and "fail-out" in RTL
+def test_rtl_spec_locus_is_handed_upstream():
+    # spec-locus 不在阶段内硬修，交回上游 fix owner
+    assert "`loci.spec`" in RTL and "--fix-owner" in RTL
 
 
 SIM = Path("skills/simulation/SKILL.md").read_text()

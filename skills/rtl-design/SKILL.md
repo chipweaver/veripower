@@ -5,18 +5,18 @@ description: Use when writing or modifying Verilog/SystemVerilog RTL, or recordi
 
 # RTL Design
 
-Your sole responsibility: turn `manifest.json`'s child roster into authored RTL. You are a thin dispatcher — one fan-out wave of per-child sub-Tasks, a gating review wave, deterministic scripts in between. You hold no RTL body: every `.v` file is written and read only inside a sub-Task context, and every fix lands through a child re-dispatch.
+Your sole responsibility: turn `manifest.json`'s child roster into authored RTL. You are a thin dispatcher. The per-child sub-Tasks author every `.v` file; deterministic scripts turn their reports into this stage's sidecars and envelope. You hold no RTL body, and every fix lands through a child re-dispatch.
 
 ## Iron Rule
 
 - **`rtl-files.json` and `constraint-annotations.json` are `assemble`'s to write.** Never edit either directly.
 - **`design.md` and the per-child `<child>.md` are the intent source.** Never modify either; no RTL-level adjustment overrides an architectural decision.
-- **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's scope requires; every file outside it stays byte-identical. A needless rewrite re-fingerprints the artifact, which drops a human `pin` back to `proposed` — invisible from inside this stage, and the next signoff would sign text nobody reviewed.
-- **Scripts are black boxes, never Read their source.** Invoke them per the command lines below (flags via `--help`); act on the documented failure protocol, not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Artifacts
 
-Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key to a location, so `<key>/<subpath>` is how you address one. Every key resolves to the specification stage root, so `<design>` reaches its sibling sidecars too. The same file's `scope` / `caused_by` / `reasons` keys narrow this round.
+Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key to a location, so `<key>/<subpath>` is how you address one. Every key resolves to the specification stage root, so `<design>` reaches its sibling sidecars too.
+
+`caused_by` and `scope` name what this round is about. `reasons` is a human's judgment on this repair. It outranks your own reading of the files. If you disagree, say so in `result.json` instead of acting against it.
 
 | Path | What it is |
 |---|---|
@@ -35,146 +35,59 @@ Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `re
 | `semantic-review.json` | The gating per-child intent review — this stage's proposed oracle |
 | `result.json` | The status envelope, written only by `finalize` |
 
-## Workflow
+## Actions
 
-Three machine contracts bracket this stage: what `dispatch.json` hands you, what the fan-out
-sub-Tasks return, and what `finalize` hands back. The actions between them are yours to sequence.
+Dispatch one Level-1 `Task(run_in_background=True)` per child in `manifest.children[]`, prompt per [`references/child-task-contract.md`](references/child-task-contract.md). Then send a brief status and end the turn.
 
-### Entry contract
+Finalize only once every dispatched child has reported. A child that never reports is caught by nothing: the exit gate reads the manifest, not the ledger, so it returns `pass` over a sidecar that is missing that child's RTL.
 
-`dispatch.json`'s `inputs` table resolves the upstream locations (Artifacts above). Three
-further keys narrow this round — with either narrowing key present, the scope is the union of both:
-
-- `caused_by` — the `result.json` of each upstream failure this round answers. Read each, and its
-  sibling `reports/` or `reports_*/` when the failure is a PPA miss, since a bottleneck is located
-  in the raw report and not in the envelope. A pointer, not a boundary: if what you read puts the
-  defect elsewhere, widen and record why in `result.json`.
-- `scope` — module-relative paths, or `<file>:<line>` anchors, that this round should touch.
-- `reasons` — a human's judgment on this repair. It outranks your own reading of the files; if you
-  disagree, say so in `result.json` rather than acting against it.
-
-With neither narrowing key: prior RTL already in `{workdir}` makes this a re-verify — re-author no
-child, re-run the gate on the RTL that is there, every file byte-identical. An empty `{workdir}`
-means all children.
-
-`manifest.json` is the child roster SSoT: `.module` = `<top_module>`, and `children[]` carries each
-child's `name` / `doc` / `rtl_modules[]`.
-
-### Fan-out contract
-
-One Level-1 `Task(run_in_background=True)` per child in the to-dispatch set, prompt per
-[`references/child-task-contract.md`](references/child-task-contract.md). Every child including the
-top-integration child — no `name=="top"` special-casing, no N==1 inline exemption. **No Level-2
-dispatch:** none of them dispatches a sub-Task of its own.
-
-Dispatch, send a brief status, and end the turn. On wake-up, reap each child's harness `STATUS:`
-last line plus its JSON line (`{files, incdirs?, annotations}`), or `STATUS: BLOCKED <reason>`.
-Never finalize against a partial report set. A `BLOCKED` child is `status=fail` + `fail_reason`;
-its re-dispatch waits for a repair round.
-
-### Actions
-
-**Before dispatching, check the partition.**
+**Check the partition before you dispatch.**
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py check-partition --manifest <manifest>/manifest.json --top <top_module>
 ```
 
-Exit code is the truth (0 ok / 1 fail). Non-zero means the manifest's top-integration child is
-bundled or miscovered: run `finalize` and return without dispatching.
+Exit 1 means the manifest's top-integration child is bundled or miscovered. Run `finalize` and return.
 
-**Once every dispatched child has reported, land the reports and build the sidecars.** Dump each
-reaped child's `STATUS` + JSON to `{workdir}/reaped-children.json` — the scripts read disk, not
-your reap context (`STATUS: DONE`+JSON → `{"status":"done",...}`; `STATUS: BLOCKED <r>` →
-`{"status":"blocked","reason":"<r>"}`; a straight copy, no judgment). Then:
+**Build the sidecars once the children are in.** Dump each reaped child's `STATUS` + JSON to `{workdir}/reaped-children.json` first. The scripts read disk, not your reap context.
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py assemble --workdir {workdir} --manifest <manifest>/manifest.json --top <top_module> [--seeded]
 ```
 
-`assemble` writes both sidecars and runs the post exit-gate in one step. A **build error**
-(malformed reports or sidecars, or a file whose extension `references/rtl-files.schema.json`
-rejects — RTL is `.v`/`.vh`, never `.sv`) exits non-zero with a stderr message and **no stdout
-verdict**: pass that message to `finalize --fail-reason` and stop. Otherwise it prints the
-exit-gate verdict JSON on stdout, exit code = truth (topology + blocked-child); a fail verdict
-stops the stage and `finalize` writes it into `result.json`. Pass `--seeded` whenever a prior
-baseline is already in `{workdir}`, never on a first delivery's initial build.
+Pass `--seeded` on any round that has a prior baseline in `{workdir}`. Without it this round's `reaped-children.json` becomes the whole ledger, and every child you did not re-dispatch is dropped.
 
-**RTL on disk needs an intent self-check before it ships.** One fresh Level-1
-`Task(run_in_background=True)` per `manifest.children[]`, per
-[`references/rtl-review-task-contract.md`](references/rtl-review-task-contract.md) — you hand over
-paths only (the child's `files[]`, its per-child doc via `manifest.children[].doc`, the `design.md`
-§1.4 slice) and read no RTL yourself. This runs on every finalize, not only a first delivery: a
-child re-authored on a later pass must be reviewed against the RTL it actually ships. Aggregate
-into `{workdir}/semantic-review.json` (schema
-[`references/semantic-review.schema.json`](references/semantic-review.schema.json)):
+A build error exits non-zero with a message on stderr and no verdict on stdout. Pass that message to `finalize --fail-reason` and stop.
 
-- `STATUS: DONE` + valid finding JSON → fold its findings in (each carries a reviewer-assigned
-  `fix_locus ∈ {rtl, spec}`).
-- `STATUS: BLOCKED`, or malformed/unparseable JSON → record a `{child, severity:"minor",
-  category:"unavailable", location:"-", summary:"review unavailable: <reason>"}` finding (the
-  `unavailable` marker is the only finding with no `fix_locus`).
-- The whole wave unusable (nothing assemblable at all, e.g. total dispatch failure) → do NOT gate:
-  write the minimal doc with one `unavailable` finding, note it in the completion summary, carry on.
+A verdict on stdout with exit 1 is a topology or blocked-child failure. Run `finalize`.
 
-Then reduce it — the verdict is script-owned, never judged by eye:
+**Review the RTL against its intent.** One fresh Level-1 reviewer per child, per [`references/rtl-review-task-contract.md`](references/rtl-review-task-contract.md). You pass paths and read no RTL yourself. Run this on every finalize, not only a first delivery: a child re-authored on a later pass must be reviewed against the RTL it actually ships.
+
+Aggregate the findings into `{workdir}/semantic-review.json`. A reviewer that returns nothing usable gets an `unavailable` finding, so a review that did not happen never reads as a review that found nothing.
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py validate-review --review {workdir}/semantic-review.json
 ```
 
-A non-zero exit means the doc is unreadable or schema-invalid: re-assemble it and re-run (a
-main-thread fix, NOT a re-dispatch). On exit 0 it prints
-`{"gate":"trip"|"clear","flagged":[{child,category,severity,fix_locus}…],"loci":{"rtl":[…],"spec":[…]},"spec_confidence":"high"|"medium"|"low"|null}`
-— the mechanical `category × severity` reduction partitioned by `fix_locus`, the same one
-`finalize` re-computes in-process and writes verbatim as `stage_specific.semantic_gate`.
-Advisory findings (`over-engineering` at any severity, `minor`,
-`unavailable`) never trip; they are recorded, with a `⚠ <child> <category>` line in the completion
-summary.
+Exit 1 means the doc is unreadable or schema-invalid. Re-assemble it and re-run. That is yours to fix, not a re-dispatch.
 
-**An rtl-locus trip you can fix in-stage, fix in-stage — self-converge.** Re-dispatch ONLY the
-children named in `loci.rtl`, injecting each one's own semantic findings as fix scope
-(dispatch-and-wait, the same primitive as the fan-out wave), then re-run the review wave; the
-reviewer re-judges every round. `design.md` / `<child>.md` stay the immovable intent boundary, so a
-fixer edits only its own child's RTL. Re-run `assemble` **WITH `--seeded`** every round — without
-it this round's subset-only `reaped-children.json` becomes the whole ledger and every
-already-passing child is dropped. A non-zero `assemble` (blocked-child or topology) stops the stage
-and does not fall through to the review wave. There is no round cap.
+Exit 0 prints the gate verdict. Act on its `loci`:
 
-**A spec-locus trip you cannot fix from RTL — fail-out.** `loci.spec` non-empty means the defect is
-in the intent source, so no child's RTL can close it: go straight to `finalize`, which folds the
-trip into `status=fail` with a spec-rooted `fail_reason` and carries
-`semantic_gate.{loci.spec, spec_confidence}` for the kernel's upstream route. With both loci
-non-empty, self-converge the rtl-locus children first; whatever `loci.spec` survives then fails
-out. You MUST NOT override a `gate=trip` to pass.
+- empty (`gate=clear`) — go to `finalize`.
+- `loci.rtl` — re-dispatch those children with their own findings as fix scope, then review again.
+- `loci.spec` — no child's RTL can close a defect in the intent source. Go to `finalize` and name `specification`.
 
-**Finally, write the envelope.**
+**Write the envelope.**
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir} --module {module} --top <top_module> --manifest <manifest>/manifest.json [--fix-owner <rule>]
 ```
 
-**Naming the fix owner.** On a failure, add `--fix-owner <rule>`. A defect you can fix from here you
-already fixed, by re-dispatching the child; so a failure means either the semantic gate found the
-defect in the spec (`--fix-owner specification`, and the gate's `loci`/`spec_confidence` stay in the
-envelope as the account behind it) or the remedy is exhausted and it is yours (name yourself, which
-calls a human in). Omit it when you read the child reports and still cannot tell.
+A failing envelope carries `fail_reason`. `finalize` derives it from the on-disk verdict, or takes your one line from `--fail-reason` when no on-disk state can express the failure.
 
-`finalize` re-derives the exit verdict in-process over the converged sidecars (`status` +
-`fail_reason` + `artifacts[]`, verbatim), schema-validates `semantic-review.json`, and folds its
-gate verdict in as `stage_specific.semantic_gate`. The free-text run narration is NOT in
-`result.json` — it belongs in `events.jsonl`. Exit 0 = written (status pass or fail); a non-zero
-exit is a program exception (BLOCKED), including a `semantic-review.json` the schema rejects.
+`--fix-owner` names the rule that must act. A defect you could fix from here you already fixed by re-dispatching, so a failure is either the spec's (`specification`) or your own exhausted remedy. Naming yourself calls a human in. Omit it when you cannot tell.
 
-`--fail-reason "<one line>"` is the early-exit form, for a failure no on-disk state can express (a
-build error): it writes the `status=fail` envelope with that reason instead of re-deriving a
-verdict, and still enumerates whatever the sidecars hold. Never hand-write `result.json` yourself;
-an envelope that violates the schema is reaped as blocked rather than as a routable fail.
-
-In the completion summary, emit one line `semantic-gate: <clear | trip | unavailable>; see
-semantic-review.json`. If any finding is `severity=critical` (possible on a cleared gate, when the
-critical finding is in a non-gating category such as `over-engineering`), add `⚠ <child> critical
-<category> finding — recommend operator review before downstream`.
+Exit 0 means `result.json` was written, pass or fail. A non-zero exit is a program exception, including a `semantic-review.json` the schema rejects.
 
 ## Return Contract
 
