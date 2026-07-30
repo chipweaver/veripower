@@ -11,7 +11,7 @@ the module with `kernel.py signoff` (§5.5). See "Kernel & Skill Dispatch" below
 
 The dependency graph is DERIVED from each rule's artifact input/output selectors —
 no separate stage DAG is maintained. Failure routing is computed by `kernel.py decide`
-(composing `route.py`); ambiguous simulation failures dispatch `simulation-triage`,
+(reading each failing envelope's own `fix_owner`); a simulation failure it could not attribute dispatches `simulation-triage`,
 whose reap lands a `diagnosis` event. Authoritative registry and routing rules:
 `framework/scripts/rules.py:RULES` / `ARCHITECTURE.md §3` (§5.4 failure routing).
 
@@ -40,7 +40,6 @@ Domain-specific coding rules live in each skill's references.
 - `framework/scripts/rules.py` — the rule registry SSoT (`RULES`, `FORWARD_PRIORITY`, `PIPELINE_INPUTS`, `ADVISORY_ORDER`); the dependency graph is derived from rules' artifact selectors (`producer_of` / `input_producers` / `input_closure`).
 - `framework/scripts/facts.py` — event-log I/O, content fingerprints, and the freshness queries (`proof_valid`, `input_available`, `projection`), plus the strictest of them: `signoff_gate` (the 3-condition trust boundary) and `signed_off` (the §3.6 predicate). Validity is a query over the log + disk, never a stored bit.
 - `framework/scripts/schedule.py` — the scheduler (`decide`): objective-scoped (`delivery`/`repair`/`signoff`), pure over (disk, log, args), exactly one action per call.
-- `framework/scripts/route.py` — pure deterministic rework-target selection (sole home of the failure→target maps); composed inside `schedule.py` and `kernel.py`. No state.
 - `framework/scripts/store.py` — artifact-lifecycle internals (promote, trace mirroring, dispatch-time `dispatch.json` authoring via `write_dispatch`, author self-carry via `carry_self`), imported by `kernel.py`; internal — never invoked directly.
 - Main-thread-loaded stages: `specification`, `simulation-plan`, `rtl-design`, and `simulation` — Orchestrator calls `Skill(veripower:...)` directly. The other 4 stages (`lint-cdc`, `synthesis`, `timing-analysis`, `power-analysis`) plus `simulation-triage` are strictly Task-dispatched subagents; branch on the `DISPATCH` action's `execution` field. See `skills/design-flow/SKILL.md` and `ARCHITECTURE.md §2`.
 - `brainstorm` is a separate **pre-pipeline** skill (own session, NOT in the orchestrator-dispatch list above): it runs the D0–D7 dialogue and produces the approved `brainstorm.md` the pipeline starts from. It writes no `result.json` and calls no `kernel.py`.

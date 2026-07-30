@@ -27,7 +27,11 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _envelope(module, *, status, stage_specific, artifacts) -> dict:
+def _envelope(module, *, status, stage_specific, artifacts, fix_owner=None) -> dict:
+    """fix_owner rides on a failure only, and only when the caller named one: its ABSENCE is
+    what decide reads as "this stage cannot tell", so it must never serialize empty."""
+    if status == "fail" and fix_owner:
+        stage_specific = {**stage_specific, "fix_owner": fix_owner}
     return {
         "stage": STAGE,
         "module": module,
@@ -77,7 +81,9 @@ def _locus_fail_reason(gate: dict) -> str:
     return f"semantic gate: rtl-local intent defect — {first['child']}{extra}"
 
 
-def build_result(workdir, module, top, manifest, fail_reason=None) -> int:
+def build_result(
+    workdir, module, top, manifest, fail_reason=None, fix_owner=None
+) -> int:
     """Assemble the lean rtl-design result.json from the converged on-disk workdir.
     Re-derives the exit verdict in-process (status/fail_reason/artifacts, verbatim), then on a
     passing exit schema-validates semantic-review.json and folds in the semantic gate via the pure
@@ -98,6 +104,7 @@ def build_result(workdir, module, top, manifest, fail_reason=None) -> int:
                 status="fail",
                 stage_specific={"fail_reason": fail_reason},
                 artifacts=_caller_reported_artifacts(workdir),
+                fix_owner=fix_owner,
             ),
         )
         return 0
@@ -110,7 +117,13 @@ def build_result(workdir, module, top, manifest, fail_reason=None) -> int:
         ss = {"fail_reason": exit_v.get("fail_reason", "rtl exit gate failed")}
         _write_result(
             workdir,
-            _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
+            _envelope(
+                module,
+                status="fail",
+                stage_specific=ss,
+                artifacts=artifacts,
+                fix_owner=fix_owner,
+            ),
         )
         return 0
 
@@ -126,7 +139,13 @@ def build_result(workdir, module, top, manifest, fail_reason=None) -> int:
         ss = {"semantic_gate": gate, "fail_reason": _locus_fail_reason(gate)}
         _write_result(
             workdir,
-            _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
+            _envelope(
+                module,
+                status="fail",
+                stage_specific=ss,
+                artifacts=artifacts,
+                fix_owner=fix_owner,
+            ),
         )
         return 0
     ss = {"semantic_gate": gate}
@@ -137,12 +156,14 @@ def build_result(workdir, module, top, manifest, fail_reason=None) -> int:
     return 0
 
 
-def finalize(workdir, module, top, manifest, fail_reason=None) -> int:
+def finalize(workdir, module, top, manifest, fail_reason=None, fix_owner=None) -> int:
     """Assemble the lean rtl-design result.json from the converged workdir.
     exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (any internal
     raise) — never conflated with status=fail. (Owns the policy the deleted main() had.)"""
     try:
-        return build_result(workdir, module, top, manifest, fail_reason=fail_reason)
+        return build_result(
+            workdir, module, top, manifest, fail_reason=fail_reason, fix_owner=fix_owner
+        )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[rtl finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

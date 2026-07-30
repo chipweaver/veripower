@@ -151,8 +151,14 @@ With neither narrowing key, decide on `{workdir}`:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
-  --workdir {workdir} --module {module} --status fail --fail-reason "<one-line reason>"
+  --workdir {workdir} --module {module} --status fail --fail-reason "<one-line reason>" \
+  [--fix-owner <rule>]
 ```
+
+**Naming the fix owner.** On a failure, add `--fix-owner <rule>`: the rule that must act. A gap you
+cannot cover because the spec does not say enough is `specification`. A gap that is yours to close is
+yours to close in this round, so naming yourself means the plan cannot be made adequate from here and
+a human should look. Omit it when you cannot tell.
 
 ### Step 2: Generate / update artifacts
 

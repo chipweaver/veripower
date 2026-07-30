@@ -95,7 +95,7 @@ You carry the current `objective` as a session value and pass it to every `decid
 - **Default `delivery`.** Forward-build the whole DAG.
 - **`repair`.** When `decide` (under `delivery`) returns a `DISPATCH` carrying a non-empty
   `caused_by` (an auto-rebuild — a fix targeting an upstream producer, whether diagnosis-backed
-  or self-describing-route), execute that dispatch, then
+  or named by the failing envelope itself), execute that dispatch, then
   switch the session objective to `repair` and keep passing `--objective repair`. This
   narrows `decide` to rebuilding only the closure that re-verifies the failing proof. When
   `decide` under `repair` returns `DONE` (the failing proof re-verified — or nothing

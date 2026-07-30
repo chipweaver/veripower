@@ -72,6 +72,7 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         verify_verdict=a.verify_verdict,
         fail_reason=a.fail_reason,
         observed_phase=a.failure_phase,
+        fix_owner=a.fix_owner,
     )
 
 
@@ -165,6 +166,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "--fail-reason", default=None, help="one-line reason for an early-exit phase"
+    )
+    sp.add_argument(
+        "--fix-owner",
+        default=None,
+        help="on a failure, the rule that must act (you name it; no gate can derive it)",
     )
     sp.set_defaults(func=_cmd_finalize)
 

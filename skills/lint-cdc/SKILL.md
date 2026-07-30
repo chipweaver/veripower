@@ -86,6 +86,16 @@ The script re-derives `counts` and `violations[]` on every run — you do not co
 
 - **A non-zero `make` is authoritative — never infer success from the `*-violations.json` presence.** This `FAIL=` protocol covers both `make lint` (this step) and `make cdc` (Step 5); the report label is `lint` for `make lint`, `CDC` for `make cdc`. On a non-zero `make`, read `collect_report.py`'s stderr token and write `status=fail` with the matching `fail_reason`, then exit: `FAIL=missing` → `"<label> report missing, not real sign-off"`; `FAIL=unparseable` → `"<label> report unparseable"`; `FAIL=count_mismatch` → `"<label> report parse incomplete (rows≠reported)"`. A non-zero `make` with **no** `FAIL=` token means SpyGlass itself did not complete (tool/license/crash, before `collect_report.py` ran) → `fail_reason="<label> report missing, not real sign-off"`.
 
+### Naming the fix owner
+
+Whenever you close a run with `status=fail`, decide who must act and pass it as
+`--fix-owner <rule>` to the combiner (Step 6). You are the only party that read the report, so
+you are the only one who can answer this, and the line a violation is reported at is not always
+the line that must change. Which rule family means whose artifact, with the measured evidence
+behind each: `${CLAUDE_SKILL_DIR}/references/attribution-rules.md`. When it does
+not resolve, omit the flag — an unnamed owner brings a human in, a wrong one spends a rework
+round on a stage that cannot fix it.
+
 ### Step 5: `make cdc`
 
 runs SpyGlass CDC and `collect_report.py`, emitting `cdc-report.txt` + `cdc-violations.json`. Read `cdc-violations.json` and triage every `severity=error` entry:
@@ -106,7 +116,7 @@ Carried-forward waivers are NOT pre-validated: `carry_self` carries the canonica
 ### Step 7: Write `{workdir}/result.json` (mandatory)
 
 Run the result combiner; do not hand-assemble the envelope, recount, or copy the header by hand.
-The combiner takes no agent input — every field is script-derived:
+Every field but one is script-derived; `--fix-owner` is yours (below):
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py finalize \
@@ -128,8 +138,9 @@ file — but your `FAIL=` mapping carries the precise tool-level reason, so writ
 in Steps 4/5 rather than deferring to the combiner). The combiner owns the **clean-path** assembly and
 the **error-severity gate** (both reports present, `counts.error > 0`).
 
-Every field in result.json is script-derived — the per-error `reason` comes from the parser's tool
-`message`, so you supply no input (100% script-owned, like every other stage).
+Every field in result.json but `fix_owner` is script-derived: the per-error `reason` comes from the
+parser's tool `message`, and `failure_kind` from the SpyGlass rule family. You supply `--fix-owner`,
+and nothing else.
 
 ## Decision Rules
 
@@ -167,5 +178,6 @@ As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `
 ## Bundled References
 
 - [`references/makefile-bootstrap.md`](references/makefile-bootstrap.md) — Bootstrap and Makefile-target quick reference.
+- `${CLAUDE_SKILL_DIR}/references/attribution-rules.md` — which SpyGlass rule family means whose artifact must change; the `--fix-owner` decision.
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.

@@ -277,8 +277,16 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize \
   --plan <scaffold> \
   --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml \
   --conformance-review {workdir}/conformance-review.json \
-  --verify-verdict {workdir}/<reaped-verify-verdict>.json
+  --verify-verdict {workdir}/<reaped-verify-verdict>.json \
+  [--fix-owner <rule>]
 ```
+
+**Naming the fix owner.** On a failure, add `--fix-owner <rule>`: the rule that must act. A
+functional or latency miss the RM confirms is `rtl-design`; a testpoint or scenario gap is
+`simulation-plan`; a conformance finding whose defect is in the spec is `specification`. When you
+read the logs and the reference model and still cannot attribute it, **omit it** — this is the one
+stage whose unattributed failure dispatches `simulation-triage` for a deeper (L1 log/code, then L2
+controlled-experiment) analysis, so omitting is a real answer here, not a shrug.
 
 `finalize` enumerates `conformance-review.json` + `verify-handoff.json` in `artifacts[]` automatically
 via `enumerate_artifacts` — both are written fresh every round (Step 4 / Step 2), never carried.

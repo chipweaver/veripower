@@ -253,10 +253,13 @@ def enumerate_artifacts(workdir: Path) -> list:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def build_result(workdir, module, top) -> int:
+def build_result(workdir, module, top, fix_owner=None) -> int:
     """Assemble the lean timing-analysis result.json. Reuses run() for the timing gate
     (in-process), then derives the header + artifacts + writes the envelope.
-    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED)."""
+    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED).
+
+    fix_owner is the one judgment this verb cannot derive: which rule must act. The
+    reports say what failed; whose artifact is at fault is the caller's reading."""
     workdir = Path(workdir)
     report = workdir / "timing-report.txt"
 
@@ -270,6 +273,8 @@ def build_result(workdir, module, top) -> int:
             "fail_reason": _FAIL_REASON[token],
             "failure_kind": "tooling",
         }
+        if fix_owner:
+            ss["fix_owner"] = fix_owner
         _write_result(
             workdir,
             _envelope(
@@ -294,6 +299,8 @@ def build_result(workdir, module, top) -> int:
     if status == "fail":
         ss["failure_kind"] = "ppa"
         ss["fail_reason"] = "setup/hold timing not met"
+        if fix_owner:
+            ss["fix_owner"] = fix_owner
     _write_result(
         workdir,
         _envelope(
@@ -306,12 +313,12 @@ def build_result(workdir, module, top) -> int:
     return 0
 
 
-def finalize(workdir, module, top) -> int:
+def finalize(workdir, module, top, fix_owner=None) -> int:
     """Parse the PT report, judge the timing gate, write the lean result.json.
     exit 0 = written (pass or fail); exit 2 = BLOCKED (any internal raise) — never
     conflated with status=fail. (Owns the policy the deleted main() finalize branch had.)"""
     try:
-        return build_result(workdir, module, top)
+        return build_result(workdir, module, top, fix_owner)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[timing finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2

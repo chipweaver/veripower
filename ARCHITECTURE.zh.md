@@ -19,7 +19,7 @@
 
 ## 术语表
 
-以下术语在全文中以固定含义使用，此处集中定义，链接节给出完整上下文。各阶段自身的契约（`result.json` 字段、CLI 标志、路由表）不在本文档中展开——见各自 schema / `--help` / `route.py`。
+以下术语在全文中以固定含义使用，此处集中定义，链接节给出完整上下文。各阶段自身的契约（`result.json` 字段、CLI 标志）不在本文档中展开——见各自 schema / `--help`。
 
 | **术语** | **说明** |
 |---|---|
@@ -79,7 +79,7 @@ Orchestrator Agent 做决策；`kernel.py` 和 skills 负责执行；磁盘负�
 │  schedule.py:      │  │    self-driven fan-out /     │  │    scratch RW builder         │
 │   decide → action  │  │    dialogue → result.json    │  │    → result.json (+ diag)     │
 │  facts / rules /   │  │                              │  │  Must NOT call kernel.py      │
-│  route / store     │  │                              │  │  or make routing calls        │
+│  schedule / store  │  │                              │  │  or dispatch anything         │
 └──────────┬─────────┘  └──────────────────────────────┘  └───────────────────────────────┘
            │ reads/writes
            ▼
@@ -109,8 +109,7 @@ Orchestrator 的三条派发路径：
 | `kernel.py` | CLI，且是 `events.jsonl` 的**唯一写者**。十个动词：`decide`、`dispatch`、`reap`、`diagnose`、`escalate`、`pin`、`reopen`、`signoff`、`status`、`consequences`。每个动词打印一个 JSON 信封。 |
 | `rules.py` | 规则注册表（`RULES`）——内核调度对象的单一真相源，也是依赖图的*来源*（§3）。另有 `FORWARD_PRIORITY`、`PIPELINE_INPUTS`、`ADVISORY_ORDER`，以及派生助手 `producer_of` / `input_producers` / `input_closure` / `sort_prereqs`。依赖极轻的叶子模块。 |
 | `facts.py` | 事件日志 I/O（`read_events` / `append_event`，写入即校验 schema）、内容指纹（`fingerprint`），以及建立在其上的新鲜度查询——`proof_valid`、`input_available`、`projection`，外加其中最严的 `signoff_gate` / `signed_off`（§5.5）。不持有任何可变状态；一切从日志 + 磁盘计算。 |
-| `schedule.py` | 调度器：`decide(objective) → 恰好一个动作`。对 (磁盘, 日志, 参数) 纯函数；组合 `route.py` 与 `facts.signoff_gate`。持有目标→所需证明集映射与新鲜失败处置。 |
-| `route.py` | 纯确定性返工目标选择——静态失败→目标映射表的**唯一居所**（`PA_CATEGORY`、`FIXED_TARGET`、`LINT_CATEGORY`、`TRIAGE_ROOT_CAUSE`）。不持有状态；原样组合进 `schedule.py` 与 `kernel.py`。 |
+| `schedule.py` | 调度器：`decide(objective) → 恰好一个动作`。对 (磁盘， 日志， 参数) 纯函数；组合 `facts.signoff_gate`。持有目标→所需证明集映射与新鲜失败处置，含对失败自陈的 `fix_owner` 的合法性校验。 |
 | `store.py` | 文件系统产物生命周期助手：派发时的 `write_dispatch`（写 `<workdir>/dispatch.json`）与 `carry_self`（把作者自己上一轮的规范产物拷进新 workdir）、收割时的 `promote`。由 `kernel.py` 导入；从不直接调用。 |
 
 事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（7 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
@@ -143,7 +142,6 @@ Orchestrator 的三条派发路径：
 | **阶段子 Agent** | 四条 Task 派发的规则（`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis`） | 执行单条规则：读上游 → 做工作 → 写 `result.json` → 返回 STATUS 行 | 不准调 `kernel.py`，不准做路由决策（§6.1） |
 | **调试子 Agent** | `simulation-triage`，经 Task 派发 | 对仿真失败做分级（L1 日志+代码+FSDB 推理 → L2 受控实验）根因分析；其目标 run 与上游（spec/RTL/plan）在派发时经 `dispatch.json` 注入（`sim_run` 指名目标 run 目录），`proof=None`，故即便上游证明失效也可派发；写出的 `result.json` 其 `stage_specific` 携带归因，由内核在收割时转成 `diagnosis`（§6.4） | canonical 只读、自身 workdir 可写；绝不编辑其它规则的 `result.json`、RTL 或测试；非幂等（重复运行重跑 L2） |
 | **`kernel.py`** | Python CLI | 状态转换（以事件形式）、调度、证明推导、promote | 持有调度逻辑但不做*判断*：它从不代人铸造人工诊断。 |
-| **`route.py`** | 纯函数（同级脚本） | 将失败的封闭枚举字段映射为目标 / `ESCALATE` / `NEED_INPUT` | 不持有状态；对输入全域（未知枚举值落入具名 `unrouted*` ESCALATE，绝不 KeyError）。 |
 
 ### 2.5 核心设计原则
 
@@ -228,7 +226,7 @@ Orchestrator 的三条派发路径：
 
 `specification` 的 `derive-constraints` 动词产出下游工具阶段读取的完整约束集：`Design/specification/constraints/<TOP>.sdc`（`synthesis` 消费）和 `<TOP>.sgdc`（`lint-cdc` 消费的种子）。两者均从已批准的 §1.4.1 时钟表和 §1.6 时钟 Relationship 块推导，因此约束是 spec 的权威投影，而非手工维护。
 
-异步时钟关系在两种格式中的载体不同，因为两个工具接受的语法不同。SDC 使用标准的 `set_clock_groups -asynchronous` 结构。SGDC 不能：SpyGlass `vL-2016.06` 直接拒绝 `set_clock_groups`（`SGDCSTX_002 Unknown SGDC command`）。生成器改用 SGDC 原生形式——按时钟的域声明 `clock -name <c> -period <p> -edge {…} -domain <D>`：所有 `primary`/`synchronous-related` 时钟共享一个域名，每个 `async` 时钟独占一个域。这条声明的作用是把 spec 的 §1.6 Relationship 在 SGDC 中**显式化、权威化**，而不是把域划分留给工具默认行为。该行为由 `tests/eda/f1-sgdc-clock-group/` 的手动 EDA 回归实证钉定：在 `vL-2016.06` 上，一个无同步器的单拍跨域采样以规则号 `Ac_unsync01`（policy `clock-reset`，goal `cdc/cdc_verify_struct`）被标记——即 `lint-cdc` 失败类别表为该类跨域所记录的规则号。（在该版本上，名字不同的时钟本就默认归入不同域，因此这条声明的价值在于让域划分*由 spec 驱动且显式*，而非工具推断；范围界定的实测结论见该 fixture 的 README。）
+异步时钟关系在两种格式中的载体不同，因为两个工具接受的语法不同。SDC 使用标准的 `set_clock_groups -asynchronous` 结构。SGDC 不能：SpyGlass `vL-2016.06` 直接拒绝 `set_clock_groups`（`SGDCSTX_002 Unknown SGDC command`）。生成器改用 SGDC 原生形式——按时钟的域声明 `clock -name <c> -period <p> -edge {…} -domain <D>`：所有 `primary`/`synchronous-related` 时钟共享一个域名，每个 `async` 时钟独占一个域。这条声明的作用是把 spec 的 §1.6 Relationship 在 SGDC 中**显式化、权威化**，而不是把域划分留给工具默认行为。该行为由 `tests/eda/f1-sgdc-clock-group/` 的手动 EDA 回归实证钉定：在 `vL-2016.06` 上，一个无同步器的单拍跨域采样以规则号 `Ac_unsync01`（policy `clock-reset`，goal `cdc/cdc_verify_struct`）被标记——即 `lint-cdc` 的规则族表把该类跨域记为结构缺陷的那个规则号。（在该版本上，名字不同的时钟本就默认归入不同域，因此这条声明的价值在于让域划分*由 spec 驱动且显式*，而非工具推断；范围界定的实测结论见该 fixture 的 README。）
 
 ## 4. 状态模型：事件日志
 
@@ -363,20 +361,23 @@ flowchart TD
 1. **已有诊断附着。** `_active_diagnoses` 收集 `subject` 与该失败 `(proof, outcome_run)` 匹配、未被 supersede 的全部 `diagnosis`。若最新一条**可靠** → 自动重建：`DISPATCH` 其 `fix_owner`（在 `repair` 下），并把所有新鲜失败中共享该 `fix_owner` 的每条可靠诊断的 `id` 合并进 `diagnosis_refs`、其 `(rule, run)` 坐标合并进 `caused_by`（多因修复逐条引用——无一静默丢弃，而且这个合并是内核求并后解析的，不是给撰写派发者的一条指示）。若 `fix_owner` 输入不可用，顺延前向。若最新诊断**不**可靠 → `ESCALATE`，把各诊断作为候选呈给用户。
    - **可靠性门**（`_reliable`）：一条诊断可靠，当且仅当它有 `fix_owner` **且**（`source == human`，或 `confidence == high` 且其 `attribution` 不指向失败规则自己的裁判）。自指诊断（无 `fix_owner`——归因指向 oracle 一侧）永远无法自动重建：没有重建目标，所以一律升级。正是这道门拦住了低置信或怪罪裁判的猜测去静默重建上游阶段。
 2. **无诊断，且失败是 `simulation`。** 失败有歧义（仿真挂掉可能是 RTL、计划或 spec）→ `DISPATCH simulation-triage`，带 `params.sim_run = <失败 run>`（若 triage 已在途则 `YIELD`）。triage 运行，在*它的*收割时内核派生诊断（见下）；下一次 `decide` 看到诊断即重入处置分支 1。
-3. **无诊断，自描述失败。** 失败自带路由字段 → `route.route` 内联选出目标（无需诊断事件）。`ESCALATE`/`NEED_INPUT` → 升级；目标输入可用 → 自动重建 `DISPATCH`；否则顺延前向。
+3. **无诊断，自描述失败。** 失败的信封自陈 `stage_specific.fix_owner`（无需诊断事件）。合法指名且其输入可用 → 自动重建 `DISPATCH`；输入不可用 → 顺延前向；谁都没指、指了自己、或指到输入闭包之外 → 升级（§5.4）。
 
-**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`skipped_reason`、`root_cause`、`confidence`、`advisory`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（仿真失败保持歧义；下一轮重新派发 triage）。否则内核追加一条 `diagnosis`（`source: triage`），`attribution` 取 `root_cause`，`fix_owner` 取 `route.TRIAGE_ROOT_CAUSE[root_cause]`——*除非*映射到 `ESCALATE` 哨兵（`root_cause == simulation`），此时省略 `fix_owner`（处置会将这条自指归因升级）。`confidence` 原样落账；决定它能否自动路由的是可靠性门，不是收割分支。
+**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`skipped_reason`、`root_cause`、`confidence`、`advisory`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（仿真失败保持歧义；下一轮重新派发 triage）。否则内核追加一条 `diagnosis`（`source: triage`），`attribution` 取 `root_cause`，`fix_owner` 就取同一个 `root_cause`，前提是它指名的规则落在 `simulation` 的输入闭包内。自指归因（`root_cause == simulation`）按构造落在闭包之外，于是省略 `fix_owner`，由处置将它升级。`confidence` 原样落账；决定它能否自动路由的是可靠性门，不是收割分支。
 
-### 5.4 失败路由（`route.py`）
+### 5.4 失败归因
 
-全部静态失败→目标选择住在 `route.py`——一个纯的、无状态的同级模块，组合进 `schedule.py`（自描述失败）与 `kernel.py`（triage 归因）。它是四张封闭枚举映射表的**唯一居所**；任何其他文件（SKILL.md、本文档、schema）不得复述：
+**失败的那个阶段说出该谁动手；内核只校验这个指名是否合法。** `status == "fail"` 时，信封可以携带 `stage_specific.fix_owner`:一个规则名，由刚读过原始工具输出的那一方写下。没有表，也刻意没有枚举——一组在失败发生之前就固定下来的标签，只能表达被枚举过的东西；而症状的位置不是病因的位置(一条缺失的 SGDC 声明，报出来的是"RTL 里用到那个未被声明的对象"的行，而该改的是那份 SGDC，任何按规则名查表都裁决不了这件事)。
 
-- `PA_CATEGORY` — `power-analysis` tooling 失败的 `failures[0].category` → 拥有它的上游生产者。
-- `FIXED_TARGET` — 总是路由到单一固定祖先的规则（`simulation-plan → specification`）。
-- `LINT_CATEGORY` — `lint-cdc` 失败的类别 → 该输入的生产者（坏 SGDC 种子路由到 `specification`；坏 RTL 路由到 `rtl-design`）。
-- `TRIAGE_ROOT_CAUSE` — triage 的 `root_cause` → 返工目标（`simulation → ESCALATE`）。
+三种处置是对这一个字段的判断，不是一张映射:
 
-`route.route` 对输入全域：任何超出已知枚举的值落入具名 `unrouted*` `ESCALATE`，绝不 `KeyError`，绝不静默丢弃。确切映射与规则标识见 `framework/scripts/route.py` 和 `tests/unit/test_route.py`（穷举式行为规格）。
+- **谁都没指。** 阶段读了自己的失败仍然无法归因，那就由人决定。唯一的例外是 `simulation`，它背后有一个更深的分析器:它未归因的失败会派发 `simulation-triage`(分级的 L1 日志/代码推理，必要时 L2 受控实验)，由后者的收割铸出诊断。
+- **指了自己。** 阶段从这里能修的缺陷是在**本轮 run 之内**修掉的——`rtl-design` 重派子作者、`lint-cdc` 就地加 waiver——所以压根不会以失败抵达这里。指自己因而意味着站内补救已尽，而自动重建会把失败规则派给它自己。
+- **指了自己输入闭包内的规则**(`rules.input_closure`，那张派生出来的图——与 `kernel.py diagnose` 对人工归因所用的是同一条校验)。输入可用 → 自动重建 `DISPATCH`；不可用 → 顺延前向。指到闭包之外意味着阶段归咎了自己并不消费的东西，升级。
+
+指名同一个 owner 的每个新鲜失败会被并进同一次派发，因此同轮失败的另一个阶段绝不会被静默丢弃(§3.3)。
+
+**这么做的代价与理由。** 阶段自陈的归因不过置信度门，所以读诊断字段的 `schedule._reliable` 看不到它。替代它的有两条，都比一张表给的强:闭包校验是机器强制的，而原来那条无条件的 `ppa → rtl-design` 映射**没有任何校验**；以及支撑这次指名的 `fail_reason` 就在同一份信封里，归因因此有作者、可审计——一张表的默认值没有作者。
 
 ### 5.5 签核闭合
 
@@ -435,7 +436,7 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 
 ### 6.2 `failure_kind` 信封义务
 
-`synthesis`、`power-analysis`、`timing-analysis` 多一条义务：`status == "fail"` 时必填 `stage_specific.failure_kind ∈ {infra, tooling, ppa}`。`infra`（工具压根没起来）与无法路由的 `tooling` 走升级；`ppa`（超出 PPA 门限）路由到 `rtl-design`；`power-analysis` 的 `tooling` 失败还可以填 `failures[]`，其 `failures[0].category` 由 `route.py` 映射到拥有该输入的生产者（§5.4）。`failure_kind` 缺失或枚举值不对会在收割时挂在 schema 校验上，落为 `blocked`，绝不是 `fail`。
+`synthesis`、`power-analysis`、`timing-analysis` 多一条义务：`status == "fail"` 时必填 `stage_specific.failure_kind ∈ {infra, tooling, ppa}`。它描述的是这次失败属于哪一**种**，供读信封的人与修复者用；它不选择任何目标（选目标是 §5.4 从 `fix_owner` 做的事）。`failure_kind` 缺失或枚举值不对会在收割时挂在 schema 校验上，落为 `blocked`，绝不是 `fail`。
 
 ### 6.3 主线程 skill
 

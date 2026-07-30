@@ -16,7 +16,11 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _envelope(module, *, status, stage_specific, artifacts) -> dict:
+def _envelope(module, *, status, stage_specific, artifacts, fix_owner=None) -> dict:
+    """fix_owner rides on a failure only, and only when the caller named one: its ABSENCE is
+    what decide reads as "this stage cannot tell", so it must never serialize empty."""
+    if status == "fail" and fix_owner:
+        stage_specific = {**stage_specific, "fix_owner": fix_owner}
     return {
         "stage": STAGE,
         "module": module,
@@ -44,7 +48,9 @@ def enumerate_artifacts(workdir) -> list:
     return [{"path": p} for p in fixed if (workdir / p).is_file()]
 
 
-def build_result(workdir, module, *, waived, status, revision, fail_reason=None) -> int:
+def build_result(
+    workdir, module, *, waived, status, revision, fail_reason=None, fix_owner=None
+) -> int:
     """Assemble the lean simulation-plan result.json from the workdir.
 
     pass path: re-derives the plan-adequacy gate verdict (gate_verdict over the on-disk
@@ -101,6 +107,7 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
                 status="fail",
                 stage_specific=ss,
                 artifacts=enumerate_artifacts(workdir),
+                fix_owner=fix_owner,
             ),
         )
         return 0
@@ -139,6 +146,7 @@ def build_result(workdir, module, *, waived, status, revision, fail_reason=None)
             status="pass" if gate_ok else "fail",
             stage_specific=ss,
             artifacts=artifacts,
+            fix_owner=fix_owner,
         ),
     )
     return 0
@@ -167,7 +175,7 @@ def _waived_error(waived) -> str | None:
 
 
 def finalize(
-    workdir, module, *, waived_json, status, revision, fail_reason=None
+    workdir, module, *, waived_json, status, revision, fail_reason=None, fix_owner=None
 ) -> int:
     """Parse the human-gate outcome args, then build_result. exit 0 = result.json written
     (pass or fail); exit 2 = BLOCKED (bad --waived JSON/content, empty --fail-reason, or
@@ -207,6 +215,7 @@ def finalize(
             status=status,
             revision=revision,
             fail_reason=fail_reason,
+            fix_owner=fix_owner,
         )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[simplan finalize] BLOCKED: {exc}", file=sys.stderr)

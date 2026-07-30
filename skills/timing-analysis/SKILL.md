@@ -84,8 +84,10 @@ Run the parser's finalize subcommand; do not run the parser separately or hand-a
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
-  --workdir {workdir} --module <module> --top <top_module>
+  --workdir {workdir} --module <module> --top <top_module> [--fix-owner <rule>]
 ```
+
+**Naming the fix owner.** On a failure, add `--fix-owner <rule>`: the rule that must act. You read the tool output, so you are the only party that can say whose artifact is at fault, and nothing downstream re-derives it. Name the producer of the input you found broken. When your own environment broke, or you read the evidence and still cannot tell, omit it: an unnamed owner is how a human gets called in, and a guess spends a full rework round on a stage that cannot fix it.
 
 `finalize` reuses the parser's timing gate (classifies each direction on the report's `(MET)`/`(VIOLATED)` marker — never the displayed number — and judges pass = setup MET and hold MET), derives the reproducibility header (tool from the report `Version:` line / lib_db from `config.tcl` / clock from the synthesis SDC), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 

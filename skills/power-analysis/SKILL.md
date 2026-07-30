@@ -93,14 +93,14 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
   | TB filelist roots (`<tb_env>/...`) or local `power_filelist.f` | `tb_uvm` |
   | no named file / VCS flag / `UVM_HOME` / license error | `tooling` |
 
-  Write `status=fail` + `failure_kind` (`infra` for missing-reference/license; else `tooling`) + `failures[].{phase, category, error_summary}` + `fail_reason`. **Write only the failure facts (`phase` / `category`); do NOT assign any rework or routing target — target selection is owned downstream, outside this stage.**
+  Write `status=fail` + `failure_kind` (`infra` for missing-reference/license; else `tooling`) + `failures[].{phase, category, error_summary}` + `fail_reason`, and pass `--fix-owner <rule>`: the rule that must act. **You are the only party that read the log, so you are the one who can say whose artifact is at fault.** Name the producer of the input you found broken (`netlist`/`sdf` come from `synthesis`; `tb_uvm`/`gls_runtime`/`saif_dump`/`ptpx_data` from `simulation`; `plan` from `simulation-plan`; a `power_mw` miss is normally `rtl-design`, but check `<ppa>/ppa.json` is well formed before blaming the implementation). When your own environment broke, or you read the log and still cannot tell, omit it: an unnamed owner is how a human gets called in, and guessing wastes a full rework round on the wrong stage.
 
 - **`make` exited 0** → run the parser's finalize subcommand; do not run the parser separately or hand-assemble the envelope:
 
   ```bash
   python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
     --workdir {workdir} --module <module> \
-    --plan <scaffold>
+    --scaffold <scaffold> [--fix-owner <rule>]
   ```
 
   `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against the targets it reads itself from the injected `ppa` location — an absent file skips the gate), folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.

@@ -52,7 +52,9 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     from power import result
 
     targets = _read_ppa_targets(a.workdir, {"power_mw"})
-    return result.finalize(a.workdir, a.module, a.scaffold, json.dumps(targets))
+    return result.finalize(
+        a.workdir, a.module, a.scaffold, json.dumps(targets), a.fix_owner
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,6 +82,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--scaffold",
         required=True,
         help="the simulation-plan workdir (power-scenarios.json is read from it)",
+    )
+    sp.add_argument(
+        "--fix-owner",
+        default=None,
+        help="on a failure, the rule that must act (you name it; the reports cannot)",
     )
     sp.set_defaults(func=_cmd_finalize)
 

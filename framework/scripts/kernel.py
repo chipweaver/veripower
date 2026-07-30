@@ -304,21 +304,19 @@ def _derive_triage(env, dispatch):
     """Triage reap (§2 triage contract): complete -> (verdict, None, [], diagnosis-event);
     skipped/crash -> blocked, no diagnosis (the sim failure stays ambiguous; next round
     re-dispatches triage, §3.3). Confidence lands as-is (P4) — reliability is decide's
-    gate, not a reap branch. The root_cause map is route.TRIAGE_ROOT_CAUSE — route.py is
-    the SINGLE home of failure→target maps; its ESCALATE sentinel means 'no auto
-    fix_owner' here (self-pointing: attribution recorded, fix_owner omitted — A3).
+    gate, not a reap branch. `root_cause` IS the rule name, so no map decodes it: it
+    becomes `fix_owner` when it is a legal auto-rebuild target, and a self-pointing
+    attribution (root_cause == the failing rule) is outside simulation's input closure by
+    construction, so it lands recorded-but-unroutable (A3).
     `dispatch` is THIS run's own dispatch event, located once in _derive_verdict (not
     the latest triage dispatch, which would mislabel subject.outcome_run when
     re-reaping an older run — F8b)."""
     import uuid
 
-    import route
-
     ss = env.get("stage_specific", {})
     if ss.get("analysis_state") != "complete":
         return "blocked", "skipped_reason", [], None
     root_cause = ss.get("root_cause")
-    target = route.TRIAGE_ROOT_CAUSE.get(root_cause, route.ESCALATE)
     sim_hit = dispatch["params"].get("sim_run")
     # Structural correlates live in the ADVISORY tier — stage_specific is
     # additionalProperties:false with no evidence/fix_locus keys, so the old
@@ -352,10 +350,8 @@ def _derive_triage(env, dispatch):
         "confidence": ss.get("confidence"),
         "source": "triage",
     }
-    if target != route.ESCALATE:
-        diagnosis["fix_owner"] = (
-            target  # legality: target ∈ input_closure("simulation")
-        )
+    if root_cause in rules.input_closure("simulation"):
+        diagnosis["fix_owner"] = root_cause
     # A complete triage is never a fail (spec §2 triage 无独立 fail 态): it mints no proof,
     # so its verdict is a plain non-blocked "pass" regardless of env["status"] (the envelope
     # schema permits status=fail, but a triage fail outcome would crash repair's proof scan).

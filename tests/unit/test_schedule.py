@@ -159,34 +159,31 @@ def test_blocked_goes_forward_no_escalate(tmp_path, monkeypatch):
     assert a["action"] == "DISPATCH" and a["rule"] == "specification"
 
 
-def test_fresh_lintcdc_self_describing_failure_routes_by_category(
+def test_fresh_selfdescribing_failure_dispatches_the_owner_its_envelope_named(
     tmp_path, monkeypatch
 ):
-    # Fix round 1: the self-describing-failure branch — route.route composed inline on
-    # stage_specific read from the failed rule's CANONICAL result.json (_route_kwargs).
-    # lint-cdc fresh fail, failures[0].category=rtl_cdc -> input-provenance target
-    # rtl-design (U4), naming the lint-cdc failure it answers in caused_by.
+    # The self-describing-failure branch reads `fix_owner` out of the failed rule's CANONICAL
+    # result.json: the party that read the raw tool output names who must act, and nothing
+    # re-derives that from a classification. Naming nobody is the stage saying it cannot tell.
     monkeypatch.chdir(tmp_path)
     _mk("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
     _fail("m", "lint-cdc", 1)  # fresh: closure (spec+rtl) valid, inputs match disk
-    # before the canonical result.json exists, route gets failures=None -> ESCALATE
+    # before the canonical result.json exists there is no fix_owner to read -> ESCALATE
     # (proves the branch genuinely reads the file, not a vacuous pass)
     pre = schedule.decide("m")
-    # reason now prefixes the failed rule (F-4 disambiguation)
-    assert pre["action"] == "ESCALATE" and pre["reason"] == "lint-cdc: lint_no_category"
+    assert pre["action"] == "ESCALATE"
+    assert pre["reason"] == "lint-cdc: envelope named no fix_owner"
     _mk(
         "m",
         "Design/lint-cdc/result.json",
         json.dumps(
             {
                 "stage_specific": {
-                    "failure_kind": "tooling",
-                    "failures": [
-                        {"category": "rtl_cdc", "error_summary": "clock crossing"}
-                    ],
-                    "fail_reason": "cdc",
+                    "failure_kind": "cdc",
+                    "fix_owner": "rtl-design",
+                    "fail_reason": "clock crossing without a synchronizer",
                 }
             }
         ),
@@ -196,27 +193,77 @@ def test_fresh_lintcdc_self_describing_failure_routes_by_category(
     assert a["caused_by"] == [["lint-cdc", 1]]
 
 
-def test_fresh_rtldesign_spec_locus_high_dispatches_specification(
-    tmp_path, monkeypatch
-):
-    # D4: _route_kwargs now feeds stage_specific.semantic_gate (D2's write) into
-    # route.route (D3's rtl-design branch) — a fresh rtl-design fail whose semantic
-    # gate pins a high-confidence spec-locus intent defect routes upstream to
-    # specification instead of falling into the unrouted escalate.
+def test_fresh_failure_naming_itself_escalates(tmp_path, monkeypatch):
+    """A defect the stage could fix from here is fixed WITHIN its run, so it never arrives as
+    a failure. Naming itself therefore means the in-stage remedy is exhausted, and an
+    auto-rebuild would dispatch the failing rule at itself."""
+    monkeypatch.chdir(tmp_path)
+    _mk("m", "brainstorm.md", "b1")
+    _valid("m", "specification", 1)
+    _valid("m", "rtl-design", 1)
+    _fail("m", "lint-cdc", 1)
+    _mk(
+        "m",
+        "Design/lint-cdc/result.json",
+        json.dumps(
+            {
+                "stage_specific": {
+                    "fix_owner": "lint-cdc",
+                    "fail_reason": "false positive needs a waiver I already carry",
+                }
+            }
+        ),
+    )
+    a = schedule.decide("m")
+    assert a["action"] == "ESCALATE"
+    assert "fix_owner is itself" in a["reason"]
+
+
+def test_fresh_failure_naming_outside_its_closure_escalates(tmp_path, monkeypatch):
+    """The envelope names the owner; the kernel still checks the naming is legal. rules.py's
+    derived input closure is the sole authority, so a stage cannot blame something it does
+    not consume."""
+    monkeypatch.chdir(tmp_path)
+    _mk("m", "brainstorm.md", "b1")
+    _valid("m", "specification", 1)
+    _valid("m", "rtl-design", 1)
+    _fail("m", "lint-cdc", 1)
+    _mk(
+        "m",
+        "Design/lint-cdc/result.json",
+        json.dumps(
+            {
+                "stage_specific": {
+                    "fix_owner": "power-analysis",  # not in lint-cdc's input closure
+                    "fail_reason": "blaming a stage it never consumes",
+                }
+            }
+        ),
+    )
+    a = schedule.decide("m")
+    assert a["action"] == "ESCALATE"
+    assert "outside its input closure" in a["reason"]
+
+
+def test_fresh_rtldesign_spec_locus_dispatches_specification(tmp_path, monkeypatch):
+    # rtl-design's semantic gate finds a spec-rooted intent defect and its envelope says so
+    # in fix_owner. The gate's own loci/confidence stay in the envelope as the account behind
+    # that naming; nothing outside the stage re-derives the target from them.
     monkeypatch.chdir(tmp_path)
     _mk("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _fail("m", "rtl-design", 1)  # fresh: input closure (specification) valid
-    # before the canonical result.json carries semantic_gate, route sees loci=None ->
-    # ESCALATE (proves the branch genuinely reads the file, not a vacuous pass)
+    # before the canonical result.json exists there is no fix_owner to read -> ESCALATE
     pre = schedule.decide("m")
-    assert pre["action"] == "ESCALATE" and pre["reason"] == "rtl-design: rtl_unrouted"
+    assert pre["action"] == "ESCALATE"
+    assert pre["reason"] == "rtl-design: envelope named no fix_owner"
     _mk(
         "m",
         "Design/rtl-design/result.json",
         json.dumps(
             {
                 "stage_specific": {
+                    "fix_owner": "specification",
                     "semantic_gate": {
                         "loci": {"spec": ["c1"], "rtl": []},
                         "spec_confidence": "high",

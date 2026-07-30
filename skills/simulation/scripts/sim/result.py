@@ -28,7 +28,11 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _envelope(module, *, status, stage_specific, artifacts) -> dict:
+def _envelope(module, *, status, stage_specific, artifacts, fix_owner=None) -> dict:
+    """fix_owner rides on a failure only, and only when the caller named one: its ABSENCE is
+    what decide reads as "this stage cannot tell", so it must never serialize empty."""
+    if status == "fail" and fix_owner:
+        stage_specific = {**stage_specific, "fix_owner": fix_owner}
     return {
         "stage": STAGE,
         "module": module,
@@ -81,6 +85,7 @@ def build_result(
     verify_verdict=None,
     fail_reason=None,
     observed_phase=None,
+    fix_owner=None,
 ) -> int:
     """Assemble the lean simulation result.json for the given exit phase.
     final -> re-derive compile/coverage from on-disk artifacts (pure thin_d1/coverage_gate),
@@ -99,7 +104,13 @@ def build_result(
         )
         _write_result(
             workdir,
-            _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
+            _envelope(
+                module,
+                status="fail",
+                stage_specific=ss,
+                artifacts=artifacts,
+                fix_owner=fix_owner,
+            ),
         )
         return 0
 
@@ -113,7 +124,13 @@ def build_result(
         }
         _write_result(
             workdir,
-            _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
+            _envelope(
+                module,
+                status="fail",
+                stage_specific=ss,
+                artifacts=artifacts,
+                fix_owner=fix_owner,
+            ),
         )
         return 0
     cases = read_case_counts(workdir)
@@ -272,6 +289,7 @@ def finalize(
     verify_verdict=None,
     fail_reason=None,
     observed_phase=None,
+    fix_owner=None,
 ) -> int:
     """Assemble the lean simulation result.json. exit 0 = result.json written (pass or fail);
     exit 2 = BLOCKED (any internal raise) — never conflated with status=fail. (Owns the policy
@@ -288,6 +306,7 @@ def finalize(
             verify_verdict=verify_verdict,
             fail_reason=fail_reason,
             observed_phase=observed_phase,
+            fix_owner=fix_owner,
         )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[sim finalize] FAIL=internal {exc}", file=sys.stderr)

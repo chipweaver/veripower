@@ -453,12 +453,15 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
     return [{"path": pth} for pth in candidates if (workdir / pth).exists()]
 
 
-def build_result(workdir, module, plan_path, targets) -> int:
+def build_result(workdir, module, plan_path, targets, fix_owner=None) -> int:
     """Assemble the lean power-analysis result.json. Reuses run() for the PT-PX gate
     (in-process, per-scenario assembly verbatim); its payload ALREADY carries the
     stage_specific fields + verdict, so this is thin — fold the fields through, set
     status/failure_kind/fail_reason, enumerate artifacts, write the envelope.
-    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED)."""
+    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED).
+
+    fix_owner is the one judgment this verb cannot derive: which rule must act. The reports
+    say what failed; whose artifact is at fault is the caller's reading."""
     workdir = Path(workdir)
 
     rc, data = run(plan_path, workdir, targets)  # reuse the gate verbatim
@@ -477,6 +480,9 @@ def build_result(workdir, module, plan_path, targets) -> int:
     else:
         status = "pass"
 
+    if status == "fail" and fix_owner:
+        ss["fix_owner"] = fix_owner
+
     _write_result(
         workdir,
         _envelope(
@@ -489,14 +495,14 @@ def build_result(workdir, module, plan_path, targets) -> int:
     return 0
 
 
-def finalize(workdir, module, scaffold, ppa_targets) -> int:
+def finalize(workdir, module, scaffold, ppa_targets, fix_owner=None) -> int:
     """Parse PT-PX reports, judge the power_mw PPA gate, write the lean result.json.
     exit 0 = written (pass or fail); exit 2 = BLOCKED (any internal raise) — never
     conflated with status=fail. (Owns the policy the deleted main() finalize branch had.)
     `scaffold` is the simulation-plan workdir (build_result's `plan_path`);
     `ppa_targets` is the ppa_targets JSON (build_result's `targets`)."""
     try:
-        return build_result(workdir, module, scaffold, ppa_targets)
+        return build_result(workdir, module, scaffold, ppa_targets, fix_owner)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[power finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2

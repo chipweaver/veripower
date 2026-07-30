@@ -246,8 +246,10 @@ semantic-review wave have completed (finalize assembles their on-disk outputs; i
 loop or the 4.4 wave):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir} --module {module} --top <top_module> --manifest <manifest>
+python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir} --module {module} --top <top_module> --manifest <manifest> [--fix-owner <rule>]
 ```
+
+**Naming the fix owner.** On a failure, add `--fix-owner <rule>`. A defect you can fix from here you already fixed, by re-dispatching the child; so a failure means either the semantic gate found the defect in the spec (`--fix-owner specification`, and the gate's `loci`/`spec_confidence` stay in the envelope as the account behind it) or the remedy is exhausted and it is yours (name yourself, which calls a human in). Omit it when you read the child reports and still cannot tell.
 
 `finalize` re-derives the exit verdict in-process over the converged sidecars (`status` + `fail_reason` +
 `artifacts[]`, verbatim), schema-validates `semantic-review.json`, and folds its gate verdict in as

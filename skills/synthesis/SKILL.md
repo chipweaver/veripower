@@ -43,7 +43,7 @@ Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream 
 | `<sdc>/constraints/<TOP>.sdc` | SDC | SDC source of truth — bootstrap copies it to the working `constraints.sdc`. Required: it is what makes the timing numbers mean anything, so bootstrap fails closed without it rather than deploying a template that would constrain a clock port the design does not have. |
 | `LIB_DB` (env) | std cell Liberty `.db` path | Set before any run (Step 3) — `env.sh` / Makefile fail loudly when unset. |
 
-When `dispatch.json` carries a `caused_by`, read each envelope it names and the additional context in that envelope's own directory; field names come from the failing stage's `result.schema.json` (e.g. `failures[].{phase, category, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. PPA targets (`area_um2` / `timing_slack_ns` dimensions) are read by `synthesis finalize` itself from the injected `ppa` location — nothing is injected in the prompt.
+When `dispatch.json` carries a `caused_by`, read each envelope it names and the additional context in that envelope's own directory; field names come from the failing stage's `result.schema.json` (e.g. `failures[].{phase, error_summary}`), and the content drives the fix scope for this round — the specific read scope is not enumerated ahead of time. PPA targets (`area_um2` / `timing_slack_ns` dimensions) are read by `synthesis finalize` itself from the injected `ppa` location — nothing is injected in the prompt.
 
 ## Output Artifacts
 
@@ -62,6 +62,14 @@ When `dispatch.json` carries a `caused_by`, read each envelope it names and the 
 ### Step 1: Read inputs and determine scope
 
 Pre-check the external references: `<rtl>/rtl-files.json` (naming ≥1 RTL file), `<annotations>/constraint-annotations.json` and `<sdc>/constraints/<TOP>.sdc` are all present. If any is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if `rtl-files.json` names no files, write `fail_reason="external reference missing: <rtl>/rtl-files.json (no RTL entries)"` and exit.
+
+**Naming the fix owner on a PPA miss.** A PPA gate compares a measured value against a target,
+and either side can be wrong. Before you pass `--fix-owner rtl-design`, read `<ppa>/ppa.json` and
+check the target itself is well formed: a `dim` whose unit disagrees with the number stored in it
+(an `area_um2` target holding a NAND2 gate count, say) makes a conforming design look
+over-budget, and rebuilding correct RTL against it cannot converge. When the target is what is
+malformed, name `specification`. When you read both sides and still cannot tell, omit the flag
+and let a human decide.
 
 Determine this round's fix scope from the first available source:
 `{workdir}/dispatch.json` names this round's scope. When it carries either narrowing key, the scope is the union of both:
@@ -115,7 +123,8 @@ Run the parser's finalize subcommand; do not hand-assemble the envelope or extra
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
-  --workdir {workdir} --module <module> --top <top_module>
+  --workdir {workdir} --module <module> --top <top_module> \
+  [--fix-owner <rule>]
 ```
 
 `finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`) against the targets at the injected `ppa` location, derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.

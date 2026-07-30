@@ -171,10 +171,16 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def build_result(workdir, module, top, area_target, slack_target) -> int:
+def build_result(
+    workdir, module, top, area_target, slack_target, fix_owner=None
+) -> int:
     """Assemble the lean synthesis result.json. Reuses run() for the PPA gate
     (in-process), then derives the header + artifacts + writes the envelope.
-    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED)."""
+    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED).
+
+    fix_owner is the one judgment this verb cannot derive: which rule must act. The reports
+    say what missed and by how much; whether that means the RTL is wrong or the target is
+    malformed is read off the targets themselves, so the caller names it."""
     workdir = Path(workdir)
     reports = workdir / "reports"
 
@@ -188,6 +194,8 @@ def build_result(workdir, module, top, area_target, slack_target) -> int:
             "fail_reason": _FAIL_REASON[token],
             "failure_kind": "tooling",
         }
+        if fix_owner:
+            ss["fix_owner"] = fix_owner
         _write_result(
             workdir,
             _envelope(
@@ -217,6 +225,8 @@ def build_result(workdir, module, top, area_target, slack_target) -> int:
     if status == "fail":
         ss["failure_kind"] = "ppa"
         ss["fail_reason"] = "PPA target(s) not met"
+        if fix_owner:
+            ss["fix_owner"] = fix_owner
     _write_result(
         workdir,
         _envelope(
@@ -276,12 +286,12 @@ def enumerate_artifacts(workdir, top: str) -> list[dict]:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def finalize(workdir, module, top, area_target, slack_target) -> int:
+def finalize(workdir, module, top, area_target, slack_target, fix_owner=None) -> int:
     """Parse DC reports, judge PPA, write the lean result.json. exit 0 = written
     (pass or fail); exit 2 = BLOCKED (any internal raise) — never conflated with
     status=fail. (Owns the policy the deleted main() finalize branch had.)"""
     try:
-        return build_result(workdir, module, top, area_target, slack_target)
+        return build_result(workdir, module, top, area_target, slack_target, fix_owner)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[synthesis finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2

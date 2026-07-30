@@ -77,31 +77,30 @@ artifact file with a path in `artifacts[]`.
 The family has four members: `fail_reason` (universal) and three structured classifiers.
 
 `fail_reason` — always `stage_specific.fail_reason` — is the one-line free-text failure
-narrative, required on every `status=fail` in all nine stages. It is read by human debuggers,
-by `simulation-triage`, and by `route.py` as `reason_hint`.
+narrative, required on every `status=fail` in all nine stages. It is read by human debuggers, by
+`simulation-triage`, and by the fix owner as the account behind the naming that woke it.
 
-The three structured classifiers follow one rule:
-
-> A stage carries a structured failure-classification field iff its rework-routing target is a
-> non-constant function of the failure type; the field's richness matches the routing function's.
-
-They are three distinct axes, not renamings of one:
+**Classification and attribution are different questions, and only one of them is a field.**
+`fix_owner` answers *who must act*: a rule name the stage writes from what it read in the raw
+tool output, checked against the derived input closure and nothing else (`ARCHITECTURE.md §5.4`).
+It is deliberately not an enum. A classifier answers *what kind of failure this was*, for the
+human and the fix owner reading the envelope; it selects no target:
 
 | Field | Axis | Stages |
 |---|---|---|
-| `failure_kind` | root-cause class | synthesis, timing-analysis, power-analysis |
-| `failures[].category` | upstream attribution | power-analysis |
+| `failure_kind` | what kind of check failed | lint-cdc, synthesis, timing-analysis, power-analysis |
+| `failures[].category` | which part of this stage's own flow broke | power-analysis |
 | `failure_phase` | pipeline position | simulation |
 
-The per-stage `failure_kind` obligation and its `{infra, tooling, ppa}` enum semantics live in
-`ARCHITECTURE.md §6.2`; this section classifies the family, it does not restate the obligation.
-The remaining stages carry no classifier: `lint-cdc` and `simulation-plan` route to a fixed
-target, and `specification` / `rtl-design` have no rework target — with a constant or absent
-target there is nothing to classify, so `fail_reason` alone suffices.
+A classifier earns its place only where the answer is decidable by the deriving code. `lint-cdc`
+reads `failure_kind` off the SpyGlass rule family, which reliably says whether a declaration is
+missing or a crossing is genuinely defective; it does **not** say whose artifact must change,
+because a missing-declaration violation is reported at the RTL line that used the undeclared
+object while the fix belongs in the SGDC. `specification` carries no classifier and no
+`fix_owner`: its input closure is empty, so it could only ever name itself.
 
-The failure-**detail** payload (`violations[]`, `failures[]` beyond `.category`,
-`failing_cases[]` / `coverage_gaps[]`) is a separate concern: consumed by the rework target to
-scope its fix list, not by the router to choose one.
+The failure-**detail** payload (`violations[]`, `failures[]`, `failing_cases[]` /
+`coverage_gaps[]`) is a separate concern again: consumed by the fix owner to scope its fix list.
 
 **Note:** §§4–7 (test-question checklist, worked examples, the "what does not belong" list, compliance checklist) are intentionally absent — folded into §3 or now enforced by the schema and its tests. Section numbers are preserved to match the design-doc template positions.
 

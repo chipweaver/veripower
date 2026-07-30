@@ -35,7 +35,7 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from lintcdc import result
 
-    return result.finalize(a.workdir, a.module, a.top)
+    return result.finalize(a.workdir, a.module, a.top, a.fix_owner)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -64,6 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--top",
         default=None,
         help="top module; defaults to the report header / env.sh $TOP",
+    )
+    sp.add_argument(
+        "--fix-owner",
+        default=None,
+        help="on a failure, the rule that must act (you name it; the report cannot)",
     )
     sp.set_defaults(func=_cmd_finalize)
 

@@ -57,6 +57,7 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         status=a.status,
         revision=a.revision,
         fail_reason=a.fail_reason,
+        fix_owner=a.fix_owner,
     )
 
 
@@ -120,6 +121,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="on --status fail: the one-line failure narrative (early-fail entry); "
         "default = the user-reject wording",
+    )
+    sp.add_argument(
+        "--fix-owner",
+        default=None,
+        help="on a failure, the rule that must act (you name it; no gate can derive it)",
     )
     sp.set_defaults(func=_cmd_finalize)
 

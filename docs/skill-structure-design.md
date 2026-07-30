@@ -6,9 +6,18 @@
 
 VeriPower's DAG topology and dispatch logic are owned exclusively by `design-flow`.
 Individual stage skills, in contrast, describe a bounded operation: what they receive, what
-they produce, and what they decide internally. They do not describe DAG position, who calls
-them, or how their failures are routed. DAG-agnostic descriptions stay composable and
-replaceable — topology can evolve without touching stage content.
+they produce, and what they decide internally. They do not describe DAG position or who calls
+them. DAG-agnostic descriptions stay composable and replaceable — topology can evolve without
+touching stage content.
+
+**One deliberate exception: a failing stage names its own `fix_owner`.** Attributing a failure
+is not describing topology, it is reporting what the stage found: it read the raw tool output,
+so it is the only party that knows whose artifact is at fault, and the symptom's location does
+not reveal that. The earlier arrangement had stages emit an input-provenance *label* instead
+(`netlist`, `sgdc_seed`) for something outside to decode, which named the same upstream one
+indirection later while losing everything the stage actually understood. A stage still decides
+nothing about scheduling: it names a rule, and `schedule.py` checks that naming against the
+derived input closure before anything is dispatched.
 
 ### Principle — describe self, not orchestration
 

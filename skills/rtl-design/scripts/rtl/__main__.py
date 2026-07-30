@@ -56,7 +56,9 @@ def _cmd_validate_review(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from rtl import result
 
-    return result.finalize(a.workdir, a.module, a.top, a.manifest, a.fail_reason)
+    return result.finalize(
+        a.workdir, a.module, a.top, a.manifest, a.fail_reason, a.fix_owner
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -108,6 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="one-line reason for an early exit no on-disk state can express (a malformed "
         "reaped-children.json or sidecar); writes the status=fail envelope directly",
+    )
+    sp.add_argument(
+        "--fix-owner",
+        default=None,
+        help="on a failure, the rule that must act (you name it; no gate can derive it)",
     )
     sp.set_defaults(func=_cmd_finalize)
 

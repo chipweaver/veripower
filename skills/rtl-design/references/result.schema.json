@@ -15,6 +15,7 @@
         "stage_specific": {
           "type": "object",
           "properties": {
+            "fix_owner": {"type": "string", "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."},
             "fail_reason": {
               "type": "string",
               "minLength": 1

@@ -57,46 +57,42 @@ def _write(workdir: Path, env: dict) -> None:
     )
 
 
-# SpyGlass CDC/lint rule family -> input-provenance category (U4). Constraint/setup rules
-# implicate the SGDC seed (specification); crossing rules implicate the RTL (rtl-design).
-# Prefixes confirmed against SpyGlass_vL-2016.06: Ac_unsync01 (F1 fixture, cdc_smoke
-# a->q crossing, policy clock-reset, goal cdc/cdc_verify_struct) -> rtl_cdc; Clock_info03a
-# + Setup_port01 (undeclared-clock experiment: clk2 used in RTL but never `clock -name`d
-# in the SGDC, policy clock-reset, goal cdc/cdc_setup_check) -> sgdc_seed.
-_RULE_CATEGORY = {
-    "Clock_": "sgdc_seed",
-    "Reset_": "sgdc_seed",
-    "SGDC_": "sgdc_seed",
-    "Ac_unclocked": "sgdc_seed",
-    "Setup_": "sgdc_seed",
-    "Ac_unsync": "rtl_cdc",
-    "Ac_conv": "rtl_cdc",
-    "Ac_glitch": "rtl_cdc",
-    "Ac_sync": "rtl_cdc",
-    "Reconvergence": "rtl_cdc",
-}
-
-# Coarse failure_kind bucket for a given failures[0].category (Step 1's enum has 4
-# values vs. category's 5: sgdc_seed and constraint are both specification's fault,
-# so both fold into "constraint").
-_FAILURE_KIND_OF_CATEGORY = {
-    "sgdc_seed": "constraint",
-    "constraint": "constraint",
-    "rtl_cdc": "cdc",
-    "lint_rtl": "lint",
-    "tooling": "tooling",
+# SpyGlass rule family -> which KIND of check failed. Constraint/setup families fire when a
+# declaration is missing; crossing families fire on a real structural defect. Confirmed
+# against SpyGlass_vL-2016.06: Ac_unsync01 (cdc_smoke a->q crossing, policy clock-reset,
+# goal cdc/cdc_verify_struct) -> cdc; Clock_info03a + Setup_port01 (undeclared-clock
+# experiment: clk2 used in RTL but never `clock -name`d in the SGDC, goal
+# cdc/cdc_setup_check) -> constraint.
+#
+# This answers "what kind of check failed", which a rule name reliably decides. It does NOT
+# answer "whose artifact must change": a missing-declaration violation is REPORTED at the RTL
+# line that used the undeclared object while the fix belongs in the SGDC, and no prefix table
+# can adjudicate that. That reading is the agent's, and it lands in `fix_owner`.
+_RULE_FAILURE_KIND = {
+    "Clock_": "constraint",
+    "Reset_": "constraint",
+    "SGDC_": "constraint",
+    "Ac_unclocked": "constraint",
+    "Setup_": "constraint",
+    "Ac_unsync": "cdc",
+    "Ac_conv": "cdc",
+    "Ac_glitch": "cdc",
+    "Ac_sync": "cdc",
+    "Reconvergence": "cdc",
 }
 
 
-def _categorize(violations: list[dict]) -> tuple[str, dict | None]:
-    """Return (category, matched_violation) — the violation whose rule prefix drove
-    the category, so failures[0].rule can name IT (not merely violations[0], which
-    may be a different, unmatched rule). None when nothing matched (default path)."""
+def _classify(violations: list[dict]) -> tuple[str, dict | None]:
+    """Return (failure_kind, matched_violation) — the violation whose rule prefix decided the
+    kind, so failures[0].rule can name IT (not merely violations[0], which may be a different,
+    unmatched rule). An unmatched set falls to "lint", which is what it descriptively is: an
+    error-severity lint finding. Unlike the retired owner-guessing default, this one implies
+    nothing about who must fix it."""
     for v in violations:
-        for prefix, cat in _RULE_CATEGORY.items():
+        for prefix, kind in _RULE_FAILURE_KIND.items():
             if v.get("rule", "").startswith(prefix):
-                return cat, v
-    return "lint_rtl", None  # default: an RTL lint issue
+                return kind, v
+    return "lint", None
 
 
 def _load_violations(path: Path):
@@ -129,7 +125,7 @@ def _error_violations(doc: dict) -> list[dict]:
     return out
 
 
-def run(workdir, module, *, top) -> int:
+def run(workdir, module, *, top, fix_owner=None) -> int:
     workdir = Path(workdir)
     lint = _load_violations(workdir / "lint-violations.json")
     cdc = _load_violations(workdir / "cdc-violations.json")
@@ -155,15 +151,16 @@ def run(workdir, module, *, top) -> int:
                 ss[key] = doc["counts"]
         if violations:
             ss["violations"] = violations
-            cat, matched = _categorize(violations)
-            ss["failure_kind"] = _FAILURE_KIND_OF_CATEGORY[cat]
+            kind, matched = _classify(violations)
+            ss["failure_kind"] = kind
             ss["failures"] = [
                 {
-                    "category": cat,
                     "rule": (matched or violations[0])["rule"],
                     "error_summary": ss["fail_reason"],
                 }
             ]
+        if fix_owner:
+            ss["fix_owner"] = fix_owner
         _write(
             workdir,
             _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
@@ -251,12 +248,12 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def finalize(workdir, module, top) -> int:
+def finalize(workdir, module, top, fix_owner=None) -> int:
     """Assemble the lean lint-cdc result.json from the two *-violations.json + headers.
     exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (any internal
     raise) — never conflated with status=fail. (Owns the policy the deleted main() had.)"""
     try:
-        return run(workdir, module, top=top)
+        return run(workdir, module, top=top, fix_owner=fix_owner)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[lintcdc finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2

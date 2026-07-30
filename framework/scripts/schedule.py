@@ -1,5 +1,6 @@
 """VeriPower scheduler — objective -> exactly one action. Pure over (disk, ledger,
-args): no state of its own. Composes route.py for self-describing-failure attribution.
+args): no state of its own. A self-describing failure is attributed by its own envelope
+(`stage_specific.fix_owner`); this file only checks that naming is legal.
 Bare-importable (`import schedule`)."""
 
 from __future__ import annotations
@@ -9,7 +10,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import facts  # noqa: E402
-import route  # noqa: E402
 import rules  # noqa: E402
 
 # The stage-proof set, in FORWARD_PRIORITY order. Filtering on .proof (not just aliasing
@@ -150,65 +150,74 @@ def _disposition(
                 for d in diags
             ],
         }
-    # no ready diagnosis
-    if rule == "simulation":  # ambiguous failure -> triage
-        if any(f["rule"] == "simulation-triage" for f in facts.in_flight(events)):
-            return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
-        return {
-            "action": "DISPATCH",
-            "rule": "simulation-triage",
-            "execution": "task",
-            "params": {"sim_run": outcome["run"]},
-        }
-    # self-describing failure -> route inline (no diagnosis event)
-    r = route.route(rule, **_route_kwargs(module, rule))
-    if r["decision"] == route.ESCALATE:
-        # Prefix the failed rule: route reuses "unrouted:unknown_category" for both lint-cdc
-        # and power-analysis, so without it an escalation cannot tell the two apart (F-4).
+    # No ready diagnosis: the failing envelope names its own fix owner. The party that read
+    # the raw tool output is the one that knows whose problem it is, so nothing re-derives
+    # that from a classification.
+    owner = _declared_owner(module, rule)
+    if owner is None:
+        # simulation is the one stage with a deeper analyzer behind it: a failure it looked
+        # at and still could not attribute is what simulation-triage exists for (graduated
+        # L1 log/code reasoning, then an L2 controlled experiment). Everywhere else, an
+        # envelope that names nobody is the stage saying it cannot tell — that is a human's
+        # call, not a target to guess at.
+        if rule == "simulation":
+            if any(f["rule"] == "simulation-triage" for f in facts.in_flight(events)):
+                return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
+            return {
+                "action": "DISPATCH",
+                "rule": "simulation-triage",
+                "execution": "task",
+                "params": {"sim_run": outcome["run"]},
+            }
+        return {"action": "ESCALATE", "reason": f"{rule}: envelope named no fix_owner"}
+    if owner == rule:
+        # A defect the stage could fix from here is fixed WITHIN its run (rtl-design
+        # re-dispatches a child, lint-cdc adds a waiver), so it never reaches this point as
+        # a failure. Naming itself therefore means the in-stage remedy is exhausted; an
+        # auto-rebuild would dispatch the failing rule at itself and loop.
         return {
             "action": "ESCALATE",
-            "reason": f"{rule}: {r.get('reason_hint') or r['rule']}",
+            "reason": f"{rule}: fix_owner is itself, in-stage remedy exhausted",
         }
-    target = r["decision"]
-    if not facts.rule_available(module, events, target):
+    if owner not in rules.input_closure(rule):
+        return {
+            "action": "ESCALATE",
+            "reason": f"{rule}: fix_owner {owner!r} is outside its input closure",
+        }
+    if not facts.rule_available(module, events, owner):
         return {"action": "_defer_to_forward"}
-    # Merge every OTHER fresh failure that is also self-describing and routes to this same
-    # target, so one rework round answers them together. Without it a co-failing stage is
-    # silently dropped and re-fails on the next pass — the same 无静默丢弃 rule the
-    # diagnosis branch above obeys. A rule with an active diagnosis is skipped (its own
-    # attribution decides its fix_owner), and so is `simulation`, whose failures are
-    # ambiguous by construction and belong to triage.
+    # Merge every OTHER fresh failure that names this same owner, so one rework round answers
+    # them together. Without it a co-failing stage is silently dropped and re-fails on the
+    # next pass — the same 无静默丢弃 rule the diagnosis branch above obeys. A rule with an
+    # active diagnosis is skipped: its own attribution decides its fix_owner.
     caused_by = [[rule, outcome["run"]]]
     for frule, fout in all_fresh:
-        if frule == rule or frule == "simulation":
+        if frule == rule or _active_diagnoses(events, frule, fout):
             continue
-        if _active_diagnoses(events, frule, fout):
-            continue
-        if route.route(frule, **_route_kwargs(module, frule))["decision"] == target:
+        if _declared_owner(module, frule) == owner:
             caused_by.append([frule, fout["run"]])
     return {
         "action": "DISPATCH",
-        "rule": target,
-        "execution": rules.RULES[target].execution,
+        "rule": owner,
+        "execution": rules.RULES[owner].execution,
         "caused_by": caused_by,
     }
 
 
-def _route_kwargs(module: str, rule: str) -> dict:
-    """Read the failed rule's canonical result.json stage_specific for route inputs."""
+def _declared_owner(module: str, rule: str) -> str | None:
+    """`stage_specific.fix_owner` from the failed rule's canonical result.json: the rule its
+    own envelope says must act. None when the envelope names nobody (including an unreadable
+    or absent envelope), which the caller reads as "this stage cannot tell". Legality is the
+    caller's check, not this one's — this only reports what was written."""
     p = facts.module_root(module) / Path(*rules.workdir_root(rule)) / "result.json"
     try:
         import json
 
         ss = json.loads(p.read_text()).get("stage_specific", {})
     except (OSError, ValueError):
-        ss = {}
-    return {
-        "failure_kind": ss.get("failure_kind"),
-        "failures": ss.get("failures"),
-        "fail_reason": ss.get("fail_reason"),
-        "semantic_gate": ss.get("semantic_gate"),
-    }
+        return None
+    owner = ss.get("fix_owner")
+    return owner if owner in rules.RULES else None
 
 
 def _in_flight_view(module: str, events: list[dict]) -> list[dict]:

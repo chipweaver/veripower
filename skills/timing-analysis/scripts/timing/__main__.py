@@ -37,7 +37,7 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     from timing import result
 
     # --top is optional for timing finalize; default to --module (design §5.0).
-    return result.finalize(a.workdir, a.module, a.top or a.module)
+    return result.finalize(a.workdir, a.module, a.top or a.module, a.fix_owner)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -62,6 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--module", required=True)
     sp.add_argument(
         "--top", default=None, help="top module; defaults to --module when omitted"
+    )
+    sp.add_argument(
+        "--fix-owner",
+        default=None,
+        help="on a failure, the rule that must act (you name it; the reports cannot)",
     )
     sp.set_defaults(func=_cmd_finalize)
 

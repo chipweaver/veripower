@@ -238,27 +238,31 @@ def test_fail_envelope_is_schema_valid(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Task 5: input-provenance category classification (U4) — failure_kind +
-# failures[0].category, consumed by route.py's LINT_CATEGORY (Task B1).
+# Rule-family classification: failure_kind names WHAT KIND of check failed, which a
+# SpyGlass rule name reliably decides. It says nothing about whose artifact must change —
+# that reading is the agent's and lands in fix_owner.
 # ---------------------------------------------------------------------------
 
 
-def test_categorize_rtl_cdc_from_ac_unsync_prefix():
+def test_classify_cdc_from_ac_unsync_prefix():
     # Empirically observed on SpyGlass_vL-2016.06 (F1 fixture): Ac_unsync01.
     v = {"rule": "Ac_unsync01"}
-    assert rb._categorize([v]) == ("rtl_cdc", v)
+    assert rb._classify([v]) == ("cdc", v)
 
 
-def test_categorize_sgdc_seed_from_clock_info_prefix():
+def test_classify_constraint_from_clock_info_prefix():
     # Empirically observed on SpyGlass_vL-2016.06 (undeclared-clock experiment):
-    # Clock_info03a.
+    # Clock_info03a. A constraint-family violation is reported at the RTL line that used
+    # the undeclared object, so this says the KIND, never the owner.
     v = {"rule": "Clock_info05"}
-    assert rb._categorize([v]) == ("sgdc_seed", v)
+    assert rb._classify([v]) == ("constraint", v)
 
 
-def test_categorize_defaults_to_lint_rtl_when_unmatched():
-    # No prefix match -> default category, no matched violation.
-    assert rb._categorize([{"rule": "W123"}]) == ("lint_rtl", None)
+def test_classify_defaults_to_lint_when_unmatched():
+    """An unmatched rule falls to "lint", which is what it descriptively IS: an
+    error-severity lint finding. The retired default guessed an OWNER from the same
+    non-match, which is how an unlisted rule became a confident misattribution."""
+    assert rb._classify([{"rule": "W123"}]) == ("lint", None)
 
 
 def test_fail_envelope_sets_failures_rtl_cdc_category(tmp_path):
@@ -284,15 +288,11 @@ def test_fail_envelope_sets_failures_rtl_cdc_category(tmp_path):
     ss = env["stage_specific"]
     assert ss["failure_kind"] == "cdc"
     assert ss["failures"] == [
-        {
-            "category": "rtl_cdc",
-            "rule": "Ac_unsync01",
-            "error_summary": ss["fail_reason"],
-        }
+        {"rule": "Ac_unsync01", "error_summary": ss["fail_reason"]}
     ]
 
 
-def test_fail_envelope_sets_failures_sgdc_seed_category(tmp_path):
+def test_fail_envelope_sets_constraint_failure_kind(tmp_path):
     wd = _clean_workdir(tmp_path, cdc_err=1)
     (wd / "cdc-violations.json").write_text(
         json.dumps(
@@ -315,17 +315,13 @@ def test_fail_envelope_sets_failures_sgdc_seed_category(tmp_path):
     ss = env["stage_specific"]
     assert ss["failure_kind"] == "constraint"
     assert ss["failures"] == [
-        {
-            "category": "sgdc_seed",
-            "rule": "Clock_info05",
-            "error_summary": ss["fail_reason"],
-        }
+        {"rule": "Clock_info05", "error_summary": ss["fail_reason"]}
     ]
 
 
-def test_fail_envelope_rule_names_the_categorizing_violation(tmp_path):
+def test_fail_envelope_rule_names_the_classifying_violation(tmp_path):
     # Mixed error set: the FIRST error in list order (W123, a lint rule matching
-    # no prefix) is not the one that drives the category — a later Ac_unsync01
+    # no prefix) is not the one that decides the kind — a later Ac_unsync01
     # is. failures[0].rule must name THAT matching violation, not merely
     # violations[0] (lint errors precede cdc errors in the concatenated list).
     wd = _clean_workdir(tmp_path, lint_err=1, cdc_err=1)
@@ -366,17 +362,48 @@ def test_fail_envelope_rule_names_the_categorizing_violation(tmp_path):
     ss = env["stage_specific"]
     assert ss["failure_kind"] == "cdc"
     assert ss["failures"] == [
-        {
-            "category": "rtl_cdc",
-            "rule": "Ac_unsync01",
-            "error_summary": ss["fail_reason"],
-        }
+        {"rule": "Ac_unsync01", "error_summary": ss["fail_reason"]}
     ]
+
+
+def test_fail_envelope_carries_the_agent_named_fix_owner(tmp_path):
+    """fix_owner is the one field this verb cannot derive: a constraint-family violation is
+    reported at an RTL line while the fix belongs in the SGDC, and no rule prefix adjudicates
+    that. The agent names it; finalize only records it."""
+    wd = _clean_workdir(tmp_path, cdc_err=1)
+    (wd / "cdc-violations.json").write_text(
+        json.dumps(
+            {
+                "kind": "cdc",
+                "counts": {"error": 1, "warning": 0, "info": 0},
+                "violations": [
+                    {
+                        "id": "Clock_info05:cdc_smoke.clk2",
+                        "rule": "Clock_info05",
+                        "severity": "error",
+                        "message": "Clock-Net is unconstrained",
+                    }
+                ],
+            }
+        )
+    )
+    assert rb.run(wd, module="tpu_top", top="tpu_top", fix_owner="specification") == 0
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["fix_owner"] == "specification"
+
+
+def test_fail_envelope_omits_fix_owner_when_unnamed(tmp_path):
+    """Absence is the signal decide reads as "this stage cannot tell", so an unnamed owner
+    must not serialize as a present-but-empty key."""
+    wd = _clean_workdir(tmp_path, cdc_err=1)
+    assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert "fix_owner" not in ss
 
 
 def test_fail_envelope_no_violations_omits_failures(tmp_path):
     # Report-missing early-fail path: no error-severity violation rows at all ->
-    # nothing to categorize -> failures/failure_kind stay unset (not invented).
+    # nothing to classify -> failures/failure_kind stay unset (not invented).
     wd = _clean_workdir(tmp_path)
     (wd / "lint-violations.json").unlink()
     assert rb.run(wd, module="tpu_top", top="tpu_top") == 0
