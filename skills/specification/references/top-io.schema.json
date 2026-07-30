@@ -40,7 +40,7 @@
       "role": {"enum": ["clock", "reset", "data"]},
       "protocol": {"type": "string", "minLength": 1},
       "encoding": {
-        "description": "A control or status port pins its bit/field-to-symbol meaning here: single-bit as \"0:<meaning>; 1:<meaning>\", multi-bit per field as \"bit[h:l] <name>: <code>:<symbol>; …\". For a phase or command code write the CONSUMER OBLIGATION, not just a label — e.g. \"3:PV (consumer re-preloads the stationary operand, then streams)\". This entry is the single source: a child names the port and never re-describes the codes. Raw data / clock / reset ports have none. Enforced by the spec-review conformance lens, not by a deterministic gate.",
+        "description": "A control or status port pins its bit/field-to-symbol meaning here: single-bit as \"0:<meaning>; 1:<meaning>\", multi-bit per field as \"bit[h:l] <name>: <code>:<symbol>; …\". For a phase or command code write the CONSUMER OBLIGATION, not just a label — e.g. \"3:PV (consumer re-preloads the stationary operand, then streams)\". This entry is the single source: a child names the port and never re-describes the codes. Raw data / clock / reset ports have none. Judged by the spec-review reviewer, not by a deterministic gate.",
         "type": "string",
         "minLength": 1
       },
