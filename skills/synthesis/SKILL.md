@@ -87,7 +87,9 @@ With neither, keep the scope empty, whether this is a first delivery or a re-ver
 python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
 ```
 
-Deploys the templates into `{workdir}`, generates `scripts/rtl_load.tcl` + `scripts/config.tcl`, and seeds `constraints.sdc`; aborts when `{workdir}` is already deployed. Mechanics — placeholder substitution, SDC source-of-truth, `+incdir+` handling, `LIB_DB`, `--top` inference — are documented once in `references/makefile-bootstrap.md`.
+It deploys the templates into `{workdir}`, copies `<sdc>/constraints/<TOP>.sdc` to `constraints.sdc` verbatim, and generates `scripts/rtl_load.tcl` (the `analyze` list, plus each child's `incdirs[]` on `search_path`) and `scripts/config.tcl` from the rtl-design file layout. It aborts when `{workdir}/Makefile` already exists (the kernel-written `dispatch.json` does not count as "deployed"), and when `--top` is omitted it reads the name from `manifest.module`. Non-zero exit: stderr names the cause.
+
+The deployed `Makefile`, `env.sh`, `scripts/dc_run.tcl` and `scripts/rtl_load.tcl` are make-internal. `make synthesis` is the interface; the only deployed files you edit are `constraints.sdc` and `scripts/config.tcl`.
 
 ### Step 3: Fill in `LIB_DB`
 
@@ -167,6 +169,5 @@ As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `
 
 ## Bundled References
 
-- [`references/makefile-bootstrap.md`](references/makefile-bootstrap.md) — Bootstrap and Makefile target quick reference.
 - [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
 - [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.
