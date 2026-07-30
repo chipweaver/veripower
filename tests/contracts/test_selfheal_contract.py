@@ -3,18 +3,18 @@ from pathlib import Path
 RTL = Path("skills/rtl-design/SKILL.md").read_text()
 
 
-# Anchored on the two machine keys the branch reads, not on the prose naming it: the
-# invariant is where each locus gets repaired, and `loci.rtl` / `loci.spec` are what
-# validate-review actually emits, so they survive a rewording that keeps the behaviour.
-def test_rtl_rtl_locus_is_repaired_in_stage():
-    # rtl-locus 缺陷在本阶段重派修复（不再 "no in-skill autofix"）
-    assert "`loci.rtl`" in RTL and "re-dispatch" in RTL
+# No script reduces the reviews to a verdict any more, so there is no key to anchor on. What
+# must survive is the disposition: an RTL defect is repaired here, an intent-source defect is
+# named for someone else. Both halves are asserted, so losing either one is a failure.
+def test_rtl_defect_is_repaired_in_stage():
+    # RTL 缺陷在本阶段重派修复（不再 "no in-skill autofix"）
+    assert "re-dispatch" in RTL
     assert "no in-skill autofix" not in RTL
 
 
-def test_rtl_spec_locus_is_handed_upstream():
-    # spec-locus 不在阶段内硬修，交回上游 fix owner
-    assert "`loci.spec`" in RTL and "--fix-owner" in RTL
+def test_intent_source_defect_is_handed_upstream():
+    # design.md / <child>.md 的缺陷不在阶段内硬修，交回上游 fix owner
+    assert "intent source" in RTL and "--fix-owner" in RTL
 
 
 SIM = Path("skills/simulation/SKILL.md").read_text()

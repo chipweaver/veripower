@@ -1,13 +1,11 @@
 # tests/unit/test_rtl_partition.py
 import json
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MAIN = ROOT / "skills/rtl-design/scripts/rtl/__main__.py"
 sys.path.insert(0, str(ROOT / "skills/rtl-design/scripts"))
-from rtl.partition import post_verdict  # noqa: E402
+from rtl.partition import coverage_verdict, post_verdict  # noqa: E402
 
 _PURE_MANIFEST = {
     "module": "top",
@@ -18,20 +16,10 @@ _PURE_MANIFEST = {
 }
 
 
-def _run_pre(tmp_path, top):
-    return subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "check-partition",
-            "--manifest",
-            str(tmp_path / "manifest.json"),
-            "--top",
-            top,
-        ],
-        capture_output=True,
-        text=True,
-    )
+def _coverage(tmp_path, top):
+    """The pre-dispatch gate is no longer a verb; coverage_verdict is what specification's own
+    check-coverage mirrors, and test_partition_purity_agreement.py locks the two together."""
+    return coverage_verdict(tmp_path / "manifest.json", top)
 
 
 def test_pre_phase_fails_bundled_top_manifest_only(tmp_path):
@@ -46,9 +34,8 @@ def test_pre_phase_fails_bundled_top_manifest_only(tmp_path):
             }
         )
     )
-    r = _run_pre(tmp_path, "top")
-    assert r.returncode == 1
-    assert "not pure" in json.loads(r.stdout)["fail_reason"]
+    status, reason = _coverage(tmp_path, "top")
+    assert status == "fail" and "not pure" in reason
 
 
 def test_pre_phase_fails_zero_coverage(tmp_path):
@@ -57,9 +44,8 @@ def test_pre_phase_fails_zero_coverage(tmp_path):
             {"module": "top", "children": [{"name": "leaf", "rtl_modules": ["leaf_m"]}]}
         )
     )
-    r = _run_pre(tmp_path, "top")
-    assert r.returncode == 1
-    assert "covered by 0 children" in json.loads(r.stdout)["fail_reason"]
+    status, reason = _coverage(tmp_path, "top")
+    assert status == "fail" and "covered by 0 children" in reason
 
 
 def test_post_verdict_fails_clean_on_missing_ledger(tmp_path):
@@ -130,7 +116,4 @@ def test_pre_phase_passes_pure_top_manifest_only(tmp_path):
             }
         )
     )
-    r = _run_pre(tmp_path, "top")
-    assert r.returncode == 0
-    assert json.loads(r.stdout)["status"] == "pass"
-    assert json.loads(r.stdout)["artifacts"] == []
+    assert _coverage(tmp_path, "top") == ("pass", None)

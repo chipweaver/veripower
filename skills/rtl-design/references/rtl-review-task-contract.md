@@ -1,11 +1,10 @@
-# Per-child semantic review sub-Task contract (gating)
+# Per-child intent review sub-Task contract
 
-The rtl-design main thread dispatches one Level-1 `Task(run_in_background=True)` per child
-in `manifest.children[]` **on every finalize that reaches a clean gate** (not first-run only),
-AFTER `assemble` has written the sidecars. This review is **gating**: findings
-in `category ∈ {missing, wrong-behavior}` at `severity ∈ {critical, important}` trip a gate that
-fails the stage out (`status=fail`) to the operator. `over-engineering` and `minor` findings
-remain advisory (never gate). Findings are aggregated into `semantic-review.json`. Do not call the Task tool.
+The rtl-design main thread dispatches one Level-1 `Task(run_in_background=True)` per child in
+`manifest.children[]`, on every round that reaches a written sidecar. You write your own review
+file. Nothing reduces it to a verdict: it is promoted as this stage's proposed oracle, and a human
+`pin` is what converts it into signoff-grade trust. So write for the engineer who will read it
+before signing, not for a parser. Do not call the Task tool.
 
 ## Inputs (paths only — the main thread does not read these bodies)
 
@@ -52,21 +51,20 @@ self-checks, and lint-cdc elaborates).
 
 ## Output
 
-End the response with `STATUS: DONE` + a single JSON line, or `STATUS: BLOCKED <reason>`:
+Write `{workdir}/semantic-review/<your-child>.md`. Prose, no schema. Then end the response with
+`STATUS: DONE`, or `STATUS: BLOCKED <reason>` if you could not review at all.
 
-```json
-{"child": "<name>",
- "findings": [{"severity": "critical|important|minor",
-               "category": "missing|wrong-behavior|over-engineering",
-               "fix_locus": "rtl|spec",
-               "confidence": "high|medium|low",
-               "location": "<file:line or <child>.md §2 ref>", "summary": "<one line>"}]}
-```
+Every finding says four things:
 
-- **severity guidance:** `critical` = likely wrong functionality that downstream may not catch cheaply;
-  `important` = real concern worth a look; `minor` = nit. Calibrate — not everything is critical.
-- **`fix_locus` is required on every finding you emit** (`rtl` or `spec`). The main thread cannot route a
-  finding without it; any finding you emit without `fix_locus` is rejected by the schema.
-- **`confidence` belongs on every `fix_locus: "spec"` finding** (omit it otherwise): see the guidance
-  above. The minimum `confidence` across your spec-locus findings becomes
-  `semantic_gate.spec_confidence`, which gates the kernel's upstream route.
+- **Where** — the file and line, or the `<child>.md §2` clause it violates.
+- **What you compared against** — the §2 clause, the §1.4 integration intent, or nothing (then say
+  so: an unreferenced finding is your opinion, and it is read as one).
+- **Whether it blocks** — would you let this ship? Say so plainly. Calibrate: reserve blocking for
+  behaviour downstream will not catch cheaply.
+- **Where the fix belongs** — this child's RTL, or the spec itself. A width that cannot hold the
+  value §2 requires is the spec's; RTL that just does the wrong thing is the child's. Say which,
+  and how sure you are, because the stage routes an upstream repair on your reading alone.
+
+Write nothing when you found nothing — an empty findings section with a sentence saying you read
+§2 against the RTL and it holds. A file that does not exist reads as a review that never ran, and
+the stage cannot pass without yours.

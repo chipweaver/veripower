@@ -138,7 +138,7 @@ def test_carry_no_carry_fields_and_values():
     assert rules.RULES["simulation-plan"].carry == ("**",)
     assert rules.RULES["simulation-plan"].no_carry == ("plan-review/*.md",)
     assert rules.RULES["rtl-design"].carry == ("**",)
-    assert rules.RULES["rtl-design"].no_carry == ("semantic-review.json",)
+    assert rules.RULES["rtl-design"].no_carry == ("semantic-review/*.md",)
     assert rules.RULES["simulation"].carry == ("**",)
     assert rules.RULES["simulation"].no_carry == ("conformance-review.json",)
     # lint carries exactly its two human-audited scripts

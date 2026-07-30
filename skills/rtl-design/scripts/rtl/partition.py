@@ -7,9 +7,9 @@ Two verdicts over one shared coverage rule:
   post_verdict(manifest, top, fresh, workdir)  -> (verdict, rc)     # post: + blocked-child
   ledger_artifacts(workdir)                    -> artifacts[]       # the enumeration both use
 
-`run()` is the `check-partition` verb (the pre gate) — a one-line verdict JSON on stdout,
-status truth = exit code (0 pass / 1 fail). `assemble` and `result` import `post_verdict`.
-`artifacts` is the envelope shape (array of {path} objects); a flat string list would break
+`result` imports `post_verdict`; `coverage_verdict` is also run by specification's own
+check-coverage gate, and tests/contracts/test_partition_purity_agreement.py locks the two
+implementations together. `artifacts` is the envelope shape (array of {path} objects); a flat string list would break
 the framework's per-artifact promote + envelope schema-validation.
 """
 
@@ -95,13 +95,3 @@ def post_verdict(manifest: Path, top: str, fresh: Path, workdir: Path):
     if reason:
         verdict["fail_reason"] = reason
     return verdict, (0 if status == "pass" else 1)
-
-
-def run(manifest, top) -> int:
-    """check-partition verb: the pre-dispatch coverage+purity gate (manifest+top only)."""
-    status, reason = coverage_verdict(Path(manifest), top)
-    verdict = {"status": status, "artifacts": []}
-    if reason:
-        verdict["fail_reason"] = reason
-    print(json.dumps(verdict, ensure_ascii=False))
-    return 0 if status == "pass" else 1

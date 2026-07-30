@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""rtl finalize — assemble the lean rtl-design result.json (exit gate + folded semantic gate).
+"""rtl finalize — the lean rtl-design result.json.
 
-Re-derives the exit verdict in-process over the converged ledger (status / fail_reason /
-artifacts, verbatim via partition.post_verdict), then on a passing exit folds in the
-semantic gate via the pure review.compute_gate over a schema-validated oracle doc
-(review.load_validated: in-process, no subprocess). A
-semantic gate=trip flips a passing exit to fail with a locus-tagged fail_reason (spec-rooted
-named first, else rtl-local). result.json is fully script-derived (run narration lives in
-events.jsonl). Exit 0 = result.json written (pass or fail); exit 2 = BLOCKED (internal raise).
+Derives the envelope from the on-disk workdir: status / fail_reason / artifacts via
+partition.post_verdict, which schema-validates both authored sidecars on the way (a malformed
+one is BLOCKED, never a silent pass). The per-child intent reviews are this stage's proposed
+oracle; the kernel fingerprints them, and no verdict is reduced from them here. result.json is
+fully script-derived (run narration lives in events.jsonl). Exit 0 = written (pass or fail);
+exit 2 = BLOCKED (internal raise).
 """
 
 from __future__ import annotations
@@ -18,9 +17,9 @@ import sys
 from pathlib import Path
 
 from rtl.partition import ledger_artifacts, post_verdict
-from rtl.review import compute_gate, load_validated
 
 STAGE = "rtl-design"
+REVIEW_DIR = "semantic-review"
 
 
 def _now_iso() -> str:
@@ -52,46 +51,64 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 
 def _exit_verdict(workdir: Path, top: str, manifest: Path) -> dict:
-    """Re-derive the **post exit-gate** verdict IN-PROCESS over the converged on-disk state:
-    {status, fail_reason?, artifacts[]}. Calls the same post_verdict() the assemble verb uses,
-    so the topology/blocked-child gate + artifact enumeration are not duplicated."""
+    """Re-derive the exit verdict IN-PROCESS over the on-disk state: {status, fail_reason?,
+    artifacts[]}. post_verdict schema-validates both authored sidecars on the way, so a
+    hand-authored shape defect is BLOCKED here rather than promoted."""
     return post_verdict(manifest, top, workdir / "reaped-children.json", workdir)[0]
 
 
-def _caller_reported_artifacts(workdir: Path) -> list:
+def _review_paths(manifest: Path) -> list:
+    """One intent review per manifest child. These are the stage's proposed oracle: the kernel
+    fingerprints them under rules.oracle_selector, so they must reach canonical by way of
+    artifacts[]."""
+    children = json.loads(manifest.read_text(encoding="utf-8")).get("children", [])
+    return [f"{REVIEW_DIR}/{c['name']}.md" for c in children if c.get("name")]
+
+
+def _require_reviews(workdir: Path, manifest: Path) -> list:
+    """Every child's review must be on disk before a passing envelope is written. Nothing else
+    in this stage checks that the review happened at all — there is no in-stage human gate here,
+    unlike specification's — so a silently skipped wave would otherwise ship as a clean pass.
+    What each review SAYS is not reduced to a verdict: that judgment is the stage's to act on,
+    and pin/signoff is where the endorsement is held to account."""
+    missing = [p for p in _review_paths(manifest) if not (workdir / p).is_file()]
+    if missing:
+        raise ValueError(
+            "intent review missing for " + ", ".join(missing) + " — every child in the "
+            "manifest needs one before this stage can pass"
+        )
+    return [{"path": p} for p in _review_paths(manifest)]
+
+
+def _present_reviews(workdir: Path, manifest: Path) -> list:
+    """Present-only, for a failing envelope: the wave may not have run, but whatever review did
+    land is the evidence for the failure and belongs in canonical with it."""
+    try:
+        paths = _review_paths(manifest)
+    except (OSError, json.JSONDecodeError):
+        return []
+    return [{"path": p} for p in paths if (workdir / p).is_file()]
+
+
+def _caller_reported_artifacts(workdir: Path, manifest: Path) -> list:
     """artifacts[] for a caller-reported failure, whose whole premise is that the on-disk state
     cannot yield a verdict. A fail envelope promotes exactly like a passing one and promote
     treats artifacts[] as the new canonical view, so enumerate whatever the sidecars still hold
     rather than drop a readable prior baseline. Unreadable sidecars yield [], all that is knowable.
     """
     try:
-        return ledger_artifacts(workdir)
+        return ledger_artifacts(workdir) + _present_reviews(workdir, manifest)
     except Exception:  # noqa: BLE001 — any unreadable sidecar state
-        return []
-
-
-def _locus_fail_reason(gate: dict) -> str:
-    """Mechanize the semantic-trip fail narrative: a spec-locus trip is named first, else rtl-local."""
-    flagged = gate.get("flagged", [])
-    loci = gate.get("loci", {})
-    first = flagged[0]
-    extra = f" (+{len(flagged) - 1} more)" if len(flagged) > 1 else ""
-    if loci.get("spec"):
-        return f"semantic gate: spec-rooted intent defect — {first['child']}{extra}"
-    return f"semantic gate: rtl-local intent defect — {first['child']}{extra}"
+        return _present_reviews(workdir, manifest)
 
 
 def build_result(
     workdir, module, top, manifest, fail_reason=None, fix_owner=None
 ) -> int:
-    """Assemble the lean rtl-design result.json from the converged on-disk workdir.
-    Re-derives the exit verdict in-process (status/fail_reason/artifacts, verbatim), then on a
-    passing exit schema-validates semantic-review.json and folds in the semantic gate via the pure
-    compute_gate() (in-process, no subprocess). A semantic gate=trip flips a passing exit to fail with a locus-tagged
-    fail_reason, drops the free-text note. Every verdict is script-derived; the caller supplies
-    only `fail_reason`, for the early exits no on-disk state can express (run narration lives in
-    events.jsonl). Returns 0 (result.json written, pass or fail). A raise → main() exit 2
-    (BLOCKED)."""
+    """Assemble the lean rtl-design result.json from the on-disk workdir. The caller supplies
+    only what no on-disk state can express: `fail_reason` for an early exit, and `fix_owner` for
+    the rule that must act on a failure. Returns 0 (result.json written, pass or fail); a raise
+    → exit 2 (BLOCKED)."""
     workdir, manifest = Path(workdir), Path(manifest)
 
     if fail_reason:
@@ -103,7 +120,7 @@ def build_result(
                 module,
                 status="fail",
                 stage_specific={"fail_reason": fail_reason},
-                artifacts=_caller_reported_artifacts(workdir),
+                artifacts=_caller_reported_artifacts(workdir, manifest),
                 fix_owner=fix_owner,
             ),
         )
@@ -113,7 +130,7 @@ def build_result(
     artifacts = list(exit_v.get("artifacts", []))
 
     if exit_v.get("status") != "pass":
-        # topology / blocked-child fail — verbatim verdict; the semantic gate was never reached.
+        # topology / blocked-child fail — verbatim verdict, plus whatever review already landed.
         ss = {"fail_reason": exit_v.get("fail_reason", "rtl exit gate failed")}
         _write_result(
             workdir,
@@ -121,37 +138,16 @@ def build_result(
                 module,
                 status="fail",
                 stage_specific=ss,
-                artifacts=artifacts,
+                artifacts=artifacts + _present_reviews(workdir, manifest),
                 fix_owner=fix_owner,
             ),
         )
         return 0
 
-    # exit verdict passed -> fold in the semantic gate. load_validated is the backstop on the
-    # oracle artifact itself: an unvalidated doc would reduce through compute_gate's .get()
-    # defaults to gate=clear. A violation raises -> exit 2 (BLOCKED), never status=pass.
-    # Freshness stays a process invariant: the skill re-runs its gate on the current RTL before
-    # finalize (SKILL.md "Re-entry and completion"), not enforced here.
-    review = load_validated(workdir / "semantic-review.json")
-    gate = compute_gate(review)
-    artifacts.append({"path": "semantic-review.json"})
-    if gate.get("gate") == "trip":
-        ss = {"semantic_gate": gate, "fail_reason": _locus_fail_reason(gate)}
-        _write_result(
-            workdir,
-            _envelope(
-                module,
-                status="fail",
-                stage_specific=ss,
-                artifacts=artifacts,
-                fix_owner=fix_owner,
-            ),
-        )
-        return 0
-    ss = {"semantic_gate": gate}
+    artifacts += _require_reviews(workdir, manifest)
     _write_result(
         workdir,
-        _envelope(module, status="pass", stage_specific=ss, artifacts=artifacts),
+        _envelope(module, status="pass", stage_specific={}, artifacts=artifacts),
     )
     return 0
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/rtl-design/result.schema.json",
   "title": "rtl-design result.json contract",
-  "description": "Complete contract for asic/<module>/Design/rtl-design/result.json. stage_specific has no pass-required fields: on a pass it carries the semantic_gate verdict, and on status=fail it requires fail_reason (if/then below), the one-line failure narrative. The stage's substance is handed off through its promoted sidecars, not through this envelope, and TOP is not restated here: it is manifest.module, which every consumer declares as an input.",
+  "description": "Complete contract for asic/<module>/Design/rtl-design/result.json. stage_specific has no pass-required fields; on status=fail it requires fail_reason (if/then below), the one-line failure narrative, and may name fix_owner. The stage's substance is handed off through its promoted sidecars and its per-child intent reviews, not through this envelope, and TOP is not restated here: it is manifest.module, which every consumer declares as an input.",
   "allOf": [
     {
       "$ref": "https://veripower.local/schemas/envelope.schema.json"
@@ -15,95 +15,13 @@
         "stage_specific": {
           "type": "object",
           "properties": {
-            "fix_owner": {"type": "string", "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."},
+            "fix_owner": {
+              "type": "string",
+              "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."
+            },
             "fail_reason": {
               "type": "string",
               "minLength": 1
-            },
-            "semantic_gate": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "gate",
-                "flagged",
-                "loci",
-                "spec_confidence"
-              ],
-              "$comment": "Stores the validate-review verb's stdout verdict verbatim (no transform). flagged.category is the GATING subset {missing,wrong-behavior}, the same set as _GATING_CATEGORIES in rtl/review.py -- their agreement is asserted by tests/unit/test_rtl_result.py, not left to this note; over-engineering/unavailable/minor never appear here. spec_confidence is the MINIMUM confidence over every fix_locus=spec finding (not just the gating subset), null if none. Nothing routes on this block: fix_owner is what decide reads. It stays as the account behind that naming, for the reader who asks why this stage named specification.",
-              "properties": {
-                "gate": {
-                  "enum": [
-                    "trip",
-                    "clear"
-                  ]
-                },
-                "flagged": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "child",
-                      "category",
-                      "severity",
-                      "fix_locus"
-                    ],
-                    "properties": {
-                      "child": {
-                        "type": "string"
-                      },
-                      "category": {
-                        "enum": [
-                          "missing",
-                          "wrong-behavior"
-                        ]
-                      },
-                      "severity": {
-                        "enum": [
-                          "critical",
-                          "important"
-                        ]
-                      },
-                      "fix_locus": {
-                        "enum": [
-                          "rtl",
-                          "spec"
-                        ]
-                      }
-                    }
-                  }
-                },
-                "loci": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "rtl",
-                    "spec"
-                  ],
-                  "properties": {
-                    "rtl": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "spec": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  }
-                },
-                "spec_confidence": {
-                  "enum": [
-                    "high",
-                    "medium",
-                    "low",
-                    null
-                  ]
-                }
-              }
             }
           },
           "additionalProperties": true

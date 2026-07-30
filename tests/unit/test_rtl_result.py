@@ -10,11 +10,7 @@ import sys  # noqa: E402
 sys.path.insert(0, str(ROOT / "skills" / "rtl-design" / "scripts"))
 from rtl import result as ve  # noqa: E402
 
-_SEM_CLEAR = {
-    "stage": "rtl-design",
-    "module": "tpu_top",
-    "findings": [],
-}
+_REVIEW = "Read §2 against the RTL; it holds. Nothing blocks.\n"
 
 
 def _write_state(d, ledger):
@@ -33,7 +29,7 @@ def _write_state(d, ledger):
 
 
 def _workdir(
-    tmp_path, *, children=("mac",), top="tpu_top", semantic=_SEM_CLEAR, manifest=None
+    tmp_path, *, children=("mac",), top="tpu_top", reviews=True, manifest=None
 ):
     """Build a minimal converged rtl-design workdir + a sibling spec manifest."""
     wd = tmp_path / "rtl-design"
@@ -66,7 +62,6 @@ def _workdir(
     (wd / "reaped-children.json").write_text(
         json.dumps({n: {"status": "done"} for n in ledger})
     )
-    (wd / "semantic-review.json").write_text(json.dumps(semantic))
     # spec manifest: top-integration child is pure (rtl_modules == [top]); each leaf covers itself.
     man = manifest or {
         "module": top,
@@ -78,6 +73,10 @@ def _workdir(
     spec = tmp_path / "Design" / "specification"
     spec.mkdir(parents=True)
     (spec / "manifest.json").write_text(json.dumps(man))
+    if reviews:
+        (wd / "semantic-review").mkdir(exist_ok=True)
+        for c in man["children"]:
+            (wd / "semantic-review" / f"{c['name']}.md").write_text(_REVIEW)
     return wd, spec / "manifest.json"
 
 
@@ -90,48 +89,29 @@ def test_build_result_pass_lean_shape(tmp_path):
         "tpu_top",
     )
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
-    ss = env["stage_specific"]
-    assert ss["semantic_gate"] == {
-        "gate": "clear",
-        "flagged": [],
-        "loci": {"rtl": [], "spec": []},
-        "spec_confidence": None,
-    }
-    assert (
-        "note" not in ss and "fail_reason" not in ss
-    )  # lean shape: free-text note dropped
-    # artifacts[] came from the exit gate (the .v + the three fixed files) + semantic-review.json
+    # A passing envelope carries nothing: no verdict is reduced from the reviews.
+    assert env["stage_specific"] == {}
     paths = {a["path"] for a in env["artifacts"]}
     assert {
         "mac.v",
         "tpu_top.v",
         "rtl-files.json",
         "constraint-annotations.json",
+        "semantic-review/mac.md",
+        "semantic-review/topc.md",
     } <= paths
-    assert "semantic-review.json" in paths and "result.json" not in paths
+    assert "result.json" not in paths
 
 
-def test_build_result_fail_on_semantic_trip(tmp_path):
-    sem = {
-        "stage": "rtl-design",
-        "module": "tpu_top",
-        "findings": [
-            {
-                "child": "mac",
-                "category": "wrong-behavior",
-                "severity": "critical",
-                "fix_locus": "rtl",
-                "location": "L1",
-                "summary": "wrong accumulate",
-            }
-        ],
-    }
-    wd, manifest = _workdir(tmp_path, semantic=sem)
-    assert ve.build_result(wd, module="tpu_top", top="tpu_top", manifest=manifest) == 0
-    env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "fail"
-    assert env["stage_specific"]["semantic_gate"]["gate"] == "trip"
-    assert "mac" in env["stage_specific"]["fail_reason"]
+def test_pass_refused_while_a_child_review_is_missing(tmp_path, capsys):
+    # The exit requirement, and the only mechanical part of it: nothing else in this stage
+    # checks that the intent review happened, and there is no in-stage human gate to notice.
+    # What a review SAYS stays the stage's judgment; that it EXISTS for every child does not.
+    wd, manifest = _workdir(tmp_path)
+    (wd / "semantic-review" / "mac.md").unlink()
+    assert ve.finalize(wd, "tpu_top", "tpu_top", manifest) == 2
+    assert "semantic-review/mac.md" in capsys.readouterr().err
+    assert not (wd / "result.json").exists()
 
 
 def test_build_result_fail_on_exit_topology_verbatim(tmp_path):
@@ -189,14 +169,8 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "pass"
-    # semantic_gate — exact to the real run (clear: the one over-engineering finding never gates)
-    assert ss["semantic_gate"] == {
-        "gate": "clear",
-        "flagged": [],
-        "loci": {"rtl": [], "spec": []},
-        "spec_confidence": None,
-    }
-    # artifacts — the real 7-entry set: 4 .v + the two sidecars + semantic-review
+    assert ss == {}
+    # artifacts — 4 .v + the two sidecars + one review per manifest child
     paths = {a["path"] for a in env["artifacts"]}
     assert paths == {
         "fifo.v",
@@ -205,17 +179,18 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "tpu_top.v",
         "rtl-files.json",
         "constraint-annotations.json",
-        "semantic-review.json",
+        "semantic-review/fifo.md",
+        "semantic-review/mac.md",
+        "semantic-review/systolic_reg.md",
+        "semantic-review/tpu_top.md",
     }
     assert "result.json" not in paths
-    # lean: free-text note DROPPED; produced_at normalized; schema-valid
-    assert "note" not in ss
     assert env["produced_at"].endswith("Z")
     _validate_envelope(env)
 
 
 def test_build_result_pre_dispatch_coverage_fail_routes_through_finalize(tmp_path):
-    # A pre-dispatch check-partition coverage fail (no fan-out yet -> no ledger, no
+    # A pre-dispatch coverage fail (no fan-out yet -> no ledger, no
     # reaped-children.json) routes through finalize and surfaces the REAL coverage reason, not
     # the generic "requires reaped-children.json and the ledger" pre-guard message. This exercises
     # partition.post_verdict's coverage short-circuit (status=fail AND no ledger).
@@ -255,21 +230,8 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
     assert ve.finalize(tmp_path, "tpu_top", "tpu_top", tmp_path / "manifest.json") == 2
 
 
-def test_finalize_blocked_on_schema_invalid_semantic_review(tmp_path, capsys):
-    # The oracle backstop. rules.py declares semantic-review.json this stage's oracle, the kernel
-    # validates only result.json at reap, and nothing forces the validate-review run in the
-    # semantic gate — so a doc the schema rejects must BLOCK here rather than reduce through
-    # compute_gate's .get() defaults to gate=clear + status=pass.
-    wd, manifest = _workdir(
-        tmp_path, semantic={"findings": []}
-    )  # required keys all missing
-    assert ve.finalize(wd, "tpu_top", "tpu_top", manifest) == 2
-    assert "semantic-review invalid" in capsys.readouterr().err
-    assert not (wd / "result.json").exists()
-
-
 def test_artifacts_are_full_roster_on_a_subset_reap(tmp_path):
-    # The conformance self-converge loop's last round reaps only the re-dispatched children, so
+    # A repair round reaps only the re-dispatched children, so
     # reaped-children.json is a subset. artifacts[] is enumerated from the two sidecars (the full
     # merged ledger), never from the reaped set — which is why no full-roster rebuild of
     # reaped-children.json is needed before finalize.
@@ -296,14 +258,20 @@ def test_fail_reason_writes_the_envelope_and_keeps_the_readable_baseline(tmp_pat
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert env["stage_specific"] == {"fail_reason": "reports malformed"}
-    assert {"mac.v", "tpu_top.v", "rtl-files.json", "constraint-annotations.json"} == {
-        a["path"] for a in env["artifacts"]
-    }
+    assert {
+        "mac.v",
+        "tpu_top.v",
+        "rtl-files.json",
+        "constraint-annotations.json",
+        "semantic-review/mac.md",
+        "semantic-review/topc.md",
+    } == {a["path"] for a in env["artifacts"]}
     _validate_envelope(env)
 
 
-def test_fail_reason_with_unreadable_sidecars_yields_no_artifacts(tmp_path):
-    # Nothing is knowable about the baseline, so artifacts[] is empty rather than a guess.
+def test_fail_reason_with_unreadable_sidecars_still_keeps_the_reviews(tmp_path):
+    # Nothing is knowable about the ledger, so no .v is guessed at. The reviews are read
+    # straight off disk, and they are the evidence for the failure, so they still promote.
     wd, manifest = _workdir(tmp_path)
     (wd / "rtl-files.json").write_text("{ not json")
     assert (
@@ -311,7 +279,11 @@ def test_fail_reason_with_unreadable_sidecars_yields_no_artifacts(tmp_path):
         == 0
     )
     env = json.loads((wd / "result.json").read_text())
-    assert (env["status"], env["artifacts"]) == ("fail", [])
+    assert env["status"] == "fail"
+    assert {a["path"] for a in env["artifacts"]} == {
+        "semantic-review/mac.md",
+        "semantic-review/topc.md",
+    }
 
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):
@@ -364,20 +336,3 @@ def test_finalize_cli_happy_path(tmp_path):
         "pass",
         "tpu_top",
     )
-
-
-def test_gating_categories_match_the_schema_enum():
-    # result.schema.json's $comment says flagged.category is "kept in sync with
-    # _GATING_CATEGORIES in rtl/review.py". That is the only thing that held them together;
-    # this is the check. A category added to one side and not the other would either be
-    # dropped from the envelope or rejected by it.
-    from rtl.review import _GATING_CATEGORIES
-
-    schema = json.loads(
-        (ROOT / "skills/rtl-design/references/result.schema.json").read_text()
-    )
-    ss = schema["allOf"][1]["properties"]["stage_specific"]["properties"]
-    enum = ss["semantic_gate"]["properties"]["flagged"]["items"]["properties"][
-        "category"
-    ]["enum"]
-    assert set(enum) == _GATING_CATEGORIES

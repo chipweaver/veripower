@@ -121,7 +121,8 @@ def test_rtl_carry_starstar_includes_nested_and_sidecar_files(tmp_path, monkeypa
     (c / "constraint-annotations.json").write_text("{}")  # authored sidecar
     (c / "notes").mkdir(parents=True)
     (c / "notes" / "fsm.md").write_text("n")  # LLM-named support file
-    (c / "semantic-review.json").write_text("{}")  # no_carry
+    (c / "semantic-review").mkdir(exist_ok=True)
+    (c / "semantic-review" / "leaf.md").write_text("review")  # no_carry
     wd = c / "runs" / "1"
     wd.mkdir(parents=True)
     store.carry_self("m", "rtl-design", wd)
@@ -129,4 +130,4 @@ def test_rtl_carry_starstar_includes_nested_and_sidecar_files(tmp_path, monkeypa
     assert (wd / "rtl-files.json").exists()
     assert (wd / "constraint-annotations.json").exists()
     assert (wd / "notes" / "fsm.md").exists()
-    assert not (wd / "semantic-review.json").exists()
+    assert not (wd / "semantic-review" / "leaf.md").exists()

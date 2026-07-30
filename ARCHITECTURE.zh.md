@@ -446,7 +446,7 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 
 `specification` / `rtl-design` / `simulation` 扇出一级 sub-Task（生产者规则每 child 一个；`simulation` 的 env-build 与 verify child）；`simulation-plan` 自派发单次一级 plan-adequacy 审查 sub-Task。sub-Task 不得再派发（禁止二级——审计边界）。这些 sub-Task 在主线程 skill 的执行窗口内运行：不追加事件，对内核的在途记账不可见。sub-Task 可以以 `STATUS: BLOCKED` 结束（harness 层信号，区别于信封中被禁止的 `status=blocked`）；派发它的 skill 将其转化为列出失败 children 的 `result.json` `status=fail`，后续修复可只重派失败的 children。
 
-`rtl-design` 另跑一个有界（≤2 轮）合规门自收敛循环（按确定性 `rtl check-conformance` 裁决重派失败 children），并在门干净通过后跑一个门控性语义审查波次，其提升的 `semantic-review.json` 直接决定 `status`——`{missing, wrong-behavior}` 且 `critical`/`important` 的发现使阶段以失败路由出去，交给操作者，skill 内不做自动修复。
+`rtl-design` 另跑一个逐 child 的意图评审波次，提升的 `semantic-review/<child>.md` 集合即其 proposed oracle。没有任何脚本把这些评审归约成裁决——`finalize` 只拒绝在任一 child 的评审缺失时写出 pass，机械部分仅此一项，因为本阶段没有 in-stage 人闸能发现一个根本没跑的波次。评审说了什么由阶段自己处置：RTL 缺陷重派该 child，`design.md` / `<child>.md` 的缺陷则在 `fix_owner` 里点名 `specification`。它同样没有确定性的 spec↔RTL 门：集成正确性是 lint-cdc 的 elaboration，而内核 `rtl` 选择器依赖的 `.v`/`.vh` 约束由 `rtl-files.schema.json` 在 `finalize` 校验 sidecar 时声明式强制。
 
 ### 6.4 调试子 Agent——`simulation-triage`
 
@@ -476,7 +476,7 @@ asic/<module>/
 │   │   ├── spec-review/                    # 提升的 proposed-oracle 产物（每 child 一个 .md + decisions.md）
 │   │   ├── constraints/<TOP>.{sdc,sgdc}     # specification 独占；下游从这里读
 │   │   └── runs/<N>/                        # 每次派发写这里；promote 合并进规范视图
-│   ├── rtl-design/           { result.json + *.v / filelist.txt / README.md / semantic-review.json + runs/<N>/ }
+│   ├── rtl-design/           { result.json + *.v / rtl-files.json / constraint-annotations.json / semantic-review/<child>.md + runs/<N>/ }
 │   ├── lint-cdc/             { result.json + 报告 / *-violations.json / scripts/{constraints.sgdc,waiver.tcl} + runs/<N>/ }
 │   ├── synthesis/            { result.json + out/*_syn.{v,sdc,sdf} / reports/qor.rpt + runs/<N>/ }
 │   └── timing-analysis/      { result.json + timing-report.txt / timing-actual.json + runs/<N>/ }

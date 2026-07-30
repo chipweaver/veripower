@@ -264,11 +264,7 @@ def test_fresh_rtldesign_spec_locus_dispatches_specification(tmp_path, monkeypat
             {
                 "stage_specific": {
                     "fix_owner": "specification",
-                    "semantic_gate": {
-                        "loci": {"spec": ["c1"], "rtl": []},
-                        "spec_confidence": "high",
-                    },
-                    "fail_reason": "semantic gate: spec-rooted intent defect — c1",
+                    "fail_reason": "c1 review: §2 width cannot hold the value it requires",
                 }
             }
         ),
