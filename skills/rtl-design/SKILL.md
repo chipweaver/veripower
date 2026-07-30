@@ -38,7 +38,7 @@ Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream 
 | `<design>/top-io.json` + `<design>/interconnects.json` | `specification/references/{top-io,interconnects}.schema.json` | The boundary and the cut edges. Passed by path to the child sub-Tasks (`references/child-task-contract.md`); the main thread does not read them. |
 | `<design>/clocks.json` | `specification/references/clocks.schema.json` | Clock definitions. Passed by path to the child sub-Tasks — a `"generated": true` entry is the `create_generated_clock` the child must report; the main thread does not read it. |
 | `<manifest>/manifest.json` | JSON (`{module, children:[{name, doc, rtl_modules, brainstorm_anchor}]}`) | Child roster — drives the fan-out `N = len(children[])` (every child, incl. the top-integration child). |
-| `<children>/<child>.md` × N | Custom markdown (frontmatter + §1–§5) | Per-child sub-design: frontmatter (`ports` / `clocks` / `features` / `file_path`) + §2 Interface / §3 Internal Behavior drive per-child RTL derivation. |
+| `<children>/<child>.md` × N | Custom markdown (frontmatter + §1–§5) | Per-child sub-design: frontmatter (`ports` / `clocks` / `features`) + §2 Interface / §3 Internal Behavior drive per-child RTL derivation. |
 | `<design>/ppa.json` | `specification/references/ppa.schema.json` | The PPA targets this RTL must hit. Read each entry's `dim` and numeric `target` yourself, and bind the micro-architecture to them (a combinational divide that blows a timing target is a defect here, not at synthesis). |
 
 ## Output Artifacts
@@ -112,7 +112,7 @@ On a first delivery the scope is ALL children and this step is skipped.)
    the only extra read scope-mapping adds: not RTL, not `design.md`.
 2. For each scope entry — a `scope` path or anchor, or a file the `caused_by` envelope names — map to
    `affected_children[]` via the most specific available key:
-   - `frontmatter.file_path` matches the named file → that child;
+   - `frontmatter.ports[]` contains a signal the entry names → that child;
    - `frontmatter.features[]` contains a feature mentioned alongside it → that child;
    - else fall back to "module-wide" (mark all children as affected).
 3. Dispatch behaviour:

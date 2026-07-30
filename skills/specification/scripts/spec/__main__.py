@@ -5,7 +5,6 @@ Verbs (one stage = one tool; see skills/specification/SKILL.md for usage):
   derive-ports        per-child ports from interconnects.json (stdout: JSON)
   check-coverage      manifest-driven coverage gate         (stdout: verdict JSON; exit 0/1)
   derive-constraints  generate SDC/SGDC from clocks.json + top-io.json (stdout: JSON; fail-loud)
-  validate-review     spec-review.json schema + gate        (stdout: gate JSON; exit 0/1)
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the
@@ -44,7 +43,7 @@ def _cmd_derive_ports(a: argparse.Namespace) -> int:
 def _cmd_check_coverage(a: argparse.Namespace) -> int:
     from spec import coverage
 
-    return coverage.run(a.workdir, a.brainstorm)
+    return coverage.run(a.workdir)
 
 
 def _cmd_derive_constraints(a: argparse.Namespace) -> int:
@@ -58,12 +57,6 @@ def _cmd_derive_constraints(a: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_validate_review(a: argparse.Namespace) -> int:
-    from spec import review
-
-    return review.validate(a.review)
-
-
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from spec import result
 
@@ -72,7 +65,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         a.module,
         status=a.status,
         ppa_targets_json=a.ppa_targets,
-        waived_json=a.waived,
         fail_reason=a.fail_reason,
     )
 
@@ -87,21 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("check-coverage", help="manifest-driven coverage gate")
     sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
-        "--brainstorm",
-        required=True,
-        type=Path,
-        help="module-root brainstorm.md, passed explicitly because it lives outside the workdir. Only its LINE COUNT is used, to check each child anchor resolves — this gate does not inspect its content",
-    )
     sp.set_defaults(func=_cmd_check_coverage)
 
     sp = sub.add_parser("derive-constraints", help="generate SDC/SGDC (fail-loud)")
     sp.add_argument("--workdir", required=True, type=Path)
     sp.set_defaults(func=_cmd_derive_constraints)
-
-    sp = sub.add_parser("validate-review", help="spec-review.json schema + gate")
-    sp.add_argument("--review", required=True, type=Path)
-    sp.set_defaults(func=_cmd_validate_review)
 
     sp = sub.add_parser("finalize", help="assemble the lean result.json")
     sp.add_argument("--workdir", required=True, type=Path)
@@ -110,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--status",
         required=True,
         choices=["pass", "fail"],
-        help="the human approve/reject decision at the Step-8 design.md gate; "
+        help="the human approve/reject decision at the Step-7 design.md gate; "
         "fail also serves the documented early-fail exits (with --fail-reason)",
     )
     sp.add_argument(
@@ -120,15 +102,10 @@ def build_parser() -> argparse.ArgumentParser:
         "Wave-1-authored {workdir}/ppa.json from disk",
     )
     sp.add_argument(
-        "--waived",
-        default="[]",
-        help="human-waiver JSON array recorded at the Step-8 gate",
-    )
-    sp.add_argument(
         "--fail-reason",
         default=None,
         help="on --status fail: the one-line failure narrative (early-fail entry); "
-        "default = the Step-8 human-reject wording",
+        "default = the Step-7 human-reject wording",
     )
     sp.set_defaults(func=_cmd_finalize)
 

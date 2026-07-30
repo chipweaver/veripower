@@ -8,10 +8,10 @@ predicate the coverage checker used in reverse — so a child's inter-module por
 correct-by-construction (specification's main thread injects this into each wave-2 child
 prompt; children never hand-guess inter-module ports).
 
-Top-level IO ports are NOT derived here. top-io.json states which child DRIVES each
-output, but which inputs a child reads is that child's own implementation decision, made
-in wave 2 — a different fact, authored where it is known, and backstopped by
-check-coverage's frontmatter-ports subset check.
+Top-level IO ports are NOT derived here. Which top-IO ports a child drives or reads is that
+child's own implementation decision, made in wave 2 and declared in its frontmatter — a
+different fact, authored where it is known, and backstopped by check-coverage (the
+frontmatter-ports subset check, and every output being claimed by some child).
 
 Usage:  python3 scripts/spec/__main__.py derive-ports --workdir <workdir>
 Output: JSON {<child_name>: [<wire>, ...], ...} on stdout (sorted, de-duped).

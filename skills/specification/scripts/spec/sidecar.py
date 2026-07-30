@@ -1,6 +1,6 @@
 """Read + schema-validate the authored JSON sidecars this stage emits.
 
-Wave 1 authors clocks.json / features.json / timing-scenarios.json / top-io.json /
+Wave 1 authors clocks.json / features.json / top-io.json /
 interconnects.json, and each wave-2 child authors check-hints/<child>.json. Three verbs
 consume them (derive-constraints, derive-ports, check-coverage), which is why the two
 readers live here rather than in whichever verb needed them first.

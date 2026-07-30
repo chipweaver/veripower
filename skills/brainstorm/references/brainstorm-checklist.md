@@ -130,18 +130,18 @@ Rendering conventions (hand-drawn ASCII preferred / wavedrom — note that GitHu
 
 ## D7. Verification Input Field Readiness
 
-Cross-check, row by row, against the "Minimum Field Completeness Gate Table" at the end of `${CLAUDE_PLUGIN_ROOT}/skills/specification/references/design-template.md` — the required items are the `features.json` / `timing-scenarios.json` / `top-io.json` / `interconnects.json` / `check-hints/<child>.json` rows in that table. The brainstorm only acts as a reminder; the actual fields land during the design.md authoring stage. Missing items are called out by name in the `Verification Inputs Readiness` section of brainstorm.md.
+Cross-check against the sidecar schemas the specification stage will have to fill: `${CLAUDE_PLUGIN_ROOT}/skills/specification/references/` holds `features` / `timing-scenarios` / `top-io` / `interconnects` / `check-hints` `.schema.json`, each field carrying its own description. The brainstorm only acts as a reminder; the actual fields land during the design.md authoring stage. Missing items are called out by name in the `Verification Inputs Readiness` section of brainstorm.md.
 
 ## Subsection IDs and Stable Anchors
 
-The objective coverage gate (`check-coverage`) and the manifest's per-child `brainstorm_anchor` line ranges trace at **brainstorm subsection granularity**, so brainstorm.md must carry stable, reusable names:
+Downstream readers trace back to brainstorm.md at **subsection granularity** — the manifest's per-child `brainstorm_anchor`, and the specification gate's name-keyed cross-references — so brainstorm.md must carry stable, reusable names:
 
 - Each row of the D1 feature table carries a stable `ID` (recommended `F-NN`) — `features.json` reuses it directly as `id`, and the child frontmatter `features ⊆ features.json` subset check keys on it.
 - D2a top-level interface groups + D2b inter-module wire names, D4 candidates, D5 scenario table all use reusable named anchors (e.g., `cfg_bus` / `Candidate B` / `SC-001`).
 - D6 must explicitly write `ppa_targets: []` even when PPA optimization is not pursued, distinguishing "asked and decided none" from "forgot to ask."
 - Open questions use numbering like `OQ-NN` so they remain locatable.
 
-Stable IDs keep the feature/clock/port subset checks cross-referenceable — those key on names (`F-NN`, a clock name, a port name), never on position. `brainstorm_anchor` still records which passage is primarily a child's, but nothing requires every chapter to fall inside some child's range: the spec-review reviewer reads the whole document, so a chapter no child claims is not a defect.
+Stable IDs keep the feature/clock/port subset checks cross-referenceable — those key on names (`F-NN`, a clock name, a port name), never on position. `brainstorm_anchor` is free text pointing at the passage primarily a child's, read by that child's reviewer as a starting point and by nothing else — no script parses it, no shape is imposed on this document, and a passage no child claims is not a defect.
 
 ## Open-Question Usage Rules
 

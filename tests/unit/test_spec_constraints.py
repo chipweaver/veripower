@@ -21,12 +21,11 @@ def _run(workdir, check=True):
     )
 
 
-def _clk(name, freq_mhz, period_ns, relationship="primary", generated=False, role=""):
+def _clk(name, period_ns, relationship="primary", generated=False, role=""):
     """One clocks.json entry. `generated` is explicit: the emitters read it directly, and
     only load_clocks() defaults the omitted key."""
     return {
         "name": name,
-        "freq_mhz": freq_mhz,
         "period_ns": period_ns,
         "relationship": relationship,
         "generated": generated,
@@ -43,13 +42,11 @@ def _port(name, direction, role, domain="clk", width=1, group="cfg", **kw):
         "interface_group": group,
         "role": role,
     }
-    if direction == "output":
-        e.setdefault("owner", "c")
     e.update(kw)
     return e
 
 
-_DEFAULT_CLOCKS = [_clk("clk", 100, 10.0, role="primary clock")]
+_DEFAULT_CLOCKS = [_clk("clk", 10.0, role="primary clock")]
 _CLK_PORT = _port("clk", "input", "clock")
 
 
@@ -137,8 +134,8 @@ def test_async_clock_groups(tmp_path):
         _port("din", "input", "data", width=8),
     ]
     clocks = [
-        _clk("clk", 100, 10.0),
-        _clk("clk_io", 50, 20.0, "async", role="io clock"),
+        _clk("clk", 10.0),
+        _clk("clk_io", 20.0, "async", role="io clock"),
     ]
     _run(_wd(tmp_path, ports, clocks))
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
@@ -150,8 +147,8 @@ def test_async_clock_groups(tmp_path):
 def test_generated_clock_skips_create_clock(tmp_path):
     ports = [_CLK_PORT, _port("din", "input", "data", width=8)]
     clocks = [
-        _clk("clk", 100, 10.0),
-        _clk("clk_div2", 50, 20.0, "synchronous-related", generated=True),
+        _clk("clk", 10.0),
+        _clk("clk_div2", 20.0, "synchronous-related", generated=True),
     ]
     json.loads(_run(_wd(tmp_path, ports, clocks)).stdout)
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
@@ -169,9 +166,7 @@ def test_generated_clock_skips_create_clock(tmp_path):
 def test_generated_flag_may_be_omitted(tmp_path):
     # `generated` is optional in the schema; load_clocks defaults it to False, so an entry
     # written without the key must behave exactly like generated: false.
-    lean = [
-        {"name": "clk", "freq_mhz": 100, "period_ns": 10.0, "relationship": "primary"}
-    ]
+    lean = [{"name": "clk", "period_ns": 10.0, "relationship": "primary"}]
     ports = [_CLK_PORT, _port("din", "input", "data", width=8)]
     proc = _run(_wd(tmp_path, ports, lean), check=False)
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
@@ -196,34 +191,34 @@ def test_fail_loud_empty_clocks_json(tmp_path):
 def test_fail_loud_invalid_relationship(tmp_path):
     # An invalid/misspelled relationship must fail loud, not silently fall into the
     # synchronous group (which would drop a needed set_clock_groups -asynchronous).
-    bad = [_clk("clk", 100, 10.0, "related")]
+    bad = [_clk("clk", 10.0, "related")]
     proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
     assert proc.returncode != 0 and "relationship" in proc.stderr
 
 
 def test_fail_loud_string_period(tmp_path):
     # period_ns is a number: a quoted value must be rejected here, not float()-ed later.
-    bad = [{**_clk("clk", 100, 10.0), "period_ns": "10.0"}]
+    bad = [{**_clk("clk", 10.0), "period_ns": "10.0"}]
     proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
     assert proc.returncode != 0 and "period_ns" in proc.stderr
 
 
 def test_fail_loud_misspelled_clock_key(tmp_path):
     # additionalProperties: false — a mistyped key must name itself instead of defaulting.
-    bad = [{**_clk("clk", 100, 10.0), "peroid_ns": 10.0}]
+    bad = [{**_clk("clk", 10.0), "peroid_ns": 10.0}]
     proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
     assert proc.returncode != 0 and "peroid_ns" in proc.stderr
 
 
 def test_fail_loud_no_primary_clock(tmp_path):
     # Not schema-expressible; load_clocks enforces it.
-    bad = [_clk("clk", 100, 10.0, "synchronous-related")]
+    bad = [_clk("clk", 10.0, "synchronous-related")]
     proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
     assert proc.returncode != 0 and "primary" in proc.stderr
 
 
 def test_fail_loud_two_primary_clocks(tmp_path):
-    bad = [_clk("clk", 100, 10.0), _clk("clk2", 50, 20.0)]
+    bad = [_clk("clk", 10.0), _clk("clk2", 20.0)]
     proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
     assert proc.returncode != 0 and "primary" in proc.stderr
 
@@ -276,13 +271,6 @@ def test_fail_loud_reset_invalid_polarity(tmp_path):
     assert proc.returncode != 0 and "reset_polarity" in proc.stderr
 
 
-def test_fail_loud_output_missing_owner(tmp_path):
-    # if direction == output then owner — also schema-expressed.
-    q = {k: v for k, v in _port("q", "output", "data").items() if k != "owner"}
-    proc = _run(_wd(tmp_path, [_CLK_PORT, q]), check=False)
-    assert proc.returncode != 0 and "owner" in proc.stderr
-
-
 def test_fail_loud_string_width(tmp_path):
     bad = [{**_CLK_PORT, "width": "1"}]
     proc = _run(_wd(tmp_path, bad), check=False)
@@ -303,8 +291,8 @@ def test_data_port_on_generated_clock_deferred(tmp_path):
     # (create_generated_clock pin not yet known). Both emitters skip it by design.
     ports = [_CLK_PORT, _port("pgen", "input", "data", domain="clk_div2", width=8)]
     clocks = [
-        _clk("clk", 100, 10.0),
-        _clk("clk_div2", 50, 20.0, "synchronous-related", generated=True),
+        _clk("clk", 10.0),
+        _clk("clk_div2", 20.0, "synchronous-related", generated=True),
     ]
     proc = _run(_wd(tmp_path, ports, clocks), check=False)
     assert proc.returncode == 0
@@ -320,7 +308,7 @@ def test_multi_domain_abstract_port_grouping(tmp_path):
         _port("a", "input", "data", width=8),
         _port("b", "input", "data", domain="clk2", width=8),
     ]
-    clocks = [_clk("clk", 100, 10.0), _clk("clk2", 50, 20.0, "async", role="second")]
+    clocks = [_clk("clk", 10.0), _clk("clk2", 20.0, "async", role="second")]
     _run(_wd(tmp_path, ports, clocks))
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "abstract_port -ports {a} -clock clk" in sgdc
@@ -357,8 +345,8 @@ def test_short_named_data_port_on_generated_clock_deferred(tmp_path):
     # The generated-clock deferral applies regardless of name length.
     ports = [_CLK_PORT, _port("d", "input", "data", domain="clk_div2", width=8)]
     clocks = [
-        _clk("clk", 100, 10.0),
-        _clk("clk_div2", 50, 20.0, "synchronous-related", generated=True),
+        _clk("clk", 10.0),
+        _clk("clk_div2", 20.0, "synchronous-related", generated=True),
     ]
     proc = _run(_wd(tmp_path, ports, clocks), check=False)
     assert proc.returncode == 0
@@ -378,8 +366,8 @@ def test_sgdc_emits_async_clock_groups(tmp_path):
         _port("din", "input", "data", width=8),
     ]
     clocks = [
-        _clk("clk", 100, 10.0),
-        _clk("clk_io", 50, 20.0, "async", role="io clock"),
+        _clk("clk", 10.0),
+        _clk("clk_io", 20.0, "async", role="io clock"),
     ]
     _run(_wd(tmp_path, ports, clocks))
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
@@ -391,7 +379,7 @@ def test_sgdc_emits_async_clock_groups(tmp_path):
 def test_sgdc_domain_label_collision_fails_loudly():
     # F1 guard: an async clock literally named "sync" would be assigned -domain sync and
     # silently merged into the synchronous group — a false-negative CDC hole. Must fail.
-    clocks = [_clk("clk", 100, 10.0), _clk("sync", 50, 20.0, "async")]
+    clocks = [_clk("clk", 10.0), _clk("sync", 20.0, "async")]
     with pytest.raises(SystemExit):
         constraints._sgdc_clock_domains(clocks)
 
@@ -401,8 +389,8 @@ def test_sdc_sgdc_async_declaration_agrees_by_construction():
     # by construction. Asserted against the two functions, not by re-parsing their output.
     ports = [_port("din", "input", "data", width=8)]
     for clocks in (
-        [_clk("clk", 100, 10.0)],  # no async clock
-        [_clk("clk", 100, 10.0), _clk("clk_io", 50, 20.0, "async")],  # async present
+        [_clk("clk", 10.0)],  # no async clock
+        [_clk("clk", 10.0), _clk("clk_io", 20.0, "async")],  # async present
     ):
         sdc = constraints.generate_sdc("m", clocks, ports)
         sgdc = constraints.generate_sgdc("m", clocks, ports)
@@ -423,6 +411,6 @@ def test_clock_named_like_domain_flag_not_spurious_fail(tmp_path):
         _port("xd_clk", "input", "clock", domain="x-domain"),
         _port("din", "input", "data", domain="x-domain", width=8),
     ]
-    clocks = [_clk("x-domain", 100, 10.0, role="primary clock")]
+    clocks = [_clk("x-domain", 10.0, role="primary clock")]
     proc = _run(_wd(tmp_path, ports, clocks), check=False)
     assert proc.returncode == 0, (proc.stdout, proc.stderr)

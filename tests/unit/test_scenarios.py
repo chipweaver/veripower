@@ -52,7 +52,6 @@ _OUTPUTS = {
         "Design/specification/ppa.json",
         "Design/specification/clocks.json",
         "Design/specification/features.json",
-        "Design/specification/timing-scenarios.json",
         "Design/specification/check-hints/c.json",
         "Design/specification/top-io.json",
         "Design/specification/interconnects.json",
@@ -627,14 +626,12 @@ def _spec_workdir(tmp_path):
             [
                 {
                     "name": "clk",
-                    "freq_mhz": 100,
                     "period_ns": 10.0,
                     "relationship": "primary",
                     "role": "primary clock",
                 },
                 {
                     "name": "clk_io",
-                    "freq_mhz": 50,
                     "period_ns": 20.0,
                     "relationship": "async",
                     "role": "io clock",

@@ -31,9 +31,9 @@ def load_clocks(workdir: Path) -> list[dict]:
 
 
 def _ports(workdir: Path) -> list[dict]:
-    """Top-level IO from top-io.json. Shape, enums and the two conditional requirements
-    (an output declares owner; a reset row declares polarity and kind) are the schema's;
-    check-coverage validates it and runs the cross-file owner check."""
+    """Top-level IO from top-io.json. Shape, enums and the conditional requirement on a
+    reset row (it declares polarity and kind) are the schema's; check-coverage validates it
+    and runs the cross-file checks."""
     for v in validate_sidecar(workdir, "top-io.json"):
         _fail(f"top-io.json: {v.get('at', '')} {v['error']}".strip())
     ports = load_sidecar(workdir, "top-io.json")
@@ -139,7 +139,7 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
             continue
         T = period_of.get(p["clock_domain"])
         if T is None:
-            continue  # domain is a generated clock (deferred) or absent (clock-domain-gated); defensive
+            continue  # a generated clock has no create_clock to delay against
         delay = round(T * _IO_DELAY_FRAC, 4)
         if p["direction"] == "input":
             out.append(
@@ -186,7 +186,7 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     for p in ports:
         if p["role"] == "data":
             if p["clock_domain"] not in clock_names:
-                continue  # domain is a generated clock (deferred) or absent; defensive (mirrors generate_sdc)
+                continue  # a generated clock has no create_clock to abstract against
             by_domain.setdefault(p["clock_domain"], []).append(p["name"])
     for dom, sigs in by_domain.items():
         out.append(f"abstract_port -ports {{{' '.join(sigs)}}} -clock {dom}")

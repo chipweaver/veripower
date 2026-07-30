@@ -21,10 +21,14 @@ soft hint; the hard guarantee is `check-coverage`'s purity gate.
 
 ## Write
 - `manifest.json` — `module`; `children[]` with `name` / `doc` / `rtl_modules[]` (REQUIRED, ≥1) /
-  `brainstorm_anchor`.
+  `brainstorm_anchor`. The anchor is free text that locates this child's primary passage in
+  **this** brainstorm — a heading, a candidate name, a quoted phrase, a line range, whatever
+  actually points there. No script parses it and no format is imposed: a brainstorm's shape is
+  the dialogue's to choose. Its one reader is that child's spec reviewer, who reads the whole
+  document anyway and uses the anchor only to know where to start.
 - `design.md` §1.1–1.7 overview (narrative only; each section points at its sidecar), per
   `references/design-template.md`. §1.3 / §1.5 / §1.6 carry narrative — and, for §1.5, the
-  waveform diagrams — plus a pointer to `features.json` / `timing-scenarios.json` /
+  waveform diagrams and the scenario rows — plus a pointer to `features.json` /
   `clocks.json`; §1.4.1 / §1.4.2 point at `top-io.json` / `interconnects.json`; §1.2 keeps the
   architecture diagram and §1.7 points at `manifest.json`. **No feature, scenario, clock,
   port, interconnect or submodule table** — you are writing the manifest and the sidecars, so
@@ -32,20 +36,17 @@ soft hint; the hard guarantee is `check-coverage`'s purity gate.
 - `ppa.json` — the D6 `ppa_targets` **verbatim** as a JSON array of `{dim, target}` (`[]` when D6
   declares none or was not reached).
 - `top-io.json` — one object per top-level port (`name` / `direction` / `width` / `clock_domain` /
-  `interface_group` / `role`; an output also declares `owner`; a reset also declares
-  `reset_polarity` / `reset_kind`), per `references/top-io.schema.json`.
+  `interface_group` / `role`; a reset also declares `reset_polarity` / `reset_kind`), per
+  `references/top-io.schema.json`.
 - `interconnects.json` — one object per cut edge (`wire` / `producers` / `consumers` / `width` /
   `clock_domain`), per `references/interconnects.schema.json`. `[]` for an N=1 module.
-- `timing-scenarios.json` — one object per scenario (`id` / `stimulus` / `expected` /
-  `timing_constraint`, plus optional `interface_mode` / `exceptions`), per
-  `references/timing-scenarios.schema.json`.
-- `features.json` — one object per feature (`id` / `name` / `description` / `mode_interface` /
-  `priority` / `happy_path` / `corner_cases` / `negative_cases`, plus optional
-  `coverage_intent`), per `references/features.schema.json`. Every field except
-  `coverage_intent` must be non-empty — a blank one is a defect, not a default.
-- `clocks.json` — one object per clock (`name` / `freq_mhz` / `period_ns` / `relationship`, plus
-  optional `generated` / `role`), per `references/clocks.schema.json`. Numbers are numbers;
-  exactly one `relationship: "primary"`; a mistyped key fails at `derive-constraints`.
+- `features.json` — one object per feature (`id` / `name` / `description` required; the rest
+  of `references/features.schema.json` describes the shape a feature record usually takes —
+  write the ones this feature actually has).
+- `clocks.json` — one object per clock (`name` / `period_ns` / `relationship`, plus optional
+  `generated` / `role`), per `references/clocks.schema.json`. `period_ns` is the sole statement
+  of the clock's rate — numbers are numbers; exactly one `relationship: "primary"`; a mistyped
+  key fails at `derive-constraints`.
 
 ## Output
 End with `STATUS: DONE` + the written paths, or `STATUS: BLOCKED <reason>` (a program exception

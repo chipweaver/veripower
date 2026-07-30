@@ -6,16 +6,17 @@ Every sub-design file `{workdir}/<child>.md` follows this structure (Surface 1 c
 
 ```yaml
 ---
-child: <child_name>                # required; equals manifest.children[].name
-parent: <module_name>              # required
-ports:                             # required (may be empty). cross-out ports only
-  - <port_name>                    #   each must appear in main §1.4.1 ∪ §1.4.2
-clocks:                            # required (may be empty)
-  - { name: <clock_name>, domain: <domain> }    #   each name must appear in clocks.json
-features:                          # required (may be empty)
-  - <feature_id>                   #   each must appear in features.json
+ports:                # required (may be empty). Cross-out ports only; each must appear in top-io.json ∪ interconnects.json
+  - <port_name>
+clocks:               # required (may be empty). Each must appear in clocks.json
+  - <clock_name>
+features:             # required (may be empty). Each must appear in features.json
+  - <feature_id>
 ---
 ```
+
+Three keys, all of them claims about which shared thing is yours. Your name and your parent's
+are in `manifest.json` already — do not restate them here.
 
 ## §1 Purpose
 
@@ -36,7 +37,7 @@ Two references stay by name rather than by copy:
 - **Control/status inter-module port**: its encoding is one `interconnects.json` entry that producer and consumer both read; name the wire, do not re-describe the codes.
 - **Inter-module behavior contract** (a shared operating-phase / sequencing / co-assertion contract, declared in the §1.4.2.1 companion): reference the companion's declared names; do not redefine the phase set or sequencing.
 
-A top-IO **output** is owned by exactly one child — `top-io.json`'s `owner` says which, and that child must list the port in its frontmatter `ports`. A leaf child passed through the pure top is preferred. Which **inputs** you read is your own decision, declared in your frontmatter and nowhere else.
+If you drive a top-IO **output**, list it in your frontmatter `ports` — that claim is the only record of who drives it, and `check-coverage` fails an output no child claims. Prefer driving it from a leaf child passed through the pure top over top-level glue. Which **inputs** you read is your own decision, declared in your frontmatter and nowhere else.
 
 ## §3 Internal Behavior
 

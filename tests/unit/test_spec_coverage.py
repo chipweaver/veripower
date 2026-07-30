@@ -7,110 +7,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
 sys.path.insert(0, str(ROOT / "skills/specification/scripts"))
-from spec.coverage import compute_anchor_resolvability, parse_anchor  # noqa: E402
-
-
-def test_parse_anchor_single_range():
-    assert parse_anchor("lines 5-10", 100) == [(5, 10)]
-
-
-def test_parse_anchor_to_end():
-    assert parse_anchor("lines 5-end", 100) == [(5, 100)]
-
-
-def test_parse_anchor_multi_range():
-    # F1: a child legitimately spanning two disjoint brainstorm regions
-    assert parse_anchor("lines 5-10, 20-30", 100) == [(5, 10), (20, 30)]
-
-
-def test_parse_anchor_d4_literal():
-    # A well-formed anchor claiming no lines: the empty list, NOT None. None is reserved
-    # for unparseable, and the caller turns None into a gate-failing orphan.
-    assert parse_anchor("D4-architecture-only", 100) == []
-    assert parse_anchor("D4-architecture-only", 100) is not None
-
-
-def test_parse_anchor_garbage():
-    assert parse_anchor("nonsense", 100) is None
-
-
-# ── anchor resolvability: the gating reviewer's read-scope must resolve ────────
-# The spec-review faithfulness lens reads brainstorm.md at this anchor. An anchor that does
-# not resolve makes a GATING reviewer judge a child against blank or wrong text and report
-# "no findings" — silent in the direction that matters. It assumes nothing about the
-# brainstorm's shape.
-
-
-def _man(*anchors):
-    return {
-        "module": "m",
-        "children": [
-            {
-                "name": f"c{i}",
-                "doc": f"c{i}.md",
-                "rtl_modules": [f"c{i}"],
-                "brainstorm_anchor": a,
-            }
-            for i, a in enumerate(anchors)
-        ],
-    }
-
-
-def _bs(n):
-    return "\n".join(f"line {i}" for i in range(1, n + 1))
-
-
-def test_anchor_resolvability_clean():
-    r = compute_anchor_resolvability(_man("lines 1-40", "lines 41-100"), _bs(100))
-    assert r == {"violations": []}
-
-
-def test_anchor_out_of_bounds_is_a_violation():
-    # A reviewer given lines 82-160 of a 109-line brainstorm reads a short tail and calls it
-    # the intent.
-    r = compute_anchor_resolvability(_man("lines 82-160"), _bs(109))
-    assert len(r["violations"]) == 1
-    assert "does not resolve" in r["violations"][0]["error"]
-    assert "109-line" in r["violations"][0]["error"]
-
-
-def test_anchor_unparseable_is_a_violation():
-    r = compute_anchor_resolvability(_man("total garbage, not a range"), _bs(100))
-    assert len(r["violations"]) == 1 and "unparseable" in r["violations"][0]["error"]
-
-
-def test_anchor_inverted_range_is_a_violation():
-    # A reversed range yields an empty slice, so the reviewer reads nothing and finds nothing.
-    r = compute_anchor_resolvability(_man("lines 40-10"), _bs(100))
-    assert (
-        len(r["violations"]) == 1 and "does not resolve" in r["violations"][0]["error"]
-    )
-
-
-def test_anchor_zero_start_is_a_violation():
-    r = compute_anchor_resolvability(_man("lines 0-10"), _bs(100))
-    assert len(r["violations"]) == 1
-
-
-def test_architecture_only_child_claims_nothing_and_is_allowed():
-    # It declares descent from the architecture partitioning rather than from any passage —
-    # the one anchor for which an empty slice is the correct answer.
-    r = compute_anchor_resolvability(_man("D4-architecture-only"), _bs(100))
-    assert r == {"violations": []}
-
-
-def test_anchors_need_not_cover_the_brainstorm():
-    # Uncovered lines are not a defect: the reviewer reads the whole document regardless.
-    r = compute_anchor_resolvability(_man("lines 1-5"), _bs(500))
-    assert r == {"violations": []}
-
-
-def test_every_child_is_checked_not_just_the_first():
-    r = compute_anchor_resolvability(
-        _man("lines 1-10", "nonsense", "lines 900-999"), _bs(100)
-    )
-    assert [v["child"] for v in r["violations"]] == ["c1", "c2"]
-
 
 # ---------- structure gate ----------
 
@@ -119,7 +15,6 @@ def test_every_child_is_checked_not_just_the_first():
 _DEFAULT_CLOCKS = [
     {
         "name": "clk",
-        "freq_mhz": 100,
         "period_ns": 10.0,
         "relationship": "primary",
         "role": "primary clock",
@@ -137,16 +32,6 @@ _DEFAULT_FEATURES = [
         "happy_path": "h",
         "corner_cases": "c",
         "negative_cases": "n",
-    }
-]
-
-
-_DEFAULT_SCENARIOS = [
-    {
-        "id": "SC-0",
-        "stimulus": "write",
-        "expected": "ack",
-        "timing_constraint": "T_setup",
     }
 ]
 
@@ -184,7 +69,6 @@ def _clocks_wd(clocks=None, features=None, ports=None, wires=None):
     (d / "features.json").write_text(
         json.dumps(_DEFAULT_FEATURES if features is None else features)
     )
-    (d / "timing-scenarios.json").write_text(json.dumps(_DEFAULT_SCENARIOS))
     (d / "top-io.json").write_text(
         json.dumps(_DEFAULT_PORTS if ports is None else ports)
     )
@@ -201,18 +85,9 @@ def _struct(manifest=None, clocks=None, features=None, ports=None, wires=None):
         "module": "m",
         "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
     }
-    return cc.compute_structure(_clocks_wd(clocks, features, ports, wires), manifest)
-
-
-def test_structure_clean_passes():
-    s = _struct()
-    assert all(not v for v in s.values()), s
-
-
-def test_structure_rb_period_freq_mismatch():
-    # 1000/100 = 10, not 8 — the one clock check the schema cannot express.
-    bad = [{**_DEFAULT_CLOCKS[0], "period_ns": 8.0}]
-    assert _struct(clocks=bad)["period_violations"]
+    return cc.compute_structure(
+        _clocks_wd(clocks, features, ports, wires), manifest, child_texts={}
+    )
 
 
 def test_structure_rf_clock_domain_not_in_clocks_json():
@@ -221,11 +96,6 @@ def test_structure_rf_clock_domain_not_in_clocks_json():
         _port("din", "input", "data", domain="clk_x"),
     ]
     assert _struct(ports=bad)["clock_domain_violations"]
-
-
-def test_structure_children_zero_fails():
-    s = _struct(manifest={"module": "m", "children": []})
-    assert s["manifest_violations"]
 
 
 def test_structure_no_clocks_json_does_not_cascade_domain_violations():
@@ -306,9 +176,9 @@ def test_structure_clean_with_children_passes():
 def test_frontmatter_missing_required_key_fails(tmp_path):
     from spec import coverage as cc
 
-    # child frontmatter missing `parent` and `clocks`
+    # child frontmatter missing `clocks`
     (tmp_path / "c.md").write_text(
-        '---\nchild: c\nbrainstorm_anchor: "lines 1-3"\nports: []\nfeatures: []\n---\nbody\n',
+        "---\nports: []\nfeatures: []\n---\nbody\n",
         encoding="utf-8",
     )
     manifest = {
@@ -317,7 +187,7 @@ def test_frontmatter_missing_required_key_fails(tmp_path):
     }
     fs = cc.compute_frontmatter_subset(tmp_path, manifest)
     missing = {m["child"]: set(m["missing"]) for m in fs["missing_keys"]}
-    assert "c" in missing and {"parent", "clocks"} <= missing["c"]
+    assert missing == {"c": {"clocks"}}
 
 
 def test_frontmatter_all_required_keys_present_passes(tmp_path):
@@ -363,7 +233,6 @@ def test_end_to_end_multi_child_clean_workdir(tmp_path):
     )
     (tmp_path / "features.json").write_text(json.dumps(_DEFAULT_FEATURES))
     (tmp_path / "clocks.json").write_text(json.dumps(_DEFAULT_CLOCKS))
-    (tmp_path / "timing-scenarios.json").write_text(json.dumps(_DEFAULT_SCENARIOS))
     (tmp_path / "top-io.json").write_text(json.dumps(_DEFAULT_PORTS))
     (tmp_path / "interconnects.json").write_text(json.dumps(_DEFAULT_WIRES))
     child = (
@@ -377,30 +246,15 @@ def test_end_to_end_multi_child_clean_workdir(tmp_path):
     hd.mkdir()
     for n in ("core_top", "core_b"):
         (hd / f"{n}.json").write_text(json.dumps(_DEFAULT_HINTS))
-    bs = tmp_path / "brainstorm.md"
-    bs.write_text("# A\nx\n## B\ny\n## C\nz\n")
     proc = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "check-coverage",
-            "--workdir",
-            str(tmp_path),
-            "--brainstorm",
-            str(bs),
-        ],
+        ["python3", str(MAIN), "check-coverage", "--workdir", str(tmp_path)],
         capture_output=True,
         text=True,
     )
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
     cov = json.loads(proc.stdout)
     assert cov["status"] == "pass"
-    assert set(cov) == {
-        "status",
-        "anchor_resolvability",
-        "frontmatter_subset",
-        "structure",
-    }
+    assert set(cov) == {"status", "frontmatter_subset", "structure"}
 
 
 def test_end_to_end_impure_top_child_fails(tmp_path):
@@ -430,18 +284,8 @@ def test_end_to_end_impure_top_child_fails(tmp_path):
         "## §5 Verification Hints\n\nSee `check-hints/core_top.json`.\n"
     )
     (tmp_path / "core_top.md").write_text(child)
-    bs = tmp_path / "brainstorm.md"
-    bs.write_text("# A\nx\n## B\ny\n## C\nz\n")
     proc = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "check-coverage",
-            "--workdir",
-            str(tmp_path),
-            "--brainstorm",
-            str(bs),
-        ],
+        ["python3", str(MAIN), "check-coverage", "--workdir", str(tmp_path)],
         capture_output=True,
         text=True,
     )
@@ -574,7 +418,7 @@ def test_interconnect_clock_not_in_clocks_json():
     )
 
 
-# ---------- §1.4.1 top-IO Owner (deterministic) ----------
+# ---------- §1.4.1 top-IO output claim (deterministic) ----------
 
 
 def _io_fm(name, ports):
@@ -603,128 +447,75 @@ def _driver(ports, bodies, manifest=None):
     )["top_io_driver_violations"]
 
 
-def _row(owner):
-    """The clock port plus one output whose owner is under test."""
-    out = _port("sig_o", "output", "data", width=8, group="g")
-    if owner is not None:
-        out["owner"] = owner
-    return [_port("clk", "input", "clock"), out]
+def _row():
+    """The clock port plus the one output whose claim is under test."""
+    return [
+        _port("clk", "input", "clock"),
+        _port("sig_o", "output", "data", width=8, group="g"),
+    ]
 
 
-def test_driver_clean_leaf_owner():
+def test_driver_clean_leaf_claim():
     bodies = {
-        "top": _io_fm("top", ["sig_o"]),
+        "top": _io_fm("top", []),
         "drv": _io_fm("drv", ["sig_o"]),
         "other": _io_fm("other", []),
     }
-    assert _driver((_row("drv")), bodies) == []
+    assert _driver(_row(), bodies) == []
 
 
-def test_driver_owner_top_passes_deterministic():
-    # Owner=top is a valid child that lists its boundary output → passes the gate.
-    # The leaf-owner preference is documented guidance, not a deterministic block.
+def test_driver_top_child_claim_passes():
+    # The top-integration child claiming its own boundary output passes. The leaf-driver
+    # preference is documented guidance, not a deterministic block.
     bodies = {
         "top": _io_fm("top", ["sig_o"]),
         "drv": _io_fm("drv", []),
         "other": _io_fm("other", []),
     }
-    assert _driver((_row("top")), bodies) == []
+    assert _driver(_row(), bodies) == []
 
 
-def test_driver_owner_missing_is_a_schema_violation():
-    # if direction == output then owner — the schema says it, so the gate does not repeat
-    # it; the gate only resolves an owner that IS present.
-    from spec import coverage as cc
-
-    bodies = {
-        "top": _io_fm("top", ["sig_o"]),
-        "drv": _io_fm("drv", ["sig_o"]),
-        "other": _io_fm("other", []),
-    }
-    st = cc.compute_structure(
-        _clocks_wd(ports=_row(None)), _IO_MANIFEST, child_texts=bodies
-    )
-    assert st["top_io_schema_violations"]
-    assert "owner" in st["top_io_schema_violations"][0]["error"]
-    assert st["top_io_driver_violations"] == []
-
-
-def test_driver_owner_not_a_child():
+def test_driver_unclaimed_output_is_a_violation():
+    # The defect no single child's author can see: each knows only its own claim, so an
+    # output every one of them left out goes unnoticed until lint reports it undriven.
     bodies = {
         "top": _io_fm("top", []),
         "drv": _io_fm("drv", []),
         "other": _io_fm("other", []),
     }
-    v = _driver((_row("ghost")), bodies)
+    v = _driver(_row(), bodies)
     assert any(
-        x.get("signal") == "sig_o" and "not a manifest child" in x.get("error", "")
+        x.get("signal") == "sig_o" and "nothing drives it" in x.get("error", "")
         for x in v
     )
 
 
-def test_driver_owner_does_not_list_signal():
+def test_driver_multiple_claimants_not_gated():
+    # A top mux of N leaf sources and N leaves conflicting are indistinguishable from the
+    # claims alone; that call belongs to a reader of the bodies, not to this gate.
     bodies = {
-        "top": _io_fm("top", []),
-        "drv": _io_fm("drv", []),
+        "top": _io_fm("top", ["sig_o"]),
+        "drv": _io_fm("drv", ["sig_o"]),
         "other": _io_fm("other", []),
     }
-    v = _driver((_row("drv")), bodies)
-    assert any(
-        x.get("signal") == "sig_o" and "does not list" in x.get("error", "") for x in v
-    )
+    assert _driver(_row(), bodies) == []
 
 
 def test_driver_input_not_gated():
-    # An input has no owner: which inputs a child reads is that child's own decision,
-    # declared in its frontmatter, not a partition fact stated at the top.
+    # An input nobody lists is not a defect: which inputs a child reads is its own decision.
     ports = [
         _port("clk", "input", "clock"),
         _port("in_i", "input", "data", width=8, group="g"),
     ]
     bodies = {
-        "top": _io_fm("top", ["in_i"]),
-        "drv": _io_fm("drv", ["in_i"]),
-        "other": _io_fm("other", ["in_i"]),
+        "top": _io_fm("top", []),
+        "drv": _io_fm("drv", []),
+        "other": _io_fm("other", []),
     }
     assert _driver(ports, bodies) == []
 
 
-def test_driver_skipped_without_child_texts():
-    from spec import coverage as cc
-
-    s = cc.compute_structure(
-        _clocks_wd(ports=_row("drv")), _IO_MANIFEST
-    )  # child_texts=None
-    assert s["top_io_driver_violations"] == []
-
-
 # ---------- F5: ragged first data row must not yield false missing_column ----------
-
-
-# ---------- F6: missing 'children' manifest key must yield a clean verdict ----------
-
-
-def test_missing_children_key_clean_verdict(tmp_path):
-    (tmp_path / "manifest.json").write_text(json.dumps({"module": "m"}))  # no children
-    bs = tmp_path / "brainstorm.md"
-    bs.write_text("# A\nx\n")
-    proc = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "check-coverage",
-            "--workdir",
-            str(tmp_path),
-            "--brainstorm",
-            str(bs),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert proc.returncode == 1, (proc.stdout, proc.stderr)
-    cov = json.loads(proc.stdout)  # valid JSON on stdout ⇒ graceful, not a traceback
-    assert cov["status"] == "fail"
-    assert cov["structure"]["manifest_violations"], cov["structure"]
 
 
 # ---------- F7: misnamed §1.3 ID column must fail loud ----------
@@ -752,16 +543,23 @@ def test_features_misspelled_key_names_itself(tmp_path):
     assert v and "happy_pat" in v[0]["error"]
 
 
-def test_features_blank_required_field_rejected(tmp_path):
-    # Every field is minLength 1: a blank one is a defect, not a default.
+def test_features_blank_field_rejected(tmp_path):
+    # Present-but-blank is a defect even for an optional field: minLength 1 everywhere.
     v = _validate_features(tmp_path, [{**_DEFAULT_FEATURES[0], "happy_path": ""}])
     assert v and v[0]["at"].endswith(".happy_path")
 
 
 def test_features_missing_required_field_rejected(tmp_path):
-    lean = {k: v for k, v in _DEFAULT_FEATURES[0].items() if k != "priority"}
+    lean = {k: v for k, v in _DEFAULT_FEATURES[0].items() if k != "description"}
     v = _validate_features(tmp_path, [lean])
-    assert v and "priority" in v[0]["error"]
+    assert v and "description" in v[0]["error"]
+
+
+def test_features_narrative_fields_are_optional(tmp_path):
+    # id/name/description carry the record; the rest describe the shape a feature record
+    # usually takes. A required-non-empty box buys a filled box, not a real answer.
+    lean = {k: _DEFAULT_FEATURES[0][k] for k in ("id", "name", "description")}
+    assert _validate_features(tmp_path, [lean]) == []
 
 
 def test_features_coverage_intent_optional(tmp_path):
@@ -784,43 +582,11 @@ def _hints_workdir(tmp_path, hints, child_body="# c\n\nbody\n"):
     (tmp_path / "c.md").write_text(child_body)
     (tmp_path / "features.json").write_text(json.dumps(_DEFAULT_FEATURES))
     (tmp_path / "clocks.json").write_text(json.dumps(_DEFAULT_CLOCKS))
-    (tmp_path / "timing-scenarios.json").write_text(json.dumps(_DEFAULT_SCENARIOS))
     hd = tmp_path / "check-hints"
     hd.mkdir(exist_ok=True)
     (hd / "c.json").write_text(json.dumps(hints))
     manifest = {"module": "m", "children": [{"name": "c", "doc": "c.md"}]}
     return tmp_path, manifest
-
-
-# ---------- timing-scenarios.json contract ----------
-
-
-def _validate_scenarios(workdir, doc=None):
-    import json
-
-    from spec import coverage as cc
-
-    if doc is not None:
-        (workdir / "timing-scenarios.json").write_text(json.dumps(doc))
-    return cc.validate_sidecar(workdir, "timing-scenarios.json")
-
-
-def test_scenarios_missing_is_reported(tmp_path):
-    assert _validate_scenarios(tmp_path) == [{"error": "timing-scenarios.json missing"}]
-
-
-def test_scenarios_misspelled_key_names_itself(tmp_path):
-    v = _validate_scenarios(tmp_path, [{**_DEFAULT_SCENARIOS[0], "stimulis": "x"}])
-    assert v and "stimulis" in v[0]["error"]
-
-
-def test_scenarios_optional_fields_may_be_absent(tmp_path):
-    assert _validate_scenarios(tmp_path, _DEFAULT_SCENARIOS) == []
-
-
-def test_scenarios_blank_required_field_rejected(tmp_path):
-    v = _validate_scenarios(tmp_path, [{**_DEFAULT_SCENARIOS[0], "expected": ""}])
-    assert v and v[0]["at"].endswith(".expected")
 
 
 # ---------- F8: §5 SourceFeature aliases are rejected ----------

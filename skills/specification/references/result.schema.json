@@ -2,73 +2,91 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/specification/result.schema.json",
   "title": "specification result.json contract",
-  "description": "Complete contract for asic/<module>/Design/specification/result.json. On status=pass, stage_specific carries top_module (the <TOP>.sdc/.sgdc filename anchor) and the spec_gate verdict; on status=fail it carries fail_reason (the one-line failure narrative). top_module may be absent on an early-fail path that never reached scaffold-derivation.",
+  "description": "Complete contract for asic/<module>/Design/specification/result.json. On status=pass, stage_specific carries top_module (the <TOP>.sdc/.sgdc filename anchor); on status=fail it carries fail_reason (the one-line failure narrative). top_module may be absent on an early-fail path that never reached scaffold-derivation. The semantic review lives in artifacts[] as spec-review/*.md — prose, not a verdict field.",
   "allOf": [
-    {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
+    {
+      "$ref": "https://veripower.local/schemas/envelope.schema.json"
+    },
     {
       "properties": {
-        "stage": {"const": "specification"},
+        "stage": {
+          "const": "specification"
+        },
         "artifacts": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["path"],
+            "required": [
+              "path"
+            ],
             "properties": {
-              "path":   {"type": "string", "minLength": 1}
+              "path": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           }
         },
         "stage_specific": {
           "type": "object",
           "properties": {
-            "top_module":  {"type": "string", "minLength": 1},
-            "fail_reason": {"type": "string", "minLength": 1},
-            "spec_gate": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["gate"],
-              "properties": {
-                "gate":     {"enum": ["trip", "clear"]},
-                "flagged":  {"type": "array", "items": {
-                  "type": "object",
-                  "properties": {
-                    "child":    {"type": "string"},
-                    "lens":     {"type": "string"},
-                    "severity": {"type": "string"}
-                  }
-                }},
-                "must_ack": {"type": "array", "items": {
-                  "type": "object",
-                  "properties": {
-                    "child":    {"type": "string"},
-                    "severity": {"type": "string"}
-                  }
-                }},
-                "waived": {"type": "array", "items": {
-                  "type": "object",
-                  "properties": {
-                    "child":          {"type": "string"},
-                    "lens":           {"type": "string"},
-                    "location":       {"type": "string"},
-                    "classification": {"enum": ["false-positive", "accepted-risk"]},
-                    "reason":         {"type": "string"}
-                  }
-                }}
-              }
+            "top_module": {
+              "type": "string",
+              "minLength": 1
+            },
+            "fail_reason": {
+              "type": "string",
+              "minLength": 1
             }
           },
           "additionalProperties": true
         }
       },
-      "required": ["stage_specific"]
+      "required": [
+        "stage_specific"
+      ]
     },
     {
-      "if":   {"properties": {"status": {"const": "pass"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["top_module"]}}}
+      "if": {
+        "properties": {
+          "status": {
+            "const": "pass"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stage_specific": {
+            "required": [
+              "top_module"
+            ]
+          }
+        }
+      }
     },
     {
-      "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["fail_reason"]}}}
+      "if": {
+        "properties": {
+          "status": {
+            "const": "fail"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stage_specific": {
+            "required": [
+              "fail_reason"
+            ]
+          }
+        }
+      }
     }
   ]
 }

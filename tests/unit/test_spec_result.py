@@ -15,12 +15,6 @@ from spec import constraints, result  # noqa: E402
 _ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
 _FIX = Path(__file__).resolve().parent / "fixtures" / "specification-tpu_top"
 
-_CLEAR_REVIEW = {
-    "stage": "specification",
-    "module": "m",
-    "findings": [],
-}
-
 
 def _spec_workdir(tmp_path):
     """A workdir derive_constraints() can run over (valid clocks.json + top-io.json) plus
@@ -46,7 +40,6 @@ def _spec_workdir(tmp_path):
             [
                 {
                     "name": "i_clk",
-                    "freq_mhz": 100,
                     "period_ns": 10.0,
                     "relationship": "primary",
                     "role": "primary clock",
@@ -58,12 +51,54 @@ def _spec_workdir(tmp_path):
         json.dumps(
             {
                 "module": "tpu_top",
-                "children": [{"name": "mac", "doc": "mac.md", "rtl_modules": ["mac"]}],
+                "children": [
+                    {
+                        "name": "tpu_top",
+                        "doc": "tpu_top.md",
+                        "rtl_modules": ["tpu_top"],
+                    }
+                ],
             }
         )
     )
-    (wd / "mac.md").write_text("# child\n")
-    (wd / "spec-review.json").write_text(json.dumps(_CLEAR_REVIEW))
+    (wd / "tpu_top.md").write_text(
+        "---\nports: []\nclocks: []\nfeatures:\n  - F-00\n---\n\n# child\n"
+    )
+    (wd / "features.json").write_text(
+        json.dumps([{"id": "F-00", "name": "n", "description": "d"}])
+    )
+    (wd / "timing-scenarios.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "SC-001",
+                    "stimulus": "s",
+                    "expected": "e",
+                    "timing_constraint": "t",
+                }
+            ]
+        )
+    )
+    (wd / "interconnects.json").write_text(json.dumps([]))
+    (wd / "check-hints").mkdir(exist_ok=True)
+    (wd / "check-hints" / "tpu_top.json").write_text(
+        json.dumps(
+            [
+                {
+                    "check_id": "CHK-00",
+                    "source_feature": "F-00",
+                    "implementation_detail": "d",
+                    "observable": "o",
+                    "reference_rule": "r",
+                }
+            ]
+        )
+    )
+    (wd / "spec-review").mkdir(exist_ok=True)
+    (wd / "spec-review" / "tpu_top.md").write_text("# spec review\n\nNo findings.\n")
+    (wd / "spec-review" / "decisions.md").write_text(
+        "# decisions\n\nNothing to resolve.\n"
+    )
     return wd
 
 
@@ -84,12 +119,7 @@ def _validate_envelope(env: dict) -> None:
 
 def test_build_result_pass_lean_shape(tmp_path):
     wd = _spec_workdir(tmp_path)
-    assert (
-        result.build_result(
-            wd, module="tpu_top", ppa_targets=[], waived=[], status="pass"
-        )
-        == 0
-    )
+    assert result.build_result(wd, module="tpu_top", ppa_targets=[], status="pass") == 0
     env = json.loads((wd / "result.json").read_text())
     assert (env["stage"], env["module"]) == (
         "specification",
@@ -98,12 +128,9 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
     assert ss["top_module"] == "tpu_top"
-    assert ss["spec_gate"] == {
-        "gate": "clear",
-        "flagged": [],
-        "must_ack": [],
-        "waived": [],
-    }
+    assert (
+        "spec_gate" not in ss
+    )  # the review is prose under spec-review/, not a verdict field
     assert (
         "ppa_targets" not in ss
     )  # PPA lives in the ppa.json sidecar, not the envelope
@@ -118,9 +145,7 @@ def test_build_result_override_writes_ppa_sidecar(tmp_path):
         {"dim": "area_um2", "target": 70000.0},
         {"dim": "power_mw", "target": 12.5},
     ]
-    result.build_result(
-        wd, module="tpu_top", ppa_targets=targets, waived=[], status="pass"
-    )
+    result.build_result(wd, module="tpu_top", ppa_targets=targets, status="pass")
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert "ppa_targets" not in ss  # the sidecar is the SSoT, not the envelope
     # ppa.json is the stable sidecar synthesis/power-analysis read directly (spec §4.3)
@@ -130,12 +155,7 @@ def test_build_result_override_writes_ppa_sidecar(tmp_path):
 def test_build_result_reject_status_writes_fail(tmp_path):
     # the human REJECTED at the Step-8 gate -> --status fail, gate still clear.
     wd = _spec_workdir(tmp_path)
-    assert (
-        result.build_result(
-            wd, module="tpu_top", ppa_targets=[], waived=[], status="fail"
-        )
-        == 0
-    )
+    assert result.build_result(wd, module="tpu_top", ppa_targets=[], status="fail") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail" and env["stage_specific"]["fail_reason"]
 
@@ -155,8 +175,9 @@ def test_enumerate_artifacts_present_only(tmp_path):
     assert {
         "design.md",
         "manifest.json",
-        "spec-review.json",
-        "mac.md",
+        "spec-review/decisions.md",
+        "spec-review/tpu_top.md",
+        "tpu_top.md",
         "fifo.md",
         "constraints/tpu_top.sdc",
         "constraints/tpu_top.sgdc",
@@ -176,9 +197,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     targets = [{"dim": "area_um2", "target": 70000.0}]
     # γ-floor: agent relays the human-gate outcome (approve, no waivers, PPA from D6).
     assert (
-        result.build_result(
-            wd, module="tpu_top", ppa_targets=targets, waived=[], status="pass"
-        )
+        result.build_result(wd, module="tpu_top", ppa_targets=targets, status="pass")
         == 0
     )
     env = json.loads((wd / "result.json").read_text())
@@ -188,17 +207,18 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     assert (
         "ppa_targets" not in ss
     )  # PPA lives in the ppa.json sidecar, not the envelope
-    assert ss["spec_gate"] == {
-        "gate": "clear",
-        "flagged": [],
-        "must_ack": [],
-        "waived": [],
-    }
+    assert (
+        "spec_gate" not in ss
+    )  # the review is prose under spec-review/, not a verdict field
     paths = {a["path"] for a in env["artifacts"]}
     assert paths == {
         "design.md",
         "manifest.json",
-        "spec-review.json",
+        "spec-review/decisions.md",
+        "spec-review/mac.md",
+        "spec-review/systolic_reg.md",
+        "spec-review/fifo.md",
+        "spec-review/tpu_top.md",
         "mac.md",
         "systolic_reg.md",
         "fifo.md",
@@ -208,7 +228,6 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "ppa.json",
         "clocks.json",
         "features.json",
-        "timing-scenarios.json",
         "top-io.json",
         "interconnects.json",
         "check-hints/mac.json",
@@ -223,167 +242,9 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     _validate_envelope(env)
 
 
-def test_golden_waived_flagged_finding_passes(tmp_path):
-    # γ-floor: a flagged finding the human WAIVED -> the approve precondition is satisfied.
-    wd = tmp_path / "specification"
-    shutil.copytree(_FIX, wd)
-    (wd / "spec-review.json").write_text(
-        json.dumps(
-            {
-                "stage": "specification",
-                "module": "tpu_top",
-                "findings": [
-                    {
-                        "child": "mac",
-                        "lens": "faithfulness",
-                        "severity": "critical",
-                        "location": "§1.3",
-                        "summary": "missing feature",
-                    }
-                ],
-            }
-        )
-    )
-    waived = [
-        {
-            "child": "mac",
-            "lens": "faithfulness",
-            "location": "§1.3",
-            "classification": "accepted-risk",
-            "reason": "out of scope this tapeout",
-        }
-    ]
-    assert (
-        result.build_result(
-            wd, module="tpu_top", ppa_targets=[], waived=waived, status="pass"
-        )
-        == 0
-    )
-    env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "pass"  # waived -> precondition met
-    assert (
-        env["stage_specific"]["spec_gate"]["gate"] == "trip"
-    )  # gate still reflects reality
-    assert env["stage_specific"]["spec_gate"]["waived"] == waived
-    _validate_envelope(env)
-
-
-def test_golden_unwaived_flagged_blocks_pass(tmp_path):
-    # the same flagged finding with NO waiver + --status pass -> finalize downgrades to fail.
-    wd = tmp_path / "specification"
-    shutil.copytree(_FIX, wd)
-    (wd / "spec-review.json").write_text(
-        json.dumps(
-            {
-                "stage": "specification",
-                "module": "tpu_top",
-                "findings": [
-                    {
-                        "child": "mac",
-                        "lens": "faithfulness",
-                        "severity": "critical",
-                        "location": "§1.3",
-                        "summary": "missing feature",
-                    }
-                ],
-            }
-        )
-    )
-    result.build_result(wd, module="tpu_top", ppa_targets=[], waived=[], status="pass")
-    env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "fail"
-    assert "approve precondition unmet" in env["stage_specific"]["fail_reason"]
-
-
 # ── waiver trust boundary: finalize rejects an unreasoned / malformed waiver (exit 2) ──
 # The stderr message is asserted so the exit-2 is attributable to the waiver check, not to a
 # downstream failure on the bare tmp_path (which would also exit 2, for a different reason).
-
-
-def test_finalize_empty_reason_waiver_is_blocked(tmp_path, capsys):
-    waived = json.dumps(
-        [
-            {
-                "child": "mac",
-                "lens": "faithfulness",
-                "classification": "accepted-risk",
-                "reason": "   ",
-            }
-        ]
-    )
-    rc = result.finalize(tmp_path, "tpu_top", status="pass", waived_json=waived)
-    assert rc == 2
-    assert "--waived" in capsys.readouterr().err
-
-
-def test_finalize_bad_classification_waiver_is_blocked(tmp_path, capsys):
-    waived = json.dumps(
-        [
-            {
-                "child": "mac",
-                "lens": "faithfulness",
-                "classification": "meh",
-                "reason": "x",
-            }
-        ]
-    )
-    rc = result.finalize(tmp_path, "tpu_top", status="pass", waived_json=waived)
-    assert rc == 2
-    assert "--waived" in capsys.readouterr().err
-
-
-def test_finalize_missing_field_waiver_is_blocked(tmp_path, capsys):
-    waived = json.dumps(
-        [{"child": "mac", "classification": "false-positive", "reason": "x"}]
-    )
-    rc = result.finalize(tmp_path, "tpu_top", status="pass", waived_json=waived)
-    assert rc == 2
-    assert "--waived" in capsys.readouterr().err
-
-
-def test_finalize_non_list_waiver_is_blocked(tmp_path, capsys):
-    rc = result.finalize(tmp_path, "tpu_top", status="pass", waived_json='{"a": 1}')
-    assert rc == 2
-    assert "--waived" in capsys.readouterr().err
-
-
-def test_finalize_valid_waiver_still_passes(tmp_path):
-    # the check must not reject a well-formed human waiver: a valid one still clears the gate.
-    wd = tmp_path / "specification"
-    shutil.copytree(_FIX, wd)
-    (wd / "spec-review.json").write_text(
-        json.dumps(
-            {
-                "stage": "specification",
-                "module": "tpu_top",
-                "findings": [
-                    {
-                        "child": "mac",
-                        "lens": "faithfulness",
-                        "severity": "critical",
-                        "location": "§1.3",
-                        "summary": "missing feature",
-                    }
-                ],
-            }
-        )
-    )
-    waived = json.dumps(
-        [
-            {
-                "child": "mac",
-                "lens": "faithfulness",
-                "location": "§1.3",
-                "classification": "accepted-risk",
-                "reason": "out of scope this tapeout",
-            }
-        ]
-    )
-    rc = result.finalize(
-        wd, "tpu_top", status="pass", ppa_targets_json="[]", waived_json=waived
-    )
-    assert rc == 0
-    assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
 
 def test_finalize_bad_ppa_targets_json_is_blocked(tmp_path):
@@ -427,10 +288,7 @@ def test_pass_reads_ppa_from_disk_when_no_override(tmp_path):
     targets = [{"dim": "area_um2", "target": 70000.0}]
     (wd / "ppa.json").write_text(json.dumps(targets))
     assert (
-        result.build_result(
-            wd, module="tpu_top", ppa_targets=None, waived=[], status="pass"
-        )
-        == 0
+        result.build_result(wd, module="tpu_top", ppa_targets=None, status="pass") == 0
     )
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert "ppa_targets" not in ss
@@ -468,7 +326,7 @@ def test_forgotten_override_no_longer_wipes_ppa_json(tmp_path):
 
 def test_pass_missing_ppa_json_is_blocked(tmp_path):
     wd = _spec_workdir(tmp_path)  # no ppa.json on disk
-    rc = result.finalize(wd, "tpu_top", status="pass", waived_json="[]")
+    rc = result.finalize(wd, "tpu_top", status="pass")
     assert rc == 2  # BLOCKED: wave-1 must emit ppa.json (or caller overrides)
     assert not (wd / "result.json").exists()
 
@@ -476,7 +334,7 @@ def test_pass_missing_ppa_json_is_blocked(tmp_path):
 def test_pass_invalid_disk_ppa_is_blocked(tmp_path):
     wd = _spec_workdir(tmp_path)
     (wd / "ppa.json").write_text(json.dumps([{"dim": "bogus", "target": 1}]))
-    assert result.finalize(wd, "tpu_top", status="pass", waived_json="[]") == 2
+    assert result.finalize(wd, "tpu_top", status="pass") == 2
 
 
 def test_invalid_override_is_blocked(tmp_path):
@@ -486,7 +344,6 @@ def test_invalid_override_is_blocked(tmp_path):
         "tpu_top",
         status="pass",
         ppa_targets_json='[{"dim": "bogus", "target": 1}]',
-        waived_json="[]",
     )
     assert rc == 2
 
@@ -508,7 +365,6 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
             wd,
             module="tpu_top",
             ppa_targets=None,
-            waived=[],
             status="fail",
             fail_reason="external reference missing: /x/design.md",
         )
@@ -523,8 +379,8 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
     assert {
         "design.md",
         "manifest.json",
-        "spec-review.json",
-        "mac.md",
+        "spec-review/decisions.md",
+        "tpu_top.md",
         "ppa.json",
         "constraints/tpu_top.sdc",
         "constraints/tpu_top.sgdc",
@@ -532,33 +388,12 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
     _validate_envelope(env)
 
 
-def test_early_fail_without_review_record_omits_spec_gate(tmp_path):
-    wd = _spec_workdir(tmp_path)
-    (wd / "spec-review.json").unlink()  # early fail can precede the Step-7 wave
-    assert (
-        result.build_result(
-            wd,
-            module="tpu_top",
-            ppa_targets=None,
-            waived=[],
-            status="fail",
-            fail_reason="manifest child missing rtl_modules",
-        )
-        == 0
-    )
-    env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "fail"
-    assert "spec_gate" not in env["stage_specific"]
-    _validate_envelope(env)
-
-
 def test_reject_default_reason_unchanged(tmp_path):
     # the human-reject path (no --fail-reason) keeps its established wording
     wd = _spec_workdir(tmp_path)
-    result.build_result(wd, module="tpu_top", ppa_targets=[], waived=[], status="fail")
+    result.build_result(wd, module="tpu_top", ppa_targets=[], status="fail")
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "design.md gate rejected at human review"
-    assert ss["spec_gate"]["gate"] == "clear"  # review record present -> still graded
 
 
 # ── adversarial-review follow-ups: fail-path edges ──────────────────────────
@@ -578,39 +413,11 @@ def test_fail_without_manifest_is_blocked(tmp_path):
 def test_pass_ignores_fail_reason(tmp_path):
     wd = _spec_workdir(tmp_path)
     (wd / "ppa.json").write_text("[]")
-    rc = result.finalize(
-        wd, "tpu_top", status="pass", waived_json="[]", fail_reason="should be ignored"
-    )
+    rc = result.finalize(wd, "tpu_top", status="pass", fail_reason="should be ignored")
     assert rc == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
     assert "fail_reason" not in env["stage_specific"]
-
-
-def test_fail_path_merges_waived_into_spec_gate(tmp_path):
-    wd = _spec_workdir(tmp_path)
-    waived = [
-        {
-            "child": "mac",
-            "lens": "faithfulness",
-            "location": "§1.3",
-            "classification": "accepted-risk",
-            "reason": "human-authored",
-        }
-    ]
-    assert (
-        result.build_result(
-            wd,
-            module="tpu_top",
-            ppa_targets=None,
-            waived=waived,
-            status="fail",
-            fail_reason="requirements need revision: D2",
-        )
-        == 0
-    )
-    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["spec_gate"]["waived"] == waived  # review record present -> merged
 
 
 # ── code-review round: B-group fixes ─────────────────────────────────────────
@@ -625,54 +432,10 @@ def test_nan_ppa_is_blocked_on_both_paths(tmp_path):
         "tpu_top",
         status="pass",
         ppa_targets_json='[{"dim": "power_mw", "target": NaN}]',
-        waived_json="[]",
     )
     assert rc == 2
     (wd / "ppa.json").write_text('[{"dim": "power_mw", "target": NaN}]')
-    assert result.finalize(wd, "tpu_top", status="pass", waived_json="[]") == 2
-
-
-def test_corrupt_review_on_fail_is_blocked(tmp_path):
-    # only an ABSENT spec-review.json is the legitimate early-fail case; a
-    # present-but-corrupt record must surface (exit 2), never be silently dropped
-    # from the promoted fail envelope.
-    wd = _spec_workdir(tmp_path)
-    (wd / "spec-review.json").write_text("{truncated")
-    rc = result.finalize(
-        wd, "tpu_top", status="fail", fail_reason="requirements need revision: D2"
-    )
-    assert rc == 2
-    assert not (wd / "result.json").exists()
-
-
-def test_precondition_downgrade_not_preempted_by_missing_ppa(tmp_path):
-    # double fault: tripped review with no waiver AND no ppa.json — the documented
-    # downgrade-to-fail must win; a ppa fault must not turn it into a no-write BLOCKED.
-    wd = tmp_path / "specification"
-    shutil.copytree(_FIX, wd)
-    (wd / "spec-review.json").write_text(
-        json.dumps(
-            {
-                "stage": "specification",
-                "module": "tpu_top",
-                "findings": [
-                    {
-                        "child": "mac",
-                        "lens": "faithfulness",
-                        "severity": "critical",
-                        "location": "§1.3",
-                        "summary": "missing feature",
-                    }
-                ],
-            }
-        )
-    )
-    assert not (wd / "ppa.json").exists()
-    rc = result.finalize(wd, "tpu_top", status="pass", waived_json="[]")
-    assert rc == 0
-    env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "fail"
-    assert "approve precondition unmet" in env["stage_specific"]["fail_reason"]
+    assert result.finalize(wd, "tpu_top", status="pass") == 2
 
 
 def test_derivation_failure_on_pass_is_blocked_exit2(tmp_path):
@@ -687,14 +450,13 @@ def test_derivation_failure_on_pass_is_blocked_exit2(tmp_path):
             [
                 {
                     "name": "i_clk",
-                    "freq_mhz": 100,
                     "period_ns": "banana",
                     "relationship": "primary",
                 }
             ]
         )
     )
-    assert result.finalize(wd, "tpu_top", status="pass", waived_json="[]") == 2
+    assert result.finalize(wd, "tpu_top", status="pass") == 2
 
 
 def test_empty_fail_reason_is_blocked(tmp_path):
@@ -714,7 +476,7 @@ def test_pass_non_string_scenario_id_is_blocked(tmp_path):
     (wd / "ppa.json").write_text(
         json.dumps([{"dim": "power_mw", "target": 1, "scenario_id": 5}])
     )
-    assert result.finalize(wd, "tpu_top", status="pass", waived_json="[]") == 2
+    assert result.finalize(wd, "tpu_top", status="pass") == 2
 
 
 def test_pass_non_finite_ppa_target_is_blocked(tmp_path):
@@ -723,7 +485,7 @@ def test_pass_non_finite_ppa_target_is_blocked(tmp_path):
     # false for every input, disarming that gate. The explicit finite check must survive.
     wd = _spec_workdir(tmp_path)
     (wd / "ppa.json").write_text('[{"dim": "power_mw", "target": NaN}]')
-    assert result.finalize(wd, "tpu_top", status="pass", waived_json="[]") == 2
+    assert result.finalize(wd, "tpu_top", status="pass") == 2
 
 
 def test_unreadable_ppa_schema_blocks_instead_of_waving_targets_through(

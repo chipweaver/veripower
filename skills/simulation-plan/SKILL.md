@@ -34,7 +34,6 @@ Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream 
 | `<design>/design.md` | Custom markdown | Module-level design (§1.1–1.5: features / IO / interconnects / timing scenarios). Per-submodule content lives in each `<child>.md`. |
 | `<design>/clocks.json` | `specification/references/clocks.schema.json` | Clock definitions. `materialize-scaffold` reads it to derive `primary_clock`. |
 | `<design>/features.json` | `specification/references/features.schema.json` | Feature list. You author testpoints and tests from it. |
-| `<design>/timing-scenarios.json` | `specification/references/timing-scenarios.schema.json` | Timing scenarios. Author one sequence per `id`; read it directly. |
 | `<manifest>/manifest.json` | Custom JSON (specification child registry) | `.module` fills the Top field in plan §1 Scope; its `children[]` roster is the roster the check hints are aggregated over. |
 | `<design>/check-hints/<child>.json` × N | `specification/references/check-hints.schema.json` | Per-child check hints. Read them directly; `materialize-scaffold` and `check-scaffold` aggregate them in memory (`check_id` uniqueness is global). |
 
