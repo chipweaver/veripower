@@ -13,12 +13,7 @@ Your boundary:
 
 - **Write only under `{workdir}`** (artifacts + `result.json`); never touch another module's artifacts. Reading templates and upstream inputs outside is fine.
 - **No brainstorm here.** Consume the frozen, approved `brainstorm.md`; run the two path-handoff gates, but hold no document body and drive no D0–D7 dialogue.
-- **No LLM constraint overlay.** `derive-constraints` generates and self-checks the constraint files; you neither hand-write nor re-check them.
-- **`design.md` carries no by-reference jumps** (`see brainstorm`, `see spec D`, …): it is the unique source of truth, so inline every referenced passage verbatim.
-- **Reference PPA targets by pointing at `ppa.json`, never by restating the numbers**: this is the one sanctioned by-reference pointer (brainstorm content is still inlined verbatim).
-- **The partition is yours to change until this stage ships it.** Before a passing `result.json` exists, a partition defect found late sends you back to Step 2 — it costs the wave's work, not correctness, because nothing downstream has consumed the manifest yet. Once it has shipped, the partition is not yours: `manifest.json` is a declared input of rtl-design and simulation-plan, so changing it invalidates their proofs, and deciding that is the kernel's job (see Step 1).
-- **Minimal change on re-dispatch**: with a prior `design.md` on disk, touch only what the round requires and leave every other file byte-identical.
-- **Scripts are black boxes**: invoke them per the documented commands and act on their documented failure output. Read the source only to debug a suspected script bug — a verdict you re-derive by reading the code is your own judgment wearing the gate's name.
+- **Minimal change on re-dispatch**: with a prior round's files on disk, touch only what this round requires and leave everything else byte-identical. Rewriting an unchanged artifact changes its fingerprint, which drops any human `pin` on it back to `proposed` — a gratuitous rewrite puts the next signature on text nobody reviewed.
 
 ## Input Artifacts
 
