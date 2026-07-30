@@ -9,11 +9,7 @@ Your sole responsibility: derive a frozen design source of truth from an approve
 
 ## Iron Rule
 
-Your boundary:
-
-- **Write only under `{workdir}`** (artifacts + `result.json`); never touch another module's artifacts. Reading templates and upstream inputs outside is fine.
-- **No brainstorm here.** Consume the frozen, approved `brainstorm.md`; run the two path-handoff gates, but hold no document body and drive no D0–D7 dialogue.
-- **Minimal change on re-dispatch**: with a prior round's files on disk, touch only what this round requires and leave everything else byte-identical. Rewriting an unchanged artifact changes its fingerprint, which drops any human `pin` on it back to `proposed` — a gratuitous rewrite puts the next signature on text nobody reviewed.
+Write only under `{workdir}`; never another module's artifacts. Reading templates and upstream inputs outside it is fine.
 
 ## Input Artifacts
 
@@ -62,7 +58,7 @@ You are loaded on the main thread as a thin Level-0 dispatcher. You hold no docu
 
 ### Step 1: Entry — determine scope, pick the entry point
 
-Your previous round, if any, is already present in `{workdir}`; edit it in place. Read `{workdir}/dispatch.json` first — the kernel writes `scope` / `caused_by` / `reasons` **only when they carry something**, so their presence is what tells you which kind of round this is:
+Your previous round, if any, is already present in `{workdir}`; edit it in place, touching only what this round requires. Rewriting an artifact this round did not change changes its fingerprint, which drops any human `pin` on it back to `proposed` — the next signature would land on text nobody reviewed. Read `{workdir}/dispatch.json` first — the kernel writes `scope` / `caused_by` / `reasons` **only when they carry something**, so their presence is what tells you which kind of round this is:
 
 - **`caused_by` present:** a repair round. This stage already shipped, and rtl-design / simulation-plan consumed the manifest, so the partition is not this round's to change. Scope is the union of `dispatch.json`'s `scope` and what the `caused_by` envelopes attribute; Read each envelope once. Dispatch one design.md-level rework sub-Task, then re-enter at Step 5 and flow through to Step 8. Steps 2–4 are skipped. Step 6 re-runs on this pass, so the promoted review is always fresh.
 - **`caused_by` absent:** a first delivery. Re-derive from Step 2, ending at Step 8. If `{workdir}` already holds a partial round — the session was compacted or interrupted — that work is yours to continue or redo; artifacts on disk are not a gate you already passed.
