@@ -141,9 +141,9 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
 ```
 
 It reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all
-clock-group blocks; area = `Total cell area`), derives the reproducibility header
-(tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete
-`result.json`. A clean gate is not enough for a pass: it also requires all three of
+clock-group blocks; area = `Total cell area`), reads the DC version off the report header,
+enumerates `artifacts[]`, and writes the complete `result.json`. A clean gate is not enough for a
+pass: it also requires all three of
 `out/*_syn.{v,sdc,sdf}` on disk, and reports an incomplete set as a `tooling` fail rather than
 promoting a synthesis the downstream stages cannot read.
 

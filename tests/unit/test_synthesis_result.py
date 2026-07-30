@@ -290,7 +290,7 @@ def test_build_result_pass_lean_shape(tmp_path):
     ss = env["stage_specific"]
     slack = [a for a in ss["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]
     assert slack["value"] == pytest.approx(0.95)  # parser regression: min across groups
-    assert ss["violations"] == [] and ss["ppa_targets"] == []
+    assert ss["violations"] == []
     assert (
         "notes" not in ss and "power_report" not in ss
     )  # lean shape: dropped fields absent
@@ -403,26 +403,10 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
     assert sp.finalize(tmp_path, "m", "m", None, None) == 2
 
 
-# ── reproducibility-header derivations (tool / lib_db / clock) ────────────────
+# ── reproducibility header: the DC version, which nothing else records ────────
 def test_parse_tool_from_report_version():
     assert sp.parse_tool("Version: L-2016.03-SP1\n") == "Design Compiler L-2016.03-SP1"
     assert sp.parse_tool("no version here") == "Design Compiler unknown"
-
-
-def test_read_lib_db_from_config_tcl(tmp_path):
-    (tmp_path / "scripts").mkdir()
-    (tmp_path / "scripts" / "config.tcl").write_text(
-        'set ::env(LIB_DB) "/home/eda/Foundry/TSMC.90/slow.db"\n'
-    )
-    assert sp.read_lib_db(tmp_path) == "/home/eda/Foundry/TSMC.90/slow.db"
-    assert sp.read_lib_db(tmp_path / "nope") is None
-
-
-def test_parse_clock_from_sdc(tmp_path):
-    (tmp_path / "constraints.sdc").write_text(
-        "create_clock -name i_clk -period 10.0 [get_ports i_clk]\n"
-    )
-    assert sp.parse_clock(tmp_path) == {"name": "i_clk", "period_ns": 10.0}
 
 
 # ── artifacts[] enumeration (present-only, no self-listing) ───────────────────
@@ -474,9 +458,10 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     assert area == pytest.approx(70684.185148) and slack == pytest.approx(0.73)
     assert ss["violations"] == []
     assert ss["tool"] == "Design Compiler L-2016.03-SP1"  # report header, NOT "dc2016"
-    assert ss["lib_db"] == "/home/eda/Foundry/TSMC.90/slow.db"
-    assert ss["clock"] == {"name": "i_clk", "period_ns": 10.0}
-    assert ss["ppa_targets"] == [] and "top_module" not in ss
+    for k in ("top_module", "lib_db", "clock", "ppa_targets"):
+        assert (
+            k not in ss
+        )  # recorded elsewhere: kernel identity record, ppa.json, artifacts[]
     for k in ("rtl_filelist", "power_report", "timing_exceptions", "notes"):
         assert k not in ss
     paths = [a["path"] for a in env["artifacts"]]
@@ -590,7 +575,6 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
-    assert ss["ppa_targets"] == ["area_um2"]  # power_mw dim filtered out
     assert env["status"] == "fail" and ss["failure_kind"] == "ppa"
     assert ss["violations"] == [
         {"dim": "area_um2", "target": 1.0, "actual": pytest.approx(65018.219263)}
@@ -629,7 +613,7 @@ def test_finalize_cli_no_ppa_json_is_vacuous_pass(tmp_path):
     )
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "pass" and env["stage_specific"]["ppa_targets"] == []
+    assert env["status"] == "pass"
 
 
 # ── netlist presence: a clean gate is not a met gate ───────────────────────────

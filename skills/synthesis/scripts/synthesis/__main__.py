@@ -28,19 +28,25 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _read_ppa_targets(workdir, dims: set[str]) -> list:
-    """PPA targets from the specification stage root's ppa.json sidecar (spec
-    §4.3) — filtered to `dims` — replacing the old injected
-    --area-target/--slack-target CLI args (synthesis binds to this file as its
-    acceptance standard). The stage root comes from the injected
-    `<workdir>/dispatch.json` `inputs."ppa"`, not self-navigation."""
+GATED_DIMS = ("area_um2", "timing_slack_ns")  # power_mw is judged in power-analysis
+
+
+def read_ppa_targets(workdir) -> dict:
+    """{dim: target} for the two dims this stage gates, from the specification ppa.json
+    it binds to as its acceptance standard. The stage root comes from the injected
+    `<workdir>/dispatch.json` `inputs."ppa"`, not self-navigation. An absent file or dim
+    leaves that dimension ungated."""
     inputs = json.loads((Path(workdir) / "dispatch.json").read_text(encoding="utf-8"))[
         "inputs"
     ]
     p = Path(inputs["ppa"]) / "ppa.json"
     if not p.is_file():
-        return []
-    return [t for t in json.loads(p.read_text()) if t.get("dim") in dims]
+        return {}
+    return {
+        t["dim"]: t["target"]
+        for t in json.loads(p.read_text())
+        if t.get("dim") in GATED_DIMS
+    }
 
 
 def _cmd_bootstrap(a: argparse.Namespace) -> int:
@@ -52,16 +58,12 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from synthesis import result
 
-    targets = _read_ppa_targets(a.workdir, {"area_um2", "timing_slack_ns"})
-    area_target = next((t["target"] for t in targets if t["dim"] == "area_um2"), None)
-    slack_target = next(
-        (t["target"] for t in targets if t["dim"] == "timing_slack_ns"), None
-    )
+    targets = read_ppa_targets(a.workdir)
     return result.finalize(
         a.workdir,
         a.module,
-        area_target,
-        slack_target,
+        targets.get("area_um2"),
+        targets.get("timing_slack_ns"),
         a.fix_owner,
         a.fail_reason,
         a.failure_kind,

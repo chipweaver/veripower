@@ -241,13 +241,6 @@ def build_result(
     area_text = (reports / "area.rpt").read_text(errors="replace")
     ss = {
         "tool": parse_tool(area_text),
-        "lib_db": read_lib_db(workdir),
-        "clock": parse_clock(workdir),
-        "ppa_targets": [
-            d
-            for d, t in (("area_um2", area_target), ("timing_slack_ns", slack_target))
-            if t is not None
-        ],
         "ppa_actual": actual["ppa_actual"],
         "violations": actual["violations"],
     }
@@ -290,29 +283,14 @@ def _missing_netlist(workdir: Path) -> list[str]:
 
 
 _VERSION_RE = re.compile(r"^\s*Version:\s*(\S+)", re.M)
-_LIBDB_RE = re.compile(r'set ::env\(LIB_DB\)\s*"([^"]+)"')
-_CLOCK_RE = re.compile(r"create_clock\s+-name\s+(\S+)\s+-period\s+([0-9.]+)")
 
 
 def parse_tool(area_text: str) -> str:
+    """The DC version off the report header. The kernel's reap-time identity record
+    covers the library environment variables and no tool version, and this stage's
+    oracle IS dc_shell, so nothing else names which compiler produced the proof."""
     m = _VERSION_RE.search(area_text)
     return f"Design Compiler {m.group(1)}" if m else "Design Compiler unknown"
-
-
-def read_lib_db(workdir):
-    cfg = Path(workdir) / "scripts" / "config.tcl"
-    if not cfg.is_file():
-        return None
-    m = _LIBDB_RE.search(cfg.read_text(errors="replace"))
-    return m.group(1) if m else None
-
-
-def parse_clock(workdir):
-    sdc = Path(workdir) / "constraints.sdc"
-    if not sdc.is_file():
-        return None
-    m = _CLOCK_RE.search(sdc.read_text(errors="replace"))
-    return {"name": m.group(1), "period_ns": float(m.group(2))} if m else None
 
 
 def enumerate_artifacts(workdir) -> list[dict]:
