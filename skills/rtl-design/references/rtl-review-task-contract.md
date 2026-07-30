@@ -15,11 +15,10 @@ before signing, not for a parser. Do not call the Task tool.
   the deployed layout). **Read its §2 Interface (and, for the top-integration child, the §3.1
   instantiation map wires the `interconnects.json` edges)** as the statement of *intent* to check against.
 - `design.md` path, read-scope §1.4 only, for cross-checking integration **intent** (including §1.4.2.1's
-  inter-module behavior contract). No deterministic gate matches the edge list against the RTL any
-  more, so a module or wire the spec names and the RTL does not (or renames) is yours to catch —
-  report it as `missing`.
+  inter-module behavior contract). Nothing matches that edge list against the RTL mechanically, so
+  a module or wire the spec names and the RTL does not — or renamed — is yours to catch.
 
-## Your job: skeptical intent review (NOT lint / PPA / syntax)
+## Your job: skeptical intent review
 
 You are a fresh reviewer. **Do not trust that the RTL is correct because it exists.** Read the
 actual RTL and compare it against the `<child>.md §2` intent, in both directions: what §2 requires
@@ -33,12 +32,6 @@ Three things are worth flagging, and the third differently from the first two:
 - **Over-engineering** — logic, state or ports beyond what §2 asks for. This one is worth
   recording and rarely worth blocking: unrequested configurability at a correct default costs
   area, not correctness.
-
-Attributing a defect to the spec is the consequential call, so make it deliberately. An interface
-width that cannot hold the value §2 requires is the spec's, and hard evidence. RTL that merely
-does the wrong thing is this child's, even when §2 could have been clearer. Say which, and say
-how sure you are — the stage routes a spec rebuild on your reading alone, with no triage step
-behind it, so an uncertain attribution should read as uncertain.
 
 **Out of scope (do NOT report):** synthesizability / timing / area / power (downstream stages);
 lint / CDC rule violations (lint-cdc); pure syntax and whole-design elaboration (the child
@@ -60,6 +53,5 @@ Every finding says four things:
   value §2 requires is the spec's; RTL that just does the wrong thing is the child's. Say which,
   and how sure you are, because the stage routes an upstream repair on your reading alone.
 
-Write nothing when you found nothing — an empty findings section with a sentence saying you read
-§2 against the RTL and it holds. A file that does not exist reads as a review that never ran, and
-the stage cannot pass without yours.
+Found nothing? Say that, in a sentence: you read §2 against the RTL and it holds. A file that does
+not exist reads as a review that never ran, and the stage cannot pass without yours.

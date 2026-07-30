@@ -5,7 +5,7 @@ description: Use when writing or modifying Verilog/SystemVerilog RTL, or recordi
 
 # RTL Design
 
-Your sole responsibility: turn `manifest.json`'s child roster into authored RTL. You are a thin dispatcher. The per-child sub-Tasks author every `.v` file; deterministic scripts turn their reports into this stage's sidecars and envelope. You hold no RTL body, and every fix lands through a child re-dispatch.
+Your sole responsibility: turn `manifest.json`'s child roster into authored RTL. You are a thin dispatcher — the per-child sub-Tasks author every `.v` file, and a reviewer per child reads it back against its intent. You hold no RTL body, and every fix lands through a child re-dispatch.
 
 ## Iron Rule
 
@@ -50,7 +50,7 @@ Nothing reduces those reviews to a verdict. Read them and act: re-dispatch the c
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir} --module {module} --top <top_module> --manifest <manifest>/manifest.json [--fail-reason "<one line>"] [--fix-owner <rule>]
 ```
 
-`finalize` derives the envelope from disk. It schema-validates both sidecars, so a shape defect is a program exception rather than a promoted artifact. It refuses to write a pass while any child's review file is missing.
+`finalize` derives the envelope from disk. It validates both sidecars against their schemas, and refuses to write a pass while any child's review file is missing.
 
 A failing envelope carries `fail_reason`. `finalize` derives it from the on-disk verdict, or takes your one line from `--fail-reason` when no on-disk state can express the failure.
 

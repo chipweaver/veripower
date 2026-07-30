@@ -26,9 +26,8 @@ below. Do not call the Task tool (no Level-2 dispatch).
 - **Do not reverse-read your interface into existence.** Your ports come from the
   `top-io.json` / `interconnects.json` / `<child>.md §2` contract — never from an external
   verification harness (a reference top, `Makefile`, or `*_defines` from the verification
-  environment) reverse-read until they line up. Your siblings were handed that same contract,
-  and it is the only reason their RTL and yours meet. Integration correctness itself is verified
-  downstream by lint-cdc.
+  environment) reverse-read until they line up. Your siblings were handed that same contract, and
+  it is the only reason their RTL and yours meet.
 
 ## Output
 
