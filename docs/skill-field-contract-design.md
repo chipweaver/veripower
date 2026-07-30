@@ -321,7 +321,7 @@ Structure: numbered step **headings** — each top-level step is an H3 heading `
 `### Step 2: Wave 1 — dispatch env-build`). Numbered markdown lists (`1.` `2.`) are used only
 for sub-steps inside a step and other ordered sub-sequences, never for the top-level steps.
 Step 1 is a read-inputs step; the worker form's linear seed → read scope → minimal-edit
-flow is the default, but degenerate forms drop ladder arms (a stage that is never a route-DAG
+flow is the default, but degenerate forms read fewer narrowing keys (a stage that is never a route-DAG
 fix target never receives a `caused_by`; a read-only stage receives no narrowing key at all; the analyzer
 self-reads its canonical inputs from the two injected coordinates).
 See `skill-branch-routing-design.md` for the complete scope shape and the
@@ -332,7 +332,7 @@ Commands are embedded directly in the relevant step text — no separate Quick R
 **Form delta — dialogue:** Step 1 is the seed → read scope → minimal-edit flow, plus a
 human review loop whose re-entry is idempotent (`result.json` is the sole completion signal;
 the review step re-asks). If `design.md` already exists, `seed` carries it no-clobber and the
-edit is scoped per the ladder — specification enters its post-partition step
+edit is scoped per `dispatch.json`'s narrowing keys — specification enters its post-partition step
 (`skill-branch-routing-design.md` §6.3). The `external-reference pre-check` and `status=fail` + `fail_reason` semantics apply the same
 as in worker form.
 
