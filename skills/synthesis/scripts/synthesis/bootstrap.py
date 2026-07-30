@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """synthesis bootstrap — deploy the synthesis templates into a run workdir.
 
-Behavior-preserving deploy built from focused, unit-testable steps (campaign design
-§3.3): shutil.copytree + str.replace do the `cp -a` + `sed -i` work. Upstream
-locations (rtl-design, specification SDC/PPA) come from the injected
+Upstream locations (rtl-design, the specification SDC) come from the injected
 `<workdir>/dispatch.json` — bootstrap re-anchors rtl_load.tcl / dc_run.tcl to the
 ABSOLUTE producer stage root; no relpath, no self-navigation.
 
@@ -46,9 +44,8 @@ def _err(msg: str) -> None:
 
 
 def top_from_manifest(manifest_dir: Path) -> str | None:
-    """TOP from the injected manifest's `module`. The specification stage authors it and
-    every other copy — the two result.json echoes, the scaffold's `top` — derives from it.
-    `manifest` is a declared input, so a rename invalidates this stage's proof."""
+    """TOP from the injected manifest's `module` — the name the specification stage
+    authored, which every other copy in the tree derives from."""
     f = Path(manifest_dir) / "manifest.json"
     if not f.is_file():
         return None

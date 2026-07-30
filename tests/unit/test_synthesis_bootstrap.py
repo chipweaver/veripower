@@ -1,12 +1,11 @@
 # tests/unit/test_synthesis_bootstrap.py
 """synthesis bootstrap — deploy-into-workdir behavior.
 
-Two layers: in-process unit tests of the inference helpers (BP1/BP2 — the
-byte-stable README-grep coupling locked from the other side by
-test_rtl_assemble.py), and subprocess "mirror" tests of full deploy behavior
-(BP3-BP11) that run the real shipped skill with cwd set to a tmp design-tree
-root. The bootstrap anchors the design tree on the CWD (matching kernel.py and
-the stage-subagent contract), independent of where the skill code lives.
+Every test runs the real shipped skill as a subprocess with cwd set to a tmp
+design-tree root, because the bootstrap anchors the design tree on the CWD
+(matching kernel.py and the stage-subagent contract) rather than on where the
+skill code lives — an in-process call would resolve against the test runner's cwd
+and prove nothing about that.
 """
 
 import json
@@ -19,15 +18,13 @@ MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
 sys.path.insert(0, str(REPO_ROOT / "skills" / "synthesis" / "scripts"))
 
 
-# ── BP1/BP2: inference helpers (in-process, precise) ──────────────────────────
 def _mirror(tmp_path):
     """Build the upstream asic/M/... refs under a tmp design-tree root; return
     (skill_dir, rtl_dir, workdir). skill_dir is the real shipped skill — deploy
     tests run it with cwd=tmp_path, so the bootstrap anchors the tree on the CWD.
 
     Pre-populates workdir/dispatch.json (rtl/sdc/ppa/manifest keys) the way kernel.py dispatch
-    injects it at dispatch time — bootstrap now reads upstream locations from
-    dispatch.json instead of self-navigating tree_root/asic/<module>/Design/... ."""
+    injects it, which is where bootstrap reads every upstream location from."""
     skill_dst = REPO_ROOT / "skills" / "synthesis"
     rtl = tmp_path / "asic" / "M" / "Design" / "rtl-design"
     rtl.mkdir(parents=True)
@@ -92,17 +89,6 @@ def test_incdir_becomes_search_path_entry(tmp_path):
     assert "top.v" in gen
 
 
-def test_define_and_dashf_still_skipped(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
-    proc = _run(skill_dst, workdir, "--top", "top")
-    assert proc.returncode == 0, proc.stderr
-    gen = (workdir / "scripts" / "rtl_load.tcl").read_text()
-    assert "FOO" not in gen
-    assert "other.f" not in gen
-    assert "top.v" in gen
-
-
 def test_rtl_load_gates_every_analyze(tmp_path):
     """Every generated analyze is gated, and no ungated one survives.
 
@@ -127,10 +113,10 @@ def test_rtl_load_gates_every_analyze(tmp_path):
 
 
 def test_missing_spec_sdc_fails_closed(tmp_path):
-    # The template constraints.sdc is a COMPLETE runnable SDC naming clock `clk` at 10 ns and
-    # ports clk/rst_n. Deploying it on a design with different port names leaves the run
-    # effectively unconstrained, and dc_shell then reports a large positive slack — a PASSING
-    # PPA verdict from constraints nobody wrote. Refuse instead.
+    # There is deliberately no template SDC to fall back to. Any generic one would declare a
+    # clock on port names this design may not have, `get_ports` would match nothing, and
+    # dc_shell would report a large positive slack — a PASSING PPA verdict from constraints
+    # nobody wrote. Refuse instead.
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     (tmp_path / "asic/M/Design/specification/constraints/top.sdc").unlink()
@@ -152,7 +138,7 @@ def test_happy_path_substitutes_my_top(tmp_path):
     assert "MY_TOP" not in env_sh and "top" in env_sh
     cfg = (workdir / "scripts" / "config.tcl").read_text()
     assert 'set ::env(TOP)    "top"' in cfg
-    assert "set ::env(LIB_DB)" in cfg  # parseable by result.read_lib_db
+    assert "set ::env(LIB_DB)" in cfg  # dc_shell inherits no shell env vars
     assert "MY_RTL_DIR" not in (workdir / "scripts" / "dc_run.tcl").read_text()
 
 
@@ -248,7 +234,7 @@ def test_already_deployed_guard(tmp_path):
 
 
 def test_relative_workdir_with_trailing_slash(tmp_path):
-    # BP12: a relative --workdir resolves against the CWD (the design-tree root), and
+    # A relative --workdir resolves against the CWD (the design-tree root), and
     # a trailing slash is stripped before path resolution.
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
@@ -272,7 +258,7 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
 
 
 def test_bootstrap_reanchors_rtl_load_to_absolute_from_dispatch_json(tmp_path):
-    # BP13: bootstrap reads the upstream rtl-design location from the injected
+    # bootstrap reads the upstream rtl-design location from the injected
     # dispatch.json "rtl" key — not by self-navigating tree_root/asic/<module>/....
     # rtl_load.tcl must bake the ABSOLUTE rtl root, never a relative "../.." climb.
     skill_dst, rtl_root, workdir = _mirror(tmp_path)

@@ -3,15 +3,13 @@
 
 Verbs (one stage = one tool; see skills/synthesis/SKILL.md for usage):
   bootstrap   deploy templates into the run workdir + render rtl_load/config  (exit 0 / 1 / 2)
-  finalize    parse DC reports, judge PPA, assemble the lean result.json      (exit 0 written / 2 BLOCKED)
+  finalize    parse DC reports, judge PPA, assemble the result.json           (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the
-synthesis.* library. Library imports are deferred into each handler (NOT
-top-level) so --help and verb dispatch run during incremental per-task TDD,
-before the sibling modules (bootstrap.py / result.py) exist. A top-level
-`from synthesis import bootstrap, result` would ImportError until both verbs
-are built. Keep them lazy. (Library modules themselves use top-level absolute
-imports; only this thin dispatcher defers.)
+synthesis.* library. Library imports are deferred into each handler so they run
+AFTER the sys.path insert below, which is what makes `from synthesis import …`
+resolve at all. (Library modules themselves use top-level absolute imports; only
+this thin dispatcher defers.)
 """
 
 import argparse

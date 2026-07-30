@@ -1,21 +1,15 @@
 """synthesis.result — extract the two PPA scalars from DC reports and judge the gate.
 
-Single owner of the synthesis "PPA self-check" step. Given a reports dir, run():
-  1. remove any prior --out file (write-fresh-or-nothing),
-  2. read reports/area.rpt + reports/qor.rpt,
-  3. extract area_um2 (Total cell area) and timing_slack_ns (worst Critical Path
-     Slack = min across all Timing Path Group blocks, NOT the first listed),
-  4. cross-check the worst slack against the design WNS / violating-path summary,
-  5. judge area<=area_target and slack>=slack_target (each target optional),
-  6. on success return the verdict + ppa_actual + violations to build_result in-process.
+Single owner of the synthesis "PPA self-check" step. run() returns (rc, payload); a
+non-zero rc yields no payload, so a parse failure can never fold a half-read number
+into a verdict. Each non-zero rc also prints a greppable FAIL=<token> on stderr for
+the human reading the log:
 
-Exit codes (each non-zero also prints a greppable FAIL=<token> on stderr):
   0  extracted + judged (incl. a vacuous no-targets pass and a legitimate
      PPA-miss verdict="fail")
   1  a required report (area.rpt / qor.rpt) absent          -> FAIL=missing
   3  report present but an anchor absent (no 'Total cell area', no 'Critical Path
      Slack'), or the WNS summary contradicts the per-group slack -> FAIL=unparseable
-  2  usage error                                            -> ERROR: usage
 
 FORMAT — grounded against real Synopsys DC L-2016.03-SP1 reports (sdc_controller
 eval corpus). area.rpt carries one 'Total cell area:' summary line (distinct from
@@ -139,7 +133,7 @@ def run(reports_dir, area_target, slack_target) -> tuple[int, dict | None]:
     return 0, payload
 
 
-# ── finalize: assemble the lean result.json (v4 stage-CLI-tool) ──────────────
+# ── finalize: assemble the result.json ───────────────────────────────────────
 STAGE = "synthesis"
 _FAIL_REASON = {
     "missing": "synthesis report missing",
