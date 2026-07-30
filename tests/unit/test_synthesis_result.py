@@ -303,6 +303,90 @@ def test_build_result_tooling_fail_on_unparseable(tmp_path):
     )
 
 
+def test_declared_failure_wins_over_a_clean_gate(tmp_path):
+    # A crash after the reports landed: they parse clean, so the gate would say pass.
+    # Supplying the cause IS the declaration of failure.
+    wd = _workdir(tmp_path)
+    assert (
+        sp.build_result(
+            wd,
+            module="tpu_top",
+            area_target=None,
+            slack_target=None,
+            fix_owner="rtl-design",
+            fail_reason="dc_shell segfaulted after write_sdf",
+            failure_kind="tooling",
+        )
+        == 0
+    )
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert env["status"] == "fail"
+    assert ss["fail_reason"] == "dc_shell segfaulted after write_sdf"
+    assert (ss["failure_kind"], ss["fix_owner"]) == ("tooling", "rtl-design")
+    # the gate did not run, so no PPA numbers are invented for a run that has none
+    assert "ppa_actual" not in ss and "violations" not in ss
+
+
+def test_declared_failure_needs_a_reason_and_a_kind(tmp_path):
+    wd = _workdir(tmp_path)
+    assert (
+        sp.finalize(wd, "m", None, None, fail_reason="   ", failure_kind="infra") == 2
+    )
+    assert sp.finalize(wd, "m", None, None, fail_reason="no license") == 2
+    assert not (wd / "result.json").exists()  # BLOCKED writes nothing
+
+
+def test_finalize_cli_declared_infra_failure(tmp_path):
+    # The license path: DC never ran, so there are no reports to grade at all.
+    wd = tmp_path
+    (wd / "dispatch.json").write_text(json.dumps({"inputs": {"ppa": str(tmp_path)}}))
+    MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
+    r = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(wd),
+            "--module",
+            "tpu_top",
+            "--fail-reason",
+            "DC license missing: dc_shell exited with LICENSE_ERROR",
+            "--failure-kind",
+            "infra",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["failure_kind"] == "infra"
+    assert "LICENSE_ERROR" in ss["fail_reason"]
+
+
+def test_finalize_rejects_a_ppa_kind_from_the_caller(tmp_path):
+    MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
+    r = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(tmp_path),
+            "--module",
+            "m",
+            "--fail-reason",
+            "x",
+            "--failure-kind",
+            "ppa",  # the gate's verdict, never the caller's to declare
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 2 and "invalid choice" in r.stderr
+
+
 def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
     # finalize() wraps build_result: any internal raise -> exit 2 (BLOCKED),
     # never status=fail. (The old main() had this except; it moves to finalize().)

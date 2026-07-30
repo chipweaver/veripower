@@ -57,7 +57,15 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     slack_target = next(
         (t["target"] for t in targets if t["dim"] == "timing_slack_ns"), None
     )
-    return result.finalize(a.workdir, a.module, area_target, slack_target, a.fix_owner)
+    return result.finalize(
+        a.workdir,
+        a.module,
+        area_target,
+        slack_target,
+        a.fix_owner,
+        a.fail_reason,
+        a.failure_kind,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -84,6 +92,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--fix-owner",
         default=None,
         help="on a failure, the rule that must act (you name it; the reports cannot)",
+    )
+    sp.add_argument(
+        "--fail-reason",
+        default=None,
+        help="cause of a run with no gradeable reports (license, elaborate/compile "
+        "abort, crash after reporting); supplying it declares the failure and wins "
+        "over the gate. Needs --failure-kind.",
+    )
+    sp.add_argument(
+        "--failure-kind",
+        default=None,
+        choices=("infra", "tooling"),
+        help="with --fail-reason: infra = DC never ran, tooling = DC ran and its "
+        "output is unusable (ppa is the gate's to write, never yours)",
     )
     sp.set_defaults(func=_cmd_finalize)
 

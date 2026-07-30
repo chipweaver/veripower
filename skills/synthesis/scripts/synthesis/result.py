@@ -171,16 +171,49 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def build_result(workdir, module, area_target, slack_target, fix_owner=None) -> int:
-    """Assemble the lean synthesis result.json. Reuses run() for the PPA gate
-    (in-process), then derives the header + artifacts + writes the envelope.
-    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED).
+def build_result(
+    workdir,
+    module,
+    area_target,
+    slack_target,
+    fix_owner=None,
+    fail_reason=None,
+    failure_kind=None,
+) -> int:
+    """Assemble the synthesis result.json. Reuses run() for the PPA gate (in-process),
+    then derives the header + artifacts + writes the envelope. Returns 0 (result.json
+    written, pass or fail). A raise -> finalize() exit 2 (BLOCKED).
 
-    fix_owner is the one judgment this verb cannot derive: which rule must act. The reports
-    say what missed and by how much; whether that means the RTL is wrong or the target is
-    malformed is read off the targets themselves, so the caller names it."""
+    Three things this verb cannot derive, so the caller states them:
+
+    fix_owner — which rule must act. The reports say what missed and by how much;
+    whether that means the RTL is wrong or the target is malformed is read off the
+    targets themselves.
+
+    fail_reason — the cause of a run that produced no gradeable reports, or died after
+    writing them. Supplying it IS the declaration of failure: it wins over the gate,
+    because the agent watched dc_shell and this verb can only read what landed on disk.
+
+    failure_kind — infra or tooling for such a declaration. Absent reports look identical
+    whether DC never started (no license) or aborted at elaborate, and only the caller
+    saw which."""
     workdir = Path(workdir)
     reports = workdir / "reports"
+
+    if fail_reason is not None:
+        ss = {"fail_reason": fail_reason, "failure_kind": failure_kind}
+        if fix_owner:
+            ss["fix_owner"] = fix_owner
+        _write_result(
+            workdir,
+            _envelope(
+                module,
+                status="fail",
+                stage_specific=ss,
+                artifacts=enumerate_artifacts(workdir),
+            ),
+        )
+        return 0
 
     rc, actual = run(reports, area_target, slack_target)  # reuse the gate verbatim
     if rc != 0:
@@ -294,12 +327,43 @@ def enumerate_artifacts(workdir) -> list[dict]:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def finalize(workdir, module, area_target, slack_target, fix_owner=None) -> int:
-    """Parse DC reports, judge PPA, write the lean result.json. exit 0 = written
-    (pass or fail); exit 2 = BLOCKED (any internal raise) — never conflated with
-    status=fail."""
+def finalize(
+    workdir,
+    module,
+    area_target,
+    slack_target,
+    fix_owner=None,
+    fail_reason=None,
+    failure_kind=None,
+) -> int:
+    """Parse DC reports, judge PPA, write result.json. exit 0 = written (pass or fail);
+    exit 2 = BLOCKED (an empty --fail-reason, one without a --failure-kind, or any
+    internal raise) — never conflated with status=fail."""
+    if fail_reason is not None:
+        if not fail_reason.strip():
+            print(
+                "[synthesis finalize] BLOCKED: --fail-reason must be a non-empty "
+                "one-line cause",
+                file=sys.stderr,
+            )
+            return 2
+        if not failure_kind:
+            print(
+                "[synthesis finalize] BLOCKED: --fail-reason needs --failure-kind "
+                "{infra,tooling}",
+                file=sys.stderr,
+            )
+            return 2
     try:
-        return build_result(workdir, module, area_target, slack_target, fix_owner)
+        return build_result(
+            workdir,
+            module,
+            area_target,
+            slack_target,
+            fix_owner,
+            fail_reason,
+            failure_kind,
+        )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        print(f"[synthesis finalize] FAIL=internal {exc}", file=sys.stderr)
+        print(f"[synthesis finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

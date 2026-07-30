@@ -19,7 +19,6 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 
 - The injected input locations (`<rtl>`, `<annotations>`, `<sdc>`, `<ppa>` — from `dispatch.json`) are read-only canonical: never modify anything under them (or any other stage's canonical output); the only files you write live under `{workdir}`.
 - Timing exceptions MUST be supplemented iteratively after RTL becomes visible; they cannot be pre-written at the specification stage (contract violation — RTL port names cannot be known in advance).
-- Do not claim synthesis is complete when the DC license is missing — without a license, write `status=fail` + `fail_reason="DC license missing"`.
 - Do not claim synthesis is complete when the netlist (`out/<TOP>_syn.v`) does not exist — the netlist must land on disk.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
@@ -66,27 +65,14 @@ no longer exists.
 
 ## Workflow
 
-### Step 1: Read inputs and determine scope
+### Step 1: Determine scope
 
-Pre-check the external references: `<rtl>/rtl-files.json` (naming ≥1 RTL file), `<annotations>/constraint-annotations.json` and `<sdc>/constraints/<TOP>.sdc` are all present. If any is missing, write `status=fail` + `fail_reason="external reference missing: <path>"` and exit; if `rtl-files.json` names no files, write `fail_reason="external reference missing: <rtl>/rtl-files.json (no RTL entries)"` and exit.
-
-**Naming the fix owner on a PPA miss.** A PPA gate compares a measured value against a target,
-and either side can be wrong. Before you pass `--fix-owner rtl-design`, read `<ppa>/ppa.json` and
-check the target itself is well formed: a `dim` whose unit disagrees with the number stored in it
-(an `area_um2` target holding a NAND2 gate count, say) makes a conforming design look
-over-budget, and rebuilding correct RTL against it cannot converge. When the target is what is
-malformed, name `specification`. When you read both sides and still cannot tell, omit the flag
-and let a human decide.
-
-Determine this round's fix scope from the first available source:
-`{workdir}/dispatch.json` names this round's scope. When it carries either narrowing key, the scope is the union of both:
-
-1. `caused_by`: the `result.json` of each upstream failure this round answers — its `stage_specific.violations[]` bound the Step 4/6 SDC / timing-exception edits.
-2. `scope`: module-relative paths, or `<file>:<line>` anchors, that this round should touch — confine those same edits to them.
-
-With neither, keep the scope empty, whether this is a first delivery or a re-verify of an already-promoted run: the synthesis run and PPA self-check (Steps 5/7/8) are unconditional regardless.
-
-**Scope confinement.** Steps 2–8 run in the same order regardless of scope and differ only in it: the SDC / timing-exception edits in Steps 4 and 6 stay confined to the scope set here. Steps 2–3 (bootstrap + `LIB_DB`) deploy the workdir — Step 2 aborts once `{workdir}` is already deployed, so a within-run re-entry is a no-op and any residue survives; Steps 5 / 7 / 8 (synthesis run, PPA self-check, `result.json` write) are unconditional.
+`{workdir}/dispatch.json` narrows this round when it carries either key, and the scope is the
+union of both: `scope` names module-relative paths or `<file>:<line>` anchors that changed since
+this stage's last run, and `caused_by` names the `result.json` of each upstream failure this
+round answers, whose `stage_specific.violations[]` say what missed. Confine the Step 4/6 SDC
+edits to what they name. With neither, nothing is narrowed. Steps 2–7 are mechanically identical
+either way, because dc_shell synthesizes the whole design regardless.
 
 ### Step 2: Bootstrap
 
@@ -126,18 +112,52 @@ Extract the violated paths from `reports/timing_setup.rpt`, keeping each path's 
 - Known static false paths → add `set_false_path`.
 - Re-run `make synthesis` (same detached-background protocol as Step 5); repeat until the remaining violations are real timing issues or have been excepted.
 
-### Step 7: Build `{workdir}/result.json` (mandatory)
+### Naming the fix owner
 
-Run the parser's finalize subcommand; do not hand-assemble the envelope or extract/compare by hand. It reads the PPA targets itself from the injected `ppa` location (dims `area_um2` / `timing_slack_ns` only; `power_mw` is judged downstream; an absent file or dim leaves that dimension ungated) — you pass no target flags:
+Whenever you close a run with `status=fail`, name the rule whose artifact must change and pass it
+as `--fix-owner <rule>` in Step 7, which is what puts it in `stage_specific.fix_owner`. This holds
+for a license or tool failure exactly as much as for a PPA miss: a `fail_reason` that names the
+guilty stage in prose while the flag was omitted reads to the caller as "this stage could not
+tell", and brings a human in to re-derive an answer you already had.
+
+A PPA gate compares a measured value against a target, and either side can be wrong. Before you
+pass `--fix-owner rtl-design`, read `<ppa>/ppa.json` and check the target itself is well formed:
+a `dim` whose unit disagrees with the number stored in it (an `area_um2` target holding a NAND2
+gate count, say) makes a conforming design look over-budget, and rebuilding correct RTL against it
+cannot converge. When the target is what is malformed, name `specification`. Omit the flag only
+when you have read both sides and still cannot name an owner at all.
+
+### Step 7: Write `{workdir}/result.json` (mandatory)
+
+Run `finalize` to write the envelope. Every run closes here, including a `make` that never
+reached the reports, and you never hand-assemble it or compare against a target by hand. It reads
+the PPA targets itself from the injected `ppa` location (dims `area_um2` / `timing_slack_ns` only;
+`power_mw` is judged downstream; an absent file or dim leaves that dimension ungated), so you pass
+no target flags:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
-  --workdir {workdir} --module <module> [--fix-owner <rule>]
+  --workdir {workdir} --module <module> [--fix-owner <rule>] \
+  [--fail-reason "<cause>" --failure-kind {infra|tooling}]
 ```
 
-`finalize` reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all clock-group blocks; area = `Total cell area`) against the targets at the injected `ppa` location, derives the reproducibility header (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+It reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all
+clock-group blocks; area = `Total cell area`), derives the reproducibility header
+(tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete
+`result.json`.
 
-`failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); you write `failure_kind=infra` on the pre-checks of Steps 1–5 (DC never ran — external ref / license / trigger) before finalize runs.
+The two failure flags carry what the reports cannot. Pass them when dc_shell produced nothing
+gradeable — no license, an `analyze` / `elaborate` / `link` / `check_design` / `compile` abort, a
+crash after the reports landed — because you are the one who read `run.log`. `--fail-reason` is
+itself the declaration of failure, so it wins over the gate and forces `status=fail` even where
+the reports parse clean; pass it only when the run really failed, and write the cause you actually
+read rather than a category (nothing parses the string). `--failure-kind` splits the one thing an
+absent report cannot tell you apart: `infra` when DC never ran, `tooling` when it ran and its
+output is unusable. `ppa` is the gate's to write, never yours.
+
+Exit 0 = `result.json` written, whether the status is pass or fail. Exit 2 is BLOCKED, never a
+`status=fail`: an empty `--fail-reason`, one without a `--failure-kind`, or a program exception.
+stderr names which.
 
 ## Decision Rules
 
