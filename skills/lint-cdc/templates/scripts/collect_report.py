@@ -187,16 +187,21 @@ def build_violations(rows: list[dict]) -> list[dict]:
 
 # ── Human-report header (unchanged) ──────────────────────────────────────────
 def read_top(root: Path) -> str:
+    """Top-module name for the human report's `top:` line, and nothing else reads it.
+
+    env.sh is parsed rather than inherited: the `*-report` Makefile targets invoke this
+    script directly and do not source env.sh, so $TOP is set only when a caller exported
+    it by hand. The one pattern matched is the shape the bootstrap writes.
+    """
     v = os.environ.get("TOP")
     if v:
         return v
     env = root / "env.sh"
     if env.exists():
-        txt = env.read_text(errors="replace")
-        m = re.search(r'TOP="?\$\{TOP:-([A-Za-z_][A-Za-z0-9_]*)\}"?', txt)
-        if m:
-            return m.group(1)
-        m = re.search(r'export[ \t]+TOP=["\']?([A-Za-z_][A-Za-z0-9_]*)', txt)
+        m = re.search(
+            r'TOP="?\$\{TOP:-([A-Za-z_][A-Za-z0-9_]*)\}"?',
+            env.read_text(errors="replace"),
+        )
         if m:
             return m.group(1)
     return "UNKNOWN"

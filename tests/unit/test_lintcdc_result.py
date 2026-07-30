@@ -284,6 +284,38 @@ def test_fail_envelope_no_violations_omits_failures(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_early_fail_reason_wins_and_is_the_failure_declaration(tmp_path):
+    """The Step 4/5 early-fail closes through this verb too. `make` died before the parser
+    wrote its sidecar, so the cause exists only on stderr where the agent read it; passing it
+    is what declares the failure, and it must not be overwritten by the derived gate wording."""
+    wd = _clean_workdir(tmp_path)
+    (wd / "cdc-violations.json").unlink()  # write-fresh-or-nothing removed it
+    reason = "SpyGlass exited 1 before cdc_setup: no license for cdc/cdc_verify_struct"
+    assert rb.run(wd, module="tpu_top", fail_reason=reason, fix_owner="rtl-design") == 0
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert env["status"] == "fail"
+    assert ss["fail_reason"] == reason  # not "CDC report missing/unparseable, ..."
+    assert ss["fix_owner"] == "rtl-design"
+
+
+def test_fail_reason_forces_fail_on_an_otherwise_clean_pair(tmp_path):
+    # A tool failure can leave both sidecars clean (e.g. make died after reporting).
+    # Supplying the reason is the failure declaration, so the gate must not out-vote it.
+    wd = _clean_workdir(tmp_path)
+    assert rb.run(wd, module="tpu_top", fail_reason="spyglass crashed post-report") == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    assert env["stage_specific"]["fail_reason"] == "spyglass crashed post-report"
+
+
+def test_empty_fail_reason_is_blocked_not_a_fail(tmp_path):
+    # An unreasoned early-fail is a program error, never a routable verdict.
+    wd = _clean_workdir(tmp_path)
+    assert rb.finalize(wd, "tpu_top", None, "   ") == 2
+    assert not (wd / "result.json").exists()
+
+
 def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
     # finalize() wraps run(): any internal raise -> exit 2 (BLOCKED), never
     # status=fail. (The deleted main() owned this except; it moves to finalize().)
