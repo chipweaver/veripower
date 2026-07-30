@@ -6,11 +6,9 @@ Verbs (one stage = one tool; see skills/lint-cdc/SKILL.md for usage):
   finalize    AND the two *-violations.json sidecars, assemble result.json        (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the lintcdc.*
-library. Library imports are deferred into each handler (NOT top-level) so --help
-and verb dispatch run during incremental per-task TDD, before the sibling modules
-(bootstrap.py / result.py) exist. A top-level `from lintcdc import bootstrap, result`
-would ImportError until both verbs are built. Keep them lazy. (Library modules
-themselves use top-level absolute imports; only this thin dispatcher defers.)
+library. Library imports are deferred into each handler because `from lintcdc import …`
+only resolves after the sys.path insert below has run. (Library modules themselves use
+top-level absolute imports; only this dispatcher defers.)
 """
 
 import argparse
