@@ -488,10 +488,12 @@ def test_pass_non_finite_ppa_target_is_blocked(tmp_path):
     assert result.finalize(wd, "tpu_top", status="pass") == 2
 
 
-def test_unreadable_ppa_schema_blocks_instead_of_waving_targets_through(
+def test_unreadable_schema_blocks_instead_of_waving_a_doc_through(
     tmp_path, monkeypatch
 ):
-    # _validate_ppa is the only place ppa.json is ever validated, so a schema it cannot
-    # read must fail closed.
-    monkeypatch.setattr(result, "_PPA_SCHEMA", tmp_path / "absent.json")
-    assert result._validate_ppa([{"dim": "power_mw", "target": 1}]) is not None
+    # Sidecar validation is the only place ppa.json is checked, so a schema it cannot read
+    # must fail closed rather than report a clean doc.
+    from spec import sidecar
+
+    monkeypatch.setattr(sidecar, "_REFERENCES", tmp_path)
+    assert sidecar.validate_doc("ppa.json", [{"dim": "power_mw", "target": 1}])

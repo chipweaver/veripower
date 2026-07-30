@@ -8,14 +8,10 @@ Verbs (one stage = one tool; see skills/specification/SKILL.md for usage):
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the
-spec.* library. Library imports are deferred into each handler (NOT top-level)
-for two reasons: (1) the entry module loads cheaply and stays decoupled; and
-(2) — the load-bearing reason when this template is copied per stage — it lets
-`--help` and verb dispatch run before the sibling library modules exist. A
-top-level `from spec import coverage, ports, …` would ImportError until every
-verb's library is built.
-Keep them lazy. (Library modules themselves use top-level absolute imports;
-only this thin dispatcher defers.)
+spec.* library. Library imports are deferred into each handler, not top-level,
+so `--help` and verb dispatch keep working before every sibling library exists —
+which is what makes this file copyable as a per-stage template. Keep them lazy.
+(Library modules themselves import at top level; only this dispatcher defers.)
 """
 
 import argparse
@@ -27,9 +23,9 @@ from pathlib import Path
 # Put the package PARENT (…/specification/scripts) on sys.path so absolute
 # imports `from spec import …` resolve whether this file is run directly
 # (python3 …/spec/__main__.py) or via `python3 -m spec`. abspath() is required;
-# the double dirname climbs spec/ -> scripts/. NEVER `import coverage` bare
-# inside this package — only `from spec import …` (a bare name binds the
-# top-level slot and collides across stages).
+# the double dirname climbs spec/ -> scripts/. Always `from spec import <mod>`,
+# never a bare `import <mod>`: a bare name binds the top-level slot and collides
+# with the same module name in another stage's package.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
