@@ -130,7 +130,6 @@ def main() -> int:
             "SEQUENCE_REF": seq,
             "AGENT_NAME": agent_name,
             "SCENARIO_ID": s.get("id", ""),
-            "SCENARIO_DESC": s.get("scenario", ""),
             "DURATION_CYCLES": str(s.get("duration_cycles", 1000)),
         }
         test_out = args.out_dir / f"power_{seq}_test.sv"

@@ -45,7 +45,14 @@ The testpoints live in `tb-scaffold.json`'s `testpoints[]`. The partition follow
 
 ## 4. Power Scenarios
 
-The nine scenarios live in `power-scenarios.json`. Two notes that are not per-scenario fields: this module has no low-power control signals, so every `low_power_state` is materialized `off` and S3b/S4b differ from S3a/S4a only in `corner_intent`; and `switching` has no DVFS band to name here, so S6 reuses the idle sequence and is annotated purely by corner.
+All nine standard rows are materialized; `power-scenarios.json` carries their `sequence_ref`, `duration_cycles` and `corner_intent`. Per-row materialization on this module:
+
+- **S1 / S7 (static + high-temperature leakage).** Clock off, reset asserted, no traffic. Both reduce to `tpu_top_idle_seq` and stay distinct only by `corner_intent` (SS@125C vs FF@125C).
+- **S2 (clock-tree power).** Clock toggling, reset asserted, no traffic — same idle sequence, clock left running, so the delta against S1 is the clock tree.
+- **S3a / S3b (idle).** Reset de-asserted, no `start` driven. This module has no low-power control signal, so the low-power-on row has nothing to switch: S3b is materialized identically to S3a and differs in intent only.
+- **S4a / S4b (business flow).** Sustained back-to-back APB weight load + data stream + `start` via `tpu_top_traffic_seq`. Same note as S3b: nothing to gate, so S4b repeats S4a.
+- **S5 (peak / worst case).** Full-toggle stimulus on both input FIFOs with the array saturated, at FF@125C, for PDN / IR-drop.
+- **S6 (DVFS switching transient).** The module runs on one fixed clock with no voltage/frequency domain, so `switching` names no band here; the row reuses the traffic sequence and is annotated purely by corner.
 
 ## 5. Revision Summary
 

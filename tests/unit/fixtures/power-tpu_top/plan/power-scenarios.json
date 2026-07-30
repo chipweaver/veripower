@@ -1,110 +1,56 @@
 [
   {
     "id": "S1",
-    "scenario": "Static leakage",
-    "clock_state": "off",
-    "reset_state": "asserted",
-    "data_state": "none",
-    "low_power_state": "off",
-    "corner_intent": "SS@125C",
     "sequence_ref": "tpu_top_idle_seq",
     "duration_cycles": 2000,
-    "purpose": "Leakage baseline (clock off, in reset, no traffic)."
+    "corner_intent": "SS@125C"
   },
   {
     "id": "S2",
-    "scenario": "Clock-tree power",
-    "clock_state": "on",
-    "reset_state": "asserted",
-    "data_state": "none",
-    "low_power_state": "off",
-    "corner_intent": "TT@25C",
     "sequence_ref": "tpu_top_idle_seq",
     "duration_cycles": 2000,
-    "purpose": "Clock-tree / CTS evaluation (clock on, no data)."
+    "corner_intent": "TT@25C"
   },
   {
     "id": "S3a",
-    "scenario": "Idle (low-power off)",
-    "clock_state": "on",
-    "reset_state": "released",
-    "data_state": "no_traffic",
-    "low_power_state": "off",
-    "corner_intent": "TT@25C",
     "sequence_ref": "tpu_top_idle_seq",
     "duration_cycles": 5000,
-    "purpose": "Standby baseline."
+    "corner_intent": "TT@25C"
   },
   {
     "id": "S3b",
-    "scenario": "Idle (low-power on)",
-    "clock_state": "on",
-    "reset_state": "released",
-    "data_state": "no_traffic",
-    "low_power_state": "on",
-    "corner_intent": "TT@25C",
     "sequence_ref": "tpu_top_idle_seq",
     "duration_cycles": 5000,
-    "purpose": "Standby optimization (no module low-power controls; annotation only)."
+    "corner_intent": "TT@25C"
   },
   {
     "id": "S4a",
-    "scenario": "Typical traffic (low-power off)",
-    "clock_state": "on",
-    "reset_state": "released",
-    "data_state": "business_flow",
-    "low_power_state": "off",
-    "corner_intent": "TT@25C",
     "sequence_ref": "tpu_top_traffic_seq",
     "duration_cycles": 10000,
-    "purpose": "Typical performance."
+    "corner_intent": "TT@25C"
   },
   {
     "id": "S4b",
-    "scenario": "Typical traffic (low-power on)",
-    "clock_state": "on",
-    "reset_state": "released",
-    "data_state": "business_flow",
-    "low_power_state": "on",
-    "corner_intent": "TT@25C",
     "sequence_ref": "tpu_top_traffic_seq",
     "duration_cycles": 10000,
-    "purpose": "Typical signoff (no module low-power controls; annotation only)."
+    "corner_intent": "TT@25C"
   },
   {
     "id": "S5",
-    "scenario": "Peak / worst case",
-    "clock_state": "on",
-    "reset_state": "released",
-    "data_state": "full_toggle",
-    "low_power_state": "off",
-    "corner_intent": "FF@125C",
     "sequence_ref": "tpu_top_peak_toggle_seq",
     "duration_cycles": 10000,
-    "purpose": "PDN / IR drop."
+    "corner_intent": "FF@125C"
   },
   {
     "id": "S6",
-    "scenario": "DVFS switching transient",
-    "clock_state": "switching",
-    "reset_state": "released",
-    "data_state": "business_flow",
-    "low_power_state": "switching",
-    "corner_intent": "TT@25C",
     "sequence_ref": "tpu_top_traffic_seq",
     "duration_cycles": 10000,
-    "purpose": "di/dt (single nominal frequency; DVFS annotation only)."
+    "corner_intent": "TT@25C"
   },
   {
     "id": "S7",
-    "scenario": "High-temperature leakage",
-    "clock_state": "off",
-    "reset_state": "asserted",
-    "data_state": "none",
-    "low_power_state": "off",
-    "corner_intent": "FF@125C",
     "sequence_ref": "tpu_top_idle_seq",
     "duration_cycles": 2000,
-    "purpose": "Worst leakage."
+    "corner_intent": "FF@125C"
   }
 ]

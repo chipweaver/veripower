@@ -2,42 +2,29 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-plan/power-scenarios.schema.json",
   "title": "power-scenarios.json contract",
-  "description": "Structural contract for asic/<module>/Verification/simulation-plan/power-scenarios.json — one entry per scenario materialized from references/power-scenarios-template.md's standard set. This is the only home; verification-plan.md §4 points here and restates no field. Read by power-analysis alone. Two fields are load-bearing across the stage boundary: power-analysis's own result.schema.json REQUIRES corner_intent and duration_cycles, so an omitted one would surface as a downstream envelope failure rather than here. sequence_ref resolving against sequences.json is not expressible here; the check-scaffold gate enforces it, where both files are in hand.",
+  "description": "Structural contract for asic/<module>/Verification/simulation-plan/power-scenarios.json — one entry per scenario materialized from references/power-scenarios-template.md's standard set. Read by power-analysis alone, and these four fields are exactly what it reads: it keys SAIF and PT-PX reports by id, groups runs by sequence_ref, drives the test's run length from duration_cycles, and annotates every power number with corner_intent. The standard set's abstract columns (clock / reset / data / low-power state, the scenario name, its purpose) are NOT here: no program reads them, so they belong in verification-plan.md §4 beside the per-scenario materialization note that explains them. sequence_ref resolving against sequences.json is not expressible here; the check-scaffold gate enforces it, where both files are in hand.",
   "type": "array",
   "items": {
     "type": "object",
-    "required": [
-      "id", "scenario", "clock_state", "reset_state", "data_state",
-      "low_power_state", "corner_intent", "sequence_ref", "duration_cycles", "purpose"
-    ],
+    "required": ["id", "sequence_ref", "duration_cycles", "corner_intent"],
     "additionalProperties": false,
     "properties": {
-      "id": {"type": "string", "minLength": 1},
-      "scenario": {
-        "description": "The standard set's scenario name, materialized for this module (e.g. \"200MB/s (low-power off)\").",
-        "type": "string",
-        "minLength": 1
-      },
-      "clock_state": {"enum": ["on", "off", "switching"]},
-      "reset_state": {"enum": ["asserted", "de-asserted"]},
-      "data_state": {
-        "description": "Traffic level this scenario drives: none / no traffic / business_flow / full-toggle, per the standard set.",
-        "type": "string",
-        "minLength": 1
-      },
-      "low_power_state": {"enum": ["on", "off", "switching"]},
-      "corner_intent": {
-        "description": "PVT corner this scenario is annotated at (e.g. \"SS/125C\"). Equivalent scenarios reusing one sequence_ref keep distinct corner_intent — that is what the SAIF-per-ID dedup preserves.",
+      "id": {
+        "description": "The standard set's scenario id (S1 … S7, or S8+ for a supplement). Every SAIF file and PT-PX report directory is named after it, and power-analysis's result.json keys its per-scenario rows by it.",
         "type": "string",
         "minLength": 1
       },
       "sequence_ref": {
-        "description": "A sequences.json entry's name. The only field emit_power_tests reads; it groups by this and runs each group once.",
+        "description": "A sequences.json entry's name. emit_power_tests groups by this and runs each group once, so two scenarios that reduce to the same RTL stimulus share one value and stay distinct by id + corner_intent.",
         "type": "string",
         "minLength": 1
       },
       "duration_cycles": {"type": "integer", "minimum": 1},
-      "purpose": {"type": "string", "minLength": 1}
+      "corner_intent": {
+        "description": "PVT corner this scenario is annotated at (e.g. \"SS/125C\"). RTL simulation is corner-agnostic, so this is the only place the corner is stated — power-analysis's result.schema.json requires it on every SAIF and every power row.",
+        "type": "string",
+        "minLength": 1
+      }
     }
   }
 }

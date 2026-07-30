@@ -66,15 +66,9 @@ GOOD = {
     "power_scenarios": [
         {
             "id": "S1",
-            "scenario": "Static leakage",
-            "clock_state": "off",
-            "reset_state": "asserted",
-            "data_state": "none",
-            "low_power_state": "off",
-            "corner_intent": "SS/125C",
             "sequence_ref": "smoke",
             "duration_cycles": 2000,
-            "purpose": "Leakage baseline",
+            "corner_intent": "SS/125C",
         }
     ],
 }
@@ -256,6 +250,15 @@ def test_seqs_unknown_sequence_fails(tmp_path):
 def test_sequence_agent_unknown_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["sequences"][0]["agent"] = "ghost"
+    proc = _run(tmp_path, s, check=False)
+    assert proc.returncode != 0 and "agent" in proc.stderr
+
+
+def test_sequence_without_agent_fails(tmp_path):
+    # power-analysis's emit_power_tests builds m_<agent>_agent from it and hard-fails when
+    # it is absent, so an entry omitting it must not clear this stage's gate.
+    s = copy.deepcopy(GOOD)
+    del s["sequences"][0]["agent"]
     proc = _run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "agent" in proc.stderr
 

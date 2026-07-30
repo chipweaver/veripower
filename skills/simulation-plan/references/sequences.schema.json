@@ -2,16 +2,23 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-plan/sequences.schema.json",
   "title": "sequences.json contract",
-  "description": "Structural contract for asic/<module>/Verification/simulation-plan/sequences.json — the sequence roster, the one part of the plan both consumers read: simulation compiles a <module>_<name>_seq class per entry, and power-analysis resolves power-scenarios.json's sequence_ref against these names and builds the env member m_<agent>_agent from the agent.",
+  "description": "Structural contract for asic/<module>/Verification/simulation-plan/sequences.json — the sequence roster, the one part of the plan both consumers read: simulation compiles a <module>_<name>_seq class per entry, and power-analysis resolves power-scenarios.json's sequence_ref against these names.",
   "type": "array",
   "items": {
     "type": "object",
-    "required": ["name"],
+    "required": ["name", "agent"],
     "additionalProperties": false,
     "properties": {
-      "name": {"type": "string"},
-      "agent": {"type": "string"},
-      "desc": {"type": "string"}
+      "name": {"type": "string", "minLength": 1},
+      "agent": {
+        "description": "The agents[].name this sequence drives. Required: power-analysis's emit_power_tests builds the env member m_<agent>_agent from it and hard-fails on an entry that omits it, so an optional one would pass this stage's gate and break two stages downstream.",
+        "type": "string",
+        "minLength": 1
+      },
+      "desc": {
+        "description": "One line on what the sequence drives, rendered into the generated seq class's header comment by simulation's render-scaffold.",
+        "type": "string"
+      }
     }
   }
 }

@@ -1,6 +1,9 @@
 # Standard 9-Power-Scenarios Template
 
-Load this template, materialize it per the module, and write the result into the `verification-plan.md` power section and `power-scenarios.json`.
+Load this table, materialize each row for this module, and write the result into
+`verification-plan.md` §4 and `power-scenarios.json`. No gate checks that a scenario came from
+this set — `check-scaffold` only resolves `sequence_ref` — so loading the table first is the whole
+discipline. Authoring from memory drops rows silently.
 
 ## Standard 9-scenarios table
 
@@ -16,50 +19,43 @@ Load this template, materialize it per the module, and write the result into the
 | S6 | DVFS switching transient | switching | de-asserted | business flow | switching | TT | di/dt. |
 | S7 | High-temperature leakage | off | asserted | none | - | FF/125C | Worst leakage. |
 
-## Per-module materialization guide
+## Where each row lands
 
-Materialize each scenario's abstract description ("business flow," "low power," "DVFS switching," etc.) into an executable sequence per this module's specification. The result goes in **one** place — `power-scenarios.json` — with one entry per scenario:
+The table's abstract columns are a statement about the module, not machine input: nothing reads
+them, and reading them is a human's job. They go in `verification-plan.md` §4, next to the note
+that says how the row was materialized — which signals `low power` drives on this module, what
+frequency band `switching` means here, what stimulus `business flow` reduces to, and why a row was
+dropped as inapplicable. A row you keep and a row you drop both need that sentence.
+
+What crosses into `power-scenarios.json` is only what power-analysis reads:
 
 ```json
-{
-  "id": "S4a",
-  "scenario": "200MB/s (low-power off)",
-  "clock_state": "on",
-  "reset_state": "de-asserted",
-  "data_state": "business_flow",
-  "low_power_state": "off",
-  "corner_intent": "TT",
-  "sequence_ref": "<module>_traffic_200mbps_seq",
-  "duration_cycles": 10000,
-  "purpose": "Typical performance"
-}
+{"id": "S4a", "sequence_ref": "<module>_traffic_200mbps_seq",
+ "duration_cycles": 10000, "corner_intent": "TT"}
 ```
-
-`verification-plan.md` §4 points here and restates no field. What belongs in §4 is what an entry
-cannot hold: which module signals the low-power states drive, the DVFS frequency bands `switching`
-means for this module, and why a scenario was materialized the way it was.
 
 ## RTL-equivalent scenario deduplication
 
-Some scenarios produce identical RTL-layer stimulus and differ only in corner — a typical example is S1 (SS/125C, clock=off) and S7 (FF/125C, clock=off), both reduce on RTL to "clock=off + no traffic." This template requires you to **keep independent IDs and `corner_intent`** but **reuse the same `sequence_ref`**. Consumers group by `sequence_ref` at execution time, run each group only once, but produce a SAIF per ID (via hardlinks); later tools annotate by `corner_intent`.
+Some rows produce identical RTL-layer stimulus and differ only in corner — S1 (SS/125C, clock=off)
+and S7 (FF/125C, clock=off) both reduce on RTL to "clock off + no traffic". Keep independent `id`
+and `corner_intent`, and **reuse the same `sequence_ref`**: consumers group by `sequence_ref`, run
+each group once, produce a SAIF per `id` (via hardlinks), and let later tools annotate by
+`corner_intent`.
 
-## Role of corner annotation
-
-Corner (SS / TT / FF + temperature) **does not affect RTL simulation behavior** — RTL simulation is corner-agnostic. Corner is plan-layer annotation metadata, consumed by power-analysis tools (e.g., PrimeTime PX). At the RTL stage, its only role is:
-- Telling the consumer "which corner this SAIF should be interpreted under."
-- Guiding you on which scenarios need independent stimulus vs. which are corner variants only.
-
-## Handling missing scenarios
-
-When the specification mentions a low-power feature (e.g., retention mode) that the standard 9-scenarios template does not cover, you should append supplementary scenarios (named S8, S9, …) at the end of `verification-plan.md` §4 and sync them into `power-scenarios.json`.
+Corner (SS / TT / FF + temperature) does not affect RTL simulation behavior — RTL simulation is
+corner-agnostic. `corner_intent` tells the consumer which corner the SAIF should be interpreted
+under, and tells you which rows need their own stimulus versus which are corner variants of one.
 
 ## `sequence_ref` naming rules and `sequences[]` sync (cross-stage contract)
 
-`power_scenarios[].sequence_ref` is a reference into `sequences[].name` — not an independent namespace. SV classes are materialized only from `sequences[]`, so `check-scaffold` rejects a `sequence_ref` that resolves to no `sequences[].name` (and downstream, no SV class would exist for it).
+`power_scenarios[].sequence_ref` references `sequences[].name` — not an independent namespace. SV
+classes are materialized only from `sequences[]`, so `check-scaffold` rejects a `sequence_ref`
+resolving to no `sequences[].name` (and downstream, no SV class would exist for it).
 
 | Situation | How to fill |
 |---|---|
 | Power scenario stimulus equals some functional sequence | `sequence_ref` = that functional sequence's `sequences[].name`. |
-| Power scenario needs independent stimulus (typical: clock-off / sustained idle / sustained saturated traffic / DVFS switching) | First add a new entry to `sequences[]` (with `name` + `agent`), then have `power_scenarios[].sequence_ref` reference that `name`. |
+| Power scenario needs independent stimulus (typical: clock-off / sustained idle / sustained saturated traffic / DVFS switching) | First add a new entry to `sequences[]` (`name` + `agent`), then point `sequence_ref` at that `name`. |
 
-`sequences[]` is the materialization list (functional + power union); `tests[]` and `power_scenarios[]` are consumption indices — they share the same materialization pool.
+`sequences[]` is the materialization list (functional + power union); `tests[]` and
+`power_scenarios[]` are consumption indices into that one pool.
