@@ -1,30 +1,23 @@
 #!/usr/bin/env python3
 """lintcdc bootstrap — deploy the lint-cdc templates into a run workdir.
 
-Behavior-preserving deploy built from focused, unit-testable steps (campaign design
-§3.3): shutil.copy2 + str.replace do the per-file deploy + `sed -i` work (str.replace
-has no sed-delimiter hazard). Upstream locations (rtl-design, the specification SGDC
-seed) come from the injected `<workdir>/dispatch.json` `inputs` table ("rtl" /
-"sgdc_seed"), not by self-navigating tree_root/asic/<module>/Design/....
+Upstream locations (rtl-design, the specification SGDC seed) come from the injected
+`<workdir>/dispatch.json` `inputs` table ("rtl" / "sgdc_seed"), never by
+self-navigating tree_root/asic/<module>/Design/.... str.replace does the `sed -i`
+work: it has no delimiter hazard.
 
-Deploys templates/ into the caller-provided workdir
-(asic/<module>/Design/lint-cdc/runs/<N>/) NO-CLOBBER — a dest file already present
-(carried forward by kernel.py's carry_self before this verb runs) always wins over
-the template — resolves TOP from the specification manifest, seeds
-scripts/constraints.sgdc (carried -> cold -> template priority: carry_self already
-restores a canonical constraints.sgdc/waiver.tcl verbatim when one exists; a
-genuinely first run seeds constraints.sgdc from the injected specification stage
-root's constraints/<TOP>.sgdc), substitutes the MY_TOP placeholder, syncs
-scripts/filelist.txt from rtl-files.json (RTL paths re-anchored to the
-ABSOLUTE injected rtl-design root, no relpath climb), chmods the deployed shell
-scripts executable, and runs a WARN-only SGDC<->SDC clock-period smoke check.
+The deploy is NO-CLOBBER, so a dest file already present when this verb runs — the
+previous round's constraints.sgdc / waiver.tcl, restored into the fresh workdir
+before it starts — always wins over the pristine template. A genuinely first run
+has neither, and seeds constraints.sgdc from the specification stage's
+constraints/<TOP>.sgdc instead.
+
 Fail-closed on a missing template dir, an un-inferrable top, an already-deployed
-workdir, or an empty rtl-design filelist.
+workdir, or an rtl-design file layout that yields no RTL.
 
 Exit codes (returned as int; __main__ does sys.exit):
   0  deployed
-  1  fail-closed guard (missing template dir / cannot read top / already deployed /
-     rtl-design filelist has no usable RTL entries)
+  1  fail-closed guard (stderr names which one)
   (2 = usage is owned by argparse in __main__.py)
 """
 
@@ -52,9 +45,8 @@ def _err(msg: str) -> None:
 
 
 def top_from_manifest(manifest_dir: Path) -> str | None:
-    """TOP from the injected manifest's `module`. The specification stage authors it and
-    every other copy — the two result.json echoes, the scaffold's `top` — derives from it.
-    `manifest` is a declared input, so a rename invalidates this stage's proof."""
+    """TOP from the injected manifest's `module` — the name the specification stage
+    authored, which every other copy in the tree derives from."""
     f = Path(manifest_dir) / "manifest.json"
     if not f.is_file():
         return None
@@ -72,15 +64,18 @@ def _sub(path: Path, placeholder: str, value: str) -> None:
 
 def _sync_filelist(dest: Path, rtl_dir: Path) -> int:
     """Generate scripts/filelist.txt from rtl-files.json, anchoring every RTL path at the
-    ABSOLUTE injected rtl_dir (no relpath climb). Fail-closed (return 1) when the state is
-    missing or lists no files.
+    ABSOLUTE injected rtl_dir (no relpath climb). Fail-closed (return 1) when the file is
+    missing, unreadable, or lists nothing: SpyGlass reading an empty sourcelist reports a
+    clean run, so a silent no-op here would promote a pass that analyzed no RTL.
 
     Not validated here: rtl-design schema-validates rtl-files.json when it writes it, and a
     stage does not reach into another skill's references/ (skills stay decoupled).
     """
     src = rtl_dir / "rtl-files.json"
     if not src.is_file():
-        return 0
+        _err(f"{src} not found")
+        _err("  Re-run the rtl-design assemble verb.")
+        return 1
     try:
         rtl_files = json.loads(src.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
