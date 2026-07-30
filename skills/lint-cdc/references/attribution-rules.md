@@ -1,7 +1,7 @@
 # Attribution rules — which rule family means whose artifact
 
 Applies to: every `severity=error` violation you triage in Step 4 / Step 5, and to the
-`--fix-owner` you pass to the combiner in Step 6.
+`--fix-owner` you pass to the combiner in Step 7.
 
 ## Why this file exists
 
@@ -9,10 +9,11 @@ Applies to: every `severity=error` violation you triage in Step 4 / Step 5, and 
 reports where it *noticed* the problem, which for a whole class of rules is the RTL that used
 something nobody declared. Blaming that file sends a rework round to a stage that cannot fix it.
 
-The rule family is what separates the two situations. Nothing else in the report does: the file,
-the line, and the severity are identical in both.
+For those families the rule id is the only thing that separates the two cases: the file, the
+line, and the severity read identically. That is the whole job of this file, and it is why it
+lists families rather than trying to be a decision table for the report as a whole.
 
-## The two situations
+## The two families where the report misleads
 
 ### A declaration is missing
 
@@ -43,13 +44,21 @@ The reported file is the file to fix. Name `rtl-design`.
 single-flop crossing is flagged as `Ac_unsync01` under policy `clock-reset`, goal
 `cdc/cdc_verify_struct`.
 
+Do not extrapolate from a prefix that merely looks similar: `Ac_unclocked*` sits with the
+declaration family while every other `Ac_*` sits with the defect family, so the prefix shape
+alone is not the signal.
+
 ## A family not listed here
 
-Read the message and decide which of the two situations it is. If it does not resolve to either,
-**omit `--fix-owner`**: an unnamed owner brings a human in, while a wrong one spends a whole
-rework round on a stage that cannot fix it. Do not extrapolate from a prefix that merely looks
-similar — `Ac_unclocked*` sits with the declaration family while every other `Ac_*` sits with the
-defect family, so the prefix shape alone is not the signal.
+Most rules are not in either family and do not need to be. Read the message and name the stage
+whose artifact must change, the same as you would for a listed family; a rule absent from this
+file is absent because nobody has needed to catalogue it, not because it is unattributable.
+An elaboration or Design-Read fatal, for one, usually names a file the RTL could not find, and
+the owner follows from the message directly.
+
+**Omit `--fix-owner` only when you cannot name an owner at all** — not when the family is
+missing here. An unnamed owner brings a human in, which is right when you genuinely do not know
+and pure cost when you do.
 
 ## Extending this file
 
