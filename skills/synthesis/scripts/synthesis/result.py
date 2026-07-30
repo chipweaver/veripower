@@ -251,11 +251,23 @@ def build_result(
         "ppa_actual": actual["ppa_actual"],
         "violations": actual["violations"],
     }
-    if status == "fail":
+    missing = _missing_netlist(workdir)
+    if missing:
+        # A report set that grades clean says nothing about whether dc_shell's write
+        # step landed: dc_run.tcl reports before change_names/write, and none of the
+        # three writes is return-checked, so a failed write leaves a full reports/ and
+        # no netlist. Promoting that as a pass publishes a synthesis the two downstream
+        # rules declare as their input and cannot find.
+        status = "fail"
+        ss["failure_kind"] = "tooling"
+        ss["fail_reason"] = (
+            f"netlist incomplete: dc_shell wrote no {', '.join(missing)}"
+        )
+    elif status == "fail":
         ss["failure_kind"] = "ppa"
         ss["fail_reason"] = "PPA target(s) not met"
-        if fix_owner:
-            ss["fix_owner"] = fix_owner
+    if status == "fail" and fix_owner:
+        ss["fix_owner"] = fix_owner
     _write_result(
         workdir,
         _envelope(
@@ -266,6 +278,15 @@ def build_result(
         ),
     )
     return 0
+
+
+def _missing_netlist(workdir: Path) -> list[str]:
+    """Which of the three declared DC outputs are absent, as `out/*_syn.<ext>` labels."""
+    return [
+        f"out/*_syn.{ext}"
+        for ext in ("v", "sdc", "sdf")
+        if not any(p.is_file() for p in workdir.glob(f"out/*_syn.{ext}"))
+    ]
 
 
 _VERSION_RE = re.compile(r"^\s*Version:\s*(\S+)", re.M)

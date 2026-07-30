@@ -262,11 +262,17 @@ def test_run_wns_cross_check_contradiction_exit3(tmp_path):
 
 
 # ── finalize / build_result (v4 stage-CLI-tool) ───────────────────────────────
-def _workdir(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR):
+def _workdir(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR, netlist=True):
+    """A completed run: reports/{area,qor}.rpt plus the netlist trio a pass requires.
+    netlist=False stages the shape a failed dc_shell write leaves behind."""
     reports = tmp_path / "reports"
     reports.mkdir(parents=True)
     (reports / "area.rpt").write_text(area)
     (reports / "qor.rpt").write_text(qor)
+    if netlist:
+        (tmp_path / "out").mkdir(exist_ok=True)
+        for ext in ("v", "sdc", "sdf"):
+            (tmp_path / "out" / f"tpu_top_syn.{ext}").write_text(f"{ext} content")
     return tmp_path
 
 
@@ -553,6 +559,9 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
     reports.mkdir()
     (reports / "area.rpt").write_text(SAMPLE_AREA)
     (reports / "qor.rpt").write_text(SAMPLE_QOR)
+    (wd / "out").mkdir()  # a complete run, so the fail below is the PPA gate's
+    for ext in ("v", "sdc", "sdf"):
+        (wd / "out" / f"tpu_top_syn.{ext}").write_text(ext)
     spec_dir = module_root / "Design" / "specification"
     spec_dir.mkdir(parents=True)
     (spec_dir / "ppa.json").write_text(
@@ -582,7 +591,7 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert ss["ppa_targets"] == ["area_um2"]  # power_mw dim filtered out
-    assert env["status"] == "fail"
+    assert env["status"] == "fail" and ss["failure_kind"] == "ppa"
     assert ss["violations"] == [
         {"dim": "area_um2", "target": 1.0, "actual": pytest.approx(65018.219263)}
     ]
@@ -599,6 +608,9 @@ def test_finalize_cli_no_ppa_json_is_vacuous_pass(tmp_path):
     reports.mkdir()
     (reports / "area.rpt").write_text(SAMPLE_AREA)
     (reports / "qor.rpt").write_text(SAMPLE_QOR)
+    (wd / "out").mkdir()
+    for ext in ("v", "sdc", "sdf"):
+        (wd / "out" / f"tpu_top_syn.{ext}").write_text(ext)
     spec_dir = module_root / "Design" / "specification"
     (wd / "dispatch.json").write_text(json.dumps({"inputs": {"ppa": str(spec_dir)}}))
     MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
@@ -618,3 +630,44 @@ def test_finalize_cli_no_ppa_json_is_vacuous_pass(tmp_path):
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass" and env["stage_specific"]["ppa_targets"] == []
+
+
+# ── netlist presence: a clean gate is not a met gate ───────────────────────────
+def test_pass_requires_the_full_netlist_trio(tmp_path):
+    # dc_run.tcl reports before it writes, and no write is return-checked, so a clean
+    # reports/ can sit next to no netlist at all.
+    wd = _workdir(tmp_path, netlist=False)
+    assert sp.build_result(wd, module="m", area_target=None, slack_target=None) == 0
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert env["status"] == "fail" and ss["failure_kind"] == "tooling"
+    assert "out/*_syn.v" in ss["fail_reason"] and "out/*_syn.sdf" in ss["fail_reason"]
+    assert ss["ppa_actual"]  # the measured numbers are still recorded
+
+
+def test_partial_netlist_names_only_what_is_absent(tmp_path):
+    wd = _workdir(tmp_path, netlist=False)
+    (wd / "out").mkdir()
+    (wd / "out" / "m_syn.v").write_text("netlist")
+    (wd / "out" / "m_syn.sdc").write_text("sdc")
+    assert sp.build_result(wd, module="m", area_target=None, slack_target=None) == 0
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["fail_reason"] == "netlist incomplete: dc_shell wrote no out/*_syn.sdf"
+
+
+def test_missing_netlist_outranks_a_ppa_miss(tmp_path):
+    wd = _workdir(tmp_path, netlist=False)
+    assert (
+        sp.build_result(
+            wd,
+            module="m",
+            area_target=1.0,  # unreachable -> the gate fails too
+            slack_target=None,
+            fix_owner="rtl-design",
+        )
+        == 0
+    )
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["failure_kind"] == "tooling"  # not ppa: the run has no product at all
+    assert ss["violations"]  # the PPA miss is still on the record
+    assert ss["fix_owner"] == "rtl-design"

@@ -19,7 +19,6 @@ Your sole responsibility: run Design Compiler synthesis against the RTL filelist
 
 - The injected input locations (`<rtl>`, `<annotations>`, `<sdc>`, `<ppa>` — from `dispatch.json`) are read-only canonical: never modify anything under them (or any other stage's canonical output); the only files you write live under `{workdir}`.
 - Timing exceptions MUST be supplemented iteratively after RTL becomes visible; they cannot be pre-written at the specification stage (contract violation — RTL port names cannot be known in advance).
-- Do not claim synthesis is complete when the netlist (`out/<TOP>_syn.v`) does not exist — the netlist must land on disk.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
@@ -144,7 +143,9 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
 It reuses the parser's PPA gate (worst setup slack = `min` of `Critical Path Slack` across all
 clock-group blocks; area = `Total cell area`), derives the reproducibility header
 (tool / lib_db / clock / ppa_targets), enumerates `artifacts[]`, and writes the complete
-`result.json`.
+`result.json`. A clean gate is not enough for a pass: it also requires all three of
+`out/*_syn.{v,sdc,sdf}` on disk, and reports an incomplete set as a `tooling` fail rather than
+promoting a synthesis the downstream stages cannot read.
 
 The two failure flags carry what the reports cannot. Pass them when dc_shell produced nothing
 gradeable — no license, an `analyze` / `elaborate` / `link` / `check_design` / `compile` abort, a
