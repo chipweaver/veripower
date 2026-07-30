@@ -12,6 +12,9 @@
 # CDC goals can run independently (each goal does its own elaborate), but
 # running lint first lets set_case_analysis converge, so the CDC report
 # isn't polluted by test-control-signal noise.
+#
+# scripts/waiver.tcl is sourced exactly once per session, whichever subset runs,
+# so waivers and set_options apply to lint and CDC alike.
 # ==============================================================================
 
 set _stage "all"
@@ -33,6 +36,13 @@ if {$_stage eq "lint" || $_stage eq "all"} {
 
 if {$_stage eq "cdc" || $_stage eq "all"} {
     current_goal cdc/cdc_setup
+    # Standalone `make cdc`: the lint branch did not run, so nothing has sourced
+    # the waivers yet, and a CDC-only waive or set_option would be silently
+    # dropped. Under `all` they are already in effect (they survive the CDC
+    # re-elaborate), and re-sourcing would double every entry.
+    if {$_stage eq "cdc"} {
+        source scripts/waiver.tcl
+    }
     run_goal
     current_goal cdc/cdc_setup_check
     run_goal
