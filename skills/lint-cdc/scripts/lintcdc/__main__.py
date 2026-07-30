@@ -3,7 +3,8 @@
 
 Verbs (one stage = one tool; see skills/lint-cdc/SKILL.md for usage):
   bootstrap   deploy templates + seed SGDC (carried/cold/template) + sync filelist (exit 0 / 1 / 2)
-  finalize    AND the two *-violations.json sidecars, assemble result.json        (exit 0 written / 2 BLOCKED)
+  finalize    AND the two *-violations.json sidecars, assemble result.json; also the
+              early-fail exit (with --fail-reason)                                (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the lintcdc.*
 library. Library imports are deferred into each handler because `from lintcdc import …`
@@ -33,7 +34,7 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from lintcdc import result
 
-    return result.finalize(a.workdir, a.module, a.fix_owner)
+    return result.finalize(a.workdir, a.module, a.fix_owner, a.fail_reason)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -62,6 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--fix-owner",
         default=None,
         help="on a failure, the rule that must act (you name it; the report cannot)",
+    )
+    sp.add_argument(
+        "--fail-reason",
+        default=None,
+        help="force status=fail with this reason; use it when `make` died before the "
+        "parser wrote its sidecar, so the reason on its stderr is the precise one",
     )
     sp.set_defaults(func=_cmd_finalize)
 

@@ -78,7 +78,7 @@ def _error_violations(doc: dict) -> list[dict]:
     return out
 
 
-def run(workdir, module, *, fix_owner=None) -> int:
+def run(workdir, module, *, fix_owner=None, fail_reason=None) -> int:
     workdir = Path(workdir)
     lint = _load_violations(workdir / "lint-violations.json")
     cdc = _load_violations(workdir / "cdc-violations.json")
@@ -86,16 +86,19 @@ def run(workdir, module, *, fix_owner=None) -> int:
     artifacts = enumerate_artifacts(workdir)
 
     # AND gate: both *-violations.json present (== both make runs reached collect_report
-    # cleanly) AND counts.error == 0 in both. A missing file == that kind's make did not
-    # produce a clean report (early-fail path; the agent already wrote that envelope in
-    # Steps 4/5 — see main()).
+    # cleanly) AND counts.error == 0 in both. A missing file means that kind's make did
+    # not produce a clean report, which is a fail on its own.
     lint_err = (lint or {}).get("counts", {}).get("error")
     cdc_err = (cdc or {}).get("counts", {}).get("error")
     violations = _error_violations(lint) + _error_violations(cdc)
-    if lint is None or cdc is None or lint_err or cdc_err:
+    if fail_reason or lint is None or cdc is None or lint_err or cdc_err:
+        # A caller-supplied reason wins: it comes from the agent that watched `make`
+        # fail and read the parser's stderr, which is strictly more than this verb can
+        # reconstruct from a report that is not on disk.
         ss: dict = {
             "tool": tool,
-            "fail_reason": _gate_fail_reason(lint, cdc, lint_err, cdc_err),
+            "fail_reason": fail_reason
+            or _gate_fail_reason(lint, cdc, lint_err, cdc_err),
         }
         for key, doc in (("lint_counts", lint), ("cdc_counts", cdc)):
             if doc is not None:
@@ -128,9 +131,9 @@ def run(workdir, module, *, fix_owner=None) -> int:
 
 def _gate_fail_reason(lint, cdc, lint_err, cdc_err) -> str:
     # Both gate-fail shapes: a sidecar the parser never wrote, and error rows in one it
-    # did. The skill's own early-fail writes the envelope before this verb is reached and
-    # carries the precise tool-level reason, so the missing-sidecar wording here is the
-    # fallback for a run that skipped that path, not its duplicate.
+    # did. Only reached when the caller passed no --fail-reason, so the wording stays
+    # generic on purpose: whoever watched `make` fail knows more than this, and saying it
+    # is their job.
     if lint is None:
         return "lint report missing/unparseable, not real sign-off"
     if cdc is None:
@@ -180,12 +183,18 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def finalize(workdir, module, fix_owner=None) -> int:
+def finalize(workdir, module, fix_owner=None, fail_reason=None) -> int:
     """Assemble the lean lint-cdc result.json from the two *-violations.json + headers.
-    exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (any internal
-    raise) — never conflated with status=fail."""
+    exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (an empty
+    --fail-reason, or any internal raise) — never conflated with status=fail."""
+    if fail_reason is not None and not fail_reason.strip():
+        print(
+            "[lintcdc finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",
+            file=sys.stderr,
+        )
+        return 2
     try:
-        return run(workdir, module, fix_owner=fix_owner)
+        return run(workdir, module, fix_owner=fix_owner, fail_reason=fail_reason)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[lintcdc finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2

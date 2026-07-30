@@ -105,21 +105,21 @@ Read `lint-violations.json` and triage every `severity=error` entry:
 - Real lint violations → leave for the waiver pass in Step 6.
 
 **A non-zero `make` is authoritative — never infer success from the `*-violations.json`
-presence.** It ends the run: write `status=fail` with a `fail_reason` naming what
-`collect_report.py` reported on stderr, and exit without running the combiner. Nothing parses
-`fail_reason`, so write the root cause you actually read, not a category. The one thing stderr
-cannot tell you: a non-zero `make` carrying **no** `FAIL=` token at all means SpyGlass itself
-never reached the report step (tool, license, or crash), which is an environment failure and
-not a report defect. This protocol is the same for `make cdc` in Step 5.
+presence.** It ends the run. Go straight to Step 7 and pass the root cause you just read on
+`collect_report.py`'s stderr as `--fail-reason`, because the parser deleted its sidecar and
+the combiner can no longer see why. Nothing parses that string, so write the cause you
+actually read rather than a category. The one thing stderr cannot tell you: a non-zero `make`
+carrying **no** `FAIL=` token at all means SpyGlass itself never reached the report step (tool,
+license, or crash), which is an environment failure and not a report defect. This protocol is
+the same for `make cdc` in Step 5.
 
 ### Naming the fix owner
 
-Whenever you close a run with `status=fail`, name the rule whose artifact must change in
-`stage_specific.fix_owner`. On the Step-7 combiner path that means passing `--fix-owner <rule>`;
-on the Step 4/5 early-fail path, where you write the envelope yourself, it means writing the key
-yourself. **Either way the field has to be there.** A `fail_reason` that names the guilty stage
-in prose while `fix_owner` is absent reads to the caller as "this stage could not tell", and it
-brings a human in to re-derive an answer you already had.
+Whenever you close a run with `status=fail`, name the rule whose artifact must change and pass
+it as `--fix-owner <rule>` in Step 7, which is what puts it in `stage_specific.fix_owner`. This
+holds for a tool or license failure exactly as much as for a violation: a `fail_reason` that
+names the guilty stage in prose while the flag was omitted reads to the caller as "this stage
+could not tell", and brings a human in to re-derive an answer you already had.
 
 You are the only party that read the report, so you are the only one who can answer this, and
 the line a violation is reported at is not always the line that must change. The measured
@@ -158,24 +158,27 @@ avoidable) and delete entries whose original finding no longer exists.
 
 ### Step 7: Write `{workdir}/result.json` (mandatory)
 
-Run the result combiner; do not hand-assemble the envelope, recount, or copy the header by hand:
+Every run closes here, including the Step 4/5 early-fail. Never hand-assemble the envelope,
+recount, or copy the header by hand:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py finalize \
-  --workdir {workdir} --module <module> [--fix-owner <rule>]
+  --workdir {workdir} --module <module> [--fix-owner <rule>] [--fail-reason "<cause>"]
 ```
 
 It reads the two `*-violations.json` for the gate (`status=pass` iff both exist, meaning both
 `make` runs reached `collect_report.py` cleanly, AND `counts.error == 0` in both), copies the
 counts, reads the SpyGlass version off the report, reshapes the error-severity rows into
 `violations[]` (each `reason` from the parser's tool `message`), and enumerates `artifacts[]`.
-`--fix-owner` is the only field it cannot derive; everything else is script-owned. Exit 0 =
-`result.json` written, whether the status is pass or fail. A non-zero exit is a program
-exception, not a `status=fail`.
 
-The Step 4/5 early-fail is the one path that bypasses this verb: there you write the envelope
-yourself, because the reason you read on stderr is more precise than anything the combiner could
-reconstruct from a report that is not on disk.
+The two flags carry what the report cannot: `--fix-owner` because no rule id says whose artifact
+must change, and `--fail-reason` because a `make` that died before the parser wrote its sidecar
+left the cause only on stderr, where you read it. Supplying `--fail-reason` is itself the
+declaration of failure, so pass it only when the run really failed. Everything else is
+script-owned.
+
+Exit 0 = `result.json` written, whether the status is pass or fail. Exit 2 is BLOCKED, never a
+`status=fail`: an empty `--fail-reason`, or a program exception.
 
 ## Decision Rules
 
