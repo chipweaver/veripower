@@ -4,12 +4,10 @@
   "title": "simulation conformance review (gating reviewer output)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "stage", "module", "reviewed_testpoints", "findings"],
+  "required": ["stage", "module", "findings"],
   "properties": {
-    "schema_version": {"const": 1},
     "stage": {"const": "simulation"},
     "module": {"type": "string"},
-    "reviewed_testpoints": {"type": "array", "items": {"type": "string"}},
     "findings": {
       "type": "array",
       "items": {

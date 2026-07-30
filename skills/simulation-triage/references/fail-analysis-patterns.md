@@ -14,11 +14,14 @@ Reasoning aid for landing the top-level `root_cause` (the routing field). These 
 | `gaps_in_testpoints` is non-empty but the RTL is unreachable (dead code) | `rtl-design` |
 | A coverage dimension was never set up (the specification omitted the requirement) | `specification` (rare) |
 
-## `fault_type` and `root_cause_direction` detailed classification
+## Fault-type and `root_cause_direction` detailed classification
 
-Reasoning aid for classifying each case; surfaced as free-text `fault_type` values inside `advisory.findings[]` (schema: `result.schema.json`, under `stage_specific`) — not a separate enum of their own.
+Reasoning aid only — it helps you reach the `root_cause` you land and the `anchor` you cite per
+finding. The fault type itself is not a field you write: nothing downstream reads it, so recording
+it would cost you a judgment call no consumer acts on. Use the table to think, then write the
+`root_cause` and the `anchor`.
 
-| Fault category | `fault_type` | Typical symptom | `root_cause_direction` | How to trace |
+| Fault category | Fault type | Typical symptom | `root_cause_direction` | How to trace |
 |---|---|---|---|---|
 | Compile error | `compile_error` | `make simv` fails | `tb` | Read the compile log; locate the offending line number. |
 | Data mismatch | `data_mismatch` | Checker reports expected vs. actual differ | `rtl-design` (or `tb` refmodel) | Compare refmodel against RTL output; trace the differing signal back to its source. |

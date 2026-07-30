@@ -77,7 +77,6 @@ GOOD = {
 _REVIEW_CLEAR = {
     "stage": "simulation-plan",
     "module": "tpu_top",
-    "reviewed_testpoints": ["TP-1"],
     "findings": [],
 }
 
@@ -286,7 +285,6 @@ def test_finalize_blocked_on_bad_waived_json(tmp_path):
             {
                 "stage": "simulation-plan",
                 "module": "m",
-                "reviewed_testpoints": ["TP-1"],
                 "findings": [],
             }
         )

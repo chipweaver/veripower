@@ -12,10 +12,8 @@ from sim import review  # noqa: E402
 
 def _doc(findings):
     return {
-        "schema_version": 1,
         "stage": "simulation",
         "module": "m",
-        "reviewed_testpoints": ["tp1"],
         "findings": findings,
     }
 

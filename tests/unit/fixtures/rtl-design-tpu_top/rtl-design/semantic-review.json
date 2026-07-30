@@ -1,8 +1,6 @@
 {
-  "schema_version": 1,
   "stage": "rtl-design",
   "module": "tpu_top",
-  "reviewed_children": ["mac", "systolic_reg", "fifo", "tpu_top"],
   "findings": [
     {
       "child": "mac",

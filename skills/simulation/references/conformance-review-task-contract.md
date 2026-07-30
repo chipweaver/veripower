@@ -94,8 +94,7 @@ End the response with `STATUS: DONE` + a single JSON line (schema
 `references/conformance-review.schema.json`), or `STATUS: BLOCKED <reason>`:
 
 ```json
-{"schema_version": 1, "stage": "simulation", "module": "<module>",
- "reviewed_testpoints": ["TP-..."],
+{"stage": "simulation", "module": "<module>",
  "findings": [{"tp_id": "<TP-ID | component token e.g. 'env:wiring'>",
                "severity": "critical|important|minor",
                "category": "missing|wrong-behavior|fake-green|unverifiable-arch|intent-defect",

@@ -18,7 +18,6 @@ _FIX = Path(__file__).resolve().parent / "fixtures" / "specification-tpu_top"
 _CLEAR_REVIEW = {
     "stage": "specification",
     "module": "m",
-    "reviewed_children": ["mac"],
     "findings": [],
 }
 
@@ -233,7 +232,6 @@ def test_golden_waived_flagged_finding_passes(tmp_path):
             {
                 "stage": "specification",
                 "module": "tpu_top",
-                "reviewed_children": ["mac"],
                 "findings": [
                     {
                         "child": "mac",
@@ -279,7 +277,6 @@ def test_golden_unwaived_flagged_blocks_pass(tmp_path):
             {
                 "stage": "specification",
                 "module": "tpu_top",
-                "reviewed_children": ["mac"],
                 "findings": [
                     {
                         "child": "mac",
@@ -359,7 +356,6 @@ def test_finalize_valid_waiver_still_passes(tmp_path):
             {
                 "stage": "specification",
                 "module": "tpu_top",
-                "reviewed_children": ["mac"],
                 "findings": [
                     {
                         "child": "mac",
@@ -659,7 +655,6 @@ def test_precondition_downgrade_not_preempted_by_missing_ppa(tmp_path):
             {
                 "stage": "specification",
                 "module": "tpu_top",
-                "reviewed_children": ["mac"],
                 "findings": [
                     {
                         "child": "mac",

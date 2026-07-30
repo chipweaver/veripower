@@ -4,12 +4,10 @@
   "title": "rtl-design semantic review (gating reviewer output)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "stage", "module", "reviewed_children", "findings"],
+  "required": ["stage", "module", "findings"],
   "properties": {
-    "schema_version": {"const": 1},
     "stage": {"const": "rtl-design"},
     "module": {"type": "string"},
-    "reviewed_children": {"type": "array", "items": {"type": "string"}},
     "findings": {
       "type": "array",
       "items": {

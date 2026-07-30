@@ -22,7 +22,7 @@ The landed `result.json`'s `stage_specific` carries two tiers:
   picks the rework target) to mint a `diagnosis` event, recording `confidence`
   as-is — the disposition reliability gate then auto-routes or
   escalates on it.
-- **Advisory tier** (`advisory.{level, fix_direction, findings[], waveform, experiment}`) —
+- **Advisory tier** (`advisory.{level, findings[], waveform, experiment}`) —
   persisted evidence the rework target reads from this `result.json`, which the kernel names in
   its `dispatch.json`; informs the fix,
   does not gate routing.
@@ -105,7 +105,7 @@ Classify `analysis_state` first; then pull case inputs by `failure_phase`.
   - The self-read inputs show no fail case (e.g., a mistakenly-dispatched scenario where regress / smoke is fully pass or coverage already 100%) → `skipped_reason: "no fail case to analyze"`.
 - **Complete classification** (`analysis_state: "complete"`): per `failure_phase`, take cases from one of three input shapes:
   - `regress` / `smoke` → cases = `failing_cases[]` (both run UVM test cases; `failing_cases[]` carries `error_message` / `log_snippet` per failing case; cross-reference the full per-case log under `<sim_run>` when the envelope's snippet isn't enough).
-  - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail (from `<sim_run>`) as a single synthetic case. Land the `root_cause` from it directly, AND emit it as **one** `advisory.findings[]` entry (`fault_type` = the compile/prerequisite failure class, `anchor` = the compile-error location from the log tail, else the `fail_reason`; `cases` = the synthetic case) — like the coverage/conformance branches below, one case is one finding, so a high-confidence verdict always carries a concrete locus (schema-enforced: `high` ⇒ non-empty `findings[]` each with an `anchor`).
+  - `compile` / `prerequisite` → no case-level failure list exists (a compile failure has no test runs; a missing prerequisite never started). **Degenerate path:** treat the phase's `fail_reason` plus the compile-log tail (from `<sim_run>`) as a single synthetic case. Land the `root_cause` from it directly, AND emit it as **one** `advisory.findings[]` entry (`anchor` = the compile-error location from the log tail, else the `fail_reason`; `cases` = the synthetic case) — like the coverage/conformance branches below, one case is one finding, so a high-confidence verdict always carries a concrete locus (schema-enforced: `high` ⇒ non-empty `findings[]` each with an `anchor`).
   - `coverage` → no `failing_cases[]` (regress already passed; only coverage is below target). cases = each gap bin in `coverage_gaps[]` (split by `gaps_in_testpoints` / `gaps_not_in_testpoints`); each gap bin is one case and becomes one `advisory.findings[]` entry (a lone gap bin is a single case — as in the degenerate path above).
   - `conformance` → no `failing_cases[]` and no log tail (compile + smoke both passed). cases = each gating finding in `conformance_findings[]`; each finding is one case. Its `category` is the reasoning key for Step 2 — there is no log to anchor on.
 
@@ -149,19 +149,16 @@ Assemble the analysis judgment (shape below):
   "confidence": "high",
   "advisory": {
     "level": "L1",                 // or "L2" when Step 3 triggered
-    "fix_direction": "<waveform- or experiment-backed fix direction: file:line + what to change>",
-    "findings": [ { "fault_type": "…", "anchor": "file:line", "cases": ["…"] } ],
-    "waveform": {                  // present when Step 2's fsdbreport query ran (incl. a degrade note)
+    "findings": [ { "anchor": "file:line", "cases": ["…"] } ],
+    "waveform": {                  // present when Step 2's fsdbreport query ran
       "commands": ["fsdbreport <sim_run>/<test_id>.fsdb -s /tb_top/u_dut/sig -bt 40ns -et 80ns -of h"],
-      "signals": ["/tb_top/u_dut/sig"],
-      "observation": "<what the queried Time|value text showed, or the FSDB-absent degrade note>"
+      "signals": ["/tb_top/u_dut/sig"]
     },
     "experiment": {                // present only when Step 3 triggered
       "tool": "verilator",
       "stimulus": "<hand-chosen input(s) / sweep the real run never drove>",
       "artifacts": ["experiment/tb_wrap.sv", "…/sim_main.cpp", "…/golden.py", "…/run.log"],
-      "golden": "<golden model description or path>",
-      "conclusion": "<what the isolation harness / sweep proved, incl. any adversarial self-check>"
+      "golden": "<golden model description or path>"
     }
   }
 }
@@ -201,8 +198,8 @@ Root-cause selection lives in [`references/fail-analysis-patterns.md`](reference
 | Mistake | Fix |
 |---|---|
 | Lumping every case into one cluster | Cluster strictly by the clustering signals; when same-origin cannot be established, each case stands alone. |
-| `fix_direction` too vague | Be specific: file, line, suggested change — for an L2 verdict, ground it in what the isolation harness proved. |
-| Putting `level` / `fix_direction` / `findings` / `waveform` / `experiment` at the top level of the analysis judgment | The `stage_specific` subschema is `additionalProperties: false` — those keys must nest under `advisory`; a top-level placement fails `finalize`'s schema gate. |
+| An `anchor` too vague to act on | Be specific: file and line — for an L2 verdict, ground it in what the isolation harness proved. |
+| Putting `level` / `findings` / `waveform` / `experiment` at the top level of the analysis judgment | The `stage_specific` subschema is `additionalProperties: false` — those keys must nest under `advisory`; a top-level placement fails `finalize`'s schema gate. |
 
 ## Completion Gate
 
@@ -220,6 +217,6 @@ As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `
 ## Bundled References
 
 - [`references/fail-analysis-patterns.md`](references/fail-analysis-patterns.md) — Symptom/scope → `root_cause`, fault-type / `root_cause_direction` classification, regression-level table, clustering guide, the gating confidence definitions + the L2-trigger judgment, and the root-cause attribution + tiebreak rule.
-- [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema: envelope + `stage_specific` routing tier (`analysis_state` / `root_cause` / `confidence`) + advisory tier (`level` / `fix_direction` / `findings[]` / `waveform` / `experiment`).
+- [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema: envelope + `stage_specific` routing tier (`analysis_state` / `root_cause` / `confidence`) + advisory tier (`level` / `findings[]` / `waveform` / `experiment`).
 - `scripts/simtriage/` (the `finalize` verb) — schema-gates your analysis judgment, then atomically writes `result.json` (invocation contract: Step 5 + `--help`).
 - `defaults.yaml` — `l2_experiment_max_rounds`, the L2 iteration budget (Step 3).

@@ -11,10 +11,8 @@ sys.path.insert(0, str(ROOT / "skills" / "rtl-design" / "scripts"))
 from rtl import result as ve  # noqa: E402
 
 _SEM_CLEAR = {
-    "schema_version": 1,
     "stage": "rtl-design",
     "module": "tpu_top",
-    "reviewed_children": ["mac"],
     "findings": [],
 }
 
@@ -115,10 +113,8 @@ def test_build_result_pass_lean_shape(tmp_path):
 
 def test_build_result_fail_on_semantic_trip(tmp_path):
     sem = {
-        "schema_version": 1,
         "stage": "rtl-design",
         "module": "tpu_top",
-        "reviewed_children": ["mac"],
         "findings": [
             {
                 "child": "mac",

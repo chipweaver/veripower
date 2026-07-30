@@ -45,8 +45,7 @@ lenses:
 End with `STATUS: DONE` + a single JSON line (schema `references/plan-review.schema.json`), or
 `STATUS: BLOCKED <reason>`:
 ```json
-{"schema_version": 1, "stage": "simulation-plan", "module": "<module>",
- "reviewed_testpoints": ["TP-..."],
+{"stage": "simulation-plan", "module": "<module>",
  "findings": [{"tp_id": "<TP-ID | 'plan' for a spec-behavior gap tied to no single testpoint>",
                "lens": "coverage|adequacy",
                "severity": "critical|important|minor",

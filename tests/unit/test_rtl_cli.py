@@ -42,10 +42,8 @@ def test_semantic_review_accepts_confidence(tmp_path):
     import json
 
     review = {
-        "schema_version": 1,
         "stage": "rtl-design",
         "module": "m",
-        "reviewed_children": ["c1"],
         "findings": [
             {
                 "child": "c1",

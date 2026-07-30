@@ -1,2 +1,1 @@
-{"schema_version": 1, "stage": "specification", "module": "tpu_top",
- "reviewed_children": ["tpu_top"], "findings": []}
+{"stage": "specification", "module": "tpu_top", "findings": []}

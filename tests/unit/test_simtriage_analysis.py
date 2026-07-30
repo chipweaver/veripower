@@ -59,7 +59,7 @@ def test_default_schema_used_when_flag_omitted(tmp_path):
             "confidence": "high",
             "advisory": {
                 "level": "L1",
-                "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
+                "findings": [{"anchor": "a.v:1"}],
             },
         },
     )
@@ -77,7 +77,7 @@ def test_explicit_schema_override_still_accepted(tmp_path):
             "confidence": "high",
             "advisory": {
                 "level": "L1",
-                "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
+                "findings": [{"anchor": "a.v:1"}],
             },
         },
         schema=schema_path,
@@ -94,7 +94,7 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
             "confidence": "high",
             "advisory": {
                 "level": "L1",
-                "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
+                "findings": [{"anchor": "a.v:1"}],
             },
         },
     )
@@ -110,7 +110,7 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
         "confidence": "high",
         "advisory": {
             "level": "L1",
-            "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
+            "findings": [{"anchor": "a.v:1"}],
         },
     }
     # the written file itself validates against the full merged schema
@@ -225,7 +225,7 @@ def test_advisory_old_repro_key_rejected(tmp_path):
     assert r.returncode == 1
 
 
-def test_advisory_findings_and_fix_direction_valid(tmp_path):
+def test_advisory_findings_valid(tmp_path):
     r = _run(
         tmp_path,
         {
@@ -234,10 +234,8 @@ def test_advisory_findings_and_fix_direction_valid(tmp_path):
             "confidence": "high",
             "advisory": {
                 "level": "L1",
-                "fix_direction": "fp_pkg.svh::fp32_add: magnitude-compare in opposite-sign branch",
                 "findings": [
                     {
-                        "fault_type": "data_mismatch",
                         "anchor": "fp_pkg.svh:264",
                         "cases": ["T-E2E"],
                     }
@@ -257,13 +255,12 @@ def test_advisory_waveform_valid(tmp_path):
             "confidence": "high",
             "advisory": {
                 "level": "L1",
-                "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
+                "findings": [{"anchor": "a.v:1"}],
                 "waveform": {
                     "commands": [
                         "fsdbreport T-SMOKE.fsdb -s /fa_tb_top/u_dut/scores_S -bt 40ns -et 80ns -of h"
                     ],
                     "signals": ["/fa_tb_top/u_dut/scores_S"],
-                    "observation": "scores_S frozen constant through MAX phase",
                 },
             },
         },
@@ -280,13 +277,12 @@ def test_advisory_experiment_valid(tmp_path):
             "confidence": "high",
             "advisory": {
                 "level": "L2",
-                "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
+                "findings": [{"anchor": "a.v:1"}],
                 "experiment": {
                     "tool": "verilator",
                     "stimulus": "hand-picked fp32_add operand pairs 2+(-3),4+(-5)",
                     "artifacts": ["experiment/tb_add.sv"],
                     "golden": "golden_fa.py",
-                    "conclusion": "fp32_add eq-exp subtraction underflow confirmed",
                 },
             },
         },
@@ -304,7 +300,7 @@ def test_json_file_input(tmp_path):
                 "confidence": "high",
                 "advisory": {
                     "level": "L1",
-                    "findings": [{"fault_type": "x", "anchor": "a.v:1"}],
+                    "findings": [{"anchor": "a.v:1"}],
                 },
             }
         )

@@ -18,10 +18,8 @@ def _run(tmp_path, doc):
 
 def _doc(findings, tps=("TP-1",)):
     return {
-        "schema_version": 1,
         "stage": "simulation-plan",
         "module": "m",
-        "reviewed_testpoints": list(tps),
         "findings": findings,
     }
 

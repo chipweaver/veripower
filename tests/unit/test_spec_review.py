@@ -20,10 +20,8 @@ def _run(tmp_path, doc):
 
 def _doc(findings, children=("c",)):
     return {
-        "schema_version": 1,
         "stage": "specification",
         "module": "m",
-        "reviewed_children": list(children),
         "findings": findings,
     }
 
