@@ -1,24 +1,16 @@
 #!/usr/bin/env python3
 """lintcdc.result — assemble the lean lint-cdc result.json envelope.
 
-The ONE new module in the skill-elegance cure (cure-spec §3.1 explicit exception):
-lint-cdc's gate engine `collect_report.py` is `templates/`-deployed (run by `make lint`
-/ `make cdc`, never invoked by the agent by path) and runs ONCE PER KIND, each writing
-its own `*-violations.json`. There is no single host tool to grow, so this thin combiner
-ANDs the two already-written sidecars and writes the envelope — a pure file-reader that
-hand-writes the envelope.
+Why a combiner and not one host tool: the gate engine `collect_report.py` is
+`templates/`-deployed (run by `make lint` / `make cdc`, never invoked by the agent by
+path) and runs ONCE PER KIND, each writing its own `*-violations.json`. So this module is
+a pure file-reader over those two sidecars: it neither imports nor subprocesses the
+parser, and writes no sidecar of its own.
 
-Pure file-reader: it does NOT import or subprocess collect_report.py and writes ZERO new
-sidecar. It reads the two collect_report.py outputs (lint-violations.json /
-cdc-violations.json) already on disk for the AND gate (status=pass iff counts.error == 0 in
-BOTH) + the counts, parses the slim reproducibility header (top_module / tool) from the
-report, reshapes the error-severity violations, enumerates artifacts[], and hand-writes the
-envelope dict (no shared build_envelope helper — user decision F1).
-
-No agent input: lint-cdc is pure-deterministic (no human gate). The schema-required per-error
-`reason` is DERIVED from the parser's tool `message` (`reason = "<rule>: <message>"`). The gate
-is the error COUNT (`counts.error == 0`), so `reason` is purely descriptive — deriving it from
-the tool message is faithful, not a judgment. Field set per the field-necessity verdict (Task 0).
+The gate ANDs the two: status=pass iff both sidecars exist and counts.error == 0 in both.
+`reason` on each violation row is derived from the parser's tool `message`, which is
+faithful rather than a judgment, because the gate is the error COUNT and never the reason
+text.
 """
 
 from __future__ import annotations
@@ -65,9 +57,8 @@ def _load_violations(path: Path):
 
 def _error_violations(doc: dict) -> list[dict]:
     """Reshape the error-severity rows to the schema's {id, rule, severity, reason} (+
-    file/line/message kept as additionalProperties). `reason` is derived from the tool
-    message (gate is the error count, not the reason text — so this is descriptive, not
-    a judgment)."""
+    file/line/message kept as additionalProperties). Error rows only, so this is empty
+    on every pass: the full all-severity account stays in the promoted sidecar."""
     out = []
     for v in (doc or {}).get("violations", []):
         if v.get("severity") != "error":
@@ -139,11 +130,10 @@ def run(workdir, module, *, top, fix_owner=None) -> int:
 
 
 def _gate_fail_reason(lint, cdc, lint_err, cdc_err) -> str:
-    # The COMBINER's own gate-fail surface: the error-count>0 case (both reports present)
-    # + a defensive missing-file fallback. DISTINCT from the SKILL's early-fail
-    # token->reason map (FAIL=missing/unparseable/count_mismatch, SKILL.md:101), which
-    # stays skill-owned and fires FIRST on a real missing/unparseable report — so the two
-    # reason vocabularies never collide (route.py treats fail_reason as a non-parsed hint).
+    # Both gate-fail shapes: a sidecar the parser never wrote, and error rows in one it
+    # did. The skill's own early-fail writes the envelope before this verb is reached and
+    # carries the precise tool-level reason, so the missing-sidecar wording here is the
+    # fallback for a run that skipped that path, not its duplicate.
     if lint is None:
         return "lint report missing/unparseable, not real sign-off"
     if cdc is None:
@@ -193,7 +183,7 @@ def read_top(workdir: Path):
 def enumerate_artifacts(workdir: Path) -> list[dict]:
     workdir = Path(workdir)
     candidates = [
-        "scripts/constraints.sgdc",  # Iron Rule warm-start anchor: MUST be in artifacts[] on pass (promotion is pass-gated by the promote machinery, so a fail-path listing here is inert, not a leak)
+        "scripts/constraints.sgdc",  # the warm-start anchor the next round inherits
         "lint-report.txt",
         "cdc-report.txt",
         "lint-violations.json",
@@ -201,8 +191,8 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
         "scripts/waiver.tcl",
     ]
     # envelope.schema forbids listing result.json itself; excluded by construction.
-    # On an early-fail a *-violations.json the parser did not emit is simply absent here
-    # (write-fresh-or-nothing unlinked it) -> not listed, exactly per SKILL :120.
+    # A *-violations.json the parser did not emit is simply absent (write-fresh-or-nothing
+    # unlinked it) and therefore not listed.
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
