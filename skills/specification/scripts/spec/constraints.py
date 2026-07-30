@@ -190,11 +190,7 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
 
 def derive_constraints(workdir: Path) -> dict:
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
-    top = manifest.get(
-        "module"
-    )  # <TOP> pinned to manifest.module (== finalize top_module)
-    if not top:
-        _fail("manifest.json missing 'module' (the <TOP> name)")
+    top = manifest["module"]  # <TOP> pinned to manifest.module (== finalize top_module)
     clocks = load_clocks(workdir)
     ports = _ports(workdir)
     sdc = generate_sdc(top, clocks, ports)

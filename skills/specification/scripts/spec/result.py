@@ -44,14 +44,13 @@ def _write_ppa_json(workdir: Path, ppa_targets: list) -> None:
 
 
 def _top_from_manifest(workdir: Path) -> str:
-    """<TOP> = manifest.module — the same source derive_constraints pins; read directly on
-    the fail path, which never runs the derivation. With no manifest there is no artifact set
-    to enumerate, so an unreadable one raises (finalize → exit 2 BLOCKED)."""
+    """<TOP> = manifest.module — the same source derive_constraints reads; needed on the fail
+    path, which never runs the derivation. Indexed, not defaulted: <TOP> names the two
+    constraint files in artifacts[], so a roster this could not resolve would promote a fail
+    with those entries silently filtered out. Raising makes it BLOCKED. The one site that
+    reports an absent manifest.module as a defect is check_purity, at the partition gate."""
     manifest = json.loads((Path(workdir) / "manifest.json").read_text(encoding="utf-8"))
-    top = manifest.get("module")
-    if not top:
-        raise ValueError("manifest.json missing 'module' (the <TOP> name)")
-    return top
+    return manifest["module"]
 
 
 def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
