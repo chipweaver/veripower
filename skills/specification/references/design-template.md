@@ -154,7 +154,7 @@ Authored by Wave 1; schema `references/top-io.schema.json`. A JSON array, one ob
 |---|---|
 | `name` | Required. The netlist name **including its bit range** (`token_in[4:0]`) — emitted verbatim into `get_ports` / `abstract_port`. |
 | `direction` | Required: `input` / `output` / `inout`. |
-| `width` | Required **integer**. When `name` ends in `[h:l]`, `check-coverage` cross-checks it; an `[i]` index (a register-file element) makes no width claim and is skipped. |
+| `width` | Required **integer**. When `name` ends in `[h:l]`, the two must agree — checked when the file is read; an `[i]` index (a register-file element) makes no width claim and is skipped. |
 | `clock_domain` | Required. A `clocks.json` name. Clock and reset ports carry no IO delay; each `data` port gets `set_input/output_delay` against this domain. |
 | `interface_group` | Required. Groups ports into one TB agent / one vif. |
 | `role` | Required: `clock` / `reset` / `data`. `derive-constraints` branches on it. |
@@ -230,9 +230,10 @@ For every module (N≥1) each child's detail lives in its own `<child>.md` (per
 ## What the gates check
 
 Each sidecar's own shape is its `references/*.schema.json`, field by field — read the schema, not
-a summary of it. The cross-file relations no schema can express are `check-coverage`'s, and its
-verdict names each one by key. Nothing is restated here: a third hand-written copy of the same
-rules is the diverged-cell problem this template warns about everywhere else.
+a summary of it; it is enforced wherever a verb reads that file. What no schema can express is a
+relation *between* files, and that is `check-crossrefs`, whose verdict names each one by key.
+Nothing is restated here: a third hand-written copy of the same rules is the diverged-cell problem
+this template warns about everywhere else.
 
 > Derivation rules, UVM field mapping, and a complete derivation-chain example are owned by `veripower:simulation-plan`. You do not need to read them.
 

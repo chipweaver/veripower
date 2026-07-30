@@ -84,9 +84,9 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
 | Step | Executor | Does → produces | On failure |
 |---|---|---|---|
 | 2 | Wave 1 (sub-Task) | decompose → `manifest.json` + `design.md` §1.1–1.7 + `ppa.json` | `STATUS: BLOCKED` → Fan-out Contract |
-| 3 | script + human | `derive-ports` (per-child inter-module wires) → partition gate | rework / early-fail; merge → Step 2 |
+| 3 | script + human | `derive-ports` (per-child inter-module wires + top-partition purity) → partition gate | rework / early-fail; merge → Step 2 |
 | 4 | Wave 2 (sub-Task ×N) | one `<child>.md` per child | `STATUS: BLOCKED` → Fan-out Contract |
-| 5 | script | coverage gate + constraint derivation | → rework / early-fail |
+| 5 | script | cross-reference gate + constraint derivation | → rework / early-fail |
 | 6 | Wave 3 (reviewers ×N) + script | semantic review → gate verdict | `trip` → Step 7 |
 | 7 | human | `design.md` gate | reject → Step 5 |
 | 8 | script | `finalize` → `result.json` | non-zero → BLOCKED |
@@ -99,13 +99,13 @@ After dispatching, end the turn, then reap and proceed to Step 3 only after it r
 
 ### Step 3: Partition gate (script + human)
 
-Run `derive-ports` to compute each child's inter-module ports (the `interconnects.json` wires whose producers/consumers include one of that child's `rtl_modules`) — its output is both what the human reviews here and what Step 4 injects into each child sub-Task:
+Run `derive-ports`. It computes each child's inter-module ports (the `interconnects.json` wires whose producers/consumers include one of that child's `rtl_modules`) — the output is both what the human reviews here and what Step 4 injects into each child sub-Task — and it decides the top-partition purity rule, since this is the last moment the partition is still editable:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py derive-ports --workdir {workdir}
 ```
 
-On a non-zero exit, stderr names the defect. Do NOT gate: route a Wave-1 rework sub-Task to fix it, or close via early-fail if it is unresolvable.
+On a non-zero exit, stderr names the defect (a malformed `interconnects.json`, a child with no `rtl_modules`, or a top-partition violation: not exactly one child covers `<TOP>`, or that child bundles logic modules). Do NOT gate: route a Wave-1 rework sub-Task to fix it, or close via early-fail if it is unresolvable.
 
 Then present an N-child summary from manifest metadata only: `Grep manifest.children[].{name,role}` plus the `derive-ports` JSON (inter-module wires per child). **Do NOT read `design.md` §1.4.x into the main thread** — a body on the main thread invites a main-thread Edit, which is how wave-authored content gets amended outside its wave. Point the user to §1.4 to inspect it themselves.
 
@@ -121,30 +121,30 @@ Dispatch N sub-Tasks (one per child), each writing `{workdir}/<child>.md` per `r
 
 After dispatching all N, end the turn; reap each child and proceed only after all N have reported.
 
-### Step 5: Coverage gate + constraint derivation (script)
+### Step 5: Cross-reference gate + constraint derivation (script)
 
-Run `check-coverage` to gate the design.md and children before the review:
+Run `check-crossrefs`. It is the one check this stage's fan-out makes necessary: N children authored their docs and check hints in parallel, so nothing but a join can tell whether a name one of them wrote resolves, or whether something went unclaimed.
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py check-coverage --workdir {workdir}
+python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py check-crossrefs --workdir {workdir}
 ```
 
-It prints the verdict to stdout (sub-blocks: `frontmatter_subset` / `structure`); exit 0 = pass. On a non-zero exit, **fix nothing yourself**; you only route to a rework sub-Task:
-- **coverage violations** (a verdict is on stdout): route by category (below), then re-run, looping until clean.
-- **a table could not be parsed** (it raised; stderr names the defect): route a Wave-1 rework, or early-fail if unresolvable.
+It prints the verdict to stdout — `unresolved` (a name written in one file that the owning file does not have) and `orphans` (a target nothing refers to); exit 0 = pass. On a non-zero exit, **fix nothing yourself**; you only route to a rework sub-Task:
+- **a verdict on stdout**: route by key (below), then re-run, looping until clean.
+- **a sidecar is malformed** (it raised; stderr names the file and every violation in it): route a Wave-1 rework, or early-fail if unresolvable. Sidecar shape is validated wherever a verb reads the file, so this can also surface earlier, at `derive-ports` or `derive-constraints`.
 
-| Violation category | Rework target |
+| Verdict key | Rework target |
 |---|---|
-| `features_schema_violations`; `clock_domain_violations`; `purity_violations`; `top_io_schema_violations`; `interconnects_schema_violations`; `width_violations`; `interconnect_violations` | Wave-1 rework (re-partition the manifest; the authored sidecars; `design.md` narrative) |
-| `frontmatter_subset`; `hint_column_violations`; `feature_coverage_gaps`; `top_io_driver_violations` | the affected Wave-2 child rework |
+| `unresolved.port_clock_domains`; `unresolved.wire_clock_domains` | Wave-1 rework (the authored sidecars) |
+| `unresolved.child_ports` / `child_clocks` / `child_features` / `missing_frontmatter_keys`; `orphans.features_without_check`; `orphans.outputs_without_driver` | the affected Wave-2 child rework |
 
-**On a clean coverage gate, immediately run `derive-constraints`:**
+**On a clean cross-reference gate, immediately run `derive-constraints`:**
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py derive-constraints --workdir {workdir}
 ```
 
-It generates `constraints/<TOP>.{sdc,sgdc}` from `clocks.json` + `top-io.json`. Running it here, before the design.md gate, surfaces defects the coverage gate cannot see (clocks.json schema violations, the exactly-one-`primary` rule, reset polarity/kind, clock-name collisions), so a rework is still cheap. On a non-zero exit, stderr names the exact defect: route a Wave-1 rework sub-Task and re-run this step, or close via early-fail if unresolvable.
+It generates `constraints/<TOP>.{sdc,sgdc}` from `clocks.json` + `top-io.json`. Running it here, before the design.md gate, surfaces defects no cross-file join can see (the exactly-one-`primary` rule, clock-name collisions), so a rework is still cheap. On a non-zero exit, stderr names the exact defect: route a Wave-1 rework sub-Task and re-run this step, or close via early-fail if unresolvable.
 
 ### Step 6: Wave 3 — semantic review
 
@@ -177,11 +177,11 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
   --workdir {workdir} --module {module} --status <pass|fail>
 ```
 
-You supply only the human-gate outcome: `--status` (approve/reject). finalize re-runs `check-coverage` and `derive-constraints` in-process (both were clean at Step 5, so a failure now means an artifact was edited after the gate — BLOCKED, not a routable fail) and validates the Wave-1-authored `{workdir}/ppa.json` sidecar (a missing or invalid one is BLOCKED, not a silent default; override with `--ppa-targets` only if needed). Exit 0 = `result.json` written (status pass or fail); a non-zero exit is a program exception (BLOCKED, reason on stderr), not a `status=fail`.
+You supply only the human-gate outcome: `--status` (approve/reject). finalize re-runs `check-crossrefs` and `derive-constraints` in-process (both were clean at Step 5, so a failure now means an artifact was edited after the gate — BLOCKED, not a routable fail) and validates the Wave-1-authored `{workdir}/ppa.json` sidecar (a missing or invalid one is BLOCKED, not a silent default; override with `--ppa-targets` only if needed). Exit 0 = `result.json` written (status pass or fail); a non-zero exit is a program exception (BLOCKED, reason on stderr), not a `status=fail`.
 
 ## Completion Gate
 
-- **Mechanical gate:** `spec check-coverage` exit 0 AND `spec derive-constraints` exit 0 (Step 5, both pre-human-gate; the latter re-run by finalize as the divergence-proof invariant).
+- **Mechanical gate:** `spec check-crossrefs` exit 0 AND `spec derive-constraints` exit 0 (Step 5, both pre-human-gate; finalize re-runs both as the divergence-proof invariant).
 - **Semantic gate:** every child has a `spec-review/<child>.md`, and every blocking finding in them was either fixed or accepted by the user with their reason in `decisions.md`. Both are in `artifacts[]`.
 - **Human gate:** the design.md gate is approved (incl. port roles, reset polarity, clock relationships, the presented `ppa.json`): the engineering-soundness judgment the mechanical and semantic gates cannot catch.
 - **Finalize:** `spec finalize` wrote `result.json` (Step 8), owning status / `top_module` / `fail_reason` / `artifacts[]`; its verdict is schema-validated externally, not by you.

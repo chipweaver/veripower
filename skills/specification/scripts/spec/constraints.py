@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 
-from spec.sidecar import load_sidecar, validate_sidecar
+from spec.sidecar import SidecarError, read_sidecar
 
 _IO_DELAY_FRAC = 0.3
 
@@ -15,9 +15,10 @@ def load_clocks(workdir: Path) -> list[dict]:
     """Clocks from clocks.json. Type/enum/required are the schema's; the one obligation it
     cannot express — exactly one `primary` — is enforced here, because derive-constraints
     runs before the design.md gate and is therefore the earliest feedback point."""
-    for v in validate_sidecar(workdir, "clocks.json"):
-        _fail(f"clocks.json: {v.get('at', '')} {v['error']}".strip())
-    clocks = load_sidecar(workdir, "clocks.json")
+    try:
+        clocks = read_sidecar(workdir, "clocks.json")
+    except SidecarError as exc:
+        _fail(str(exc))
     primaries = [c["name"] for c in clocks if c["relationship"] == "primary"]
     if len(primaries) != 1:
         _fail(
@@ -31,12 +32,13 @@ def load_clocks(workdir: Path) -> list[dict]:
 
 
 def _ports(workdir: Path) -> list[dict]:
-    """Top-level IO from top-io.json. Shape, enums and the conditional requirement on a
-    reset row (it declares polarity and kind) are the schema's; check-coverage validates it
-    and runs the cross-file checks."""
-    for v in validate_sidecar(workdir, "top-io.json"):
-        _fail(f"top-io.json: {v.get('at', '')} {v['error']}".strip())
-    ports = load_sidecar(workdir, "top-io.json")
+    """Top-level IO from top-io.json. Shape, enums, the conditional requirement on a reset
+    row (it declares polarity and kind) and the width-vs-name rule are validated on read;
+    check-crossrefs owns only the cross-file joins."""
+    try:
+        ports = read_sidecar(workdir, "top-io.json")
+    except SidecarError as exc:
+        _fail(str(exc))
     if not ports:
         _fail(
             f"{workdir / 'top-io.json'} missing or empty: the specification stage authors it "

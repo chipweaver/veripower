@@ -23,7 +23,7 @@
       },
       "direction": {"enum": ["input", "output", "inout"]},
       "width": {
-        "description": "Bit width. When name ends in a [h:l] range, check-coverage cross-checks width against it; an [i] index (a register-file element) carries no width claim and is skipped.",
+        "description": "Bit width. When name ends in a [h:l] range, the two must agree — cross-checked when this file is read; an [i] index (a register-file element) carries no width claim and is skipped.",
         "type": "integer",
         "minimum": 1
       },

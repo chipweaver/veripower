@@ -3,7 +3,7 @@
 
 Verbs (one stage = one tool; see skills/specification/SKILL.md for usage):
   derive-ports        per-child ports from interconnects.json (stdout: JSON)
-  check-coverage      manifest-driven coverage gate         (stdout: verdict JSON; exit 0/1)
+  check-crossrefs     cross-file name + orphan join         (stdout: verdict JSON; exit 0/1)
   derive-constraints  generate SDC/SGDC from clocks.json + top-io.json (stdout: JSON; fail-loud)
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 
@@ -40,10 +40,10 @@ def _cmd_derive_ports(a: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_check_coverage(a: argparse.Namespace) -> int:
-    from spec import coverage
+def _cmd_check_crossrefs(a: argparse.Namespace) -> int:
+    from spec import crossrefs
 
-    return coverage.run(a.workdir)
+    return crossrefs.run(a.workdir)
 
 
 def _cmd_derive_constraints(a: argparse.Namespace) -> int:
@@ -77,9 +77,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--workdir", required=True, type=Path)
     sp.set_defaults(func=_cmd_derive_ports)
 
-    sp = sub.add_parser("check-coverage", help="manifest-driven coverage gate")
+    sp = sub.add_parser("check-crossrefs", help="cross-file name + orphan join")
     sp.add_argument("--workdir", required=True, type=Path)
-    sp.set_defaults(func=_cmd_check_coverage)
+    sp.set_defaults(func=_cmd_check_crossrefs)
 
     sp = sub.add_parser("derive-constraints", help="generate SDC/SGDC (fail-loud)")
     sp.add_argument("--workdir", required=True, type=Path)

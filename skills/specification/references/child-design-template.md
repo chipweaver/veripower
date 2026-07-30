@@ -37,7 +37,7 @@ Two references stay by name rather than by copy:
 - **Control/status inter-module port**: its encoding is one `interconnects.json` entry that producer and consumer both read; name the wire, do not re-describe the codes.
 - **Inter-module behavior contract** (a shared operating-phase / sequencing / co-assertion contract, declared in the §1.4.2.1 companion): reference the companion's declared names; do not redefine the phase set or sequencing.
 
-If you drive a top-IO **output**, list it in your frontmatter `ports` — that claim is the only record of who drives it, and `check-coverage` fails an output no child claims. Prefer driving it from a leaf child passed through the pure top over top-level glue. Which **inputs** you read is your own decision, declared in your frontmatter and nowhere else.
+If you drive a top-IO **output**, list it in your frontmatter `ports` — that claim is the only record of who drives it, and `check-crossrefs` fails an output no child claims. Prefer driving it from a leaf child passed through the pure top over top-level glue. Which **inputs** you read is your own decision, declared in your frontmatter and nowhere else.
 
 ## §3 Internal Behavior
 

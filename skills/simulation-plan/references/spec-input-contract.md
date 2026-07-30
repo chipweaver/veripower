@@ -8,7 +8,7 @@ the main thread. This guide names the `design.md` columns only so you recognize 
 sidecar field means, and maps them to the objects this stage authors
 (the plan sidecars: `agents` / `sequences` / `tests` / `testpoints[]` /
 `power_scenarios[]`, and `verification-plan.md`). It does not gate completeness: design-template's
-gate table plus `check-coverage` enforce that upstream, before this stage runs.
+gate table plus `check-crossrefs` enforce that upstream, before this stage runs.
 
 **Scope boundary.** This guide stops at the JSON contract you author. Turning the scaffold into
 SystemVerilog (driver / monitor bodies, RM `predict()`, scoreboard `check_txn`, reset) happens

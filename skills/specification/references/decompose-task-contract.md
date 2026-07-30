@@ -17,7 +17,7 @@ modules join their cluster — no line-count floor / size class.
 
 **top-integration carve-out (best-effort hint):** `<TOP>` (= `manifest.module`) should form its own
 child whose `rtl_modules == [<TOP>]` — do not bundle any logic module into the top child. This is a
-soft hint; the hard guarantee is `check-coverage`'s purity gate.
+soft hint; the hard guarantee is `derive-ports`' purity check at the partition gate.
 
 ## Write
 - `manifest.json` — `module`; `children[]` with `name` / `doc` / `rtl_modules[]` (REQUIRED, ≥1) /

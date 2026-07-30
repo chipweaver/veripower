@@ -7,8 +7,8 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 from spec.constraints import derive_constraints
-from spec.coverage import verdict as coverage_verdict
-from spec.coverage import violated_keys
+from spec.crossrefs import verdict as crossrefs_verdict
+from spec.crossrefs import violated_keys
 
 STAGE = "specification"
 
@@ -157,9 +157,9 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
 def build_result(workdir, module, ppa_targets, status, fail_reason=None) -> int:
     """Assemble the lean specification result.json.
 
-    pass path, in order: re-run check-coverage in-process (every one of its checks is a
-    set operation over the workdir's own files, so a clean Step-5 verdict stays true
-    unless an artifact was edited after the gate — a fail here is that edit, and BLOCKs)
+    pass path, in order: re-run check-crossrefs in-process (every one of its checks is a
+    join over the workdir's own files, so a clean Step-5 verdict stays true unless an
+    artifact was edited after the gate — a fail here is that edit, and BLOCKs)
     → re-run derive_constraints() in-process: the promoted SDC/SGDC are finalize's own
     regeneration from the current clocks.json + top-io.json (authoritative; Step 5 already
     generated them clean from the same source, so this BLOCKs only on an illegitimate
@@ -197,12 +197,12 @@ def build_result(workdir, module, ppa_targets, status, fail_reason=None) -> int:
         )
         return 0
 
-    cov = coverage_verdict(workdir)
-    if cov["status"] == "fail":
+    xrefs = crossrefs_verdict(workdir)
+    if xrefs["status"] == "fail":
         raise ValueError(
-            "check-coverage no longer passes at finalize: "
-            f"{', '.join(violated_keys(cov))}. Step 5 left it clean, so an artifact was "
-            "edited after the gate — re-run check-coverage and repair, do not finalize."
+            "check-crossrefs no longer passes at finalize: "
+            f"{', '.join(violated_keys(xrefs))}. Step 5 left it clean, so an artifact was "
+            "edited after the gate — re-run check-crossrefs and repair, do not finalize."
         )
 
     info = derive_constraints(

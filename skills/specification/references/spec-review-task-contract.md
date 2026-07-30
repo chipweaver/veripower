@@ -1,7 +1,7 @@
 # Spec semantic review sub-Task contract
 
 The specification main thread dispatches one Level-1 reviewer per child (Step 6), AFTER
-`check-coverage` is green and BEFORE the design.md approval gate. You write your findings to a
+`check-crossrefs` is green and BEFORE the design.md approval gate. You write your findings to a
 file; the main thread never re-types them and never reads your body. A human resolves each
 blocker at the Step-7 gate. Do not call the Task tool.
 
@@ -35,8 +35,8 @@ What is worth reporting, in descending order of what it costs to find later:
   interfaces disagree in a way no single frame settles.
 
 Out of scope: RTL correctness (no RTL exists yet); lint / CDC / timing / area / power; and the
-deterministic cross-file checks `check-coverage` owns (frontmatter subsets, sidecar shapes,
-top-partition purity, every top output claimed). If you happen to see one of those, say so — but
+deterministic checks the scripts own (sidecar shapes, top-partition purity, cross-file name
+resolution, every top output claimed). If you happen to see one of those, say so — but
 as an observation, not as your finding.
 
 ### Output: `{workdir}/spec-review/<child>.md`
