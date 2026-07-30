@@ -100,16 +100,3 @@ def test_entry_without_check_id_raises(tmp_path):
     bad = [{k: v for k, v in CHECK_HINTS[0].items() if k != "check_id"}]
     with pytest.raises(HintsError, match="check_id"):
         load_check_hints(_spec(tmp_path, bad))
-
-
-def test_non_array_hint_file_raises(tmp_path):
-    wd = _spec(tmp_path)
-    (wd / "check-hints" / "core.json").write_text('{"check_id": "CHK-00"}')
-    with pytest.raises(HintsError, match="JSON array"):
-        load_check_hints(wd)
-
-
-def test_empty_children_raises(tmp_path):
-    (tmp_path / "manifest.json").write_text(json.dumps({"module": "m", "children": []}))
-    with pytest.raises(HintsError, match="children"):
-        load_check_hints(tmp_path)

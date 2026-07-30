@@ -84,10 +84,7 @@ Trigger context + revision highlights.
 Your previous round, if any, is already in `{workdir}`; edit it in place, touching only what this
 round requires. Rewriting a sidecar this round did not change still changes its bytes, and
 `simulation` and `power-analysis` both declare those files as inputs — so a cosmetic rewrite costs a
-full TB recompile and regression downstream, for no change in content. Confirm
-`<design>/design.md` + `<manifest>/manifest.json` exist; if a required input is
-missing, close the run with the early-fail exit below
-(`fail_reason="external reference missing: <path>"`).
+full TB recompile and regression downstream, for no change in content.
 
 The kernel writes `scope` / `caused_by` / `reasons` into `dispatch.json` **only when they carry
 something**, so their presence is what tells you which kind of round this is. Either way you run
@@ -104,7 +101,7 @@ Steps 2–5; the branch decides how much of the plan you touch.
   yours to continue or redo, and artifacts on disk are not a gate you already passed.
 
 **Early-fail exit.** Whenever a documented failure cannot be resolved, close the run with the
-finalize early-fail entry, not a hand-assembled envelope:
+finalize early-fail entry:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
@@ -145,9 +142,6 @@ Coverage does not fall; a bin that could never be hit was never coverage.
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py materialize-scaffold --plan {workdir} --spec <design>
 ```
 
-On a non-zero exit, read stderr for the cause, fix the scaffold or (for a clock defect) re-run
-specification — `clocks.json` is its output, not yours — and re-run.
-
 **Run `check-scaffold`** (the gate; every pass) to validate the sidecars' structure, semantics, and
 coverage matrix:
 
@@ -155,7 +149,8 @@ coverage matrix:
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py check-scaffold --plan {workdir} --spec <design>
 ```
 
-Fix and re-run on a non-zero exit.
+Both name the defect and who owns it on stderr; fix and re-run until clean, or close via the
+early-fail exit if the defect is not yours to fix.
 
 ### Step 3: Plan-adequacy review
 
@@ -165,7 +160,7 @@ paths. It writes its own `{workdir}/plan-review/review.md`; you read no body and
 After dispatching, send a brief status and end the turn; reap before proceeding.
 
 A `STATUS: BLOCKED` reviewer is a crash, not a verdict: the review did not happen, so close the run
-via the early-fail exit with that as the reason rather than recording a review that did not run.
+via the early-fail exit with that as the reason.
 
 ### Step 4: User review loop (human)
 
@@ -208,6 +203,4 @@ on stderr), not a `status=fail`.
 
 Control returns to the caller, which decides what runs next from `result.json`.
 
-Your sole completion signal is `{workdir}/result.json` present with `status=pass`; a missing one is
-incomplete (no cross-session "already complete" flag), so a repair round or a compaction resume
-just re-enters and re-runs the pipeline idempotently.
+Your sole completion signal is `{workdir}/result.json` present with `status=pass`.

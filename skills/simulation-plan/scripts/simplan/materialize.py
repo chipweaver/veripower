@@ -27,11 +27,6 @@ def _clk_rst_signal_names(ports: list) -> set:
 
 
 def _derive_primary_clock(clocks: list) -> dict:
-    if not isinstance(clocks, list) or not clocks:
-        sys.exit(
-            "materialize-scaffold: clocks.json is empty or not a JSON array — "
-            "primary_clock cannot be derived. Re-run specification."
-        )
     primary = next((c for c in clocks if c.get("relationship") == "primary"), None)
     if primary is None:
         sys.exit(
