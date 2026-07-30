@@ -182,13 +182,20 @@ def run(workdir, top: str | None = None) -> int:
         )
         return 1
 
+    # carry_self (kernel.py) restores the previous round's constraints.sdc into the fresh
+    # workdir before this verb runs, and it holds the timing exceptions and the documented
+    # uncertainty/drive values the agent supplemented against real RTL. A carried file wins:
+    # re-copying the specification SDC over it would silently throw that work away and
+    # re-run synthesis against bare constraints.
+    carried_sdc = (dest / "constraints.sdc").is_file()
+
     # Checked BEFORE the deploy: a failure after copytree would leave the Makefile that the
     # already-deployed guard above then refuses to redeploy over — the workdir would block its
     # own retry. Fail closed rather than fall back to any default constraint set: a run whose
     # clock port matches nothing is unconstrained, and dc_shell then reports a large positive
     # slack — a PASSING PPA verdict from constraints nobody wrote.
     user_sdc = Path(inputs["sdc"]) / "constraints" / f"{top}.sdc"
-    if not user_sdc.is_file():
+    if not carried_sdc and not user_sdc.is_file():
         _err(f"SDC source of truth not found: {user_sdc}")
         _err(
             "  specification's derive-constraints writes constraints/<TOP>.sdc; check that "
@@ -199,11 +206,17 @@ def run(workdir, top: str | None = None) -> int:
     shutil.copytree(_TEMPLATE_DIR, dest, dirs_exist_ok=True)
 
     env_sh = dest / "env.sh"
-    shutil.copyfile(user_sdc, dest / "constraints.sdc")
-    print(
-        f"[synthesis bootstrap] using "
-        f"Design/specification/constraints/{top}.sdc -> constraints.sdc"
-    )
+    if carried_sdc:
+        print(
+            "[synthesis bootstrap] carried constraints.sdc used "
+            "(survived from a prior round)"
+        )
+    else:
+        shutil.copyfile(user_sdc, dest / "constraints.sdc")
+        print(
+            f"[synthesis bootstrap] using "
+            f"Design/specification/constraints/{top}.sdc -> constraints.sdc"
+        )
     _sub(env_sh, "MY_TOP", top)
 
     _sub(dest / "scripts" / "dc_run.tcl", "MY_RTL_DIR", str(rtl_dir))

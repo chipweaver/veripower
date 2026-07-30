@@ -147,8 +147,11 @@ def test_carry_no_carry_fields_and_values():
         "scripts/constraints.sgdc",
     )
     assert rules.RULES["lint-cdc"].no_carry == ()
+    # synthesis carries the one file it hand-edits: the timing exceptions
+    assert rules.RULES["synthesis"].carry == ("constraints.sdc",)
+    assert rules.RULES["synthesis"].no_carry == ()
     # pure transformers + triage carry nothing
-    for r in ("synthesis", "timing-analysis", "power-analysis", "simulation-triage"):
+    for r in ("timing-analysis", "power-analysis", "simulation-triage"):
         assert rules.RULES[r].carry == ()
         assert rules.RULES[r].no_carry == ()
     # frozen dataclass still rejects mutation

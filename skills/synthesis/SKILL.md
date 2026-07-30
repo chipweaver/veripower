@@ -57,6 +57,13 @@ When `dispatch.json` carries a `caused_by`, read each envelope it names and the 
 | `constraints.sdc` | SDC | Timing-exception iteration site, edited by you (Steps 4/6). |
 | `scripts/config.tcl` | TCL | Edit to fill `LIB_DB` (Step 3 alternative to the env var). |
 
+`constraints.sdc` is carried into a fresh workdir from the previous round before you start, so
+it may already hold converged timing exceptions and documented library values when you open it.
+Treat what is there as work you inherited, not as the specification SDC: exceptions are written
+against RTL port names, so re-deriving a set you already have costs a full re-synthesis per
+round. Re-check each inherited exception against this run's reports, and delete one whose path
+no longer exists.
+
 ## Workflow
 
 ### Step 1: Read inputs and determine scope

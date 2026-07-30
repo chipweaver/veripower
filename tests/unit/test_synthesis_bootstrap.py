@@ -169,6 +169,33 @@ def test_sdc_source_of_truth_copied(tmp_path):
     )  # copied verbatim, never substituted
 
 
+def test_carried_sdc_wins_over_the_specification_copy(tmp_path):
+    # carry_self restores the previous round's constraints.sdc before bootstrap runs; it
+    # holds the timing exceptions supplemented against real RTL, so re-copying the
+    # specification SDC over it would throw that round's work away silently.
+    skill_dst, rtl, workdir = _mirror(tmp_path)
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
+    (workdir / "constraints.sdc").write_text("# CARRIED\nset_false_path -from x\n")
+    proc = _run(skill_dst, workdir, "--top", "top")
+    assert proc.returncode == 0, proc.stderr
+    con = (workdir / "constraints.sdc").read_text()
+    assert "CARRIED" in con and "set_false_path" in con
+    assert "spec sdc" not in con
+    assert "carried constraints.sdc" in proc.stdout
+
+
+def test_carried_sdc_survives_a_missing_specification_sdc(tmp_path):
+    # The cold-start guard is about having constraints at all. With a carried file the
+    # run is constrained, so a <TOP>.sdc that no longer resolves is not a fail-closed.
+    skill_dst, rtl, workdir = _mirror(tmp_path)
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
+    (tmp_path / "asic/M/Design/specification/constraints/top.sdc").unlink()
+    (workdir / "constraints.sdc").write_text("# CARRIED\n")
+    proc = _run(skill_dst, workdir, "--top", "top")
+    assert proc.returncode == 0, proc.stderr
+    assert (workdir / "constraints.sdc").read_text() == "# CARRIED\n"
+
+
 def test_empty_filelist_fail_closed(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": []}}))

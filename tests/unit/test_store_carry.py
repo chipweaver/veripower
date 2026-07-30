@@ -79,12 +79,27 @@ def test_first_run_no_canonical_is_noop(tmp_path, monkeypatch):
 
 def test_transformer_carry_is_noop(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    c = _canon(tmp_path, "Design/synthesis")
-    (c / "constraints.sdc").write_text("s")
+    c = _canon(tmp_path, "Design/timing-analysis")
+    (c / "timing-report.txt").write_text("r")
     wd = c / "runs" / "1"
     wd.mkdir(parents=True)
-    store.carry_self("m", "synthesis", wd)  # carry=()
+    store.carry_self("m", "timing-analysis", wd)  # carry=()
     assert list(wd.iterdir()) == []
+
+
+def test_synthesis_carry_only_the_hand_edited_sdc(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    c = _canon(tmp_path, "Design/synthesis")
+    (c / "constraints.sdc").write_text("set_false_path -from x")
+    (c / "out").mkdir()
+    (c / "out" / "m_syn.v").write_text("netlist")  # regenerated, NOT in carry globs
+    (c / "reports").mkdir()
+    (c / "reports" / "qor.rpt").write_text("q")  # regenerated, NOT in carry globs
+    wd = c / "runs" / "2"
+    wd.mkdir(parents=True)
+    store.carry_self("m", "synthesis", wd)
+    assert (wd / "constraints.sdc").read_text() == "set_false_path -from x"
+    assert [p.name for p in wd.iterdir()] == ["constraints.sdc"]
 
 
 def test_no_canonical_stage_dir_is_noop(tmp_path, monkeypatch):

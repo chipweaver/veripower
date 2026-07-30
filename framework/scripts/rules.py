@@ -179,6 +179,7 @@ RULES: dict[str, Rule] = {
         ),
         proof="synthesis",
         oracle=("dc-shell", "tool"),
+        carry=("constraints.sdc",),  # the timing exceptions the agent supplements
     ),
     "timing-analysis": Rule(
         name="timing-analysis",
