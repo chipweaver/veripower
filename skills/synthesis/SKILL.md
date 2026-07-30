@@ -40,8 +40,8 @@ Under `{workdir}`:
 - `result.json`: this stage's status contract, written by `finalize` (`references/result.schema.json` + `envelope.schema.json`; `stage_specific.ppa_actual[]` on a pass, `violations[]` on a PPA fail).
 - `out/*_syn.v` / `out/*_syn.sdc` / `out/*_syn.sdf`: the gate-level netlist, post-synthesis constraints and SDF, written by `make`.
 - `reports/qor.rpt` / `area.rpt` / `timing_setup.rpt` / `timing_hold.rpt` / `power.rpt` / `check_design.rpt`: the DC report set, written by `make`. `timing_setup.rpt` is what you triage in Step 6.
-- `constraints.sdc`: the timing-exception iteration site. **You edit it** (Steps 4/6).
-- `scripts/config.tcl`: `TOP` + `LIB_DB` for `dc_shell`. **You edit** `LIB_DB` (Step 3).
+- `constraints.sdc`: the timing-exception iteration site. **You edit it** (Steps 4/6). It is the only deployed file you edit.
+- `scripts/config.tcl`: `TOP` + a `LIB_DB` fallback for a `dc_shell` started outside the Makefile, written by the bootstrap.
 
 `constraints.sdc` is carried into a fresh workdir from the previous round before you start, so
 it may already hold converged timing exceptions and documented library values when you open it.
@@ -81,10 +81,12 @@ The deployed `Makefile`, `env.sh`, `scripts/dc_run.tcl` and `scripts/rtl_load.tc
 make-internal. `make synthesis` is the interface; the only deployed files you edit are
 `constraints.sdc` and `scripts/config.tcl`.
 
-### Step 3: Fill in `LIB_DB`
+### Step 3: Export `LIB_DB`
 
-`export LIB_DB=<path>` or edit `{workdir}/scripts/config.tcl` to replace `FILL_IN_LIB_DB_PATH`;
-`env.sh` and the Makefile both fail loudly when `LIB_DB` is unset.
+`export LIB_DB=<path>` to the standard-cell Liberty `.db`. It has to be in the environment:
+`env.sh` refuses to run without it, so `make synthesis` never reaches `dc_shell`, and the
+placeholder in `scripts/config.tcl` is a fallback for a `dc_shell` started outside the Makefile,
+not a second way to set it. Exporting after Step 2 is fine.
 
 ### Step 4: Edit `{workdir}/constraints.sdc`
 

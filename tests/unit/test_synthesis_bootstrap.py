@@ -268,3 +268,25 @@ def test_bootstrap_reanchors_rtl_load_to_absolute_from_dispatch_json(tmp_path):
     tcl = (workdir / "scripts" / "rtl_load.tcl").read_text()
     assert str(rtl_root) in tcl
     assert "../../../rtl-design" not in tcl and "relpath" not in tcl
+
+
+def test_config_tcl_lib_db_does_not_override_the_environment(tmp_path):
+    # env.sh refuses to run without LIB_DB in the environment, so the Makefile path always
+    # has one. An unconditional `set ::env(LIB_DB)` here would let the placeholder written
+    # by a bootstrap that ran first beat the real path exported afterwards.
+    skill_dst, rtl, workdir = _mirror(tmp_path)
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
+    assert _run(skill_dst, workdir, "--top", "top").returncode == 0
+    cfg = (workdir / "scripts" / "config.tcl").read_text()
+    assert "info exists ::env(LIB_DB)" in cfg  # conditional, whatever value it recorded
+
+    probe = workdir / "probe.tcl"
+    probe.write_text('source scripts/config.tcl\nputs "seen: $::env(LIB_DB)"\n')
+    seen = subprocess.run(
+        ["tclsh", "probe.tcl"],
+        cwd=str(workdir),
+        capture_output=True,
+        text=True,
+        env={"LIB_DB": "/real/slow.db", "PATH": "/usr/bin:/bin"},
+    )
+    assert seen.stdout.strip() == "seen: /real/slow.db", seen
