@@ -16,7 +16,7 @@ Your boundary:
 - **No LLM constraint overlay.** `derive-constraints` generates and self-checks the constraint files; you neither hand-write nor re-check them.
 - **`design.md` carries no by-reference jumps** (`see brainstorm`, `see spec D`, …): it is the unique source of truth, so inline every referenced passage verbatim.
 - **Reference PPA targets by pointing at `ppa.json`, never by restating the numbers**: this is the one sanctioned by-reference pointer (brainstorm content is still inlined verbatim).
-- **`manifest.json` is read-only after the partition gate**; changing N takes a fresh run.
+- **The partition is yours to change until this stage ships it.** Before a passing `result.json` exists, a partition defect found late sends you back to Step 2 — it costs the wave's work, not correctness, because nothing downstream has consumed the manifest yet. Once it has shipped, the partition is not yours: `manifest.json` is a declared input of rtl-design and simulation-plan, so changing it invalidates their proofs, and deciding that is the kernel's job (see Step 1).
 - **Minimal change on re-dispatch**: with a prior `design.md` on disk, touch only what the round requires and leave every other file byte-identical.
 - **Scripts are black boxes**: invoke them per the documented commands and act on their documented failure output. Read the source only to debug a suspected script bug — a verdict you re-derive by reading the code is your own judgment wearing the gate's name.
 
@@ -67,10 +67,12 @@ You are loaded on the main thread as a thin Level-0 dispatcher. You hold no docu
 
 ### Step 1: Entry — determine scope, pick the entry point
 
-Your previous round, if any, is already present in `{workdir}`; edit it in place. Read `{workdir}/dispatch.json` first: its `scope` narrows what this round may touch, its `caused_by` names the failing envelopes to read, and its `reasons` carries a human's judgment on the repair. Then branch on whether a `<child>.md` is already in `{workdir}`:
+Your previous round, if any, is already present in `{workdir}`; edit it in place. Read `{workdir}/dispatch.json` first — the kernel writes `scope` / `caused_by` / `reasons` **only when they carry something**, so their presence is what tells you which kind of round this is:
 
-- **A `<child>.md` is present:** a repair round. A `<child>.md` is Wave-2 output, written only *after* the Step-3 partition gate, so its presence proves the partition was gate-confirmed in a prior round. Scope is the union of `dispatch.json`'s `scope` and what the `caused_by` envelopes attribute; Read each envelope once. Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 5** and flow through Steps 6–8, ending at Step 8. Steps 2–4 (the partition) are skipped, since `manifest.json` is immutable after the partition gate; Step 6 (the semantic gate) re-runs on this pass, so the promoted gate is always fresh.
-- **No `<child>.md` in `{workdir}`:** no partition has been gate-confirmed yet (a first delivery, or a run interrupted or reset before that gate). Re-derive in full from Step 2 (a fresh partition, including the human partition gate), ending at Step 8. `design.md` or `manifest.json` alone do not qualify: they are Wave-1 output, written *before* the gate.
+- **`caused_by` present:** a repair round. This stage already shipped, and rtl-design / simulation-plan consumed the manifest, so the partition is not this round's to change. Scope is the union of `dispatch.json`'s `scope` and what the `caused_by` envelopes attribute; Read each envelope once. Dispatch one design.md-level rework sub-Task, then **re-enter the main chain at Step 5** and flow through Steps 6–8, ending at Step 8. Steps 2–4 are skipped. Step 6 re-runs on this pass, so the promoted review is always fresh.
+- **`caused_by` absent:** a first delivery. Re-derive from Step 2, ending at Step 8. If `{workdir}` already holds a partial round — the session was compacted or interrupted — that work is yours to continue or redo; artifacts on disk are not a gate you already passed.
+
+Do NOT infer the round from what is on disk. A `<child>.md` is present both in a repair round and halfway through a first one, so reading it as proof of a prior gate makes a resumed first run skip its own partition gate.
 
 **Early-fail exit.** Whenever a documented failure below cannot be resolved, close the run with the finalize early-fail entry, not a hand-assembled envelope:
 
@@ -88,7 +90,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
 | 4 | Wave 2 (sub-Task ×N) | one `<child>.md` per child | `STATUS: BLOCKED` → Fan-out Contract |
 | 5 | script | cross-reference gate + constraint derivation | → rework / early-fail |
 | 6 | Wave 3 (reviewers ×N) + script | semantic review → gate verdict | `trip` → Step 7 |
-| 7 | human | `design.md` gate | reject → Step 5 |
+| 7 | human | `design.md` gate | reject → Step 5; partition-rooted → Step 2 (first delivery) |
 | 8 | script | `finalize` → `result.json` | non-zero → BLOCKED |
 
 ### Step 2: Wave 1 — decompose
@@ -164,7 +166,7 @@ The user reads the reviewers' own words. You do not summarize the findings, rank
 
 If the user accepts a finding a reviewer called blocking, write their reason — **their words, not yours** — to `{workdir}/spec-review/decisions.md`. It is promoted with the review files, so what the user endorsed over a reviewer's objection, and why, is what `signoff` later pins.
 
-One structural case a rework cannot clear: a defect rooted in the child partition, since `manifest.json` is read-only after the Step-3 gate. Close via early-fail (`requirements need revision`) for a fresh run.
+If the defect is rooted in the child partition rather than in a body, a design.md-only rework cannot clear it. On a **first delivery**, go back to Step 2 with the user's grouping feedback and re-run the waves — the Step-3 gate confirmed the partition on manifest metadata alone, and the bodies and reviews that could falsify it only exist now. On a **repair round**, the manifest has already been consumed downstream: close via early-fail (`requirements need revision`) and let the kernel re-dispatch, since invalidating downstream proofs is its decision, not yours.
 
 On reject: route a rework sub-Task, body off the main thread, then **re-enter the main chain at Step 5** and flow through 5→6→7 again. The rework's reviewers write fresh files, so a stale clean review cannot survive a body edit.
 
