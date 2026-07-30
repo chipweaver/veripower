@@ -84,7 +84,6 @@ _STAGE_FILES = {
         "ppa.json": "{}",
         "clocks.json": "[]",
         "features.json": "[]",
-        "timing-scenarios.json": "[]",
         "check-hints/child_a.json": "[]",
         "top-io.json": "[]",
         "interconnects.json": "[]",

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/specification/interconnects.schema.json",
   "title": "interconnects.json — RTL-module-to-RTL-module wires (authored, never derived)",
-  "description": "The authoritative cut-edge list. derive-ports attributes each wire to the children whose rtl_modules appear in producers/consumers and injects that list into the wave-2 child prompts, so a child never hand-guesses its inter-module ports. Authored by the specification stage's Wave 1; design.md §1.4.2 points here and carries no table. An N=1 module has no inter-module wires and writes an empty array. producers and consumers are arrays: a wire may fan out, and the endpoint list is not a comma-joined string to be split.",
+  "description": "The authoritative cut-edge list. derive-ports attributes each wire to the children whose rtl_modules appear in producers/consumers and injects that list into the wave-2 child prompts, so a child never hand-guesses its inter-module ports. An N=1 module has no inter-module wires and writes an empty array. producers and consumers are arrays: a wire may fan out, and the endpoint list is not a comma-joined string to be split.",
   "type": "array",
   "items": {
     "type": "object",
@@ -37,7 +37,7 @@
       },
       "protocol": {"type": "string", "minLength": 1},
       "encoding": {
-        "description": "A wire carrying an encoded control/status value pins its bit/field-to-symbol meaning here; producer and consumer read this one entry, so per-wire agreement is structural. A raw data wire has none.",
+        "description": "A wire carrying an encoded control/status value pins its bit/field-to-symbol meaning here, same format and consumer-obligation rule as top-io.json's encoding; producer and consumer read this one entry, so per-wire agreement is structural. Agreement ACROSS buses is not pinned here — that joint contract goes in the design.md §1.4.2.1 companion. A raw data wire has none.",
         "type": "string",
         "minLength": 1
       },

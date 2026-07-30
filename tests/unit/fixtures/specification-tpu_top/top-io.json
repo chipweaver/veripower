@@ -63,8 +63,7 @@
     "width": 3,
     "clock_domain": "i_clk",
     "interface_group": "status",
-    "role": "data",
-    "owner": "tpu_top"
+    "role": "data"
   },
   {
     "name": "o_empty",
@@ -72,8 +71,7 @@
     "width": 3,
     "clock_domain": "i_clk",
     "interface_group": "status",
-    "role": "data",
-    "owner": "tpu_top"
+    "role": "data"
   },
   {
     "name": "done",
@@ -81,8 +79,7 @@
     "width": 1,
     "clock_domain": "i_clk",
     "interface_group": "status",
-    "role": "data",
-    "owner": "tpu_top"
+    "role": "data"
   },
   {
     "name": "i_paddr",
@@ -136,7 +133,6 @@
     "clock_domain": "i_clk",
     "interface_group": "apb",
     "role": "data",
-    "owner": "tpu_top",
     "protocol": "APB-style"
   },
   {
@@ -145,7 +141,6 @@
     "width": 4,
     "clock_domain": "i_clk",
     "interface_group": "ctrl",
-    "role": "data",
-    "owner": "tpu_top"
+    "role": "data"
   }
 ]

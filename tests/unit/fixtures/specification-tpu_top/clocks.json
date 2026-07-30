@@ -1,7 +1,6 @@
 [
   {
     "name": "i_clk",
-    "freq_mhz": 100,
     "period_ns": 10.0,
     "relationship": "primary",
     "generated": false,

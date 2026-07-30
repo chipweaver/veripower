@@ -47,6 +47,7 @@ def test_derives_cut_edges(tmp_path):
             "children": [
                 {"name": "ctrl", "doc": "ctrl.md", "rtl_modules": ["ctrl"]},
                 {"name": "dp", "doc": "dp.md", "rtl_modules": ["dp", "alu"]},
+                {"name": "top", "doc": "top.md", "rtl_modules": ["m"]},
             ],
         },
         WIRES,
@@ -63,7 +64,7 @@ def test_empty_interconnects_yields_empty_ports(tmp_path):
         tmp_path,
         {
             "module": "m",
-            "children": [{"name": "solo", "doc": "solo.md", "rtl_modules": ["solo"]}],
+            "children": [{"name": "solo", "doc": "solo.md", "rtl_modules": ["m"]}],
         },
         [],
     )

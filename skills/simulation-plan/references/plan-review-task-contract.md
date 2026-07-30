@@ -9,7 +9,7 @@ main thread does NOT auto-fix the plan. Do not call the Task tool and do not cal
 
 ## Inputs (paths only — the main thread reads no body)
 - `Design/specification/features.json` (the feature spine testpoints trace to)
-- `Design/specification/timing-scenarios.json` (one sequence per scenario)
+- `Design/specification/design.md` §1.5 timing scenarios (one sequence per scenario)
 - `Design/specification/design.md` (§1 behavior, §1.4 IO/interconnects, §1.5 waveforms)
   + each `Design/specification/check-hints/<child>.json` —
   the authoritative statement of what must be verified.

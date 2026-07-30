@@ -2,23 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/specification/clocks.schema.json",
   "title": "clocks.json — the module's clock definitions (authored, never derived)",
-  "description": "The sole numeric + relationship source for constraints/<TOP>.{sdc,sgdc} and for the TB primary_clock. Authored by the specification stage's Wave 1; design.md §1.6 points here and carries no table. Two obligations this schema cannot express are enforced on top of it: exactly one entry has relationship=='primary' (derive-constraints, fail-loud), and period_ns == 1000/freq_mhz per entry (the check-coverage gate).",
+  "description": "The sole numeric + relationship source for constraints/<TOP>.{sdc,sgdc} and for the TB primary_clock. Exactly one entry is relationship=='primary'; JSON Schema cannot express that, so derive-constraints fails loud on it.",
   "type": "array",
   "minItems": 1,
   "items": {
     "type": "object",
-    "required": ["name", "freq_mhz", "period_ns", "relationship"],
+    "required": ["name", "period_ns", "relationship"],
     "additionalProperties": false,
     "properties": {
       "name": {
         "description": "For a non-generated clock this is also the top-level port name create_clock binds to.",
         "type": "string",
         "minLength": 1
-      },
-      "freq_mhz": {
-        "description": "Nominal frequency in MHz. Cross-checked against period_ns (within 0.01) by the check-coverage gate.",
-        "type": "number",
-        "exclusiveMinimum": 0
       },
       "period_ns": {
         "description": "Period in ns. Reaches the TB scaffold's primary_clock.period_ns, where it is halved to build the clock generator.",

@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 
-from spec.sidecar import load_sidecar, validate_sidecar
+from spec.sidecar import SidecarError, read_sidecar
 
 _IO_DELAY_FRAC = 0.3
 
@@ -15,9 +15,10 @@ def load_clocks(workdir: Path) -> list[dict]:
     """Clocks from clocks.json. Type/enum/required are the schema's; the one obligation it
     cannot express — exactly one `primary` — is enforced here, because derive-constraints
     runs before the design.md gate and is therefore the earliest feedback point."""
-    for v in validate_sidecar(workdir, "clocks.json"):
-        _fail(f"clocks.json: {v.get('at', '')} {v['error']}".strip())
-    clocks = load_sidecar(workdir, "clocks.json")
+    try:
+        clocks = read_sidecar(workdir, "clocks.json")
+    except SidecarError as exc:
+        _fail(str(exc))
     primaries = [c["name"] for c in clocks if c["relationship"] == "primary"]
     if len(primaries) != 1:
         _fail(
@@ -31,12 +32,13 @@ def load_clocks(workdir: Path) -> list[dict]:
 
 
 def _ports(workdir: Path) -> list[dict]:
-    """Top-level IO from top-io.json. Shape, enums and the two conditional requirements
-    (an output declares owner; a reset row declares polarity and kind) are the schema's;
-    check-coverage validates it and runs the cross-file owner check."""
-    for v in validate_sidecar(workdir, "top-io.json"):
-        _fail(f"top-io.json: {v.get('at', '')} {v['error']}".strip())
-    ports = load_sidecar(workdir, "top-io.json")
+    """Top-level IO from top-io.json. Shape, enums, the conditional requirement on a reset
+    row (it declares polarity and kind) and the width-vs-name rule are validated on read;
+    check-crossrefs owns only the cross-file joins."""
+    try:
+        ports = read_sidecar(workdir, "top-io.json")
+    except SidecarError as exc:
+        _fail(str(exc))
     if not ports:
         _fail(
             f"{workdir / 'top-io.json'} missing or empty: the specification stage authors it "
@@ -126,6 +128,8 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     if groups:
         out.append("set_clock_groups -asynchronous " + " ".join(groups))
     out.append("")
+    # Split -setup / -hold rather than one value for both: a single value would apply the
+    # setup margin to hold too, turning every pre-CTS path into a false hold-VIOLATED.
     out.append(
         "set_clock_uncertainty -setup 0.2 [all_clocks]   ;# placeholder; replace per process library"
     )
@@ -139,7 +143,7 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
             continue
         T = period_of.get(p["clock_domain"])
         if T is None:
-            continue  # domain is a generated clock (deferred) or absent (clock-domain-gated); defensive
+            continue  # a generated clock has no create_clock to delay against
         delay = round(T * _IO_DELAY_FRAC, 4)
         if p["direction"] == "input":
             out.append(
@@ -186,7 +190,7 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     for p in ports:
         if p["role"] == "data":
             if p["clock_domain"] not in clock_names:
-                continue  # domain is a generated clock (deferred) or absent; defensive (mirrors generate_sdc)
+                continue  # a generated clock has no create_clock to abstract against
             by_domain.setdefault(p["clock_domain"], []).append(p["name"])
     for dom, sigs in by_domain.items():
         out.append(f"abstract_port -ports {{{' '.join(sigs)}}} -clock {dom}")

@@ -20,7 +20,8 @@ def test_author_carry_brings_products_drops_review_and_internals(tmp_path, monke
     (c / "manifest.json").write_text("{}")
     (c / "constraints").mkdir()
     (c / "constraints" / "top.sdc").write_text("sdc")
-    (c / "spec-review.json").write_text("{}")  # no_carry
+    (c / "spec-review").mkdir(exist_ok=True)
+    (c / "spec-review" / "leaf.md").write_text("finding")  # no_carry
     (c / "result.json").write_text("{}")  # framework-excluded
     (c / "dispatch.json").write_text("{}")  # kernel-scratch, defense-in-depth exclude
     (c / "runs").mkdir()
@@ -32,7 +33,7 @@ def test_author_carry_brings_products_drops_review_and_internals(tmp_path, monke
     assert (wd / "design.md").read_text() == "D"
     assert (wd / "manifest.json").exists()
     assert (wd / "constraints" / "top.sdc").exists()
-    assert not (wd / "spec-review.json").exists()  # no_carry
+    assert not (wd / "spec-review" / "leaf.md").exists()  # no_carry
     assert not (wd / "result.json").exists()  # framework-excluded
     assert not (wd / "dispatch.json").exists()  # scratch
     assert not (wd / "junk").exists() and not (wd / "runs").exists()

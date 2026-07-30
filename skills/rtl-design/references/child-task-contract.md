@@ -18,7 +18,7 @@ below. Do not call the Task tool (no Level-2 dispatch).
   Do **not** read `design.md`; its overview is narrative you do not need.
 - `clocks.json` path (specification workdir) — the clock definitions. Read it for
   `create_generated_clock`: a `"generated": true` entry is a divider/PLL output whose
-  `create_generated_clock` pin is YOUR RTL's to name, deliberately deferred by specification. **Every child reads `top-io.json`** (its `owner` field names the driving child, but which inputs you read is yours to declare,
+  `create_generated_clock` pin is YOUR RTL's to name, deliberately deferred by specification. **Every child reads `top-io.json`** (which of its ports are yours is your own doc's frontmatter claim,
   so all children read it rather than risk silently dropping a top-IO-derived `set_case_analysis`).
 
 ## Prohibitions (read carefully)

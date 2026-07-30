@@ -134,7 +134,7 @@ def test_carry_no_carry_fields_and_values():
 
     # authors carry everything, drop their review record
     assert rules.RULES["specification"].carry == ("**",)
-    assert rules.RULES["specification"].no_carry == ("spec-review.json",)
+    assert rules.RULES["specification"].no_carry == ("spec-review/*.md",)
     assert rules.RULES["simulation-plan"].carry == ("**",)
     assert rules.RULES["simulation-plan"].no_carry == ("plan-review.json",)
     assert rules.RULES["rtl-design"].carry == ("**",)

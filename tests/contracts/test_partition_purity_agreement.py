@@ -1,17 +1,16 @@
 """The top-partition invariant is implemented twice; this locks the two together.
 
 "Exactly one child covers <TOP>, and that child's rtl_modules == [<TOP>]" is decided by
-`spec/coverage.py:compute_purity` (specification's own check-coverage gate) and again by
-`rtl/partition.py:coverage_verdict` (rtl-design's exit gate). They agree today, and nothing
-held them there — the specification copy even calls itself "Mirror of the rtl check-partition
-gate" in its docstring, which is a comment, not a check.
+`spec/ports.py:check_purity` (at specification's partition gate, the last moment the partition
+is still editable) and again by `rtl/partition.py:coverage_verdict` (rtl-design's exit gate).
+They agree today, and nothing else holds them there.
 
 Extracting one implementation is NOT available: skills stay decoupled, so no cross-skill
 import. A table both are run against is the only mechanism left, and it is enough: the two
 must return the same verdict for the same manifest, so a divergence is a test failure
 wherever it is introduced.
 
-The one legitimate difference is the input contract, not the rule — compute_purity reads TOP
+The one legitimate difference is the input contract, not the rule — check_purity reads TOP
 from `manifest.module` and must report its absence, while coverage_verdict receives TOP as a
 required CLI argument that cannot be empty. That case is asserted separately below.
 """
@@ -25,7 +24,7 @@ from _skills_sot import PLUGIN_ROOT
 sys.path.insert(0, str(PLUGIN_ROOT / "skills" / "specification" / "scripts"))
 sys.path.insert(0, str(PLUGIN_ROOT / "skills" / "rtl-design" / "scripts"))
 from rtl.partition import coverage_verdict  # noqa: E402
-from spec.coverage import compute_purity  # noqa: E402
+from spec.ports import check_purity  # noqa: E402
 
 TOP = "tpu_top"
 
@@ -53,7 +52,7 @@ def test_both_implementations_reach_the_same_verdict(label, children, tmp_path):
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    spec_violations = compute_purity(manifest)
+    spec_violations = check_purity(manifest)
     rtl_status, rtl_reason = coverage_verdict(path, TOP)
 
     spec_pass = spec_violations == []
@@ -66,9 +65,9 @@ def test_both_implementations_reach_the_same_verdict(label, children, tmp_path):
 
 
 def test_missing_module_is_the_one_asymmetry_and_it_is_the_input_contract():
-    # compute_purity resolves TOP itself, so an absent manifest.module is its problem to
+    # check_purity resolves TOP itself, so an absent manifest.module is its problem to
     # report; coverage_verdict is handed TOP by a required CLI arg and never sees this case.
     # Asserted here so the asymmetry stays deliberate rather than becoming the first drift.
-    violations = compute_purity({"children": [_child("topc", [TOP])]})
+    violations = check_purity({"children": [_child("topc", [TOP])]})
     assert len(violations) == 1
-    assert "module" in violations[0]["error"]
+    assert "module" in violations[0]

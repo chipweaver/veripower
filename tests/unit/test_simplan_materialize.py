@@ -27,13 +27,11 @@ TOP_IO = [
     _p("rst_n", "input", "reset", "cfg"),
     _p("wdata", "input", "data", "cfg", 32),
     _p("wen", "input", "data", "cfg"),
-    {**_p("rdata", "output", "data", "stat", 32), "owner": "c"},
+    _p("rdata", "output", "data", "stat", 32),
 ]
 
 
-CLOCKS = [
-    {"name": "clk", "freq_mhz": 100, "period_ns": 10.0, "relationship": "primary"}
-]
+CLOCKS = [{"name": "clk", "period_ns": 10.0, "relationship": "primary"}]
 
 
 FEATURES = [

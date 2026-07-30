@@ -173,7 +173,7 @@ _STAGE_FILES = {
 # nothing to endorse — oracle_content_fp reads UNKNOWN and cmd_pin refuses. The oracles stay
 # `proposed` until someone actually pins them; writing the record is not endorsing it.
 _ORACLE_CONTENT = {
-    "specification": {"spec-review.json": "spec review v1"},
+    "specification": {"spec-review/core.md": "spec review v1"},
     "simulation-plan": {"plan-review.json": "plan review v1"},
     "rtl-design": {"semantic-review.json": "semantic review v1"},
     "simulation": {"tb/uvm/refmodel/ref.sv": "// refmodel v1"},
@@ -397,10 +397,10 @@ def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human(
     module = "pintest"
     _write_file(module, "brainstorm.md", "b1")
     files = dict(_STAGE_FILES["specification"])
-    files["spec-review.json"] = "review-v1"
+    files["spec-review/core.md"] = "review-v1"
     outcome = _dispatch_write_reap(tmp_path, module, "specification", files)
     assert outcome["verdict"] == "pass"
-    # First-ever reap: canonical spec-review.json didn't exist pre-reap (UNKNOWN) ->
+    # First-ever reap: canonical spec-review/core.md didn't exist pre-reap (UNKNOWN) ->
     # proposed, regardless of any pin. Not asserted; this reap only seeds canonical.
 
     # pin the CURRENT (canonical, now-promoted) content, then reap again: the grade
@@ -429,7 +429,7 @@ def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human(
     # observed: the first propagates the new content onto canonical (still grades
     # human, comparing against the stale pre-promote canonical); the second sees the
     # now-drifted canonical mismatch the old pin -> proposed.
-    _write_file(module, "Design/specification/runs/1/spec-review.json", "review-v2")
+    _write_file(module, "Design/specification/runs/1/spec-review/core.md", "review-v2")
     r3 = _run_json(
         tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
     )
@@ -888,7 +888,8 @@ def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
     module = "gradepin"
     sr = facts.module_root(module) / "Design" / "specification"
     sr.mkdir(parents=True)
-    rev = sr / "spec-review.json"
+    (sr / "spec-review").mkdir()
+    rev = sr / "spec-review" / "core.md"
     rev.write_text("REVIEW-A")
     fpA = facts.fingerprint(rev)
     facts.append_event(
