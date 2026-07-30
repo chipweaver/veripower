@@ -5,51 +5,35 @@ description: Use when writing or modifying Verilog/SystemVerilog RTL, or recordi
 
 # RTL Design
 
-Your sole responsibility: orchestrate per-child RTL authoring as a pure dispatcher over `manifest.json`'s child roster: the per-child sub-Tasks author the RTL; deterministic finalize scripts then produce `rtl-files.json` (per-child file layout), `constraint-annotations.json` (per-child SGDC/SDC annotations), and `result.json` from their reaped reports. You never author or read RTL yourself.
-
-**Load mode:** this skill runs main-thread, invoked via `Skill(veripower:rtl-design)` by its caller (not dispatched as a Task subagent). It uses the Task tool for one fan-out wave (one Level-1 sub-Task per child unit, including the top-integration child); finalize is then deterministic main-thread scripts, not a sub-Task. You never author RTL inline.
+Your sole responsibility: turn `manifest.json`'s child roster into authored RTL. You are a thin dispatcher — one fan-out wave of per-child sub-Tasks, a gating review wave, deterministic scripts in between. You hold no RTL body: every `.v` file is written and read only inside a sub-Task context, and every fix lands through a child re-dispatch.
 
 ## Iron Rule
 
-- Every RTL file on disk MUST appear in `rtl-files.json`; `assemble` writes it and the two sidecars from the reaped reports, and you never edit either file directly.
-- **No child RTL in the main thread:** every child (including the top-integration child) is dispatched in the fan-out wave. You consume each sub-Task's `files[]` paths only and **MUST NOT read the dispatched child's** `.v`/`.sv` content back into your context. There is no inline TOP authoring: even a single child is written by a sub-Task, and every fix lands through a child re-dispatch, never a main-thread edit.
-- **`design.md` and the per-child `<child>.md §1–§5` are an immovable boundary.** You never modify either, and no RTL-level adjustment overrides an architectural decision. If a fix would need one of them, stop this round with `status=fail`.
-- **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's scope requires (the entry contract determines it); every file outside that scope MUST stay byte-identical to the prior run. Modifying anything outside it is prohibited.
-- **Never silently sacrifice one acceptance target for another.** The PPA targets in `<design>/ppa.json` and the cycle budget in `design.md` can pull against each other: making a combinational divide iterative buys timing and spends latency. When you cannot satisfy both, report the numbers you actually achieved plus the trade-off in `result.json`, and let the caller decide. Quietly meeting one target by breaking another — timing, latency, or bit-exactness — is the failure mode this rule exists to stop.
-- **`<child>.md §2 Interface` incomplete:** if the interface spec is missing or underspecified, the stage fails with `fail_reason="<child>.md §2 Interface incomplete"`; do not invent interfaces.
-- **Scripts are black boxes, never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr, stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
+- **`rtl-files.json` and `constraint-annotations.json` are `assemble`'s to write.** Never edit either directly.
+- **`design.md` and the per-child `<child>.md` are the intent source.** Never modify either; no RTL-level adjustment overrides an architectural decision.
+- **Minimal edit on any re-dispatch with prior valid RTL on disk.** Edit only the files this round's scope requires; every file outside it stays byte-identical. A needless rewrite re-fingerprints the artifact, which drops a human `pin` back to `proposed` — invisible from inside this stage, and the next signoff would sign text nobody reviewed.
+- **Scripts are black boxes, never Read their source.** Invoke them per the command lines below (flags via `--help`); act on the documented failure protocol, not the source. Sole exception: debugging a suspected bug in a script itself.
 
-## Input Artifacts
+## Artifacts
 
-### Context variables
+Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key to a location, so `<key>/<subpath>` is how you address one. Every key resolves to the specification stage root, so `<design>` reaches its sibling sidecars too. The same file's `scope` / `caused_by` / `reasons` keys narrow this round.
 
-| Variable | Purpose |
+| Path | What it is |
 |---|---|
-| `{workdir}` | Current run workspace root. |
-| `{module}` | Module name. |
+| `<manifest>/manifest.json` | The child roster: `module` (= `<top_module>`) + `children[]` (`name` / `doc` / `rtl_modules[]`). Drives the fan-out |
+| `<children>/<child>.md × N` | Per-child sub-design — frontmatter + §2 Interface + §3 Internal Behavior are what each child derives its RTL from |
+| `<design>/top-io.json`, `interconnects.json`, `clocks.json` | The boundary, the cut edges, the clocks. Passed by path into the sub-Tasks |
+| `<design>/ppa.json` | PPA targets the micro-architecture must be bound to — a combinational divide that blows a timing target is a defect here, not at synthesis |
 
-### External reference inputs
+Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `references/<name>.schema.json`.
 
-Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream input to its location, so `<key>` below denotes that location and you read `<key>/<subpath>`. Every key resolves to the specification stage root, so `<design>` reaches its sibling JSON sidecars too. The same file's `scope` / `caused_by` / `reasons` keys are what narrow this round (see the entry contract).
-
-| Path | Schema / Format | Use |
-|---|---|---|
-| `<design>/top-io.json` + `<design>/interconnects.json` | `specification/references/{top-io,interconnects}.schema.json` | The boundary and the cut edges. Passed by path to the child sub-Tasks (`references/child-task-contract.md`); the main thread does not read them. |
-| `<design>/clocks.json` | `specification/references/clocks.schema.json` | Clock definitions. Passed by path to the child sub-Tasks — a `"generated": true` entry is the `create_generated_clock` the child must report; the main thread does not read it. |
-| `<manifest>/manifest.json` | JSON (`{module, children:[{name, doc, rtl_modules, brainstorm_anchor}]}`) | Child roster — drives the fan-out `N = len(children[])` (every child, incl. the top-integration child). |
-| `<children>/<child>.md` × N | Custom markdown (frontmatter + §1–§5) | Per-child sub-design: frontmatter (`ports` / `clocks` / `features`) + §2 Interface / §3 Internal Behavior drive per-child RTL derivation. |
-| `<design>/ppa.json` | `specification/references/ppa.schema.json` | The PPA targets this RTL must hit. Read each entry's `dim` and numeric `target` yourself, and bind the micro-architecture to them (a combinational divide that blows a timing target is a defect here, not at synthesis). |
-
-## Output Artifacts
-
-| Path (relative to `{workdir}`) | Schema / Format | Use |
-|---|---|---|
-| `result.json` | `references/result.schema.json` + envelope | This stage's status contract. |
-| `<top_module>.v` | Verilog-2001 | Top integration RTL — authored by the top-integration child sub-Task, never the main thread. |
-| `*.v` (per child; `*.vh` headers) | Verilog-2001 | Each child writes its `rtl_modules[]` into `.v` files of its own choosing (spec defines modules, not layout); the child's returned `files[]` is authoritative. **STRICT Verilog-2001** — `references/rtl-files.schema.json` rejects a `.sv`/`.svh` extension, because the kernel's downstream `rtl` selectors match `*.v` alone (a `.sv` artifact silently drops out of the dependency graph). The content being V2001 is the child's discipline per `references/coding-rules.md`; no gate decides it. |
-| `rtl-files.json` | `references/rtl-files.schema.json` | Per-child `files[]` + `incdirs[]` — written by `assemble` from the reaped reports. Every downstream filelist is generated from it (simulation, synthesis, lint-cdc); no stage parses a text file list. |
-| `constraint-annotations.json` | `references/constraint-annotations.schema.json` | Per-child SGDC + SDC annotations in the child's real module names — written by `assemble`; read by the lint-cdc and synthesis agents. |
-| `semantic-review.json` | `references/semantic-review.schema.json` | Gating per-child intent review, aggregated by the main thread on every clean-gate finalize. |
+| Path | What it is |
+|---|---|
+| `*.v` (`*.vh` headers) | The authored RTL, `<top_module>.v` among it. **STRICT Verilog-2001**: `rtl-files.schema.json` rejects a `.sv`/`.svh` extension because the kernel's `rtl` selectors match `*.v` alone; the content being V2001 is the child's discipline per `references/coding-rules.md` |
+| `rtl-files.json` | Per-child `files[]` + `incdirs[]`. Every downstream filelist is generated from it — no stage parses a text file list |
+| `constraint-annotations.json` | Per-child SGDC/SDC annotations in real module names, read by lint-cdc and synthesis |
+| `semantic-review.json` | The gating per-child intent review — this stage's proposed oracle |
+| `result.json` | The status envelope, written only by `finalize` |
 
 ## Workflow
 
@@ -58,7 +42,7 @@ sub-Tasks return, and what `finalize` hands back. The actions between them are y
 
 ### Entry contract
 
-`dispatch.json`'s `inputs` table resolves the upstream locations (Input Artifacts above). Three
+`dispatch.json`'s `inputs` table resolves the upstream locations (Artifacts above). Three
 further keys narrow this round — with either narrowing key present, the scope is the union of both:
 
 - `caused_by` — the `result.json` of each upstream failure this round answers. Read each, and its
@@ -192,28 +176,8 @@ semantic-review.json`. If any finding is `severity=critical` (possible on a clea
 critical finding is in a non-gating category such as `over-engineering`), add `⚠ <child> critical
 <category> finding — recommend operator review before downstream`.
 
-## Completion Gate
-
-- [ ] **Mechanical gate:** the `assemble` exit gate exited 0; `{workdir}/rtl-files.json` and `{workdir}/constraint-annotations.json` were written by `assemble`.
-- [ ] **Semantic gate:** the review wave ran on this round's RTL, `semantic-review.json` was written and validated, and its verdict was applied by locus; a `gate=trip` was never overridden to pass.
-- [ ] **Finalize:** `finalize` wrote `{workdir}/result.json`, which owns `status` / `fail_reason` / `artifacts[]` / `semantic_gate` (the framework schema-validates it at stage completion; this gate does not re-run that check).
-- [ ] No Iron Rule was triggered.
-
 ## Return Contract
 
-Main-thread skill: control returns directly to the caller, which decides what runs next from `{workdir}/result.json` (`status ∈ {pass, fail}`). There is no Task-subagent `STATUS:` last-line signal from this skill itself, and no human review loop.
+Control returns to the caller, which decides what runs next from `result.json`.
 
-Each dispatched per-child sub-Task ends with a harness-level `STATUS: DONE` + a `{"files": [...], "incdirs"?: [...], "annotations": {...}}` JSON line, or `STATUS: BLOCKED <reason>` (schema in `references/child-task-contract.md`). You consume those signals, not the caller.
-
-Your sole on-disk completion signal is `{workdir}/result.json` present with `status=pass`; a missing `result.json` is incomplete, so re-enter idempotently. `carry_self` never carries `semantic-review.json` forward on a repair, and every re-entry re-runs the semantic gate on the current RTL, so a stale `clear` cannot survive to finalize.
-
-## Bundled References
-
-- [`references/child-task-contract.md`](references/child-task-contract.md) — the per-child sub-Task prompt + returned annotation schema (dispatched in the fan-out wave).
-- [`references/coding-rules.md`](references/coding-rules.md) — RTL coding rules (naming / ports / clocks / resets / FSM / RAM / low-power / datapath).
-- [`references/constraint-annotations.schema.json`](references/constraint-annotations.schema.json) — schema for `constraint-annotations.json`, the per-child SGDC/SDC annotations.
-- [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
-- [`references/rtl-files.schema.json`](references/rtl-files.schema.json) — schema for `rtl-files.json`, the per-child file layout every downstream filelist is generated from.
-- [`references/rtl-review-task-contract.md`](references/rtl-review-task-contract.md) — per-child semantic review sub-Task contract (gating; dispatched once RTL is on disk).
-- [`references/semantic-review.schema.json`](references/semantic-review.schema.json) — schema for the aggregated `semantic-review.json`.
-- [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.
+Your sole completion signal is `{workdir}/result.json` present with `status=pass`; a missing one is incomplete, so re-enter idempotently. `carry_self` never carries `semantic-review.json` forward on a repair, so a stale `clear` cannot survive to a later finalize.
