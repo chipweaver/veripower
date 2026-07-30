@@ -22,28 +22,23 @@ before signing, not for a parser. Do not call the Task tool.
 ## Your job: skeptical intent review (NOT lint / PPA / syntax)
 
 You are a fresh reviewer. **Do not trust that the RTL is correct because it exists.** Read the
-actual RTL line by line and compare it against the `<child>.md §2` intent. Check **both directions**:
+actual RTL and compare it against the `<child>.md §2` intent, in both directions: what §2 requires
+and the RTL lacks, and what the RTL does that §2 never asked for.
 
-- **Missing / under-built:** behavior the `<child>.md §2` requires that the RTL does not implement.
-- **Wrong behavior (plausible-but-wrong):** RTL that compiles and looks reasonable but does NOT do
-  what §2 specifies (e.g. an arbiter spec'd round-robin but implemented fixed-priority).
-- **Over-engineering (YAGNI):** logic / state / ports beyond what §2 intent calls for.
+Three things are worth flagging, and the third differently from the first two:
 
-**For every finding, assign `fix_locus`** — where the fix must land (it tags the gate's `fail_reason`
-so the operator knows where to fix, and routes future automation):
-- `fix_locus: "rtl"` — the fix is in *this child's RTL* (the implementation deviates from, or under-builds,
-  the `<child>.md §2` intent; `over-engineering` is always `rtl`).
-- `fix_locus: "spec"` — the defect is a contradiction or omission in `design.md` / the `<child>.md` spec
-  itself, which this child cannot fix from RTL (e.g. an interface width that cannot hold the value §2
-  requires). Do not flag `spec` for something the RTL alone can fix.
+- **Missing / under-built** — behavior §2 requires that the RTL does not implement.
+- **Wrong behavior** — RTL that compiles and reads plausibly but does not do what §2 says. An
+  arbiter spec'd round-robin and built fixed-priority is the shape to look for.
+- **Over-engineering** — logic, state or ports beyond what §2 asks for. This one is worth
+  recording and rarely worth blocking: unrequested configurability at a correct default costs
+  area, not correctness.
 
-- **`confidence`, on every `fix_locus: "spec"` finding** (omit it elsewhere): how sure you are of the
-  attribution that this really is a `design.md` / `<child>.md` intent defect needing an upstream fix.
-  `high` = the interface or intent contradiction is hard evidence (a width that cannot hold the value §2
-  requires); `medium` / `low` = the RTL side might still be able to salvage it. rtl-design has no triage
-  re-check, so this is the only trust signal the upstream route gets: when unsure give `low` and let the
-  kernel escalate to a human, rather than betting a spec rebuild on it. An omitted `confidence` is read as
-  `low` for exactly that reason, so leaving it out never buys a stronger route.
+Attributing a defect to the spec is the consequential call, so make it deliberately. An interface
+width that cannot hold the value §2 requires is the spec's, and hard evidence. RTL that merely
+does the wrong thing is this child's, even when §2 could have been clearer. Say which, and say
+how sure you are — the stage routes a spec rebuild on your reading alone, with no triage step
+behind it, so an uncertain attribution should read as uncertain.
 
 **Out of scope (do NOT report):** synthesizability / timing / area / power (downstream stages);
 lint / CDC rule violations (lint-cdc); pure syntax and whole-design elaboration (the child

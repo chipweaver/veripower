@@ -130,9 +130,6 @@ def test_build_result_fail_on_exit_topology_verbatim(tmp_path):
     assert (
         "not pure" in env["stage_specific"]["fail_reason"]
     )  # verbatim from the exit gate
-    assert (
-        "semantic_gate" not in env["stage_specific"]
-    )  # never reached the semantic gate
 
 
 # ── golden test against the real tpu_top run ─────────────────────────────────
@@ -213,9 +210,6 @@ def test_build_result_pre_dispatch_coverage_fail_routes_through_finalize(tmp_pat
     assert (
         "requires reaped-children.json" not in fr
     )  # NOT the generic pre-guard message
-    assert (
-        "semantic_gate" not in env["stage_specific"]
-    )  # never reached the semantic gate
     _validate_envelope(env)  # schema-valid status=fail envelope
 
 

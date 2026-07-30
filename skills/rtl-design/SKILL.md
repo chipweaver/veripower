@@ -9,7 +9,6 @@ Your sole responsibility: turn `manifest.json`'s child roster into authored RTL.
 
 ## Iron Rule
 
-- **`rtl-files.json` and `constraint-annotations.json` are `assemble`'s to write.** Never edit either directly.
 - **`design.md` and the per-child `<child>.md` are the intent source.** Never modify either; no RTL-level adjustment overrides an architectural decision.
 
 ## Artifacts

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/rtl-design/constraint-annotations.schema.json",
-  "title": "constraint-annotations.json — per-child SGDC/SDC annotations (authored by assemble from the reaped child reports)",
+  "title": "constraint-annotations.json — per-child SGDC/SDC annotations (authored by the stage from the reaped child reports)",
   "description": "What each child's RTL implies for the constraint files, in the child's REAL module names so `sync_cell -name` matches the netlist. The lint-cdc and synthesis agents read this to fill scripts/constraints.sgdc and the SDC exceptions. Kept separate from rtl-files.json because simulation consumes only the file layout: bundling them would invalidate simulation on an annotation-only edit. Every category is present with an explicit empty array when a child has none — an omitted category and 'none' are not the same claim. Nothing in this stage verifies that a reported module name is real: lint-cdc writing `sync_cell -name` into the SGDC is the first place a wrong name surfaces. An empty object is a legitimate transient state before wave 2 has reaped any child; the roster requirement lives in the post exit gate.",
   "type": "object",
   "additionalProperties": {

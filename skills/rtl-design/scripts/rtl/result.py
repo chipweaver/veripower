@@ -105,7 +105,7 @@ def _caller_reported_artifacts(workdir: Path, manifest: Path) -> list:
 def build_result(
     workdir, module, top, manifest, fail_reason=None, fix_owner=None
 ) -> int:
-    """Assemble the lean rtl-design result.json from the on-disk workdir. The caller supplies
+    """Build the lean rtl-design result.json from the on-disk workdir. The caller supplies
     only what no on-disk state can express: `fail_reason` for an early exit, and `fix_owner` for
     the rule that must act on a failure. Returns 0 (result.json written, pass or fail); a raise
     → exit 2 (BLOCKED)."""
@@ -153,7 +153,7 @@ def build_result(
 
 
 def finalize(workdir, module, top, manifest, fail_reason=None, fix_owner=None) -> int:
-    """Assemble the lean rtl-design result.json from the converged workdir.
+    """Build the lean rtl-design result.json from the on-disk workdir.
     exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (any internal
     raise) — never conflated with status=fail. (Owns the policy the deleted main() had.)"""
     try:

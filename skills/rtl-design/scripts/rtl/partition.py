@@ -52,14 +52,13 @@ def ledger_artifacts(workdir: Path) -> list:
 
 def post_verdict(manifest: Path, top: str, fresh: Path, workdir: Path):
     """The post exit verdict: coverage+purity + blocked-child precedence + the artifacts[]
-    enumeration from the ledger. Returns (verdict_dict, rc). The single copy assemble's run()
-    and result's build_result both reuse."""
+    enumeration from the ledger. Returns (verdict_dict, rc)."""
     status, reason = coverage_verdict(manifest, top)
     if status == "fail" and not ledger_exists(workdir):
         # Pre-dispatch coverage fail (no fan-out yet, so no ledger): surface the real coverage
         # reason (never None on a fail) so `finalize` can write it, instead of the generic
-        # "requires fresh + ledger" message below. In assemble.run the ledger is always written
-        # before this call, so this branch is reached only from the pre-dispatch finalize path.
+        # "requires fresh + ledger" message below. Reached only when finalize runs before any
+        # fan-out, which is what a coverage fail routes through.
         return {"status": "fail", "artifacts": [], "fail_reason": reason}, 1
     if not (fresh.exists() and ledger_exists(workdir)):
         # Reachable with the sidecars present but reaped-children.json gone. A fail envelope
