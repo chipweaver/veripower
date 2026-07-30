@@ -110,6 +110,34 @@ Report : qor
   Leaf Cell Count:               6640
 """
 
+# Observed on a real DC L-2016.03-SP1 run whose only paths were reg -> output port with no
+# set_output_delay: the group is "(none)" and DC prints the slack as the literal `uninit`.
+QOR_UNINIT = """\
+  Timing Path Group (none)
+  -----------------------------------
+  Critical Path Length:          0.21
+  Critical Path Slack:         uninit
+  Critical Path Clk Period:       n/a
+  -----------------------------------
+
+  Design  WNS: 0.00  TNS: 0.00  Number of Violating Paths: 0
+"""
+
+# Same run shape with one constrained group added: only the group that HAS a slack counts.
+QOR_UNINIT_PLUS_REAL = """\
+  Timing Path Group (none)
+  -----------------------------------
+  Critical Path Slack:         uninit
+  -----------------------------------
+
+  Timing Path Group 'clk'
+  -----------------------------------
+  Critical Path Slack:           6.51
+  -----------------------------------
+
+  Design  WNS: 0.00  TNS: 0.00  Number of Violating Paths: 0
+"""
+
 
 def _stage(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR):
     """Write reports/{area,qor}.rpt under tmp_path; return (reports_dir, out_path)."""
@@ -655,3 +683,19 @@ def test_missing_netlist_outranks_a_ppa_miss(tmp_path):
     assert ss["failure_kind"] == "tooling"  # not ppa: the run has no product at all
     assert ss["violations"]  # the PPA miss is still on the record
     assert ss["fix_owner"] == "rtl-design"
+
+
+def test_uninit_slack_is_unparseable_not_a_pass(tmp_path):
+    # An unconstrained run is what bootstrap's fail-closed exists to prevent; when one gets
+    # this far the parser must refuse it rather than read `uninit` as a number or as zero.
+    reports = _stage(tmp_path, qor=QOR_UNINIT)
+    assert sp.run(reports, None, 0.0) == (3, None)
+
+
+def test_uninit_group_does_not_shadow_a_constrained_one(tmp_path):
+    reports = _stage(tmp_path, qor=QOR_UNINIT_PLUS_REAL)
+    rc, data = sp.run(reports, None, 0.0)
+    assert rc == 0 and data["verdict"] == "pass"
+    slack = [a for a in data["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]
+    assert slack["value"] == pytest.approx(6.51)
+    assert "across 1 group(s)" in slack["source"]  # the uninit group is not counted
