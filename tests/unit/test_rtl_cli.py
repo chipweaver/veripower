@@ -8,7 +8,6 @@ MAIN = ROOT / "skills/rtl-design/scripts/rtl/__main__.py"
 _VERBS = (
     "check-partition",
     "assemble",
-    "check-conformance",
     "validate-review",
     "finalize",
 )
@@ -18,11 +17,17 @@ def _run(*argv):
     return subprocess.run(["python3", str(MAIN), *argv], capture_output=True, text=True)
 
 
-def test_cli_help_lists_all_five_verbs():
+def test_cli_help_lists_every_verb():
     r = _run("--help")
     assert r.returncode == 0, r.stderr
     for v in _VERBS:
         assert v in r.stdout, f"{v} missing from --help"
+
+
+def test_check_conformance_verb_removed(tmp_path):
+    # The spec<->RTL presence gate is gone: integration correctness is lint-cdc's
+    # elaboration, and the .v/.vh constraint moved into rtl-files.schema.json.
+    assert _run("check-conformance", "--workdir", str(tmp_path)).returncode != 0
 
 
 def test_cli_unknown_verb_exits_2():

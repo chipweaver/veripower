@@ -4,7 +4,7 @@ Applies to: `**/*.v` / `**/*.vh`
 
 ## General Constraints
 
-- **Strict Verilog-2001 only — no SystemVerilog.** RTL files are `.v` (headers `.vh`), never `.sv`/`.svh`: the kernel's downstream `rtl` selectors match `*.v` alone, so a `.sv` file silently drops out of the dependency graph, and `check-conformance` rejects the extension for exactly that reason. The **content** being V2001 is on you — no gate decides it, and the downstream tools would happily compile SystemVerilog. The common substitutions are types (`logic`/`bit`/`byte`/`int` → `wire`/`reg`/`integer`), always-blocks (`always_ff`/`always_comb`/`always_latch` → `always @(posedge …)` / `always @*`), and constructs with no V2001 equivalent at all (`typedef`/`enum`/`struct`/`union`/`interface`/`package`/`modport`/`import`/`unique`/`priority`) — a cheat sheet for the common cases, not a complete list of what the language forbids you. Do not use non-standard extensions unsupported by the toolchain
+- **Strict Verilog-2001 only — no SystemVerilog.** RTL files are `.v` (headers `.vh`), never `.sv`/`.svh`: the kernel's downstream `rtl` selectors match `*.v` alone, so a `.sv` file silently drops out of the dependency graph, and `rtl-files.schema.json` rejects the extension for exactly that reason. The **content** being V2001 is on you — no gate decides it, and the downstream tools would happily compile SystemVerilog. The common substitutions are types (`logic`/`bit`/`byte`/`int` → `wire`/`reg`/`integer`), always-blocks (`always_ff`/`always_comb`/`always_latch` → `always @(posedge …)` / `always @*`), and constructs with no V2001 equivalent at all (`typedef`/`enum`/`struct`/`union`/`interface`/`package`/`modport`/`import`/`unique`/`priority`) — a cheat sheet for the common cases, not a complete list of what the language forbids you. Do not use non-standard extensions unsupported by the toolchain
 - Do not use Verilog/VHDL/SV reserved words as signal, module, or parameter names
 - Code must be synthesizable: no `#delay`, `initial` blocks driving synthesizable logic, or simulation-only statements (`$display`, etc.) in synthesizable RTL
 
@@ -13,25 +13,23 @@ Applies to: `**/*.v` / `**/*.vh`
 - Clear and consistent naming; names should be self-explanatory; follow project-wide naming conventions (case, prefixes/suffixes)
 - Distinguish signal direction and type: use uniform prefixes/suffixes for input/output, clock/reset, enable/data
 - Parameters and macros: UPPER_CASE with underscores; local signals: lower_case with underscores
-- No single-letter signal names; a `generate`/`for` loop index is the one exception
 
 ## Module Partitioning
 
 - Single responsibility per module/interface; avoid deep nesting, break complex combinational logic into named intermediate signals
 - Separate sequential and combinational logic clearly; avoid mixing unrelated logic in the same `always` block
 - Header files (`*.vh`): centralize macros and parameters; avoid circular includes
-- Cross-clock domain synchronizers, tri-state drivers, and other special structures must be encapsulated as separate modules/files. This one is load-bearing, not style: a `sync_cell` / `reset_synchronizer` annotation has to name a real module, so a synchronizer inlined into surrounding logic cannot be annotated at all, and `check-conformance`'s annotation-reality check rejects any name that is not an actual module in your RTL
+- Cross-clock domain synchronizers, tri-state drivers, and other special structures must be encapsulated as separate modules/files. This one is load-bearing, not style: lint-cdc writes `sync_cell -name <module>` into the SGDC from your reported annotation, so the name has to be a real module — a synchronizer inlined into surrounding logic cannot be annotated at all
 
 ## Coding Constraints
 
 ### General
 
-- One statement per line; explicit `begin...end` even for single statements
+- Keep a consistent, readable style throughout a file; no gate checks formatting
 - No combinational feedback loops
 
 ### Port & Signal Declarations
 
-- Each port/signal on its own line; align similar ports (width column, name column)
 - `wire` must be explicitly declared — no implicit `wire`
 - Parameterized widths — no hardcoded magic-number widths (e.g., use `[DATA_W-1:0]` instead of `[31:0]`)
 
@@ -108,7 +106,7 @@ end
 
 ## Comment Conventions
 
-- Module header must have a file-header comment: module name, functional description, author, create/modify date, version
+- Module header comment: module name + what the module does
 - Port list: add group comments for each group (clock/reset/input/output)
 - Critical logic, FSMs, CDC synchronizers, RAM access timing, etc. must have inline comments explaining design intent
 - No meaningless comments (e.g., `// assign`, `// always`); comments must explain "why", not "what"

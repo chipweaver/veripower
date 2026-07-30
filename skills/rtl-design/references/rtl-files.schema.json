@@ -12,12 +12,13 @@
     "additionalProperties": false,
     "properties": {
       "files": {
-        "description": "Paths relative to the rtl-design stage root, in dependency order. The child authors its own file layout — specification defines RTL modules, not files.",
+        "description": "Paths relative to the rtl-design stage root, in dependency order. The child authors its own file layout — specification defines RTL modules, not files. The `.v`/`.vh` pattern is load-bearing rather than stylistic: the kernel's downstream `rtl` selectors match `*.v` alone, so a `.sv` artifact silently drops out of the derived dependency graph and its edits stop invalidating downstream proofs. Enforced here because write_ledger validates before the first write, so a bad extension can never reach disk for a later run to seed from.",
         "type": "array",
         "minItems": 1,
         "items": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "\\.(v|vh)$"
         }
       },
       "incdirs": {

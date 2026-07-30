@@ -2,7 +2,7 @@
 
 The rtl-design main thread dispatches one Level-1 `Task(run_in_background=True)` per child
 in `manifest.children[]` **on every finalize that reaches a clean gate** (not first-run only),
-AFTER the conformance gate (`check-conformance`) is green. This review is **gating**: findings
+AFTER `assemble` has written the sidecars. This review is **gating**: findings
 in `category ∈ {missing, wrong-behavior}` at `severity ∈ {critical, important}` trip a gate that
 fails the stage out (`status=fail`) to the operator. `over-engineering` and `minor` findings
 remain advisory (never gate). Findings are aggregated into `semantic-review.json`. Do not call the Task tool.
@@ -16,8 +16,9 @@ remain advisory (never gate). Findings are aggregated into `semantic-review.json
   the deployed layout). **Read its §2 Interface (and, for the top-integration child, the §3.1
   instantiation map wires the `interconnects.json` edges)** as the statement of *intent* to check against.
 - `design.md` path, read-scope §1.4 only, for cross-checking integration **intent** (including §1.4.2.1's
-  inter-module behavior contract). The mechanical edge list is not your job: the deterministic
-  `check-conformance` gate already matched every `interconnects.json` wire against the top child's RTL.
+  inter-module behavior contract). No deterministic gate matches the edge list against the RTL any
+  more, so a module or wire the spec names and the RTL does not (or renames) is yours to catch —
+  report it as `missing`.
 
 ## Your job: skeptical intent review (NOT lint / PPA / syntax)
 
@@ -46,8 +47,8 @@ so the operator knows where to fix, and routes future automation):
   `low` for exactly that reason, so leaving it out never buys a stronger route.
 
 **Out of scope (do NOT report):** synthesizability / timing / area / power (downstream stages);
-lint / CDC rule violations (lint-cdc); pure syntax (the child self-lints); spec↔RTL *presence*
-mismatches (the deterministic `check-conformance` gate already covers these).
+lint / CDC rule violations (lint-cdc); pure syntax and whole-design elaboration (the child
+self-checks, and lint-cdc elaborates).
 
 ## Output
 

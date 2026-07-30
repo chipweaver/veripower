@@ -4,7 +4,6 @@
 Verbs (one stage = one tool; see skills/rtl-design/SKILL.md for usage):
   check-partition   pre-dispatch coverage+purity gate (manifest+top)    (stdout: verdict; exit 0/1)
   assemble          write the two sidecars + post exit-gate             (stdout: verdict; exit 0/1)
-  check-conformance spec<->RTL presence gate                            (stdout: verdict; exit 0/1)
   validate-review   semantic-review.json schema + gate                  (stdout: gate JSON; exit 0/1)
   finalize          assemble the lean result.json                       (exit 0 written / 2 BLOCKED)
 
@@ -41,12 +40,6 @@ def _cmd_assemble(a: argparse.Namespace) -> int:
     return assemble.run(a.workdir, a.manifest, a.top, seeded=a.seeded)
 
 
-def _cmd_check_conformance(a: argparse.Namespace) -> int:
-    from rtl import conformance
-
-    return conformance.run(a.workdir, a.manifest, a.top, a.interconnects)
-
-
 def _cmd_validate_review(a: argparse.Namespace) -> int:
     from rtl import review
 
@@ -80,16 +73,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--seeded",
         action="store_true",
         help="overlay onto the existing sidecars in {workdir} (incremental/rework, and every "
-        "round of the conformance self-converge loop)",
+        "round of the semantic-gate self-converge loop)",
     )
     sp.set_defaults(func=_cmd_assemble)
-
-    sp = sub.add_parser("check-conformance", help="spec<->RTL presence gate")
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument("--manifest", required=True, type=Path)
-    sp.add_argument("--top", required=True)
-    sp.add_argument("--interconnects", required=True, type=Path)
-    sp.set_defaults(func=_cmd_check_conformance)
 
     sp = sub.add_parser("validate-review", help="semantic-review.json schema + gate")
     sp.add_argument("--review", required=True, type=Path)

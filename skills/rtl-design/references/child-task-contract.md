@@ -15,7 +15,6 @@ below. Do not call the Task tool (no Level-2 dispatch).
 - `${CLAUDE_SKILL_DIR}/references/coding-rules.md` — the RTL coding rules your files must follow.
 - `top-io.json` and `interconnects.json` paths — the boundary and the cut edges. Read them for
   `set_case_analysis` (← `top-io.json`), `quasi_static` (← `interconnects.json`) and top wiring.
-  Do **not** read `design.md`; its overview is narrative you do not need.
 - `clocks.json` path (specification workdir) — the clock definitions. Read it for
   `create_generated_clock`: a `"generated": true` entry is a divider/PLL output whose
   `create_generated_clock` pin is YOUR RTL's to name, deliberately deferred by specification. **Every child reads `top-io.json`** (which of its ports are yours is your own doc's frontmatter claim,
@@ -23,20 +22,18 @@ below. Do not call the Task tool (no Level-2 dispatch).
 
 ## Prohibitions (read carefully)
 
-- **No whole-design elaboration / smoke compile.** Do NOT run `verilator` / `iverilog` (or any tool)
-  over the whole design or over sibling RTL, and do NOT reverse-read an external verification harness
-  (a reference top, `Makefile`, or `*_defines` from the verification environment) to make ports line
-  up. Author from the `top-io.json` / `interconnects.json` / `<child>.md` contract; integration/elaboration correctness
-  is verified by downstream verification.
-- **Unit child best-effort self-lint only.** A unit child MAY run `verilator --lint-only` on its **own
-  module(s)** — a single-module syntax self-check, best-effort (skipped if no linter is present),
-  never the whole design or sibling RTL.
+- **Do not reverse-read your interface into existence.** Your ports come from the
+  `top-io.json` / `interconnects.json` / `<child>.md §2` contract — never from an external
+  verification harness (a reference top, `Makefile`, or `*_defines` from the verification
+  environment) reverse-read until they line up. That harness is one author's guess at the
+  contract; the contract is the contract, and it is what your siblings were handed too.
+  Integration/elaboration correctness itself is verified downstream by lint-cdc.
 
 ## Output
 
 Write your `rtl_modules[]` into one or more `.v` files of your choosing (one file
 may hold multiple modules). **STRICT Verilog-2001** — no SystemVerilog: not the `.sv`/`.svh`
-extension (`check-conformance` rejects it and re-dispatches you, because the kernel's `rtl`
+extension (`rtl-files.schema.json` rejects it, because the kernel's `rtl`
 selectors match `*.v` alone), and not SV-only constructs (`logic`/`always_ff`/`always_comb`/
 `typedef`/`enum`/`struct`/`interface`/`package`/…) — that half is your discipline, per
 `references/coding-rules.md`; no gate decides it. End the response with `STATUS: DONE` + a single JSON line, or
@@ -66,9 +63,6 @@ selectors match `*.v` alone), and not SV-only constructs (`logic`/`always_ff`/`a
   from your RTL; contract-fact categories (`quasi_static`, `set_case_analysis`,
   `create_generated_clock`) come from the sidecars you read. Synthesis has no independent backstop for the SDC categories, so an
   omission there is silently lost downstream — do not omit.
-  Note: the `sync_cell` / `reset_synchronizer` (and `sdc.create_generated_clock`'s `module`) names you report are checked for **reality** by the
-  stage's `check-conformance` gate — a reported name that is not an actual module in your RTL is a
-  conformance violation (you will be re-dispatched to fix it), not a silently accepted annotation.
 - Which child reports what: a **leaf** child reports its internal synchronizers / generated clocks;
   the **top-integration** child reports cross-domain `quasi_static` + test-control `set_case_analysis`
   (it owns the interconnect). Empty lists `[]` when a category genuinely has none.

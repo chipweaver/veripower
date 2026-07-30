@@ -82,8 +82,8 @@ def test_assemble_first_run_strips_status(tmp_path):
     wd, man = _setup(
         tmp_path,
         fresh={
-            "leaf": {"status": "done", "files": ["leaf.sv"], "annotations": _ANN},
-            "topc": {"status": "done", "files": ["top.sv"], "annotations": _ANN},
+            "leaf": {"status": "done", "files": ["leaf.v"], "annotations": _ANN},
+            "topc": {"status": "done", "files": ["top.v"], "annotations": _ANN},
         },
         children=[
             {"name": "leaf", "rtl_modules": ["leaf_m"]},
@@ -103,8 +103,8 @@ def test_assemble_pass_artifacts_object_shape(tmp_path):
     wd, man = _setup(
         tmp_path,
         fresh={
-            "leaf": {"status": "done", "files": ["leaf.sv"], "annotations": _ANN},
-            "topc": {"status": "done", "files": ["top.sv"], "annotations": _ANN},
+            "leaf": {"status": "done", "files": ["leaf.v"], "annotations": _ANN},
+            "topc": {"status": "done", "files": ["top.v"], "annotations": _ANN},
         },
         children=[
             {"name": "leaf", "rtl_modules": ["leaf_m"]},
@@ -118,8 +118,8 @@ def test_assemble_pass_artifacts_object_shape(tmp_path):
     assert all(isinstance(a, dict) and "path" in a for a in v["artifacts"])
     paths = {a["path"] for a in v["artifacts"]}
     assert {
-        "leaf.sv",
-        "top.sv",
+        "leaf.v",
+        "top.v",
         "rtl-files.json",
         "constraint-annotations.json",
     } <= paths
@@ -129,8 +129,8 @@ def test_assemble_subset_rework_overlays_seeded(tmp_path):
     wd, man = _setup(
         tmp_path,
         fresh={
-            "leaf": {"status": "done", "files": ["leaf.sv"], "annotations": _ANN},
-            "topc": {"status": "done", "files": ["top.sv"], "annotations": _ANN},
+            "leaf": {"status": "done", "files": ["leaf.v"], "annotations": _ANN},
+            "topc": {"status": "done", "files": ["top.v"], "annotations": _ANN},
         },
         children=[
             {"name": "leaf", "rtl_modules": ["leaf_m"]},
@@ -141,28 +141,28 @@ def test_assemble_subset_rework_overlays_seeded(tmp_path):
     # round 2: only 'leaf' re-dispatched, new file; --seeded carries 'topc' forward.
     (wd / "reaped-children.json").write_text(
         json.dumps(
-            {"leaf": {"status": "done", "files": ["leaf_new.sv"], "annotations": _ANN}}
+            {"leaf": {"status": "done", "files": ["leaf_new.v"], "annotations": _ANN}}
         )
     )
     r = _run(wd, man, top="top", seeded=True)
     assert r.returncode == 0, r.stderr
     ledger = _read_state(wd)
-    assert ledger["leaf"]["files"] == ["leaf_new.sv"]  # re-dispatched child updated
-    assert ledger["topc"]["files"] == ["top.sv"]  # carried forward via --seeded
+    assert ledger["leaf"]["files"] == ["leaf_new.v"]  # re-dispatched child updated
+    assert ledger["topc"]["files"] == ["top.v"]  # carried forward via --seeded
 
 
 def test_assemble_manifest_shrink_evicts_the_dropped_child(tmp_path):
     wd, man = _setup(
         tmp_path,
         fresh={
-            "topc": {"status": "done", "files": ["top.sv"], "annotations": _ANN},
+            "topc": {"status": "done", "files": ["top.v"], "annotations": _ANN},
         },
         children=[{"name": "topc", "rtl_modules": ["top"]}],
     )
     assert _run(wd, man, top="top").returncode == 0
     # seed a stale 'gone' into the on-disk ledger, then re-run with --seeded + shrunk roster.
     led = _read_state(wd)
-    led["gone"] = {"files": ["gone.sv"], "annotations": _ANN}
+    led["gone"] = {"files": ["gone.v"], "annotations": _ANN}
     _write_state(wd, led)
     (wd / "reaped-children.json").write_text(json.dumps({}))
     r = _run(wd, man, top="top", seeded=True)
@@ -175,7 +175,7 @@ def test_assemble_blocked_child_excluded(tmp_path):
         tmp_path,
         fresh={
             "leaf": {"status": "blocked", "reason": "iface incomplete"},
-            "topc": {"status": "done", "files": ["top.sv"], "annotations": _ANN},
+            "topc": {"status": "done", "files": ["top.v"], "annotations": _ANN},
         },
         children=[
             {"name": "leaf", "rtl_modules": ["leaf_m"]},
@@ -196,7 +196,7 @@ def test_assemble_fail_when_child_blocked_precedence(tmp_path):
         tmp_path,
         fresh={
             "leaf": {"status": "blocked", "reason": "x"},
-            "topc": {"status": "done", "files": ["top.sv"], "annotations": _ANN},
+            "topc": {"status": "done", "files": ["top.v"], "annotations": _ANN},
         },
         children=[
             {"name": "leaf", "rtl_modules": ["leaf_m"]},
@@ -209,7 +209,7 @@ def test_assemble_fail_when_child_blocked_precedence(tmp_path):
 def test_assemble_fail_zero_top_children(tmp_path):
     wd, man = _setup(
         tmp_path,
-        fresh={"leaf": {"status": "done", "files": ["leaf.sv"], "annotations": _ANN}},
+        fresh={"leaf": {"status": "done", "files": ["leaf.v"], "annotations": _ANN}},
         children=[{"name": "leaf", "rtl_modules": ["leaf_m"]}],
     )
     r = _run(wd, man, top="top")
@@ -221,8 +221,8 @@ def test_assemble_fail_two_top_children(tmp_path):
     wd, man = _setup(
         tmp_path,
         fresh={
-            "a": {"status": "done", "files": ["a.sv"], "annotations": _ANN},
-            "b": {"status": "done", "files": ["b.sv"], "annotations": _ANN},
+            "a": {"status": "done", "files": ["a.v"], "annotations": _ANN},
+            "b": {"status": "done", "files": ["b.v"], "annotations": _ANN},
         },
         children=[
             {"name": "a", "rtl_modules": ["top"]},
@@ -238,8 +238,8 @@ def test_assemble_fail_top_child_not_pure(tmp_path):
     wd, man = _setup(
         tmp_path,
         fresh={
-            "leaf": {"status": "done", "files": ["leaf.sv"], "annotations": _ANN},
-            "topc": {"status": "done", "files": ["top.sv"], "annotations": _ANN},
+            "leaf": {"status": "done", "files": ["leaf.v"], "annotations": _ANN},
+            "topc": {"status": "done", "files": ["top.v"], "annotations": _ANN},
         },
         children=[
             {"name": "leaf", "rtl_modules": ["leaf_m"]},
@@ -269,13 +269,50 @@ def test_assemble_done_child_missing_files_build_error(tmp_path):
     assert not (wd / "rtl-files.json").exists()  # no degraded sidecar written
 
 
+def test_assemble_rejects_systemverilog_extension_build_error(tmp_path):
+    # The kernel's downstream `rtl` selectors match *.v alone, so a .sv artifact silently
+    # drops out of the derived dependency graph and its edits stop invalidating downstream
+    # proofs. rtl-files.schema.json therefore constrains the extension, and write_ledger
+    # validates BEFORE the first write — so the bad path never reaches disk for a later
+    # --seeded run to inherit. Build error, not a gate fail: NO stdout verdict.
+    wd, man = _setup(
+        tmp_path,
+        fresh={"topc": {"status": "done", "files": ["top.sv"], "annotations": _ANN}},
+        children=[{"name": "topc", "rtl_modules": ["top"]}],
+    )
+    r = _run(wd, man, top="top")
+    assert r.returncode == 1
+    assert r.stdout.strip() == ""
+    # the JSON pointer carries the child attribution a re-dispatch would need
+    assert "rtl-files.json schema violation at $.topc.files[0]" in r.stderr
+    assert not (wd / "rtl-files.json").exists()
+
+
+def test_assemble_accepts_vh_header(tmp_path):
+    # .vh headers are in scope for the same selectors; only .sv/.svh are the defect.
+    wd, man = _setup(
+        tmp_path,
+        fresh={
+            "topc": {
+                "status": "done",
+                "files": ["defs.vh", "top.v"],
+                "annotations": _ANN,
+            }
+        },
+        children=[{"name": "topc", "rtl_modules": ["top"]}],
+    )
+    r = _run(wd, man, top="top")
+    assert r.returncode == 0, r.stderr
+    assert _read_state(wd)["topc"]["files"] == ["defs.vh", "top.v"]
+
+
 def test_assemble_malformed_seeded_sidecar_build_error(tmp_path):
     # A malformed on-disk sidecar fed via --seeded -> load_ledger raises LedgerError ->
     # build error: exit 1, stderr naming the offending file and JSON pointer, NO stdout
     # verdict, and nothing is rewritten.
     wd, man = _setup(
         tmp_path,
-        fresh={"topc": {"status": "done", "files": ["top.sv"], "annotations": _ANN}},
+        fresh={"topc": {"status": "done", "files": ["top.v"], "annotations": _ANN}},
         children=[{"name": "topc", "rtl_modules": ["top"]}],
     )
     # the seeded 'stale' record lacks the required 'files'.
@@ -297,7 +334,7 @@ def test_assemble_done_child_malformed_annotations_build_error(tmp_path):
     # stdout verdict, and neither sidecar is created.
     wd, man = _setup(
         tmp_path,
-        fresh={"topc": {"status": "done", "files": ["top.sv"], "annotations": {}}},
+        fresh={"topc": {"status": "done", "files": ["top.v"], "annotations": {}}},
         children=[{"name": "topc", "rtl_modules": ["top"]}],
     )
     r = _run(wd, man, top="top")
@@ -319,8 +356,8 @@ def test_assemble_seeded_blocked_keeps_stale_entry_but_gate_fails(tmp_path):
     wd, man = _setup(
         tmp_path,
         fresh={
-            "leaf": {"status": "done", "files": ["leaf.sv"], "annotations": _ANN},
-            "topc": {"status": "done", "files": ["top.sv"], "annotations": _ANN},
+            "leaf": {"status": "done", "files": ["leaf.v"], "annotations": _ANN},
+            "topc": {"status": "done", "files": ["top.v"], "annotations": _ANN},
         },
         children=[
             {"name": "leaf", "rtl_modules": ["leaf_m"]},
@@ -333,7 +370,7 @@ def test_assemble_seeded_blocked_keeps_stale_entry_but_gate_fails(tmp_path):
         json.dumps(
             {
                 "leaf": {"status": "blocked", "reason": "iface regressed"},
-                "topc": {"status": "done", "files": ["top.sv"], "annotations": _ANN},
+                "topc": {"status": "done", "files": ["top.v"], "annotations": _ANN},
             }
         )
     )

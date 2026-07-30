@@ -28,11 +28,11 @@ def _rec(files):
 
 
 def test_merge_overlays_fresh_onto_seeded():
-    seeded = {"a": _rec(["a.sv"]), "b": _rec(["b_old.sv"])}
-    fresh = {"b": _rec(["b_new.sv"])}
+    seeded = {"a": _rec(["a.v"]), "b": _rec(["b_old.v"])}
+    fresh = {"b": _rec(["b_new.v"])}
     out = merge_filter(seeded, fresh, ["a", "b"])
-    assert out["b"]["files"] == ["b_new.sv"]  # fresh wins
-    assert out["a"]["files"] == ["a.sv"]  # untouched carried forward
+    assert out["b"]["files"] == ["b_new.v"]  # fresh wins
+    assert out["a"]["files"] == ["a.v"]  # untouched carried forward
 
 
 def test_merge_emits_manifest_order_not_reap_order():
@@ -41,15 +41,15 @@ def test_merge_emits_manifest_order_not_reap_order():
     # main thread happened to serialize the reaped reports in, and it must not shift when
     # a later round re-dispatches a subset.
     roster = ["a", "b", "c"]
-    reversed_reap = {"c": _rec(["c.sv"]), "b": _rec(["b.sv"]), "a": _rec(["a.sv"])}
+    reversed_reap = {"c": _rec(["c.v"]), "b": _rec(["b.v"]), "a": _rec(["a.v"])}
     assert list(merge_filter({}, reversed_reap, roster)) == roster
-    assert list(merge_filter(reversed_reap, {"b": _rec(["b2.sv"])}, roster)) == roster
+    assert list(merge_filter(reversed_reap, {"b": _rec(["b2.v"])}, roster)) == roster
     # a child the manifest grew lands at its manifest position, not appended last
     assert (
         list(
             merge_filter(
-                {"a": _rec(["a.sv"]), "c": _rec(["c.sv"])},
-                {"b": _rec(["b.sv"])},
+                {"a": _rec(["a.v"]), "c": _rec(["c.v"])},
+                {"b": _rec(["b.v"])},
                 roster,
             )
         )
@@ -59,7 +59,7 @@ def test_merge_emits_manifest_order_not_reap_order():
 
 def test_merge_filters_a_child_removed_from_the_manifest():
     # manifest shrank: 'c' is gone from the roster -> evicted from merged ledger
-    seeded = {"a": _rec(["a.sv"]), "c": _rec(["c.sv"])}
+    seeded = {"a": _rec(["a.v"]), "c": _rec(["c.v"])}
     out = merge_filter(seeded, {}, ["a"])
     assert "c" not in out
     assert set(out) == {"a"}
@@ -76,16 +76,16 @@ def _write(d, files=None, anns=None):
 
 
 def test_load_ledger_merges_the_two_sidecars(tmp_path):
-    wd = _write(tmp_path, {"a": {"files": ["a.sv"]}}, {"a": _ANN})
+    wd = _write(tmp_path, {"a": {"files": ["a.v"]}}, {"a": _ANN})
     got = load_ledger(wd)
-    assert got["a"]["files"] == ["a.sv"]
+    assert got["a"]["files"] == ["a.v"]
     assert got["a"]["annotations"] == _ANN
 
 
 def test_load_ledger_raises_when_a_sidecar_is_absent(tmp_path):
     import json
 
-    (tmp_path / "rtl-files.json").write_text(json.dumps({"a": {"files": ["a.sv"]}}))
+    (tmp_path / "rtl-files.json").write_text(json.dumps({"a": {"files": ["a.v"]}}))
     with pytest.raises(LedgerError, match="constraint-annotations.json"):
         load_ledger(tmp_path)
 
@@ -94,7 +94,7 @@ def test_load_ledger_raises_on_roster_disagreement(tmp_path):
     # The two are written together by one verb, so a child in one and not the other is a
     # defect rather than a partial result.
     wd = _write(
-        tmp_path, {"a": {"files": ["a.sv"]}, "b": {"files": ["b.sv"]}}, {"a": _ANN}
+        tmp_path, {"a": {"files": ["a.v"]}, "b": {"files": ["b.v"]}}, {"a": _ANN}
     )
     with pytest.raises(LedgerError, match="roster"):
         load_ledger(wd)
@@ -104,16 +104,14 @@ def test_load_ledger_raises_on_missing_annotation_category(tmp_path):
     # An omitted category and an explicit [] are not the same claim: the child contract
     # requires every category, so the schema does too.
     lean = {"sgdc": {"sync_cell": []}, "sdc": _ANN["sdc"]}
-    wd = _write(tmp_path, {"a": {"files": ["a.sv"]}}, {"a": lean})
+    wd = _write(tmp_path, {"a": {"files": ["a.v"]}}, {"a": lean})
     with pytest.raises(LedgerError, match="required property"):
         load_ledger(wd)
 
 
 def test_load_ledger_raises_on_null_annotation_block(tmp_path):
     # M4: null-valued blocks pass a key-only check yet crash _agg downstream.
-    wd = _write(
-        tmp_path, {"a": {"files": ["a.sv"]}}, {"a": {"sgdc": None, "sdc": None}}
-    )
+    wd = _write(tmp_path, {"a": {"files": ["a.v"]}}, {"a": {"sgdc": None, "sdc": None}})
     with pytest.raises(LedgerError, match="not of type 'object'"):
         load_ledger(wd)
 
@@ -125,7 +123,7 @@ def test_load_ledger_raises_on_empty_files_list(tmp_path):
 
 
 def test_load_ledger_raises_on_malformed_json(tmp_path):
-    wd = _write(tmp_path, {"a": {"files": ["a.sv"]}}, {"a": _ANN})
+    wd = _write(tmp_path, {"a": {"files": ["a.v"]}}, {"a": _ANN})
     (wd / "rtl-files.json").write_text("{not json")
     with pytest.raises(LedgerError):
         load_ledger(wd)
@@ -134,6 +132,6 @@ def test_load_ledger_raises_on_malformed_json(tmp_path):
 def test_write_ledger_round_trips(tmp_path):
     from rtl._ledger import write_ledger
 
-    ledger = {"a": {"files": ["a.sv"], "incdirs": ["inc"], "annotations": _ANN}}
+    ledger = {"a": {"files": ["a.v"], "incdirs": ["inc"], "annotations": _ANN}}
     write_ledger(tmp_path, ledger)
     assert load_ledger(tmp_path) == ledger
