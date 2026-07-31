@@ -53,15 +53,6 @@ def _workdir(
             },
         }
 
-    ledger = {
-        c: {"files": [f"{c}.v"], "annotations": _ann(), "incdirs": []} for c in children
-    }
-    ledger[top] = {"files": [f"{top}.v"], "annotations": _ann(), "incdirs": []}
-    _write_state(wd, ledger)
-    # reaped-children.json (all done) — the post exit-gate hard-requires reaped-children.json.
-    (wd / "reaped-children.json").write_text(
-        json.dumps({n: {"status": "done"} for n in ledger})
-    )
     # spec manifest: top-integration child is pure (rtl_modules == [top]); each leaf covers itself.
     man = manifest or {
         "module": top,
@@ -70,6 +61,17 @@ def _workdir(
         ]
         + [{"name": "topc", "doc": "topc.md", "rtl_modules": [top]}],
     }
+    # The ledger is keyed by CHILD name, not by module name: the top-integration child is `topc`
+    # and the file it authored is <top>.v.
+    ledger = {
+        c: {"files": [f"{c}.v"], "annotations": _ann(), "incdirs": []} for c in children
+    }
+    ledger[man["children"][-1]["name"]] = {
+        "files": [f"{top}.v"],
+        "annotations": _ann(),
+        "incdirs": [],
+    }
+    _write_state(wd, ledger)
     spec = tmp_path / "Design" / "specification"
     spec.mkdir(parents=True)
     (spec / "manifest.json").write_text(json.dumps(man))
@@ -186,31 +188,39 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     _validate_envelope(env)
 
 
-def test_build_result_pre_dispatch_coverage_fail_routes_through_finalize(tmp_path):
-    # A pre-dispatch coverage fail (no fan-out yet -> no ledger, no
-    # reaped-children.json) routes through finalize and surfaces the REAL coverage reason, not
-    # the generic "requires reaped-children.json and the ledger" pre-guard message. This exercises
-    # partition.post_verdict's coverage short-circuit (status=fail AND no ledger).
+def test_pass_refused_while_a_child_is_missing_from_the_sidecars(tmp_path, capsys):
+    # artifacts[] is the new canonical view and promote deletes what it omits, so a ledger short
+    # of the manifest roster would drop that child's RTL out of canonical under a status=pass.
+    # finalize cannot name files it was never handed, so it refuses the round outright.
+    wd, manifest = _workdir(tmp_path, children=("mac", "ctrl"))
+    for name in ("rtl-files.json", "constraint-annotations.json"):
+        doc = json.loads((wd / name).read_text())
+        del doc["ctrl"]
+        (wd / name).write_text(json.dumps(doc))
+    assert ve.finalize(wd, "tpu_top", "tpu_top", manifest) == 2
+    assert "ctrl" in capsys.readouterr().err
+    assert not (wd / "result.json").exists()
+
+
+def test_finalize_on_an_empty_workdir_is_blocked(tmp_path, capsys):
+    # Nothing authored yet: the sidecars are absent, so no verdict is derivable. That is a broken
+    # run, not a routable fail — BLOCKED writes no envelope, so nothing promotes over canonical.
     wd = tmp_path / "rtl-design"
-    wd.mkdir()  # empty: no ledger, no reaped-children.json (pre-dispatch state)
-    man = {  # top module covered by 0 children -> coverage fail
-        "module": "tpu_top",
-        "children": [{"name": "mac", "doc": "mac.md", "rtl_modules": ["mac"]}],
-    }
+    wd.mkdir()
     spec = tmp_path / "Design" / "specification"
     spec.mkdir(parents=True)
     manifest = spec / "manifest.json"
-    manifest.write_text(json.dumps(man))
-
-    assert ve.build_result(wd, module="tpu_top", top="tpu_top", manifest=manifest) == 0
-    env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "fail"
-    fr = env["stage_specific"]["fail_reason"]
-    assert "covered by 0 children" in fr  # the real coverage reason, surfaced
-    assert (
-        "requires reaped-children.json" not in fr
-    )  # NOT the generic pre-guard message
-    _validate_envelope(env)  # schema-valid status=fail envelope
+    manifest.write_text(
+        json.dumps(
+            {
+                "module": "tpu_top",
+                "children": [{"name": "mac", "doc": "mac.md", "rtl_modules": ["mac"]}],
+            }
+        )
+    )
+    assert ve.finalize(wd, "tpu_top", "tpu_top", manifest) == 2
+    assert "rtl-files.json" in capsys.readouterr().err
+    assert not (wd / "result.json").exists()
 
 
 # ── finalize() BLOCKED wrapper + CLI dispatch ────────────────────────────────
@@ -224,13 +234,11 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
     assert ve.finalize(tmp_path, "tpu_top", "tpu_top", tmp_path / "manifest.json") == 2
 
 
-def test_artifacts_are_full_roster_on_a_subset_reap(tmp_path):
-    # A repair round reaps only the re-dispatched children, so
-    # reaped-children.json is a subset. artifacts[] is enumerated from the two sidecars (the full
-    # merged ledger), never from the reaped set — which is why no full-roster rebuild of
-    # reaped-children.json is needed before finalize.
+def test_artifacts_are_full_roster_on_a_subset_round(tmp_path):
+    # A repair round re-authors only some children and overlays them onto the carried sidecars,
+    # so artifacts[] stays the full roster and the children this round did not touch keep their
+    # place in canonical.
     wd, manifest = _workdir(tmp_path, children=("mac", "ctrl"))
-    (wd / "reaped-children.json").write_text(json.dumps({"mac": {"status": "done"}}))
     assert ve.build_result(wd, module="tpu_top", top="tpu_top", manifest=manifest) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
@@ -238,20 +246,19 @@ def test_artifacts_are_full_roster_on_a_subset_reap(tmp_path):
 
 
 def test_fail_reason_writes_the_envelope_and_keeps_the_readable_baseline(tmp_path):
-    # The build-error exit: reaped-children.json is malformed, so no verdict is derivable, but the
-    # carried sidecars are fine. finalize must write the fail envelope itself (never the agent by
-    # hand — a hand-written envelope that violates result.schema.json reaps as blocked, not as a
-    # routable fail) AND keep enumerating the readable baseline, because promote treats artifacts[]
-    # as the new canonical view and deletes what it omits.
+    # The caller-reported exit: a child reported BLOCKED, so no on-disk state expresses the
+    # failure, but the carried sidecars are fine. finalize must write the fail envelope itself
+    # (never the agent by hand — a hand-written envelope that violates result.schema.json reaps
+    # as blocked, not as a routable fail) AND keep enumerating the readable baseline, because
+    # promote treats artifacts[] as the new canonical view and deletes what it omits.
     wd, manifest = _workdir(tmp_path)
-    (wd / "reaped-children.json").write_text("{ not json")
     assert (
-        ve.finalize(wd, "tpu_top", "tpu_top", manifest, fail_reason="reports malformed")
+        ve.finalize(wd, "tpu_top", "tpu_top", manifest, fail_reason="child mac blocked")
         == 0
     )
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
-    assert env["stage_specific"] == {"fail_reason": "reports malformed"}
+    assert env["stage_specific"] == {"fail_reason": "child mac blocked"}
     assert {
         "mac.v",
         "tpu_top.v",

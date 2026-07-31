@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
-"""rtl exit gate — top-module coverage + purity (pre) and blocked-child precedence +
-artifacts enumeration (post).
+"""rtl exit gate — top-module coverage + purity, the ledger's roster, and artifacts enumeration.
 
-Two verdicts over one shared coverage rule:
-  coverage_verdict(manifest, top)              -> (status, reason)  # pre: manifest+top only
-  post_verdict(manifest, top, fresh, workdir)  -> (verdict, rc)     # post: + blocked-child
-  ledger_artifacts(workdir)                    -> artifacts[]       # the enumeration both use
-
-`result` imports `post_verdict`; `coverage_verdict` is also run by specification's own
-check-coverage gate, and tests/contracts/test_partition_purity_agreement.py locks the two
-implementations together. `artifacts` is the envelope shape (array of {path} objects); a flat string list would break
-the framework's per-artifact promote + envelope schema-validation.
+`coverage_verdict` is the same rule specification decides at `derive-ports`, and
+tests/contracts/test_partition_purity_agreement.py locks the two implementations together.
+`artifacts` is the envelope shape (array of {path} objects); a flat string list would break the
+framework's per-artifact promote + envelope schema-validation.
 """
 
 from __future__ import annotations
@@ -18,7 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from rtl._ledger import ANNOTATIONS_NAME, FILES_NAME, ledger_exists, load_ledger
+from rtl._ledger import ANNOTATIONS_NAME, FILES_NAME, LedgerError, load_ledger
 
 
 def _read_json(p: Path):
@@ -43,54 +37,41 @@ def coverage_verdict(manifest: Path, top: str):
     return "pass", None
 
 
-def ledger_artifacts(workdir: Path) -> list:
-    """The artifacts[] enumeration: every child's files plus the two sidecars, in the envelope
-    shape. Raises LedgerError when the sidecars are unreadable."""
-    files = sorted({f for rec in load_ledger(workdir).values() for f in rec["files"]})
+def _artifacts(ledger: dict) -> list:
+    """Every child's files plus the two sidecars, in the envelope shape."""
+    files = sorted({f for rec in ledger.values() for f in rec["files"]})
     return [{"path": p} for p in files + [FILES_NAME, ANNOTATIONS_NAME]]
 
 
-def post_verdict(manifest: Path, top: str, fresh: Path, workdir: Path):
-    """The post exit verdict: coverage+purity + blocked-child precedence + the artifacts[]
-    enumeration from the ledger. Returns (verdict_dict, rc)."""
-    status, reason = coverage_verdict(manifest, top)
-    if status == "fail" and not ledger_exists(workdir):
-        # Pre-dispatch coverage fail (no fan-out yet, so no ledger): surface the real coverage
-        # reason (never None on a fail) so `finalize` can write it, instead of the generic
-        # "requires fresh + ledger" message below. Reached only when finalize runs before any
-        # fan-out, which is what a coverage fail routes through.
-        return {"status": "fail", "artifacts": [], "fail_reason": reason}, 1
-    if not (fresh.exists() and ledger_exists(workdir)):
-        # Reachable with the sidecars present but reaped-children.json gone. A fail envelope
-        # promotes like a passing one and promote deletes every canonical entry artifacts[] omits,
-        # so still enumerate a readable ledger: never under-report a live baseline into a wipe.
-        return (
-            {
-                "status": "fail",
-                "artifacts": ledger_artifacts(workdir)
-                if ledger_exists(workdir)
-                else [],
-                "fail_reason": (
-                    f"post exit gate requires reaped-children.json, {FILES_NAME} "
-                    f"and {ANNOTATIONS_NAME}"
-                ),
-            },
-            1,
-        )
-    fresh_data = _read_json(fresh)
-    if status == "pass":
-        blocked = {
-            n: r.get("reason", "")
-            for n, r in fresh_data.items()
-            if r.get("status") == "blocked"
-        }
-        if blocked:
-            status = "fail"
-            reason = "child blocked: " + "; ".join(
-                f"{n}: {m}" for n, m in blocked.items()
-            )
+def ledger_artifacts(workdir: Path) -> list:
+    """The artifacts[] enumeration off disk. Raises LedgerError when a sidecar is unreadable."""
+    return _artifacts(load_ledger(workdir))
 
-    verdict = {"status": status, "artifacts": ledger_artifacts(workdir)}
-    if reason:
-        verdict["fail_reason"] = reason
-    return verdict, (0 if status == "pass" else 1)
+
+def post_verdict(manifest: Path, top: str, workdir: Path):
+    """The exit verdict: coverage+purity, the ledger's roster against the manifest, and the
+    artifacts[] enumeration. Returns (verdict_dict, rc)."""
+    status, reason = coverage_verdict(manifest, top)
+    ledger = load_ledger(workdir)
+    if status == "fail":
+        return {
+            "status": status,
+            "artifacts": _artifacts(ledger),
+            "fail_reason": reason,
+        }, 1
+
+    missing = [
+        c["name"] for c in _read_json(manifest)["children"] if c["name"] not in ledger
+    ]
+    if missing:
+        # artifacts[] is the new canonical view and promote deletes what it omits, so a ledger
+        # short of the roster would silently drop those children's RTL out of canonical while
+        # reporting a pass. Nothing here can name the files it does not have: refuse instead.
+        raise LedgerError(
+            f"{FILES_NAME} / {ANNOTATIONS_NAME} are missing "
+            + ", ".join(missing)
+            + " — every "
+            "manifest child needs an entry, carried forward from the last round when this "
+            "round did not re-author it"
+        )
+    return {"status": "pass", "artifacts": _artifacts(ledger)}, 0

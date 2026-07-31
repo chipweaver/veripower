@@ -36,9 +36,9 @@ Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `re
 
 ## Task
 
-Dispatch one Level-1 `Task(run_in_background=True)` per child in `manifest.children[]`, prompt per [`references/child-task-contract.md`](references/child-task-contract.md). Then send a brief status and end the turn. Their reports are what you write `rtl-files.json` and `constraint-annotations.json` from.
+Dispatch one Level-1 `Task(run_in_background=True)` per child in `manifest.children[]`, prompt per [`references/child-task-contract.md`](references/child-task-contract.md). Then send a brief status and end the turn. Their reports are what you write `rtl-files.json` and `constraint-annotations.json` from, keyed by child name.
 
-Finalize only once every dispatched child has reported. A child that never reports is caught by nothing: the exit gate reads the manifest, not the ledger, so it returns `pass` over a sidecar that is missing that child's RTL.
+Both sidecars must end up carrying an entry for every child in the manifest: every downstream filelist is generated from `rtl-files.json`, so a child missing from it never reaches a tool. A round that re-authored only some children therefore overlays its reports onto the entries already in `{workdir}` instead of writing the file from scratch, and `finalize` stops the round while an entry is missing. A child that reports `STATUS: BLOCKED` has no entry to write: close the round with `--fail-reason` naming it.
 
 **The RTL does not ship until its intent has been reviewed.** One fresh Level-1 reviewer per child, per [`references/rtl-review-task-contract.md`](references/rtl-review-task-contract.md). You pass paths and read no RTL yourself. Each reviewer writes its own `{workdir}/semantic-review/<child>.md`. Run this on every round, not only a first delivery: a child re-authored on a later pass must be reviewed against the RTL it actually ships.
 

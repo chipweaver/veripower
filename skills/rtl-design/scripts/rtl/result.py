@@ -54,7 +54,7 @@ def _exit_verdict(workdir: Path, top: str, manifest: Path) -> dict:
     """Re-derive the exit verdict IN-PROCESS over the on-disk state: {status, fail_reason?,
     artifacts[]}. post_verdict schema-validates both authored sidecars on the way, so a
     hand-authored shape defect is BLOCKED here rather than promoted."""
-    return post_verdict(manifest, top, workdir / "reaped-children.json", workdir)[0]
+    return post_verdict(manifest, top, workdir)[0]
 
 
 def _review_paths(manifest: Path) -> list:

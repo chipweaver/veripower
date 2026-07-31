@@ -50,8 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--fail-reason",
         default=None,
-        help="one-line reason for an early exit no on-disk state can express (a malformed "
-        "reaped-children.json or sidecar); writes the status=fail envelope directly",
+        help="one-line reason for an early exit no on-disk state can express (a child that "
+        "reported BLOCKED, or a malformed sidecar); writes the status=fail envelope directly",
     )
     sp.add_argument(
         "--fix-owner",
