@@ -16,6 +16,12 @@ read_sdc     $NETLIST_DIR/out/${TOP}_syn.sdc
 redirect $WORKDIR/timing-report.txt {
     report_timing -delay max                ;# setup — worst path(s), MET/VIOLATED marker
     report_timing -delay min                ;# hold  — worst path(s), MET/VIOLATED marker
-    check_timing                            ;# how much of the design was timed — gated
+    check_timing                            ;# for the reader: what the SDC left open
+    # The gated pair. Every output port bit is a data port, so out_setup's Total is the
+    # count of them this run actually timed, and the line below is the count it should
+    # have. Inputs have no such expectation — clock and reset ports carry no input delay
+    # by design, and nothing here can tell which inputs those are.
+    puts "Boundary output bits: [sizeof_collection [all_outputs]]"
+    report_analysis_coverage
 }
 exit

@@ -2,14 +2,23 @@
 
 Single owner of timing-analysis's self-check. Reads the bare-`report_timing`
 deliverable (timing-report.txt: a `-delay max` section, a `-delay min` section,
-then check_timing), classifies each direction on the (MET)/(VIOLATED) MARKER
-(never the displayed number — a sub-rounding violation prints '0.00'), and records
-the worst slack + worst path per direction and the two check_timing coverage counts.
+then check_timing and the coverage table), classifies each direction on the
+(MET)/(VIOLATED) MARKER (never the displayed number — a sub-rounding violation prints
+'0.00'), and records the worst slack + worst path per direction.
 
-A pass needs both: setup MET and hold MET, AND a check_timing that left nothing out.
-The markers grade the paths PT analyzed and say nothing about the ones an incomplete
-SDC kept it from analyzing at all, so the two are separate questions and a MET pair
-alone is not an answer to the second.
+A pass needs both: setup MET and hold MET, AND every output bit actually timed. The
+markers grade the paths PT analyzed and say nothing about the ones an incomplete SDC
+kept it from analyzing at all, so the two are separate questions and a MET pair alone
+is not an answer to the second.
+
+The boundary is measured on OUTPUTS only. check_timing's unconstrained-endpoint count
+looks like the more direct measure and is not usable as one: reset ports carry no input
+delay by construction (specification's derive-constraints gives IO delay to data ports
+alone), so every async-reset flop lands in that count on a correctly constrained design
+— measured across eight synthesized designs it read 0 to 4242 with a complete SDC, and
+on two of them it was IDENTICAL with an incomplete one. Output bits carry no such
+exemption: every output port is a data port, so the count PT should have timed is
+determined, and out_setup's Total is what it did.
 
 Exit codes (each non-zero also prints a greppable FAIL=<token> on stderr):
   0  parsed + judged (incl. a legitimate verdict="fail")
@@ -49,15 +58,11 @@ _DELAY_MIN_RE = re.compile(r"-delay_type\s+min")
 _SLACK_RE = re.compile(r"slack\s*\((MET|VIOLATED)[^)]*\)\s*([-+0-9.]+)")
 _START_RE = re.compile(r"Startpoint:\s*(\S+)")
 _END_RE = re.compile(r"Endpoint:\s*(\S+)")
-# check_timing coverage lines.
-_UNCONSTRAINED_RE = re.compile(
-    r"There are (\d+) endpoints which are not constrained for maximum delay"
-)
-_NOCLOCK_RE = re.compile(r"There are (\d+) register clock pins with no clock")
-# The `Checking '<name>'.` line each of the two above is reported under. Present
-# whatever the count; the count line itself is absent when the count is zero.
-_UNCONSTRAINED_CHECK_RE = re.compile(r"Checking 'unconstrained_endpoints'")
-_NOCLOCK_CHECK_RE = re.compile(r"Checking 'no_clock'")
+# Boundary coverage: the count run_sta.tcl emits, against report_analysis_coverage's
+# out_setup row. The row is absent entirely when the run timed no output at all.
+_OUTPUT_BITS_RE = re.compile(r"^Boundary output bits:\s*(\d+)", re.M)
+_OUT_SETUP_RE = re.compile(r"^out_setup\s+(\d+)", re.M)
+_COVERAGE_TABLE_RE = re.compile(r"^Type of Check\s+Total", re.M)
 
 
 class ParseError(Exception):
@@ -123,42 +128,33 @@ def parse_direction(text: str, kind: str) -> dict:
 
 
 def parse_coverage(text: str) -> dict:
-    """The two check_timing counts that say how much of the design was timed.
+    """How much of the design boundary this run actually timed.
 
-    PT prints a count only as a Warning and prints nothing at all when it is zero, so
-    an absent line means zero — but only once the check itself is known to have run.
-    Anchoring on the `Checking '<name>'` line first is what keeps a truncated report
-    from reading as full coverage, which is the one wrong answer this gate cannot
-    afford. Raises ParseError when an anchor is missing.
+    `output_bits` is what run_sta.tcl counted off the linked design; `output_bits_timed`
+    is report_analysis_coverage's out_setup Total, which counts one check per output bit
+    that carries an output delay. The out_setup row is absent altogether from a run that
+    timed no output, so its absence reads as zero — but only once the table itself is
+    known to be present, since a truncated report would otherwise read as a design with
+    no outputs at all. Raises ParseError when either anchor is missing.
     """
-    for name, anchor in (
-        ("unconstrained_endpoints", _UNCONSTRAINED_CHECK_RE),
-        ("no_clock", _NOCLOCK_CHECK_RE),
-    ):
-        if not anchor.search(text):
-            raise ParseError(f"no check_timing '{name}' check in the report")
-    u = _UNCONSTRAINED_RE.search(text)
-    n = _NOCLOCK_RE.search(text)
+    m = _OUTPUT_BITS_RE.search(text)
+    if m is None:
+        raise ParseError("no 'Boundary output bits' line in the report")
+    if not _COVERAGE_TABLE_RE.search(text):
+        raise ParseError("no report_analysis_coverage table in the report")
+    timed = _OUT_SETUP_RE.search(text)
     return {
-        "unconstrained_max_delay_endpoints": int(u.group(1)) if u else 0,
-        "register_pins_no_clock": int(n.group(1)) if n else 0,
+        "output_bits": int(m.group(1)),
+        "output_bits_timed": int(timed.group(1)) if timed else 0,
     }
 
 
 def uncovered(coverage: dict) -> str | None:
-    """The counts that make a MET verdict unrepresentative, as one phrase; None when
-    check_timing found nothing left out."""
-    parts = []
-    if coverage["unconstrained_max_delay_endpoints"]:
-        parts.append(
-            f"{coverage['unconstrained_max_delay_endpoints']} endpoints "
-            "unconstrained for maximum delay"
-        )
-    if coverage["register_pins_no_clock"]:
-        parts.append(
-            f"{coverage['register_pins_no_clock']} register clock pins with no clock"
-        )
-    return ", ".join(parts) or None
+    """The phrase for a boundary the run did not time in full; None when it did."""
+    bits, timed = coverage["output_bits"], coverage["output_bits_timed"]
+    if timed >= bits:
+        return None
+    return f"timed {timed} of {bits} output bits"
 
 
 def run(report_path) -> tuple[int, dict | None]:
@@ -333,14 +329,14 @@ def build_result(
     }
     left_out = uncovered(actual["timing"]["coverage"])
     if left_out:
-        # A pair of MET markers says nothing about how much of the design was timed:
-        # PT reports MET on the paths it analyzed whether the SDC constrained four
-        # endpoints or four hundred. Promoting that as a pass publishes a tool-grade
-        # proof over a design the STA never covered, and this stage exists to be the
+        # A pair of MET markers says nothing about how much of the boundary was timed:
+        # PT reports MET on the paths it analyzed whether the SDC reached two output
+        # bits or two hundred. Promoting that as a pass publishes a tool-grade proof
+        # over a boundary the STA never covered, and this stage exists to be the
         # independent check that catches it.
         status = "fail"
         ss["failure_kind"] = "tooling"
-        ss["fail_reason"] = f"STA did not cover the design: {left_out}"
+        ss["fail_reason"] = f"STA did not cover the boundary: {left_out}"
     elif status == "fail":
         ss["failure_kind"] = "ppa"
         ss["fail_reason"] = "setup/hold timing not met"
