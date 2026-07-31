@@ -76,7 +76,7 @@
       "properties": {
         "name": {"type": "string"},
         "inports": {
-          "description": "The agents[].name values whose monitor streams feed the RM — one analysis_imp port each. YOUR judgment: which agents feed the reference model. Name the AGENT, not its transaction type: render-scaffold builds the type as <module>_<agent>_txn where it needs one, so a name written here in txn form would have to be un-wrapped and re-wrapped to reach the same string. The gate only checks the names resolve.",
+          "description": "The agents[].name values whose monitor streams feed the RM — one analysis_imp port each. YOUR judgment: which agents feed the reference model. Name the AGENT, not its transaction type: simulation's renderer builds the type as <module>_<agent>_txn where it needs one, so a name written here in txn form would have to be un-wrapped and re-wrapped to reach the same string. The gate only checks the names resolve.",
           "type": "array",
           "items": {"type": "string", "minLength": 1}
         }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate case-results.json plus its two rendered views.
+"""Generate case-results.json and the summary a human reads off a run.
 
 Goal: stable PASS / FAIL / NOT_RUN per testcase.
 Coverage closure and full traceability are preserved in the output but are NOT
@@ -21,9 +21,6 @@ def parse_args():
     )
     parser.add_argument(
         "--verification-dir", required=True, help="Verification directory root."
-    )
-    parser.add_argument(
-        "--coverage-only", action="store_true", help="Only write coverage-summary.txt."
     )
     return parser.parse_args()
 
@@ -63,7 +60,6 @@ def main():
     testlist_path = root / "tests" / "testlist.json"
     log_path = root / "regression-log.txt"
     counts_path = root / "case-results.json"
-    coverage_path = root / "coverage-summary.txt"
     summary_path = root / "case-results-summary.md"
 
     if not testlist_path.is_file():
@@ -102,9 +98,6 @@ def main():
     )
     testcase_pass_rate = 0.0 if total == 0 else 100.0 * passed / total
 
-    # -----------------------------------------------------------------------
-    # case-results.json + coverage-summary.txt
-    # -----------------------------------------------------------------------
     counts = {
         "total_tests": total,
         "passed_tests": passed,
@@ -113,22 +106,12 @@ def main():
         "feature_coverage_percent": round(feature_coverage, 1),
         "testcase_pass_rate_percent": round(testcase_pass_rate, 1),
     }
-    # case-results.json is the structured home; the two summaries below are rendered views of
-    # it for a human. `sim finalize` reads this rather than re-parsing the rendered text.
+    # The structured home. `sim finalize` reads its counts here rather than re-parsing the
+    # rendering below, which exists for a human.
     counts_path.write_text(
         json.dumps(counts, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    write_text(
-        coverage_path,
-        "suite_summary\n" + "".join(f"{k}: {v}\n" for k, v in counts.items()),
-    )
 
-    if args.coverage_only:
-        return 0
-
-    # -----------------------------------------------------------------------
-    # case-results-summary.md
-    # -----------------------------------------------------------------------
     # Core traceability table (minimum: testcase + feature + result).
     trace_rows = []
     for test in tests:
@@ -178,7 +161,6 @@ def main():
 - Module: `{testlist.get("module", "unknown")}`
 - Top: `{testlist.get("top", "unknown")}`
 - Regression log: `regression-log.txt`
-- Coverage summary: `coverage-summary.txt`
 
 ## Overall Status
 

@@ -16,7 +16,7 @@
         "minLength": 1
       },
       "desc": {
-        "description": "One line on what the sequence drives, rendered into the generated seq class's header comment by simulation's render-scaffold.",
+        "description": "One line on what the sequence drives, rendered into the generated seq class's header comment by simulation's scaffold renderer.",
         "type": "string"
       }
     }

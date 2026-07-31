@@ -14,7 +14,7 @@ set operation over the workdir's own files plus the authored check hints, and it
 makes the verdict part of the proof rather than a dev-time lint: a clean gate stays true
 unless an artifact was edited afterwards.
 
-Pairs with simulation render-scaffold's thin consumer-side backstops (defense-in-depth for
+Pairs with simulation's renderer and its thin consumer-side backstops (defense-in-depth for
 scaffolds that bypass this gate).
 """
 

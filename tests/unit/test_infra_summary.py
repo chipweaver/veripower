@@ -112,7 +112,7 @@ def test_counts_land_in_case_results_json(tmp_path):
     assert counts["feature_coverage_percent"] == 50.0  # 1 of 2 features passed
 
 
-def test_rendered_views_agree_with_the_json(tmp_path):
+def test_the_rendering_agrees_with_the_json(tmp_path):
     wd = _workdir(
         tmp_path,
         [
@@ -122,11 +122,10 @@ def test_rendered_views_agree_with_the_json(tmp_path):
     )
     assert _run_summary(wd).returncode == 0
     counts = json.loads((wd / "case-results.json").read_text())
-    cov = (wd / "coverage-summary.txt").read_text()
-    for k, v in counts.items():
-        assert f"{k}: {v}" in cov, f"coverage-summary.txt disagrees on {k}"
     md = (wd / "case-results-summary.md").read_text()
     assert f"| FAIL | {counts['failed_tests']} |" in md
+    assert f"| PASS | {counts['passed_tests']} |" in md
+    assert f"| NOT_RUN | {counts['not_run_tests']} |" in md
 
 
 def test_failure_rows_point_at_the_directory_the_runner_wrote(tmp_path):
@@ -173,14 +172,15 @@ def test_result_line_for_unknown_test_id_does_not_crash(tmp_path):
     assert "| T-GHOST | - | FAIL |" in (wd / "case-results-summary.md").read_text()
 
 
-def test_coverage_only_skips_the_review_summary(tmp_path):
+def test_one_invocation_writes_both(tmp_path):
+    # make summary used to call this twice, the first time with --coverage-only, and the
+    # second run rewrote everything the first had written.
     wd = _workdir(
         tmp_path, ["RESULT T-01 PASS uvm_testname=m_smoke_test log=logs/T-01.log"]
     )
-    assert _run_summary(wd, "--coverage-only").returncode == 0
+    assert _run_summary(wd).returncode == 0
     assert (wd / "case-results.json").is_file()
-    assert (wd / "coverage-summary.txt").is_file()
-    assert not (wd / "case-results-summary.md").exists()
+    assert (wd / "case-results-summary.md").is_file()
 
 
 def test_missing_regression_log_fails_loud(tmp_path):

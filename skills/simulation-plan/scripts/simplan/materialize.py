@@ -8,7 +8,7 @@ references/tb-scaffold.schema.json. What is not visible there:
 - Every injection is a verbatim copy, never an abstraction: the LLM authoring covers[] and
   interface_groups is the only judgment in the loop, and a renamed signal or a paraphrased
   check would break the `===` comparison the downstream refmodel is built to make.
-- Pairs with simulation's render-scaffold, which consumes interface.signals /
+- Pairs with simulation's scaffold renderer, which consumes interface.signals /
   transaction.fields via its _agent_io() helper.
 """
 
