@@ -3,7 +3,6 @@
 
 Verbs (one stage = one tool; see skills/simulation/SKILL.md for usage):
   bootstrap             deploy infra + optional scaffold into a run workdir   (exit 0 / 1 / 2)
-  render-scaffold       render the UVM scaffold tree from the plan sidecars    (exit 0 / non-zero raise)
   check-materialization presence gate over the materialized TB (env-exit self-gate) (stdout verdict; exit 0/1)
   validate-review       conformance-review.json schema + gate                 (stdout gate JSON; exit 0/1)
   finalize              write result.json at the exit phase                   (exit 0 written / 2 BLOCKED)
@@ -33,12 +32,6 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
     from sim import bootstrap
 
     return bootstrap.run(a.module, a.workdir, scaffold=a.plan)
-
-
-def _cmd_render_scaffold(a: argparse.Namespace) -> int:
-    from sim import scaffold
-
-    return scaffold.render(a.plan, a.output_dir, a.template_dir)
 
 
 def _cmd_check_materialization(a: argparse.Namespace) -> int:
@@ -93,14 +86,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="the simulation-plan workdir (renders the UVM scaffold when given)",
     )
     sp.set_defaults(func=_cmd_bootstrap)
-
-    sp = sub.add_parser(
-        "render-scaffold", help="render the UVM scaffold tree from the plan sidecars"
-    )
-    sp.add_argument("--plan", required=True, type=Path)
-    sp.add_argument("--output-dir", required=True, type=Path)
-    sp.add_argument("--template-dir", type=Path, default=None)
-    sp.set_defaults(func=_cmd_render_scaffold)
 
     sp = sub.add_parser(
         "check-materialization",

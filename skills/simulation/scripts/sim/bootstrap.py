@@ -4,7 +4,7 @@
 Deploy the infra templates without clobbering anything already there, substitute the MY_TOP
 and MY_MODULE placeholders, generate rtl_filelist.f (sim._filelist) from the injected
 absolute rtl-design root, and when --plan is given render the full UVM scaffold via
-sim.scaffold.render, the same code path the standalone render-scaffold verb takes.
+sim.scaffold.render.
 
 Exit codes (returned as int; __main__ does sys.exit):
   0  deployed (infra only, or infra + scaffold; rework when a carried Makefile is
@@ -156,7 +156,7 @@ def run(module: str, workdir, scaffold=None) -> int:
 
     write_rtl_filelist(load_rtl_files(rtl_dir), dest / "rtl_filelist.f", str(rtl_dir))
 
-    # Step 3: render the UVM scaffold when --scaffold is provided (same path as render-scaffold).
+    # Step 3: render the UVM scaffold when --plan is provided.
     if scaffold:
         plan_dir = Path(scaffold)
         if not plan_dir.is_absolute():

@@ -1,41 +1,26 @@
 # tests/unit/test_sim_crossstage_contract.py
 """Lock the simulation-plan -> simulation scaffold-spec consumer contract (spec §5).
 
-Renders the COMMITTED producer-owned materialized fixture (simplan's real output shape) through
-render-scaffold and asserts every field simulation CONSUMES, with expectations DERIVED FROM the
+Renders the COMMITTED producer-owned materialized fixture (simplan's real output shape) and asserts every field simulation CONSUMES, with expectations DERIVED FROM the
 fixture (agent names, RM file name, the RM-inport + env-connect + observer wiring, interface
 signal widths, primary_clock/reset port names). This locks the CONSUMER end; producer
 generation is owned by the already-settled simplan stage (which owns/regenerates this fixture)."""
 
 import json
-import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MAIN = ROOT / "skills/simulation/scripts/sim/__main__.py"
 TEMPLATES = ROOT / "skills/simulation/templates/scaffold"
 FIXTURE = ROOT / "tests/unit/fixtures/simulation-plan-tpu_top"  # the plan dir
+sys.path.insert(0, str(ROOT / "skills" / "simulation" / "scripts"))
+from sim import scaffold  # noqa: E402
 
 
 def _render(tmp_path):
     out = tmp_path / "out"
     out.mkdir()
-    r = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "render-scaffold",
-            "--plan",
-            str(FIXTURE),
-            "--output-dir",
-            str(out),
-            "--template-dir",
-            str(TEMPLATES),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert r.returncode == 0, r.stderr
+    scaffold.render(FIXTURE, out, TEMPLATES)
     spec = json.loads((FIXTURE / "tb-scaffold.json").read_text())
     spec["sequences"] = json.loads((FIXTURE / "sequences.json").read_text())
     return out, spec

@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""sim render-scaffold: generate the full UVM scaffold from the simulation-plan sidecars.
+"""Generate the UVM scaffold from the simulation-plan sidecars, for the bootstrap verb.
 
 Renders one tree of UVM source under <output-dir>/tb/uvm/ (interfaces, transactions, drivers,
 monitors, agents, sequences, tests, RM, scoreboard, env, tb_top, tb_pkg.sv, filelist.f,
 generated_tests.svh, tests/testlist.json), each carrying TODO markers for the simulation agent
 to fill. Consumes the scaffold-spec shape simulation-plan's materialize step produces: `rm.inports`
 and `scoreboard.observer` name agents, and the `<module>_<agent>_txn` type is built here, so
-nothing has to un-wrap a name to recover the identity inside it. The bootstrap verb and the
-standalone render-scaffold verb both call run_scaffold, one code path behind two entries.
+nothing has to un-wrap a name to recover the identity inside it.
 """
 
 from __future__ import annotations

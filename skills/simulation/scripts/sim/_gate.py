@@ -43,7 +43,7 @@ def materialization_errors(workdir: Path, scaffold: dict) -> list[str]:
         if not f.is_file():
             errs.append(
                 f"missing sequence file {f.relative_to(workdir)} "
-                f"(the render-scaffold verb generates it; was it deleted/overwritten?)"
+                f"(bootstrap renders it; was it deleted?)"
             )
     for ag in scaffold.get("agents", []):
         name = ag.get("name")
