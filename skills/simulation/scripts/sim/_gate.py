@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""The two gate primitives, single-homed so the verbs calling them cannot drift.
+"""The three gate primitives finalize re-runs before it will write a pass.
 
-check-materialization calls the first; finalize calls both.
   materialization_errors  every sequences[]/agents[] SV file present; no TODO residue.
+  conformance_flagged     the testpoints the reviewer marked BLOCKING in its own record.
   coverage_gate           structural-coverage.json has an aggregate block, and each dim
                           defaults.yaml configures is at or above its threshold (a null
                           or '--' dim is skipped; an absent-but-configured dim fails).
+
+check-materialization calls the first as the env child's own early exit, which saves a
+regression run on a hollow TB. The other two have no caller but finalize: reading them is
+what makes the pass conditional on something other than the main thread's account of them.
 Status truth is the caller's exit code, not narration.
 """
 
@@ -15,6 +19,10 @@ import re
 from pathlib import Path
 
 import yaml
+
+# A finding heading in conformance-review.md. The testpoint is the first token after the
+# hashes and the marker is the last, so a locus carrying spaces still parses.
+_FINDING = re.compile(r"^##\s+(?P<tp_id>\S+)\s+(?P<rest>.*?)\s*$")
 
 # Policy: ANY "TODO" in a materialized TB == unfinished work -> fail (a completed TB carries zero
 # "TODO" anywhere) — the deliberate deliverable rule the env child's contract states as "any TODO
@@ -104,3 +112,17 @@ def coverage_gate(cov: dict | None, thresholds: dict) -> tuple[list[str], dict]:
         if not ok:
             errs.append(f"{dim} coverage {val} < threshold {thr}")
     return errs, dims
+
+
+def conformance_flagged(review_path: Path) -> list[str]:
+    """The testpoints the reviewer marked BLOCKING, read off its own record.
+
+    Whether a finding stops the round is the reviewer's call, made in one place and in one
+    word. Nothing here re-derives it from anything else, and nothing reads the prose."""
+    text = Path(review_path).read_text(encoding="utf-8")
+    flagged = [
+        m.group("tp_id")
+        for m in (_FINDING.match(ln) for ln in text.splitlines())
+        if m and m.group("rest").split()[-1:] == ["BLOCKING"]
+    ]
+    return sorted(set(flagged))

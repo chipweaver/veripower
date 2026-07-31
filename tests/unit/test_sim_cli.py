@@ -9,7 +9,6 @@ MAIN = ROOT / "skills/simulation/scripts/sim/__main__.py"
 _VERBS = (
     "bootstrap",
     "check-materialization",
-    "validate-review",
     "finalize",
 )
 
@@ -47,3 +46,11 @@ def test_classify_and_copy_baseline_verbs_removed(tmp_path):
         # could also produce), tolerant of the quoting style around the verb name.
         assert "invalid choice" in r.stderr
         assert verb in r.stderr
+
+
+def test_validate_review_verb_removed(tmp_path):
+    # The conformance review is prose the reviewer writes, and the one word a machine reads
+    # off it is read by finalize, which is what makes the pass conditional on it. A verb that
+    # told the main thread what it could see for itself enforced nothing.
+    r = _run("validate-review", "--review", str(tmp_path / "conformance-review.md"))
+    assert r.returncode != 0 and "invalid choice" in r.stderr
