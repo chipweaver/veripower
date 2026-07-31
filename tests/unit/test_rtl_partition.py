@@ -79,7 +79,7 @@ def test_post_verdict_raises_when_a_sidecar_is_absent(tmp_path):
     # so nothing promotes over canonical.
     (tmp_path / "manifest.json").write_text(json.dumps(_PURE_MANIFEST))
     with pytest.raises(LedgerError):
-        post_verdict(tmp_path / "manifest.json", "top", tmp_path)
+        post_verdict(tmp_path / "manifest.json", tmp_path)
 
 
 def test_post_verdict_raises_when_the_ledger_is_short_of_the_roster(tmp_path):
@@ -88,7 +88,7 @@ def test_post_verdict_raises_when_the_ledger_is_short_of_the_roster(tmp_path):
     (tmp_path / "manifest.json").write_text(json.dumps(_PURE_MANIFEST))
     _sidecars(tmp_path, {"topc": {"files": ["top.v"]}})
     with pytest.raises(LedgerError, match="leaf"):
-        post_verdict(tmp_path / "manifest.json", "top", tmp_path)
+        post_verdict(tmp_path / "manifest.json", tmp_path)
 
 
 def test_post_verdict_fail_still_enumerates_the_readable_ledger(tmp_path):
@@ -106,7 +106,7 @@ def test_post_verdict_fail_still_enumerates_the_readable_ledger(tmp_path):
         )
     )
     _sidecars(tmp_path, {"leaf": {"files": ["leaf.v"]}, "topc": {"files": ["top.v"]}})
-    verdict, rc = post_verdict(tmp_path / "manifest.json", "top", tmp_path)
+    verdict, rc = post_verdict(tmp_path / "manifest.json", tmp_path)
     assert rc == 1
     assert "not pure" in verdict["fail_reason"]
     assert {a["path"] for a in verdict["artifacts"]} == {

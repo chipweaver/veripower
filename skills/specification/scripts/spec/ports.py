@@ -31,8 +31,8 @@ from spec.sidecar import SidecarError, read_sidecar
 def check_purity(manifest: dict) -> list:
     """Exactly one child covers <TOP>, and that child's rtl_modules == [<TOP>] (no bundled
     logic). <TOP> = manifest['module'] — the same source derive_constraints pins; fail loud
-    with a clear cause if it is absent rather than misattributing it as miscoverage (the rtl
-    side takes <TOP> from a required CLI arg, which cannot be empty)."""
+    with a clear cause if it is absent rather than misattributing it as miscoverage. Passing
+    this gate is what lets rtl-design index manifest['module'] without a guard of its own."""
     top = manifest.get("module")
     if not top:
         return [

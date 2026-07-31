@@ -3,10 +3,9 @@
 
 Derives the envelope from the on-disk workdir: status / fail_reason / artifacts via
 partition.post_verdict, which schema-validates both authored sidecars on the way (a malformed
-one is BLOCKED, never a silent pass). The per-child intent reviews are this stage's proposed
-oracle; the kernel fingerprints them, and no verdict is reduced from them here. result.json is
-fully script-derived (run narration lives in events.jsonl). Exit 0 = written (pass or fail);
-exit 2 = BLOCKED (internal raise).
+one is BLOCKED, never a silent pass). No verdict is reduced from the per-child intent reviews.
+result.json is fully script-derived (run narration lives in events.jsonl). Exit 0 = written
+(pass or fail); exit 2 = BLOCKED (internal raise).
 """
 
 from __future__ import annotations
@@ -16,6 +15,7 @@ import json
 import sys
 from pathlib import Path
 
+from rtl._ledger import LedgerError
 from rtl.partition import ledger_artifacts, post_verdict
 
 STAGE = "rtl-design"
@@ -50,27 +50,25 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def _exit_verdict(workdir: Path, top: str, manifest: Path) -> dict:
+def _exit_verdict(workdir: Path, manifest: Path) -> dict:
     """Re-derive the exit verdict IN-PROCESS over the on-disk state: {status, fail_reason?,
     artifacts[]}. post_verdict schema-validates both authored sidecars on the way, so a
     hand-authored shape defect is BLOCKED here rather than promoted."""
-    return post_verdict(manifest, top, workdir)[0]
+    return post_verdict(manifest, workdir)[0]
 
 
 def _review_paths(manifest: Path) -> list:
-    """One intent review per manifest child. These are the stage's proposed oracle: the kernel
-    fingerprints them under rules.oracle_selector, so they must reach canonical by way of
-    artifacts[]."""
-    children = json.loads(manifest.read_text(encoding="utf-8")).get("children", [])
-    return [f"{REVIEW_DIR}/{c['name']}.md" for c in children if c.get("name")]
+    """One intent review per manifest child. artifacts[] is the only route to canonical, so
+    every one of them has to be listed there."""
+    children = json.loads(manifest.read_text(encoding="utf-8"))["children"]
+    return [f"{REVIEW_DIR}/{c['name']}.md" for c in children]
 
 
 def _require_reviews(workdir: Path, manifest: Path) -> list:
     """Every child's review must be on disk before a passing envelope is written. Nothing else
     in this stage checks that the review happened at all — there is no in-stage human gate here,
     unlike specification's — so a silently skipped wave would otherwise ship as a clean pass.
-    What each review SAYS is not reduced to a verdict: that judgment is the stage's to act on,
-    and pin/signoff is where the endorsement is held to account."""
+    What each review SAYS is not reduced to a verdict; that judgment is the stage's to act on."""
     missing = [p for p in _review_paths(manifest) if not (workdir / p).is_file()]
     if missing:
         raise ValueError(
@@ -83,11 +81,7 @@ def _require_reviews(workdir: Path, manifest: Path) -> list:
 def _present_reviews(workdir: Path, manifest: Path) -> list:
     """Present-only, for a failing envelope: the wave may not have run, but whatever review did
     land is the evidence for the failure and belongs in canonical with it."""
-    try:
-        paths = _review_paths(manifest)
-    except (OSError, json.JSONDecodeError):
-        return []
-    return [{"path": p} for p in paths if (workdir / p).is_file()]
+    return [{"path": p} for p in _review_paths(manifest) if (workdir / p).is_file()]
 
 
 def _caller_reported_artifacts(workdir: Path, manifest: Path) -> list:
@@ -97,14 +91,13 @@ def _caller_reported_artifacts(workdir: Path, manifest: Path) -> list:
     rather than drop a readable prior baseline. Unreadable sidecars yield [], all that is knowable.
     """
     try:
-        return ledger_artifacts(workdir) + _present_reviews(workdir, manifest)
-    except Exception:  # noqa: BLE001 — any unreadable sidecar state
-        return _present_reviews(workdir, manifest)
+        files = ledger_artifacts(workdir)
+    except LedgerError:
+        files = []
+    return files + _present_reviews(workdir, manifest)
 
 
-def build_result(
-    workdir, module, top, manifest, fail_reason=None, fix_owner=None
-) -> int:
+def build_result(workdir, module, manifest, fail_reason=None, fix_owner=None) -> int:
     """Build the lean rtl-design result.json from the on-disk workdir. The caller supplies
     only what no on-disk state can express: `fail_reason` for an early exit, and `fix_owner` for
     the rule that must act on a failure. Returns 0 (result.json written, pass or fail); a raise
@@ -112,8 +105,8 @@ def build_result(
     workdir, manifest = Path(workdir), Path(manifest)
 
     if fail_reason:
-        # An early exit outside the derivable set: the reaped reports or the sidecars are
-        # malformed, so no gate can be re-derived. Record the caller's one-line reason.
+        # An early exit outside the derivable set: a child could not deliver, or a sidecar is
+        # malformed, so no verdict can be re-derived. Record the caller's one-line reason.
         _write_result(
             workdir,
             _envelope(
@@ -126,11 +119,11 @@ def build_result(
         )
         return 0
 
-    exit_v = _exit_verdict(workdir, top, manifest)
+    exit_v = _exit_verdict(workdir, manifest)
     artifacts = list(exit_v.get("artifacts", []))
 
     if exit_v.get("status") != "pass":
-        # topology / blocked-child fail — verbatim verdict, plus whatever review already landed.
+        # topology fail — verbatim verdict, plus whatever review already landed.
         ss = {"fail_reason": exit_v.get("fail_reason", "rtl exit gate failed")}
         _write_result(
             workdir,
@@ -152,13 +145,13 @@ def build_result(
     return 0
 
 
-def finalize(workdir, module, top, manifest, fail_reason=None, fix_owner=None) -> int:
+def finalize(workdir, module, manifest, fail_reason=None, fix_owner=None) -> int:
     """Build the lean rtl-design result.json from the on-disk workdir.
     exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (any internal
     raise) — never conflated with status=fail. (Owns the policy the deleted main() had.)"""
     try:
         return build_result(
-            workdir, module, top, manifest, fail_reason=fail_reason, fix_owner=fix_owner
+            workdir, module, manifest, fail_reason=fail_reason, fix_owner=fix_owner
         )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[rtl finalize] BLOCKED: {exc}", file=sys.stderr)

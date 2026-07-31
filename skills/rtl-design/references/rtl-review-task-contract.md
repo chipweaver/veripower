@@ -2,9 +2,9 @@
 
 The rtl-design main thread dispatches one Level-1 `Task(run_in_background=True)` per child in
 `manifest.children[]`, on every round that reaches a written sidecar. You write your own review
-file. Nothing reduces it to a verdict: it is promoted as this stage's proposed oracle, and a human
-`pin` is what converts it into signoff-grade trust. So write for the engineer who will read it
-before signing, not for a parser. Do not call the Task tool.
+file. Nothing reduces it to a verdict and no script parses it, so write for the engineer who reads
+it before this RTL ships. Do not call the Task tool: a sub-Task of yours would append no event and
+sit outside the kernel's accounting, where nothing could audit it.
 
 ## Inputs (paths only — the main thread does not read these bodies)
 

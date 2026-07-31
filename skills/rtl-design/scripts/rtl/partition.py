@@ -48,10 +48,15 @@ def ledger_artifacts(workdir: Path) -> list:
     return _artifacts(load_ledger(workdir))
 
 
-def post_verdict(manifest: Path, top: str, workdir: Path):
+def post_verdict(manifest: Path, workdir: Path):
     """The exit verdict: coverage+purity, the ledger's roster against the manifest, and the
-    artifacts[] enumeration. Returns (verdict_dict, rc)."""
-    status, reason = coverage_verdict(manifest, top)
+    artifacts[] enumeration. Returns (verdict_dict, rc).
+
+    TOP is manifest['module'], indexed rather than defaulted: specification cannot ship a
+    manifest without it (check_purity fails the round first), so an absent key is a broken
+    input and belongs on stderr, not in a verdict."""
+    roster = _read_json(manifest)
+    status, reason = coverage_verdict(manifest, roster["module"])
     ledger = load_ledger(workdir)
     if status == "fail":
         return {
@@ -60,9 +65,7 @@ def post_verdict(manifest: Path, top: str, workdir: Path):
             "fail_reason": reason,
         }, 1
 
-    missing = [
-        c["name"] for c in _read_json(manifest)["children"] if c["name"] not in ledger
-    ]
+    missing = [c["name"] for c in roster["children"] if c["name"] not in ledger]
     if missing:
         # artifacts[] is the new canonical view and promote deletes what it omits, so a ledger
         # short of the roster would silently drop those children's RTL out of canonical while

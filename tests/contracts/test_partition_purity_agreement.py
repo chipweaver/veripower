@@ -10,9 +10,9 @@ import. A table both are run against is the only mechanism left, and it is enoug
 must return the same verdict for the same manifest, so a divergence is a test failure
 wherever it is introduced.
 
-The one legitimate difference is the input contract, not the rule — check_purity reads TOP
-from `manifest.module` and must report its absence, while coverage_verdict receives TOP as a
-required CLI argument that cannot be empty. That case is asserted separately below.
+The one legitimate difference is the input contract, not the rule — check_purity runs before
+the partition gate and must report an absent `manifest.module` as a routable violation, while
+rtl-design runs after that gate and indexes the key. That case is asserted separately below.
 """
 
 import json
@@ -65,8 +65,8 @@ def test_both_implementations_reach_the_same_verdict(label, children, tmp_path):
 
 
 def test_missing_module_is_the_one_asymmetry_and_it_is_the_input_contract():
-    # check_purity resolves TOP itself, so an absent manifest.module is its problem to
-    # report; coverage_verdict is handed TOP by a required CLI arg and never sees this case.
+    # check_purity is the gate that makes an absent manifest.module impossible downstream, so
+    # reporting it is its job alone; rtl-design indexes the key and would raise.
     # Asserted here so the asymmetry stays deliberate rather than becoming the first drift.
     violations = check_purity({"children": [_child("topc", [TOP])]})
     assert len(violations) == 1

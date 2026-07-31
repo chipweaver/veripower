@@ -2,7 +2,8 @@
 
 The rtl-design main thread dispatches one Level-1 `Task(run_in_background=True)` per child in
 `manifest.children[]` (including the top-integration child). Every child gets the identical contract
-below. Do not call the Task tool (no Level-2 dispatch).
+below. Do not call the Task tool: a sub-Task of yours would append no event and sit outside the
+kernel's accounting, where nothing could audit it.
 
 ## Inputs (paths only — the main thread does not read these bodies)
 

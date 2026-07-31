@@ -84,7 +84,7 @@ def _workdir(
 
 def test_build_result_pass_lean_shape(tmp_path):
     wd, manifest = _workdir(tmp_path)
-    assert ve.build_result(wd, module="tpu_top", top="tpu_top", manifest=manifest) == 0
+    assert ve.build_result(wd, module="tpu_top", manifest=manifest) == 0
     env = json.loads((wd / "result.json").read_text())
     assert (env["stage"], env["module"]) == (
         "rtl-design",
@@ -111,7 +111,7 @@ def test_pass_refused_while_a_child_review_is_missing(tmp_path, capsys):
     # What a review SAYS stays the stage's judgment; that it EXISTS for every child does not.
     wd, manifest = _workdir(tmp_path)
     (wd / "semantic-review" / "mac.md").unlink()
-    assert ve.finalize(wd, "tpu_top", "tpu_top", manifest) == 2
+    assert ve.finalize(wd, "tpu_top", manifest) == 2
     assert "semantic-review/mac.md" in capsys.readouterr().err
     assert not (wd / "result.json").exists()
 
@@ -126,7 +126,7 @@ def test_build_result_fail_on_exit_topology_verbatim(tmp_path):
         ],
     }  # impure
     wd, manifest = _workdir(tmp_path, manifest=bad_manifest)
-    assert ve.build_result(wd, module="tpu_top", top="tpu_top", manifest=manifest) == 0
+    assert ve.build_result(wd, module="tpu_top", manifest=manifest) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert (
@@ -164,7 +164,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     shutil.copytree(FIX, base)
     wd = base / "rtl-design"
     manifest = base / "Design" / "specification" / "manifest.json"
-    assert ve.build_result(wd, module="tpu_top", top="tpu_top", manifest=manifest) == 0
+    assert ve.build_result(wd, module="tpu_top", manifest=manifest) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "pass"
@@ -197,7 +197,7 @@ def test_pass_refused_while_a_child_is_missing_from_the_sidecars(tmp_path, capsy
         doc = json.loads((wd / name).read_text())
         del doc["ctrl"]
         (wd / name).write_text(json.dumps(doc))
-    assert ve.finalize(wd, "tpu_top", "tpu_top", manifest) == 2
+    assert ve.finalize(wd, "tpu_top", manifest) == 2
     assert "ctrl" in capsys.readouterr().err
     assert not (wd / "result.json").exists()
 
@@ -218,7 +218,7 @@ def test_finalize_on_an_empty_workdir_is_blocked(tmp_path, capsys):
             }
         )
     )
-    assert ve.finalize(wd, "tpu_top", "tpu_top", manifest) == 2
+    assert ve.finalize(wd, "tpu_top", manifest) == 2
     assert "rtl-files.json" in capsys.readouterr().err
     assert not (wd / "result.json").exists()
 
@@ -231,7 +231,7 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
         raise RuntimeError("synthetic")
 
     monkeypatch.setattr(ve, "build_result", boom)
-    assert ve.finalize(tmp_path, "tpu_top", "tpu_top", tmp_path / "manifest.json") == 2
+    assert ve.finalize(tmp_path, "tpu_top", tmp_path / "manifest.json") == 2
 
 
 def test_artifacts_are_full_roster_on_a_subset_round(tmp_path):
@@ -239,7 +239,7 @@ def test_artifacts_are_full_roster_on_a_subset_round(tmp_path):
     # so artifacts[] stays the full roster and the children this round did not touch keep their
     # place in canonical.
     wd, manifest = _workdir(tmp_path, children=("mac", "ctrl"))
-    assert ve.build_result(wd, module="tpu_top", top="tpu_top", manifest=manifest) == 0
+    assert ve.build_result(wd, module="tpu_top", manifest=manifest) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
     assert {"mac.v", "ctrl.v", "tpu_top.v"} <= {a["path"] for a in env["artifacts"]}
@@ -252,10 +252,7 @@ def test_fail_reason_writes_the_envelope_and_keeps_the_readable_baseline(tmp_pat
     # as blocked, not as a routable fail) AND keep enumerating the readable baseline, because
     # promote treats artifacts[] as the new canonical view and deletes what it omits.
     wd, manifest = _workdir(tmp_path)
-    assert (
-        ve.finalize(wd, "tpu_top", "tpu_top", manifest, fail_reason="child mac blocked")
-        == 0
-    )
+    assert ve.finalize(wd, "tpu_top", manifest, fail_reason="child mac blocked") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert env["stage_specific"] == {"fail_reason": "child mac blocked"}
@@ -275,10 +272,7 @@ def test_fail_reason_with_unreadable_sidecars_still_keeps_the_reviews(tmp_path):
     # straight off disk, and they are the evidence for the failure, so they still promote.
     wd, manifest = _workdir(tmp_path)
     (wd / "rtl-files.json").write_text("{ not json")
-    assert (
-        ve.finalize(wd, "tpu_top", "tpu_top", manifest, fail_reason="sidecar broken")
-        == 0
-    )
+    assert ve.finalize(wd, "tpu_top", manifest, fail_reason="sidecar broken") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert {a["path"] for a in env["artifacts"]} == {
@@ -298,8 +292,6 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
             "--workdir",
             str(tmp_path),
             "--module",
-            "tpu_top",
-            "--top",
             "tpu_top",
         ],
         capture_output=True,
@@ -321,8 +313,6 @@ def test_finalize_cli_happy_path(tmp_path):
             "--workdir",
             str(wd),
             "--module",
-            "tpu_top",
-            "--top",
             "tpu_top",
             "--manifest",
             str(manifest),
