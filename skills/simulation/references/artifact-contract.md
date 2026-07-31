@@ -35,11 +35,11 @@ share it).
 | `logs/<test>.status` | same | Per-test `PASS`/`FAIL` status file written by each smoke `simv` run (the smoke gate reads these). |
 | `verify-handoff.json` | same | Per-testpoint check-intent digest handed to the verify phase (schema in `env-task-contract.md`). Promoted artifact; written fresh by env-build every round. |
 
-### conformance gate phase (wave 2, Step 4 — `conformance-review-task-contract.md`; main-thread aggregated)
+### conformance review phase (wave 2, Step 4 — `conformance-review-task-contract.md`)
 
 | Artifact | Path (relative to `{workdir}`) | Description |
 |------|------|------|
-| `conformance-review.json` | `conformance-review.json` | Per-testpoint check-adequacy findings (schema `conformance-review.schema.json`). The main thread assembles it from the reviewer Task's JSON, schema-validates it, and gates on it. Promoted advisory artifact. |
+| `conformance-review.json` | `conformance-review.json` | Per-testpoint check-adequacy findings (schema `conformance-review.schema.json`), written by the reviewer Task; the main thread validates it and gates on it. Promoted artifact. |
 
 ### verify phase (wave 3 — `verify-task-contract.md`)
 

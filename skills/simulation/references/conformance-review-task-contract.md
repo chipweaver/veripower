@@ -90,8 +90,12 @@ the RTL is correct); over-engineering (deferred).
 
 ## Output
 
-End the response with `STATUS: DONE` + a single JSON line (schema
-`references/conformance-review.schema.json`), or `STATUS: BLOCKED <reason>`:
+Write your findings to `{workdir}/conformance-review.json` yourself, then end the response
+with `STATUS: DONE`, or with `STATUS: BLOCKED <reason>` if you wrote no file. That one file
+is your entire write domain: everything else under `{workdir}` is the material you are
+judging, and you do not edit it.
+
+Schema `references/conformance-review.schema.json`:
 
 ```json
 {"stage": "simulation", "module": "<module>",
@@ -100,6 +104,10 @@ End the response with `STATUS: DONE` + a single JSON line (schema
                "category": "missing|wrong-behavior|fake-green|unverifiable-arch|intent-defect",
                "location": "<file:line | plan ref>", "summary": "<one line>"}]}
 ```
+
+The main thread validates that file and reduces it to the gate verdict; it does not retype
+your findings, so what you write is what gates. Report every finding you have, at the
+severity you actually believe: nothing downstream re-reads the TB to recover one you left out.
 
 - If you cannot read the full TB (context budget), do NOT silently pass: emit
   `STATUS: BLOCKED context-budget: <what was unread>` so the main thread records it as

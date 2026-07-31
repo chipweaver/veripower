@@ -293,11 +293,11 @@ def _early_exit_ss(
     if phase == "conformance":
         # the gating subset, re-derived in-process from the on-disk conformance-review.json
         # (reaped state, not orchestrator narration).
-        # --phase conformance is only reached on a gate=trip, where the main thread has
-        # assembled conformance-review.json; an absent file is a caller contract violation.
+        # --phase conformance is only reached on a gate=trip, where the reviewer has
+        # written conformance-review.json; an absent file is a caller contract violation.
         if not conformance_review or not Path(conformance_review).is_file():
             raise RuntimeError(
-                "finalize --phase conformance requires an assembled conformance-review.json "
+                "finalize --phase conformance requires the reviewer's conformance-review.json "
                 f"(got: {conformance_review!r})"
             )
         ss["conformance_findings"] = gating_findings(conformance_review)

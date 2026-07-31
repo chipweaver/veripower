@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""sim validate-review — producer self-gate for the gating conformance-review.json artifact.
+"""sim validate-review — schema + gate verdict over the conformance reviewer's own record.
 
-Validates the file against references/conformance-review.schema.json (Draft 2020-12), then computes the gate verdict (the
-mechanical category x severity reduction over the findings) and prints it as a one-line JSON the
-main thread copies — so the gate is script-owned, not judged by eye. `compute_gate` is reused
-in-process by the finalize verb (sim.result).
+The reviewer Task writes conformance-review.json; this validates that file against
+references/conformance-review.schema.json (Draft 2020-12) and prints the gate verdict (the
+mechanical category x severity reduction over the findings) as one JSON line, so the gate is
+script-owned rather than judged by eye. `compute_gate` is reused in-process by the finalize
+verb (sim.result), which re-runs the same reduction before it will write a pass.
 """
 
 from __future__ import annotations

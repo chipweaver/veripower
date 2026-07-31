@@ -76,7 +76,7 @@ finalize. The env / verify phase split of the workdir artifacts is in
 | `Makefile` / `env.sh` / `filelist.f` / `rtl_filelist.f` / `tb/uvm/` / `scripts/` / `tests/testlist.json` | per `artifact-contract.md` | env-build | TB infra + materialized UVM (bound by Rule A). |
 | `regression-log.txt` / `structural-coverage.json` / `case-results.json` / `coverage-summary.txt` / `case-results-summary.md` | per `artifact-contract.md` | verify | Regression log + machine-readable structural coverage (gate source for `sim finalize`) + the suite counts and their two rendered views. |
 | `verify-handoff.json` | per `env-task-contract.md` | env-build | Per-testpoint check-intent digest for the verify phase, written fresh every round. |
-| `conformance-review.json` | per `references/conformance-review.schema.json` | conformance gate (main thread) | Per-testpoint check-adequacy findings (gate source for Step 4); promoted advisory artifact. |
+| `conformance-review.json` | per `references/conformance-review.schema.json` | conformance reviewer | Per-testpoint check-adequacy findings (gate source for Step 4). |
 
 > Every promoted path MUST appear in `result.json.artifacts[]`, otherwise it will not be promoted to
 > canonical (external read-only consumption of canonical `filelist.f` / `tb/uvm/`, etc. will fail).
@@ -183,17 +183,19 @@ and hands over paths only: the `{workdir}` (filled `tb/uvm/**`), the scaffold-sp
 (`testpoints[].inlined_check_hints[]`), the `verification-plan.md` path (§3 intent source),
 the DUT RTL filelist, and `{module}`. After dispatching, end the turn.
 
-On wake-up, reap the reviewer's `STATUS:` last line + its JSON line, assemble
-`{workdir}/conformance-review.json` (schema `references/conformance-review.schema.json`), and run:
+The reviewer writes `{workdir}/conformance-review.json` itself. You never retype a finding: a review
+you passed through your own hands is your judgment wearing the reviewer's name, and your status is
+what the gate decides.
+
+On wake-up, reap the reviewer's `STATUS:` last line, then validate the file it left:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py validate-review --review {workdir}/conformance-review.json
 ```
 
-On a non-zero exit, re-assemble the JSON and re-run (this is a main-thread fix, NOT a re-dispatch).
 On exit 0 it prints a one-line gate verdict `{"gate": "trip"|"clear", "flagged": [...],
-"dominant_category": ...}` — the mechanical category × severity reduction (per the reviewer
-contract's "Severity & gating"), computed by the script, not judged by eye. Apply it:
+"dominant_category": ...}`, the mechanical category × severity reduction (per the reviewer
+contract's "Severity & gating") computed by the script, not judged by eye. Apply it:
 
 - **`gate=trip`:** disposition the gating findings by category (the `conformance_findings` subset
   `compute_gate` identifies — category ∈ {`missing`, `wrong-behavior`, `fake-green`, `intent-defect`}
@@ -229,11 +231,12 @@ contract's "Severity & gating"), computed by the script, not judged by eye. Appl
 - **`gate=clear`:** proceed to Step 5. Advisory findings (`unverifiable-arch` any severity, `minor`,
   `unavailable`) never trip the gate: record them in `conformance-review.json` and surface a
   `⚠ <tp> <category>` line in the completion summary.
-- **Review unavailable** (`STATUS: BLOCKED`, malformed/unparseable JSON, or any dispatch/reap/
-  aggregate/validate error) → **do NOT gate**: still write a minimal `conformance-review.json`
-  `{... "findings":[{"tp_id":"-","severity":"minor","category":"unavailable","location":"-","summary":"review (wave) failed: <reason>"}]}`
+- **Review unavailable** (`STATUS: BLOCKED`, no file written, or a non-zero `validate-review`) →
+  **do NOT gate**: overwrite `conformance-review.json` with the minimal record
+  `{"stage":"simulation","module":"<module>","findings":[{"tp_id":"-","severity":"minor","category":"unavailable","location":"-","summary":"review (wave) failed: <reason>"}]}`
   (so the absence of a real review is a first-class artifact, not invisible; the validator reports
-  `gate=clear` for it), note it in the completion summary, and proceed to Step 5.
+  `gate=clear` for it), note it in the completion summary, and proceed to Step 5. This is the one
+  record you author, and it reports that no review happened rather than what a review found.
 
 A self-locus conformance defect self-heals in-stage (above); only an `intent-defect` trip — or a
 conformance-fix Task that `BLOCKED`s — takes the fail-out to the existing
@@ -267,7 +270,7 @@ Only a **clean** verify verdict (no `failure_phase`, not BLOCKED) proceeds to St
 
 On a clean verify pass, run the finalize subcommand; do not hand-assemble the envelope, re-derive
 counts, or copy gate verdicts by hand. `--phase final` requires the scaffold-spec, the thresholds
-and the assembled `conformance-review.json`, one per gate it re-runs; `--verify-verdict` carries
+and the reviewer's `conformance-review.json`, one per gate it re-runs; `--verify-verdict` carries
 the reaped `stimulus_iterations`:
 
 ```bash
@@ -341,7 +344,7 @@ sub-Task.
 
 | Excuse | Reality |
 |---|---|
-| "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `sim finalize` exited non-zero) | You record the most-failing verdict, never a more-optimistic one. `status=pass` is written only when the smoke gate, the conformance gate, the verify verdict, and `sim finalize` all agree (Step 6); you MUST NOT override a `gate=trip` to pass (Step 4). |
+| "The verify child's counts look fine — I'll write `status=pass`" (when a gate tripped or `sim finalize` exited non-zero) | You record the most-failing verdict, never a more-optimistic one; and `--phase final` re-runs the conformance and coverage gates before it will write a pass (Step 6). |
 | "The env-build child's `STATUS:` line says smoke passed — that's my smoke gate" | The smoke gate reads the smoke run's own tooling (`regression-log.txt` `RESULT` lines / per-test `logs/<test>.status`), never the child's self-reported prose (Step 3). |
 | "A case is failing — I'll open the TB to see why" | The main thread NEVER reads the TB body or re-runs heavy EDA; it consumes envelopes / status files / paths only and routes the failure out for the caller to decide (Iron Rule). |
 | "I'll peek at the DUT RTL to write the refmodel for this signal" | The TB's golden model derives from the sim-plan docs only; a model read off the RTL mirrors it and verifies nothing (circular). Author from `implementation_detail` / §3 intent; if insufficient, BLOCK to simulation-plan (Iron Rule). |
