@@ -22,11 +22,11 @@ export LIB_DB=/path/to/stdcell.db        # standard cell Liberty .db (same as sy
 export UVM_HOME=/path/to/uvm-1.1d        # UVM source tree (provides src/dpi/uvm_dpi.cc)
 ```
 
-When unset, sourcing `env.sh` errors out (`:?` pattern).
+Sourcing `env.sh` errors out when any of the three is unset, and again when one names a file it cannot read. Every `make` target sources it, so a wrong path stops the first target instead of the last.
 
 ## External reference inputs
 
-The power bootstrap verb deploys templates and the initial power tests in one shot, computes a relative path based on workdir depth, and then substitutes the `MY_SYN_OUT` / `MY_SIM_DIR` / `MY_PLAN_DIR` placeholders inside `env.sh` — these three relative paths are bound to the environment variables that `env.sh` exports, every Makefile target references files via those environment variables, and the workspace can be moved (e.g., to `runs/<N>/`) without any hand-edited path. Plan / scenario changes are auto-re-rendered by `make refresh-tests` (already wired as a `gls-compile` prerequisite); no re-bootstrap is needed.
+The power bootstrap verb deploys the templates and the initial power tests in one shot, then substitutes the `MY_SYN_OUT` / `MY_SIM_DIR` / `MY_PLAN_DIR` placeholders inside `env.sh` with the absolute upstream locations the kernel injected into `dispatch.json`. Every Makefile target reaches those files through the environment variables `env.sh` exports, so the workspace works at whatever depth it sits (`runs/<N>/` included) with no path computed from it and none hand-edited. Plan / scenario changes are re-rendered by `make refresh-tests`, already wired as a `gls-compile` prerequisite, so they need no re-bootstrap.
 
 - `${NETLIST}` / `${SDC_FILE}` / `${SDF_FILE}` — the synthesis trio (`<TOP>_syn.{v,sdc,sdf}`).
 - `${TB_FILELIST}` — UVM TB infrastructure raw filelist; `make tb-shim` rewrites it into `${TB_FILELIST_ABS}` (absolute-pathized) for VCS to consume across workdirs.

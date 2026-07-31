@@ -16,7 +16,7 @@
             "fail_reason":  {"type": "string", "minLength": 1},
             "ppa_gate_skipped": {
               "type": "boolean",
-              "description": "true when ppa_targets is empty (specification declared no power_mw target); status=pass is then vacuous, not a true PPA gate pass. Kept where the other write-only power fields went: it is not a record of what happened, it says WHICH proposition passed — 'power_mw <= target' with no target is a different claim, and a signoff reviewer endorsing it needs to see that."
+              "description": "true when the ppa.json this stage read declared no power_mw target, so status=pass says the flow ran rather than that any number came in under anything. It is here because violations[] is empty either way: without this flag the caller, who decides what runs next from result.json alone, cannot tell a measured pass from a vacuous one without opening a second file."
             },
             "failure_kind": {"type": "string", "enum": ["infra", "tooling", "ppa"], "description": "Failure category on status=fail. infra = external reference / license / bootstrap missing, so GLS/PTPX never ran; tooling = they ran and their output is unusable; ppa = power_mw exceeds target. A declared fail (either of the first two) carries fail_reason and nothing structured: failures[] is the parser's to write, on the runs where it had reports to read."},
             "saif_artifacts": {
@@ -34,6 +34,7 @@
             "compile_info": {
               "type": "object",
               "additionalProperties": false,
+              "description": "Identifies the tool that produced the activity, not the one that computed the power: PT prints its own version in the header of every power_flat.rpt these numbers were parsed from.",
               "required": ["vcs_version"],
               "properties": {
                 "vcs_version": {"type": "string"}
