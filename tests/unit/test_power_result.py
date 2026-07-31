@@ -256,12 +256,15 @@ def test_run_pass_within_targets(tmp_path):
     assert (
         len(data["saif_artifacts"])
         == len(data["ppa_actual"])
-        == len(data["power_by_corner"])
+        == len(data["power_by_scenario"])
         == 2
     )
     assert data["compile_info"] == {"vcs_version": "L-2016.06_Full64"}
     # The field that qualifies power_mw must survive the whole run, not just the parser.
-    assert [c["saif_annotation_rate"] for c in data["power_by_corner"]] == [0.95, 0.95]
+    assert [c["saif_annotation_rate"] for c in data["power_by_scenario"]] == [
+        0.95,
+        0.95,
+    ]
     assert "failure_kind" not in data
 
 
@@ -321,7 +324,7 @@ def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
         data["failures"][0]["phase"] == "run"
     )  # D: SAIF is a run product (no separate saif phase)
     assert data["ppa_actual"][0]["value"] is None  # P1: nulled despite parseable flat
-    assert data["power_by_corner"][0]["power_mw"] is None
+    assert data["power_by_scenario"][0]["power_mw"] is None
     assert all(a["id"] != "S1" for a in data["saif_artifacts"])
 
 
@@ -683,7 +686,7 @@ def test_golden_real_reports_lean_pass(tmp_path):
         "failures",
         "ppa_actual",
         "violations",
-        "power_by_corner",
+        "power_by_scenario",
         "ppa_gate_skipped",
     }
     assert "verdict" not in ss
@@ -762,7 +765,7 @@ def test_declared_fail_writes_the_envelope_without_touching_the_reports(tmp_path
     assert ss["failure_kind"] == "infra" and ss["fix_owner"] == "synthesis"
     assert "tpu_top_syn.sdf" in ss["fail_reason"]
     # The pass-shape is not invented on a run that produced none of it.
-    for absent in ("saif_artifacts", "power_by_corner", "ppa_actual", "failures"):
+    for absent in ("saif_artifacts", "power_by_scenario", "ppa_actual", "failures"):
         assert absent not in ss
 
 

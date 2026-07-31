@@ -2,8 +2,8 @@
 
 Used by the power-analysis skill to populate result.json's stage_specific:
   - parse_total_power_mw       → ppa_actual[].value (mW)
-  - parse_three_components     → power_by_corner[].{internal,switching,leakage}_mw
-  - parse_annotation_rate      → power_by_corner[].saif_annotation_rate
+  - parse_three_components     → power_by_scenario[].{internal,switching,leakage}_mw
+  - parse_annotation_rate      → power_by_scenario[].saif_annotation_rate
 
 Source files:
   - power_flat.rpt            ← from `report_power -verbose` (no -hierarchy);
@@ -216,7 +216,7 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
     failures: list[dict] = []
     saif_artifacts: list[dict] = []
     ppa_actual: list[dict] = []
-    power_by_corner: list[dict] = []
+    power_by_scenario: list[dict] = []
 
     for s in scenarios:
         sid = s.get("id", "")
@@ -249,7 +249,6 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
                 {
                     "id": sid,
                     "saif_path": f"saif/{sid}.saif",
-                    "corner_intent": corner,
                     "sequence_ref": seq,
                 }
             )
@@ -301,7 +300,7 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
                 "source": f"reports_ptpx/{sid}/power_flat.rpt",
             }
         )
-        power_by_corner.append(
+        power_by_scenario.append(
             {
                 "scenario_id": sid,
                 "power_mw": None if scenario_failed else total,
@@ -325,7 +324,7 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
             "failures": failures,
             "ppa_actual": ppa_actual,
             "violations": [],
-            "power_by_corner": power_by_corner,
+            "power_by_scenario": power_by_scenario,
         }
         f0 = failures[0]
         summ = f0["error_summary"]
@@ -370,7 +369,7 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
         "failures": [],
         "ppa_actual": ppa_actual,
         "violations": violations,
-        "power_by_corner": power_by_corner,
+        "power_by_scenario": power_by_scenario,
     }
     if violations:
         payload["failure_kind"] = "ppa"
@@ -388,7 +387,7 @@ _FOLD_KEYS = (
     "failures",
     "ppa_actual",
     "violations",
-    "power_by_corner",
+    "power_by_scenario",
     "ppa_gate_skipped",
 )
 

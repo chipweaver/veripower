@@ -39,6 +39,6 @@ For the expanded path shapes, see the deployed `env.sh`.
 - `saif/<id>.saif` — per-scenario gate-level SAIF (hardlinked to `_dedup/<seq>.saif`).
 - `tb_filelist_abs.f` — absolute-pathized simulation filelist produced by `make tb-shim` (`make clean` removes it; the `scripts/build_tb_filelist_abs.py` template is kept).
 - `reports_ptpx/<id>/{power_hier.rpt, power_flat.rpt, switching_activity.rpt, ptpx.log}` — per-SAIF PT-PX reports.
-- `result.json` — stage envelope (`saif_artifacts[]` / `ppa_actual[]` / `power_by_corner[]` / `failures[]` / `violations[]`).
+- `result.json` — stage envelope (`saif_artifacts[]` / `ppa_actual[]` / `power_by_scenario[]` / `failures[]` / `violations[]`).
 
 For field semantics, see `${CLAUDE_SKILL_DIR}/references/result.schema.json`.

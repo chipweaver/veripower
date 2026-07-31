@@ -20,7 +20,7 @@
         "minLength": 1
       },
       "corner_intent": {
-        "description": "PVT corner this scenario is annotated at (e.g. \"SS/125C\"). RTL simulation is corner-agnostic, so this is the only place the corner is stated — power-analysis's result.schema.json requires it on every SAIF and every power row.",
+        "description": "PVT corner this scenario is annotated at (e.g. \"SS/125C\"). RTL simulation is corner-agnostic, so this is the only place the corner is stated. power-analysis carries it onto every power row but does not act on it: its PT batch loads one LIB_DB for all scenarios, so the corner a row reports is a claim about what the row is for, not the condition its number was computed at.",
         "type": "string",
         "minLength": 1
       }

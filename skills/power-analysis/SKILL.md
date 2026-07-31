@@ -54,7 +54,7 @@ PPA targets (entries on the `power_mw` dimension only) are read by `power finali
 
 | Path (relative to `{workdir}`) | Schema / Format | Use |
 |---|---|---|
-| `result.json` | `references/result.schema.json` + envelope.schema.json | This stage's status contract (includes `saif_artifacts[]` / `compile_info` / `failures[]` / `ppa_actual[]` / `violations[]` / `power_by_corner[]`). |
+| `result.json` | `references/result.schema.json` + envelope.schema.json | This stage's status contract (includes `saif_artifacts[]` / `compile_info` / `failures[]` / `ppa_actual[]` / `violations[]` / `power_by_scenario[]`). |
 | `saif/<id>.saif` (+ `saif/_dedup/<sequence_ref>.saif`) | SAIF | Per-scenario gate-level SAIF (dedup-hardlinked); each path referenced by `result.json.saif_artifacts[]`. |
 | `reports_ptpx/<id>/` (`power_hier.rpt` / `power_flat.rpt` / `switching_activity.rpt` / `ptpx.log`) | PT text + log | Per-scenario PT-PX report set (`power_hier.rpt` is read by rtl-design on a PPA rework); one `<id>/` per SAIF. |
 

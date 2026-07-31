@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/power-analysis/result.schema.json",
   "title": "power-analysis result.json contract (merged GLS+PT-PX, SAIF flow)",
-  "description": "Complete contract for asic/<module>/Verification/power-analysis/result.json. On status=pass, stage_specific requires saif_artifacts + compile_info + failures + ppa_actual + violations + power_by_corner (compile_info carries vcs_version only). On status=fail, stage_specific.{fail_reason, failure_kind} are required (if/then below); fail_reason is the one-line failure narrative. The heavy pass-shape is dropped on early-fail (external-reference / license / bootstrap paths). failure_kind classifies infra (the flow never ran) / tooling (it ran and its output is unusable) / ppa (power_mw exceeds target); the first two are declared by the caller through finalize's --fail-reason / --failure-kind, the third is the gate's. ppa_actual / violations / power_by_corner carry PT averaged power_mw + three components for PPA gating; on a PPA-gate fail (failure_kind=ppa) ppa_actual and violations are required (if/then below).",
+  "description": "Complete contract for asic/<module>/Verification/power-analysis/result.json. On status=pass, stage_specific requires saif_artifacts + compile_info + failures + ppa_actual + violations + power_by_scenario (compile_info carries vcs_version only). On status=fail, stage_specific.{fail_reason, failure_kind} are required (if/then below); fail_reason is the one-line failure narrative. The heavy pass-shape is dropped on early-fail (external-reference / license / bootstrap paths). failure_kind classifies infra (the flow never ran) / tooling (it ran and its output is unusable) / ppa (power_mw exceeds target); the first two are declared by the caller through finalize's --fail-reason / --failure-kind, the third is the gate's. ppa_actual / violations / power_by_scenario carry PT averaged power_mw + three components for PPA gating; on a PPA-gate fail (failure_kind=ppa) ppa_actual and violations are required (if/then below).",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
@@ -23,11 +23,10 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["id", "saif_path", "corner_intent", "sequence_ref"],
+                "required": ["id", "saif_path", "sequence_ref"],
                 "properties": {
                   "id":              {"type": "string"},
                   "saif_path":       {"type": "string"},
-                  "corner_intent":   {"type": "string"},
                   "sequence_ref":    {"type": "string"}
                 }
               }
@@ -82,8 +81,9 @@
                 }
               }
             },
-            "power_by_corner": {
+            "power_by_scenario": {
               "type": "array",
+              "description": "One row per scenario, all of them computed at the single LIB_DB the batch loaded: ptpx.tcl sets link_path once, outside its loop. So this is not a corner sweep, and corner_intent below is the plan's claim about the row rather than a property of the number beside it — the operating condition PT actually used is printed in the power_flat.rpt this row was parsed from.",
               "items": {
                 "type": "object",
                 "required": ["scenario_id", "power_mw", "internal_mw", "switching_mw", "leakage_mw", "saif_annotation_rate", "corner_intent", "sequence_ref"],
@@ -95,7 +95,7 @@
                   "leakage_mw":    {"type": ["number", "null"]},
                   "saif_annotation_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1,
                                            "description": "Fraction of nets whose switching activity came from the SAIF, from switching_activity.rpt. Qualifies power_mw: the same number at 0.2 is mostly tool defaults, at 1.0 it is measured. null = not determinable from the report."},
-                  "corner_intent": {"type": "string"},
+                  "corner_intent": {"type": "string", "description": "Carried through from the plan unchanged. Nothing in this flow selects a library per scenario, so two rows whose corner_intent differs and whose stimulus does not report the same power."},
                   "sequence_ref":  {"type": "string"}
                 }
               }
@@ -107,7 +107,7 @@
     },
     {
       "if":   {"properties": {"status": {"const": "pass"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["saif_artifacts", "compile_info", "failures", "ppa_actual", "violations", "power_by_corner"]}}}
+      "then": {"properties": {"stage_specific": {"required": ["saif_artifacts", "compile_info", "failures", "ppa_actual", "violations", "power_by_scenario"]}}}
     },
     {
       "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
