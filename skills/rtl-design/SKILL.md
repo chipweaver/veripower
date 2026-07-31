@@ -22,7 +22,7 @@ Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps 
 | `<manifest>/manifest.json` | The child roster: `module` (= `<top_module>`) + `children[]` (`name` / `doc` / `rtl_modules[]`). Drives the fan-out |
 | `<children>/<child>.md × N` | Per-child sub-design — frontmatter + §2 Interface + §3 Internal Behavior are what each child derives its RTL from |
 | `<design>/top-io.json`, `interconnects.json`, `clocks.json` | The boundary, the cut edges, the clocks. Passed by path into the sub-Tasks |
-| `<design>/ppa.json` | PPA targets the micro-architecture must be bound to — a combinational divide that blows a timing target is a defect here, not at synthesis |
+| `<design>/ppa.json` | The area / timing-slack / power targets this RTL is judged against. Passed by path into the sub-Tasks |
 
 Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `references/<name>.schema.json`.
 

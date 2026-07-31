@@ -21,6 +21,9 @@ kernel's accounting, where nothing could audit it.
   `create_generated_clock` pin is YOUR RTL's to name, deliberately deferred by specification.
   **Every child reads `top-io.json`**: which of its ports are yours is your own doc's frontmatter
   claim — so read it even when you drive nothing.
+- `ppa.json` path (specification workdir) — the area / timing-slack / power targets this design is
+  judged against. Design to them alongside your `<child>.md`: they decide pipeline depth, operator
+  sharing, RAM vs. register file, and clock-gating granularity.
 
 ## Prohibitions
 
