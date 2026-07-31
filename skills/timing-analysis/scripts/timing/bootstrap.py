@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """timing bootstrap — deploy the timing-analysis templates into a run workdir.
 
-Behavior-preserving deploy built from focused, unit-testable steps (campaign design
-§3.3): shutil.copytree + str.replace do the `cp -a` + `sed -i` work (str.replace has
-no sed-delimiter hazard on '/'-containing paths). Far simpler than synthesis's
-bootstrap: no filelist, no rtl_load generation, no relpath — timing substitutes only
-absolute paths.
+shutil.copytree + str.replace do the `cp -a` + `sed -i` work; str.replace has no
+sed-delimiter hazard on the '/'-containing paths every substitution here carries.
 
 The upstream synthesis-stage-root location comes from the injected
 `<workdir>/dispatch.json` `inputs."netlist"`, not by self-navigating
@@ -15,15 +12,15 @@ Deploys templates/ into the caller-provided workdir
 (asic/<module>/Design/timing-analysis/runs/<N>/), verifies the netlist+SDC the TCL
 reads, resolves TOP, and substitutes the MY_NETLIST_DIR / MY_WORKDIR (run_sta.tcl)
 and MY_TOP / FILL_IN_LIB_DB_PATH (config.tcl) placeholders. Fail-closed on an
-un-inferrable top or a missing external reference. Idempotency guard: aborts when
-the workdir is already deployed. The kernel only dispatches timing once synthesis's
-proof is valid, so no upstream result.json status is re-checked here (matching the
-synthesis/power/lint-cdc bootstraps).
+un-inferrable top, a missing external reference, or an unset LIB_DB. Idempotency
+guard: aborts when the workdir is already deployed. The kernel only dispatches
+timing once synthesis's proof is valid, so no upstream result.json status is
+re-checked here.
 
 Exit codes (returned as int; __main__ does sys.exit):
   0  deployed
   1  fail-closed guard (missing template dir / cannot infer top / missing netlist or
-     SDC / already deployed)
+     SDC / LIB_DB unset / already deployed)
   (2 = usage is owned by argparse in __main__.py)
 """
 
@@ -95,6 +92,14 @@ def run(workdir, top: str | None = None) -> int:
             _err(f"missing external reference: {f}")
             return 1
 
+    # config.tcl is written once, here, and pt_shell reads LIB_DB from it rather than
+    # from the environment. Exporting LIB_DB after this point therefore changes
+    # nothing, so refuse to deploy a workdir whose STA cannot run.
+    lib_db = os.environ.get("LIB_DB")
+    if not lib_db:
+        _err("LIB_DB is not in the environment; export it before bootstrap")
+        return 1
+
     workdir.mkdir(parents=True, exist_ok=True)
     if (workdir / "run_sta.tcl").is_file():
         _err(f"already deployed (detected {workdir / 'run_sta.tcl'})")
@@ -107,13 +112,8 @@ def run(workdir, top: str | None = None) -> int:
     _sub(workdir / "run_sta.tcl", "MY_NETLIST_DIR", str(syn_dir))
     _sub(workdir / "run_sta.tcl", "MY_WORKDIR", str(workdir))
 
-    # `... or X` (NOT `.get(k, X)`) falls back on unset OR empty. An
-    # exported-but-empty LIB_DB must keep the placeholder, else config.tcl gets
-    # `set LIB_DB ` (empty value) and result.read_lib_db's `\S+` regex no longer
-    # matches. (Same idiom the ref#2 synthesis port uses.)
-    lib_db_value = os.environ.get("LIB_DB") or "FILL_IN_LIB_DB_PATH"
     _sub(workdir / "config.tcl", "MY_TOP", top)
-    _sub(workdir / "config.tcl", "FILL_IN_LIB_DB_PATH", lib_db_value)
+    _sub(workdir / "config.tcl", "FILL_IN_LIB_DB_PATH", lib_db)
 
-    print(f"[timing bootstrap] deployed {workdir} (TOP={top}, LIB_DB={lib_db_value})")
+    print(f"[timing bootstrap] deployed {workdir} (TOP={top}, LIB_DB={lib_db})")
     return 0

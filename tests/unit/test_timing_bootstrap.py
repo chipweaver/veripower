@@ -8,13 +8,14 @@ under it. The
 bootstrap anchors the design tree on the CWD (matching kernel.py and the
 stage-subagent contract), independent of where the skill code lives.
 
-`_make_tree` pre-populates workdir/dispatch.json (netlist/sdc keys) the way
+`_make_tree` pre-populates workdir/dispatch.json (the single netlist key) the way
 kernel.py dispatch injects it at dispatch time — bootstrap reads the upstream
 synthesis-stage-root location from dispatch.json instead of self-navigating
 tree_root/asic/<module>/Design/synthesis.
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -56,7 +57,7 @@ def _make_tree(
     with_sdc=True,
 ):
     """Build a synthesis output tree (netlist + SDC) under a tmp design-tree root,
-    and pre-populate workdir/dispatch.json (netlist/sdc keys) the way kernel.py
+    and pre-populate workdir/dispatch.json (the single netlist key) the way kernel.py
     dispatch injects it at dispatch time.
 
     Returns (module, workdir, main). Deploy tests run `main` (the real shipped skill)
@@ -72,12 +73,17 @@ def _make_tree(
     workdir = tmp_path / "asic" / m / "Design" / "timing-analysis" / "runs" / "1"
     workdir.mkdir(parents=True)
     (workdir / "dispatch.json").write_text(
-        json.dumps({"inputs": {"netlist": str(syn), "sdc": str(syn)}})
+        json.dumps({"inputs": {"netlist": str(syn)}})
     )
     return m, workdir, _MAIN
 
 
-def _run(workdir, main, extra=None, cwd=None):
+_LIB_DB = "/home/eda/Foundry/TSMC.90/slow.db"
+
+
+def _run(workdir, main, extra=None, cwd=None, lib_db=_LIB_DB):
+    """Run the bootstrap verb. `lib_db=None` runs it with LIB_DB out of the
+    environment; the default supplies one so deploy tests reach the deploy."""
     if cwd is None:
         # The bootstrap anchors the design tree on the CWD; the tree root is the
         # prefix of the (absolute) workdir up to the 'asic/' component.
@@ -92,7 +98,10 @@ def _run(workdir, main, extra=None, cwd=None):
     ]
     if extra:
         cmd += extra
-    return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True)
+    env = {k: v for k, v in os.environ.items() if k != "LIB_DB"}
+    if lib_db is not None:
+        env["LIB_DB"] = lib_db
+    return subprocess.run(cmd, cwd=str(cwd), env=env, capture_output=True, text=True)
 
 
 def test_deploys_and_substitutes(tmp_path):
@@ -144,24 +153,30 @@ def test_run_sta_reads_absolute_netlist_from_dispatch_json(tmp_path):
     assert "set WORKDIR" in sta  # F2: same-stage $WORKDIR self-ref must survive
 
 
-def test_lib_db_captured_when_exported(tmp_path, monkeypatch):
+def test_lib_db_captured_when_exported(tmp_path):
     m, workdir, main = _make_tree(tmp_path)
-    monkeypatch.setenv("LIB_DB", "/home/eda/Foundry/TSMC.90/slow.db")
     assert _run(workdir, main).returncode == 0
     cfg = (workdir / "config.tcl").read_text()
-    assert "set LIB_DB /home/eda/Foundry/TSMC.90/slow.db" in cfg
+    assert f"set LIB_DB {_LIB_DB}" in cfg
     assert "FILL_IN_LIB_DB_PATH" not in cfg
 
 
-def test_lib_db_empty_env_falls_back(tmp_path, monkeypatch):
-    # BP8: shell `${LIB_DB:-FILL_IN_LIB_DB_PATH}` falls back on unset OR empty. An
-    # exported-but-empty LIB_DB must keep the placeholder, else config.tcl gets
-    # `set LIB_DB ` (empty value) which result.read_lib_db's `\S+` regex won't match.
+def test_fail_closed_when_lib_db_unset(tmp_path):
+    # pt_shell reads LIB_DB out of the config.tcl written here, so a workdir deployed
+    # without one can never run: exporting LIB_DB afterwards changes nothing.
     m, workdir, main = _make_tree(tmp_path)
-    monkeypatch.setenv("LIB_DB", "")
-    assert _run(workdir, main).returncode == 0
-    cfg = (workdir / "config.tcl").read_text()
-    assert "set LIB_DB FILL_IN_LIB_DB_PATH" in cfg  # fallback, not an empty value
+    r = _run(workdir, main, lib_db=None)
+    assert r.returncode == 1
+    assert "LIB_DB" in r.stderr
+    assert not (workdir / "config.tcl").exists()  # nothing deployed
+
+
+def test_fail_closed_when_lib_db_empty(tmp_path):
+    m, workdir, main = _make_tree(tmp_path)
+    r = _run(workdir, main, lib_db="")
+    assert r.returncode == 1
+    assert "LIB_DB" in r.stderr
+    assert not (workdir / "config.tcl").exists()
 
 
 def test_fail_closed_when_netlist_missing(tmp_path):

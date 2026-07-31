@@ -5,9 +5,6 @@ set NETLIST_DIR MY_NETLIST_DIR
 set WORKDIR     MY_WORKDIR
 source $WORKDIR/config.tcl                  ;# sets TOP and LIB_DB
 
-if {![info exists LIB_DB] || $LIB_DB eq "FILL_IN_LIB_DB_PATH"} {
-    error "LIB_DB not set — edit $WORKDIR/config.tcl"
-}
 set link_library   "* $LIB_DB"
 set target_library $LIB_DB
 set report_default_significant_digits 4     ;# MANDATORY — keeps recorded slack correct (sub-rounding violations)
@@ -19,6 +16,6 @@ read_sdc     $NETLIST_DIR/out/${TOP}_syn.sdc
 redirect $WORKDIR/timing-report.txt {
     report_timing -delay max                ;# setup — worst path(s), MET/VIOLATED marker
     report_timing -delay min                ;# hold  — worst path(s), MET/VIOLATED marker
-    check_timing                            ;# coverage (recorded by the parser, not gated)
+    check_timing                            ;# how much of the design was timed — gated
 }
 exit
