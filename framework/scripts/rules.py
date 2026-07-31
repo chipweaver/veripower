@@ -188,8 +188,13 @@ RULES: dict[str, Rule] = {
         execution="task",
         workdir_root=("Design", "timing-analysis"),
         inputs={
-            "netlist": ("Design/synthesis/out/*_syn.v",),
-            "sdc": ("Design/synthesis/out/*_syn.sdc",),
+            # One key, because both resolve to the same producer stage root and the
+            # run reads them as a pair: PT links the netlist and constrains it with
+            # the SDC synthesis exported beside it.
+            "netlist": (
+                "Design/synthesis/out/*_syn.v",
+                "Design/synthesis/out/*_syn.sdc",
+            ),
         },
         outputs=("timing-report.txt",),
         proof="timing-analysis",
