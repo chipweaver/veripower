@@ -2,7 +2,7 @@
 """sim finalize — assemble the lean simulation result.json at the given exit phase.
 
 result.json's sole owner. --phase final re-derives the exit verdict in-process from
-materialization_errors, compute_gate and coverage_gate (earliest failing wave wins), folds the reaped verify verdict, and
+the three gate primitives in sim._gate (earliest failing wave wins), folds the reaped verify verdict, and
 writes pass|fail; no gate's fail can be argued past it. The early-exit phases
 (env-blocked/smoke/conformance/regress/verify-blocked) write the status=fail envelope,
 with --failure-phase picking the schema failure_phase where the call-site spans several and the
@@ -190,12 +190,8 @@ def build_result(
 
 
 def read_case_counts(workdir: Path) -> dict:
-    """The suite counts, read from write_summary's structured output.
-
-    NOT from coverage-summary.txt: that file is one of two rendered views of this data for a
-    human, and re-parsing a rendering to recover numbers the same tool already had in hand is
-    the round trip this reads instead of repeating.
-    """
+    """The suite counts, read from write_summary's structured output rather than re-parsed out
+    of the rendering it writes beside it."""
     f = Path(workdir) / "case-results.json"
     # Reached only on the pass path, where `make summary` must have run; an absent
     # file is a broken pipeline step, not a benign absence -> fail loud (BLOCKED).
@@ -240,7 +236,6 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
         "conformance-review.md",
         "structural-coverage.json",
         "case-results.json",
-        "coverage-summary.txt",
         "case-results-summary.md",
     ]  # envelope.schema forbids listing result.json itself; excluded by construction
     return [{"path": p} for p in candidates if (workdir / p).exists()]

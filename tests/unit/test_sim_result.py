@@ -37,10 +37,6 @@ def _final_workdir(tmp_path):
     (wd / "case-results.json").write_text(
         json.dumps({"total_tests": 3, "passed_tests": 3, "failed_tests": 0})
     )
-    # the rendered sibling: written by write_summary, read by a human, parsed by nobody
-    (wd / "coverage-summary.txt").write_text(
-        "suite_summary\ntotal_tests: 3\npassed_tests: 3\nfailed_tests: 0\n"
-    )
     _review(wd)
     return wd
 
@@ -111,7 +107,7 @@ def test_verify_handoff_promoted(tmp_path):
 def test_final_pass_missing_case_results_is_blocked(tmp_path):
     # S4: a missing case-results.json on the pass path is a broken pipeline step;
     # finalize must fail loud (exit 2 BLOCKED), not write null counts. Deleting only the
-    # rendered coverage-summary.txt would NOT block — nothing reads it.
+    # the rendering beside it would NOT block: nothing reads it.
     wd = _final_workdir(tmp_path)
     (wd / "case-results.json").unlink()
     proc = _finalize_final(wd)

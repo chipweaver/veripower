@@ -58,7 +58,7 @@ enumerates it into `artifacts[]` for you:
 |---|---|
 | env-build (wave 1) | `Makefile`, `env.sh`, `filelist.f`, `rtl_filelist.f`, `tb/uvm/**`, `scripts/**`, `tests/testlist.json`, the smoke `regression-log.txt` with its per-test `logs/`, and `verify-handoff.json` |
 | the conformance reviewer (wave 2) | `conformance-review.md` |
-| verify (wave 3) | the full-regress `regression-log.txt`, `structural-coverage.json`, `case-results.json`, `coverage-summary.txt`, `case-results-summary.md` |
+| verify (wave 3) | the full-regress `regression-log.txt`, `structural-coverage.json`, `case-results.json`, `case-results-summary.md` |
 | you, via `sim finalize` | `result.json` |
 
 Per-file detail is in [`references/artifact-contract.md`](references/artifact-contract.md). One

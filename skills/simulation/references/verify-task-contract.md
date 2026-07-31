@@ -30,7 +30,7 @@ it; a regress failure routes out with `failing_cases` and no check-mapping.
    stimulus-layer or intent-layer gap per `coverage-iteration.md`, and either iterate stimulus
    within `defaults.yaml.stimulus_iterate_max_rounds` rounds or route out with
    `failure_phase=coverage`.
-3. **Summary**: `make summary` produces `coverage-summary.txt` and `case-results-summary.md`.
+3. **Summary**: `make summary` produces `case-results.json` and `case-results-summary.md`.
    The exit gates run at the orchestrator's finalize, not here.
 
 ## Authority
@@ -71,8 +71,7 @@ instead.
 ## Output
 
 - Verify-phase artifacts written in `{workdir}`: `regression-log.txt`, `structural-coverage.json`,
-  `coverage-summary.txt`, `case-results-summary.md` (artifact ownership split is in
-  `artifact-contract.md`).
+  `case-results.json`, `case-results-summary.md` (what each one is: `artifact-contract.md`).
 - End the response with `STATUS: DONE` plus a single JSON line. On a clean pass the only field
   read from it is `stimulus_iterations`, the number of Rule B rounds you spent; the suite counts
   and coverage numbers are read off `case-results.json` and `structural-coverage.json` by

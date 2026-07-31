@@ -7,8 +7,6 @@ class {{MODULE}}_{{AGENT_NAME}}_txn extends uvm_sequence_item;
 
 {{FIELD_DECLARATIONS}}
 
-  // TODO(transaction): Add constraints.
-
   function new(string name = "{{MODULE}}_{{AGENT_NAME}}_txn");
     super.new(name);
   endfunction
