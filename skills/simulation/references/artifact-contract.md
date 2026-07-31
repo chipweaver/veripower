@@ -94,9 +94,7 @@ share it).
     "stimulus_iterations": 0,
     "coverage_summary": {
       "line": 92, "cond": 71, "fsm": 64, "toggle": 88
-    },
-    "conformance_gate": "clear",
-    "conformance_advisory": []
+    }
   }
 }
 ```

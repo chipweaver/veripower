@@ -284,12 +284,11 @@ via `enumerate_artifacts` — both are written fresh every round (Step 4 / Step 
 
 `finalize --phase final` re-runs the three gates in-process (thin-D1 fail → `failure_phase=compile`,
 conformance trip → `failure_phase=conformance`, coverage fail → `failure_phase=coverage`, earliest
-wins), derives the informational pass-summary (`total_cases`/`passed`/`failed` from
+wins), derives the pass-summary measurements (`total_cases`/`passed`/`failed` from
 `case-results.json`, `coverage_summary` from `structural-coverage.json.aggregate`,
-`conformance_gate` + `conformance_advisory[]` from `conformance-review.json` with each advisory `note`
-copied verbatim from the finding `summary`, `stimulus_iterations` from the reaped verify verdict),
-enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status
-pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+`stimulus_iterations` from the reaped verify verdict), enumerates `artifacts[]`, and writes the
+complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit
+is a program exception (BLOCKED), not a `status=fail`.
 
 **Verdict integrity.** Before `--phase final` will write `status=pass` it re-runs three gates over
 the workdir: materialization, the conformance verdict off the `--conformance-review` file you hand

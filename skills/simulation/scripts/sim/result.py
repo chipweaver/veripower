@@ -159,8 +159,6 @@ def build_result(
         "failed": cases["failed"],
         "stimulus_iterations": verify.get("stimulus_iterations"),
         "coverage_summary": read_coverage_summary(workdir),
-        "conformance_gate": conformance_gate_label(conformance_review),
-        "conformance_advisory": conformance_advisory(conformance_review),
     }
     _write_result(
         workdir,
@@ -217,31 +215,6 @@ def gating_findings(review_path) -> list[dict]:
     findings = _findings(review_path) or []
     flagged = set(compute_gate({"findings": findings})["flagged"])
     return [f for f in findings if f.get("tp_id") in flagged]
-
-
-def conformance_gate_label(review_path):
-    findings = _findings(review_path)
-    if findings is None:
-        return None
-    return compute_gate({"findings": findings})["gate"]  # single-homed reduction
-
-
-def conformance_advisory(review_path) -> list[dict]:
-    findings = _findings(review_path) or []
-    flagged = set(compute_gate({"findings": findings})["flagged"])
-    out = []
-    for f in findings:
-        if f.get("tp_id") in flagged:
-            continue  # gating findings -> failure_phase=conformance, not the advisory list
-        out.append(
-            {
-                "tp_id": f.get("tp_id"),
-                "category": f.get("category"),
-                "severity": f.get("severity"),
-                "note": f.get("summary"),
-            }
-        )  # summary VERBATIM
-    return out
 
 
 def enumerate_artifacts(workdir: Path) -> list[dict]:
