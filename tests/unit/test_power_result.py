@@ -656,15 +656,26 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
         (wd / d).mkdir()
     (wd / "result.json").write_text("{}")  # must NOT self-list
     paths = [a["path"] for a in p.enumerate_artifacts(wd)]
+    # what this run produced or resolved
     for expect in [
         "env.sh",
-        "Makefile",
-        "scripts",
+        "scaffold",
+        "tb_filelist_abs.f",
         "saif",
         "reports_ptpx",
-        "simv.daidir",
+        "gls-compile-log.txt",
     ]:
         assert expect in paths
+    # what the skill shipped, or what a rebuild reproduces, or a log's second copy
+    for absent in [
+        "Makefile",
+        "README.md",
+        "scripts",
+        "simv",
+        "simv.daidir",
+        "make.out",
+    ]:
+        assert absent not in paths, f"{absent} is on disk but must not be promoted"
     assert "result.json" not in paths
     assert all((wd / pth).exists() for pth in paths)  # only present paths (file OR dir)
 

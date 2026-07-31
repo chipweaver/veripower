@@ -430,22 +430,32 @@ def _tooling_reason(data: dict) -> str:
 
 
 def enumerate_artifacts(workdir: Path) -> list[dict]:
+    """What promote copies into canonical and the kernel fingerprints on every reap and
+    every freshness query. The rule: what this run produced or resolved, not what the
+    skill shipped.
+
+    So `Makefile`, `README.md` and `scripts/` are absent — they arrive from templates/
+    byte-identical every round, and the plugin version that carries them is already in
+    the outcome's tool identity. `env.sh` stays because bootstrap substitutes this run's
+    TOP and upstream locations into it, and `scaffold/` because its power tests are
+    rendered from this round's plan.
+
+    Absent for a different reason: `simv` and `simv.daidir`, VCS build output regenerable
+    from the netlist and the filelists — on a real module the daidir alone is ~200 MB of
+    incremental-compile cache; and `make.out`, which is the tee'd steps' own logs
+    concatenated (measured line-for-line against them), so it is those files a second
+    time.
+    """
     workdir = Path(workdir)
     candidates = [
         "env.sh",
-        "Makefile",
-        "README.md",
-        "scripts",
         "scaffold",
         "tb_filelist_abs.f",
-        "simv",
-        "simv.daidir",
         "saif",
         "reports_ptpx",
         "gls-compile-log.txt",
         "gls-run-log.txt",
         "ptpx.log",
-        "make.out",
     ]  # files AND dirs; envelope.schema forbids self-listing result.json (excluded by construction)
     return [{"path": pth} for pth in candidates if (workdir / pth).exists()]
 
