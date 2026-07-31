@@ -212,17 +212,34 @@ def test_bootstrap_unusable_top_exit_1(tmp_path):
     assert r.returncode == 1 and "not a Verilog identifier" in r.stderr
 
 
-def test_bootstrap_missing_rtl_files_exit_1(tmp_path):
+def test_placeholders_are_substituted_only_in_what_was_deployed(tmp_path):
+    # A carried file had its placeholders substituted the round it was deployed, so the
+    # literal text can only be there because an author wrote it. Scanning the whole workdir
+    # would rewrite that, and would read every binary the tools left in the run directory.
     main, wd, module = _mirror(tmp_path)
-    (tmp_path / "asic" / module / "Design" / "rtl-design" / "rtl-files.json").unlink()
+    carried = wd / "tb" / "uvm" / "checker" / "keep.sv"
+    carried.parent.mkdir(parents=True, exist_ok=True)
+    carried.write_text("// a check the author wrote about MY_TOP naming\n")
+    (wd / "simv.eda-bin").write_bytes(b"\x7fELF\x02\x01\x01\x00\xff\xfe binary")
     r = _run(main, module, wd)
-    assert r.returncode == 1 and "RTL file list" in r.stderr
+    assert r.returncode == 0, r.stderr
+    assert carried.read_text() == "// a check the author wrote about MY_TOP naming\n"
+    assert "MY_TOP" not in (wd / "env.sh").read_text()
 
 
 def test_bootstrap_missing_scaffold_file_exit_1(tmp_path):
     main, wd, module = _mirror(tmp_path)
     r = _run(main, module, wd, "--plan", str(tmp_path / "nope"))
     assert r.returncode == 1 and "tb-scaffold.json" in r.stderr
+
+
+def test_pycache_beside_the_templates_is_not_deployed(tmp_path):
+    # Running the deployed scripts under test leaves __pycache__ in the template tree.
+    # Copying it would ship stale bytecode into every workdir, and scripts/ is a promoted
+    # artifact, so it would reach canonical too.
+    main, wd, module = _mirror(tmp_path)
+    assert _run(main, module, wd).returncode == 0
+    assert not list(wd.rglob("__pycache__"))
 
 
 def test_bootstrap_chmods_scripts(tmp_path):

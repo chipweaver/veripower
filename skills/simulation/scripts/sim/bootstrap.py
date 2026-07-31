@@ -63,18 +63,21 @@ def read_top(scaffold_dir) -> str:
     return json.loads((Path(scaffold_dir) / SCAFFOLD_NAME).read_text())["top"]
 
 
-def _deploy_no_clobber(src_root: Path, dest: Path) -> None:
-    """Copy every template file into dest UNLESS dest already has one at that path —
-    a carried file (brought forward by kernel.py's carry_self before this verb runs,
-    e.g. a prior round's TB) always wins over the pristine template."""
+def _deploy_no_clobber(src_root: Path, dest: Path) -> list[Path]:
+    """Copy every template file into dest unless dest already has one at that path: a file
+    carried from the prior round always wins over the pristine template. Returns the files
+    actually written."""
+    written: list[Path] = []
     for p in src_root.rglob("*"):
-        if p.is_dir():
-            continue
+        if p.is_dir() or "__pycache__" in p.parts:
+            continue  # bytecode the test suite left beside the shipped scripts
         d = dest / p.relative_to(src_root)
         if d.exists():
             continue  # carried file — never overwrite
         d.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(p, d)
+        written.append(d)
+    return written
 
 
 def run(module: str, workdir, scaffold=None) -> int:
@@ -95,7 +98,6 @@ def run(module: str, workdir, scaffold=None) -> int:
     # dispatch.json (dispatch-time), not self-navigated via tree_root/asic/<module>/....
     inputs = json.loads((dest / "dispatch.json").read_text(encoding="utf-8"))["inputs"]
     rtl_dir = Path(inputs["rtl"])
-    rtl_files_path = rtl_dir / "rtl-files.json"
 
     top = read_top(inputs["scaffold"])
     if not _IDENT_RE.match(top):
@@ -105,38 +107,27 @@ def run(module: str, workdir, scaffold=None) -> int:
         _err(f"{SCAFFOLD_NAME} `top` is not a Verilog identifier: {top!r}")
         return 1
 
-    # Prerequisite: the rtl-design filelist must exist (the scaffold's RTL source).
-    if not rtl_files_path.is_file():
-        _err(f"missing RTL file list: {rtl_files_path}")
-        return 1
-
-    # Existence check: every fresh workdir already holds the kernel's dispatch.json.
-    # A Makefile present means carry_self already brought a
-    # prior round's TB forward — treat as REWORK (the no-clobber deploy below never
-    # overwrites it), not an abort; absent means a genuine first run.
+    # A Makefile present means the prior round's TB was carried in before this verb ran:
+    # a rework, not an abort. Absent means a first run.
     dest.mkdir(parents=True, exist_ok=True)
     if (dest / "Makefile").is_file():
         print(f"[sim bootstrap] rework — carried TB detected ({dest / 'Makefile'})")
 
-    # Step 1: deploy infra NO-CLOBBER — a carried TB (carry_self, before this verb
-    # runs) always wins over the empty infra template.
-    _deploy_no_clobber(infra, dest)
+    # Step 1: deploy infra, never over a file already there.
+    deployed = _deploy_no_clobber(infra, dest)
     for d in _UVM_SUBDIRS:
         (dest / "tb" / "uvm" / d).mkdir(parents=True, exist_ok=True)
     (dest / "tests").mkdir(parents=True, exist_ok=True)
 
-    # Substitute MY_TOP / MY_MODULE across every deployed file carrying one (str.replace).
-    repl = {
-        "MY_TOP": top,
-        "MY_MODULE": module,
-    }
-    for path in dest.rglob("*"):
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text()
-        except (UnicodeDecodeError, OSError):
-            continue
+    # Substitute MY_TOP / MY_MODULE in what was just deployed, and only there. A carried file
+    # had its placeholders substituted the round it was deployed, so re-reading it can only
+    # find the literal text somewhere an author wrote it, and rewriting that would edit
+    # carried work. Scanning the whole workdir instead would also mean reading every file the
+    # tools left behind: on a real run directory that is 311 files and 56 MB, 170 of them
+    # binary, to reach the three template files that actually carry a placeholder.
+    repl = {"MY_TOP": top, "MY_MODULE": module}
+    for path in deployed:
+        text = path.read_text()
         if any(ph in text for ph in _PLACEHOLDERS):
             for ph, val in repl.items():
                 text = text.replace(ph, val)

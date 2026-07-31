@@ -13,8 +13,11 @@ from pathlib import Path
 
 
 def load_rtl_files(rtl_root) -> dict:
-    """rtl-files.json from the injected rtl-design stage root. Not validated here, for the
-    reason given in sim._plan."""
+    """rtl-files.json from the injected rtl-design stage root. Indexed, not checked for
+    existence: it is a declared input of this rule, and the kernel refuses to dispatch until
+    rtl-design's latest outcome has recorded it with a fingerprint matching disk (a deleted
+    file fingerprints as `unknown`, which never matches). Not validated either, for the reason
+    given in sim._plan."""
     path = Path(rtl_root) / "rtl-files.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
