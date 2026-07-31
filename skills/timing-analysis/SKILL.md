@@ -5,124 +5,109 @@ description: Use when running static timing analysis on synthesis netlist, analy
 
 # Static Timing Analysis
 
-Your sole responsibility: run independent PrimeTime STA on the post-synthesis netlist, classify setup / hold path-level violations, and self-judge the `timing_setup` / `timing_hold` dimensions via the `timing` CLI's `finalize` verb — never by eye.
-
-## When to Use
-
-- Synthesis has completed and an independent STA verification is needed.
-- Analyze setup / hold violations.
-- Re-analyze timing after the post-synthesis netlist or constraints change.
-- Confirm whether timing meets signoff accuracy.
+Your sole responsibility: run PrimeTime over the post-synthesis netlist, independently of the
+timing engine inside synthesis, and close the run through the `timing` CLI. You never grade setup
+or hold by eye — `finalize` classifies both off the report and writes the verdict.
 
 ## Iron Rule
 
-- The injected read-only input locations `<netlist>`/`<sdc>` — never modify them; write only under `{workdir}`.
-- An independent STA tool (PrimeTime) MUST be used, not the synthesis tool's built-in timing engine (contract violation — the in-synthesis engine uses estimated delays and cannot meet signoff accuracy).
-- When no PT license is available, write `status=fail` + `fail_reason="PT license missing"`; do not claim STA is complete.
-- If synthesis products (netlist / SDC) do not exist, write `status=fail` + `fail_reason="external reference missing: <path>"`; do not bypass.
-- `timing-report.txt` MUST be written to disk; claiming STA complete without it is not allowed.
-- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
+- Write only under `{workdir}`. Every injected input location is read-only, as is every other
+  stage's output.
+- **Scripts are black boxes, never Read their source.** Invoke them per this skill's documented
+  command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol
+  (stderr, stdout verdict), not the source. Sole exception: debugging a suspected bug in a
+  script itself.
 
-## Input Artifacts
+## What you read, and what you produce
 
-### Context variables
+`{workdir}/dispatch.json` carries the `inputs` table, but you open none of what it points at:
+`bootstrap` resolves `<TOP>` from the single `out/<TOP>_syn.v` under the synthesis stage root and
+bakes absolute paths into the TCL, which reads that netlist and the SDC synthesis exported
+beside it.
 
-| Variable | Purpose |
-|---|---|
-| `{workdir}` | Current run workspace root. |
-| `{module}` | Module name. |
+The one thing you supply is `LIB_DB`, the std-cell Liberty `.db` synthesis linked against.
 
-Only `{workdir}` / `{module}` are delivered. (See the Workflow rationale.)
-
-### External reference inputs
-
-Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream input to its location, so `<key>` below denotes that location and you read `<key>/<subpath>`.
-
-| Path | Schema / Format | Use |
-|---|---|---|
-| `<netlist>/out/<TOP>_syn.v` | Verilog gate-level netlist | STA input netlist. |
-| `<sdc>/out/<TOP>_syn.sdc` | SDC | Post-synthesis constraints. |
-| `LIB_DB` (env) | std cell Liberty `.db` path (same `.db` as synthesis) | Set before the STA run (Step 3) — `run_sta.tcl` errors when unset (or edit `config.tcl`). |
-
-## Output Artifacts
-
-| Path (relative to `{workdir}`) | Schema / Format | Use |
-|---|---|---|
-| `result.json` | `references/result.schema.json` + envelope.schema.json | Status contract (`stage_specific.timing{}` + `violations[]`). |
-| `config.tcl` | Tcl | Edit to fill `LIB_DB` (Step 3 alternative to the env var). |
-| `timing-report.txt` | PrimeTime text report | setup / hold / check_timing output — the deliverable; a human artifact, no downstream stage reads it. |
+Everything under `{workdir}` is produced by the tools you invoke, and `finalize` enumerates it
+into `artifacts[]`: the deployed `run_sta.tcl` and `config.tcl`, plus `timing-report.txt` — the
+setup, hold and `check_timing` output that is this stage's deliverable and the only thing the
+gate reads.
 
 ## Workflow
 
-This is a single linear flow (no branch fork — see rationale below).
+### 1. Deploy
 
-### Step 1: Pre-check external references
-
-Confirm `<netlist>/out/<TOP>_syn.v` and `<sdc>/out/<TOP>_syn.sdc` are present. If the netlist/SDC are missing, write `status=fail`, `failure_kind="infra"`, `fail_reason="external reference missing: <path>"` and exit.
-
-### Step 2: Bootstrap
+Export `LIB_DB`, then run `bootstrap` to lay down the run scaffold:
 
 ```bash
+export LIB_DB=<path-to-slow.db>
 python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py bootstrap --workdir {workdir}
 ```
 
-Deploys `run_sta.tcl` + `config.tcl`, resolves `<TOP>`, verifies the netlist/SDC, and aborts if `{workdir}` is already deployed.
+It deploys `run_sta.tcl` + `config.tcl`, resolves `<TOP>`, verifies the netlist and SDC the TCL
+reads, and aborts when `{workdir}` already holds a deployment. `pt_shell` reads `LIB_DB` out of
+the `config.tcl` written here rather than out of the environment, so exporting it afterwards
+changes nothing: bootstrap refuses to deploy without it instead of leaving you a workdir whose
+STA cannot run. Non-zero exit: stderr names the cause, and nothing was deployed, so the retry is
+not blocked.
 
-### Step 3: Set `LIB_DB`
+### 2. Run the STA
 
-(`export LIB_DB=<path-to-slow.db>` — the same `.db` as synthesis — or edit `{workdir}/config.tcl`) and **run STA from the workdir** so PrimeTime's auto-logs (`pt_shell_command.log`, `.svf`) land inside the gitignored workdir, not the tree root:
+Run PrimeTime from the workdir, so its auto-logs (`pt_shell_command.log`, `.svf`) land inside the
+gitignored workdir rather than the tree root:
 
 ```bash
 cd {workdir} && pt_shell -f run_sta.tcl
 ```
 
-The TCL uses absolute paths (set by bootstrap) and its `redirect` writes `{workdir}/timing-report.txt`.
+The TCL reports setup and hold, runs `check_timing`, and redirects all three into
+`{workdir}/timing-report.txt`. Read what it printed rather than what it returned: `pt_shell`
+exits 0 even on a script error, so its exit code settles nothing.
 
-### Step 4: Build `{workdir}/result.json` (mandatory)
+### 3. Close
 
-Run the parser's finalize subcommand; do not run the parser separately or hand-assemble the envelope:
+Run `finalize` to write the envelope. Every run ends here, a `pt_shell` that never reached the
+report included, and you never hand-assemble it:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
-  --workdir {workdir} --module <module> --top <top_module> [--fix-owner <rule>]
+  --workdir {workdir} --module <module> [--fix-owner <rule>] \
+  [--fail-reason "<cause>" --failure-kind {infra|tooling}]
 ```
 
-**Naming the fix owner.** On a failure, add `--fix-owner <rule>`: the rule that must act. You read the tool output, so you are the only party that can say whose artifact is at fault, and nothing downstream re-derives it. Name the producer of the input you found broken. When your own environment broke, or you read the evidence and still cannot tell, omit it: an unnamed owner is how a human gets called in, and a guess spends a full rework round on a stage that cannot fix it.
+It classifies each direction on the report's `(MET)` / `(VIOLATED)` marker — never the displayed
+number, which prints `0.00` for a violation smaller than the reported precision — records the
+worst slack and worst path per direction into `stage_specific.timing`, lists the binding violator
+per failing direction into `stage_specific.violations[]`, reads the PrimeTime version off the
+report header, and enumerates `artifacts[]`.
 
-`finalize` reuses the parser's timing gate (classifies each direction on the report's `(MET)`/`(VIOLATED)` marker — never the displayed number — and judges pass = setup MET and hold MET), derives the reproducibility header (tool from the report `Version:` line / lib_db from `config.tcl` / clock from the synthesis SDC), enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
+Two MET markers are not enough for a pass. `check_timing` counts the endpoints the SDC left
+unconstrained and the register clock pins with no clock, and a run carrying either graded a
+fraction of the design: the markers describe the paths PrimeTime analyzed and say nothing about
+the ones it was never asked to. That is a `tooling` fail rather than a `ppa` one, and the SDC it
+read is synthesis's export of what specification declared, so read both before naming the owner.
 
-`failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); you write `failure_kind=infra` in the Step-1 pre-check (PT never ran — external ref / license missing) before finalize runs.
+The flags carry what the report cannot:
 
-**Workflow rationale — single linear flow.** You are a read-only re-verifier — you cannot modify the synthesis netlist/SDC or apply any fix, so every run does identical work and there is no first-run / incremental / re-run fork to branch on. Step 1 is a linear pre-flight check, not a branch; each run uses a fresh `{workdir}` (Step 2 aborts if one is already deployed). You therefore carry no branch fork.
+- **`--fail-reason`**, which fills `stage_specific.fail_reason`, when `pt_shell` produced nothing
+  gradeable: no license, a `link_design` or `read_sdc` abort, a crash after the redirect opened.
+  You are the one who watched it run. Supplying it is itself the declaration of failure, so it
+  wins over the gate; write the cause you actually read rather than a category, since nothing
+  parses it.
+- **`--failure-kind`**, which fills `stage_specific.failure_kind`, alongside it: `infra` when
+  PrimeTime never ran, `tooling` when it ran and its output is unusable. That is the one thing an
+  absent report cannot settle. The third value, `ppa`, is the gate's to write and never yours.
+- **`--fix-owner`** on every failure, license failures included, since it is what fills
+  `stage_specific.fix_owner`. A `fail_reason` naming the guilty stage in prose while the flag was
+  omitted reads to the caller as "this stage could not tell", and brings a human in to re-derive
+  an answer you already had. You cannot edit the netlist or the constraints, so the owner is
+  never this stage: name the producer of whichever input you read and found wrong, and omit the
+  flag only when your own environment broke or you read the evidence and still cannot say.
 
-## Red Flags
-
-| Excuse | Reality |
-|---|---|
-| "slack reads 0.00 — that's met" | Classify on the `(VIOLATED)` / `(MET)` **marker**, never the number: PrimeTime prints a real sub-rounding violation as `0.00`. The parser keys on the marker; do not override it. |
-| "Setup is clean — mark pass" | The parser checks `timing_setup` **and** `timing_hold`; any direction with a `(VIOLATED)` marker → `status=fail`. Skipping hold is impossible — `run_sta.tcl` always runs `-delay max` and `-delay min`. |
-| "STA ran and the report is there — mark pass" when the parser exited non-zero | A non-zero parser exit is authoritative: `FAIL=missing`/`FAIL=unparseable` → `status=fail` + `failure_kind="tooling"`. Report presence is not a met gate. |
-
-## Pitfalls
-
-| Mistake | Fix |
-|---|---|
-| SDC constraints out of sync with synthesis | The TCL reads `<sdc>/out/<TOP>_syn.sdc` (exported from synthesis); never rewrite by hand. |
-| Editing `run_sta.tcl` by hand per run | The bootstrap deploys the vetted template; re-bootstrap a fresh `runs/N` rather than improvising flags. |
-
-## Completion Gate
-
-- [ ] `{workdir}/result.json` written and passes schema validation.
-- [ ] No Iron Rule or Red Flag was triggered.
-- [ ] `result.json.status` written (`pass` or `fail`; the envelope does not accept `blocked`); on `fail`, `stage_specific.{fail_reason, failure_kind}` required.
-- [ ] result.json was written by the `timing` CLI's `finalize` verb (it owns status / timing / violations / artifacts / failure_kind / the reproducibility header).
-- [ ] `{workdir}/run_sta.tcl`, `{workdir}/config.tcl`, and `{workdir}/timing-report.txt` exist on disk.
+Exit 0 means written, pass or fail. Exit 2 is BLOCKED and never a `status=fail`: an empty
+`--fail-reason`, one without a `--failure-kind`, or a program exception. stderr names which.
 
 ## Return Contract
 
-As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `STATUS: BLOCKED <one-line reason>` (when a program exception prevented the write). The harness uses this signal to fire the Task-completion notification; the caller then decides based on `result.json`.
-
-## Bundled References
-
-- [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
-- [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.
+Emit `STATUS: DONE` as your last line once `result.json` exists, or
+`STATUS: BLOCKED <one-line reason>` when nothing could be written. What runs next is the
+caller's decision, taken from `result.json`.

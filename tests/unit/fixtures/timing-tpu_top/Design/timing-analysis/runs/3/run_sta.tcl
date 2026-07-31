@@ -6,9 +6,6 @@ set MODULE_ROOT asic/tpu_top
 set WORKDIR     asic/tpu_top/Design/timing-analysis/runs/3
 source $WORKDIR/config.tcl                  ;# sets TOP and LIB_DB
 
-if {![info exists LIB_DB] || $LIB_DB eq "FILL_IN_LIB_DB_PATH"} {
-    error "LIB_DB not set — edit $WORKDIR/config.tcl"
-}
 set link_library   "* $LIB_DB"
 set target_library $LIB_DB
 set report_default_significant_digits 4     ;# MANDATORY — keeps recorded slack correct (sub-rounding violations)

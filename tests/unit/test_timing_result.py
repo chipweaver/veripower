@@ -146,9 +146,16 @@ def test_parse_coverage_counts():
     }
 
 
-def test_parse_coverage_defaults_zero_when_absent():
+def test_parse_coverage_zero_when_the_check_ran_and_warned_about_nothing():
     cov = sp.parse_coverage(_SETUP_MET + _HOLD_MET + _CHECK_TIMING_CLEAN)
     assert cov == {"unconstrained_max_delay_endpoints": 0, "register_pins_no_clock": 0}
+
+
+def test_parse_coverage_raises_when_check_timing_never_ran():
+    # Zero counts and no check_timing at all are indistinguishable by warning lines
+    # alone, and one of them is full coverage. Anchor on the check, not the warning.
+    with pytest.raises(sp.ParseError):
+        sp.parse_coverage(_SETUP_MET + _HOLD_MET)
 
 
 # ── run() exit-code + verdict contract ─────────────────────────────────────────
@@ -185,13 +192,44 @@ def test_run_negative_number_recorded_with_sig_digits4(tmp_path):
     assert v["actual"] < 0
 
 
-def test_run_coverage_recorded_not_gated(tmp_path):
-    # 756 no-clock pins are recorded but do NOT change a passing verdict.
-    rep = _write(tmp_path, _SETUP_MET + _HOLD_MET + _CHECK_TIMING)
-    rc, data = sp.run(rep)
-    assert rc == 0
-    assert data["verdict"] == "pass"
-    assert data["timing"]["coverage"]["register_pins_no_clock"] == 756
+def test_uncovered_names_both_counts_and_is_none_when_clean():
+    assert (
+        sp.uncovered(
+            {"unconstrained_max_delay_endpoints": 0, "register_pins_no_clock": 0}
+        )
+        is None
+    )
+    phrase = sp.uncovered(
+        {"unconstrained_max_delay_endpoints": 1461, "register_pins_no_clock": 756}
+    )
+    assert "1461 endpoints" in phrase and "756 register clock pins" in phrase
+
+
+def test_uncovered_sta_cannot_pass(tmp_path):
+    # Both directions MET, and the design was never fully timed: 1461 endpoints carry
+    # no max-delay constraint. The markers grade what PT analyzed, so they cannot
+    # answer for the paths an incomplete SDC kept it from analyzing.
+    wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING)
+    assert sp.build_result(wd, module="tpu_top", fix_owner="synthesis") == 0
+    env = json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert env["status"] == "fail"
+    assert ss["failure_kind"] == "tooling"  # not ppa: no target was missed
+    assert "1461 endpoints" in ss["fail_reason"]
+    assert "756 register clock pins" in ss["fail_reason"]
+    assert ss["fix_owner"] == "synthesis"
+    assert ss["timing"]["setup"]["met"] is True  # the measurements still land
+    assert ss["violations"] == []
+
+
+def test_uncovered_outranks_a_missed_target(tmp_path):
+    # Hold is violated AND the STA was incomplete. The incompleteness wins: routing a
+    # ppa fail would send someone to close a path on a design that was never timed.
+    wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING)
+    assert sp.build_result(wd, module="tpu_top") == 0
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["failure_kind"] == "tooling"
+    assert ss["violations"][0]["dim"] == "timing_hold"
 
 
 def test_run_missing_report_exit1(tmp_path):
@@ -256,7 +294,7 @@ def _workdir(tmp_path, report=None):
 
 def test_build_result_pass_lean_shape(tmp_path):
     wd = _workdir(tmp_path)
-    assert sp.build_result(wd, module="tpu_top", top="tpu_top") == 0
+    assert sp.build_result(wd, module="tpu_top") == 0
     env = json.loads((wd / "result.json").read_text())
     assert (env["stage"], env["module"]) == (
         "timing-analysis",
@@ -274,7 +312,7 @@ def test_build_result_tooling_fail_on_unparseable(tmp_path):
     # test_run_no_slack_line_exit3 above).
     broken = re.sub(r"slack \(MET\)\s+2\.93", "", _SETUP_MET)
     wd = _workdir(tmp_path, report=broken + _HOLD_MET + _CHECK_TIMING_CLEAN)
-    assert sp.build_result(wd, module="tpu_top", top="tpu_top") == 0
+    assert sp.build_result(wd, module="tpu_top") == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert (
         ss["failure_kind"] == "tooling"
@@ -284,9 +322,7 @@ def test_build_result_tooling_fail_on_unparseable(tmp_path):
 
 
 def test_build_result_tooling_fail_on_missing_report(tmp_path):
-    assert (
-        sp.build_result(tmp_path, module="tpu_top", top="tpu_top") == 0
-    )  # no report file
+    assert sp.build_result(tmp_path, module="tpu_top") == 0  # no report file
     ss = json.loads((tmp_path / "result.json").read_text())["stage_specific"]
     assert (
         ss["failure_kind"] == "tooling"
@@ -301,15 +337,81 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
         raise RuntimeError("synthetic")
 
     monkeypatch.setattr(sp, "build_result", boom)
-    assert sp.finalize(tmp_path, "m", "m") == 2
+    assert sp.finalize(tmp_path, "m") == 2
+
+
+def test_fail_reason_wins_over_a_clean_gate(tmp_path):
+    # The caller watched pt_shell; this verb only sees what landed on disk. A report
+    # that parses clean does not outrank a declared failure.
+    wd = _workdir(tmp_path)
+    assert (
+        sp.build_result(
+            wd,
+            module="tpu_top",
+            fix_owner="synthesis",
+            fail_reason="PT license unavailable",
+            failure_kind="infra",
+        )
+        == 0
+    )
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    ss = env["stage_specific"]
+    assert (ss["fail_reason"], ss["failure_kind"], ss["fix_owner"]) == (
+        "PT license unavailable",
+        "infra",
+        "synthesis",
+    )
+    # An early-fail carries no measurements: PT produced none this caller trusts.
+    assert "timing" not in ss and "violations" not in ss
+
+
+def test_finalize_blocked_on_empty_fail_reason(tmp_path):
+    wd = _workdir(tmp_path)
+    assert sp.finalize(wd, "tpu_top", fail_reason="  ") == 2
+    assert not (wd / "result.json").exists()
+
+
+def test_finalize_blocked_on_fail_reason_without_kind(tmp_path):
+    wd = _workdir(tmp_path)
+    assert sp.finalize(wd, "tpu_top", fail_reason="no license") == 2
+    assert not (wd / "result.json").exists()
+
+
+def test_finalize_cli_declared_failure(tmp_path):
+    # infra is reachable only through these flags — nothing on disk distinguishes
+    # "PrimeTime never started" from "PrimeTime died", so no hand-written envelope.
+    wd = _workdir(tmp_path)
+    MAIN = REPO_ROOT / "skills/timing-analysis/scripts/timing/__main__.py"
+    r = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(wd),
+            "--module",
+            "tpu_top",
+            "--fail-reason",
+            "PT license unavailable",
+            "--failure-kind",
+            "infra",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert (ss["fail_reason"], ss["failure_kind"]) == (
+        "PT license unavailable",
+        "infra",
+    )
 
 
 def test_finalize_cli_happy_path(tmp_path):
-    # End-to-end through _cmd_finalize (handler import + arg mapping), exercising the
-    # --top default (omitted -> defaults to --module). Not just in-process build_result.
-    wd = _workdir(
-        tmp_path
-    )  # stages timing-report.txt (config/sdc optional -> header None)
+    # End-to-end through _cmd_finalize (handler import + arg mapping), not just
+    # in-process build_result.
+    wd = _workdir(tmp_path)
     MAIN = REPO_ROOT / "skills/timing-analysis/scripts/timing/__main__.py"
     r = subprocess.run(
         ["python3", str(MAIN), "finalize", "--workdir", str(wd), "--module", "tpu_top"],
@@ -318,14 +420,7 @@ def test_finalize_cli_happy_path(tmp_path):
     )
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
-    assert (env["stage"], env["status"], env["stage_specific"]["top_module"]) == (
-        "timing-analysis",
-        "pass",
-        "tpu_top",
-    )
-
-
-# ── Task 2: reproducibility-header derivations ───────────────────────────────
+    assert (env["stage"], env["status"]) == ("timing-analysis", "pass")
 
 
 def test_parse_tool_from_primetime_version():
@@ -333,33 +428,7 @@ def test_parse_tool_from_primetime_version():
     assert sp.parse_tool("no version here") == "PrimeTime unknown"
 
 
-def test_read_lib_db_from_config_tcl(tmp_path):
-    (tmp_path / "config.tcl").write_text(
-        "set TOP    tpu_top\nset LIB_DB /home/eda/Foundry/TSMC.90/slow.db\n"
-    )
-    assert sp.read_lib_db(tmp_path) == "/home/eda/Foundry/TSMC.90/slow.db"
-    assert sp.read_lib_db(tmp_path / "nope") is None
-
-
-def test_parse_clock_port_first_sdc(tmp_path):
-    # The STA reads the SYNTHESIS SDC, whose location is injected into dispatch.json
-    # (key "netlist" -> the synthesis stage root) the way kernel.py dispatch injects
-    # it; lay out the workdir as runs/<N>/ under the module tree.
-    wd = tmp_path / "asic" / "tpu_top" / "Design" / "timing-analysis" / "runs" / "3"
-    wd.mkdir(parents=True)
-    syn_dir = tmp_path / "asic" / "tpu_top" / "Design" / "synthesis"
-    (syn_dir / "out").mkdir(parents=True)
-    (syn_dir / "out" / "tpu_top_syn.sdc").write_text(
-        "create_clock [get_ports i_clk]  -period 10  -waveform {0 5}\n"
-    )
-    (wd / "dispatch.json").write_text(json.dumps({"inputs": {"netlist": str(syn_dir)}}))
-    assert sp.parse_clock(wd, top="tpu_top") == {"name": "i_clk", "period_ns": 10.0}
-    # No dispatch.json (e.g. a workdir that was never dispatched-into) -> gracefully
-    # None, not a raise.
-    assert sp.parse_clock(wd / "nope", top="tpu_top") is None
-
-
-# ── Task 3: artifacts[] enumeration ──────────────────────────────────────────
+# ── artifacts[] enumeration ──────────────────────────────────────────────────
 
 
 def test_enumerate_artifacts_present_only_no_self(tmp_path):
@@ -376,7 +445,7 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
     assert all((tmp_path / p).is_file() for p in paths)  # only present files
 
 
-# ── Task 4: golden test against the real tpu_top run ─────────────────────────
+# ── golden test against the real tpu_top run ─────────────────────────────────
 
 
 def test_golden_lean_against_real_tpu_top(tmp_path):
@@ -384,17 +453,18 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
 
     ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-tpu_top"
     # Fixture is rooted at Design/ (no `asic` path component — it would be .gitignored).
-    # Copy under a module-root wrapper, then inject dispatch.json (the way kernel.py
-    # dispatch does) so parse_clock resolves the synthesis SDC location.
     shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
     wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
-    syn_dir = tmp_path / "module" / "Design" / "synthesis"
-    (wd / "dispatch.json").write_text(json.dumps({"inputs": {"netlist": str(syn_dir)}}))
-    assert sp.build_result(wd, module="tpu_top", top="tpu_top") == 0
+    assert sp.build_result(wd, module="tpu_top") == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
+    # Both directions MET on a real tpu_top run, and it is still not a pass: 1142 of
+    # its endpoints carry no max-delay constraint, so the STA graded a fraction of the
+    # design. This run used to promote as a tool-grade proof.
+    assert env["status"] == "fail"
+    assert ss["failure_kind"] == "tooling"
+    assert "1142 endpoints" in ss["fail_reason"]
     # contract fields — exact to the real run
-    assert env["status"] == "pass"
     assert ss["timing"]["setup"]["worst_slack_ns"] == pytest.approx(0.7252)
     assert ss["timing"]["setup"]["met"] is True
     assert (
@@ -408,13 +478,12 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "register_pins_no_clock": 0,
     }
     assert ss["violations"] == []
-    # reproducibility header — grounded in the real sources
     assert ss["tool"] == "PrimeTime M-2016.12-SP1"
-    assert ss["lib_db"] == "/home/eda/Foundry/TSMC.90/slow.db"
-    assert ss["clock"] == {"name": "i_clk", "period_ns": 10.0}
-    assert ss["top_module"] == "tpu_top"
-    # lean: dropped field ABSENT
-    assert "notes" not in ss
+    # every copied header field is gone: the lib_db is in the promoted config.tcl and
+    # in the kernel's own reap-time environment record, the clock is in the
+    # fingerprint-pinned synthesis SDC, and the top name was never anything but typed.
+    for dropped in ("lib_db", "clock", "top_module"):
+        assert dropped not in ss
     # artifacts present + no self-listing; produced_at normalized
     paths = [a["path"] for a in env["artifacts"]]
     assert paths == [
@@ -435,9 +504,7 @@ def test_golden_is_schema_valid(tmp_path):
     ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-tpu_top"
     shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
     wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
-    syn_dir = tmp_path / "module" / "Design" / "synthesis"
-    (wd / "dispatch.json").write_text(json.dumps({"inputs": {"netlist": str(syn_dir)}}))
-    sp.build_result(wd, module="tpu_top", top="tpu_top")
+    sp.build_result(wd, module="tpu_top")
     env = json.loads((wd / "result.json").read_text())
     env_schema = json.loads(
         (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()

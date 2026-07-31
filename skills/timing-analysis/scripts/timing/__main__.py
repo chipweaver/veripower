@@ -7,11 +7,9 @@ Verbs (one stage = one tool; see skills/timing-analysis/SKILL.md for usage):
 
 Thin dispatcher: each subcommand parses its own flags and calls into the
 timing.* library. Library imports are deferred into each handler (NOT top-level)
-so --help and verb dispatch run during incremental per-task TDD, before the
-sibling modules (bootstrap.py / result.py) exist. A top-level
-`from timing import bootstrap, result` would ImportError until both verbs are
-built. Keep them lazy. (Library modules themselves use top-level absolute
-imports; only this thin dispatcher defers.)
+so `--help` and verb dispatch stay runnable when a sibling module cannot import.
+(Library modules themselves use top-level absolute imports; only this thin
+dispatcher defers.)
 """
 
 import argparse
@@ -36,8 +34,13 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from timing import result
 
-    # --top is optional for timing finalize; default to --module (design §5.0).
-    return result.finalize(a.workdir, a.module, a.top or a.module, a.fix_owner)
+    return result.finalize(
+        a.workdir,
+        a.module,
+        a.fix_owner,
+        a.fail_reason,
+        a.failure_kind,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,12 +64,23 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument("--module", required=True)
     sp.add_argument(
-        "--top", default=None, help="top module; defaults to --module when omitted"
-    )
-    sp.add_argument(
         "--fix-owner",
         default=None,
         help="on a failure, the rule that must act (you name it; the reports cannot)",
+    )
+    sp.add_argument(
+        "--fail-reason",
+        default=None,
+        help="cause of a run that produced no gradeable report (license, a link_design "
+        "or read_sdc abort, a crash after reporting); supplying it declares the failure "
+        "and wins over the gate. Needs --failure-kind.",
+    )
+    sp.add_argument(
+        "--failure-kind",
+        default=None,
+        choices=("infra", "tooling"),
+        help="with --fail-reason: infra = PrimeTime never ran, tooling = it ran and its "
+        "output is unusable (ppa is the gate's to write, never yours)",
     )
     sp.set_defaults(func=_cmd_finalize)
 

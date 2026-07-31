@@ -3,20 +3,24 @@
 Single owner of timing-analysis's self-check. Reads the bare-`report_timing`
 deliverable (timing-report.txt: a `-delay max` section, a `-delay min` section,
 then check_timing), classifies each direction on the (MET)/(VIOLATED) MARKER
-(never the displayed number — a sub-rounding violation prints '0.00'), records the
-worst slack + worst path per direction and the two check_timing coverage counts,
-and judges pass = setup MET and hold MET. Coverage is recorded, never gated.
+(never the displayed number — a sub-rounding violation prints '0.00'), and records
+the worst slack + worst path per direction and the two check_timing coverage counts.
+
+A pass needs both: setup MET and hold MET, AND a check_timing that left nothing out.
+The markers grade the paths PT analyzed and say nothing about the ones an incomplete
+SDC kept it from analyzing at all, so the two are separate questions and a MET pair
+alone is not an answer to the second.
 
 Exit codes (each non-zero also prints a greppable FAIL=<token> on stderr):
   0  parsed + judged (incl. a legitimate verdict="fail")
   1  report file absent                                   -> FAIL=missing
-  3  a delay section has no parseable slack line, OR a marker contradicts its sign
-     (MET with slack < -eps / VIOLATED with slack > +eps)  -> FAIL=unparseable
+  3  a delay section has no parseable slack line, a marker contradicts its sign
+     (MET with slack < -eps / VIOLATED with slack > +eps), or a check_timing check
+     never ran                                            -> FAIL=unparseable
   2  usage error                                          -> ERROR: usage
 
-The judged payload is returned in-process to build_result; it is not written to a sidecar,
-because result.json already carries every field of it and the only reader was one line below
-the write.
+The judged payload is returned in-process to build_result rather than through a
+sidecar: result.json already carries every field of it.
 
 FORMAT — grounded against pt2016 (M-2016.12-SP1) sdc_controller reports. Bare
 `report_timing -delay max|min` prints the worst path per group; each block ends in
@@ -50,6 +54,10 @@ _UNCONSTRAINED_RE = re.compile(
     r"There are (\d+) endpoints which are not constrained for maximum delay"
 )
 _NOCLOCK_RE = re.compile(r"There are (\d+) register clock pins with no clock")
+# The `Checking '<name>'.` line each of the two above is reported under. Present
+# whatever the count; the count line itself is absent when the count is zero.
+_UNCONSTRAINED_CHECK_RE = re.compile(r"Checking 'unconstrained_endpoints'")
+_NOCLOCK_CHECK_RE = re.compile(r"Checking 'no_clock'")
 
 
 class ParseError(Exception):
@@ -88,7 +96,8 @@ def parse_direction(text: str, kind: str) -> dict:
         if not m:
             continue
         marker, raw = m.group(1), float(m.group(2))
-        # Marker-vs-sign cross-check (fail-loud, mirrors synthesis WNS xcheck).
+        # A marker that disagrees with its own number means the line is not the shape
+        # this parser was grounded on; fail loud rather than trust either half.
         if marker == "MET" and raw < -_EPS:
             raise ParseError(f"MET marker with negative slack {raw}")
         if marker == "VIOLATED" and raw > _EPS:
@@ -114,13 +123,42 @@ def parse_direction(text: str, kind: str) -> dict:
 
 
 def parse_coverage(text: str) -> dict:
-    """check_timing coverage counts (default 0 when a line is absent). Recorded, not gated."""
+    """The two check_timing counts that say how much of the design was timed.
+
+    PT prints a count only as a Warning and prints nothing at all when it is zero, so
+    an absent line means zero — but only once the check itself is known to have run.
+    Anchoring on the `Checking '<name>'` line first is what keeps a truncated report
+    from reading as full coverage, which is the one wrong answer this gate cannot
+    afford. Raises ParseError when an anchor is missing.
+    """
+    for name, anchor in (
+        ("unconstrained_endpoints", _UNCONSTRAINED_CHECK_RE),
+        ("no_clock", _NOCLOCK_CHECK_RE),
+    ):
+        if not anchor.search(text):
+            raise ParseError(f"no check_timing '{name}' check in the report")
     u = _UNCONSTRAINED_RE.search(text)
     n = _NOCLOCK_RE.search(text)
     return {
         "unconstrained_max_delay_endpoints": int(u.group(1)) if u else 0,
         "register_pins_no_clock": int(n.group(1)) if n else 0,
     }
+
+
+def uncovered(coverage: dict) -> str | None:
+    """The counts that make a MET verdict unrepresentative, as one phrase; None when
+    check_timing found nothing left out."""
+    parts = []
+    if coverage["unconstrained_max_delay_endpoints"]:
+        parts.append(
+            f"{coverage['unconstrained_max_delay_endpoints']} endpoints "
+            "unconstrained for maximum delay"
+        )
+    if coverage["register_pins_no_clock"]:
+        parts.append(
+            f"{coverage['register_pins_no_clock']} register clock pins with no clock"
+        )
+    return ", ".join(parts) or None
 
 
 def run(report_path) -> tuple[int, dict | None]:
@@ -138,14 +176,13 @@ def run(report_path) -> tuple[int, dict | None]:
     try:
         setup = parse_direction(text, "max")
         hold = parse_direction(text, "min")
+        coverage = parse_coverage(text)
     except ParseError as exc:
         print(
             f"[timing finalize] FAIL=unparseable {exc}: {report_path}",
             file=sys.stderr,
         )
         return 3, None
-
-    coverage = parse_coverage(text)
 
     violations = []
     if not setup["met"]:
@@ -183,11 +220,6 @@ _FAIL_REASON = {
 }
 
 _VERSION_RE = re.compile(r"^\s*Version:\s*(\S+)", re.M)
-_LIBDB_RE = re.compile(r"set\s+LIB_DB\s+(\S+)")
-# Port-first create_clock (real synthesis SDC): create_clock [get_ports i_clk] -period 10 ...
-_CLOCK_RE = re.compile(
-    r"create_clock\s+\[get_ports\s+(\S+?)\][^\n]*?-period\s+([0-9.]+)"
-)
 
 
 def _now_iso() -> str:
@@ -215,31 +247,11 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 
 def parse_tool(report_text: str) -> str:
+    """The PrimeTime version off the report header. The kernel's reap-time identity
+    record covers the library environment variables and no tool version, and this
+    stage's oracle IS pt_shell, so nothing else names which engine produced the proof."""
     m = _VERSION_RE.search(report_text)
     return f"PrimeTime {m.group(1)}" if m else "PrimeTime unknown"
-
-
-def read_lib_db(workdir: Path):
-    cfg = Path(workdir) / "config.tcl"
-    if not cfg.is_file():
-        return None
-    m = _LIBDB_RE.search(cfg.read_text(errors="replace"))
-    return m.group(1) if m else None
-
-
-def parse_clock(workdir: Path, top: str):
-    # The STA reads the synthesis SDC; its location is injected into dispatch.json
-    # (`inputs."netlist"` -> the synthesis stage root) rather than derived by climbing
-    # workdir's ancestors.
-    inputs_path = Path(workdir) / "dispatch.json"
-    if not inputs_path.is_file():
-        return None
-    inputs = json.loads(inputs_path.read_text(encoding="utf-8"))["inputs"]
-    sdc = Path(inputs["netlist"]) / "out" / f"{top}_syn.sdc"
-    if not sdc.is_file():
-        return None
-    m = _CLOCK_RE.search(sdc.read_text(errors="replace"))
-    return {"name": m.group(1), "period_ns": float(m.group(2))} if m else None
 
 
 def enumerate_artifacts(workdir: Path) -> list:
@@ -253,15 +265,42 @@ def enumerate_artifacts(workdir: Path) -> list:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def build_result(workdir, module, top, fix_owner=None) -> int:
+def build_result(
+    workdir, module, fix_owner=None, fail_reason=None, failure_kind=None
+) -> int:
     """Assemble the lean timing-analysis result.json. Reuses run() for the timing gate
     (in-process), then derives the header + artifacts + writes the envelope.
-    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED).
+    Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED).
 
-    fix_owner is the one judgment this verb cannot derive: which rule must act. The
-    reports say what failed; whose artifact is at fault is the caller's reading."""
+    Three things this verb cannot derive, so the caller states them:
+
+    fix_owner — which rule must act. The report says what failed; whose artifact is at
+    fault is the caller's reading.
+
+    fail_reason — the cause of a run that produced no gradeable report. Supplying it IS
+    the declaration of failure: it wins over the gate, because the agent watched pt_shell
+    and this verb can only read what landed on disk.
+
+    failure_kind — infra or tooling for such a declaration. An absent report looks
+    identical whether PrimeTime never started (no license) or died at link_design, and
+    only the caller saw which."""
     workdir = Path(workdir)
     report = workdir / "timing-report.txt"
+
+    if fail_reason is not None:
+        ss = {"fail_reason": fail_reason, "failure_kind": failure_kind}
+        if fix_owner:
+            ss["fix_owner"] = fix_owner
+        _write_result(
+            workdir,
+            _envelope(
+                module,
+                status="fail",
+                stage_specific=ss,
+                artifacts=enumerate_artifacts(workdir),
+            ),
+        )
+        return 0
 
     rc, actual = run(report)  # reuse the gate verbatim
     if rc != 0:
@@ -269,7 +308,6 @@ def build_result(workdir, module, top, fix_owner=None) -> int:
             "missing" if rc == 1 else "unparseable"
         )  # run(): 1=missing, 3=unparseable
         ss = {
-            "top_module": top,
             "fail_reason": _FAIL_REASON[token],
             "failure_kind": "tooling",
         }
@@ -290,17 +328,24 @@ def build_result(workdir, module, top, fix_owner=None) -> int:
     report_text = report.read_text(errors="replace")
     ss = {
         "tool": parse_tool(report_text),
-        "top_module": top,
-        "lib_db": read_lib_db(workdir),
-        "clock": parse_clock(workdir, top),
         "timing": actual["timing"],
         "violations": actual["violations"],
     }
-    if status == "fail":
+    left_out = uncovered(actual["timing"]["coverage"])
+    if left_out:
+        # A pair of MET markers says nothing about how much of the design was timed:
+        # PT reports MET on the paths it analyzed whether the SDC constrained four
+        # endpoints or four hundred. Promoting that as a pass publishes a tool-grade
+        # proof over a design the STA never covered, and this stage exists to be the
+        # independent check that catches it.
+        status = "fail"
+        ss["failure_kind"] = "tooling"
+        ss["fail_reason"] = f"STA did not cover the design: {left_out}"
+    elif status == "fail":
         ss["failure_kind"] = "ppa"
         ss["fail_reason"] = "setup/hold timing not met"
-        if fix_owner:
-            ss["fix_owner"] = fix_owner
+    if status == "fail" and fix_owner:
+        ss["fix_owner"] = fix_owner
     _write_result(
         workdir,
         _envelope(
@@ -313,12 +358,30 @@ def build_result(workdir, module, top, fix_owner=None) -> int:
     return 0
 
 
-def finalize(workdir, module, top, fix_owner=None) -> int:
+def finalize(
+    workdir, module, fix_owner=None, fail_reason=None, failure_kind=None
+) -> int:
     """Parse the PT report, judge the timing gate, write the lean result.json.
-    exit 0 = written (pass or fail); exit 2 = BLOCKED (any internal raise) — never
-    conflated with status=fail. (Owns the policy the deleted main() finalize branch had.)"""
+    exit 0 = written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason, one
+    without a --failure-kind, or any internal raise) — never conflated with
+    status=fail."""
+    if fail_reason is not None:
+        if not fail_reason.strip():
+            print(
+                "[timing finalize] BLOCKED: --fail-reason must be a non-empty "
+                "one-line cause",
+                file=sys.stderr,
+            )
+            return 2
+        if not failure_kind:
+            print(
+                "[timing finalize] BLOCKED: --fail-reason needs --failure-kind "
+                "{infra,tooling}",
+                file=sys.stderr,
+            )
+            return 2
     try:
-        return build_result(workdir, module, top, fix_owner)
+        return build_result(workdir, module, fix_owner, fail_reason, failure_kind)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[timing finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2
