@@ -10,10 +10,10 @@ file was validated twice by two verbs and a third was validated by neither.)
 The error names every violation at once, not the first — whoever is fixing the sidecar wants
 the whole list.
 
-Schemas are LOADED from references/, never restated in Python. The one rule JSON Schema cannot
-carry — `width` vs the `[h:l]` range a name declares — is registered below against the files it
-belongs to, so a file's content rules stay in one place whether or not the schema language can
-express them.
+Schemas are LOADED from references/, never restated in Python. The rules JSON Schema cannot
+carry — cross-field arithmetic, and the finiteness of a number `json.loads` already accepted —
+are registered below against the files they belong to, so a file's content rules stay in one
+place whether or not the schema language can express them.
 """
 
 import json
@@ -66,6 +66,37 @@ def _width_rule(doc) -> list[dict]:
     return out
 
 
+def _base_name_rule(doc) -> list[dict]:
+    """A top-IO `name` is the base identifier alone; `width` carries the width.
+
+    The string reaches `get_ports` and `abstract_port` verbatim, and the TB signal and
+    transaction-field declarations verbatim. A bit range survives none of that trip: DC and
+    PrimeTime match zero ports for `get_ports token_in[4:0]`, so the port loses its IO
+    constraint and the STA grades a design it never fully timed; the UVM field macro built
+    from the same string will not compile. A parameterized declaration is worse still —
+    `[DATA_WIDTH-1:0]` names a parameter no tool downstream evaluates.
+
+    Detecting the two forms disagreeing (_width_rule) cannot reach any of that, because the
+    range is wrong here even when it agrees with `width`.
+    """
+    out: list[dict] = []
+    if not isinstance(doc, list):
+        return out
+    for e in doc:
+        if not isinstance(e, dict):
+            continue
+        n = e.get("name")
+        if isinstance(n, str) and "[" in n:
+            out.append(
+                {
+                    "at": f"${n}",
+                    "error": "name carries a bit range; write the base identifier and "
+                    "let width carry it",
+                }
+            )
+    return out
+
+
 def _finite_rule(doc) -> list[dict]:
     """A PPA target must be a finite number. `json.loads` accepts the NaN / Infinity tokens
     and `type: number` admits them, and a NaN target makes power-analysis' `actual > target`
@@ -83,7 +114,10 @@ def _finite_rule(doc) -> list[dict]:
 
 
 _CONTENT_RULES = {
-    "top-io.json": _width_rule,
+    # top-io names reach three tools verbatim, so the range is banned outright rather
+    # than cross-checked. interconnects wires reach none of them — they are read by the
+    # rtl-design children as prose — so there the cross-check still applies.
+    "top-io.json": _base_name_rule,
     "interconnects.json": _width_rule,
     "ppa.json": _finite_rule,
 }

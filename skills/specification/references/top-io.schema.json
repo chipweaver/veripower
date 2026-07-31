@@ -17,13 +17,13 @@
     ],
     "properties": {
       "name": {
-        "description": "The port name exactly as the netlist declares it, bit range included (e.g. token_in[4:0]). Emitted verbatim into get_ports / abstract_port, so it is not decomposed here.",
+        "description": "The port's base identifier, carrying NO bit range: `token_in`, never `token_in[4:0]`. This string is rendered verbatim into get_ports / abstract_port and into the TB signal declaration, and a bit range resolves in none of them — get_ports matches zero ports for one, leaving that port silently unconstrained. `width` is the only carrier of the width; rejected when this file is read.",
         "type": "string",
         "minLength": 1
       },
       "direction": {"enum": ["input", "output", "inout"]},
       "width": {
-        "description": "Bit width. When name ends in a [h:l] range, the two must agree — cross-checked when this file is read; an [i] index (a register-file element) carries no width claim and is skipped.",
+        "description": "Bit width, elaborated: a port declared `[DATA_WIDTH-1:0]` records the resolved integer, since no downstream tool evaluates the parameter. Scalars are 1.",
         "type": "integer",
         "minimum": 1
       },
