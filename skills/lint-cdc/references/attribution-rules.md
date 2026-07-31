@@ -1,7 +1,6 @@
 # Attribution rules — which rule family means whose artifact
 
-Applies to: every `severity=error` violation you triage in Step 4 / Step 5, and to the
-`--fix-owner` you pass to the combiner in Step 7.
+Applies to the `--fix-owner` you pass to `finalize` when a run fails.
 
 ## Why this file exists
 
@@ -20,14 +19,14 @@ lists families rather than trying to be a decision table for the report as a who
 Families: `Clock_*`, `Reset_*`, `SGDC_*`, `Setup_*`, `Ac_unclocked*`
 
 The RTL may be entirely correct. What is absent is a `clock -name`, a reset constraint, or a
-case value — either in the depth annotations this stage carries (`{workdir}/scripts/constraints.sgdc`)
-or in the spec's seed (`<sgdc_seed>/constraints/<TOP>.sgdc`).
+case value. Check the SGDC before the RTL, and in this order, because only the first case is
+yours to fix:
 
-**Check the SGDC before the RTL, in that order:**
-
-1. Does the declaration belong in the accumulated depth annotations you carry? Then it is yours:
-   add it in Step 4/5, re-run, and this never becomes a failure at all.
-2. Does the spec's own seed lack it? Then name `specification`.
+1. Does the annotations sidecar declare it while `{workdir}/scripts/constraints.sgdc` lacks it?
+   Then you missed it transcribing: add it, re-run, and this never becomes a failure at all.
+2. Does the sidecar not declare it, though the RTL implies it? Then name `rtl-design`, whose
+   authors own that claim. Adding it here instead would leave synthesis without the SDC half.
+3. Does the spec's own seed lack a clock, reset or port association? Then name `specification`.
 
 *Measured on SpyGlass `vL-2016.06`*: a `clk2` used in the RTL but never `clock -name`d in the
 SGDC surfaces as `Clock_info03a` + `Setup_port01`, both pointing at the RTL file and line that
