@@ -21,6 +21,10 @@ class {{MODULE}}_{{SB_NAME}} extends uvm_scoreboard;
     fail_count = 0;
   endfunction
 
+  // The RM must see this transaction before predict() is asked about it, which is why the
+  // forward happens here rather than through an analysis connection: inside one component
+  // the order is yours, across a fanout it is not.
+  // TODO(scoreboard): forward txn into the RM (rm.write_<inport>(txn)) before comparing.
   virtual function void write({{MODULE}}_{{OBS_AGENT}}_txn txn);
     check_txn(txn);
   endfunction

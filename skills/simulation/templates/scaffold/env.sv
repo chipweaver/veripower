@@ -1,10 +1,13 @@
 // Environment for {{MODULE}}.
-// Generated from scaffold-spec.json. Typically nothing to fill — fully assembled.
+// Generated from scaffold-spec.json. Typically nothing to fill: fully assembled.
+// The scoreboard owns the reference model. There is exactly one RM instance and it lives
+// there, so the component that compares is the component that fed the model it compares
+// against; an RM held here instead would be updated by an analysis fanout whose order
+// against the scoreboard's own compare is unspecified.
 class {{MODULE}}_env extends uvm_env;
   `uvm_component_utils({{MODULE}}_env)
 
 {{AGENT_DECLARATIONS}}
-  {{MODULE}}_{{RM_NAME}}  m_rm;
   {{MODULE}}_{{SB_NAME}} m_scoreboard;
 
   function new(string name = "{{MODULE}}_env", uvm_component parent = null);
@@ -14,7 +17,6 @@ class {{MODULE}}_env extends uvm_env;
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
 {{AGENT_CREATES}}
-    m_rm = {{MODULE}}_{{RM_NAME}}::type_id::create("m_rm", this);
     m_scoreboard = {{MODULE}}_{{SB_NAME}}::type_id::create("m_scoreboard", this);
   endfunction
 

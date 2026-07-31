@@ -260,13 +260,14 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
             agent_connect_lines.append(
                 f"    m_{aname}_agent.ap.connect(m_scoreboard.analysis_export);"
             )
-        # Connect inport agents to RM
-        for inport_agent in rm_inports:
-            if aname == inport_agent:
-                imp_name = f"ai_{inport_agent}"
-                agent_connect_lines.append(
-                    f"    m_{aname}_agent.ap.connect(m_rm.{imp_name});"
-                )
+        # Inport agents feed the RM, which lives in the scoreboard. The observer is the
+        # exception: its stream already arrives at the scoreboard, and connecting it here as
+        # well would fan one port out to both the ingest and the compare with no order
+        # between them. The scoreboard forwards that one itself.
+        if aname in rm_inports and aname != obs_agent:
+            agent_connect_lines.append(
+                f"    m_{aname}_agent.ap.connect(m_scoreboard.rm.ai_{aname});"
+            )
 
     content = _render_template_file(
         template_dir,
