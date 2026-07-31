@@ -40,11 +40,19 @@ the UVM scaffold, compile, and run the smoke suite.
    complete stub tree, and on a rework it adds whatever the plan gained since last round and leaves
    everything already on disk alone.
 
-   **What that leaves you.** It will not refresh a file the plan changed, only add ones the plan
-   gained. If a testpoint's agent picked up a signal, or a sequence was renamed, the interface,
-   package, env or `tb_top` holding the old shape is still the one on disk, and reconciling it is
-   Work step 2's job (all of them are on Rule A's repairable list). The compile says so loudly when
-   you miss one; what it cannot do is give you back a filled checker overwritten by a stub.
+   **What that leaves you, and nothing else will.** It adds what the plan gained; it does not
+   refresh what the plan changed. If an agent picked up a signal, the interface declaring the old
+   set and the `tb_top` port-mapping it are the ones still on disk, and **the compile will not tell
+   you.** A DUT port left unconnected is a `Too few instance port connections` warning that names
+   no port and no file, VCS builds the `simv` anyway, and the round then runs green against the old
+   shape with the new input floating. That is measured, not assumed.
+
+   So the signal is upstream, not downstream: your resolved edit scope names the scaffold when the
+   scaffold moved. When it does, read the plan against what is on disk before you fill anything, and
+   reconcile the interface, transaction, package, env and `tb_top` yourself. All of them are on Rule
+   A's repairable list. This is the cost of the deploy not overwriting them, and it is the cheaper
+   side: a stale port map is one round of reconciliation, and a filled checker replaced by a stub is
+   a round of authored checks gone.
 2. **Fill / reconcile scaffold** (bound by **Rule A**, see `repair-boundaries.md`): inside
    `{workdir}`, fill or reconcile every `TODO(` across driver / monitor / checker / RM / functional
    seq / top against the current plan (`verification-plan.md` + the plan sidecars).
