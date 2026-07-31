@@ -132,3 +132,20 @@ Information: Checking 'generated_clocks'.
 Information: Checking 'pulse_clock_non_pulse_clock_merge'.
 Information: Checking 'pll_configuration'.
 0
+Boundary output bits: 74
+****************************************
+Report : analysis_coverage
+	-sort_by slack
+Design : tpu_top
+Version: M-2016.12-SP1
+****************************************
+
+Type of Check         Total              Met         Violated         Untested
+--------------------------------------------------------------------------------
+setup                  1830      1698 ( 93%)         0 (  0%)       132 (  7%)
+hold                   1830      1698 ( 93%)         0 (  0%)       132 (  7%)
+min_pulse_width        2044      2044 (100%)         0 (  0%)         0 (  0%)
+out_setup                74        74 (100%)         0 (  0%)         0 (  0%)
+out_hold                 74        74 (100%)         0 (  0%)         0 (  0%)
+--------------------------------------------------------------------------------
+All Checks             5852      5588 ( 95%)         0 (  0%)       264 (  5%)

@@ -99,6 +99,9 @@ _HOLD_VIOLATED_NEG = re.sub(
     _HOLD_VIOLATED_ZERO,
 )
 
+# check_timing output is in the report for the reader; the gate does not read it.
+# 1461 unconstrained endpoints on a healthy design is ordinary — reset ports carry no
+# input delay, so every async-reset flop lands in that count.
 _CHECK_TIMING = """\
 Information: Checking 'unconstrained_endpoints'.
 Warning: There are 1461 endpoints which are not constrained for maximum delay.
@@ -109,11 +112,28 @@ Warning: There are 756 register clock pins with no clock.
 check_timing succeeded.
 """
 
-_CHECK_TIMING_CLEAN = """\
-Information: Checking 'unconstrained_endpoints'.
-Information: Checking 'no_clock'.
-check_timing succeeded.
-"""
+
+def _coverage(output_bits: int, out_setup: int | None) -> str:
+    """A report_analysis_coverage table plus the boundary line run_sta.tcl emits.
+    `out_setup=None` drops the row entirely, which is what PrimeTime does for a run
+    that timed no output at all."""
+    row = (
+        ""
+        if out_setup is None
+        else f"out_setup           {out_setup:11d}{out_setup:10d} (100%)         0 (  0%)         0 (  0%)\n"
+    )
+    return (
+        f"Boundary output bits: {output_bits}\n"
+        "Type of Check         Total              Met         Violated         Untested\n"
+        "----------------------------------------------------------------------------\n"
+        "setup                   584       584 (100%)         0 (  0%)         0 (  0%)\n"
+        f"{row}"
+        "----------------------------------------------------------------------------\n"
+    )
+
+
+_COV_FULL = _coverage(8, 8)  # every output bit timed
+_COV_SHORT = _coverage(8, 2)  # the SDC reached two of them
 
 
 def _write(tmp_path, text):
@@ -138,29 +158,32 @@ def test_parse_direction_violated_on_marker_despite_zero():
     assert d["worst_path"] == "u_rx_filler/wb_free_reg -> u_rx_filler/rd_reg"
 
 
-def test_parse_coverage_counts():
-    cov = sp.parse_coverage(_SETUP_MET + _HOLD_MET + _CHECK_TIMING)
-    assert cov == {
-        "unconstrained_max_delay_endpoints": 1461,
-        "register_pins_no_clock": 756,
-    }
+def test_parse_coverage_reads_the_boundary_pair():
+    cov = sp.parse_coverage(_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+    assert cov == {"output_bits": 8, "output_bits_timed": 8}
 
 
-def test_parse_coverage_zero_when_the_check_ran_and_warned_about_nothing():
-    cov = sp.parse_coverage(_SETUP_MET + _HOLD_MET + _CHECK_TIMING_CLEAN)
-    assert cov == {"unconstrained_max_delay_endpoints": 0, "register_pins_no_clock": 0}
+def test_an_absent_out_setup_row_means_no_output_was_timed():
+    # PrimeTime drops the row entirely rather than printing a zero.
+    cov = sp.parse_coverage(_SETUP_MET + _HOLD_MET + _coverage(8, None))
+    assert cov == {"output_bits": 8, "output_bits_timed": 0}
 
 
-def test_parse_coverage_raises_when_check_timing_never_ran():
-    # Zero counts and no check_timing at all are indistinguishable by warning lines
-    # alone, and one of them is full coverage. Anchor on the check, not the warning.
+def test_parse_coverage_raises_without_the_boundary_line():
     with pytest.raises(sp.ParseError):
-        sp.parse_coverage(_SETUP_MET + _HOLD_MET)
+        sp.parse_coverage(_SETUP_MET + _HOLD_MET + _CHECK_TIMING)
+
+
+def test_parse_coverage_raises_without_the_coverage_table():
+    # A truncated report would otherwise read as a design with no outputs, which is
+    # the one wrong answer this gate cannot afford.
+    with pytest.raises(sp.ParseError):
+        sp.parse_coverage(_SETUP_MET + _HOLD_MET + "Boundary output bits: 8\n")
 
 
 # ── run() exit-code + verdict contract ─────────────────────────────────────────
 def test_run_clean_pass(tmp_path):
-    rep = _write(tmp_path, _SETUP_MET + _HOLD_MET + _CHECK_TIMING_CLEAN)
+    rep = _write(tmp_path, _SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
     rc, data = sp.run(rep)
     assert rc == 0
     assert data["verdict"] == "pass"
@@ -171,7 +194,7 @@ def test_run_clean_pass(tmp_path):
 
 def test_run_marker_keyed_fail_on_displayed_zero(tmp_path):
     # F1: must FAIL despite hold slack displaying 0.00; actual ~ 0.00 here.
-    rep = _write(tmp_path, _SETUP_MET + _HOLD_VIOLATED_ZERO + _CHECK_TIMING)
+    rep = _write(tmp_path, _SETUP_MET + _HOLD_VIOLATED_ZERO + _CHECK_TIMING + _COV_FULL)
     rc, data = sp.run(rep)
     assert rc == 0
     assert data["verdict"] == "fail"
@@ -184,7 +207,7 @@ def test_run_marker_keyed_fail_on_displayed_zero(tmp_path):
 
 def test_run_negative_number_recorded_with_sig_digits4(tmp_path):
     # significant_digits=4: the recorded worst_slack_ns is the real negative value.
-    rep = _write(tmp_path, _SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING)
+    rep = _write(tmp_path, _SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING + _COV_FULL)
     rc, data = sp.run(rep)
     assert rc == 0
     assert data["timing"]["hold"]["worst_slack_ns"] < 0
@@ -192,40 +215,46 @@ def test_run_negative_number_recorded_with_sig_digits4(tmp_path):
     assert v["actual"] < 0
 
 
-def test_uncovered_names_both_counts_and_is_none_when_clean():
-    assert (
-        sp.uncovered(
-            {"unconstrained_max_delay_endpoints": 0, "register_pins_no_clock": 0}
-        )
-        is None
+def test_uncovered_is_none_only_when_the_boundary_is_whole():
+    assert sp.uncovered({"output_bits": 8, "output_bits_timed": 8}) is None
+    assert sp.uncovered({"output_bits": 0, "output_bits_timed": 0}) is None
+    assert "2 of 8 output bits" in sp.uncovered(
+        {"output_bits": 8, "output_bits_timed": 2}
     )
-    phrase = sp.uncovered(
-        {"unconstrained_max_delay_endpoints": 1461, "register_pins_no_clock": 756}
-    )
-    assert "1461 endpoints" in phrase and "756 register clock pins" in phrase
 
 
-def test_uncovered_sta_cannot_pass(tmp_path):
-    # Both directions MET, and the design was never fully timed: 1461 endpoints carry
-    # no max-delay constraint. The markers grade what PT analyzed, so they cannot
-    # answer for the paths an incomplete SDC kept it from analyzing.
-    wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING)
+def test_an_untimed_boundary_cannot_pass(tmp_path):
+    # Both directions MET, and the SDC reached two of eight output bits. The markers
+    # grade what PrimeTime analyzed, so they cannot answer for the rest.
+    wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_SHORT)
     assert sp.build_result(wd, module="tpu_top", fix_owner="synthesis") == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
     assert ss["failure_kind"] == "tooling"  # not ppa: no target was missed
-    assert "1461 endpoints" in ss["fail_reason"]
-    assert "756 register clock pins" in ss["fail_reason"]
+    assert "2 of 8 output bits" in ss["fail_reason"]
     assert ss["fix_owner"] == "synthesis"
     assert ss["timing"]["setup"]["met"] is True  # the measurements still land
     assert ss["violations"] == []
 
 
-def test_uncovered_outranks_a_missed_target(tmp_path):
-    # Hold is violated AND the STA was incomplete. The incompleteness wins: routing a
-    # ppa fail would send someone to close a path on a design that was never timed.
-    wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING)
+def test_unconstrained_endpoints_alone_never_fail_a_run(tmp_path):
+    # THE regression this metric replaced. 1461 unconstrained endpoints and 756
+    # no-clock register pins are in this report, and the boundary is fully timed, so
+    # it passes: those counts are ordinary on a healthy design, because reset ports
+    # carry no input delay. Measured 0..4242 across eight synthesized designs with a
+    # complete SDC, and identical to the broken SDC on two of them.
+    wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+    assert sp.build_result(wd, module="tpu_top") == 0
+    assert json.loads((wd / "result.json").read_text())["status"] == "pass"
+
+
+def test_an_untimed_boundary_outranks_a_missed_target(tmp_path):
+    # Hold is violated AND the boundary is short. The shortfall wins: routing a ppa
+    # fail would send someone to close a path on a boundary that was never timed.
+    wd = _workdir(
+        tmp_path, report=_SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING + _COV_SHORT
+    )
     assert sp.build_result(wd, module="tpu_top") == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["failure_kind"] == "tooling"
@@ -240,7 +269,7 @@ def test_run_missing_report_exit1(tmp_path):
 def test_run_no_slack_line_exit3(tmp_path):
     # A -delay max section present but with no slack line -> unparseable, never pass.
     broken = re.sub(r"slack \(MET\)\s+2\.93", "", _SETUP_MET)
-    rep = _write(tmp_path, broken + _HOLD_MET + _CHECK_TIMING_CLEAN)
+    rep = _write(tmp_path, broken + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
     rc, payload = sp.run(rep)
     assert rc == 3 and payload is None  # no verdict on a parse surprise
 
@@ -252,7 +281,7 @@ def test_run_marker_vs_sign_contradiction_exit3(tmp_path):
         "slack (MET)                                        -0.5000",
         _SETUP_MET,
     )
-    rep = _write(tmp_path, contradiction + _HOLD_MET + _CHECK_TIMING_CLEAN)
+    rep = _write(tmp_path, contradiction + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
     rc, payload = sp.run(rep)
     assert rc == 3 and payload is None  # no verdict on a parse surprise
 
@@ -265,7 +294,7 @@ def test_run_violated_marker_with_positive_slack_exit3(tmp_path):
         "slack (VIOLATED)                                     2.5000",
         _HOLD_MET,
     )
-    rep = _write(tmp_path, _SETUP_MET + contradiction + _CHECK_TIMING_CLEAN)
+    rep = _write(tmp_path, _SETUP_MET + contradiction + _CHECK_TIMING + _COV_FULL)
     rc, payload = sp.run(rep)
     assert rc == 3 and payload is None  # no verdict on a parse surprise
 
@@ -286,7 +315,9 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
 
 def _workdir(tmp_path, report=None):
     report = (
-        (_SETUP_MET + _HOLD_MET + _CHECK_TIMING_CLEAN) if report is None else report
+        (_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+        if report is None
+        else report
     )
     (tmp_path / "timing-report.txt").write_text(report)
     return tmp_path
@@ -311,7 +342,7 @@ def test_build_result_tooling_fail_on_unparseable(tmp_path):
     # A -delay max section with no slack line -> parser run() returns 3 (mirrors
     # test_run_no_slack_line_exit3 above).
     broken = re.sub(r"slack \(MET\)\s+2\.93", "", _SETUP_MET)
-    wd = _workdir(tmp_path, report=broken + _HOLD_MET + _CHECK_TIMING_CLEAN)
+    wd = _workdir(tmp_path, report=broken + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
     assert sp.build_result(wd, module="tpu_top") == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert (
@@ -458,12 +489,11 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     assert sp.build_result(wd, module="tpu_top") == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
-    # Both directions MET on a real tpu_top run, and it is still not a pass: 1142 of
-    # its endpoints carry no max-delay constraint, so the STA graded a fraction of the
-    # design. This run used to promote as a tool-grade proof.
-    assert env["status"] == "fail"
-    assert ss["failure_kind"] == "tooling"
-    assert "1142 endpoints" in ss["fail_reason"]
+    # A real tpu_top run: both directions MET, its whole boundary timed, and 1142
+    # endpoints left unconstrained all the same. It passes, and that is the point —
+    # those endpoints are the reset paths every design has.
+    assert env["status"] == "pass"
+    assert ss["timing"]["coverage"] == {"output_bits": 74, "output_bits_timed": 74}
     # contract fields — exact to the real run
     assert ss["timing"]["setup"]["worst_slack_ns"] == pytest.approx(0.7252)
     assert ss["timing"]["setup"]["met"] is True
@@ -473,10 +503,6 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     )
     assert ss["timing"]["hold"]["worst_slack_ns"] == pytest.approx(0.2341)
     assert ss["timing"]["hold"]["met"] is True
-    assert ss["timing"]["coverage"] == {
-        "unconstrained_max_delay_endpoints": 1142,
-        "register_pins_no_clock": 0,
-    }
     assert ss["violations"] == []
     assert ss["tool"] == "PrimeTime M-2016.12-SP1"
     # every copied header field is gone: the lib_db is in the promoted config.tcl and

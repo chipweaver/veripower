@@ -59,9 +59,9 @@ gitignored workdir rather than the tree root:
 cd {workdir} && pt_shell -f run_sta.tcl
 ```
 
-The TCL reports setup and hold, runs `check_timing`, and redirects all three into
-`{workdir}/timing-report.txt`. Read what it printed rather than what it returned: `pt_shell`
-exits 0 even on a script error, so its exit code settles nothing.
+The TCL reports setup and hold, runs `check_timing`, counts the boundary, and redirects all of
+it into `{workdir}/timing-report.txt`. Read what it printed rather than what it returned:
+`pt_shell` exits 0 even on a script error, so its exit code settles nothing.
 
 ### 3. Close
 
@@ -80,11 +80,17 @@ worst slack and worst path per direction into `stage_specific.timing`, lists the
 per failing direction into `stage_specific.violations[]`, reads the PrimeTime version off the
 report header, and enumerates `artifacts[]`.
 
-Two MET markers are not enough for a pass. `check_timing` counts the endpoints the SDC left
-unconstrained and the register clock pins with no clock, and a run carrying either graded a
-fraction of the design: the markers describe the paths PrimeTime analyzed and say nothing about
-the ones it was never asked to. That is a `tooling` fail rather than a `ppa` one, and the SDC it
-read is synthesis's export of what specification declared, so read both before naming the owner.
+Two MET markers are not enough for a pass. The markers describe the paths PrimeTime analyzed and
+say nothing about the ones it was never asked to, so `finalize` also compares how many output
+bits the run timed against how many the design has: short of that, the STA reached only part of
+the boundary and the verdict does not cover the design. That is a `tooling` fail rather than a
+`ppa` one, and the SDC it read is synthesis's export of what specification declared, so read both
+before naming the owner.
+
+The check is on outputs alone, and `check_timing`'s unconstrained-endpoint count is in the report
+for you rather than for the gate. Inputs carry no comparable expectation: clock and reset ports
+are constrained by nothing here, so a healthy design leaves endpoints open by construction and
+that count is not evidence of anything on its own.
 
 The flags carry what the report cannot:
 

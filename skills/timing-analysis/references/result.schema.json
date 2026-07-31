@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/timing-analysis/result.schema.json",
   "title": "timing-analysis result.json contract",
-  "description": "Complete contract for asic/<module>/Design/timing-analysis/result.json. On status=pass (and on failure_kind=ppa) stage_specific.timing carries setup/hold worst-slack + met flag (classified on the report MET/VIOLATED marker) and the check_timing coverage counts; stage_specific.violations[] lists the binding violator per failing direction. A pass requires both directions MET and both coverage counts zero — an STA that left part of the design untimed grades tooling, not ppa, because the markers describe only the paths it did analyze. On status=fail, stage_specific.{fail_reason, failure_kind} are required; timing{} is not required on infra/tooling early-fail (PT did not run / errored).",
+  "description": "Complete contract for asic/<module>/Design/timing-analysis/result.json. On status=pass (and on failure_kind=ppa) stage_specific.timing carries setup/hold worst-slack + met flag (classified on the report MET/VIOLATED marker) and the boundary-coverage counts; stage_specific.violations[] lists the binding violator per failing direction. A pass requires both directions MET and every output bit timed — an STA that reached only part of the boundary grades tooling, not ppa, because the markers describe only the paths it did analyze. On status=fail, stage_specific.{fail_reason, failure_kind} are required; timing{} is not required on infra/tooling early-fail (PT did not run / errored).",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
@@ -13,7 +13,7 @@
           "properties": {
             "fix_owner": {"type": "string", "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."},
             "fail_reason":  {"type": "string", "minLength": 1},
-            "failure_kind": {"type": "string", "enum": ["infra", "tooling", "ppa"], "description": "Failure category on status=fail. infra = license or trigger missing (PT not run); tooling = PT ran and its output is unusable — a missing or unparseable report, or a run whose check_timing counts show the SDC left part of the design untimed; ppa = timing target not met (violations[].dim ∈ {timing_setup, timing_hold, ...} populated)."},
+            "failure_kind": {"type": "string", "enum": ["infra", "tooling", "ppa"], "description": "Failure category on status=fail. infra = license or trigger missing (PT not run); tooling = PT ran and its output is unusable — a missing or unparseable report, or a run whose coverage counts show the SDC left part of the boundary untimed; ppa = timing target not met (violations[].dim ∈ {timing_setup, timing_hold, ...} populated)."},
             "violations": {
               "type": "array",
               "description": "Timing violations (setup/hold/other). Empty on pass, non-empty on rule-based fail.",
@@ -31,7 +31,7 @@
             },
             "timing": {
               "type": "object",
-              "description": "Structured STA result (required on pass and on failure_kind=ppa). Worst slack + met flag per direction (classified on the report's MET/VIOLATED marker), plus the check_timing coverage counts, which are zero on any pass.",
+              "description": "Structured STA result (required on pass and on failure_kind=ppa). Worst slack + met flag per direction (classified on the report's MET/VIOLATED marker), plus the boundary-coverage counts, which are equal on any pass.",
               "required": ["setup", "hold", "coverage"],
               "additionalProperties": false,
               "properties": {
@@ -56,12 +56,13 @@
                   }
                 },
                 "coverage": {
+                  "description": "How much of the design boundary the run timed. output_bits is every output port bit; output_bits_timed is how many PrimeTime performed an out_setup check for. Equal on a pass. Outputs only: a reset port carries no input delay by construction, so the input side has no determined expectation this stage could compare against.",
                   "type": "object",
-                  "required": ["unconstrained_max_delay_endpoints", "register_pins_no_clock"],
+                  "required": ["output_bits", "output_bits_timed"],
                   "additionalProperties": false,
                   "properties": {
-                    "unconstrained_max_delay_endpoints": {"type": "integer"},
-                    "register_pins_no_clock":            {"type": "integer"}
+                    "output_bits":       {"type": "integer", "minimum": 0},
+                    "output_bits_timed": {"type": "integer", "minimum": 0}
                   }
                 }
               }

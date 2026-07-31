@@ -65,8 +65,8 @@ _STAGE_SPECIFIC = {
             "setup": {"worst_slack_ns": 0.1, "met": True, "worst_path": "p"},
             "hold": {"worst_slack_ns": 0.1, "met": True, "worst_path": "p"},
             "coverage": {
-                "unconstrained_max_delay_endpoints": 0,
-                "register_pins_no_clock": 0,
+                "output_bits": 4,
+                "output_bits_timed": 4,
             },
         },
     },
