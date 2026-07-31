@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """Generate case-results.json plus its two rendered views.
 
-Goal: stable PASS / FAIL / MANUAL_REVIEW / NOT_RUN per testcase.
+Goal: stable PASS / FAIL / NOT_RUN per testcase.
 Coverage closure and full traceability are preserved in the output but are NOT
 blocking gates.
 """
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections import defaultdict
 from pathlib import Path
-
-# Valid result tokens in regression-log.txt RESULT lines.
-VALID_STATUSES = {"PASS", "FAIL", "MANUAL_REVIEW"}
 
 
 def parse_args():
@@ -34,7 +32,7 @@ def load_results(log_path):
     """Parse regression-log.txt and return list of result dicts.
 
     Stable RESULT line format (see run_vcs_regression.sh):
-        RESULT <test_id> <PASS|FAIL|MANUAL_REVIEW> [...]
+        RESULT <test_id> <PASS|FAIL> [...]
 
     The feature a test traces to is NOT on this line: it is in testlist.json, keyed by the same
     test_id, and carrying it through bash would be a second copy nothing compares.
@@ -44,7 +42,7 @@ def load_results(log_path):
             f"write_summary: missing {log_path}; run `make smoke` or `make regress` first"
         )
     results = []
-    pattern = re.compile(r"^RESULT\s+(\S+)\s+(PASS|FAIL|MANUAL_REVIEW)(?:\s+.*)?$")
+    pattern = re.compile(r"^RESULT\s+(\S+)\s+(PASS|FAIL)(?:\s+.*)?$")
     for line in log_path.read_text(encoding="utf-8").splitlines():
         match = pattern.match(line.strip())
         if match:
@@ -59,6 +57,9 @@ def write_text(path, content):
 def main():
     args = parse_args()
     root = Path(args.verification_dir).resolve()
+    # Where run_vcs_regression.sh put the per-test logs this run: same env var, so the
+    # summary points a reader at the directory that exists rather than a fixed guess.
+    log_dir = os.environ.get("RUN_LOG_DIR") or "logs"
     testlist_path = root / "tests" / "testlist.json"
     log_path = root / "regression-log.txt"
     counts_path = root / "case-results.json"
@@ -83,11 +84,9 @@ def main():
         test_by_id[test["test_id"]] = test
         feature_to_tests[test["feature_id"]].append(test)
 
-    # Counts — MANUAL_REVIEW is treated as "executed but needs human review".
     total = len(results)
     passed = sum(1 for r in results if r["status"] == "PASS")
     failed = sum(1 for r in results if r["status"] == "FAIL")
-    manual_review = sum(1 for r in results if r["status"] == "MANUAL_REVIEW")
     not_run = sum(1 for t in tests if t["test_id"] not in result_by_test)
 
     executed_pass_features = {
@@ -110,7 +109,6 @@ def main():
         "total_tests": total,
         "passed_tests": passed,
         "failed_tests": failed,
-        "manual_review_tests": manual_review,
         "not_run_tests": not_run,
         "feature_coverage_percent": round(feature_coverage, 1),
         "testcase_pass_rate_percent": round(testcase_pass_rate, 1),
@@ -145,15 +143,14 @@ def main():
         )
     trace_table = "\n".join(trace_rows) or "| n/a | n/a | n/a | n/a | n/a |"
 
-    # Failed / MANUAL_REVIEW detail table.
+    # Failed-case detail table.
     action_rows = []
     for item in results:
-        if item["status"] in ("FAIL", "MANUAL_REVIEW"):
-            action = "Fix" if item["status"] == "FAIL" else "Review"
+        if item["status"] == "FAIL":
             fid = test_by_id.get(item["test_id"], {}).get("feature_id", "-")
             action_rows.append(
-                f"| {item['test_id']} | {fid} | {item['status']} "
-                f"| {action}; see run_logs/{item['test_id']}.log |"
+                f"| {item['test_id']} | {fid} | FAIL "
+                f"| Fix; see {log_dir}/{item['test_id']}.log |"
             )
     for test in tests:
         if test["test_id"] not in result_by_test:
@@ -164,14 +161,12 @@ def main():
     action_table = "\n".join(action_rows) or "| - | - | - | - |"
 
     # Overall verdict line.
-    if failed == 0 and manual_review == 0 and not_run == 0:
+    if failed == 0 and not_run == 0:
         verdict_line = "> **ALL PASS** — ready for human review."
     else:
         issues = []
         if failed:
             issues.append(f"FAIL={failed}")
-        if manual_review:
-            issues.append(f"MANUAL_REVIEW={manual_review}")
         if not_run:
             issues.append(f"NOT_RUN={not_run}")
         verdict_line = f"> **Attention required**: {', '.join(issues)}."
@@ -182,7 +177,6 @@ def main():
 
 - Module: `{testlist.get("module", "unknown")}`
 - Top: `{testlist.get("top", "unknown")}`
-- design.md: `{testlist.get("design", "unknown")}`
 - Regression log: `regression-log.txt`
 - Coverage summary: `coverage-summary.txt`
 
@@ -195,7 +189,6 @@ def main():
 | Total executed | {total} |
 | PASS | {passed} |
 | FAIL | {failed} |
-| MANUAL_REVIEW | {manual_review} |
 | NOT_RUN | {not_run} |
 | Feature coverage | {feature_coverage:.1f}% |
 | Testcase pass rate | {testcase_pass_rate:.1f}% |
@@ -215,8 +208,7 @@ def main():
 ## Status Legend
 
 - `PASS`: testbench reported no UVM_FATAL or UVM_ERROR.
-- `FAIL`: errors reported; investigate per-test log in `run_logs/`.
-- `MANUAL_REVIEW`: status flagged for human inspection.
+- `FAIL`: errors reported; investigate per-test log in `{log_dir}/`.
 - `NOT_RUN`: testcase declared but no result line present (likely a compile or selection issue).
 """
     write_text(summary_path, summary_text)

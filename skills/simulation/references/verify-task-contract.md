@@ -10,9 +10,9 @@ review summary.
   built TB (`tb/uvm/**`), the compiled `simv`, the env-phase artifacts, and
   `{workdir}/verify-handoff.json`.
 - testpoints path: `<scaffold>/tb-scaffold.json` —
-  read `testpoints[].bins[]` for coverage-gap classification (Rule B) and `testpoints[].id` to
-  cross-reference `verify-handoff.json`. (`agents` / `sequences` / `tests` are already materialized;
-  do not re-materialize.)
+  read `testpoints[].intent` and `bins[]` for coverage-gap classification (Rule B) and
+  `testpoints[].id` to cross-reference `verify-handoff.json`. (`agents` / `sequences` / `tests` are
+  already materialized; do not re-materialize.)
 - `{module}` — module name.
 
 Use `{workdir}/verify-handoff.json` for check-intent (per-testpoint `asserts` + `seqs→bins`) rather
@@ -24,20 +24,15 @@ there.
 ## Work
 
 1. **Regression**: `make regress`.
-2. **Coverage iteration** (Rule B, see `coverage-iteration.md`): read `structural-coverage.json`
-   (urg-derived structural dims `line`/`cond`/`fsm`/`toggle` from the `aggregate` block) and compare
-   against `defaults.yaml.coverage_thresholds`:
-   - All dimensions meet threshold → go to summary.
-   - All uncovered bins map to `tb-scaffold.json.testpoints[].bins[]` → stimulus iterate
-     (add seeds / sequences / constraint parameters), round budget at
-     `defaults.yaml.stimulus_iterate_max_rounds`; each round re-runs `make regress`.
-   - Any uncovered bin **not** inside scaffold testpoints → route out: write `failure_phase=coverage`
-     + `gaps_not_in_testpoints` into the result fields (Rule B intent gap; mixed gaps take the intent
-     fail first; stimulus iterate does not consume budget).
-   - Iterate budget exhausted with stimulus-layer gaps remaining → route out: `failure_phase=coverage`
-     + `gaps_in_testpoints`.
-3. **Summary**: `make summary` produces `coverage-summary.txt` + `case-results-summary.md`. (The full exit self-check —
-   `sim finalize`, thin-D1 + D5/D6 — runs at orchestrator finalize, not here.)
+2. **Coverage iteration** (Rule B, see `coverage-iteration.md`): compare
+   `structural-coverage.json`'s `aggregate` dims (`line`/`cond`/`fsm`/`toggle`) against
+   `defaults.yaml.coverage_thresholds`. Every dimension at or above threshold goes straight to
+   summary. Otherwise take the named items from the same file's `uncovered[]`, classify each as a
+   stimulus-layer or intent-layer gap per `coverage-iteration.md`, and either iterate stimulus
+   within `defaults.yaml.stimulus_iterate_max_rounds` rounds or route out with
+   `failure_phase=coverage`.
+3. **Summary**: `make summary` produces `coverage-summary.txt` and `case-results-summary.md`.
+   The exit gates run at the orchestrator's finalize, not here.
 
 ## Authority
 
@@ -79,20 +74,20 @@ instead.
 - Verify-phase artifacts written in `{workdir}`: `regression-log.txt`, `structural-coverage.json`,
   `coverage-summary.txt`, `case-results-summary.md` (artifact ownership split is in
   `artifact-contract.md`).
-- End the response with `STATUS: DONE` + a single JSON line carrying the result `stage_specific`
-  fields the orchestrator folds into `result.json` — on a pass run, the informational counts; on a
-  route-out, the failure fields:
+- End the response with `STATUS: DONE` plus a single JSON line. On a clean pass the only field
+  read from it is `stimulus_iterations`, the number of Rule B rounds you spent; the suite counts
+  and coverage numbers are read off `case-results.json` and `structural-coverage.json` by
+  finalize, so do not restate them here. On a route-out, carry the failure fields:
 
   ```json
   {"failure_phase": "coverage", "coverage_gaps": ["..."], "gaps_not_in_testpoints": ["..."]}
   ```
 
   On a `regress` route-out each failing case is one `failing_cases[]` entry, and its shape is
-  pinned by `references/result.schema.json` — `test_id` (how triage reaches
-  `run_logs/<test_id>.log`) and `error_message` (its log anchor) are required, `log_snippet` is
+  pinned by `references/result.schema.json`: `test_id` (how triage reaches
+  `logs/<test_id>.log`) and `error_message` (its log anchor) are required, `log_snippet` is
   optional. A misspelled key fails the envelope rather than leaving triage with nothing to read.
 
-  (omit the failure fields on a clean pass; emit `stimulus_iterations` / coverage summary counts
-  instead) — or `STATUS: BLOCKED <one-line reason>` on a program exception. `STATUS: BLOCKED` is a
-  **harness-level** signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the
-  orchestrator maps it to `status=fail` + `fail_reason`.
+  On a program exception, end with `STATUS: BLOCKED <one-line reason>` instead. That is a
+  harness-level signal, distinct from `result.json`'s `status` enum (`pass`/`fail` only); the
+  orchestrator maps it to `status=fail` plus a `fail_reason`.

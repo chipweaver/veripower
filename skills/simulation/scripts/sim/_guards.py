@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """sim scaffold contract guards: the gate-bypass consumer defense.
 
-Reads the canonical agent I/O shape that simulation-plan's materialize step produces
-(agent["interface"]["signals"] / agent["transaction"]["fields"]) and fails loud — rather
-than emitting a degenerate/garbage TB — on an empty interface (root cause A), a non-string
-observer, a non-list inports/seqs, or a signal colliding with / duplicated across the
-clk/reset ports. Primary enforcement is the simulation-plan scaffold gate; these guard the
-primitives for any direct/gate-bypass caller. Per-stage copy (campaign §3 — no shared lib).
+Reads the canonical agent I/O shape simulation-plan's materialize step produces
+(agent["interface"]["signals"] / agent["transaction"]["fields"]) and exits rather than
+emitting a TB that would compile and verify nothing: an empty interface, a non-string
+observer, a non-list inports or seqs, or a signal that collides with the clock or reset port
+or repeats across agents. simulation-plan's scaffold gate catches most of these first; what
+these cover is a shape that reaches the renderer anyway.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ import sys
 def _agent_io(agent: dict) -> tuple[list[dict], list[dict]]:
     """Read the canonical agent I/O shape materialized by simulation-plan's materialize step:
     agent["interface"]["signals"] = [{name, width}] and agent["transaction"]["fields"] =
-    [{name, width, type?, rand?}]. Fail loud if interface.signals is missing/empty: a degenerate
-    empty interface is root cause A (TB compiles but is functionally empty, sim crashes downstream).
+    [{name, width, type?, rand?}]. Exit if interface.signals is missing or empty: the TB it
+    would render compiles and drives nothing.
     """
     aname = agent.get("name", "<unnamed>")
     signals = agent.get("interface", {}).get("signals")
@@ -58,9 +58,9 @@ def _check_list_or_omitted(value, field: str) -> None:
 def validate_ports(agents: list[dict], clk_port_name: str, rst_port_name: str) -> str:
     """Validate per-agent signal names and build the DUT port-map block.
 
-    Fail loud (sys.exit) on a signal colliding with the clock/reset port name or duplicated
-    across agents. Called during the in-memory render pass *before any file is written*, so a
-    collision leaves nothing on disk (U1 atomicity). Returns the dut_port_map string for tb_top
+    Exit on a signal that collides with the clock or reset port name, or repeats across
+    agents. Called during the in-memory render pass before any file is written, so a collision
+    leaves nothing on disk. Returns the dut_port_map string for tb_top
     (leading ',\\n' so it concatenates after .rst(rst_n))."""
     dut_port_lines: list[str] = []
     seen_signals: set[str] = {clk_port_name, rst_port_name}

@@ -1,13 +1,12 @@
 """sim._plan — read the simulation-plan sidecars this stage consumes.
 
 simulation-plan authors the plan as three files; this stage declares and reads `tb-scaffold.json`
-and `sequences.json` (rules.py). They are merged into one dict because that is the shape the
-renderer and the thin-D1 gate operate on — `module` from one, `sequences[]` from the other, in
-the same walk.
+and `sequences.json`. They are merged into one dict because that is the shape both the renderer and
+the materialization gate walk: `module` from one, `sequences[]` from the other.
 
-Not validated here: simulation-plan schema-validates each when it writes them, and a stage does
-not reach into another skill's references/ (skills stay decoupled). A defect at this point is a
-missing or unreadable file, which the caller reports.
+Not validated here. simulation-plan schema-validates each when it writes it, and reaching into
+another skill's references/ to re-check would couple the two; what can still go wrong at this
+point is a missing or unreadable file, which the caller reports.
 """
 
 from __future__ import annotations

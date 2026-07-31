@@ -3,11 +3,11 @@
 #
 # Pass/fail contract: each simv invocation receives +IPD_STATUS_PATH=<path>;
 # base_test.sv::report_phase writes "PASS" or "FAIL" to that file. The bash
-# script reads the status file to decide PASS/FAIL/MANUAL_REVIEW. Missing
-# status file (simv crash before report_phase) → FAIL.
+# script reads the status file to decide PASS/FAIL. Missing status file (simv
+# crash before report_phase) → FAIL.
 #
 # RESULT line format (stable contract consumed by write_summary.py):
-#   RESULT <test_id> <PASS|FAIL|MANUAL_REVIEW> \
+#   RESULT <test_id> <PASS|FAIL> \
 #          uvm_testname=<name> log=<path>
 #
 # The token order and keyword names are paired with write_summary.py's load_results(); the
@@ -16,10 +16,6 @@
 set -euo pipefail
 
 MODE="${1:-regress}"
-REQUESTED_TEST="${2:-}"
-# Space-separated test_ids to mark as MANUAL_REVIEW instead of FAIL.
-# Agent can pass this after exhausting retry budget.
-MANUAL_REVIEW_IDS="${MANUAL_REVIEW_IDS:-}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
@@ -62,18 +58,13 @@ compile_simv() {
 }
 
 select_tests() {
-	"$PYTHON" "$(dirname "${BASH_SOURCE[0]}")/select_tests.py" \
-		"$MODE" "$REQUESTED_TEST" "$TESTLIST_JSON"
+	"$PYTHON" "$(dirname "${BASH_SOURCE[0]}")/select_tests.py" "$MODE" "$TESTLIST_JSON"
 }
 
 run_selected_tests() {
 	local selected
 	if ! selected="$(select_tests)"; then
-		if [[ "$MODE" == "single" ]]; then
-			echo "run_vcs_regression: test '$REQUESTED_TEST' not found" >&2
-		else
-			echo "run_vcs_regression: no tests selected for mode '$MODE'" >&2
-		fi
+		echo "run_vcs_regression: no tests selected for mode '$MODE'" >&2
 		exit 1
 	fi
 
@@ -120,12 +111,7 @@ run_selected_tests() {
 			status="PASS"
 			rm -f "$fsdb_path" # gc-on-pass: keep an FSDB only for failing tests
 		else
-			# Check if this test_id has been designated for manual review.
-			if [[ -n "$MANUAL_REVIEW_IDS" ]] && echo " $MANUAL_REVIEW_IDS " | grep -qF " $test_id "; then
-				status="MANUAL_REVIEW"
-			else
-				status="FAIL"
-			fi
+			status="FAIL"
 		fi
 		# RESULT line format is a stable contract — see file header before changing.
 		echo "RESULT $test_id $status uvm_testname=$uvm_testname log=$log_path" >>"$regression_log"
@@ -146,16 +132,8 @@ regress)
 	# Emit machine-readable structural coverage for the exit gate (fail-loud if unparseable).
 	make coverage
 	;;
-single)
-	[[ -n "$REQUESTED_TEST" ]] || {
-		echo "run_vcs_regression: single mode requires TEST=test_id or TEST=uvm_testname" >&2
-		exit 1
-	}
-	[[ -x "./$SIMV" ]] || compile_simv
-	run_selected_tests
-	;;
 *)
-	echo "run_vcs_regression: unknown mode '$MODE' (expected compile|smoke|regress|single)" >&2
+	echo "run_vcs_regression: unknown mode '$MODE' (expected compile|smoke|regress)" >&2
 	exit 1
 	;;
 esac

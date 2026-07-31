@@ -26,8 +26,10 @@ def test_sim_conformance_selfheal_no_deferred():
 
 
 def test_sim_conformance_has_selfheal_loop():
+    # A trip is repaired in-stage first, and the fixer, not the reviewer, is the one that
+    # decides the defect is upstream: it is the one that tried.
     assert "conformance-fix" in SIM
-    assert "intent-defect" in SIM and "fail-out" in SIM
+    assert "STATUS: BLOCKED" in SIM and "failure_phase=conformance" in SIM
 
 
 def test_conformance_fix_contract_exists():

@@ -8,7 +8,6 @@ MAIN = ROOT / "skills/simulation/scripts/sim/__main__.py"
 
 _VERBS = (
     "bootstrap",
-    "render-scaffold",
     "check-materialization",
     "validate-review",
     "finalize",

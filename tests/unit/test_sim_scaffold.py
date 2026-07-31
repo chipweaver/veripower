@@ -1,13 +1,11 @@
 # tests/unit/test_sim_scaffold.py
 import json
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-MAIN = ROOT / "skills/simulation/scripts/sim/__main__.py"
 TEMPLATES = ROOT / "skills/simulation/templates/scaffold"
 sys.path.insert(0, str(ROOT / "skills" / "simulation" / "scripts"))
 from sim import scaffold  # noqa: E402
@@ -55,30 +53,51 @@ def _write_spec(tmp_path, spec=SPEC):
     return tmp_path
 
 
-def _render_via_cli(tmp_path, spec=SPEC):
+def _render(tmp_path, spec=SPEC):
+    """Render into tmp_path/out. bootstrap is the only caller in the pipeline and is covered
+    as a subprocess in test_sim_bootstrap; here the subject is the renderer itself."""
     spec_path = _write_spec(tmp_path, spec)
     out = tmp_path / "out"
-    out.mkdir()
-    return subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "render-scaffold",
-            "--plan",
-            str(spec_path),
-            "--output-dir",
-            str(out),
-            "--template-dir",
-            str(TEMPLATES),
-        ],
-        capture_output=True,
-        text=True,
-    ), out
+    out.mkdir(exist_ok=True)
+    scaffold.render(spec_path, out, TEMPLATES)
+    return out
+
+
+def _render_exit(tmp_path, spec=SPEC, plan_dir=None):
+    """Render expecting a fail-loud exit; returns the message."""
+    spec_path = plan_dir or _write_spec(tmp_path, spec)
+    out = tmp_path / "out"
+    out.mkdir(exist_ok=True)
+    with pytest.raises(SystemExit) as e:
+        scaffold.render(spec_path, out, TEMPLATES)
+    return str(e.value)
+
+
+def test_rerender_keeps_a_filled_file(tmp_path):
+    # The renderer creates stubs; it does not maintain them. bootstrap runs it every round,
+    # and on a rework the whole carried testbench is already on disk, so writing over it
+    # replaces a round of authored checks with `// TODO`. That happened on three consecutive
+    # simulation rounds of the one real module, and cost a testpoint.
+    out = _render(tmp_path)
+    sb = out / "tb/uvm/checker/m_scoreboard.sv"
+    filled = "class m_scoreboard; // 400 lines of real implementation\nendclass\n"
+    sb.write_text(filled)
+    scaffold.render(tmp_path, out, TEMPLATES)
+    assert sb.read_text() == filled
+
+
+def test_rerender_adds_what_the_plan_gained(tmp_path):
+    # The other half: skipping what exists must not stop a new sequence from being rendered.
+    out = _render(tmp_path)
+    grown = json.loads(json.dumps(SPEC))
+    grown["sequences"] = grown["sequences"] + [{"name": "corner", "agent": "drv"}]
+    _write_spec(tmp_path, grown)
+    scaffold.render(tmp_path, out, TEMPLATES)
+    assert (out / "tb/uvm/seq/m_corner_seq.sv").is_file()
 
 
 def test_render_scaffold_full_tree(tmp_path):
-    r, out = _render_via_cli(tmp_path)
-    assert r.returncode == 0, r.stderr
+    out = _render(tmp_path)
     # interface / txn / agent / seq / env / scoreboard / rm / tb_top / pkg / filelist / testlist
     assert (out / "tb/uvm/interface/m_drv_if.sv").is_file()
     assert (out / "tb/uvm/transaction/m_drv_txn.sv").is_file()
@@ -92,7 +111,7 @@ def test_render_scaffold_full_tree(tmp_path):
 def test_testlist_carries_the_authored_suites_and_feature_name(tmp_path):
     # Nothing here is invented: suites is the plan author's judgment and feature_name is
     # injected by materialize-scaffold from features.json. This verb only copies them.
-    r, out = _render_via_cli(tmp_path)
+    out = _render(tmp_path)
     tl = json.loads((out / "tests/testlist.json").read_text())
     assert tl["module"] == "m" and tl["top"] == "m_top"
     entry = tl["tests"][0]
@@ -115,16 +134,13 @@ def test_testlist_missing_authored_field_fails_loud(tmp_path):
 
     spec = copy.deepcopy(SPEC)
     del spec["tests"][0]["suites"]
-    r, out = _render_via_cli(tmp_path, spec=spec)
-    assert r.returncode != 0
-    assert "suites" in r.stderr
+    assert "suites" in _render_exit(tmp_path, spec)
 
 
 def test_inport_and_observer_wiring(tmp_path):
     # rm.inports / scoreboard.observer name agents verbatim; the txn TYPE is built from the
     # name here, so nothing un-wraps anything.
-    r, out = _render_via_cli(tmp_path)
-    assert r.returncode == 0, r.stderr
+    out = _render(tmp_path)
     rm = (out / "tb/uvm/refmodel/m_rule_rm.sv").read_text()
     assert "write_drv" in rm  # inport agent derived by stripping module_/_txn
     env = (out / "tb/uvm/env/m_env.sv").read_text()
@@ -135,8 +151,7 @@ def test_inport_and_observer_wiring(tmp_path):
 def test_driver_monitor_vif_key_matches_tb_top_set(tmp_path):
     # M1 regression: tb_top registers each agent's vif under "<agent>_vif"; the
     # driver/monitor must `get` under the same key or build_phase uvm_fatals.
-    r, out = _render_via_cli(tmp_path)
-    assert r.returncode == 0, r.stderr
+    out = _render(tmp_path)
     tb_top = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
     assert '"drv_vif"' in tb_top  # set side, per scaffold.py
     for agent in ("drv", "obs"):
@@ -151,49 +166,29 @@ def test_driver_monitor_vif_key_matches_tb_top_set(tmp_path):
 def test_missing_primary_clock_exits(tmp_path):
     spec = {**SPEC}
     del spec["primary_clock"]
-    r, _ = _render_via_cli(tmp_path, spec)
-    assert r.returncode != 0 and "primary_clock" in r.stderr
+    assert "primary_clock" in _render_exit(tmp_path, spec)
 
 
 def test_nonnumeric_period_exits(tmp_path):
     spec = {**SPEC, "primary_clock": {"dut_port_name": "clk", "period_ns": "fast"}}
-    r, _ = _render_via_cli(tmp_path, spec)
-    assert r.returncode != 0 and "period_ns" in r.stderr
+    assert "period_ns" in _render_exit(tmp_path, spec)
 
 
 def test_missing_reset_exits(tmp_path):
     spec = {**SPEC}
     del spec["reset"]
-    r, _ = _render_via_cli(tmp_path, spec)
-    assert r.returncode != 0 and "reset" in r.stderr
+    assert "reset" in _render_exit(tmp_path, spec)
 
 
 def test_empty_agent_signals_exits(tmp_path):
     spec = json.loads(json.dumps(SPEC))
     spec["agents"][0]["interface"]["signals"] = []
-    r, _ = _render_via_cli(tmp_path, spec)
-    assert r.returncode != 0 and "interface.signals" in r.stderr
+    assert "interface.signals" in _render_exit(tmp_path, spec)
 
 
 def test_render_missing_scaffold_exits(tmp_path):
-    out = tmp_path / "out"
-    out.mkdir()
-    r = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "render-scaffold",
-            "--plan",
-            str(tmp_path / "nope"),
-            "--output-dir",
-            str(out),
-            "--template-dir",
-            str(TEMPLATES),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert r.returncode != 0 and "missing tb-scaffold.json" in r.stderr
+    msg = _render_exit(tmp_path, plan_dir=tmp_path / "nope")
+    assert "missing tb-scaffold.json" in msg
 
 
 def test_atomic_rollback_on_write_error(tmp_path, monkeypatch):

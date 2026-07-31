@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""sim validate-review — producer self-gate for the gating conformance-review.json artifact.
+"""sim validate-review — schema + gate verdict over the conformance reviewer's own record.
 
-Validates the file against references/conformance-review.schema.json (Draft 2020-12), then computes the gate verdict (the
-mechanical category x severity reduction over the findings) and prints it as a one-line JSON the
-main thread copies — so the gate is script-owned, not judged by eye. `compute_gate` is reused
-in-process by the finalize verb (sim.result).
+The reviewer Task writes conformance-review.json; this validates that file against
+references/conformance-review.schema.json (Draft 2020-12) and prints the gate verdict as one
+JSON line, so the trip/clear call is script-owned rather than judged by eye. `compute_gate` is
+reused in-process by the finalize verb (sim.result), which re-runs it before writing a pass.
 """
 
 from __future__ import annotations
 
 import json
 import sys
-from collections import Counter
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -22,32 +21,17 @@ _SCHEMA = (
     / "conformance-review.schema.json"
 )
 
-# Gate policy: a finding gates (status=fail) iff its category is a gating class AND its severity is
-# critical/important. Advisory categories (unverifiable-arch, unavailable) and minor never gate.
-_GATING_CATEGORIES = {"missing", "wrong-behavior", "fake-green", "intent-defect"}
-_GATING_SEVERITIES = {"critical", "important"}
-
 
 def compute_gate(doc: dict) -> dict:
-    """Pure category x severity reduction over findings -> the stage gate verdict. No schema/
-    consistency checks here (validate() does those first; finalize calls this over the on-disk doc)."""
-    findings = doc.get("findings", [])
-    gating = [
-        f
-        for f in findings
-        if f.get("category") in _GATING_CATEGORIES
-        and f.get("severity") in _GATING_SEVERITIES
-    ]
-    flagged = sorted({f.get("tp_id") for f in gating if f.get("tp_id")})
-    dominant = (
-        Counter(f.get("category") for f in gating).most_common(1)[0][0]
-        if gating
-        else None
-    )
+    """The gate verdict: any finding the reviewer called blocking stops the round.
+
+    There is nothing to reduce beyond that. A taxonomy here would only re-derive a call the
+    reviewer already made, in a vocabulary it had to be taught first. No schema checks
+    (validate() runs those first; finalize calls this over the on-disk doc)."""
+    blocking = [f for f in doc.get("findings", []) if f.get("blocking")]
     return {
-        "gate": "trip" if gating else "clear",
-        "flagged": flagged,
-        "dominant_category": dominant,
+        "gate": "trip" if blocking else "clear",
+        "flagged": sorted({f.get("tp_id") for f in blocking if f.get("tp_id")}),
     }
 
 

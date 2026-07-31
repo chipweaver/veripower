@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """sim bootstrap — deploy the simulation templates into a run workdir, then optionally render the UVM scaffold.
 
-Behavior-preserving port of the former bootstrap shell (campaign §3.3): a NO-CLOBBER
-deploy (`_deploy_no_clobber`) + str.replace do the `cp -a` + `sed -i` work. Collapses
-the former three-script pipeline into one verb: deploy infra, substitute the MY_TOP /
-MY_MODULE placeholders, read TOP, generate rtl_filelist.f (sim._filelist) from the
-injected absolute rtl-design root, and — when --scaffold is given — render the full
-UVM scaffold via sim.scaffold.render (the same code path the standalone render-scaffold
-verb uses).
+Deploy the infra templates without clobbering anything already there, substitute the MY_TOP
+and MY_MODULE placeholders, generate rtl_filelist.f (sim._filelist) from the injected
+absolute rtl-design root, and when --plan is given render the full UVM scaffold via
+sim.scaffold.render.
 
 Exit codes (returned as int; __main__ does sys.exit):
   0  deployed (infra only, or infra + scaffold; rework when a carried Makefile is
      already present in workdir, first run otherwise — the no-clobber deploy never
      overwrites a carried TB)
-  1  fail-closed guard (missing infra template dir / cannot read top / missing RTL
-     filelist / missing --scaffold file)
+  1  fail-closed guard (missing infra template dir / unusable top / missing RTL
+     filelist / missing --plan sidecar)
   (2 = usage is owned by argparse in __main__.py)
 """
 
@@ -56,39 +53,34 @@ def _err(msg: str) -> None:
     print(f"[sim bootstrap] {msg}", file=sys.stderr)
 
 
-def infer_top_from_scaffold(scaffold_dir: Path) -> str | None:
-    """Top module name from the injected `scaffold` input's tb-scaffold.json
-    (`top` — a REQUIRED field per its schema, skills/simulation-plan/references/
-    tb-scaffold.schema.json). Absent / unreadable / no `top` / non-identifier
-    -> None (fall back to the RTL filelist). Unlike the former specification/manifest.json
-    read, `scaffold` IS a declared Rule.input (rules.RULES["simulation"].inputs["scaffold"]),
-    so this coordinate's freshness is already covered by the kernel's own input-staleness
-    check — no separate declaration needed."""
-    f = scaffold_dir / SCAFFOLD_NAME
-    if not f.is_file():
-        return None
-    try:
-        top = json.loads(f.read_text()).get("top")
-    except (OSError, ValueError):
-        return None
-    return top if isinstance(top, str) and _IDENT_RE.match(top) else None
+def read_top(scaffold_dir) -> str:
+    """The DUT top module name, indexed out of the `scaffold` input's tb-scaffold.json.
+
+    Indexed rather than inferred: `top` is a required field of tb-scaffold.schema.json,
+    validated by simulation-plan when it writes the file, and sim.scaffold indexes the same
+    field a moment later to name <top>_tb_top.sv. A second source would let the MY_TOP
+    substituted across the deployed infra disagree with the top the renderer emitted."""
+    return json.loads((Path(scaffold_dir) / SCAFFOLD_NAME).read_text())["top"]
 
 
-def _deploy_no_clobber(src_root: Path, dest: Path) -> None:
-    """Copy every template file into dest UNLESS dest already has one at that path —
-    a carried file (brought forward by kernel.py's carry_self before this verb runs,
-    e.g. a prior round's TB) always wins over the pristine template."""
+def _deploy_no_clobber(src_root: Path, dest: Path) -> list[Path]:
+    """Copy every template file into dest unless dest already has one at that path: a file
+    carried from the prior round always wins over the pristine template. Returns the files
+    actually written."""
+    written: list[Path] = []
     for p in src_root.rglob("*"):
-        if p.is_dir():
-            continue
+        if p.is_dir() or "__pycache__" in p.parts:
+            continue  # bytecode the test suite left beside the shipped scripts
         d = dest / p.relative_to(src_root)
         if d.exists():
             continue  # carried file — never overwrite
         d.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(p, d)
+        written.append(d)
+    return written
 
 
-def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
+def run(module: str, workdir, scaffold=None) -> int:
     infra = _TEMPLATE_DIR / "infra"
     if not infra.is_dir():
         _err(f"missing infra template directory: {infra}")
@@ -106,53 +98,36 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
     # dispatch.json (dispatch-time), not self-navigated via tree_root/asic/<module>/....
     inputs = json.loads((dest / "dispatch.json").read_text(encoding="utf-8"))["inputs"]
     rtl_dir = Path(inputs["rtl"])
-    rtl_files_path = rtl_dir / "rtl-files.json"
 
-    # Read TOP (the declared `scaffold` input's tb-scaffold.json `top` field —
-    # a REQUIRED field, spec-input-contract) BEFORE the
-    # prereq/guard. TOP comes from the scaffold: simulation does not declare specification
-    # as an input, and `scaffold` already IS a declared one, so this is a coordinate the
-    # stage genuinely tracks (mirrors power-analysis inferring TOP from its injected
-    # netlist rather than a non-declared specification read).
-    if not top:
-        top = infer_top_from_scaffold(Path(inputs["scaffold"]))
-    if not top:
-        _err("cannot read top-module name; pass --top <name>")
-        _err(f"  {SCAFFOLD_NAME} must carry a 'top' name.")
+    top = read_top(inputs["scaffold"])
+    if not _IDENT_RE.match(top):
+        # The schema types `top` as a string without pinning its shape, so this is the one
+        # place a name that cannot be a module identifier is reported. Left through, it
+        # reaches VCS as a syntax error in generated code nobody wrote by hand.
+        _err(f"{SCAFFOLD_NAME} `top` is not a Verilog identifier: {top!r}")
         return 1
 
-    # Prerequisite: the rtl-design filelist must exist (the scaffold's RTL source).
-    if not rtl_files_path.is_file():
-        _err(f"missing RTL file list: {rtl_files_path}")
-        return 1
-
-    # Existence check: every fresh workdir already holds the kernel's dispatch.json.
-    # A Makefile present means carry_self already brought a
-    # prior round's TB forward — treat as REWORK (the no-clobber deploy below never
-    # overwrites it), not an abort; absent means a genuine first run.
+    # A Makefile present means the prior round's TB was carried in before this verb ran:
+    # a rework, not an abort. Absent means a first run.
     dest.mkdir(parents=True, exist_ok=True)
     if (dest / "Makefile").is_file():
         print(f"[sim bootstrap] rework — carried TB detected ({dest / 'Makefile'})")
 
-    # Step 1: deploy infra NO-CLOBBER — a carried TB (carry_self, before this verb
-    # runs) always wins over the empty infra template.
-    _deploy_no_clobber(infra, dest)
+    # Step 1: deploy infra, never over a file already there.
+    deployed = _deploy_no_clobber(infra, dest)
     for d in _UVM_SUBDIRS:
         (dest / "tb" / "uvm" / d).mkdir(parents=True, exist_ok=True)
     (dest / "tests").mkdir(parents=True, exist_ok=True)
 
-    # Substitute MY_TOP / MY_MODULE across every deployed file carrying one (str.replace).
-    repl = {
-        "MY_TOP": top,
-        "MY_MODULE": module,
-    }
-    for path in dest.rglob("*"):
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text()
-        except (UnicodeDecodeError, OSError):
-            continue
+    # Substitute MY_TOP / MY_MODULE in what was just deployed, and only there. A carried file
+    # had its placeholders substituted the round it was deployed, so re-reading it can only
+    # find the literal text somewhere an author wrote it, and rewriting that would edit
+    # carried work. Scanning the whole workdir instead would also mean reading every file the
+    # tools left behind: on a real run directory that is 311 files and 56 MB, 170 of them
+    # binary, to reach the three template files that actually carry a placeholder.
+    repl = {"MY_TOP": top, "MY_MODULE": module}
+    for path in deployed:
+        text = path.read_text()
         if any(ph in text for ph in _PLACEHOLDERS):
             for ph, val in repl.items():
                 text = text.replace(ph, val)
@@ -172,7 +147,7 @@ def run(module: str, workdir, top: str | None = None, scaffold=None) -> int:
 
     write_rtl_filelist(load_rtl_files(rtl_dir), dest / "rtl_filelist.f", str(rtl_dir))
 
-    # Step 3: render the UVM scaffold when --scaffold is provided (same path as render-scaffold).
+    # Step 3: render the UVM scaffold when --plan is provided.
     if scaffold:
         plan_dir = Path(scaffold)
         if not plan_dir.is_absolute():

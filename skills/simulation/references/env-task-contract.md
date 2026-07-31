@@ -6,10 +6,9 @@ the UVM scaffold, compile, and run the smoke suite.
 
 ## Inputs (paths only — the main thread does not read these bodies)
 
-- `{workdir}` — the shared simulation stage workdir (you are the first writer; the
-  verify child runs in the same directory in wave 3). On a rework it already holds your previous
-  round's carried TB (the framework's `carry_self` ran before you were dispatched, before this
-  workdir was ever handed to you); on a genuine first run it is empty.
+- `{workdir}` — the shared simulation stage workdir; you are the first writer, and the verify
+  child runs in the same directory in wave 3. On a rework it already holds the previous round's
+  TB; on a first run it is empty.
 - `{module}` — module name.
 - plan-sidecar dir: `<scaffold>/` — holds the two sidecars this stage declares,
   `tb-scaffold.json` (the TB scaffold contract: `agents` / `tests` are materialized into SV
@@ -32,15 +31,20 @@ the UVM scaffold, compile, and run the smoke suite.
 1. **Bootstrap + scaffold**:
 
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>] --plan <scaffold>
+   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} --plan <scaffold>
    ```
 
-   Deploys infrastructure + scaffold to `{workdir}`, including functional sequence placeholders. All
-   subsequent `make` targets run with `cd {workdir}`. Always run this step, whether this round is a
-   rework or a first run: `bootstrap` is no-clobber — it never overwrites a file already present
-   (a carried Makefile / env.sh / filelist.f / tb/uvm / scripts / tests, brought forward by
-   `carry_self`), so on a rework it is a no-op over the carried TB, and on a genuinely empty workdir
-   it deploys the complete pristine template.
+   Deploys the infrastructure and the scaffold into `{workdir}`, including functional sequence
+   placeholders. All subsequent `make` targets run with `cd {workdir}`. Run it every round, rework
+   or first run: it writes only where no file is there yet, so on an empty workdir you get the
+   complete stub tree, and on a rework it adds whatever the plan gained since last round and leaves
+   everything already on disk alone.
+
+   **What that leaves you.** It will not refresh a file the plan changed, only add ones the plan
+   gained. If a testpoint's agent picked up a signal, or a sequence was renamed, the interface,
+   package, env or `tb_top` holding the old shape is still the one on disk, and reconciling it is
+   Work step 2's job (all of them are on Rule A's repairable list). The compile says so loudly when
+   you miss one; what it cannot do is give you back a filled checker overwritten by a stub.
 2. **Fill / reconcile scaffold** (bound by **Rule A**, see `repair-boundaries.md`): inside
    `{workdir}`, fill or reconcile every `TODO(` across driver / monitor / checker / RM / functional
    seq / top against the current plan (`verification-plan.md` + the plan sidecars).
@@ -50,19 +54,20 @@ the UVM scaffold, compile, and run the smoke suite.
      scope requires; checks / RM /
      scoreboard already matching the current plan are left byte-identical to the carried baseline.
    All writes happen only in `{workdir}`.
-   **Trust the rendered tree (U4):** the bootstrap verb (with `--plan`) renders an atomic, complete, self-describing
+   **Trust the rendered tree.** The bootstrap verb (with `--plan`) renders an atomic, complete, self-describing
    stub tree. Learn structure and fill-conventions from the **rendered stubs and their TODO/header
    comments** (e.g. each stub's `// TODO(...)` states its config_db key, sequencer type, and intent),
    not by reverse-engineering the renderer (sim/scaffold.py). Reading the renderer source is a documented
    **fallback only** — when a stub comment is missing, self-contradictory, or conflicts with the
    observed structure. Do not whole-read `sim/scaffold.py` as a first resort.
-   **Reading discipline (U5):** do not whole-read `tb-scaffold.json` (it is large and the
+   **Reading discipline.** Do not whole-read `tb-scaffold.json` (it is large and the
    first read gets truncated by the token cap, forcing a costly re-read). Instead: take **structural
    facts** (interface signals, txn fields) from the **rendered stubs** (they are already materialized);
    read **check semantics per-testpoint** via `testpoints[].inlined_check_hints[]` (not the whole
    `check_hints` block at once); and read the small top-level arrays
    (`sequences[].agent` / `tests[].seqs` / `rm` / `scoreboard`) for the testpoint→component mapping.
-   `testpoints[]` itself carries only `id/bins/covers/inlined_check_hints` — never agent/seq/rm — so
+   `testpoints[]` itself carries only `id` / `intent` / `bins` / `covers` / `inlined_check_hints`,
+   never agent/seq/rm, so
    the cross-array join is over small arrays. (`verify-handoff.json` is your *output*, not an
    input — it does not exist at fill time.)
 3. **Compile + smoke**: `make simv` → `make smoke`. The two steps **share** one
@@ -72,7 +77,7 @@ the UVM scaffold, compile, and run the smoke suite.
    reason naming compile|smoke + the semantic locus>` so the orchestrator records
    `failure_phase=compile|smoke`. See `uvm-rules.md` for the UVM coding rules the filled scaffold must
    obey.
-4. **Env-exit completeness self-gate (thin-D1)**: before reporting `STATUS: DONE`, run
+4. **Env-exit completeness self-gate**: before reporting `STATUS: DONE`, run
 
    ```bash
    python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py check-materialization --workdir {workdir} --plan <scaffold>
@@ -87,14 +92,14 @@ the UVM scaffold, compile, and run the smoke suite.
    run remains the authoritative verdict; this is your self-gate so a hollow TB never
    reaches the wave-3 verify run. (Note: `make smoke` runs earlier in wave 1, *before* this gate —
    the savings are that no regress/coverage wave runs on a hollow TB, not that smoke is skipped.)
-   **Limitation (by design):** thin-D1 is presence-only and intentionally does **not** resist marker
-   renaming / empty-stub / plausible-but-wrong fills — TB↔plan semantic conformance is the
-   conformance-review gate's job, not this gate.
+   It checks presence and nothing else: a renamed marker, an empty stub or a plausible but
+   wrong fill all pass it. Whether a check verifies the right thing is the conformance review's
+   question.
 
 The smoke result is judged by the orchestrator's **deterministic gate** (the smoke run's own
 `regression-log.txt` `RESULT` lines / per-test `.status` files in `{workdir}`), **not** by your
 self-reported `STATUS:` prose. Report `STATUS: DONE` once `make simv` + `make smoke` have run
-to completion, the env-exit thin-D1 self-gate (Work step 4) exits 0, and the handoff is written; the
+to completion, the self-gate in Work step 4 exits 0, and the handoff is written; the
 smoke gate still decides smoke pass/fail.
 
 ## Anti-gaming (cycle-accurate checks)
@@ -103,21 +108,6 @@ smoke gate still decides smoke pass/fail.
   `inlined_check_hints[]` gets a cycle-accurate refmodel / scoreboard check matched to its
   `implementation_detail` shape; mismatches use `` `uvm_error `` with counters that actually
   increment.
-- **Red Flags** (any of these is a Rule A semantic violation → `STATUS: BLOCKED`, do not retry):
-  - "One more retry / loosen the checker and it'll pass" — semantic (checker/scoreboard/RM) errors do
-    not converge by retry; the scaffold-repair budget is for wiring errors only.
-  - "Suppress the mismatch as `uvm_info` / leave `mismatch_count` flat so it goes green" — fake-green
-    is the canonical gaming failure.
-  - "Use a functional/shadow-register model instead of the cycle-accurate refmodel" — a testpoint with
-    non-empty `inlined_check_hints[]` MUST generate cycle-accurate checks; downgrading to
-    register-value comparison is not allowed.
-  - "Let me open the DUT RTL to see what this signal does so my refmodel matches it" -- authoring the
-    golden model from the implementation is circular verification; derive it from the spec/plan
-    formula, not the RTL.
-  - "Rewrite from scratch a check / RM that the plan change did not modify" — the carried baseline is
-    byte-identical for testpoints the plan delta did not touch; gratuitously re-authoring a
-    still-plan-matching check breaks the RTL-variable-isolation the carried baseline exists to
-    preserve (Rule A semantic violation).
 
 ## Prohibitions
 
@@ -135,24 +125,16 @@ smoke gate still decides smoke pass/fail.
   included) and can never disagree -- circular verification. Reading RTL to author a check is a Rule A
   semantic violation → `STATUS: BLOCKED <compile|smoke> rtl-source-read: <locus>`, do not retry.
 
-## Pitfalls
-
-| Mistake | Fix |
-|---|---|
-| Treating a carried TB as untouched boilerplate | A `Makefile` already present in `{workdir}` on entry means `carry_self` warmed it from the prior round — reconcile it per Work step 2's resolved edit scope, not a full rewrite; `bootstrap` (step 1) never overwrites it. |
-| Reporting a mismatch with `$fatal` | MUST use `` `uvm_error `` (see `uvm-rules.md`); `$fatal` bypasses the UVM report server, so the regression runner misses the count and the scoreboard terminates early. |
-
 ## Output
 
 - Write the full TB into the shared `{workdir}`: `Makefile`, `env.sh`, `filelist.f`,
   `tb/uvm/**` (driver / monitor / checker / RM / sequences / top), `scripts/**`,
   `tests/testlist.json`. Not `rtl_filelist.f` — bootstrap derives that one. `make smoke` then
   writes the smoke-suite `regression-log.txt` `RESULT` lines + per-test `logs/<test>.status`
-  files — surface these too, since the main-thread smoke gate reads exactly them. These are the
+  files: surface these too, since the main-thread smoke gate reads exactly them. These are the
   env-phase artifacts (artifact ownership split is in `artifact-contract.md`); the full-regress /
-  coverage / case-result artifacts are produced by the verify child in wave 3 (it appends the
-  regress `RESULT` lines to the env-written log), and `result.json` is assembled by the
-  orchestrator.
+  coverage / case-result artifacts are produced by the verify child in wave 3, and `result.json`
+  is assembled by the orchestrator.
 - Emit `{workdir}/verify-handoff.json` — a per-testpoint check-intent digest (schema below) so the
   verify child gets check-intent without re-reading the whole TB.
 - End the response with `STATUS: DONE` + a single JSON line listing what is now in the workdir:
