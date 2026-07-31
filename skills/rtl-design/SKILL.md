@@ -56,7 +56,7 @@ A failing envelope carries `fail_reason`. `finalize` derives it from the on-disk
 
 `--fix-owner` names the rule that must act. A defect you could fix from here you already fixed by re-dispatching, so a failure is either the spec's (`specification`) or your own exhausted remedy. Naming yourself calls a human in. Omit it when you cannot tell.
 
-Exit 0 means `result.json` was written, pass or fail. A non-zero exit is a program exception.
+Exit 0 means `result.json` was written, pass or fail. Exit 2 means it was not: the workdir is not in a state any verdict describes, and stderr says which part. Fix what it names and run it again — do not write the envelope yourself.
 
 ## Return Contract
 
