@@ -32,7 +32,7 @@ the UVM scaffold, compile, and run the smoke suite.
 1. **Bootstrap + scaffold**:
 
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>] --plan <scaffold>
+   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} --plan <scaffold>
    ```
 
    Deploys infrastructure + scaffold to `{workdir}`, including functional sequence placeholders. All

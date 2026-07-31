@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def _cmd_bootstrap(a: argparse.Namespace) -> int:
     from sim import bootstrap
 
-    return bootstrap.run(a.module, a.workdir, top=a.top, scaffold=a.plan)
+    return bootstrap.run(a.module, a.workdir, scaffold=a.plan)
 
 
 def _cmd_render_scaffold(a: argparse.Namespace) -> int:
@@ -86,11 +86,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--module", required=True)
     sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
-        "--top",
-        default=None,
-        help="RTL top (inferred from specification manifest.module, else rtl filelist, if omitted)",
-    )
     sp.add_argument(
         "--plan",
         type=Path,

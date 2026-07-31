@@ -12,7 +12,7 @@ Invoked by the env-build child (dispatched at stage SOP Step 2):
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/simulation/scripts/sim/__main__.py bootstrap \
-    --module <module-dir-name> --workdir <caller-provided per-run workdir> [--top <top-module-name>] \
+    --module <module-dir-name> --workdir <caller-provided per-run workdir> \
     --plan asic/<M>/Verification/simulation-plan
 ```
 

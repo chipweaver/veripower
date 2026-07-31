@@ -57,7 +57,7 @@ below, `<key>` denotes that input's location, so you read `<key>/<subpath>`.
 |---|---|---|
 | `<rtl>/rtl-files.json` | `skills/rtl-design/references/rtl-files.schema.json` | Per-child DUT RTL file layout — bootstrap generates `rtl_filelist.f` from it (fails when missing); RTL enters only mechanically via that generated list (Iron Rule). |
 | `<plan>/verification-plan.md` | Custom markdown | env-build sub-Task input — passed by path; the main thread never reads the body. |
-| `<scaffold>/tb-scaffold.json` + `<scaffold>/sequences.json` | Custom JSON | TB scaffold contract — sub-Task input; the main thread asserts existence only; also the `top` inference source for `sim bootstrap` (falls back to the `<rtl>` filelist). |
+| `<scaffold>/tb-scaffold.json` + `<scaffold>/sequences.json` | Custom JSON | TB scaffold contract, a sub-Task input; the main thread asserts existence only. Its `top` field is the sole source of the DUT top name, for both `sim bootstrap`'s placeholder substitution and the rendered `<top>_tb_top.sv`. |
 
 Whatever `dispatch.json` carries in `scope` / `caused_by` / `reasons`, you hand on to the
 env-build sub-Task as Step 1's resolved scope. It reads the failing envelope itself; you do

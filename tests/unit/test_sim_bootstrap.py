@@ -20,21 +20,14 @@ sys.path.insert(0, str(REPO_ROOT / "skills" / "simulation" / "scripts"))
 from sim import bootstrap  # noqa: E402
 
 
-# ── B1: TOP-inference helpers (in-process) ─────────────────────────────────────
-def test_top_from_scaffold_top_field(tmp_path):
-    # top is read from the declared `scaffold` input's tb-scaffold.json
-    # `top` field (a REQUIRED field per its schema), not manifest.json
-    # (specification is not a declared simulation input).
+# ── TOP: one source, indexed (in-process) ──────────────────────────────────────
+def test_top_comes_from_the_scaffold_input(tmp_path):
+    # The same field sim.scaffold indexes to name <top>_tb_top.sv, so the substituted
+    # MY_TOP and the rendered top cannot disagree.
     (tmp_path / "tb-scaffold.json").write_text(
         json.dumps({"top": "my_top", "module": "m"})
     )
-    assert bootstrap.infer_top_from_scaffold(tmp_path) == "my_top"
-
-
-def test_top_from_scaffold_absent_or_no_top(tmp_path):
-    assert bootstrap.infer_top_from_scaffold(tmp_path) is None  # no tb-scaffold.json
-    (tmp_path / "tb-scaffold.json").write_text(json.dumps({"module": "m"}))  # no top
-    assert bootstrap.infer_top_from_scaffold(tmp_path) is None
+    assert bootstrap.read_top(tmp_path) == "my_top"
 
 
 def _mirror(
@@ -47,8 +40,7 @@ def _mirror(
     field) under a tmp design-tree root, and pre-populate workdir/dispatch.json
     (rtl/plan/scaffold keys) the way kernel.py dispatch injects it at dispatch time
     (+ carry_self, which would already have placed any carried TB directly into
-    workdir before this verb runs). `scaffold_top=None` omits tb-scaffold.json
-    entirely (models a TOP not inferrable from the declared `scaffold` input). Returns
+    workdir before this verb runs). Returns
     (main, workdir, module); deploy tests run `main` (the real shipped skill) with
     cwd=tmp_path, so the bootstrap anchors the design tree (and a relative --workdir)
     on the CWD. bootstrap reads the rtl-design / scaffold stage roots from dispatch.json,
@@ -59,8 +51,7 @@ def _mirror(
     (rtl / "rtl-files.json").write_text(json.dumps(rtl_files))
     plan_root = tmp_path / "asic" / module / "Verification" / "simulation-plan"
     plan_root.mkdir(parents=True)
-    if scaffold_top is not None:
-        (plan_root / "tb-scaffold.json").write_text(json.dumps({"top": scaffold_top}))
+    (plan_root / "tb-scaffold.json").write_text(json.dumps({"top": scaffold_top}))
     workdir = tmp_path / "asic" / module / "Verification" / "simulation" / "runs" / "1"
     workdir.mkdir(parents=True)
     (workdir / "dispatch.json").write_text(
@@ -212,19 +203,19 @@ def test_bootstrap_allows_hint_only_workdir(tmp_path):
     assert (wd / "Makefile").is_file()
 
 
-def test_bootstrap_unreadable_top_exit_1(tmp_path):
-    main, wd, module = _mirror(
-        tmp_path,
-        scaffold_top=None,  # no tb-scaffold.json -> nothing to read TOP from
-    )
+def test_bootstrap_unusable_top_exit_1(tmp_path):
+    # `top` is typed as a bare string upstream, so a name that cannot be a module
+    # identifier is schema-legal and this is the only place it is reported. Left through,
+    # it lands in generated SV as a syntax error nobody wrote by hand.
+    main, wd, module = _mirror(tmp_path, scaffold_top="dut-1 top")
     r = _run(main, module, wd)
-    assert r.returncode == 1 and "read top" in r.stderr.lower()
+    assert r.returncode == 1 and "not a Verilog identifier" in r.stderr
 
 
 def test_bootstrap_missing_rtl_files_exit_1(tmp_path):
     main, wd, module = _mirror(tmp_path)
     (tmp_path / "asic" / module / "Design" / "rtl-design" / "rtl-files.json").unlink()
-    r = _run(main, module, wd, "--top", "dut")
+    r = _run(main, module, wd)
     assert r.returncode == 1 and "RTL file list" in r.stderr
 
 
