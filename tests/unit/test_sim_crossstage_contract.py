@@ -59,14 +59,22 @@ def test_inport_and_observer_wiring(tmp_path):
     rm_name = spec["rm"].get("name", "rule_rm")
     rm = (out / "tb/uvm/refmodel" / f"{module}_{rm_name}.sv").read_text()
     env = (out / "tb/uvm/env" / f"{module}_env.sv").read_text()
-    for agent in spec["rm"]["inports"]:  # RM-inport + env-connect sites
+    obs = spec["scoreboard"]["observer"]
+    for agent in spec["rm"]["inports"]:
         assert f"write_{agent}" in rm, f"RM missing write_{agent}"
-        assert f"m_{agent}_agent.ap.connect(m_rm.ai_{agent})" in env, (
-            f"env missing inport connect for {agent}"
-        )
-    obs = spec["scoreboard"]["observer"]  # observer site
+        if agent != obs:
+            # the one RM lives in the scoreboard
+            assert f"m_{agent}_agent.ap.connect(m_scoreboard.rm.ai_{agent})" in env, (
+                f"env missing inport connect for {agent}"
+            )
     assert f"m_{obs}_agent.ap.connect(m_scoreboard.analysis_export)" in env, (
         f"env missing observer connect for {obs}"
+    )
+    # The observer feeds the RM through the scoreboard, not through a second connection:
+    # one analysis port fanned out to both ingest and compare has no order between them.
+    assert f"m_{obs}_agent.ap.connect(m_scoreboard.rm." not in env
+    assert "m_rm" not in env, (
+        "a second RM instance in the env receives what nobody predicts from"
     )
 
 

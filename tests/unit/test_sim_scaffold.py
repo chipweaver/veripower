@@ -145,7 +145,13 @@ def test_inport_and_observer_wiring(tmp_path):
     assert "write_drv" in rm  # inport agent derived by stripping module_/_txn
     env = (out / "tb/uvm/env/m_env.sv").read_text()
     assert "m_obs_agent.ap.connect(m_scoreboard.analysis_export)" in env  # observer
-    assert "m_drv_agent.ap.connect(m_rm.ai_drv)" in env  # inport -> rm
+    # One RM, and it is the scoreboard's: an env-held RM is fed by an analysis fanout whose
+    # order against the scoreboard's own compare is unspecified, and the scoreboard used to
+    # create a second instance of its own, so the model it predicted from saw nothing at all.
+    assert (
+        "m_drv_agent.ap.connect(m_scoreboard.rm.ai_drv)" in env
+    )  # inport -> the one rm
+    assert "m_rm" not in env
 
 
 def test_driver_monitor_vif_key_matches_tb_top_set(tmp_path):
