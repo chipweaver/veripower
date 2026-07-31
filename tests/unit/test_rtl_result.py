@@ -105,15 +105,27 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert "result.json" not in paths
 
 
-def test_pass_refused_while_a_child_review_is_missing(tmp_path, capsys):
+def test_pass_refused_while_no_review_landed(tmp_path, capsys):
     # The exit requirement, and the only mechanical part of it: nothing else in this stage
     # checks that the intent review happened, and there is no in-stage human gate to notice.
-    # What a review SAYS stays the stage's judgment; that it EXISTS for every child does not.
+    # What a review SAYS stays the stage's judgment; that one EXISTS does not.
+    wd, manifest = _workdir(tmp_path, reviews=False)
+    assert ve.finalize(wd, "tpu_top", manifest) == 2
+    assert "no intent review" in capsys.readouterr().err
+    assert not (wd / "result.json").exists()
+
+
+def test_reviews_are_enumerated_off_disk_not_off_the_roster(tmp_path):
+    # How the wave splits the RTL between its reviewers is the stage's call, so the gate counts
+    # no coverage: one file covering two children passes, and artifacts[] carries what landed.
     wd, manifest = _workdir(tmp_path)
     (wd / "semantic-review" / "mac.md").unlink()
-    assert ve.finalize(wd, "tpu_top", manifest) == 2
-    assert "semantic-review/mac.md" in capsys.readouterr().err
-    assert not (wd / "result.json").exists()
+    (wd / "semantic-review" / "topc.md").rename(wd / "semantic-review" / "mac+topc.md")
+    assert ve.build_result(wd, module="tpu_top", manifest=manifest) == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "pass"
+    reviews = {a["path"] for a in env["artifacts"] if a["path"].startswith("semantic-")}
+    assert reviews == {"semantic-review/mac+topc.md"}
 
 
 def test_build_result_fail_on_exit_topology_verbatim(tmp_path):

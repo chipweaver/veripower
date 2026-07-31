@@ -31,7 +31,7 @@ Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `re
 | `*.v` (`*.vh` headers) | The authored RTL, `<top_module>.v` among it |
 | `rtl-files.json` | Per-child `files[]` + `incdirs[]`, keys in manifest order. Every downstream filelist is generated from it — no stage parses a text file list |
 | `constraint-annotations.json` | Per-child SGDC/SDC annotations in real module names, read by lint-cdc and synthesis |
-| `semantic-review/<child>.md × N` | One intent review per child, written by its reviewer. Prose, not a verdict |
+| `semantic-review/*.md` | The intent reviews, written by their reviewers. Prose, not a verdict |
 | `result.json` | The status envelope, written only by `finalize` |
 
 ## Task
@@ -52,7 +52,7 @@ Nothing reduces those reviews to a verdict. Read them and act: re-dispatch the c
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir} --module {module} --manifest <manifest>/manifest.json [--fail-reason "<one line>"] [--fix-owner <rule>]
 ```
 
-`finalize` derives the envelope from disk. It validates both sidecars against their schemas, and refuses to write a pass while any child's review file is missing.
+`finalize` derives the envelope from disk. It validates both sidecars against their schemas, and refuses to write a pass while `semantic-review/` holds no review.
 
 A failing envelope carries `fail_reason`. `finalize` derives it from the on-disk verdict, or takes your one line from `--fail-reason` when no on-disk state can express the failure.
 

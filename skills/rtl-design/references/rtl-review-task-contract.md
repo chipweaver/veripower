@@ -40,9 +40,9 @@ decides those).
 
 ## Output
 
-Write `{workdir}/semantic-review/<child>.md` for every child assigned to you. Prose, no schema.
-Then end the response with `STATUS: DONE`, or `STATUS: BLOCKED <reason>` if you could not review
-at all.
+Write your review under `{workdir}/semantic-review/` as one or more `.md` files, each named for
+what it covers. Prose, no schema. Then end the response with `STATUS: DONE`, or
+`STATUS: BLOCKED <reason>` if you could not review at all.
 
 Every finding says four things:
 
@@ -55,5 +55,5 @@ Every finding says four things:
   value §2 requires is the spec's; RTL that just does the wrong thing is the child's. Say which,
   and how sure you are, because the stage routes an upstream repair on your reading alone.
 
-Found nothing? Say that, in a sentence: you read §2 against the RTL and it holds. A file that does
-not exist reads as a review that never ran, and the stage cannot pass without yours.
+Found nothing? Say that, in a sentence: you read §2 against the RTL and it holds. A child your
+files never name reads as RTL nobody reviewed.

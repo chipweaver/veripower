@@ -3,7 +3,7 @@
 
 Derives the envelope from the on-disk workdir: status / fail_reason / artifacts via
 partition.post_verdict, which schema-validates both authored sidecars on the way (a malformed
-one is BLOCKED, never a silent pass). No verdict is reduced from the per-child intent reviews.
+one is BLOCKED, never a silent pass). No verdict is reduced from the intent reviews.
 result.json is fully script-derived (run narration lives in events.jsonl). Exit 0 = written
 (pass or fail); exit 2 = BLOCKED (internal raise).
 """
@@ -57,34 +57,31 @@ def _exit_verdict(workdir: Path, manifest: Path) -> dict:
     return post_verdict(manifest, workdir)[0]
 
 
-def _review_paths(manifest: Path) -> list:
-    """One intent review per manifest child. artifacts[] is the only route to canonical, so
-    every one of them has to be listed there."""
-    children = json.loads(manifest.read_text(encoding="utf-8"))["children"]
-    return [f"{REVIEW_DIR}/{c['name']}.md" for c in children]
+def _reviews(workdir: Path) -> list:
+    """Whatever the review wave landed, in artifacts[] shape. How the reviewers split the RTL
+    between them — and so how many files they write — is theirs to decide, so this reads the
+    directory instead of deriving names from the manifest roster. artifacts[] is the only route
+    to canonical, so every file found has to be listed there."""
+    d = workdir / REVIEW_DIR
+    if not d.is_dir():
+        return []
+    return [{"path": f"{REVIEW_DIR}/{p.name}"} for p in sorted(d.glob("*.md"))]
 
 
-def _require_reviews(workdir: Path, manifest: Path) -> list:
-    """Every child's review must be on disk before a passing envelope is written. Nothing else
-    in this stage checks that the review happened at all — there is no in-stage human gate here,
-    unlike specification's — so a silently skipped wave would otherwise ship as a clean pass.
-    What each review SAYS is not reduced to a verdict; that judgment is the stage's to act on."""
-    missing = [p for p in _review_paths(manifest) if not (workdir / p).is_file()]
-    if missing:
+def _require_reviews(workdir: Path) -> list:
+    """A passing envelope needs the intent review to have happened at all. Nothing else in this
+    stage checks that it did — there is no in-stage human gate here, unlike specification's — so
+    a silently skipped wave would otherwise ship as a clean pass. Coverage is not counted and no
+    review is reduced to a verdict: both are the stage's judgment to act on."""
+    found = _reviews(workdir)
+    if not found:
         raise ValueError(
-            "intent review missing for " + ", ".join(missing) + " — every child in the "
-            "manifest needs one before this stage can pass"
+            f"no intent review under {REVIEW_DIR}/ — the RTL cannot pass unreviewed"
         )
-    return [{"path": p} for p in _review_paths(manifest)]
+    return found
 
 
-def _present_reviews(workdir: Path, manifest: Path) -> list:
-    """Present-only, for a failing envelope: the wave may not have run, but whatever review did
-    land is the evidence for the failure and belongs in canonical with it."""
-    return [{"path": p} for p in _review_paths(manifest) if (workdir / p).is_file()]
-
-
-def _caller_reported_artifacts(workdir: Path, manifest: Path) -> list:
+def _caller_reported_artifacts(workdir: Path) -> list:
     """artifacts[] for a caller-reported failure, whose whole premise is that the on-disk state
     cannot yield a verdict. A fail envelope promotes exactly like a passing one and promote
     treats artifacts[] as the new canonical view, so enumerate whatever the sidecars still hold
@@ -94,7 +91,7 @@ def _caller_reported_artifacts(workdir: Path, manifest: Path) -> list:
         files = ledger_artifacts(workdir)
     except LedgerError:
         files = []
-    return files + _present_reviews(workdir, manifest)
+    return files + _reviews(workdir)
 
 
 def build_result(workdir, module, manifest, fail_reason=None, fix_owner=None) -> int:
@@ -113,7 +110,7 @@ def build_result(workdir, module, manifest, fail_reason=None, fix_owner=None) ->
                 module,
                 status="fail",
                 stage_specific={"fail_reason": fail_reason},
-                artifacts=_caller_reported_artifacts(workdir, manifest),
+                artifacts=_caller_reported_artifacts(workdir),
                 fix_owner=fix_owner,
             ),
         )
@@ -131,13 +128,13 @@ def build_result(workdir, module, manifest, fail_reason=None, fix_owner=None) ->
                 module,
                 status="fail",
                 stage_specific=ss,
-                artifacts=artifacts + _present_reviews(workdir, manifest),
+                artifacts=artifacts + _reviews(workdir),
                 fix_owner=fix_owner,
             ),
         )
         return 0
 
-    artifacts += _require_reviews(workdir, manifest)
+    artifacts += _require_reviews(workdir)
     _write_result(
         workdir,
         _envelope(module, status="pass", stage_specific={}, artifacts=artifacts),
