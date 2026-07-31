@@ -36,7 +36,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
     agents = spec.get("agents", [])
     if not agents:
         sys.exit(
-            "scaffold: tb-scaffold.json declares no agents. Nothing would drive or observe the "
+            "[sim bootstrap] tb-scaffold.json declares no agents. Nothing would drive or observe the "
             "DUT, and the tree this renders would compile against transaction types no agent "
             "produces. Rerun simulation-plan's materialize step."
         )
@@ -54,7 +54,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
         primary_clock = spec["primary_clock"]
     except KeyError:
         sys.exit(
-            "scaffold: scaffold-spec missing primary_clock block. "
+            "[sim bootstrap] scaffold-spec missing primary_clock block. "
             "Rerun simulation-plan to populate primary_clock from clocks.json "
             "(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
         )
@@ -63,7 +63,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
         period_ns_raw = primary_clock["period_ns"]
     except KeyError as e:
         sys.exit(
-            f"scaffold: scaffold-spec primary_clock.{e.args[0] if e.args else 'field'} missing. "
+            f"[sim bootstrap] scaffold-spec primary_clock.{e.args[0] if e.args else 'field'} missing. "
             f"Rerun simulation-plan to populate primary_clock from clocks.json "
             f"(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
         )
@@ -72,7 +72,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
         clk_half_period = float(period_ns_raw) / 2
     except (TypeError, ValueError):
         sys.exit(
-            f"scaffold: primary_clock.period_ns is not numeric: {period_ns_raw!r}. "
+            f"[sim bootstrap] primary_clock.period_ns is not numeric: {period_ns_raw!r}. "
             f"The schema pins it as a number; check Design/specification/clocks.json."
         )
 
@@ -80,7 +80,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
         rst_port_name = spec["reset"]["dut_port_name"]
     except KeyError:
         sys.exit(
-            "scaffold: scaffold-spec missing reset.dut_port_name. "
+            "[sim bootstrap] scaffold-spec missing reset.dut_port_name. "
             "Rerun simulation-plan to populate reset from top-io.json "
             "(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
         )
@@ -419,7 +419,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
         ]
         if missing:
             sys.exit(
-                f"scaffold: test {tname!r} is missing {missing}. Rerun simulation-plan: "
+                f"[sim bootstrap] test {tname!r} is missing {missing}. Rerun simulation-plan: "
                 f"suites is authored there and feature_name is injected by "
                 f"materialize-scaffold; simplan check-scaffold requires all four."
             )
@@ -462,7 +462,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
         raise
 
     print(
-        f"scaffold: wrote {len(written)} files in {out_dir}, kept {len(kept)} already there"
+        f"[sim bootstrap] wrote {len(written)} files in {out_dir}, kept {len(kept)} already there"
     )
     for dest in written:
         print(f"  {dest.relative_to(out_dir)}")
@@ -476,7 +476,7 @@ def render(plan_dir, out_dir, template_dir=None) -> int:
     out_dir = Path(out_dir).resolve()
     for p in plan_paths(plan_dir):
         if not p.is_file():
-            sys.exit(f"scaffold: missing {p.name}: {p}")
+            sys.exit(f"[sim bootstrap] missing {p.name}: {p}")
     if template_dir:
         tmpl_dir = Path(template_dir).resolve()
     else:
@@ -484,5 +484,5 @@ def render(plan_dir, out_dir, template_dir=None) -> int:
             Path(__file__).resolve().parent.parent.parent / "templates" / "scaffold"
         )
     if not tmpl_dir.is_dir():
-        sys.exit(f"scaffold: missing template directory: {tmpl_dir}")
+        sys.exit(f"[sim bootstrap] missing template directory: {tmpl_dir}")
     return run_scaffold(plan_dir, tmpl_dir, out_dir)

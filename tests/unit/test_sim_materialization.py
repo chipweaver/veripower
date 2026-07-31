@@ -63,4 +63,4 @@ def test_materialization_todo_exit_1_stderr(tmp_path):
     assert r.returncode == 1
     verdict = json.loads(r.stdout)  # still exactly one JSON line on the fail path
     assert verdict["todo_residue"]  # non-empty
-    assert "materialization incomplete" in r.stderr
+    assert "[sim check-materialization] incomplete" in r.stderr

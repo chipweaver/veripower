@@ -33,7 +33,7 @@ def run(workdir, plan_dir) -> int:
         # fix-message goes to STDERR only (keeps stdout a single parseable verdict line);
         # the env subagent gates STATUS: DONE on the exit code, not on stdout content.
         print(
-            "check-materialization: materialization incomplete:\n  - "
+            "[sim check-materialization] incomplete:\n  - "
             + "\n  - ".join(errs)
             + "\nFill the scaffold (no TODO may survive; all required files present), then re-run. "
             "Budget-exhausted-with-residue -> failure_phase=compile.",

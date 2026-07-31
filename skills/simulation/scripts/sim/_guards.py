@@ -27,7 +27,7 @@ def _agent_io(agent: dict) -> tuple[list[dict], list[dict]]:
     signals = agent.get("interface", {}).get("signals")
     if not signals:
         sys.exit(
-            f"scaffold: agent {aname!r} has no interface.signals. Rerun simulation-plan's "
+            f"[sim bootstrap] agent {aname!r} has no interface.signals. Rerun simulation-plan's "
             f"materialize step: agents declare interface_groups and the materializer fills "
             f"signals from top-io.json "
             f"(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
@@ -53,14 +53,14 @@ def validate_ports(agents: list[dict], clk_port_name: str, rst_port_name: str) -
             sig = s["name"]
             if sig in {clk_port_name, rst_port_name}:
                 sys.exit(
-                    f"scaffold: agent '{aname}' signal '{sig}' collides with "
+                    f"[sim bootstrap] agent '{aname}' signal '{sig}' collides with "
                     f"clock/reset port name (clk={clk_port_name!r}, rst={rst_port_name!r}). "
                     f"Rename the signal in scaffold-spec or fix primary_clock.dut_port_name / "
                     f"reset.dut_port_name to disambiguate."
                 )
             if sig in seen_signals:
                 sys.exit(
-                    f"scaffold: signal '{sig}' duplicated across agents "
+                    f"[sim bootstrap] signal '{sig}' duplicated across agents "
                     f"(first declared in '{first_owner[sig]}', conflict in '{aname}'). "
                     f"Adjust the agents' interface_groups in tb-scaffold.json so "
                     f"the groups do not overlap, then re-run simulation-plan's materialize step "
