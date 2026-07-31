@@ -241,17 +241,12 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
     # BP5: a relative --workdir resolves against the CWD (the design-tree root), and
     # the trailing slash is dropped (type=Path) before deploy.
     m, workdir, main = _make_tree(tmp_path)
-    proc = subprocess.run(
-        [
-            "python3",
-            str(main),
-            "bootstrap",
-            "--workdir",
-            "asic/sdc_controller/Design/timing-analysis/runs/1/",  # relative + trailing slash
-        ],
-        cwd=str(tmp_path),
-        capture_output=True,
-        text=True,
+    # Through _run, so this inherits the same hermetic environment as every other
+    # deploy test rather than whatever LIB_DB the caller's shell happens to export.
+    proc = _run(
+        "asic/sdc_controller/Design/timing-analysis/runs/1/",  # relative + trailing slash
+        main,
+        cwd=tmp_path,
     )
     assert proc.returncode == 0, proc.stderr
     assert (workdir / "run_sta.tcl").is_file()  # resolved to the absolute location
