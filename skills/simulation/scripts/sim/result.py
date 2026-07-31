@@ -4,7 +4,7 @@
 result.json's sole owner. --phase final re-derives the exit verdict in-process from thin_d1,
 compute_gate and coverage_gate (earliest failing wave wins), folds the reaped verify verdict, and
 writes pass|fail; no gate's fail can be argued past it. The early-exit phases
-(prerequisite/env-blocked/smoke/conformance/regress/verify-blocked) write the status=fail envelope,
+(env-blocked/smoke/conformance/regress/verify-blocked) write the status=fail envelope,
 with --failure-phase picking the schema failure_phase where the call-site spans several and the
 companion fields keyed off the resolved failure_phase. Exit 0 = result.json written (pass or fail);
 exit 2 = BLOCKED (internal raise) — never conflated with status=fail.
@@ -105,7 +105,7 @@ def build_result(
     """Assemble the lean simulation result.json for the given exit phase.
     final -> re-derive compile/conformance/coverage from on-disk artifacts, fold the reaped
              verify verdict, write pass|fail.
-    prerequisite|env-blocked|smoke|conformance|regress|verify-blocked -> write the early-exit
+    env-blocked|smoke|conformance|regress|verify-blocked -> write the early-exit
              status=fail envelope (observed_phase picks the schema failure_phase where the
              call-site spans several; companions keyed off the resolved failure_phase).
     Returns 0 (result.json written). A raise -> main() exit 2 (BLOCKED)."""
@@ -247,7 +247,6 @@ def _early_exit_ss(
     fp = (
         observed_phase
         or {
-            "prerequisite": "prerequisite",
             "env-blocked": "compile",
             "smoke": "smoke",
             "conformance": "conformance",

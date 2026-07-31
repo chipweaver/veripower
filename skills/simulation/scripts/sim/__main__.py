@@ -122,7 +122,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--phase",
         required=True,
         choices=[
-            "prerequisite",
             "env-blocked",
             "smoke",
             "conformance",
