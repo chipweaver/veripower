@@ -1,19 +1,19 @@
 # verify sub-Task contract (wave 3)
 
-The simulation main thread dispatches the **verify** child as the third sequential wave, only after
-the smoke gate passes and the conformance gate clears. Your job: full regression, coverage iteration (Rule B), and the
-review summary.
+The simulation main thread dispatches the **verify** child as the third sequential wave, only after the
+smoke gate passes and the conformance gate clears. Your job: full regression, coverage iteration
+(Rule B), and the review summary.
 
-## Inputs (paths only — the main thread does not read these bodies)
+## Inputs (paths only; the main thread does not read these bodies)
 
-- `{workdir}` — the **same** shared workdir the env-build child wrote in wave 1. It already holds the
+- `{workdir}`: the **same** shared workdir the env-build child wrote in wave 1. It already holds the
   built TB (`tb/uvm/**`), the compiled `simv`, the env-phase artifacts, and
   `{workdir}/verify-handoff.json`.
-- testpoints path: `<scaffold>/tb-scaffold.json` —
+- testpoints path `<scaffold>/tb-scaffold.json`:
   read `testpoints[].intent` and `bins[]` for coverage-gap classification (Rule B) and
   `testpoints[].id` to cross-reference `verify-handoff.json`. (`agents` / `sequences` / `tests` are
   already materialized; do not re-materialize.)
-- `{module}` — module name.
+- `{module}`: the module name.
 
 `{workdir}/verify-handoff.json` maps each testpoint to the sequences env wired toward it, which
 is the second half of a Rule B classification: you place an uncovered item on a testpoint, and
@@ -36,37 +36,34 @@ it; a regress failure routes out with `failing_cases` and no check-mapping.
 ## Authority
 
 - **Rule B stimulus iterate only**: seed / tighten existing seq constraint params / testlist append.
-- **regress failure → route out** (do not repair here). A regression failure — whether
-  scaffold/wiring OR checker/RM semantic — is **not** repaired in this wave: write `failure_phase=regress` + `failing_cases` and let the orchestrator / caller decide. There is **no
-  regress-time scaffold/checker/RM repair** (that authority belonged to the env wave's Rule A budget,
-  which closed when smoke passed).
+- **A regress failure routes out; you do not repair it here.** Whether it is rooted in wiring or
+  in the checker's semantics makes no difference in this wave: write `failure_phase=regress` plus
+  `failing_cases` and let the caller decide. That repair authority was the env wave's Rule A
+  budget, and it closed when smoke passed.
 
 ## Write-domain
 
 Writes are confined to `tb/uvm/seq/*` + `tests/testlist.json` (Rule B). This is **not**
 pure append-only: Rule B may tune the constraint params of an **existing** seq, and testlist entries
 are appended (do not change the semantics of existing testlist entries). An appended entry carries
-the same six fields the scaffold emits — `test_id`, `uvm_testname`, `feature_id`, `feature_name`,
-`suites`, `seqs` — copying `feature_id` / `feature_name` verbatim from the entry whose coverage gap
+the same six fields the scaffold emits (`test_id`, `uvm_testname`, `feature_id`, `feature_name`,
+`suites`, `seqs`), copying `feature_id` / `feature_name` verbatim from the entry whose coverage gap
 it is closing; `write_summary.py` reads all six unconditionally, so an entry missing one aborts the
-summary. The env child's checker / RM
-/ scaffold structure (driver / monitor / checker / refmodel / top / agent / env / test) is
-**read-only reference** in this wave — do not edit it; a regress failure rooted there routes out
-instead.
+summary. The env child's checker, RM and scaffold structure is **read-only reference** in this
+wave: do not edit it, and route out a regress failure rooted there instead.
 
 ## Prohibitions
 
 - **No Level-2 dispatch:** do not call the Task tool.
 - **No `kernel.py`:** do not call `kernel.py` — the parent session owns state transitions.
 - Stay inside `{workdir}`: all writes confined to the write-domain above. Do not modify the plan or
-  RTL (RTL-class issues belong to the RTL editing stage; do not exceed your authority),
-  and do not re-author the env child's scaffold / checker / RM.
+  RTL (RTL-class issues belong to the RTL editing stage), and do not re-author the env child's scaffold / checker / RM.
 
 ## Red Flag
 
 | Excuse | Reality |
 |---|---|
-| "Uncovered bins are outside the testpoints, but I'll iterate stimulus anyway and pass" | Bins outside scaffold testpoints are an intent issue → route out with `failure_phase=coverage` + `gaps_not_in_testpoints` (Rule B), not a stimulus problem. |
+| "The uncovered items are outside the testpoints, but I'll iterate stimulus anyway and pass" | An item no testpoint claims is an intent gap: route out with `failure_phase=coverage` and `gaps_not_in_testpoints`. Stimulus cannot close a hole nobody planned to cover. |
 
 ## Output
 
