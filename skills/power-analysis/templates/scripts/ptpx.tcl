@@ -16,8 +16,7 @@
 #
 # Per-scenario outputs (one set per <id>):
 #   reports_ptpx/<id>/{power_hier,power_flat,switching_activity}.rpt
-#   reports_ptpx/<id>/switching_not_annotated.rpt — gate raw text
-#   reports_ptpx/<id>/ptpx.log                    — per-scenario tee'd log
+#   reports_ptpx/<id>/ptpx.log — per-scenario tee'd log
 #
 # Per-scenario errors (read_saif failure / 0% annotation / power calc) skip
 # that one scenario but the batch keeps going. Exit code is 0 only if every
@@ -158,26 +157,21 @@ foreach entry [split $saif_list " "] {
         }
 
         # 0% annotation hard gate (per scenario; logs + skips on failure
-        # rather than exiting the whole batch).
+        # rather than exiting the whole batch). The report this reads IS the promoted
+        # switching_activity.rpt: read_saif fixes the annotation, so the same command
+        # gives the same table before and after update_power, and writing it twice only
+        # bought a second filename to keep in sync. power/result.py parses this file for
+        # the precise rate; the >0 test here needs only the printed percentage.
         if {$scenario_ok} {
-            set _act_rpt [file join $reports_dir "switching_not_annotated.rpt"]
+            set _act_rpt [file join $reports_dir "switching_activity.rpt"]
             redirect -file $_act_rpt {report_switching_activity}
             set _fh [open $_act_rpt r]
             set _content [read $_fh]
             close $_fh
 
             set _coverage_ok 0
-            if {[regexp -line {Annotated\s+cell\s+percentage\s*=\s*([0-9.]+)\s*%} $_content -> _pct]} {
-                if {$_pct > 0.0} { set _coverage_ok 1 }
-            }
-            # The table row is what this flow's PT actually emits — no observed report
-            # carries the "Annotated cell percentage" line, so this branch is the live one.
-            # The precise rate is parsed post-run by power/result.py (saif_annotation_rate);
-            # the >0 test here needs only the printed percentage.
-            if {!$_coverage_ok} {
-                if {[regexp -line {^\s*Nets\s+([0-9]+)\(([0-9.]+)%\)} $_content -> _ncount _npct]} {
-                    if {$_npct > 0.0} { set _coverage_ok 1 }
-                }
+            if {[regexp -line {^\s*Nets\s+([0-9]+)\(([0-9.]+)%\)} $_content -> _ncount _npct]} {
+                if {$_npct > 0.0} { set _coverage_ok 1 }
             }
             if {!$_coverage_ok} {
                 puts "ERROR: read_saif annotated 0% (phase=ptpx) — strip_path='$strip_path' may mismatch (details: $_act_rpt)"
@@ -192,7 +186,6 @@ foreach entry [split $saif_list " "] {
                 update_power
                 report_power -hierarchy -verbose > [file join $reports_dir "power_hier.rpt"]
                 report_power -verbose            > [file join $reports_dir "power_flat.rpt"]
-                report_switching_activity        > [file join $reports_dir "switching_activity.rpt"]
             } _err]} {
                 puts "ERROR: power/report failed: $_err"
                 set scenario_ok 0
