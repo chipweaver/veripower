@@ -28,7 +28,7 @@ Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `re
 
 | Path | What it is |
 |---|---|
-| `*.v` (`*.vh` headers) | The authored RTL, `<top_module>.v` among it. **STRICT Verilog-2001**: `rtl-files.schema.json` rejects a `.sv`/`.svh` extension because the kernel's `rtl` selectors match `*.v` alone; the content being V2001 is the child's discipline per `references/coding-rules.md` |
+| `*.v` (`*.vh` headers) | The authored RTL, `<top_module>.v` among it |
 | `rtl-files.json` | Per-child `files[]` + `incdirs[]`, keys in manifest order. Every downstream filelist is generated from it — no stage parses a text file list |
 | `constraint-annotations.json` | Per-child SGDC/SDC annotations in real module names, read by lint-cdc and synthesis |
 | `semantic-review/<child>.md × N` | One intent review per child, written by its reviewer. Prose, not a verdict |
@@ -40,7 +40,7 @@ Dispatch one Level-1 `Task(run_in_background=True)` per child in `manifest.child
 
 Both sidecars must end up carrying an entry for every child in the manifest: every downstream filelist is generated from `rtl-files.json`, so a child missing from it never reaches a tool. A round that re-authored only some children therefore overlays its reports onto the entries already in `{workdir}` instead of writing the file from scratch, and `finalize` stops the round while an entry is missing. A child that reports `STATUS: BLOCKED` has no entry to write: close the round with `--fail-reason` naming it.
 
-**The RTL does not ship until its intent has been reviewed.** One fresh Level-1 reviewer per child, per [`references/rtl-review-task-contract.md`](references/rtl-review-task-contract.md). You pass paths and read no RTL yourself. Each reviewer writes its own `{workdir}/semantic-review/<child>.md`. Run this on every round, not only a first delivery: no round starts with the last round's reviews in `{workdir}`, and a child re-authored on a later pass must be reviewed against the RTL it actually ships.
+**The RTL does not ship until its intent has been reviewed.** One fresh Level-1 reviewer per child, per [`references/rtl-review-task-contract.md`](references/rtl-review-task-contract.md). You pass paths and read no RTL yourself. Each reviewer writes its own `{workdir}/semantic-review/<child>.md`. Run this on every round, not only a first delivery: a child re-authored on a later pass must be reviewed against the RTL it actually ships.
 
 Nothing reduces those reviews to a verdict. Read them and act: re-dispatch the children whose RTL is wrong, or close the round and name who must fix what you cannot. A review that finds a defect in `design.md` or a `<child>.md` is not yours to fix — that is the intent source.
 
