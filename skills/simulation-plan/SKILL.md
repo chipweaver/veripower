@@ -34,12 +34,12 @@ Everything below is produced under `{workdir}`.
 
 | Path | What it is |
 |---|---|
-| `verification-plan.md` | The review anchor the Step-4 gate is held over (section outline below) |
+| `verification-plan.md` | The review anchor the human gate is held over (template: `references/verification-plan-template.md`) |
 | `tb-scaffold.json` | What simulation builds the TB from: `agents` / `tests` / `testpoints[]` / `rm` / `scoreboard` / `skipped_checks[]` |
 | `sequences.json` | The sequence roster — the one part both simulation and power-analysis read |
 | `power-scenarios.json` | The power scenarios, read by power-analysis alone. Its own file so a scenario-only edit does not invalidate simulation's proof |
-| `plan-review/review.md`, `plan-review/decisions.md` | The Step-3 review, and the user's resolution of anything it called blocking |
-| `result.json` | The status envelope, written only by `finalize` |
+| `plan-review/review.md`, `plan-review/decisions.md` | The reviewer's findings, and the user's resolution of anything it called blocking |
+| `result.json` | The status envelope |
 
 Each sidecar's shape, and per field whether it is yours to author or script-injected, is
 [`references/tb-scaffold.schema.json`](references/tb-scaffold.schema.json) /
@@ -47,84 +47,42 @@ Each sidecar's shape, and per field whether it is yours to author or script-inje
 [`power-scenarios.schema.json`](references/power-scenarios.schema.json). Read them before authoring:
 they carry the judgment no validator can express, and `simplan check-scaffold` enforces the rest.
 
-### `verification-plan.md` section outline
-
-```markdown
-# <module> Verification Plan
-
-## 1. Scope
-Module name / Top / spec references.
-
-## 2. Test Strategy
-Agent grouping / sequence design / RM type / scoreboard boundary — as narrative. The rosters
-themselves live in the sidecars; write why each boundary falls where it does, not a table of the
-fields you just authored there.
-
-## 3. Testpoints
-The testpoints live in `tb-scaffold.json`'s `testpoints[]`. Do not restate them as a table.
-Narrative that is not a per-testpoint field belongs here: how the testpoints partition the
-verification, which behaviors are deliberately left to downstream stages.
-
-## 4. Power Scenarios
-One materialization note per scenario, per `references/power-scenarios-template.md`: the standard
-row's abstract states, what they reduce to on this module, and why a row was materialized that way
-or dropped as inapplicable. `power-scenarios.json` carries only the four fields power-analysis
-reads, so this section is the sole home for everything else about a scenario.
-
-## 5. Revision Summary (append on a scoped revision when a real diff is present)
-Trigger context + revision highlights.
-
-## Document Control
-```
-
 ## Workflow
 
-### Step 1: Read inputs, determine scope
+Two phases, each closed by its own gate, then finalize.
 
-Your previous round, if any, is already in `{workdir}`; edit it in place, touching only what this
-round requires. Rewriting a sidecar this round did not change still changes its bytes, and
-`simulation` and `power-analysis` both declare those files as inputs — so a cosmetic rewrite costs a
-full TB recompile and regression downstream, for no change in content.
+### Which round is this
 
 The kernel writes `scope` / `caused_by` / `reasons` into `dispatch.json` **only when they carry
-something**, so their presence is what tells you which kind of round this is. Either way you run
-Steps 2–5; the branch decides how much of the plan you touch.
+something**, so their presence is what tells you. Either way you run both phases; the branch
+decides how much of the plan you touch.
 
-- **`caused_by` present:** a repair round. Scope is the union of `dispatch.json`'s `scope` — the
+- **`caused_by` present — a repair round.** Scope is the union of `dispatch.json`'s `scope` — the
   module-relative paths or `<file>:<line>` anchors whose change invalidated the plan — and what the
   `caused_by` envelopes attribute; read each envelope once, and amend only the plan sections those
   paths map to. It is a pointer, not a boundary: if the gap sits elsewhere, widen and record why in
   `result.json`. `reasons`, when present, is a human's judgment on this repair and outranks your own
   reading of the files.
-- **`caused_by` absent:** a first delivery — generate the plan and all three sidecars.
+- **`caused_by` absent — a first delivery.** Generate the plan and all three sidecars.
 
-Either way, a `{workdir}` already holding part of a round means the session was compacted or
-interrupted: that work is yours to continue or redo, and artifacts on disk are not a gate you
-already passed.
+Your previous round, if any, is already in `{workdir}`: edit it in place, touching only what this
+round requires. Rewriting a sidecar this round did not change still changes its bytes, and
+`simulation` and `power-analysis` both declare those files as inputs, so a cosmetic rewrite costs a
+full TB recompile and regression downstream for no change in content.
 
-**Early-fail exit.** Whenever a documented failure cannot be resolved, close the run with the
-finalize early-fail entry:
+A `{workdir}` already holding part of a round means the session was compacted or interrupted: that
+work is yours to continue or redo, and artifacts on disk are not a gate you already passed.
 
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
-  --workdir {workdir} --module {module} --spec <design> \
-  --status fail --fail-reason "<one-line reason>" [--fix-owner <rule>]
-```
+### Author the plan and its sidecars
 
-`--fix-owner specification` when the spec does not say enough for any plan to cover the gap;
-`--fix-owner simulation-plan` when the gap is yours but you have exhausted what you can do from
-here; omit it when you cannot tell.
-
-### Step 2: Generate / update artifacts
-
-Author the judgment fields into the three sidecars and write `verification-plan.md` per the section
-outline. How the spec fields map to the scaffold objects — agents from interface groups, sequences
-from §1.5 scenarios, tests from features, RM / scoreboard from the check hints — is
+Author the judgment fields into the three sidecars and write `verification-plan.md` per
+[`references/verification-plan-template.md`](references/verification-plan-template.md). How the spec
+fields map to the scaffold objects — agents from interface groups, sequences from §1.5 scenarios,
+tests from features, RM / scoreboard from the check hints — is
 [`references/spec-input-contract.md`](references/spec-input-contract.md).
 
 Every `check_hints[]` check_id must end up in some `testpoints[].covers[]` or in `skipped_checks[]`
-with a reason; the gate below enforces the matrix, so it is not a judgment you can rationalize
-past. Power scenarios come from
+with a reason; the gate below enforces that matrix. Power scenarios come from
 [`references/power-scenarios-template.md`](references/power-scenarios-template.md) — load the table
 before authoring, because no gate checks that a scenario came from the standard set. Every
 `sequence_ref` must resolve to a `sequences[].name`; add the `sequences[]` entry first when a
@@ -137,36 +95,28 @@ the RTL cannot legally reach — **narrow** `bins` rather than chasing the hole,
 testpoint outright if the whole thing is unreachable, recording the over-spec attribution in §5.
 Coverage does not fall; a bin that could never be hit was never coverage.
 
-**Run `materialize-scaffold`** (every run) to fill the script-injected fields:
+**Gate, script.** Run `materialize-scaffold` to fill the script-injected fields, then
+`check-scaffold` to validate the sidecars' structure, semantics, and coverage matrix:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py materialize-scaffold --plan {workdir} --spec <design>
-```
-
-**Run `check-scaffold`** (the gate; every pass) to validate the sidecars' structure, semantics, and
-coverage matrix:
-
-```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py check-scaffold --plan {workdir} --spec <design>
 ```
 
-Both name the defect and who owns it on stderr; fix and re-run until clean, or close via the
-early-fail exit if the defect is not yours to fix.
+Both run on every pass. Each names the defect on stderr; `materialize-scaffold` also names the
+upstream stage to re-run when what is missing is the spec's. Fix and re-run until clean, or finalize
+a failure when the defect is not yours to fix.
 
-### Step 3: Plan-adequacy review
+### Review the plan
 
-On every run, dispatch ONE Level-1 reviewer per
-[`references/plan-review-task-contract.md`](references/plan-review-task-contract.md), passing
-paths. It writes its own `{workdir}/plan-review/review.md`; you read no body and re-type nothing.
-After dispatching, send a brief status and end the turn; reap before proceeding.
+Dispatch ONE Level-1 reviewer per
+[`references/plan-review-task-contract.md`](references/plan-review-task-contract.md), passing paths.
+It writes its own `{workdir}/plan-review/review.md`. After dispatching, send a brief status and end
+the turn; reap before proceeding. A `STATUS: BLOCKED` reviewer is a crash, not a verdict: the review
+did not happen, so finalize a failure with that as the reason.
 
-A `STATUS: BLOCKED` reviewer is a crash, not a verdict: the review did not happen, so close the run
-via the early-fail exit with that as the reason.
-
-### Step 4: User review loop (human)
-
-Path-handoff — present the `verification-plan.md` path and the `plan-review/review.md` path,
-echoing no body.
+**Gate, human.** Path-handoff: present the `verification-plan.md` path and the
+`plan-review/review.md` path, echoing no body.
 
 You do not summarize the findings, rank them, or decide which ones matter: a review relayed through
 your summary is your judgment wearing the reviewer's name.
@@ -178,27 +128,31 @@ Then the user approves, requests changes, or rejects:
   with the review it overrode instead of living only in this session. Nothing downstream re-checks
   testpoint-vs-spec (sim conformance judges TB-vs-testpoint), so an accepted coverage gap is a
   terminal accept.
-- **request changes**: revise incrementally (return to Step 2), re-run Step 3, re-present.
-- **reject**: close the run with the Step-5 finalize, passing `--status fail` (it writes
-  `fail_reason="user rejected plan"`).
+- **request changes**: revise incrementally, re-run the script gate, re-dispatch the reviewer,
+  re-present.
+- **reject**: finalize with `--status fail` and no `--fail-reason`, which records
+  `fail_reason="user rejected plan"`.
 
-### Step 5: Finalize (script, mandatory)
+### Finalize
 
-Run finalize to write the stage's `result.json`; never hand-assemble the envelope:
+Every run ends here, including one you could not carry to the human gate:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
   --workdir {workdir} --module {module} --spec <design> \
-  [--status fail] [--fail-reason "<one-line reason>"] \
+  [--status fail] [--fail-reason "<one-line reason>"] [--fix-owner <rule>] \
   [--revision '<one-line revision narrative>']
 ```
 
-You supply only the human-gate outcome: on a fail `--status fail` (with `--fail-reason` for a
-Step-1 early-fail; without, the user reject), and `--revision` on a scoped revision. finalize
-re-runs `check-scaffold` in-process — it was clean at Step 2, so a failure now means an artifact was
-edited after the gate: BLOCKED, not a routable fail. Exit 0 =
-`result.json` written (status pass or fail); a non-zero exit is a program exception (BLOCKED, reason
-on stderr), not a `status=fail`.
+You supply only the human-gate outcome, plus `--revision` on a scoped revision. On a failure name
+the owner: `--fix-owner specification` when the spec does not say enough for any plan to cover the
+gap, `--fix-owner simulation-plan` when the gap is yours but you have exhausted what you can do
+from here, and omit the flag when you cannot tell.
+
+finalize re-runs `check-scaffold` in-process on the pass path — it was clean at the script gate, so
+a failure now means an artifact was edited afterwards, which is BLOCKED rather than a routable fail.
+Exit 0 = `result.json` written, status pass or fail. A non-zero exit is a program exception:
+BLOCKED, reason on stderr, never a `status=fail`.
 
 ## Return Contract
 

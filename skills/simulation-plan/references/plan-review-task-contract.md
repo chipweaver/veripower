@@ -1,6 +1,6 @@
 # Plan adequacy review sub-Task contract
 
-The simulation-plan main thread dispatches one Level-1 reviewer (Step 3), AFTER
+The simulation-plan main thread dispatches one Level-1 reviewer, AFTER
 `simplan check-scaffold` is green and BEFORE the user review loop. You write your findings to a
 file; the main thread never re-types them and never reads your body. A human resolves each
 blocker at the Step-4 gate. Do not call the Task tool: a sub-Task writes no events, so anything

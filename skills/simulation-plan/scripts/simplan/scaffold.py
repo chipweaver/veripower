@@ -9,10 +9,10 @@ unreadable. The merge in `_plan.load_plan` exists for the middle layer — the r
 integrity spans all three files (`power_scenarios[].sequence_ref` and `tests[].seqs[]` both
 resolve against `sequences[]`), so no single schema can express it.
 
-finalize re-runs the whole thing in-process at Step 5. That is affordable because every
-layer is a set operation over the workdir's own files plus the authored check hints, and it
-is what makes the verdict part of the proof rather than a dev-time lint: a clean gate at
-Step 2 stays true unless an artifact was edited afterwards.
+finalize re-runs the whole thing in-process. That is affordable because every layer is a
+set operation over the workdir's own files plus the authored check hints, and it is what
+makes the verdict part of the proof rather than a dev-time lint: a clean gate stays true
+unless an artifact was edited afterwards.
 
 Pairs with simulation render-scaffold's thin consumer-side backstops (defense-in-depth for
 scaffolds that bypass this gate).
@@ -161,7 +161,8 @@ def run(plan_dir, spec_workdir) -> int:
         sys.exit(
             "check-scaffold: the plan sidecars are invalid:\n  - "
             + "\n  - ".join(errors)
-            + "\nFix them (re-author per SKILL.md's plan-sidecar contract) and re-run."
+            + "\nFix them (each sidecar's field contract is its own"
+            " references/*.schema.json) and re-run."
         )
     print("check-scaffold: OK")
     return 0

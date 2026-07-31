@@ -199,9 +199,9 @@ def run(workdir, top: str | None = None) -> int:
     else:
         sub_targets.append("scripts/constraints.sgdc")  # template copy needs MY_TOP
         sgdc_source = ""
-    # Waiver: carried (carry_self) -> template. The canonical waiver.tcl holds
-    # HUMAN-reviewed waivers (promoted per SKILL.md) — the no-clobber deploy already
-    # left it untouched when carried; only a fresh template stub needs MY_TOP.
+    # Waiver: carried -> template. The canonical waiver.tcl holds accepted waivers, each
+    # with the rationale finalize requires, so the no-clobber deploy leaves a carried one
+    # untouched; only a fresh template stub needs MY_TOP.
     if not carried_waiver:
         sub_targets.append("scripts/waiver.tcl")
     for rel in sub_targets:
