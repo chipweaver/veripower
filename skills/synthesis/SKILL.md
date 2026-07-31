@@ -5,9 +5,9 @@ description: Use when running Design Compiler synthesis, analyzing timing/area/p
 
 # Synthesis
 
-Your sole responsibility: run Design Compiler synthesis against the RTL filelist and the SDC
-source of truth, iteratively supplement SDC timing exceptions, and close the run through the
-`synthesis` CLI's `finalize` verb, which judges the area_um2 / timing_slack_ns PPA dimensions.
+Your sole responsibility: carry this module's declared timing exceptions into the SDC, converge
+Design Compiler against it, and close the run through the `synthesis` CLI's `finalize` verb, which
+judges the area_um2 / timing_slack_ns PPA dimensions.
 
 ## Iron Rule
 
@@ -29,7 +29,7 @@ location, so `<key>` below denotes that location and you read `<key>/<subpath>`
 | Path | Schema / Format | Use |
 |---|---|---|
 | `<rtl>/rtl-files.json` | `skills/rtl-design/references/rtl-files.schema.json` | Per-child RTL file layout; the bootstrap generates `scripts/rtl_load.tcl` from it. |
-| `<annotations>/constraint-annotations.json` | `skills/rtl-design/references/constraint-annotations.schema.json` | Per-child SDC annotations (`create_generated_clock` / `set_multicycle_path` / `set_false_path`) in the child's real module names. |
+| `<annotations>/constraint-annotations.json` | `skills/rtl-design/references/constraint-annotations.schema.json` | The `sdc` block per child: every timing exception and generated clock this RTL implies, in real module names. Its authors declared it, and this stage is its only consumer. |
 | `<sdc>/constraints/<TOP>.sdc` | SDC | Cold-start seed for `constraints.sdc`, used only on a genuinely first run. |
 | `<ppa>/ppa.json` | `skills/specification/references/ppa.schema.json` | The targets this run is judged against; `finalize` reads them itself, and you read them when deciding which side of a PPA miss is wrong. |
 
@@ -57,9 +57,10 @@ no longer exists.
 `{workdir}/dispatch.json` narrows this round when it carries either key, and the scope is the
 union of both: `scope` names module-relative paths or `<file>:<line>` anchors that changed since
 this stage's last run, and `caused_by` names the `result.json` of each upstream failure this
-round answers, whose `stage_specific.violations[]` say what missed. Confine the Step 4/6 SDC
-edits to what they name. With neither, nothing is narrowed. Steps 2–7 are mechanically identical
-either way, because dc_shell synthesizes the whole design regardless.
+round answers, whose `stage_specific.violations[]` say what missed. That narrows which inherited
+exceptions you re-check and which violations you triage, never which declarations you render:
+Step 4 carries all of them every round, because the SDC dc_shell reads is rebuilt every round.
+With neither key, nothing is narrowed.
 
 ### Step 2: Bootstrap
 
@@ -90,7 +91,27 @@ not a second way to set it. Exporting after Step 2 is fine.
 
 ### Step 4: Edit `{workdir}/constraints.sdc`
 
-- Read `<annotations>/constraint-annotations.json` and union the `sdc` block across every child; add a `create_generated_clock` for each `{module, pin}` entry (if any).
+Union the `sdc` block across every child of `<annotations>/constraint-annotations.json` and render
+all three categories into `constraints.sdc` before you run anything:
+
+| sidecar key | what it carries | what you write |
+|---|---|---|
+| `create_generated_clock` | `{module, pin}` — where a divider or PLL output leaves that child's RTL | `create_generated_clock` on that pin. `-source` is the master clock the specification SDC already declares; the divide factor comes from the divider RTL at that module, which you can read under `<rtl>` |
+| `set_multicycle_path` | one free-form description per exception its author knows the design needs | `set_multicycle_path` naming the real startpoint / endpoint |
+| `set_false_path` | the same, for architecturally unreachable paths | `set_false_path` naming the real startpoint / endpoint |
+
+All three keys are required of every child, so an empty array is that child's claim to have none.
+These are design facts the RTL authors declared, not suppressions you are guessing at, which is
+why they all go in before the first run: each one you leave for dc_shell to surface costs a full
+synthesis iteration to rediscover, and the same sidecar is the only place rtl-design can state
+them — it has no other backstop.
+
+Transcribe, never invent. lint-cdc reads this same sidecar for its SGDC side, so an exception you
+add on your own authority has no counterpart there and the two constraint sets diverge silently.
+A path nobody declared is handled in Step 6, not here.
+
+Then set what the file itself asks for:
+
 - Replace the `set_clock_uncertainty -setup` / `-hold` placeholder values with the values from the process library (each carries its own `;#` note in the generated file; when undocumented, keep setup=`0.2 ns` / hold=`0.0 ns` and add a note — pre-CTS hold = 0, and a single value for both would read every pre-CTS path as hold-VIOLATED).
 - Confirm the `set_input_delay` / `set_output_delay` the file already carries per port (replace from the interface spec when available).
 - Add `set_drive` / `set_load` per the IO cell library. The specification SDC carries neither, so there is nothing to replace: add them when the library documents drive strengths and loads, and otherwise leave them out.
@@ -109,16 +130,23 @@ then end your turn and wait for the harness completion notification. On wake, re
 polling with `sleep` / `pgrep` / `until … done` buys nothing and burns the turn budget that the
 notification gives you for free.
 
-### Step 6: Iteratively supplement timing exceptions
+### Step 6: Triage what the report shows
 
-Extract the violated paths from `reports/timing_setup.rpt`, keeping each path's startpoint / endpoint / slack (the file/line/cause needed to classify it; e.g. `grep -B2 -A25 -i "violated" reports/timing_setup.rpt`, widening the window when a path needs deeper inspection).
-- Known multicycle paths → add `set_multicycle_path`.
-- Known static false paths → add `set_false_path`.
-- Re-run `make synthesis` (same detached-background protocol as Step 5); repeat until the remaining violations are real timing issues or have been excepted.
+Read the violated paths in `reports/timing_setup.rpt`, keeping each one's startpoint, endpoint and
+slack. Step 4 already carried in every exception the design declares, so a path that is still
+violating is one of two things, and neither is yours to except:
 
-A path that is neither a known multicycle nor a known static false path is a real violation: stop
-iterating and close the run at Step 7. The negative slack fails the `timing_slack_ns` target on
-its own, so the gate writes the `violations[]` row — what it cannot write is who must fix it.
+- **A declared exception you rendered wrong** — the description named a path, and the SDC command
+  you wrote does not match it. Fix the command and re-run (same detached-background protocol as
+  Step 5).
+- **A path nobody declared** — a real violation. Stop iterating and close the run at Step 7. The
+  negative slack fails the `timing_slack_ns` target on its own, so the gate writes the
+  `violations[]` row; what it cannot write is who must fix it.
+
+Adding an exception here on your own judgement is the one way this stage can except its way to a
+passing PPA verdict, which is why Step 4 is the only place exceptions enter. If the path really is
+multicycle or false, its author is the one who says so: name `rtl-design` in Step 7 and it comes
+back declared, in the sidecar lint-cdc reads too.
 
 ### Naming the fix owner
 
