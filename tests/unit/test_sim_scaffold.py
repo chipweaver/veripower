@@ -76,6 +76,61 @@ def _render_via_cli(tmp_path, spec=SPEC):
     ), out
 
 
+def test_rerender_keeps_a_filled_file(tmp_path):
+    # The renderer creates stubs; it does not maintain them. bootstrap runs it every round,
+    # and on a rework the whole carried testbench is already on disk, so writing over it
+    # replaces a round of authored checks with `// TODO`. That happened on three consecutive
+    # simulation rounds of the one real module, and cost a testpoint.
+    r, out = _render_via_cli(tmp_path)
+    assert r.returncode == 0, r.stderr
+    sb = out / "tb/uvm/checker/m_scoreboard.sv"
+    filled = "class m_scoreboard; // 400 lines of real implementation\nendclass\n"
+    sb.write_text(filled)
+    r2 = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "render-scaffold",
+            "--plan",
+            str(tmp_path),
+            "--output-dir",
+            str(out),
+            "--template-dir",
+            str(TEMPLATES),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r2.returncode == 0, r2.stderr
+    assert sb.read_text() == filled
+
+
+def test_rerender_adds_what_the_plan_gained(tmp_path):
+    # The other half: skipping what exists must not stop a new sequence from being rendered.
+    r, out = _render_via_cli(tmp_path)
+    assert r.returncode == 0, r.stderr
+    grown = json.loads(json.dumps(SPEC))
+    grown["sequences"] = grown["sequences"] + [{"name": "corner", "agent": "drv"}]
+    _write_spec(tmp_path, grown)
+    r2 = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "render-scaffold",
+            "--plan",
+            str(tmp_path),
+            "--output-dir",
+            str(out),
+            "--template-dir",
+            str(TEMPLATES),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r2.returncode == 0, r2.stderr
+    assert (out / "tb/uvm/seq/m_corner_seq.sv").is_file()
+
+
 def test_render_scaffold_full_tree(tmp_path):
     r, out = _render_via_cli(tmp_path)
     assert r.returncode == 0, r.stderr

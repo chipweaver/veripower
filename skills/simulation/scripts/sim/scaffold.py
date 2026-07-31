@@ -450,12 +450,19 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
     dest = out_dir / "tests" / "testlist.json"
     pending.append((dest, json.dumps(testlist, indent=2, ensure_ascii=False)))
 
-    # Everything above was rendered and validated in memory. Write now; if a write fails
-    # mid-loop, roll back the files already written, so the outcome is either the complete tree
-    # or none of it rather than a half-tree. (bootstrap-deployed infra and dirs are untouched.)
+    # Everything above was rendered and validated in memory. Write now, and only where no file
+    # is there yet: this renderer creates stubs, it does not maintain them, so once a path
+    # exists it belongs to whoever filled it. On a rework the whole carried testbench is
+    # already on disk, and writing over it would replace a round of authored checks with
+    # `// TODO`. If a write fails mid-loop, roll back what this call wrote, so the outcome is
+    # the complete new set or none of it rather than a half-tree.
     written: list[Path] = []
+    kept: list[Path] = []
     try:
         for dest, content in pending:
+            if dest.exists():
+                kept.append(dest)
+                continue
             _render.write_text(dest, content)
             written.append(dest)
     except OSError:
@@ -463,16 +470,18 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
             p.unlink(missing_ok=True)
         raise
 
-    print(f"scaffold: generated {len(pending)} files in {out_dir}")
-    for dest, _ in pending:
+    print(
+        f"scaffold: wrote {len(written)} files in {out_dir}, kept {len(kept)} already there"
+    )
+    for dest in written:
         print(f"  {dest.relative_to(out_dir)}")
     return 0
 
 
 def render(plan_dir, out_dir, template_dir=None) -> int:
-    """Render the scaffold tree. Library entry for both the render-scaffold verb and the
-    bootstrap verb. Fail-loud (sys.exit) on a missing sidecar/template dir; returns
-    run_scaffold's int (0). A run_scaffold sys.exit / raise propagates to the caller."""
+    """Render the scaffold tree, creating only what is not there yet. Exits on a missing
+    sidecar or template dir; returns run_scaffold's int (0). A run_scaffold sys.exit or raise
+    propagates to the caller."""
     out_dir = Path(out_dir).resolve()
     for p in plan_paths(plan_dir):
         if not p.is_file():

@@ -34,12 +34,17 @@ the UVM scaffold, compile, and run the smoke suite.
    python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} --plan <scaffold>
    ```
 
-   Deploys infrastructure + scaffold to `{workdir}`, including functional sequence placeholders. All
-   subsequent `make` targets run with `cd {workdir}`. Always run this step, whether this round is a
-   rework or a first run: `bootstrap` is no-clobber — it never overwrites a file already present
-   (a carried Makefile / env.sh / filelist.f / tb/uvm / scripts / tests, brought forward by
-   `carry_self`), so on a rework it is a no-op over the carried TB, and on a genuinely empty workdir
-   it deploys the complete pristine template.
+   Deploys the infrastructure and the scaffold into `{workdir}`, including functional sequence
+   placeholders. All subsequent `make` targets run with `cd {workdir}`. Run it every round, rework
+   or first run: it writes only where no file is there yet, so on an empty workdir you get the
+   complete stub tree, and on a rework it adds whatever the plan gained since last round and leaves
+   everything already on disk alone.
+
+   **What that leaves you.** It will not refresh a file the plan changed, only add ones the plan
+   gained. If a testpoint's agent picked up a signal, or a sequence was renamed, the interface,
+   package, env or `tb_top` holding the old shape is still the one on disk, and reconciling it is
+   Work step 2's job (all of them are on Rule A's repairable list). The compile says so loudly when
+   you miss one; what it cannot do is give you back a filled checker overwritten by a stub.
 2. **Fill / reconcile scaffold** (bound by **Rule A**, see `repair-boundaries.md`): inside
    `{workdir}`, fill or reconcile every `TODO(` across driver / monitor / checker / RM / functional
    seq / top against the current plan (`verification-plan.md` + the plan sidecars).
