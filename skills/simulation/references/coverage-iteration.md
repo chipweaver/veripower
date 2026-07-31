@@ -1,30 +1,62 @@
 # Rule B: Stimulus vs. Intent coverage iteration
 
-## Classification (mechanical)
+## What you read
 
-Read `structural-coverage.json` (the urg-derived structural coverage file; use the `aggregate` block for dimension totals and `per_module` for per-module breakdowns) and list the uncovered bins. For each uncovered bin:
+`structural-coverage.json` carries two things you need. `aggregate` holds the per-dimension
+percentages the coverage gate scores against `defaults.yaml.coverage_thresholds`, which is what
+decides pass or fail. `uncovered[]` holds the named items behind those percentages, one entry per
+branch, condition or FSM transition urg saw and never exercised:
 
-1. Look up the bin in the flat fields under `tb-scaffold.json.testpoints[].bins[]` (matched by the bin naming convention).
-2. Match → **stimulus-layer gap** (can be closed by adding stimulus in simulation).
-3. No match → **intent-layer gap** (route out — see below).
+```json
+{"module": "mgpt_rmsnorm", "kind": "branch", "line": 160, "detail": "div_q > QMAX"}
+```
+
+A percentage tells you a dimension is short; only `uncovered[]` tells you what to write stimulus
+for. `per_module` breaks the percentages down, which is how you find the child dragging a dimension.
+
+## Classification (your judgment, not a string match)
+
+For each uncovered item, decide whether some entry in `tb-scaffold.json.testpoints[]` set out to
+exercise it. `testpoints[].bins[]` are conceptual tags the plan author chose (`handshake`,
+`saturation`, `position-sweep`), not urg's identifiers, so there is no key to join on: you are
+reading the item's module, source line and condition text and asking whether it falls inside what
+that testpoint describes itself as driving (`intent`) and covering (`bins`).
+
+- **Stimulus-layer gap:** a testpoint does claim it, and the sequence written for that testpoint
+  never drove the design through it.
+- **Intent-layer gap:** no testpoint claims it, or you cannot tell which one would. Route out.
+  Uncertainty belongs on this side: the other side spends the iterate budget trying to close a hole
+  no testpoint was ever going to close, and then reports the budget as exhausted, which sends the
+  rework somewhere else again.
 
 ## Stimulus iterate flow
 
-Provided "all uncovered bins are inside scaffold testpoints" holds, run at most `defaults.yaml.stimulus_iterate_max_rounds` rounds:
+Only while every uncovered item is a stimulus-layer gap, and for at most
+`defaults.yaml.stimulus_iterate_max_rounds` rounds:
 
-1. Analyze the testpoint description and sequence corresponding to each uncovered bin.
-2. Under `tb/uvm/<module>/seq/`, add new seeds / tighten sequence constraints / append new testcases (write into `tests/testlist.json` — **append only**; do not change the semantics of existing entries).
+1. For each item, find the testpoint that claims it and the sequence wired toward it
+   (`verify-handoff.json` maps testpoint to sequence).
+2. Under `tb/uvm/<module>/seq/`, add seeds, tighten that sequence's constraint parameters, or append
+   a testcase to `tests/testlist.json` (append only: do not change the semantics of existing
+   entries).
 3. Re-run `make regress` and read the new `structural-coverage.json`.
-4. If every dimension now meets the threshold → coverage converges.
-5. If gaps remain → repeat, until thresholds are met or the budget is exhausted.
+4. Every dimension at or above threshold means coverage converged.
+5. Gaps remaining means repeat, until the thresholds are met or the budget is spent.
 
-## Fail-trigger conditions
+## Routing out
 
-You do not write `result.json`; you **route out** by returning your `STATUS` last line plus a JSON line carrying the failure fields in `stage_specific` (the orchestrator maps these into the `status=fail` envelope with `failure_phase=coverage`).
+You do not write `result.json`. You route out by returning your `STATUS` last line plus a JSON line
+carrying the failure fields, which the orchestrator maps into a `status=fail` envelope with
+`failure_phase=coverage`.
 
-- **Any uncovered bin is not inside `tb-scaffold.json.testpoints[].bins[]`** → route out with `failure_phase=coverage` + `coverage_gaps` + `gaps_not_in_testpoints` (intent gap).
-- **`defaults.yaml.stimulus_iterate_max_rounds` rounds exhausted with stimulus-layer gaps still present** → route out with `failure_phase=coverage` + `coverage_gaps` + `gaps_in_testpoints` (whether the cause is RTL unreachability vs. an insufficient stimulus plan is for the caller to decide).
+- **Any intent-layer gap**, whether or not stimulus-layer gaps sit beside it: `coverage_gaps` +
+  `gaps_not_in_testpoints`. The intent gap goes first; iterating stimulus in the same round would
+  spend budget on a plan defect.
+- **Budget spent with stimulus-layer gaps left:** `coverage_gaps` + `gaps_in_testpoints`. Whether
+  the cause is an insufficient stimulus plan or RTL the design can never reach is for the caller to
+  decide, and it is why these two lists are separate.
 
 ## Threshold source
 
-`${CLAUDE_SKILL_DIR}/defaults.yaml.coverage_thresholds` (i.e. `skills/simulation/defaults.yaml`). Every dimension's threshold is hard-coded in that file; per-module override is not supported.
+`${CLAUDE_SKILL_DIR}/defaults.yaml.coverage_thresholds`. Every dimension's threshold is fixed there;
+per-module override is not supported.

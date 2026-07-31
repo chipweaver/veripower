@@ -10,9 +10,9 @@ review summary.
   built TB (`tb/uvm/**`), the compiled `simv`, the env-phase artifacts, and
   `{workdir}/verify-handoff.json`.
 - testpoints path: `<scaffold>/tb-scaffold.json` —
-  read `testpoints[].bins[]` for coverage-gap classification (Rule B) and `testpoints[].id` to
-  cross-reference `verify-handoff.json`. (`agents` / `sequences` / `tests` are already materialized;
-  do not re-materialize.)
+  read `testpoints[].intent` and `bins[]` for coverage-gap classification (Rule B) and
+  `testpoints[].id` to cross-reference `verify-handoff.json`. (`agents` / `sequences` / `tests` are
+  already materialized; do not re-materialize.)
 - `{module}` — module name.
 
 Use `{workdir}/verify-handoff.json` for check-intent (per-testpoint `asserts` + `seqs→bins`) rather
@@ -24,18 +24,13 @@ there.
 ## Work
 
 1. **Regression**: `make regress`.
-2. **Coverage iteration** (Rule B, see `coverage-iteration.md`): read `structural-coverage.json`
-   (urg-derived structural dims `line`/`cond`/`fsm`/`toggle` from the `aggregate` block) and compare
-   against `defaults.yaml.coverage_thresholds`:
-   - All dimensions meet threshold → go to summary.
-   - All uncovered bins map to `tb-scaffold.json.testpoints[].bins[]` → stimulus iterate
-     (add seeds / sequences / constraint parameters), round budget at
-     `defaults.yaml.stimulus_iterate_max_rounds`; each round re-runs `make regress`.
-   - Any uncovered bin **not** inside scaffold testpoints → route out: write `failure_phase=coverage`
-     + `gaps_not_in_testpoints` into the result fields (Rule B intent gap; mixed gaps take the intent
-     fail first; stimulus iterate does not consume budget).
-   - Iterate budget exhausted with stimulus-layer gaps remaining → route out: `failure_phase=coverage`
-     + `gaps_in_testpoints`.
+2. **Coverage iteration** (Rule B, see `coverage-iteration.md`): compare
+   `structural-coverage.json`'s `aggregate` dims (`line`/`cond`/`fsm`/`toggle`) against
+   `defaults.yaml.coverage_thresholds`. Every dimension at or above threshold goes straight to
+   summary. Otherwise take the named items from the same file's `uncovered[]`, classify each as a
+   stimulus-layer or intent-layer gap per `coverage-iteration.md`, and either iterate stimulus
+   within `defaults.yaml.stimulus_iterate_max_rounds` rounds or route out with
+   `failure_phase=coverage`.
 3. **Summary**: `make summary` produces `coverage-summary.txt` + `case-results-summary.md`. (The full exit self-check —
    `sim finalize`, thin-D1 + D5/D6 — runs at orchestrator finalize, not here.)
 

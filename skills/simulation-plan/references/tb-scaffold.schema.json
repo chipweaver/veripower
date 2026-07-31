@@ -127,7 +127,7 @@
             "minLength": 1
           },
           "bins": {
-            "description": "The coverage bins this testpoint is meant to hit. Simulation's verify child matches an uncovered bin against these to tell a missing testpoint from an unreachable one.",
+            "description": "The coverage bins this testpoint is meant to hit, as your own tags. Simulation's verify child reads them alongside `intent` when it judges whether an uncovered branch or FSM transition falls inside any testpoint's remit, so write what the testpoint covers rather than urg's identifiers; an item it cannot place is routed back here as a missing testpoint.",
             "type": "array"
           },
           "covers": {
