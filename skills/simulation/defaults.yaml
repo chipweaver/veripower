@@ -1,12 +1,13 @@
 # Global default thresholds, shared by all modules; per-module override is not supported (YAGNI).
-# Any threshold miss BLOCKs; waivers are applied externally by the caller as a manual override.
+# A dim below its threshold makes sim finalize write status=fail, failure_phase=coverage; there
+# is no waiver path, so a threshold set too high routes real rework rather than warning anyone.
 
 # Structural coverage gate dims (VCS -cm, no covergroup needed). functional removed:
 # no covergroup substrate exists. Tuned 2026-06-04 against real eval traces: toggle 70->50
 # (70 was aes-anchored at 96-98%; deep-FSM DUTs e.g. sdc run far lower) and fsm 50->40 (still
 # above run2's present-but-shallow 36% ceiling, so shallow-FSM TBs are still failed). line/cond
 # kept (line is the core structural floor; manual gates used line>=70). These right-size the bar;
-# they do NOT make under-covered TBs pass -- deep-FSM DUTs still need external waiver until CR (F5).
+# they do NOT make under-covered TBs pass.
 coverage_thresholds:
   line:    80
   cond:    60

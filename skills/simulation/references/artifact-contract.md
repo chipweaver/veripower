@@ -108,15 +108,13 @@ share it).
 > the framework's `carry_self` carries it forward into the next round's workdir along with the rest
 > of the TB; env-build overwrites it fresh every round regardless.
 
-## Cross-round carry (framework-level, not run by this skill)
+## Cross-round carry
 
-Every round is homogeneous: the framework's `carry_self` copies the prior canonical run's whole TB
-(`Makefile` / `env.sh` / `filelist.f` / `tb/uvm/**` / `scripts/**` / `tests/testlist.json` /
-`regression-log.txt` / `verify-handoff.json`) into `{workdir}` before env-build is dispatched, except
-`rtl_filelist.f` (env-build always regenerates it against the current RTL) and
-`conformance-review.json` (deliberately never carried — the conformance gate re-judges every round,
-SKILL.md Step 4). When no prior canonical run exists, `{workdir}` starts empty and env-build's
-no-clobber `bootstrap` deploys the full pristine template.
+Your previous round's canonical output is already in `{workdir}` when you are dispatched, all of it
+except `conformance-review.json`, which is re-derived every round. `rtl_filelist.f` arrives with the
+rest and `bootstrap` then overwrites it against the current RTL; every other carried file survives,
+because `bootstrap` writes only where a file is missing. On a first run nothing is carried and
+`bootstrap` deploys the complete template.
 
 ## Forbidden outputs
 

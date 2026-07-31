@@ -20,14 +20,13 @@ semantic review: an LLM intent reviewer whose output is used as a gate.
   tb_top wiring / agent ownership). Judging "can this testpoint even be verified" requires
   the drive path; the rendered `tb_top` carries the actual `.{{RST}}(...)`/`.{{CLK}}(...)`
   wiring.
-- Immutable plan:
-  - `<scaffold>/tb-scaffold.json` → `testpoints[].inlined_check_hints[]`
-    (cycle-accurate check semantics; see `inlined-check-hints.md`).
-  - `<plan>/tb-scaffold.json`'s `testpoints[]` (`id` / `intent` / `bins` / `covers`), the single
-    `Stimulus / Intent` column keyed by testpoint id — this is the authoritative intent
-    source for testpoints whose `inlined_check_hints[]` is EMPTY. (`testpoints[].intent` is
-    NOT a guaranteed schema field — `tb-scaffold.schema.json` testpoints item
-    only requires `id`; if present it may supplement, but do not rely on it.)
+- Immutable plan, all of it in `<scaffold>/tb-scaffold.json`'s `testpoints[]`:
+  - `inlined_check_hints[]` carries the cycle-accurate check semantics (see
+    `inlined-check-hints.md`).
+  - `intent` states what the testpoint drives and why. It is a required field of
+    `tb-scaffold.schema.json`, and it is the authoritative intent source for a testpoint
+    whose `inlined_check_hints[]` is empty.
+  - `bins` / `covers` name what it is meant to hit and which authored checks it answers.
 - DUT RTL filelist (read-only, to cross-check intent).
 - **Excluded:** `verify-handoff.json` — it is env's own self-report (env output, not input);
   reading it would be self-evaluation.

@@ -100,16 +100,11 @@ exist. If either is missing, run `sim finalize --workdir {workdir} --module <mod
 prerequisite --fail-reason "external reference missing: <path>"` and return without dispatching. The
 main thread does not read the scaffold-spec / verification-plan body — only path existence.
 
-**Every round is homogeneous — there is no branch to select.** Your previous round's TB is
-already in `{workdir}` (`Makefile` / `env.sh` / `filelist.f` /
-`tb/uvm/**` / `scripts/**` / `tests/testlist.json` / `regression-log.txt` / `verify-handoff.json` —
-everything except `conformance-review.json`, which is deliberately never carried and is always
-re-derived) into `{workdir}` before you were dispatched, whenever a prior canonical run exists.
-Whether a TB was carried is a disk fact, not a verdict you compute: a carried `Makefile` means this
-round is a rework, its absence means a genuine first run — the `bootstrap` verb (Step 2) tests for
-this itself via its no-clobber deploy, so you never branch on it here. Every round runs the same
-sequence: dispatch env-build (Step 2) → smoke gate (Step 3) → **re-judge conformance** (Step 4 —
-dispatched every round, never skipped) → verify (Step 5) → finalize (Step 6).
+**Every round is homogeneous; there is no branch to select.** `{workdir}` arrives holding your
+previous round's canonical output, or empty on a first run, and either way you dispatch env-build
+into it: `bootstrap` writes only where a file is missing, so it decides that for you. Every round
+runs the same sequence: dispatch env-build (Step 2) → smoke gate (Step 3) → **re-judge conformance**
+(Step 4, never skipped) → verify (Step 5) → finalize (Step 6).
 
 Determine this round's edit scope for the env-build child (Step 2) from the first available source:
 1. `caused_by`, when present: the `result.json` of each upstream failure this round answers.
@@ -122,12 +117,6 @@ Determine this round's edit scope for the env-build child (Step 2) from the firs
 3. `reasons`, when present: a human's judgment on this repair, handed through unchanged.
 4. Neither narrowing key, and `{workdir}` holds no carried TB (a first delivery): the full TB
    — fill every rendered `TODO(`.
-
-**Workdir on entry.** `{workdir}` may already hold your previous round's carried TB (rework —
-`carry_self` ran before you were dispatched) or be genuinely empty (first run); either way the
-caller hands you the same directory to dispatch env-build into. The `bootstrap` verb (Step 2) is
-no-clobber: it deploys the template only where a file is missing, so a carried TB is never
-overwritten and a first run gets the complete pristine template.
 
 **Internal scripts.** The `bootstrap` verb performs the rtl_filelist rewrite + scaffold render in-process (the former three-script pipeline collapsed into one verb); the standalone re-render entry is `sim render-scaffold`. The deployed `infra/scripts/` (`run_vcs_regression.sh` /
 `parse_coverage.py` / `write_summary.py`) are make-internal. The interfaces are
@@ -179,9 +168,9 @@ not the testbench itself changed this round.
 
 On a smoke pass, dispatch one `Task(run_in_background=True)` — the conformance reviewer —
 whose prompt points to [`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md)
-and hands over paths only: the `{workdir}` (filled `tb/uvm/**`), the scaffold-spec path
-(`testpoints[].inlined_check_hints[]`), the `verification-plan.md` path (§3 intent source),
-the DUT RTL filelist, and `{module}`. After dispatching, end the turn.
+and hands over paths only: the `{workdir}` (filled `tb/uvm/**`), the scaffold-spec path (its
+`testpoints[]` carry both the check semantics and the intent to judge them against), the DUT RTL
+filelist, and `{module}`. After dispatching, end the turn.
 
 The reviewer writes `{workdir}/conformance-review.json` itself. You never retype a finding: a review
 you passed through your own hands is your judgment wearing the reviewer's name, and your status is
