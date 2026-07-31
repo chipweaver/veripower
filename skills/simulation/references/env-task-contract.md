@@ -6,10 +6,9 @@ the UVM scaffold, compile, and run the smoke suite.
 
 ## Inputs (paths only — the main thread does not read these bodies)
 
-- `{workdir}` — the shared simulation stage workdir (you are the first writer; the
-  verify child runs in the same directory in wave 3). On a rework it already holds your previous
-  round's carried TB (the framework's `carry_self` ran before you were dispatched, before this
-  workdir was ever handed to you); on a genuine first run it is empty.
+- `{workdir}` — the shared simulation stage workdir; you are the first writer, and the verify
+  child runs in the same directory in wave 3. On a rework it already holds the previous round's
+  TB; on a first run it is empty.
 - `{module}` — module name.
 - plan-sidecar dir: `<scaffold>/` — holds the two sidecars this stage declares,
   `tb-scaffold.json` (the TB scaffold contract: `agents` / `tests` are materialized into SV
@@ -104,21 +103,6 @@ smoke gate still decides smoke pass/fail.
   `inlined_check_hints[]` gets a cycle-accurate refmodel / scoreboard check matched to its
   `implementation_detail` shape; mismatches use `` `uvm_error `` with counters that actually
   increment.
-- **Red Flags** (any of these is a Rule A semantic violation → `STATUS: BLOCKED`, do not retry):
-  - "One more retry / loosen the checker and it'll pass" — semantic (checker/scoreboard/RM) errors do
-    not converge by retry; the scaffold-repair budget is for wiring errors only.
-  - "Suppress the mismatch as `uvm_info` / leave `mismatch_count` flat so it goes green" — fake-green
-    is the canonical gaming failure.
-  - "Use a functional/shadow-register model instead of the cycle-accurate refmodel" — a testpoint with
-    non-empty `inlined_check_hints[]` MUST generate cycle-accurate checks; downgrading to
-    register-value comparison is not allowed.
-  - "Let me open the DUT RTL to see what this signal does so my refmodel matches it" -- authoring the
-    golden model from the implementation is circular verification; derive it from the spec/plan
-    formula, not the RTL.
-  - "Rewrite from scratch a check / RM that the plan change did not modify" — the carried baseline is
-    byte-identical for testpoints the plan delta did not touch; gratuitously re-authoring a
-    still-plan-matching check breaks the RTL-variable-isolation the carried baseline exists to
-    preserve (Rule A semantic violation).
 
 ## Prohibitions
 
@@ -135,13 +119,6 @@ smoke gate still decides smoke pass/fail.
   compile filelist. A golden model reverse-engineered from the DUT mirrors the implementation (bugs
   included) and can never disagree -- circular verification. Reading RTL to author a check is a Rule A
   semantic violation → `STATUS: BLOCKED <compile|smoke> rtl-source-read: <locus>`, do not retry.
-
-## Pitfalls
-
-| Mistake | Fix |
-|---|---|
-| Treating a carried TB as untouched boilerplate | A `Makefile` already present in `{workdir}` on entry means `carry_self` warmed it from the prior round — reconcile it per Work step 2's resolved edit scope, not a full rewrite; `bootstrap` (step 1) never overwrites it. |
-| Reporting a mismatch with `$fatal` | MUST use `` `uvm_error `` (see `uvm-rules.md`); `$fatal` bypasses the UVM report server, so the regression runner misses the count and the scoreboard terminates early. |
 
 ## Output
 

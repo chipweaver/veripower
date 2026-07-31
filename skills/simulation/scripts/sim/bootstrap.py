@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """sim bootstrap — deploy the simulation templates into a run workdir, then optionally render the UVM scaffold.
 
-Behavior-preserving port of the former bootstrap shell (campaign §3.3): a NO-CLOBBER
-deploy (`_deploy_no_clobber`) + str.replace do the `cp -a` + `sed -i` work: deploy infra,
-substitute the MY_TOP / MY_MODULE placeholders, generate rtl_filelist.f (sim._filelist)
-from the injected absolute rtl-design root, and when --plan is given render the full UVM
-scaffold via sim.scaffold.render (the same code path the standalone render-scaffold verb
-uses).
+Deploy the infra templates without clobbering anything already there, substitute the MY_TOP
+and MY_MODULE placeholders, generate rtl_filelist.f (sim._filelist) from the injected
+absolute rtl-design root, and when --plan is given render the full UVM scaffold via
+sim.scaffold.render, the same code path the standalone render-scaffold verb takes.
 
 Exit codes (returned as int; __main__ does sys.exit):
   0  deployed (infra only, or infra + scaffold; rework when a carried Makefile is
