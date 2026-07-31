@@ -74,6 +74,12 @@ if {[catch { read_sdc $sdc_file } _err]} {
     puts stderr "ERROR: read_sdc failed (phase=ptpx): $_err"
     exit 1
 }
+# Measured contribution of this read on a real 143k-cell netlist: averaged total power
+# moved by about a third of a percent, and internal, switching and leakage were unchanged
+# to every printed digit. So it is not, as the input table used to claim, what gives PT
+# state-dependent leakage. Kept because the numbers do move and the file is already an
+# input this stage is fingerprinted against; if the read ever costs more than it is worth,
+# that measurement is the argument, not the claim it replaced.
 if {[catch { read_sdf $sdf_file } _err]} {
     puts stderr "ERROR: read_sdf failed (phase=ptpx): $_err"
     exit 1

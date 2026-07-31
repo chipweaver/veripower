@@ -5,84 +5,81 @@ description: Use when running gate-level power simulation + PT-PX averaged power
 
 # Power Analysis
 
-Your sole responsibility: run VCS gate-level simulation against the post-synthesis netlist trio and the UVM TB infrastructure to produce SAIF, then run PrimeTime PX in averaged mode over each SAIF to compute `power_mw`; self-judge the `power_mw` PPA dimension.
-
-## When to Use
-
-- First-time setup of the GLS power simulation + PT-PX averaged power-analysis environment.
-- End-to-end run: bootstrap (deploys the fresh workdir; aborts if already deployed) → `make all` (tb-shim + refresh-tests → gls-compile → gls-run → ptpx) → write `result.json`.
-- Re-run after a dependency artifact change: any change to the synthesized netlist / SDF / `power_scenarios[]` / TB infrastructure.
-- Multi-scenario sweep: per-scenario SAIF per `power_scenarios[]` entry, each with its own `reports_ptpx/<id>/`.
+Your sole responsibility: run VCS gate-level simulation against the post-synthesis netlist and the
+UVM TB infrastructure to produce one SAIF per power scenario, run PrimeTime PX in averaged mode
+over each of them, and close the run through the `power` CLI. You never grade `power_mw` by eye —
+`finalize` parses the reports, judges the target, and writes the verdict.
 
 ## Iron Rule
 
-- The injected read-only input locations `<netlist>`/`<tb_env>`/`<scaffold>`/`<ppa>` — never modify them; write only under `{workdir}`.
-- Power test classes (`power_<seq>_test.sv`) are **auto-generated** by this stage — do not hand-write them or reuse power tests from any other source. Internally, each test reuses the `{module}_<seq>_seq` class already compiled by simulation (the plan's `power_scenarios[].sequence_ref` and `sequences[].name` share a namespace); this stage does NOT render an independent sequence class (contract violation — multi-source power tests cause naming / semantic drift).
-- The TB emits SAIF directly via `$set_gate_level_monitoring + $toggle_*` — `$dumpfile / $dumpvars` are **forbidden** (architectural violation — the SAIF path does not go through VCD; direct toggle dump avoids intermediate-format loss).
-- `ptpx.tcl` locks `power_analysis_mode averaged` + `read_saif`.
-- `hier_separator` MUST be explicitly set to `"/"` at the top of `ptpx.tcl`: write both `catch {set_app_var hier_separator "/"}` + `set hier_separator "/"` — PT M-2016 treats this as a Tcl global (`set_app_var` reports CMD-104), while newer PT treats it as an application var; the default dot-separated value causes `strip_path` to silently mismatch (contract violation — power hierarchy paths become unresolvable).
-- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr, stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
+- Write only under `{workdir}`. Every injected input location is read-only, as is every other
+  stage's output.
+- **Scripts are black boxes, never Read their source.** Invoke them per this skill's documented
+  command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol
+  (stderr, stdout verdict), not the source. Sole exception: debugging a suspected bug in a
+  script itself.
 
-## Input Artifacts
+## What you read, and what you produce
 
-### Context variables
+`{workdir}/dispatch.json` carries the `inputs` table, and you open almost none of what it points
+at: `bootstrap` resolves `<TOP>` from the single `out/<TOP>_syn.v` under the synthesis stage root
+and writes every upstream location into `env.sh`, which the `make` targets read from there. The
+netlist, the SDC and the SDF are consumed by the tools; VCS back-annotates delays out of the SDF,
+which is what makes the SAIF a gate-level one rather than an RTL toggle count.
 
-| Variable | Purpose |
+The one file you open yourself is `<ppa>/ppa.json`, and only when a `power_mw` miss makes you
+decide which side of it is wrong. `finalize` reads it for the gate on its own.
+
+Three env vars are yours to supply before `make`:
+
+| | |
 |---|---|
-| `{workdir}` | Current run workspace root. |
-| `{module}` | Module name. |
+| `LIB_V` | std-cell Verilog models, linked against the netlist at compile time |
+| `LIB_DB` | the Liberty `.db` synthesis linked against — PT maps activity to power through it, so a different library is a different answer |
+| `UVM_HOME` | the UVM tree the TB infrastructure was built against |
 
-### External reference inputs
+`env.sh` refuses to run unless all three name readable files, and every target sources it, so a
+wrong path stops the run at the first target instead of after the simulation.
 
-Read `{workdir}/dispatch.json`: its `inputs` table maps each read-only upstream input to its location, so `<key>` below denotes that location and you read `<key>/<subpath>`.
+Everything under `{workdir}` is produced by the tools you invoke, and `finalize` enumerates it into
+`artifacts[]`. Two parts of it are this stage's deliverable:
 
-| Path | Schema / Format | Use |
-|---|---|---|
-| `<tb_env>/filelist.f` | UVM filelist | TB infrastructure compile list (read-only). |
-| `<tb_env>/tb/uvm/**/*.sv` | UVM SystemVerilog | TB infrastructure, referenced by `filelist.f` (read indirectly). |
-| `<scaffold>/power-scenarios.json` + `<scaffold>/sequences.json` | simulation-plan schema | the scenario list and the sequence roster it resolves against (drives `emit_power_tests` + `run_gls_power`). |
-| `<netlist>/out/<TOP>_syn.v` | structural Verilog | Synthesized netlist (VCS GLS compile + PT-PX `read_verilog`). |
-| `<netlist>/out/<TOP>_syn.sdc` | SDC | PT-PX `read_sdc` (constraint propagation). |
-| `<netlist>/out/<TOP>_syn.sdf` | SDF v3.0 | VCS SDF back-annotation delay + PT-PX `read_sdf` (state-dependent leakage). |
-| `LIB_V` (env) | std cell Verilog model path | linked against the netlist at VCS compile time. |
-| `LIB_DB` (env) | std cell Liberty `.db`/`.lib` | PT-PX activity→power mapping (MUST match what was used at synthesis). |
-| `UVM_HOME` (env) | UVM library path | matches what TB infrastructure was built against. |
-
-PPA targets (entries on the `power_mw` dimension only) are read by `power finalize` itself from the injected `ppa` location — nothing is injected in the prompt.
-
-## Output Artifacts
-
-| Path (relative to `{workdir}`) | Schema / Format | Use |
-|---|---|---|
-| `result.json` | `references/result.schema.json` + envelope.schema.json | This stage's status contract (includes `saif_artifacts[]` / `compile_info` / `failures[]` / `ppa_actual[]` / `violations[]` / `power_by_scenario[]`). |
-| `saif/<id>.saif` (+ `saif/_dedup/<sequence_ref>.saif`) | SAIF | Per-scenario gate-level SAIF (dedup-hardlinked); each path referenced by `result.json.saif_artifacts[]`. |
-| `reports_ptpx/<id>/` (`power_hier.rpt` / `power_flat.rpt` / `switching_activity.rpt` / `ptpx.log`) | PT text + log | Per-scenario PT-PX report set (`power_hier.rpt` is read by rtl-design on a PPA rework); one `<id>/` per SAIF. |
-
-The deployed infrastructure is `bootstrap`'s business (Step 2; per-file notes in Bundled References);
-you interact with it only through the `make` targets.
+| | |
+|---|---|
+| `saif/<id>.saif` | One per scenario, hardlinked to `saif/_dedup/<sequence_ref>.saif`: scenarios that reduce to the same stimulus are simulated once and share the result. |
+| `reports_ptpx/<id>/` | `power_flat.rpt` holds the totals the gate parses; `power_hier.rpt` shows where the power went, for whoever has to reduce it; `switching_activity.rpt` says how much of the activity came from the SAIF rather than from tool defaults; `ptpx.log` is that scenario's own log. |
 
 ## Workflow
 
-`{workdir}` is provided empty each dispatch; bootstrap deploys it (and aborts on a within-run re-entry where a `Makefile` already exists). `make refresh-tests` re-renders power tests from the current plan before every `gls-compile`.
+### 1. Deploy
 
-### Step 1: Pre-check external references
-
-Confirm `<tb_env>/filelist.f` / `<scaffold>/power-scenarios.json` (non-empty) / the synthesis trio (`<netlist>/out/<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, declare it through the `finalize` of Step 3 with `--fail-reason "external reference missing: <path>" --failure-kind infra`, and stop there. When `{workdir}/dispatch.json` carries a `scope`, narrow this round's edits to what it names.
-
-### Step 2: Bootstrap
+Export the three env vars, then run `bootstrap` to lay down the run scaffold:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
 ```
 
-Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a `Makefile` is already deployed (incremental updates go through `make refresh-tests`).
+It copies the templates, resolves `<TOP>`, substitutes the upstream locations into `env.sh`,
+renders the UVM power test classes from the plan, and verifies the netlist, the TB filelist and the
+plan sidecars its render needs. It aborts when `{workdir}` already holds a `Makefile`, since
+`make refresh-tests` is how a later plan change reaches the tests. Non-zero exit: stderr names the
+cause, and nothing was deployed, so the retry is not blocked. `make` is the interface to everything
+it deployed.
 
-### Step 3: Run and judge
+### 2. Run
 
-`cd {workdir} && make all >make.out 2>&1` (redirect keeps the multi-thousand-line VCS/PT logs out of context; each stage still tees to its own log file).
+```bash
+cd {workdir} && make all >make.out 2>&1
+```
 
-Every run ends at `finalize`, a non-zero `make` included. It is the only writer of
-`result.json`, and you never hand-assemble the envelope:
+`all` is `gls-compile` (which re-renders the power tests and absolutizes the TB filelist first),
+then `gls-run` for one SAIF per scenario, then `ptpx`. The redirect keeps multi-thousand-line VCS
+and PT logs out of context; every step also tees its own log, which is what you read on a failure.
+
+### 3. Close
+
+Every run ends here, a non-zero `make` included. `finalize` is the only writer of `result.json`,
+and you never hand-assemble the envelope:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
@@ -90,77 +87,45 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
   [--fail-reason "<cause>" --failure-kind {infra|tooling}]
 ```
 
-After a clean `make` it judges: parses each `reports_ptpx/<id>/power_flat.rpt`, checks the
-Total = internal+switching+leakage reconciliation, judges the `power_mw` PPA dimension against
-the targets it reads from the injected `ppa` location itself (an absent file or dim leaves the
-dimension ungated), folds the per-scenario rows through, and enumerates `artifacts[]`.
+After a clean `make` it judges: it parses each `reports_ptpx/<id>/power_flat.rpt`, reconciles the
+total against internal + switching + leakage, and compares `power_mw` against the targets it reads
+from `<ppa>/ppa.json` itself — an absent file or dim leaves the dimension ungated, and says so in
+`stage_specific.ppa_gate_skipped`, because a pass with nothing to pass against is a different
+claim. It records the measurements as `stage_specific.power_by_scenario[]` and
+`stage_specific.ppa_actual[]`, a missed target as `stage_specific.violations[]`, the SAIF set as
+`stage_specific.saif_artifacts[]`, the VCS identity as `stage_specific.compile_info`, and the data
+faults it detected itself — an empty SAIF, an unreadable or irreconcilable report — as
+`stage_specific.failures[]`.
 
 The flags carry what the reports cannot:
 
-- **`--fail-reason`**, which fills `stage_specific.fail_reason`, when `make` exited non-zero
-  and there is nothing gradeable. Read a
-  **bounded** slice of the failing stage's log (`gls-compile-log.txt` / `gls-run-log.txt` /
-  `ptpx.log`) — never the whole dump — and write the cause you actually read rather than a
-  category, since nothing parses it. Each `make` step prefixes its own error with
-  `phase=<compile|run|ptpx>`; carry that phase into the sentence. Supplying the flag is itself
-  the declaration of failure, so it skips the gate.
-- **`--failure-kind`**, which fills `stage_specific.failure_kind`, alongside it: `infra` when
-  the flow never ran (a missing external
-  reference, no license), `tooling` when it ran and its output is unusable. That is the one
-  thing an absent report cannot settle. The third value, `ppa`, is the gate's to write and
-  never yours.
-- **`--fix-owner`** on every failure, since it is what fills `stage_specific.fix_owner`. You
-  read the log, so you are the only party that can say
-  whose artifact is at fault, and nothing downstream re-derives it. Go by the file the error
-  names: the synthesized netlist or SDF is `synthesis`; a TB source under `<tb_env>` is
-  `simulation`; an unresolvable `sequence_ref` or a bogus scenario in
-  `<scaffold>/power-scenarios.json` is `simulation-plan`. A `power_mw` miss compares a measured
-  value against a target and either side can be wrong, so before naming `rtl-design`, read
-  `<ppa>/ppa.json`: a target whose unit disagrees with the number stored in it makes a
-  conforming design look over-budget, and no rebuild converges against it — name
+- **`--fail-reason`**, which fills `stage_specific.fail_reason`, when `make` exited non-zero and
+  there is nothing gradeable. Read a **bounded** slice of the failing step's log
+  (`gls-compile-log.txt` / `gls-run-log.txt` / `ptpx.log`) — never the whole dump — and write the
+  cause you actually read rather than a category, since nothing parses it. Each step prefixes its
+  own error with `phase=<compile|run|ptpx>`; carry that phase into the sentence. Supplying the
+  flag is itself the declaration of failure, so it skips the gate.
+- **`--failure-kind`**, which fills `stage_specific.failure_kind`, alongside it: `infra` when the
+  flow never ran (a missing external reference, no license), `tooling` when it ran and its output
+  is unusable. That is the one thing an absent report cannot settle. The third value, `ppa`, is
+  the gate's to write and never yours.
+- **`--fix-owner`** on every failure, since it is what fills `stage_specific.fix_owner`. You read
+  the log, so you are the only party that can say whose artifact is at fault, and nothing
+  downstream re-derives it. Go by the file the error names: the synthesized netlist or SDF is
+  `synthesis`; a TB source under `<tb_env>` is `simulation`; an unresolvable `sequence_ref` or a
+  bogus scenario in `<scaffold>/power-scenarios.json` is `simulation-plan`. A `power_mw` miss
+  compares a measured value against a target and either side can be wrong, so before naming
+  `rtl-design`, read `<ppa>/ppa.json`: a target whose unit disagrees with the number stored in it
+  makes a conforming design look over-budget, and no rebuild converges against it — name
   `specification` when the target is what is malformed. Omit the flag when your own environment
-  broke, or when you have read both sides and still cannot name an owner: an unnamed owner is
-  how a human gets called in, and a guess spends a full rework round on a stage that cannot
-  fix it.
+  broke, or when you have read both sides and still cannot name an owner: an unnamed owner is how
+  a human gets called in, and a guess spends a full rework round on a stage that cannot fix it.
 
 Exit 0 means written, pass or fail. Exit 2 is BLOCKED and never a `status=fail`: an empty
 `--fail-reason`, one without a `--failure-kind`, or a program exception. stderr names which.
 
-## Red Flags
-
-| Excuse | Reality |
-|---|---|
-| "`power_mw` is a little over target — pass" | PPA self-check is mandatory: a `power_mw` miss → `status=fail` + `violations[]` (one entry each), kept strictly separate from `failures[]` (`failures[]` = process/data failures; `violations[]` = PPA targets missed). |
-
-## Pitfalls
-
-| Mistake | Fix |
-|------|------|
-| Reports from multiple scenarios all land under `reports_ptpx/` and overwrite each other | Every SAIF MUST have its own `reports_ptpx/<id>/` subdirectory. |
-
-## Completion Gate
-
-- [ ] `{workdir}/result.json` has been written and passes schema validation (`references/result.schema.json`).
-- [ ] No Iron Rule or Red Flag was triggered.
-- [ ] result.json was written by the `power` CLI's `finalize` verb (it owns status / stage_specific / artifacts).
-- [ ] Every `saif_artifacts[].saif_path` file exists and `size > 0`.
-- [ ] Every `reports_ptpx/<id>/{power_hier.rpt, power_flat.rpt, switching_activity.rpt, ptpx.log}` is present.
-- [ ] `gls-compile-log.txt` and `gls-run-log.txt` are on disk.
-
 ## Return Contract
 
-As the last line, emit `STATUS: DONE` (when `result.json` has been written) or `STATUS: BLOCKED <one-line reason>` (when a program exception prevented the write). The harness uses this signal to fire the Task-completion notification; the caller then decides based on `result.json`.
-
-## Bundled References
-
-- [`templates/Makefile`](templates/Makefile) — `gls-compile` + `gls-run` + `ptpx` + `all` entry point.
-- `templates/scripts/emit_power_tests.py` — power test template renderer (make-internal).
-- `templates/scripts/build_tb_filelist_abs.py` — absolute-path rewrite of the simulation filelist (consumed across stages by GLS; make-internal).
-- `templates/scripts/run_gls_power.sh` — per-scenario `simv` dispatch (dedup via hardlink; make-internal).
-- `templates/scripts/ptpx.tcl` — PT-PX averaged main script (`read_saif` + 0% annotation hard gate; make-internal).
-- [`templates/scaffold/power_test.sv.tmpl`](templates/scaffold/power_test.sv.tmpl) — UVM test template (placeholders `MODULE` / `AGENT_NAME` / `SEQUENCE_REF` / `TOP` / `SCENARIO_ID`; contains `$set_gate_level_monitoring + $toggle_*`).
-- `scripts/power/__main__.py bootstrap` — bootstrap verb (invocation contract: Step 2 + `--help`).
-- [`references/result.schema.json`](references/result.schema.json) — this stage's `result.json` schema.
-- `scripts/power/__main__.py finalize` — PT-PX report parser + PPA verdict verb (parses, judges, then writes result.json; exit code is the pass/fail truth — mirrors the `synthesis` CLI's `finalize`; invocation contract: Step 3 + `--help`).
-- [`${CLAUDE_PLUGIN_ROOT}/skills/simulation-plan/references/power-scenarios-template.md`](../simulation-plan/references/power-scenarios-template.md) — the standard scenario set and how a row is materialized; the four fields you read are `simulation-plan/references/power-scenarios.schema.json`.
-- [`${CLAUDE_PLUGIN_ROOT}/framework/references/schemas/envelope.schema.json`](../../framework/references/schemas/envelope.schema.json) — common envelope schema.
+Emit `STATUS: DONE` as your last line once `result.json` exists, or
+`STATUS: BLOCKED <one-line reason>` when nothing could be written. What runs next is the caller's
+decision, taken from `result.json`.
