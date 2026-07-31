@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """rtl finalize — the lean rtl-design result.json.
 
-Derives the envelope from the on-disk workdir: status / fail_reason / artifacts via
-partition.post_verdict, which schema-validates both authored sidecars on the way (a malformed
-one is BLOCKED, never a silent pass). No verdict is reduced from the intent reviews.
-result.json is fully script-derived (run narration lives in events.jsonl). Exit 0 = written
-(pass or fail); exit 2 = BLOCKED (internal raise).
+Derives the envelope from the on-disk workdir: artifacts via partition.exit_artifacts, which
+schema-validates both authored sidecars on the way (a malformed one is BLOCKED, never a silent
+pass). Nothing here judges the intent reviews — not their content, their coverage, or their
+presence; they reach canonical through artifacts[], and the kernel's own trust boundary is what
+refuses to pin an oracle that matched nothing. A `status=fail` comes only from the caller's
+--fail-reason: what this stage can derive from disk it can also repair by re-dispatching a
+child. result.json is fully script-derived (run narration lives in events.jsonl). Exit 0 =
+written (pass or fail); exit 2 = BLOCKED (internal raise).
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ import sys
 from pathlib import Path
 
 from rtl._ledger import LedgerError
-from rtl.partition import ledger_artifacts, post_verdict
+from rtl.partition import exit_artifacts, ledger_artifacts
 
 STAGE = "rtl-design"
 REVIEW_DIR = "semantic-review"
@@ -50,35 +53,16 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def _exit_verdict(workdir: Path, manifest: Path) -> dict:
-    """Re-derive the exit verdict IN-PROCESS over the on-disk state: {status, fail_reason?,
-    artifacts[]}. post_verdict schema-validates both authored sidecars on the way, so a
-    hand-authored shape defect is BLOCKED here rather than promoted."""
-    return post_verdict(manifest, workdir)[0]
-
-
 def _reviews(workdir: Path) -> list:
     """Whatever the review wave landed, in artifacts[] shape. How the reviewers split the RTL
     between them — and so how many files they write — is theirs to decide, so this reads the
     directory instead of deriving names from the manifest roster. artifacts[] is the only route
-    to canonical, so every file found has to be listed there."""
+    to canonical, and canonical is where the oracle selector looks, so every file found has to
+    be listed there."""
     d = workdir / REVIEW_DIR
     if not d.is_dir():
         return []
     return [{"path": f"{REVIEW_DIR}/{p.name}"} for p in sorted(d.glob("*.md"))]
-
-
-def _require_reviews(workdir: Path) -> list:
-    """A passing envelope needs the intent review to have happened at all. Nothing else in this
-    stage checks that it did — there is no in-stage human gate here, unlike specification's — so
-    a silently skipped wave would otherwise ship as a clean pass. Coverage is not counted and no
-    review is reduced to a verdict: both are the stage's judgment to act on."""
-    found = _reviews(workdir)
-    if not found:
-        raise ValueError(
-            f"no intent review under {REVIEW_DIR}/ — the RTL cannot pass unreviewed"
-        )
-    return found
 
 
 def _caller_reported_artifacts(workdir: Path) -> list:
@@ -116,25 +100,7 @@ def build_result(workdir, module, manifest, fail_reason=None, fix_owner=None) ->
         )
         return 0
 
-    exit_v = _exit_verdict(workdir, manifest)
-    artifacts = list(exit_v.get("artifacts", []))
-
-    if exit_v.get("status") != "pass":
-        # topology fail — verbatim verdict, plus whatever review already landed.
-        ss = {"fail_reason": exit_v.get("fail_reason", "rtl exit gate failed")}
-        _write_result(
-            workdir,
-            _envelope(
-                module,
-                status="fail",
-                stage_specific=ss,
-                artifacts=artifacts + _reviews(workdir),
-                fix_owner=fix_owner,
-            ),
-        )
-        return 0
-
-    artifacts += _require_reviews(workdir)
+    artifacts = exit_artifacts(manifest, workdir) + _reviews(workdir)
     _write_result(
         workdir,
         _envelope(module, status="pass", stage_specific={}, artifacts=artifacts),

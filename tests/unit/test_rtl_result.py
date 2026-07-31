@@ -105,19 +105,10 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert "result.json" not in paths
 
 
-def test_pass_refused_while_no_review_landed(tmp_path, capsys):
-    # The exit requirement, and the only mechanical part of it: nothing else in this stage
-    # checks that the intent review happened, and there is no in-stage human gate to notice.
-    # What a review SAYS stays the stage's judgment; that one EXISTS does not.
-    wd, manifest = _workdir(tmp_path, reviews=False)
-    assert ve.finalize(wd, "tpu_top", manifest) == 2
-    assert "no intent review" in capsys.readouterr().err
-    assert not (wd / "result.json").exists()
-
-
 def test_reviews_are_enumerated_off_disk_not_off_the_roster(tmp_path):
-    # How the wave splits the RTL between its reviewers is the stage's call, so the gate counts
-    # no coverage: one file covering two children passes, and artifacts[] carries what landed.
+    # How the wave splits the RTL between its reviewers is the stage's call, so nothing here
+    # counts coverage: one file covering two children passes, and artifacts[] carries what
+    # landed — which is the only route by which the oracle selector ever sees it.
     wd, manifest = _workdir(tmp_path)
     (wd / "semantic-review" / "mac.md").unlink()
     (wd / "semantic-review" / "topc.md").rename(wd / "semantic-review" / "mac+topc.md")
@@ -128,22 +119,25 @@ def test_reviews_are_enumerated_off_disk_not_off_the_roster(tmp_path):
     assert reviews == {"semantic-review/mac+topc.md"}
 
 
-def test_build_result_fail_on_exit_topology_verbatim(tmp_path):
-    # Manifest where the top-integration child bundles a logic module -> not pure -> exit fail.
-    bad_manifest = {
-        "module": "tpu_top",
-        "children": [
-            {"name": "mac", "doc": "mac.md", "rtl_modules": ["mac"]},
-            {"name": "topc", "doc": "topc.md", "rtl_modules": ["tpu_top", "mac"]},
-        ],
-    }  # impure
-    wd, manifest = _workdir(tmp_path, manifest=bad_manifest)
+def test_pass_over_an_unreviewed_workdir_is_the_kernels_call_not_this_gate(tmp_path):
+    # finalize does not check that any review landed: the kernel already refuses to pin an
+    # oracle whose selector matched nothing, and the signoff gate blocks while the grade is
+    # proposed. A second copy here would only fail the round earlier for the same defect.
+    wd, manifest = _workdir(tmp_path, reviews=False)
     assert ve.build_result(wd, module="tpu_top", manifest=manifest) == 0
     env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "fail"
-    assert (
-        "not pure" in env["stage_specific"]["fail_reason"]
-    )  # verbatim from the exit gate
+    assert env["status"] == "pass"
+    assert not [a for a in env["artifacts"] if a["path"].startswith("semantic-")]
+
+
+def test_pass_refused_over_a_file_no_child_wrote(tmp_path, capsys):
+    # artifacts[] is the new canonical view; promote hardlinks each entry and raises on the
+    # first absent one, before any outcome event lands. Named here, where a re-dispatch fixes it.
+    wd, manifest = _workdir(tmp_path)
+    (wd / "mac.v").unlink()
+    assert ve.finalize(wd, "tpu_top", manifest) == 2
+    assert "mac.v" in capsys.readouterr().err
+    assert not (wd / "result.json").exists()
 
 
 # ── golden test against the real tpu_top run ─────────────────────────────────

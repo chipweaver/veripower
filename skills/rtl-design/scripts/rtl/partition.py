@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""rtl exit gate — top-module coverage + purity, the ledger's roster, and artifacts enumeration.
+"""rtl exit gate — the ledger's roster against the manifest, and the artifacts enumeration.
 
-`coverage_verdict` is the same rule specification decides at `derive-ports`, and
-tests/contracts/test_partition_purity_agreement.py locks the two implementations together.
-`artifacts` is the envelope shape (array of {path} objects); a flat string list would break the
-framework's per-artifact promote + envelope schema-validation.
+Both of the checks here defend the same thing: `artifacts[]` IS the new canonical view, and
+promote deletes what it omits and raises on what it cannot find. `artifacts` is the envelope
+shape (array of {path} objects); a flat string list would break the framework's per-artifact
+promote + envelope schema-validation.
 """
 
 from __future__ import annotations
@@ -19,57 +19,36 @@ def _read_json(p: Path):
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def coverage_verdict(manifest: Path, top: str):
-    """Coverage + purity over manifest+top (no reports). Returns (status, reason)."""
-    children = _read_json(manifest).get("children", [])
-    covering = [c for c in children if top in c.get("rtl_modules", [])]
-    if len(covering) != 1:
-        return "fail", (
-            f"exit-check: top_module '{top}' covered by {len(covering)} children "
-            f"(expected 1) — specification must emit exactly one top-integration child"
-        )
-    if covering[0].get("rtl_modules") != [top]:
-        return "fail", (
-            f"exit-check: top-integration child '{covering[0]['name']}' is not pure: "
-            f"rtl_modules={covering[0].get('rtl_modules')} (expected ['{top}'] only) — "
-            f"specification must not bundle logic modules with the top module"
-        )
-    return "pass", None
+def _ledger_files(ledger: dict) -> list:
+    return sorted({f for rec in ledger.values() for f in rec["files"]})
 
 
-def _artifacts(ledger: dict) -> list:
-    """Every child's files plus the two sidecars, in the envelope shape."""
-    files = sorted({f for rec in ledger.values() for f in rec["files"]})
+def _artifacts(ledger: dict, workdir: Path) -> list:
+    """Every child's files plus the two sidecars, in the envelope shape. A file the sidecars
+    name and no child wrote is dropped rather than listed: promote hardlinks every entry and
+    raises on the first absent one, which happens BEFORE the outcome event is appended — so the
+    round would hang with nothing in the log to schedule a repair from."""
+    files = [f for f in _ledger_files(ledger) if (workdir / f).is_file()]
     return [{"path": p} for p in files + [FILES_NAME, ANNOTATIONS_NAME]]
 
 
 def ledger_artifacts(workdir: Path) -> list:
     """The artifacts[] enumeration off disk. Raises LedgerError when a sidecar is unreadable."""
-    return _artifacts(load_ledger(workdir))
+    return _artifacts(load_ledger(workdir), Path(workdir))
 
 
-def post_verdict(manifest: Path, workdir: Path):
-    """The exit verdict: coverage+purity, the ledger's roster against the manifest, and the
-    artifacts[] enumeration. Returns (verdict_dict, rc).
+def exit_artifacts(manifest: Path, workdir: Path) -> list:
+    """artifacts[] for a passing round: every child's files plus the two sidecars.
 
-    TOP is manifest['module'], indexed rather than defaulted: specification cannot ship a
-    manifest without it (check_purity fails the round first), so an absent key is a broken
-    input and belongs on stderr, not in a verdict."""
+    Raises LedgerError when the workdir cannot yield one — a sidecar that is unreadable or
+    schema-invalid, a manifest child with no ledger entry, or a file the sidecars name and no
+    child wrote. Each would promote a canonical view short of the RTL it claims to hold.
+    """
     roster = _read_json(manifest)
-    status, reason = coverage_verdict(manifest, roster["module"])
     ledger = load_ledger(workdir)
-    if status == "fail":
-        return {
-            "status": status,
-            "artifacts": _artifacts(ledger),
-            "fail_reason": reason,
-        }, 1
 
     missing = [c["name"] for c in roster["children"] if c["name"] not in ledger]
     if missing:
-        # artifacts[] is the new canonical view and promote deletes what it omits, so a ledger
-        # short of the roster would silently drop those children's RTL out of canonical while
-        # reporting a pass. Nothing here can name the files it does not have: refuse instead.
         raise LedgerError(
             f"{FILES_NAME} / {ANNOTATIONS_NAME} are missing "
             + ", ".join(missing)
@@ -77,4 +56,13 @@ def post_verdict(manifest: Path, workdir: Path):
             "manifest child needs an entry, carried forward from the last round when this "
             "round did not re-author it"
         )
-    return {"status": "pass", "artifacts": _artifacts(ledger)}, 0
+
+    absent = [f for f in _ledger_files(ledger) if not (workdir / f).is_file()]
+    if absent:
+        raise LedgerError(
+            f"{FILES_NAME} names files that are not in the workdir: "
+            + ", ".join(absent)
+            + " — re-dispatch the child that owns them"
+        )
+
+    return _artifacts(ledger, workdir)

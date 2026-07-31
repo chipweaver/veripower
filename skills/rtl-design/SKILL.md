@@ -52,7 +52,7 @@ Nothing reduces those reviews to a verdict. Read them and act: re-dispatch the c
 python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir} --module {module} --manifest <manifest>/manifest.json [--fail-reason "<one line>"] [--fix-owner <rule>]
 ```
 
-`finalize` derives the envelope from disk. It validates both sidecars against their schemas, and refuses to write a pass while `semantic-review/` holds no review.
+`finalize` derives the envelope from disk. It validates both sidecars against their schemas, and refuses to write a pass while a manifest child has no entry in them or a file they name is not in `{workdir}`.
 
 A failing envelope carries `fail_reason`. `finalize` derives it from the on-disk verdict, or takes your one line from `--fail-reason` when no on-disk state can express the failure.
 

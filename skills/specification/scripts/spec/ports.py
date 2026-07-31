@@ -12,10 +12,9 @@ Top-level IO ports are NOT derived here. Which top-IO ports a child drives or re
 child's own implementation decision, made in wave 2 and declared in its frontmatter — a
 different fact, authored where it is known, and backstopped by check-crossrefs.
 
-This verb also decides the top-partition purity rule, because it is the cheapest moment to
-decide it: the partition gate is next, so a violation is caught before N children are written
-against it. rtl-design's finalize re-decides the same rule at its exit;
-`tests/contracts/test_partition_purity_agreement.py` locks the two together.
+This verb also decides the top-partition purity rule, and is the only place that decides it:
+the partition gate is next, so a violation is caught before N children are written against it,
+and this is the last moment the partition is still editable.
 
 Usage:  python3 scripts/spec/__main__.py derive-ports --workdir <workdir>
 Output: JSON {<child_name>: [<wire>, ...], ...} on stdout (sorted, de-duped).
