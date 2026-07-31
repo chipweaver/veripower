@@ -16,7 +16,6 @@
 set -euo pipefail
 
 MODE="${1:-regress}"
-REQUESTED_TEST="${2:-}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
@@ -59,18 +58,13 @@ compile_simv() {
 }
 
 select_tests() {
-	"$PYTHON" "$(dirname "${BASH_SOURCE[0]}")/select_tests.py" \
-		"$MODE" "$REQUESTED_TEST" "$TESTLIST_JSON"
+	"$PYTHON" "$(dirname "${BASH_SOURCE[0]}")/select_tests.py" "$MODE" "$TESTLIST_JSON"
 }
 
 run_selected_tests() {
 	local selected
 	if ! selected="$(select_tests)"; then
-		if [[ "$MODE" == "single" ]]; then
-			echo "run_vcs_regression: test '$REQUESTED_TEST' not found" >&2
-		else
-			echo "run_vcs_regression: no tests selected for mode '$MODE'" >&2
-		fi
+		echo "run_vcs_regression: no tests selected for mode '$MODE'" >&2
 		exit 1
 	fi
 
@@ -138,16 +132,8 @@ regress)
 	# Emit machine-readable structural coverage for the exit gate (fail-loud if unparseable).
 	make coverage
 	;;
-single)
-	[[ -n "$REQUESTED_TEST" ]] || {
-		echo "run_vcs_regression: single mode requires TEST=test_id or TEST=uvm_testname" >&2
-		exit 1
-	}
-	[[ -x "./$SIMV" ]] || compile_simv
-	run_selected_tests
-	;;
 *)
-	echo "run_vcs_regression: unknown mode '$MODE' (expected compile|smoke|regress|single)" >&2
+	echo "run_vcs_regression: unknown mode '$MODE' (expected compile|smoke|regress)" >&2
 	exit 1
 	;;
 esac

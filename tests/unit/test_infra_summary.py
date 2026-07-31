@@ -60,9 +60,9 @@ def _run_summary(wd, *extra):
 
 
 # ── select_tests.py ───────────────────────────────────────────────────────────
-def _select(wd, mode, requested="-"):
+def _select(wd, mode):
     return subprocess.run(
-        [sys.executable, str(SELECT), mode, requested, str(wd / "tests/testlist.json")],
+        [sys.executable, str(SELECT), mode, str(wd / "tests/testlist.json")],
         capture_output=True,
         text=True,
     )
@@ -92,15 +92,9 @@ def test_select_row_carries_no_feature(tmp_path):
         assert "F-0" not in row
 
 
-def test_select_single_matches_either_id_or_uvm_name(tmp_path):
-    wd = _workdir(tmp_path, [])
-    assert _select(wd, "single", "T-02").stdout.strip() == "T-02|m_corner_test"
-    assert _select(wd, "single", "m_corner_test").stdout.strip() == "T-02|m_corner_test"
-
-
 def test_select_no_match_exits_2(tmp_path):
     wd = _workdir(tmp_path, [])
-    assert _select(wd, "single", "ghost").returncode == 2
+    assert _select(wd, "nightly").returncode == 2
 
 
 # ── write_summary.py ──────────────────────────────────────────────────────────

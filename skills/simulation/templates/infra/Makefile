@@ -5,12 +5,10 @@
 # make regress  full regression suite
 # make summary  generate review summary (case-results-summary.md)
 
-.PHONY: help simv smoke regress run_test coverage-summary summary merge coverage all clean
+.PHONY: help simv smoke regress coverage-summary summary coverage clean
 
 help:  ## Show this help message
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-
-all: smoke summary  ## Run smoke regression then generate summary
 
 simv:  ## Compile UVM testbench (VCS handles incremental)
 	@bash -lc 'source ./env.sh && ./scripts/run_vcs_regression.sh compile'
@@ -21,17 +19,11 @@ smoke: simv  ## Run smoke regression suite
 regress: simv  ## Run full regression suite
 	@bash -lc 'source ./env.sh && ./scripts/run_vcs_regression.sh regress'
 
-run_test: simv  ## Run a single test (TEST=test_id or TEST=uvm_testname)
-	@bash -lc 'source ./env.sh && ./scripts/run_vcs_regression.sh single "$$TEST"'
-
 coverage-summary:  ## Generate coverage summary only
 	@bash -lc 'source ./env.sh && "$$PYTHON" ./scripts/write_summary.py --verification-dir "$$PWD" --coverage-only'
 
 summary: coverage-summary  ## Generate review summary (case-results-summary.md)
 	@bash -lc 'source ./env.sh && "$$PYTHON" ./scripts/write_summary.py --verification-dir "$$PWD"'
-
-merge:  ## Merge per-test coverage vdb files
-	@bash -lc 'source ./env.sh && urg -dir "$$SIMV.vdb" -dir ./cov_test/*.vdb -report both -dbname both.vdb'
 
 coverage:  ## Merge per-test coverage to a text report and emit structural-coverage.json
 	@bash -lc 'source ./env.sh && \

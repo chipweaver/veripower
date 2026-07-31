@@ -232,7 +232,7 @@ def build(cov_dir: Path, out_path: Path) -> int:
     if not dashboard.is_file():
         sys.exit(
             f"parse_coverage: missing {dashboard}. urg merge did not produce a text report "
-            f"(run `make merge` / check VCS_COV and urg). NOT emitting structural-coverage.json "
+            f"(check VCS_COV and urg). NOT emitting structural-coverage.json "
             f"(fail-loud: never claim coverage met when it cannot be measured)."
         )
     dtext = dashboard.read_text(encoding="utf-8", errors="ignore")
