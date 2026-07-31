@@ -15,11 +15,10 @@ review summary.
   already materialized; do not re-materialize.)
 - `{module}` — module name.
 
-Use `{workdir}/verify-handoff.json` for check-intent (per-testpoint `asserts` + `seqs→bins`) rather
-than re-reading the whole TB: it maps each uncovered coverage bin back to the sequence whose stimulus
-to iterate (Rule B coverage-bin adjudication). On a regress failure you only route out
-with `failing_cases` (no repair, no per-case check-mapping needed), so the handoff is not relied on
-there.
+`{workdir}/verify-handoff.json` maps each testpoint to the sequences env wired toward it, which
+is the second half of a Rule B classification: you place an uncovered item on a testpoint, and
+this says whose stimulus to iterate. The plan does not carry that edge. Nothing else here needs
+it; a regress failure routes out with `failing_cases` and no check-mapping.
 
 ## Work
 
