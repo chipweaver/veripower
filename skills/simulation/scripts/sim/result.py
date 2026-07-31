@@ -17,9 +17,13 @@ import json
 import sys
 from pathlib import Path
 
-from sim._gate import _load_thresholds, coverage_gate, materialization_errors
+from sim._gate import (
+    _load_thresholds,
+    conformance_flagged,
+    coverage_gate,
+    materialization_errors,
+)
 from sim._plan import load_plan
-from sim.review import compute_gate
 
 STAGE = "simulation"
 
@@ -53,8 +57,7 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 
 def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path, conformance_review):
-    """Re-derive the exit verdict in-process from materialization_errors, compute_gate and
-    coverage_gate.
+    """Re-derive the exit verdict in-process from the three primitives in sim._gate.
     Returns (ok, verdict, failure_phase, fail_reason); the earliest wave to fail wins, in the
     order the waves ran: materialization, conformance review, coverage.
 
@@ -76,9 +79,7 @@ def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path, conformance_rev
     }
     if d1_errs:
         return (False, verdict, "compile", "; ".join(d1_errs)[:300])
-    flagged = compute_gate(Path(conformance_review).read_text(encoding="utf-8"))[
-        "flagged"
-    ]
+    flagged = conformance_flagged(conformance_review)
     if flagged:
         return (
             False,

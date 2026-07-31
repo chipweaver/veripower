@@ -114,19 +114,17 @@ and handing over the `{workdir}`, the scaffold-spec path, the DUT RTL filelist, 
 It writes `{workdir}/conformance-review.md` itself. You never retype a finding: a review passed
 through your hands is your judgment wearing the reviewer's name, and this gate decides your status.
 
-On wake-up, reap its `STATUS:` line and validate the file it left:
+On wake-up, reap its `STATUS:` line and read the file it left. Any finding whose heading ends
+in `BLOCKING` stops the round; the rest are the reviewer telling you something it decided not to
+stop for, so surface those as `⚠ <tp_id>` in your completion summary and move on.
 
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py validate-review --review {workdir}/conformance-review.md
-```
+Read it, do not adjudicate it. The mark is the reviewer's and you do not revisit it, and you do
+not need to be trusted with that: `--phase final` reads the same headings before it will write a
+pass, so a trip you walk past costs the round either way (step 4).
 
-Exit 0 prints one line, `{"gate": "trip"|"clear", "flagged": [...]}`: the reviewer's own
-`BLOCKING` marks, counted rather than eyeballed. Findings it did not mark never appear there.
-Surface those as `⚠ <tp_id>` in your completion summary and move on.
+**Nothing marked:** go to step 3.
 
-**`gate=clear`:** go to step 3.
-
-**`gate=trip`:** dispatch one conformance-fix `Task(run_in_background=True)` per
+**Something marked:** dispatch one conformance-fix `Task(run_in_background=True)` per
 [`references/conformance-fix-task-contract.md`](references/conformance-fix-task-contract.md), with
 the flagged findings as its fix scope. It is the one that tries, so it is the one that decides
 whether the check can be made adequate at all.
