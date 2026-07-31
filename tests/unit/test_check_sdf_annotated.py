@@ -21,9 +21,7 @@ def _run(tmp_path, log_text):
 def test_zero_annotated_fails(tmp_path):
     r = _run(tmp_path, "Back-annotation\nNumber of cells annotated = 0\n")
     assert r.returncode == 1
-    assert (
-        b"phase=compile category=sdf" in r.stderr
-    )  # A: producer self-reports phase too
+    assert b"phase=compile" in r.stderr  # A: producer self-reports phase too
 
 
 def test_nonzero_annotated_passes(tmp_path):
@@ -34,9 +32,7 @@ def test_nonzero_annotated_passes(tmp_path):
 def test_no_summary_line_fails_loud(tmp_path):
     r = _run(tmp_path, "nothing about back annotation here\n")
     assert r.returncode == 1
-    assert (
-        b"phase=compile category=sdf" in r.stderr
-    )  # A: producer self-reports phase too
+    assert b"phase=compile" in r.stderr  # A: producer self-reports phase too
     assert b"no SDF annotation summary" in r.stderr  # distinct from a real 0 (P3)
 
 

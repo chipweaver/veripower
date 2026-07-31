@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/synthesis/result.schema.json",
   "title": "synthesis result.json contract",
-  "description": "Complete contract for asic/<module>/Design/synthesis/result.json. On status=pass, stage_specific.ppa_actual carries area and timing_slack (one record each; power_mw lives in power-analysis, not synthesis). On status=fail, stage_specific.{fail_reason, failure_kind} are required (if/then below); fail_reason is the one-line failure narrative. On a PPA-gate fail (failure_kind=ppa) ppa_actual and violations are additionally required (if/then below); they are not required on infra/tooling early-fail (license / external-reference / trigger paths).",
+  "description": "Complete contract for asic/<module>/Design/synthesis/result.json. On status=pass, stage_specific.ppa_actual carries area and timing_slack (one record each; power_mw lives in power-analysis, not synthesis). On status=fail, stage_specific.fail_reason is required (if/then below): the one-line cause, which on a run that produced nothing gradeable is all there is. Carrying violations[] obliges ppa_actual with it (dependentRequired), so the gate's judgement never travels without the measurements behind it; an early fail carries neither, because no gate ran.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
@@ -10,10 +10,10 @@
         "stage": {"const": "synthesis"},
         "stage_specific": {
           "type": "object",
+          "dependentRequired": {"violations": ["ppa_actual"]},
           "properties": {
             "fix_owner": {"type": "string", "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."},
             "fail_reason":  {"type": "string", "minLength": 1},
-            "failure_kind": {"type": "string", "enum": ["infra", "tooling", "ppa"], "description": "Failure category on status=fail. infra = external reference / trigger / license missing (DC not run); tooling = DC ran but its output is unusable (compile/elab/synthesize error, or a required report missing/unparseable); ppa = PPA gate not met (area/timing)."},
             "ppa_actual": {
               "type": "array",
               "items": {
@@ -52,17 +52,7 @@
     },
     {
       "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["fail_reason", "failure_kind"]}}}
-    },
-    {
-      "if": {
-        "properties": {
-          "status": {"const": "fail"},
-          "stage_specific": {"properties": {"failure_kind": {"const": "ppa"}}, "required": ["failure_kind"]}
-        },
-        "required": ["status", "stage_specific"]
-      },
-      "then": {"properties": {"stage_specific": {"required": ["ppa_actual", "violations"]}}}
+      "then": {"properties": {"stage_specific": {"required": ["fail_reason"]}}}
     }
   ]
 }

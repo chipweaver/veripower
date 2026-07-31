@@ -31,7 +31,6 @@ _VALID_SCAFFOLD = {
             "id": "S1",
             "sequence_ref": "idle_seq",
             "scenario": "idle",
-            "duration_cycles": 1000,
         }
     ],
 }
@@ -188,6 +187,21 @@ def test_cant_infer_top_fail_closed(tmp_path):
     r = _run(m, workdir, main)  # no --top
     assert r.returncode == 1
     assert "cannot infer" in r.stderr
+
+
+def test_two_netlists_fail_closed_rather_than_picking_one(tmp_path):
+    # An ambiguous out/*_syn.v set used to resolve to whichever name sorted first, so a
+    # run could analyse a design nobody asked about and report a power_mw for it. Exactly
+    # one match or nothing; --top is the way out of the ambiguity, not a way past it.
+    m, workdir, main = _make_tree(tmp_path, top="dut")
+    out = tmp_path / "asic" / m / "Design" / "synthesis" / "out"
+    (out / "aaa_syn.v").write_text("module aaa; endmodule\n")
+    r = _run(m, workdir, main)  # no --top
+    assert r.returncode == 1
+    assert "2 out/*_syn.v" in r.stderr
+    assert not (workdir / "Makefile").exists()  # nothing deployed, so the retry is open
+    # and naming one resolves it
+    assert _run(m, workdir, main, extra=["--top", "dut"]).returncode == 0
 
 
 def test_already_deployed_guard(tmp_path):

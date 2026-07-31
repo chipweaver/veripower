@@ -181,7 +181,6 @@ def test_fresh_selfdescribing_failure_dispatches_the_owner_its_envelope_named(
         json.dumps(
             {
                 "stage_specific": {
-                    "failure_kind": "cdc",
                     "fix_owner": "rtl-design",
                     "fail_reason": "clock crossing without a synchronizer",
                 }

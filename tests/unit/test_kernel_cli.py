@@ -77,7 +77,7 @@ _STAGE_SPECIFIC = {
         "failures": [],
         "ppa_actual": [],
         "violations": [],
-        "power_by_corner": [],
+        "power_by_scenario": [],
     },
 }
 

@@ -2,8 +2,8 @@
 
 Used by the power-analysis skill to populate result.json's stage_specific:
   - parse_total_power_mw       → ppa_actual[].value (mW)
-  - parse_three_components     → power_by_corner[].{internal,switching,leakage}_mw
-  - parse_annotation_rate      → power_by_corner[].saif_annotation_rate
+  - parse_three_components     → power_by_scenario[].{internal,switching,leakage}_mw
+  - parse_annotation_rate      → power_by_scenario[].saif_annotation_rate
 
 Source files:
   - power_flat.rpt            ← from `report_power -verbose` (no -hierarchy);
@@ -216,13 +216,12 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
     failures: list[dict] = []
     saif_artifacts: list[dict] = []
     ppa_actual: list[dict] = []
-    power_by_corner: list[dict] = []
+    power_by_scenario: list[dict] = []
 
     for s in scenarios:
         sid = s.get("id", "")
         seq = s.get("sequence_ref", "")
         corner = s.get("corner_intent", "")
-        dur = s.get("duration_cycles")
         saif = workdir / "saif" / f"{sid}.saif"
         size = saif.stat().st_size if saif.is_file() else 0
         flat = workdir / "reports_ptpx" / sid / "power_flat.rpt"
@@ -250,9 +249,7 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
                 {
                     "id": sid,
                     "saif_path": f"saif/{sid}.saif",
-                    "corner_intent": corner,
                     "sequence_ref": seq,
-                    "duration_cycles": dur,
                 }
             )
 
@@ -303,7 +300,7 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
                 "source": f"reports_ptpx/{sid}/power_flat.rpt",
             }
         )
-        power_by_corner.append(
+        power_by_scenario.append(
             {
                 "scenario_id": sid,
                 "power_mw": None if scenario_failed else total,
@@ -321,13 +318,12 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
     if failures:
         payload = {
             "verdict": "fail",
-            "failure_kind": "tooling",
             "saif_artifacts": saif_artifacts,
             "compile_info": compile_info,
             "failures": failures,
             "ppa_actual": ppa_actual,
             "violations": [],
-            "power_by_corner": power_by_corner,
+            "power_by_scenario": power_by_scenario,
         }
         f0 = failures[0]
         summ = f0["error_summary"]
@@ -372,10 +368,8 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
         "failures": [],
         "ppa_actual": ppa_actual,
         "violations": violations,
-        "power_by_corner": power_by_corner,
+        "power_by_scenario": power_by_scenario,
     }
-    if violations:
-        payload["failure_kind"] = "ppa"
     if not targets:
         payload["ppa_gate_skipped"] = True
     return 0, payload
@@ -390,7 +384,7 @@ _FOLD_KEYS = (
     "failures",
     "ppa_actual",
     "violations",
-    "power_by_corner",
+    "power_by_scenario",
     "ppa_gate_skipped",
 )
 
@@ -425,7 +419,7 @@ def _fold(payload: dict) -> dict:
     return {k: payload[k] for k in _FOLD_KEYS if k in payload}
 
 
-def _tooling_reason(data: dict) -> str:
+def _data_failure_reason(data: dict) -> str:
     f = (data.get("failures") or [{}])[0]
     summ = f.get("error_summary", "PT-PX data failure")
     sid = f.get("id")
@@ -433,49 +427,86 @@ def _tooling_reason(data: dict) -> str:
 
 
 def enumerate_artifacts(workdir: Path) -> list[dict]:
+    """What promote copies into canonical and the kernel fingerprints on every reap and
+    every freshness query. The rule: what this run produced or resolved, not what the
+    skill shipped.
+
+    So `Makefile`, `README.md` and `scripts/` are absent — they arrive from templates/
+    byte-identical every round, and the plugin version that carries them is already in
+    the outcome's tool identity. `env.sh` stays because bootstrap substitutes this run's
+    TOP and upstream locations into it, and `scaffold/` because its power tests are
+    rendered from this round's plan.
+
+    Absent for a different reason: `simv` and `simv.daidir`, VCS build output regenerable
+    from the netlist and the filelists — on a real module the daidir alone is ~200 MB of
+    incremental-compile cache; and `make.out`, which is the tee'd steps' own logs
+    concatenated (measured line-for-line against them), so it is those files a second
+    time.
+    """
     workdir = Path(workdir)
     candidates = [
         "env.sh",
-        "Makefile",
-        "README.md",
-        "scripts",
         "scaffold",
         "tb_filelist_abs.f",
-        "simv",
-        "simv.daidir",
         "saif",
         "reports_ptpx",
         "gls-compile-log.txt",
         "gls-run-log.txt",
         "ptpx.log",
-        "make.out",
     ]  # files AND dirs; envelope.schema forbids self-listing result.json (excluded by construction)
     return [{"path": pth} for pth in candidates if (workdir / pth).exists()]
 
 
-def build_result(workdir, module, plan_path, targets, fix_owner=None) -> int:
+def build_result(
+    workdir,
+    module,
+    plan_path,
+    targets,
+    fix_owner=None,
+    fail_reason=None,
+) -> int:
     """Assemble the lean power-analysis result.json. Reuses run() for the PT-PX gate
     (in-process, per-scenario assembly verbatim); its payload ALREADY carries the
     stage_specific fields + verdict, so this is thin — fold the fields through, set
-    status/failure_kind/fail_reason, enumerate artifacts, write the envelope.
-    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED).
+    status and fail_reason, enumerate artifacts, write the envelope.
+    Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED).
 
-    fix_owner is the one judgment this verb cannot derive: which rule must act. The reports
-    say what failed; whose artifact is at fault is the caller's reading."""
+    Two things this verb cannot derive, so the caller states them:
+
+    fix_owner — which rule must act. The reports say what failed; whose artifact is at
+    fault is the caller's reading.
+
+    fail_reason — the cause of a run that produced no gradeable reports: a missing
+    external reference, a license, a non-zero `make`. Supplying it IS the declaration of
+    failure, so it short-circuits the gate — which cannot run anyway, since the reports
+    it parses are the thing that never landed."""
     workdir = Path(workdir)
+
+    if fail_reason is not None:
+        ss = {"fail_reason": fail_reason}
+        if fix_owner:
+            ss["fix_owner"] = fix_owner
+        _write_result(
+            workdir,
+            _envelope(
+                module,
+                status="fail",
+                stage_specific=ss,
+                artifacts=enumerate_artifacts(workdir),
+            ),
+        )
+        return 0
 
     rc, data = run(plan_path, workdir, targets)  # reuse the gate verbatim
     ss = _fold(data)
 
     if rc != 0:
-        # Parser exit 1: failures[] populated, verdict=fail, failure_kind=tooling.
-        ss["failure_kind"] = data.get("failure_kind", "tooling")
-        ss["fail_reason"] = _tooling_reason(data)
+        # Parser exit 1: failures[] populated, verdict=fail.
+        ss["fail_reason"] = _data_failure_reason(data)
         status = "fail"
     elif data["verdict"] == "fail":
         # PPA-gate miss: power_mw exceeded target.
         status = "fail"
-        ss["failure_kind"] = "ppa"
         ss["fail_reason"] = "power_mw exceeds target"
     else:
         status = "pass"
@@ -495,14 +526,36 @@ def build_result(workdir, module, plan_path, targets, fix_owner=None) -> int:
     return 0
 
 
-def finalize(workdir, module, scaffold, ppa_targets, fix_owner=None) -> int:
+def finalize(
+    workdir,
+    module,
+    scaffold,
+    ppa_targets,
+    fix_owner=None,
+    fail_reason=None,
+) -> int:
     """Parse PT-PX reports, judge the power_mw PPA gate, write the lean result.json.
-    exit 0 = written (pass or fail); exit 2 = BLOCKED (any internal raise) — never
-    conflated with status=fail. (Owns the policy the deleted main() finalize branch had.)
+    exit 0 = written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason or any
+    internal raise) — never conflated with status=fail.
     `scaffold` is the simulation-plan workdir (build_result's `plan_path`);
     `ppa_targets` is the ppa_targets JSON (build_result's `targets`)."""
+    if fail_reason is not None:
+        if not fail_reason.strip():
+            print(
+                "[power finalize] BLOCKED: --fail-reason must be a non-empty "
+                "one-line cause",
+                file=sys.stderr,
+            )
+            return 2
     try:
-        return build_result(workdir, module, scaffold, ppa_targets, fix_owner)
+        return build_result(
+            workdir,
+            module,
+            scaffold,
+            ppa_targets,
+            fix_owner,
+            fail_reason,
+        )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        print(f"[power finalize] FAIL=internal {exc}", file=sys.stderr)
+        print(f"[power finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

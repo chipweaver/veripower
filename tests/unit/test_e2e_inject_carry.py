@@ -71,7 +71,7 @@ _STAGE_SPECIFIC = {
         "failures": [],
         "ppa_actual": [],
         "violations": [],
-        "power_by_corner": [],
+        "power_by_scenario": [],
     },
 }
 
@@ -250,7 +250,6 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
                     "id": "S1",
                     "sequence_ref": "idle_seq",
                     "scenario": "idle",
-                    "duration_cycles": 1000,
                 }
             ]
         ),

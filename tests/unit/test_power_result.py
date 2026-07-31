@@ -230,13 +230,11 @@ _SCEN = [
         "id": "S1",
         "sequence_ref": "idle_seq",
         "corner_intent": "TT@25C",
-        "duration_cycles": 1000,
     },
     {
         "id": "S2",
         "sequence_ref": "busy_seq",
         "corner_intent": "TT@25C",
-        "duration_cycles": 5000,
     },
 ]
 
@@ -258,13 +256,15 @@ def test_run_pass_within_targets(tmp_path):
     assert (
         len(data["saif_artifacts"])
         == len(data["ppa_actual"])
-        == len(data["power_by_corner"])
+        == len(data["power_by_scenario"])
         == 2
     )
     assert data["compile_info"] == {"vcs_version": "L-2016.06_Full64"}
     # The field that qualifies power_mw must survive the whole run, not just the parser.
-    assert [c["saif_annotation_rate"] for c in data["power_by_corner"]] == [0.95, 0.95]
-    assert "failure_kind" not in data
+    assert [c["saif_annotation_rate"] for c in data["power_by_scenario"]] == [
+        0.95,
+        0.95,
+    ]
 
 
 def test_run_ppa_miss_is_exit0_fail(tmp_path):
@@ -283,7 +283,7 @@ def test_run_ppa_miss_is_exit0_fail(tmp_path):
         _json.dumps([{"dim": "power_mw", "target": 1.2, "scenario_id": "S2"}]),
     )
     assert rc == 0
-    assert data["verdict"] == "fail" and data["failure_kind"] == "ppa"
+    assert data["verdict"] == "fail"
     assert data["violations"] == [
         {
             "dim": "power_mw",
@@ -317,13 +317,12 @@ def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
     rc, data = p.run(plan, wd, "[]")
     assert rc != 0
     assert "FAIL=saif_empty:S1" in capsys.readouterr().err
-    assert data["failure_kind"] == "tooling"
     assert data["failures"][0]["category"] == "saif_dump"
     assert (
         data["failures"][0]["phase"] == "run"
     )  # D: SAIF is a run product (no separate saif phase)
     assert data["ppa_actual"][0]["value"] is None  # P1: nulled despite parseable flat
-    assert data["power_by_corner"][0]["power_mw"] is None
+    assert data["power_by_scenario"][0]["power_mw"] is None
     assert all(a["id"] != "S1" for a in data["saif_artifacts"])
 
 
@@ -409,7 +408,6 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
                     "id": "S1",
                     "sequence_ref": "idle_seq",
                     "corner_intent": "TT@25C",
-                    "duration_cycles": 2000,
                 }
             ]
         )
@@ -452,7 +450,7 @@ def test_build_result_pass_lean_shape(tmp_path):
 
 def test_build_result_tooling_fail_on_invariant(tmp_path):
     # A report whose Total != sum(components) by >> 1% (the parser's invariant)
-    # -> parser exit 1 -> build_result writes failure_kind=tooling + failures[].
+    # -> parser exit 1 -> build_result writes fail_reason + failures[].
     wd, plan = _make_workdir(
         tmp_path,
         _SCEN[:1],
@@ -461,13 +459,12 @@ def test_build_result_tooling_fail_on_invariant(tmp_path):
     )  # deliberately off
     assert p.build_result(wd, module="tpu_top", plan_path=str(plan), targets="[]") == 0
     ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["failure_kind"] == "tooling"
     assert ss["failures"] and ss["failures"][0]["category"] == "ptpx_data"
     assert isinstance(ss["fail_reason"], str) and ss["fail_reason"]
 
 
 def test_build_result_ppa_miss(tmp_path):
-    # the failure_kind=ppa branch of build_result: a scenario over target ->
+    # the PPA-miss branch of build_result: a scenario over target ->
     # status=fail + violations + ppa_actual (the schema's ppa-fail if/then).
     wd, plan = _make_workdir(
         tmp_path,
@@ -483,7 +480,6 @@ def test_build_result_ppa_miss(tmp_path):
         p.build_result(wd, module="tpu_top", plan_path=str(plan), targets=targets) == 0
     )
     ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["failure_kind"] == "ppa"
     assert ss["violations"] == [
         {
             "dim": "power_mw",
@@ -515,17 +511,29 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
         text=True,
     )
     assert r.returncode == 2  # argparse: missing --module
-    # missing --scaffold -> argparse exit 2 (required)
+    # --scaffold is not a flag: the scaffold location comes from dispatch.json, so a
+    # caller who passes it is corrected rather than trusted.
     r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--workdir", str(tmp_path), "--module", "m"],
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(tmp_path),
+            "--module",
+            "m",
+            "--scaffold",
+            str(tmp_path),
+        ],
         capture_output=True,
         text=True,
     )
-    assert r.returncode == 2  # argparse: missing --scaffold
+    assert r.returncode == 2
+    assert "unrecognized arguments: --scaffold" in r.stderr
 
 
 def test_finalize_cli_happy_path(tmp_path):
-    # End-to-end through _cmd_finalize (lazy handler import + --scaffold arg mapping
+    # End-to-end through _cmd_finalize (lazy handler import + the dispatch.json read
     # + the ppa.json sidecar read), not just in-process build_result. A handler typo
     # would pass every other test (which call build_result directly) but fail here.
     # finalize reads PPA targets via the injected dispatch.json "ppa" key (no sibling
@@ -537,7 +545,9 @@ def test_finalize_cli_happy_path(tmp_path):
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
     (wd / "dispatch.json").write_text(
-        _json.dumps({"inputs": {"ppa": str(tmp_path / "no-ppa")}})
+        _json.dumps(
+            {"inputs": {"ppa": str(tmp_path / "no-ppa"), "scaffold": str(plan)}}
+        )
     )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
     r = subprocess.run(
@@ -549,8 +559,6 @@ def test_finalize_cli_happy_path(tmp_path):
             str(wd),
             "--module",
             "tpu_top",
-            "--scaffold",
-            str(plan),
         ],
         capture_output=True,
         text=True,
@@ -590,7 +598,9 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
             ]
         )
     )
-    (wd / "dispatch.json").write_text(_json.dumps({"inputs": {"ppa": str(spec_dir)}}))
+    (wd / "dispatch.json").write_text(
+        _json.dumps({"inputs": {"ppa": str(spec_dir), "scaffold": str(plan)}})
+    )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
     r = subprocess.run(
         [
@@ -601,8 +611,6 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
             str(wd),
             "--module",
             "tpu_top",
-            "--scaffold",
-            str(plan),
         ],
         capture_output=True,
         text=True,
@@ -610,7 +618,7 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
     assert r.returncode == 0, r.stderr
     env = _json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
-    assert env["status"] == "fail" and ss["failure_kind"] == "ppa"
+    assert env["status"] == "fail"
     assert ss["violations"] == [
         {
             "dim": "power_mw",
@@ -644,15 +652,26 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
         (wd / d).mkdir()
     (wd / "result.json").write_text("{}")  # must NOT self-list
     paths = [a["path"] for a in p.enumerate_artifacts(wd)]
+    # what this run produced or resolved
     for expect in [
         "env.sh",
-        "Makefile",
-        "scripts",
+        "scaffold",
+        "tb_filelist_abs.f",
         "saif",
         "reports_ptpx",
-        "simv.daidir",
+        "gls-compile-log.txt",
     ]:
         assert expect in paths
+    # what the skill shipped, or what a rebuild reproduces, or a log's second copy
+    for absent in [
+        "Makefile",
+        "README.md",
+        "scripts",
+        "simv",
+        "simv.daidir",
+        "make.out",
+    ]:
+        assert absent not in paths, f"{absent} is on disk but must not be promoted"
     assert "result.json" not in paths
     assert all((wd / pth).exists() for pth in paths)  # only present paths (file OR dir)
 
@@ -686,7 +705,7 @@ def test_golden_real_reports_lean_pass(tmp_path):
         "failures",
         "ppa_actual",
         "violations",
-        "power_by_corner",
+        "power_by_scenario",
         "ppa_gate_skipped",
     }
     assert "verdict" not in ss
@@ -729,3 +748,156 @@ def test_golden_is_schema_valid(tmp_path):
     Draft202012Validator(stage_schema, registry=registry).validate(
         env
     )  # raises on invalid
+
+
+# ── declared failure: the paths where the gate has nothing to read ──────────
+#
+# Before finalize grew --fail-reason, these two paths (a missing external reference, a
+# non-zero `make`) had no verb at all: SKILL.md told the agent to write status=fail by
+# hand while the same step forbade hand-assembling the envelope, and an envelope the
+# schema rejects reaps as blocked rather than fail, so a hand-written one spent a
+# routable failure on a human. These tests hold the verb to being the only writer.
+
+
+def _declared(tmp_path, **kw):
+    wd = tmp_path / "wd"
+    wd.mkdir()
+    rc = p.build_result(wd, "tpu_top", tmp_path / "nonexistent-plan", "[]", **kw)
+    return rc, wd
+
+
+def test_declared_fail_writes_the_envelope_without_touching_the_reports(tmp_path):
+    # The workdir holds no reports and the scaffold path does not exist — the state a
+    # missing external reference leaves behind. The declaration must precede run(),
+    # which would raise on the absent power-scenarios.json.
+    rc, wd = _declared(
+        tmp_path,
+        fail_reason="external reference missing: Design/synthesis/out/tpu_top_syn.sdf",
+        fix_owner="synthesis",
+    )
+    assert rc == 0
+    env = _json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert env["status"] == "fail"
+    assert ss["fix_owner"] == "synthesis"
+    assert "tpu_top_syn.sdf" in ss["fail_reason"]
+    # The pass-shape is not invented on a run that produced none of it.
+    for absent in ("saif_artifacts", "power_by_scenario", "ppa_actual", "failures"):
+        assert absent not in ss
+
+
+def test_declared_fail_validates_against_the_stage_schema(tmp_path):
+    # The defect this whole change exists for: an envelope the schema rejects reaps as
+    # `blocked`, so the fix_owner the agent already worked out never reaches the kernel.
+    from framework.scripts import facts
+
+    _, wd = _declared(
+        tmp_path,
+        fail_reason="gls-compile failed: phase=compile, LIB_V not readable",
+        fix_owner="simulation",
+    )
+    env = _json.loads((wd / "result.json").read_text())
+    assert facts.validate_result("power-analysis", env) is None
+
+
+def test_declared_fail_omits_fix_owner_when_the_caller_cannot_name_one(tmp_path):
+    _, wd = _declared(tmp_path, fail_reason="pt_shell license checkout failed")
+    ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert "fix_owner" not in ss  # an unnamed owner is how a human gets called in
+
+
+def test_finalize_blocked_on_an_empty_declaration(tmp_path):
+    # A declaration with no cause in it is BLOCKED, never status=fail — and BLOCKED
+    # writes nothing, so the retry is not looking at a half-declared envelope.
+    wd = tmp_path / "wd"
+    wd.mkdir()
+    assert p.finalize(wd, "m", tmp_path / "plan", "[]", None, "   ") == 2
+    assert not (wd / "result.json").exists()
+
+
+def test_declared_fail_through_the_cli(tmp_path):
+    # End-to-end through _cmd_finalize: the flags must reach result.finalize in the
+    # right positions. A swapped pair would pass every in-process test above.
+    wd = tmp_path / "wd"
+    wd.mkdir()
+    (wd / "dispatch.json").write_text(
+        _json.dumps(
+            {
+                "inputs": {
+                    "ppa": str(tmp_path / "no-ppa"),
+                    "scaffold": str(tmp_path / "plan"),
+                }
+            }
+        )
+    )
+    MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
+    r = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(wd),
+            "--module",
+            "tpu_top",
+            "--fail-reason",
+            "ptpx failed: phase=ptpx, read_saif annotated 0%",
+            "--fix-owner",
+            "simulation-plan",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["fix_owner"] == "simulation-plan"
+    assert "annotated 0%" in ss["fail_reason"]
+
+
+# ── failures[].category has exactly one writer ──────────────────────────────
+
+
+def test_category_enum_is_exactly_what_the_parser_writes():
+    # 386b067 narrowed the enum to what the parser can detect but left the deployed
+    # scripts printing `category=sdf` / `category=netlist`, which SKILL.md told the agent
+    # to copy verbatim — two values the schema rejects. And `tooling` survived that commit
+    # on the strength of a condition the parser has no branch for: nothing in the history
+    # ever wrote it. The enum and the parser's literals are now one set.
+    import re
+
+    from tests._skills_sot import load_stage_schema
+
+    schema = load_stage_schema("power-analysis")
+    enum = None
+    for entry in schema["allOf"]:
+        ss = entry.get("properties", {}).get("stage_specific", {})
+        f = ss.get("properties", {}).get("failures")
+        if f:
+            enum = set(f["items"]["properties"]["category"]["enum"])
+    src = (REPO_ROOT / "skills/power-analysis/scripts/power/result.py").read_text()
+    written = set(re.findall(r'"category":\s*"([a-z_]+)"', src))
+    assert enum == written, (
+        f"schema enum {sorted(enum)} vs parser writes {sorted(written)}"
+    )
+
+
+def test_no_deployed_script_emits_a_category_for_the_agent_to_transcribe():
+    # The agent's failure path is --fail-reason prose now, so a `category=` token in a
+    # tool log has no legal destination: transcribing one fails schema validation at reap
+    # and lands `blocked` instead of a routable fail. `phase=` stays — it names which make
+    # step broke, which the caller carries into the reason sentence.
+    tmpl = REPO_ROOT / "skills/power-analysis/templates"
+    offenders = [
+        f"{f.relative_to(REPO_ROOT)}:{n}"
+        for f in sorted(tmpl.rglob("*"))
+        if f.is_file() and f.suffix in {".sh", ".tcl", ".py", ".tmpl"}
+        for n, line in enumerate(f.read_text().splitlines(), 1)
+        if "category=" in line
+    ]
+    assert not offenders, f"deployed scripts still print a category: {offenders}"
+    # and at least one still prints the phase, so the removal did not take both.
+    assert any(
+        "phase=" in f.read_text()
+        for f in tmpl.rglob("*")
+        if f.is_file() and f.suffix in {".sh", ".tcl"}
+    )

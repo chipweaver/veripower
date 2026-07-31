@@ -39,7 +39,7 @@ def test_pass_without_violations_rejected():
 
 def test_infra_fail_without_timing_validates():
     valid, err = _validate(
-        {"fail_reason": "PT license missing", "failure_kind": "infra"},
+        {"fail_reason": "PT license missing"},
         status="fail",
     )
     assert valid, err
@@ -49,7 +49,6 @@ def test_ppa_fail_with_timing_and_violations_validates():
     valid, err = _validate(
         {
             "fail_reason": "setup/hold timing not met",
-            "failure_kind": "ppa",
             "violations": [
                 {
                     "dim": "timing_hold",
@@ -69,7 +68,6 @@ def test_ppa_fail_without_timing_rejected():
     valid, _ = _validate(
         {
             "fail_reason": "setup/hold timing not met",
-            "failure_kind": "ppa",
             "violations": [
                 {
                     "dim": "timing_hold",
@@ -86,7 +84,7 @@ def test_ppa_fail_without_timing_rejected():
 
 def test_tooling_fail_without_timing_validates():
     valid, err = _validate(
-        {"fail_reason": "timing-report.txt unparseable", "failure_kind": "tooling"},
+        {"fail_reason": "timing-report.txt unparseable"},
         status="fail",
     )
     assert valid, err

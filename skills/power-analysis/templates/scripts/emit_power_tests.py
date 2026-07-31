@@ -130,7 +130,6 @@ def main() -> int:
             "SEQUENCE_REF": seq,
             "AGENT_NAME": agent_name,
             "SCENARIO_ID": s.get("id", ""),
-            "DURATION_CYCLES": str(s.get("duration_cycles", 1000)),
         }
         test_out = args.out_dir / f"power_{seq}_test.sv"
         write_if_changed(test_out, render(test_tmpl, mapping))

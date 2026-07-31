@@ -172,7 +172,6 @@ def build_result(
     slack_target,
     fix_owner=None,
     fail_reason=None,
-    failure_kind=None,
 ) -> int:
     """Assemble the synthesis result.json. Reuses run() for the PPA gate (in-process),
     then derives the header + artifacts + writes the envelope. Returns 0 (result.json
@@ -186,16 +185,12 @@ def build_result(
 
     fail_reason — the cause of a run that produced no gradeable reports, or died after
     writing them. Supplying it IS the declaration of failure: it wins over the gate,
-    because the agent watched dc_shell and this verb can only read what landed on disk.
-
-    failure_kind — infra or tooling for such a declaration. Absent reports look identical
-    whether DC never started (no license) or aborted at elaborate, and only the caller
-    saw which."""
+    because the agent watched dc_shell and this verb can only read what landed on disk."""
     workdir = Path(workdir)
     reports = workdir / "reports"
 
     if fail_reason is not None:
-        ss = {"fail_reason": fail_reason, "failure_kind": failure_kind}
+        ss = {"fail_reason": fail_reason}
         if fix_owner:
             ss["fix_owner"] = fix_owner
         _write_result(
@@ -214,10 +209,7 @@ def build_result(
         token = (
             "missing" if rc == 1 else "unparseable"
         )  # run(): 1=missing, 3=unparseable
-        ss = {
-            "fail_reason": _FAIL_REASON[token],
-            "failure_kind": "tooling",
-        }
+        ss = {"fail_reason": _FAIL_REASON[token]}
         if fix_owner:
             ss["fix_owner"] = fix_owner
         _write_result(
@@ -246,12 +238,10 @@ def build_result(
         # no netlist. Promoting that as a pass publishes a synthesis the two downstream
         # rules declare as their input and cannot find.
         status = "fail"
-        ss["failure_kind"] = "tooling"
         ss["fail_reason"] = (
             f"netlist incomplete: dc_shell wrote no {', '.join(missing)}"
         )
     elif status == "fail":
-        ss["failure_kind"] = "ppa"
         ss["fail_reason"] = "PPA target(s) not met"
     if status == "fail" and fix_owner:
         ss["fix_owner"] = fix_owner
@@ -327,23 +317,14 @@ def finalize(
     slack_target,
     fix_owner=None,
     fail_reason=None,
-    failure_kind=None,
 ) -> int:
     """Parse DC reports, judge PPA, write result.json. exit 0 = written (pass or fail);
-    exit 2 = BLOCKED (an empty --fail-reason, one without a --failure-kind, or any
-    internal raise) — never conflated with status=fail."""
+    exit 2 = BLOCKED (an empty --fail-reason, or any internal raise) — never conflated with status=fail."""
     if fail_reason is not None:
         if not fail_reason.strip():
             print(
                 "[synthesis finalize] BLOCKED: --fail-reason must be a non-empty "
                 "one-line cause",
-                file=sys.stderr,
-            )
-            return 2
-        if not failure_kind:
-            print(
-                "[synthesis finalize] BLOCKED: --fail-reason needs --failure-kind "
-                "{infra,tooling}",
                 file=sys.stderr,
             )
             return 2
@@ -355,7 +336,6 @@ def finalize(
             slack_target,
             fix_owner,
             fail_reason,
-            failure_kind,
         )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[synthesis finalize] BLOCKED: {exc}", file=sys.stderr)

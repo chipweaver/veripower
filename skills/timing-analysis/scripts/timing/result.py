@@ -261,9 +261,7 @@ def enumerate_artifacts(workdir: Path) -> list:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def build_result(
-    workdir, module, fix_owner=None, fail_reason=None, failure_kind=None
-) -> int:
+def build_result(workdir, module, fix_owner=None, fail_reason=None) -> int:
     """Assemble the lean timing-analysis result.json. Reuses run() for the timing gate
     (in-process), then derives the header + artifacts + writes the envelope.
     Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED).
@@ -275,16 +273,12 @@ def build_result(
 
     fail_reason — the cause of a run that produced no gradeable report. Supplying it IS
     the declaration of failure: it wins over the gate, because the agent watched pt_shell
-    and this verb can only read what landed on disk.
-
-    failure_kind — infra or tooling for such a declaration. An absent report looks
-    identical whether PrimeTime never started (no license) or died at link_design, and
-    only the caller saw which."""
+    and this verb can only read what landed on disk."""
     workdir = Path(workdir)
     report = workdir / "timing-report.txt"
 
     if fail_reason is not None:
-        ss = {"fail_reason": fail_reason, "failure_kind": failure_kind}
+        ss = {"fail_reason": fail_reason}
         if fix_owner:
             ss["fix_owner"] = fix_owner
         _write_result(
@@ -303,10 +297,7 @@ def build_result(
         token = (
             "missing" if rc == 1 else "unparseable"
         )  # run(): 1=missing, 3=unparseable
-        ss = {
-            "fail_reason": _FAIL_REASON[token],
-            "failure_kind": "tooling",
-        }
+        ss = {"fail_reason": _FAIL_REASON[token]}
         if fix_owner:
             ss["fix_owner"] = fix_owner
         _write_result(
@@ -335,10 +326,8 @@ def build_result(
         # over a boundary the STA never covered, and this stage exists to be the
         # independent check that catches it.
         status = "fail"
-        ss["failure_kind"] = "tooling"
         ss["fail_reason"] = f"STA did not cover the boundary: {left_out}"
     elif status == "fail":
-        ss["failure_kind"] = "ppa"
         ss["fail_reason"] = "setup/hold timing not met"
     if status == "fail" and fix_owner:
         ss["fix_owner"] = fix_owner
@@ -354,12 +343,10 @@ def build_result(
     return 0
 
 
-def finalize(
-    workdir, module, fix_owner=None, fail_reason=None, failure_kind=None
-) -> int:
+def finalize(workdir, module, fix_owner=None, fail_reason=None) -> int:
     """Parse the PT report, judge the timing gate, write the lean result.json.
     exit 0 = written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason, one
-    without a --failure-kind, or any internal raise) — never conflated with
+    or any internal raise) — never conflated with
     status=fail."""
     if fail_reason is not None:
         if not fail_reason.strip():
@@ -369,15 +356,8 @@ def finalize(
                 file=sys.stderr,
             )
             return 2
-        if not failure_kind:
-            print(
-                "[timing finalize] BLOCKED: --fail-reason needs --failure-kind "
-                "{infra,tooling}",
-                file=sys.stderr,
-            )
-            return 2
     try:
-        return build_result(workdir, module, fix_owner, fail_reason, failure_kind)
+        return build_result(workdir, module, fix_owner, fail_reason)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[timing finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2

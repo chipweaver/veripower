@@ -231,7 +231,6 @@ def test_an_untimed_boundary_cannot_pass(tmp_path):
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
-    assert ss["failure_kind"] == "tooling"  # not ppa: no target was missed
     assert "2 of 8 output bits" in ss["fail_reason"]
     assert ss["fix_owner"] == "synthesis"
     assert ss["timing"]["setup"]["met"] is True  # the measurements still land
@@ -257,7 +256,6 @@ def test_an_untimed_boundary_outranks_a_missed_target(tmp_path):
     )
     assert sp.build_result(wd, module="tpu_top") == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["failure_kind"] == "tooling"
     assert ss["violations"][0]["dim"] == "timing_hold"
 
 
@@ -345,20 +343,14 @@ def test_build_result_tooling_fail_on_unparseable(tmp_path):
     wd = _workdir(tmp_path, report=broken + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
     assert sp.build_result(wd, module="tpu_top") == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert (
-        ss["failure_kind"] == "tooling"
-        and ss["fail_reason"] == "timing-report.txt unparseable"
-    )
-    assert "timing" not in ss  # heavy pass-shape dropped on tooling-fail
+    assert ss["fail_reason"] == "timing-report.txt unparseable"
+    assert "timing" not in ss  # heavy pass-shape dropped when nothing was graded
 
 
 def test_build_result_tooling_fail_on_missing_report(tmp_path):
     assert sp.build_result(tmp_path, module="tpu_top") == 0  # no report file
     ss = json.loads((tmp_path / "result.json").read_text())["stage_specific"]
-    assert (
-        ss["failure_kind"] == "tooling"
-        and ss["fail_reason"] == "timing-report.txt missing"
-    )
+    assert ss["fail_reason"] == "timing-report.txt missing"
 
 
 def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
@@ -381,16 +373,14 @@ def test_fail_reason_wins_over_a_clean_gate(tmp_path):
             module="tpu_top",
             fix_owner="synthesis",
             fail_reason="PT license unavailable",
-            failure_kind="infra",
         )
         == 0
     )
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     ss = env["stage_specific"]
-    assert (ss["fail_reason"], ss["failure_kind"], ss["fix_owner"]) == (
+    assert (ss["fail_reason"], ss["fix_owner"]) == (
         "PT license unavailable",
-        "infra",
         "synthesis",
     )
     # An early-fail carries no measurements: PT produced none this caller trusts.
@@ -403,15 +393,9 @@ def test_finalize_blocked_on_empty_fail_reason(tmp_path):
     assert not (wd / "result.json").exists()
 
 
-def test_finalize_blocked_on_fail_reason_without_kind(tmp_path):
-    wd = _workdir(tmp_path)
-    assert sp.finalize(wd, "tpu_top", fail_reason="no license") == 2
-    assert not (wd / "result.json").exists()
-
-
 def test_finalize_cli_declared_failure(tmp_path):
-    # infra is reachable only through these flags — nothing on disk distinguishes
-    # "PrimeTime never started" from "PrimeTime died", so no hand-written envelope.
+    # A run PrimeTime never reached leaves nothing on disk to grade, so the cause is
+    # reachable only through this flag — never through a hand-written envelope.
     wd = _workdir(tmp_path)
     MAIN = REPO_ROOT / "skills/timing-analysis/scripts/timing/__main__.py"
     r = subprocess.run(
@@ -425,18 +409,13 @@ def test_finalize_cli_declared_failure(tmp_path):
             "tpu_top",
             "--fail-reason",
             "PT license unavailable",
-            "--failure-kind",
-            "infra",
         ],
         capture_output=True,
         text=True,
     )
     assert r.returncode == 0, r.stderr
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert (ss["fail_reason"], ss["failure_kind"]) == (
-        "PT license unavailable",
-        "infra",
-    )
+    assert ss["fail_reason"] == "PT license unavailable"
 
 
 def test_finalize_cli_happy_path(tmp_path):

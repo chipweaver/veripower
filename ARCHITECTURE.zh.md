@@ -125,7 +125,7 @@ Orchestrator 的三条派发路径：
 每条 `Rule` 上的 `execution` 字段（`"main-thread"` 或 `"task"`）就是 Orchestrator 分支的依据——从不依赖硬编码的阶段清单。各规则的触发条件：
 
 - **specification** — 消费已冻结、已批准的 `brainstorm.md`；内含一个扇出派发器（分解 + 围绕分区门的按 child 的 sub-Task 波次），外加其主线程 `spec` CLI 门控动词。不是因为头脑风暴对话才走主线程——那个对话已前移到流水线外的 `brainstorm` skill。
-- **simulation-plan** — 与用户的多轮计划审查对话；另自派发一次一级 plan-adequacy 审查 sub-Task（Step 4 / §6.3.1）。
+- **simulation-plan** — 与用户的多轮计划审查对话；另自派发一次一级 plan-adequacy 审查 sub-Task（Step 4 / §6.2.1）。
 - **rtl-design** — 只扇出，无对话：每个 child 派一个一级子 Task，一个有界的合规门自收敛循环，一个门控性语义审查波次，末尾再加一个 finalize 子 Task。
 - **simulation** — 只扇出，无对话：每一轮都是同质的（内核的 `carry_self` 在派发前就已把上一轮的 TB 携带进 workdir；若是真正的首跑则 workdir 为空——skill 从不据此分支）。Wave 1 派发 env-build child，随后跑 smoke gate、LLM conformance review-gate（每轮都重新评判，从不跳过）和 verify child（Wave 2）。
 
@@ -140,7 +140,7 @@ Orchestrator 的三条派发路径：
 | **Orchestrator Agent** | `design-flow` skill，主会话 | 执行每次 `decide` 返回的那一个动作；仅在用户明确意图下提议 `pin` / `reopen` / 人工 `diagnose`；升级；与用户协作。它不撰写任何按派发的内容：只把动作里的坐标原样传过去，由内核解析（§5.6）。同时作为四条主线程规则的主线程执行器。 | 系统中唯一有权调用 `kernel.py`、使用 Task 工具、与用户交互的角色。不手写任何事件——每个事件都由 `kernel.py` 写入。 |
 | **主线程 skill** | 四条主线程规则之一，经 `Skill()` 加载 | 在 Orchestrator 线程中自驱动工作：sub-Task 扇出（生产者规则、simulation）、多轮对话（simulation-plan）、或单次审查派发。各自写入自己的产物和 `result.json`。 | 可派发一级 sub-Task（生产者规则 / simulation）或与用户交互（simulation-plan；specification 限其两次路径交接门）。禁 `kernel.py`、禁路由。靠 SKILL.md 条文纪律约束，不靠工具门控。 |
 | **阶段子 Agent** | 四条 Task 派发的规则（`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis`） | 执行单条规则：读上游 → 做工作 → 写 `result.json` → 返回 STATUS 行 | 不准调 `kernel.py`，不准做路由决策（§6.1） |
-| **调试子 Agent** | `simulation-triage`，经 Task 派发 | 对仿真失败做分级（L1 日志+代码+FSDB 推理 → L2 受控实验）根因分析；其目标 run 与上游（spec/RTL/plan）在派发时经 `dispatch.json` 注入（`sim_run` 指名目标 run 目录），`proof=None`，故即便上游证明失效也可派发；写出的 `result.json` 其 `stage_specific` 携带归因，由内核在收割时转成 `diagnosis`（§6.4） | canonical 只读、自身 workdir 可写；绝不编辑其它规则的 `result.json`、RTL 或测试；非幂等（重复运行重跑 L2） |
+| **调试子 Agent** | `simulation-triage`，经 Task 派发 | 对仿真失败做分级（L1 日志+代码+FSDB 推理 → L2 受控实验）根因分析；其目标 run 与上游（spec/RTL/plan）在派发时经 `dispatch.json` 注入（`sim_run` 指名目标 run 目录），`proof=None`，故即便上游证明失效也可派发；写出的 `result.json` 其 `stage_specific` 携带归因，由内核在收割时转成 `diagnosis`（§6.3） | canonical 只读、自身 workdir 可写；绝不编辑其它规则的 `result.json`、RTL 或测试；非幂等（重复运行重跑 L2） |
 | **`kernel.py`** | Python CLI | 状态转换（以事件形式）、调度、证明推导、promote | 持有调度逻辑但不做*判断*：它从不代人铸造人工诊断。 |
 
 ### 2.5 核心设计原则
@@ -434,21 +434,17 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 
 **禁止：** 调用 `kernel.py`；再派发任何子 Agent；写 `{workdir}` 之外（包括规范目录——提升是内核的活）；碰其他模块；做任何路由决策。
 
-### 6.2 `failure_kind` 信封义务
-
-`synthesis`、`power-analysis`、`timing-analysis` 多一条义务：`status == "fail"` 时必填 `stage_specific.failure_kind ∈ {infra, tooling, ppa}`。它描述的是这次失败属于哪一**种**，供读信封的人与修复者用；它不选择任何目标（选目标是 §5.4 从 `fix_owner` 做的事）。`failure_kind` 缺失或枚举值不对会在收割时挂在 schema 校验上，落为 `blocked`，绝不是 `fail`。
-
-### 6.3 主线程 skill
+### 6.2 主线程 skill
 
 四条 `Skill()` 加载规则共享阶段子 Agent 契约——**禁 `kernel.py`、禁路由、无 DAG 感知**——外加两项许可：可跨轮次与用户交互（`simulation-plan` 的计划循环；`specification` 的两次路径交接门），可派发一级 sub-Task。Orchestrator 经 `Skill()` 加载它们，skill 退出时恰好调用一次 `reap`；中间对话与阶段内扇出是 skill 内部临时状态，永不进入日志。
 
-#### 6.3.1 扇出派发权
+#### 6.2.1 扇出派发权
 
 `specification` / `rtl-design` / `simulation` 扇出一级 sub-Task（生产者规则每 child 一个；`simulation` 的 env-build 与 verify child）；`simulation-plan` 自派发单次一级 plan-adequacy 审查 sub-Task。sub-Task 不得再派发（禁止二级——审计边界）。这些 sub-Task 在主线程 skill 的执行窗口内运行：不追加事件，对内核的在途记账不可见。sub-Task 可以以 `STATUS: BLOCKED` 结束（harness 层信号，区别于信封中被禁止的 `status=blocked`）；派发它的 skill 将其转化为列出失败 children 的 `result.json` `status=fail`，后续修复可只重派失败的 children。
 
 `rtl-design` 另跑一个逐 child 的意图评审波次，提升的 `semantic-review/<child>.md` 集合即其 proposed oracle。没有任何脚本把这些评审归约成裁决——`finalize` 只拒绝在任一 child 的评审缺失时写出 pass，机械部分仅此一项，因为本阶段没有 in-stage 人闸能发现一个根本没跑的波次。评审说了什么由阶段自己处置：RTL 缺陷重派该 child，`design.md` / `<child>.md` 的缺陷则在 `fix_owner` 里点名 `specification`。它同样没有确定性的 spec↔RTL 门：集成正确性是 lint-cdc 的 elaboration，而内核 `rtl` 选择器依赖的 `.v`/`.vh` 约束由 `rtl-files.schema.json` 在 `finalize` 校验 sidecar 时声明式强制。
 
-### 6.4 调试子 Agent——`simulation-triage`
+### 6.3 调试子 Agent——`simulation-triage`
 
 `simulation-triage` 是唯一的调试类规则，也是流水线对仿真失败的权威分级根因分析器。它在内核中是一条普通的 Task 规则：带 `params.sim_run` 派发，与任何阶段走同一条 `dispatch → reap` 路径，其 `result.json`（`stage_specific` 分析块）就是内核在收割时转成 `diagnosis` 的产物（§5.3）——归因以事件形式抵达调度器，从不走旁路文件指针。
 

@@ -67,7 +67,6 @@ GOOD = {
         {
             "id": "S1",
             "sequence_ref": "smoke",
-            "duration_cycles": 2000,
             "corner_intent": "SS/125C",
         }
     ],

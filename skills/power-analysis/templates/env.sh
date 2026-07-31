@@ -46,6 +46,24 @@ LIB_DB="${LIB_DB:?ERROR: LIB_DB (standard cell Liberty .db path) not set. Must m
 UVM_HOME="${UVM_HOME:?ERROR: UVM_HOME not set.}"
 export LIB_V LIB_DB UVM_HOME
 
+# Set is not the same as readable, and the three used to be checked at three
+# different moments: LIB_V before the compile, LIB_DB only once PT started, UVM_HOME
+# never. A LIB_DB typo therefore survived the compile and every scenario's simulation
+# before anything looked at it. Every target sources this file, so checking all three
+# here is the earliest moment any of them can be checked, and the only one.
+[ -r "$LIB_V" ] || {
+	echo "ERROR: LIB_V is not a readable file: $LIB_V" >&2
+	exit 1
+}
+[ -r "$LIB_DB" ] || {
+	echo "ERROR: LIB_DB is not a readable file: $LIB_DB" >&2
+	exit 1
+}
+[ -r "$UVM_HOME/src/dpi/uvm_dpi.cc" ] || {
+	echo "ERROR: UVM_HOME has no src/dpi/uvm_dpi.cc (the file VCS compiles): $UVM_HOME" >&2
+	exit 1
+}
+
 export VCS_TIMESCALE="-timescale=1ns/1ps"
 # VCS 2016: +vcs+initmem+N / +vcs+initreg+N are deprecated. Use compile-time
 # +vcs+initreg+random, then pick the actual value at runtime via

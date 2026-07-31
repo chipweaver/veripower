@@ -45,7 +45,7 @@ The testpoints live in `tb-scaffold.json`'s `testpoints[]`. The partition follow
 
 ## 4. Power Scenarios
 
-All nine standard rows are materialized; `power-scenarios.json` carries their `sequence_ref`, `duration_cycles` and `corner_intent`. Per-row materialization on this module:
+All nine standard rows are materialized; `power-scenarios.json` carries their `sequence_ref` and `corner_intent`. Per-row materialization on this module:
 
 - **S1 / S7 (static + high-temperature leakage).** Clock off, reset asserted, no traffic. Both reduce to `tpu_top_idle_seq` and stay distinct only by `corner_intent` (SS@125C vs FF@125C).
 - **S2 (clock-tree power).** Clock toggling, reset asserted, no traffic — same idle sequence, clock left running, so the delta against S1 is the clock tree.

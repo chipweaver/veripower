@@ -92,13 +92,18 @@ def run(module: str, workdir, top: str | None = None) -> int:
     sim_dir = Path(inputs["tb_env"])
     plan_dir = Path(inputs["scaffold"])
 
-    # Infer TOP from the injected synthesis netlist when not given (fail-closed if
-    # unknown) — the synthesized netlist filename out/<TOP>_syn.v already encodes
-    # TOP (same mechanism as timing.infer_top); power stays off rtl-design entirely.
+    # Infer TOP from the injected synthesis netlist when not given — out/<TOP>_syn.v
+    # already encodes it, so power stays off rtl-design entirely. Exactly one match or
+    # nothing: two netlists mean the run has no basis for choosing, and picking the
+    # alphabetically first one analyses a design nobody asked about while reporting a
+    # power_mw for it. --top is the caller's way out of that, not a way past it.
     if top is None:
         cands = sorted(syn_out_dir.glob("*_syn.v"))
-        if not cands:
-            _err("cannot infer --top from synthesis netlist; pass explicitly")
+        if len(cands) != 1:
+            _err(
+                f"cannot infer --top: {len(cands)} out/*_syn.v under {syn_out_dir}; "
+                "pass --top explicitly"
+            )
             return 1
         top = cands[0].name[: -len("_syn.v")]
 

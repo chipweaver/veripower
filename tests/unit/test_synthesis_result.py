@@ -331,10 +331,7 @@ def test_build_result_tooling_fail_on_unparseable(tmp_path):
         sp.build_result(wd, module="tpu_top", area_target=None, slack_target=None) == 0
     )
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert (
-        ss["failure_kind"] == "tooling"
-        and ss["fail_reason"] == "synthesis report unparseable"
-    )
+    assert ss["fail_reason"] == "synthesis report unparseable"
 
 
 def test_declared_failure_wins_over_a_clean_gate(tmp_path):
@@ -349,7 +346,6 @@ def test_declared_failure_wins_over_a_clean_gate(tmp_path):
             slack_target=None,
             fix_owner="rtl-design",
             fail_reason="dc_shell segfaulted after write_sdf",
-            failure_kind="tooling",
         )
         == 0
     )
@@ -357,17 +353,14 @@ def test_declared_failure_wins_over_a_clean_gate(tmp_path):
     ss = env["stage_specific"]
     assert env["status"] == "fail"
     assert ss["fail_reason"] == "dc_shell segfaulted after write_sdf"
-    assert (ss["failure_kind"], ss["fix_owner"]) == ("tooling", "rtl-design")
+    assert ss["fix_owner"] == "rtl-design"
     # the gate did not run, so no PPA numbers are invented for a run that has none
     assert "ppa_actual" not in ss and "violations" not in ss
 
 
-def test_declared_failure_needs_a_reason_and_a_kind(tmp_path):
+def test_declared_failure_needs_a_reason(tmp_path):
     wd = _workdir(tmp_path)
-    assert (
-        sp.finalize(wd, "m", None, None, fail_reason="   ", failure_kind="infra") == 2
-    )
-    assert sp.finalize(wd, "m", None, None, fail_reason="no license") == 2
+    assert sp.finalize(wd, "m", None, None, fail_reason="   ") == 2
     assert not (wd / "result.json").exists()  # BLOCKED writes nothing
 
 
@@ -387,38 +380,13 @@ def test_finalize_cli_declared_infra_failure(tmp_path):
             "tpu_top",
             "--fail-reason",
             "DC license missing: dc_shell exited with LICENSE_ERROR",
-            "--failure-kind",
-            "infra",
         ],
         capture_output=True,
         text=True,
     )
     assert r.returncode == 0, r.stderr
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["failure_kind"] == "infra"
     assert "LICENSE_ERROR" in ss["fail_reason"]
-
-
-def test_finalize_rejects_a_ppa_kind_from_the_caller(tmp_path):
-    MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
-    r = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "finalize",
-            "--workdir",
-            str(tmp_path),
-            "--module",
-            "m",
-            "--fail-reason",
-            "x",
-            "--failure-kind",
-            "ppa",  # the gate's verdict, never the caller's to declare
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert r.returncode == 2 and "invalid choice" in r.stderr
 
 
 def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
@@ -603,7 +571,7 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
-    assert env["status"] == "fail" and ss["failure_kind"] == "ppa"
+    assert env["status"] == "fail"
     assert ss["violations"] == [
         {"dim": "area_um2", "target": 1.0, "actual": pytest.approx(65018.219263)}
     ]
@@ -652,7 +620,7 @@ def test_pass_requires_the_full_netlist_trio(tmp_path):
     assert sp.build_result(wd, module="m", area_target=None, slack_target=None) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
-    assert env["status"] == "fail" and ss["failure_kind"] == "tooling"
+    assert env["status"] == "fail"
     assert "out/*_syn.v" in ss["fail_reason"] and "out/*_syn.sdf" in ss["fail_reason"]
     assert ss["ppa_actual"]  # the measured numbers are still recorded
 
@@ -680,7 +648,6 @@ def test_missing_netlist_outranks_a_ppa_miss(tmp_path):
         == 0
     )
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["failure_kind"] == "tooling"  # not ppa: the run has no product at all
     assert ss["violations"]  # the PPA miss is still on the record
     assert ss["fix_owner"] == "rtl-design"
 

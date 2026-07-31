@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/timing-analysis/result.schema.json",
   "title": "timing-analysis result.json contract",
-  "description": "Complete contract for asic/<module>/Design/timing-analysis/result.json. On status=pass (and on failure_kind=ppa) stage_specific.timing carries setup/hold worst-slack + met flag (classified on the report MET/VIOLATED marker) and the boundary-coverage counts; stage_specific.violations[] lists the binding violator per failing direction. A pass requires both directions MET and every output bit timed — an STA that reached only part of the boundary grades tooling, not ppa, because the markers describe only the paths it did analyze. On status=fail, stage_specific.{fail_reason, failure_kind} are required; timing{} is not required on infra/tooling early-fail (PT did not run / errored).",
+  "description": "Complete contract for asic/<module>/Design/timing-analysis/result.json. On status=pass, and on any fail carrying violations[], stage_specific.timing carries setup/hold worst-slack + met flag (classified on the report MET/VIOLATED marker) and the boundary-coverage counts; stage_specific.violations[] lists the binding violator per failing direction. A pass requires both directions MET and every output bit timed — an STA that reached only part of the boundary is not a pass, because the markers describe only the paths it did analyze. On status=fail, stage_specific.fail_reason is required: the one-line cause, which on a run that produced nothing gradeable is all there is. An early fail carries no violations[] and therefore no timing{}, because PT never ran.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
@@ -10,10 +10,10 @@
         "stage": {"const": "timing-analysis"},
         "stage_specific": {
           "type": "object",
+          "dependentRequired": {"violations": ["timing"]},
           "properties": {
             "fix_owner": {"type": "string", "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."},
             "fail_reason":  {"type": "string", "minLength": 1},
-            "failure_kind": {"type": "string", "enum": ["infra", "tooling", "ppa"], "description": "Failure category on status=fail. infra = license or trigger missing (PT not run); tooling = PT ran and its output is unusable — a missing or unparseable report, or a run whose coverage counts show the SDC left part of the boundary untimed; ppa = timing target not met (violations[].dim ∈ {timing_setup, timing_hold, ...} populated)."},
             "violations": {
               "type": "array",
               "description": "Timing violations (setup/hold/other). Empty on pass, non-empty on rule-based fail.",
@@ -31,7 +31,7 @@
             },
             "timing": {
               "type": "object",
-              "description": "Structured STA result (required on pass and on failure_kind=ppa). Worst slack + met flag per direction (classified on the report's MET/VIOLATED marker), plus the boundary-coverage counts, which are equal on any pass.",
+              "description": "Structured STA result (required on pass, and on any fail that carries violations[]). Worst slack + met flag per direction (classified on the report's MET/VIOLATED marker), plus the boundary-coverage counts, which are equal on any pass.",
               "required": ["setup", "hold", "coverage"],
               "additionalProperties": false,
               "properties": {
@@ -79,17 +79,7 @@
     },
     {
       "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["fail_reason", "failure_kind"]}}}
-    },
-    {
-      "if": {
-        "properties": {
-          "status": {"const": "fail"},
-          "stage_specific": {"properties": {"failure_kind": {"const": "ppa"}}, "required": ["failure_kind"]}
-        },
-        "required": ["status", "stage_specific"]
-      },
-      "then": {"properties": {"stage_specific": {"required": ["violations", "timing"]}}}
+      "then": {"properties": {"stage_specific": {"required": ["fail_reason"]}}}
     }
   ]
 }

@@ -2,55 +2,46 @@
   {
     "id": "S1",
     "sequence_ref": "tpu_top_idle_seq",
-    "duration_cycles": 2000,
     "corner_intent": "SS@125C"
   },
   {
     "id": "S2",
     "sequence_ref": "tpu_top_idle_seq",
-    "duration_cycles": 2000,
     "corner_intent": "TT@25C"
   },
   {
     "id": "S3a",
     "sequence_ref": "tpu_top_idle_seq",
-    "duration_cycles": 5000,
     "corner_intent": "TT@25C"
   },
   {
     "id": "S3b",
     "sequence_ref": "tpu_top_idle_seq",
-    "duration_cycles": 5000,
     "corner_intent": "TT@25C"
   },
   {
     "id": "S4a",
     "sequence_ref": "tpu_top_traffic_seq",
-    "duration_cycles": 10000,
     "corner_intent": "TT@25C"
   },
   {
     "id": "S4b",
     "sequence_ref": "tpu_top_traffic_seq",
-    "duration_cycles": 10000,
     "corner_intent": "TT@25C"
   },
   {
     "id": "S5",
     "sequence_ref": "tpu_top_peak_toggle_seq",
-    "duration_cycles": 10000,
     "corner_intent": "FF@125C"
   },
   {
     "id": "S6",
     "sequence_ref": "tpu_top_traffic_seq",
-    "duration_cycles": 10000,
     "corner_intent": "TT@25C"
   },
   {
     "id": "S7",
     "sequence_ref": "tpu_top_idle_seq",
-    "duration_cycles": 2000,
     "corner_intent": "FF@125C"
   }
 ]

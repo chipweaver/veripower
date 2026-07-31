@@ -278,7 +278,7 @@ def test_fail_envelope_omits_fix_owner_when_unnamed(tmp_path):
 
 def test_fail_envelope_no_violations_omits_failures(tmp_path):
     # Report-missing early-fail path: no error-severity violation rows at all ->
-    # nothing to classify -> failures/failure_kind stay unset (not invented).
+    # nothing to classify -> failures[] stays unset (not invented).
     wd = _clean_workdir(tmp_path)
     (wd / "lint-violations.json").unlink()
     assert rb.run(wd, module="tpu_top") == 0
@@ -286,7 +286,6 @@ def test_fail_envelope_no_violations_omits_failures(tmp_path):
     ss = env["stage_specific"]
     assert env["status"] == "fail"
     assert "failures" not in ss
-    assert "failure_kind" not in ss
 
 
 # ---------------------------------------------------------------------------
