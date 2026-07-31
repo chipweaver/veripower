@@ -28,14 +28,17 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _read_ppa_targets(workdir, dims: set[str]) -> list:
-    """PPA targets from the specification stage root's ppa.json sidecar (spec
-    §4.3) — filtered to `dims` — replacing the old injected --ppa-targets CLI arg
-    (power-analysis binds to this file as its acceptance standard). The stage root
-    comes from the injected `<workdir>/dispatch.json` `inputs."ppa"`, not self-navigation."""
-    inputs = json.loads((Path(workdir) / "dispatch.json").read_text(encoding="utf-8"))[
+def _inputs(workdir) -> dict:
+    """The injected `inputs` table from `<workdir>/dispatch.json`. Every upstream
+    location this stage reads is in here, so none of them is a path the caller types."""
+    return json.loads((Path(workdir) / "dispatch.json").read_text(encoding="utf-8"))[
         "inputs"
     ]
+
+
+def _read_ppa_targets(inputs, dims: set[str]) -> list:
+    """PPA targets from the specification stage root's ppa.json sidecar (spec §4.3),
+    filtered to `dims` — power-analysis binds to this file as its acceptance standard."""
     p = Path(inputs["ppa"]) / "ppa.json"
     if not p.is_file():
         return []
@@ -51,11 +54,12 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from power import result
 
-    targets = _read_ppa_targets(a.workdir, {"power_mw"})
+    inputs = _inputs(a.workdir)
+    targets = _read_ppa_targets(inputs, {"power_mw"})
     return result.finalize(
         a.workdir,
         a.module,
-        a.scaffold,
+        inputs["scaffold"],
         json.dumps(targets),
         a.fix_owner,
         a.fail_reason,
@@ -84,11 +88,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument("--module", required=True)
-    sp.add_argument(
-        "--scaffold",
-        required=True,
-        help="the simulation-plan workdir (power-scenarios.json is read from it)",
-    )
     sp.add_argument(
         "--fix-owner",
         default=None,

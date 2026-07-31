@@ -515,17 +515,29 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
         text=True,
     )
     assert r.returncode == 2  # argparse: missing --module
-    # missing --scaffold -> argparse exit 2 (required)
+    # --scaffold is not a flag: the scaffold location comes from dispatch.json, so a
+    # caller who passes it is corrected rather than trusted.
     r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--workdir", str(tmp_path), "--module", "m"],
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(tmp_path),
+            "--module",
+            "m",
+            "--scaffold",
+            str(tmp_path),
+        ],
         capture_output=True,
         text=True,
     )
-    assert r.returncode == 2  # argparse: missing --scaffold
+    assert r.returncode == 2
+    assert "unrecognized arguments: --scaffold" in r.stderr
 
 
 def test_finalize_cli_happy_path(tmp_path):
-    # End-to-end through _cmd_finalize (lazy handler import + --scaffold arg mapping
+    # End-to-end through _cmd_finalize (lazy handler import + the dispatch.json read
     # + the ppa.json sidecar read), not just in-process build_result. A handler typo
     # would pass every other test (which call build_result directly) but fail here.
     # finalize reads PPA targets via the injected dispatch.json "ppa" key (no sibling
@@ -537,7 +549,9 @@ def test_finalize_cli_happy_path(tmp_path):
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
     (wd / "dispatch.json").write_text(
-        _json.dumps({"inputs": {"ppa": str(tmp_path / "no-ppa")}})
+        _json.dumps(
+            {"inputs": {"ppa": str(tmp_path / "no-ppa"), "scaffold": str(plan)}}
+        )
     )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
     r = subprocess.run(
@@ -549,8 +563,6 @@ def test_finalize_cli_happy_path(tmp_path):
             str(wd),
             "--module",
             "tpu_top",
-            "--scaffold",
-            str(plan),
         ],
         capture_output=True,
         text=True,
@@ -590,7 +602,9 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
             ]
         )
     )
-    (wd / "dispatch.json").write_text(_json.dumps({"inputs": {"ppa": str(spec_dir)}}))
+    (wd / "dispatch.json").write_text(
+        _json.dumps({"inputs": {"ppa": str(spec_dir), "scaffold": str(plan)}})
+    )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
     r = subprocess.run(
         [
@@ -601,8 +615,6 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
             str(wd),
             "--module",
             "tpu_top",
-            "--scaffold",
-            str(plan),
         ],
         capture_output=True,
         text=True,
@@ -811,7 +823,14 @@ def test_declared_fail_through_the_cli(tmp_path):
     wd = tmp_path / "wd"
     wd.mkdir()
     (wd / "dispatch.json").write_text(
-        _json.dumps({"inputs": {"ppa": str(tmp_path / "no-ppa")}})
+        _json.dumps(
+            {
+                "inputs": {
+                    "ppa": str(tmp_path / "no-ppa"),
+                    "scaffold": str(tmp_path / "plan"),
+                }
+            }
+        )
     )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
     r = subprocess.run(
@@ -823,8 +842,6 @@ def test_declared_fail_through_the_cli(tmp_path):
             str(wd),
             "--module",
             "tpu_top",
-            "--scaffold",
-            str(tmp_path / "plan"),
             "--fail-reason",
             "ptpx failed: phase=ptpx, read_saif annotated 0%",
             "--failure-kind",
@@ -852,8 +869,6 @@ def test_cli_rejects_ppa_as_a_declarable_failure_kind(tmp_path):
             str(tmp_path),
             "--module",
             "m",
-            "--scaffold",
-            str(tmp_path),
             "--fail-reason",
             "x",
             "--failure-kind",
