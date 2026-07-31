@@ -47,7 +47,6 @@ gls-compile: tb-shim refresh-tests  ## Compile GLS simv (synthesis netlist + SDF
 		[ -f "$$SDF_FILE" ]        || { echo "[gls-compile] ERROR: SDF_FILE not found: $$SDF_FILE"; exit 1; }; \
 		[ -f "$$TB_FILELIST_ABS" ] || { echo "[gls-compile] ERROR: TB_FILELIST_ABS missing: $$TB_FILELIST_ABS (tb-shim should have created it)"; exit 1; }; \
 		[ -f "$$POWER_FILELIST" ]  || { echo "[gls-compile] ERROR: POWER_FILELIST not found: $$POWER_FILELIST (refresh-tests should have created it)"; exit 1; }; \
-		[ -f "$$LIB_V" ]           || { echo "[gls-compile] ERROR: LIB_V invalid: $${LIB_V:-<not set>}"; exit 1; }; \
 		vcs -full64 -sverilog \
 			-debug_access+all \
 			-f "$$TB_FILELIST_ABS" \
@@ -73,7 +72,6 @@ gls-run: gls-compile  ## Run simv per scenario → per-scenario SAIF files
 
 ptpx:  ## Run PT-PX averaged power analysis on SAIF batch
 	@bash -c 'set -eo pipefail; cd "$(ROOT)"; source ./env.sh; \
-		[ -f "$$LIB_DB" ] || { echo "[ptpx] ERROR: LIB_DB invalid: $${LIB_DB:-<not set>}"; exit 1; }; \
 		[ -f "$$NETLIST" ] || { echo "[ptpx] ERROR: NETLIST missing: $$NETLIST"; exit 1; }; \
 		[ -f "$$SDC_FILE" ] || { echo "[ptpx] ERROR: SDC_FILE missing: $$SDC_FILE"; exit 1; }; \
 		[ -f "$$SDF_FILE" ] || { echo "[ptpx] ERROR: SDF_FILE missing: $$SDF_FILE"; exit 1; }; \
