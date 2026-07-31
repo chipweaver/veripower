@@ -153,7 +153,7 @@ exists yet).
 - **Compile failed (no smoke status):** `make simv` produced no `simv`, so `make smoke` ran no test
   and `regression-log.txt` carries no `RESULT` line. Run `sim finalize --phase smoke
   --failure-phase compile --fail-reason "<…>"`; skip the downstream waves.
-- **Smoke ran but failed:** `regression-log.txt`'s `RESULT <test> <PASS|FAIL|MANUAL_REVIEW>` lines (or
+- **Smoke ran but failed:** `regression-log.txt`'s `RESULT <test> <PASS|FAIL>` lines (or
   the per-test `logs/<test>.status` files) contain any non-`PASS`. Run `sim finalize
   --phase smoke --failure-phase smoke --fail-reason "<…>"` (pass `--verify-verdict <reaped, carries
   failing_cases>`); skip the downstream waves.
