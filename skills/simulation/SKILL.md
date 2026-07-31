@@ -48,7 +48,7 @@ scope is the whole testbench.
 
 Every round is the same round. `{workdir}` arrives holding your previous round's canonical output,
 or empty on a first run, and you never branch on which: `bootstrap` writes only where a file is
-missing. `conformance-review.json` is the one thing not carried forward, so the checks are judged
+missing. `conformance-review.md` is the one thing not carried forward, so the checks are judged
 again from scratch whether or not the testbench changed.
 
 Everything under `{workdir}` other than `result.json` is written by a wave, and `finalize`
@@ -57,7 +57,7 @@ enumerates it into `artifacts[]` for you:
 | Written by | What |
 |---|---|
 | env-build (wave 1) | `Makefile`, `env.sh`, `filelist.f`, `rtl_filelist.f`, `tb/uvm/**`, `scripts/**`, `tests/testlist.json`, the smoke `regression-log.txt` with its per-test `logs/`, and `verify-handoff.json` |
-| the conformance reviewer (wave 2) | `conformance-review.json` |
+| the conformance reviewer (wave 2) | `conformance-review.md` |
 | verify (wave 3) | the full-regress `regression-log.txt`, `structural-coverage.json`, `case-results.json`, `coverage-summary.txt`, `case-results-summary.md` |
 | you, via `sim finalize` | `result.json` |
 
@@ -111,18 +111,18 @@ produced anything to measure.
 Dispatch one `Task(run_in_background=True)`, the conformance reviewer, pointing its prompt at
 [`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md)
 and handing over the `{workdir}`, the scaffold-spec path, the DUT RTL filelist, and `{module}`.
-It writes `{workdir}/conformance-review.json` itself. You never retype a finding: a review passed
+It writes `{workdir}/conformance-review.md` itself. You never retype a finding: a review passed
 through your hands is your judgment wearing the reviewer's name, and this gate decides your status.
 
 On wake-up, reap its `STATUS:` line and validate the file it left:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py validate-review --review {workdir}/conformance-review.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py validate-review --review {workdir}/conformance-review.md
 ```
 
-Exit 0 prints one line, `{"gate": "trip"|"clear", "flagged": [...]}`. The gate is
-`any(blocking)` over the reviewer's own calls, computed rather than eyeballed. Non-blocking
-findings never appear in it: surface those as `⚠ <tp_id>` in your completion summary and move on.
+Exit 0 prints one line, `{"gate": "trip"|"clear", "flagged": [...]}`: the reviewer's own
+`BLOCKING` marks, counted rather than eyeballed. Findings it did not mark never appear there.
+Surface those as `⚠ <tp_id>` in your completion summary and move on.
 
 **`gate=clear`:** go to step 3.
 
@@ -139,22 +139,26 @@ whether the check can be made adequate at all.
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize --workdir {workdir} \
-  --module <module> --phase conformance --fail-reason "<the fixer's reason>" \
-  --conformance-review {workdir}/conformance-review.json
+  --module <module> --phase conformance --fail-reason "<the fixer's reason>"
 ```
 
-Dispatch no verify wave after that. The route from here is `failure_phase=conformance` into
-`simulation-triage`, which supplies the confidence this stage does not try to.
+Dispatch no verify wave after that. The envelope carries the phase and the reason; the findings
+stay in `conformance-review.md`, which is promoted beside it. The route from here is
+`failure_phase=conformance` into `simulation-triage`, which opens that record and supplies the
+confidence this stage does not try to.
 
-**No usable review** (`STATUS: BLOCKED`, no file, or a non-zero `validate-review`): do not gate on
-it, and do not let it disappear either. Write the record yourself and go to step 3:
+**No usable review** (`STATUS: BLOCKED`, or no file): do not gate on it, and do not let it
+disappear either. Write the record yourself and go to step 3:
 
-```json
-{"findings": [{"tp_id": "-", "location": "-", "blocking": false,
-               "finding": "review wave failed: <reason>; the checks went unjudged this round"}]}
+```markdown
+# conformance review — <module>
+
+## -  -
+Review wave failed: <reason>. The checks went unjudged this round.
 ```
 
-This is the only record you author, and it says that no review happened, not what a review found.
+This is the only record you author, and it says that no review happened, not what a review
+found. It carries no `BLOCKING`, so it does not gate: an absent judgment is not a finding.
 
 ### 3. Regress and cover
 
@@ -187,7 +191,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize \
   --workdir {workdir} --module <module> --phase final \
   --plan <scaffold> \
   --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml \
-  --conformance-review {workdir}/conformance-review.json \
+  --conformance-review {workdir}/conformance-review.md \
   --verify-verdict {workdir}/<reaped-verify-verdict>.json \
   [--fix-owner <rule>]
 ```

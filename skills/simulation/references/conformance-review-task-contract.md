@@ -79,23 +79,30 @@ then marking it non-blocking, one of the two is wrong.
 
 ## Output
 
-Write your findings to `{workdir}/conformance-review.json` yourself, then end the response
-with `STATUS: DONE`, or with `STATUS: BLOCKED <reason>` if you wrote no file. That one file
-is your entire write domain: everything else under `{workdir}` is the material you are
-judging, and you do not edit it.
+Write `{workdir}/conformance-review.md` yourself, then end the response with `STATUS: DONE`,
+or with `STATUS: BLOCKED <reason>` if you wrote no file. That one file is your entire write
+domain: everything else under `{workdir}` is the material you are judging, and you do not
+edit it.
 
-Schema `references/conformance-review.schema.json`:
+One `##` heading per finding, carrying the testpoint, where you found it, and `BLOCKING` as
+the last word when it blocks. Under it, prose:
 
-```json
-{"findings": [{"tp_id": "<TP-ID | component token e.g. 'env:wiring'>",
-               "location": "<file:line | plan ref>",
-               "blocking": true,
-               "finding": "<what the check does, what the intent asked for, where they part>"}]}
+```markdown
+# conformance review — <module>
+
+## TP-03  tb/uvm/checker/microgpt_core_scoreboard.sv:49  BLOCKING
+The scoreboard compares next_token end to end and probes nothing between. TP-03's intent
+asks for the per-stage values, so a fault in any of them reaches next_token or it does not,
+and this check cannot tell which.
+
+## TP-14  tb/uvm/checker/microgpt_core_scoreboard.sv:72
+The aggregate throughput bound is not separately asserted. The per-step bounds are tighter
+and dominate it, so nothing is unverified; noting it because the plan lists it separately.
 ```
 
-An empty `findings` array is how a clean review is recorded, and it is the only way. The main
-thread validates the file and reduces it; it does not retype your findings and nothing
-downstream re-reads the TB to recover one you left out.
+A file with no findings under the title is a clean review, and it is the only way to record
+one. The heading is the whole of what a machine reads: the prose is for whoever fixes this,
+and nothing parses it. Write the finding, not a classification of it.
 
 If you cannot read the full TB within your context budget, do not silently pass: end with
 `STATUS: BLOCKED context-budget: <what went unread>`, and the main thread records that no review

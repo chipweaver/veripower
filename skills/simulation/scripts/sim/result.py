@@ -19,6 +19,7 @@ from pathlib import Path
 
 from sim._gate import _load_thresholds, coverage_gate, materialization_errors
 from sim._plan import load_plan
+from sim.review import compute_gate
 
 STAGE = "simulation"
 
@@ -75,14 +76,15 @@ def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path, conformance_rev
     }
     if d1_errs:
         return (False, verdict, "compile", "; ".join(d1_errs)[:300])
-    gating = gating_findings(conformance_review)
-    if gating:
-        named = ", ".join(f.get("tp_id", "-") for f in gating)
+    flagged = compute_gate(Path(conformance_review).read_text(encoding="utf-8"))[
+        "flagged"
+    ]
+    if flagged:
         return (
             False,
             verdict,
             "conformance",
-            f"conformance gate tripped on {named}"[:300],
+            f"conformance gate tripped on {', '.join(flagged)}"[:300],
         )
     if cov_errs:
         return (False, verdict, "coverage", "; ".join(cov_errs)[:300])
@@ -114,9 +116,7 @@ def build_result(
     verify = json.loads(Path(verify_verdict).read_text()) if verify_verdict else {}
 
     if phase != "final":
-        ss = _early_exit_ss(
-            phase, fail_reason, verify, observed_phase, conformance_review
-        )
+        ss = _early_exit_ss(phase, fail_reason, verify, observed_phase)
         _write_result(
             workdir,
             _envelope(
@@ -139,8 +139,6 @@ def build_result(
         if fphase == "coverage":
             ss["coverage_extractable"] = gate["coverage_extractable"]
             ss["dims"] = gate["dims"]
-        elif fphase == "conformance":
-            ss["conformance_findings"] = gating_findings(conformance_review)
         _write_result(
             workdir,
             _envelope(
@@ -201,19 +199,6 @@ def read_coverage_summary(workdir: Path):
     return {k: agg.get(k) for k in ("line", "cond", "fsm", "toggle")}
 
 
-def _findings(review_path):
-    p = Path(review_path) if review_path else None
-    if not p or not p.is_file():
-        return None
-    return (json.loads(p.read_text(encoding="utf-8")) or {}).get("findings", [])
-
-
-def gating_findings(review_path) -> list[dict]:
-    """The findings the reviewer called blocking. One derivation for both the Step-4 fail-out
-    and the --phase final backstop, so the two cannot disagree on which findings gated."""
-    return [f for f in (_findings(review_path) or []) if f.get("blocking")]
-
-
 def enumerate_artifacts(workdir: Path) -> list[dict]:
     workdir = Path(workdir)
     candidates = [
@@ -227,7 +212,7 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
         "regression-log.txt",
         "logs",
         "verify-handoff.json",
-        "conformance-review.json",
+        "conformance-review.md",
         "structural-coverage.json",
         "case-results.json",
         "coverage-summary.txt",
@@ -236,9 +221,7 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
     return [{"path": p} for p in candidates if (workdir / p).exists()]
 
 
-def _early_exit_ss(
-    phase, fail_reason, verify, observed_phase=None, conformance_review=None
-) -> dict:
+def _early_exit_ss(phase, fail_reason, verify, observed_phase=None) -> dict:
     # call-site -> default schema failure_phase (overridden by observed_phase where the
     # call-site spans several).
     fp = (
@@ -259,17 +242,6 @@ def _early_exit_ss(
         for k in ("coverage_gaps", "gaps_not_in_testpoints", "gaps_in_testpoints"):
             if k in verify:
                 ss[k] = verify[k]
-    if phase == "conformance":
-        # the gating subset, re-derived in-process from the on-disk conformance-review.json
-        # (reaped state, not orchestrator narration).
-        # --phase conformance is only reached on a gate=trip, where the reviewer has
-        # written conformance-review.json; an absent file is a caller contract violation.
-        if not conformance_review or not Path(conformance_review).is_file():
-            raise RuntimeError(
-                "finalize --phase conformance requires the reviewer's conformance-review.json "
-                f"(got: {conformance_review!r})"
-            )
-        ss["conformance_findings"] = gating_findings(conformance_review)
     return ss
 
 

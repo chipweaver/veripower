@@ -41,13 +41,15 @@ def _final_workdir(tmp_path):
     (wd / "coverage-summary.txt").write_text(
         "suite_summary\ntotal_tests: 3\npassed_tests: 3\nfailed_tests: 0\n"
     )
-    _review(wd, [])
+    _review(wd)
     return wd
 
 
-def _review(wd, findings):
-    """The reviewer's own record, as it stands on disk when finalize runs."""
-    (wd / "conformance-review.json").write_text(json.dumps({"findings": findings}))
+def _review(wd, *findings):
+    """The reviewer's own record, as it stands on disk when finalize runs: one heading per
+    finding, and a blocking one says so."""
+    body = "# conformance review — m\n\n" + "\n\n".join(findings)
+    (wd / "conformance-review.md").write_text(body + "\n")
 
 
 def _finalize(wd, *extra):
@@ -77,7 +79,7 @@ def _finalize_final(wd, *extra):
         "--thresholds",
         str(DEFAULTS),
         "--conformance-review",
-        str(wd / "conformance-review.json"),
+        str(wd / "conformance-review.md"),
         *extra,
     )
 
@@ -103,7 +105,7 @@ def test_verify_handoff_promoted(tmp_path):
         a["path"] for a in json.loads((wd / "result.json").read_text())["artifacts"]
     ]
     assert "verify-handoff.json" in paths
-    assert "conformance-review.json" in paths  # a sibling handoff IS also promoted
+    assert "conformance-review.md" in paths  # a sibling handoff IS also promoted
 
 
 def test_final_pass_missing_case_results_is_blocked(tmp_path):
@@ -117,19 +119,21 @@ def test_final_pass_missing_case_results_is_blocked(tmp_path):
     assert not (wd / "result.json").exists()
 
 
-def test_conformance_phase_requires_review_file(tmp_path):
-    # S5: --phase conformance is only reached on a gate=trip, where the main thread
-    # has assembled conformance-review.json; an absent file is a caller contract
-    # violation that must fail loud (exit 2), not silently write empty findings.
+def test_conformance_phase_writes_the_routing_envelope(tmp_path):
+    # The fail-out carries the phase and the reason; the findings themselves stay in the
+    # promoted review beside it, which is what triage opens. Copying them into the envelope
+    # would duplicate a structured sibling in the same directory.
     proc = _finalize(
         tmp_path,
         "--phase",
         "conformance",
         "--fail-reason",
-        "tp X missing check",
+        "TP-01: check cannot detect the fault its intent names",
     )
-    assert proc.returncode == 2, proc.stdout
-    assert not (tmp_path / "result.json").exists()
+    assert proc.returncode == 0, proc.stderr
+    ss = json.loads((tmp_path / "result.json").read_text())["stage_specific"]
+    assert ss["failure_phase"] == "conformance" and "TP-01" in ss["fail_reason"]
+    assert "conformance_findings" not in ss
 
 
 def test_final_thin_fail_is_compile(tmp_path):
@@ -168,20 +172,13 @@ def test_final_conformance_trip_is_fail_not_pass(tmp_path):
     wd = _final_workdir(tmp_path)
     _review(
         wd,
-        [
-            {
-                "tp_id": "TP-01",
-                "location": "tb/uvm/checker/m_sb.sv:10",
-                "blocking": True,
-                "finding": "mismatch logged as uvm_info; the counter never moves",
-            }
-        ],
+        "## TP-01  tb/uvm/checker/m_sb.sv:10  BLOCKING\n"
+        "mismatch logged as uvm_info; the counter never moves",
     )
     proc = _finalize_final(wd)
     assert proc.returncode == 0, proc.stderr
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["failure_phase"] == "conformance"
-    assert [f["tp_id"] for f in ss["conformance_findings"]] == ["TP-01"]
     assert "TP-01" in ss["fail_reason"]
 
 
@@ -191,14 +188,8 @@ def test_final_non_blocking_finding_does_not_trip(tmp_path):
     wd = _final_workdir(tmp_path)
     _review(
         wd,
-        [
-            {
-                "tp_id": "TP-02",
-                "location": "tb/uvm/checker/m_sb.sv:44",
-                "blocking": False,
-                "finding": "handshake verified only end-to-end; no internal probe",
-            }
-        ],
+        "## TP-02  tb/uvm/checker/m_sb.sv:44\n"
+        "handshake verified only end-to-end; no internal probe",
     )
     proc = _finalize_final(wd)
     assert proc.returncode == 0, proc.stderr
@@ -241,7 +232,7 @@ def test_final_requires_its_three_inputs_exit_2(tmp_path):
         flags = {
             "--plan": str(wd),
             "--thresholds": str(DEFAULTS),
-            "--conformance-review": str(wd / "conformance-review.json"),
+            "--conformance-review": str(wd / "conformance-review.md"),
         }
         del flags[missing]
         args = [x for kv in flags.items() for x in kv]
@@ -262,30 +253,18 @@ def test_finalize_blocked_exit_2(tmp_path):
         "--thresholds",
         str(DEFAULTS),
         "--conformance-review",
-        str(wd / "conformance-review.json"),
+        str(wd / "conformance-review.md"),
     )
     assert proc.returncode == 2
 
 
-# ── envelope shape of the two object arrays triage reads ──────────────────────
+# ── the one object array triage reads ──────────────────────────────────────────
 _RESULT_SCHEMA = ROOT / "skills/simulation/references/result.schema.json"
-_CONF_SCHEMA = ROOT / "skills/simulation/references/conformance-review.schema.json"
 
 
 def _ss_props():
     s = json.loads(_RESULT_SCHEMA.read_text())
     return s["allOf"][1]["properties"]["stage_specific"]["properties"]
-
-
-def test_conformance_findings_mirrors_its_source_schema():
-    # finalize copies the blocking subset of conformance-review.json's findings[] verbatim, so
-    # the envelope must not describe it more loosely than the file it came from.
-    mine = _ss_props()["conformance_findings"]["items"]
-    theirs = json.loads(_CONF_SCHEMA.read_text())["properties"]["findings"]["items"]
-    assert sorted(mine["required"]) == sorted(theirs["required"])
-    assert mine["additionalProperties"] is False
-    for field, spec in theirs["properties"].items():
-        assert mine["properties"][field]["type"] == spec["type"], field
 
 
 def test_failing_cases_pins_what_triage_reads():

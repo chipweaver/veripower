@@ -15,7 +15,7 @@ guess this in advance, because guessing it is worth less than trying.
 ## Inputs (paths only — the main thread does not read these bodies)
 
 - `{workdir}` — already populated with `tb/uvm/**`.
-- `conformance-review.json` — the findings, each with its `tp_id`, `location` and prose.
+- `conformance-review.md` — the findings. The ones marked `BLOCKING` are your scope.
 - The scaffold-spec `testpoints[].inlined_check_hints[]` (the check-intent source) — **read-only**.
 - `tb-scaffold.json`'s `testpoints[].intent` (the intent source) — **read-only**.
 

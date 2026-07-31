@@ -1,60 +1,52 @@
 #!/usr/bin/env python3
-"""sim validate-review — schema + gate verdict over the conformance reviewer's own record.
+"""sim validate-review — the gate verdict over the conformance reviewer's own record.
 
-The reviewer Task writes conformance-review.json; this validates that file against
-references/conformance-review.schema.json (Draft 2020-12) and prints the gate verdict as one
-JSON line, so the trip/clear call is script-owned rather than judged by eye. `compute_gate` is
-reused in-process by the finalize verb (sim.result), which re-runs it before writing a pass.
+The reviewer writes conformance-review.md; this reads the one thing a machine takes out of it
+and prints it as a JSON line. That keeps the trip/clear call out of the main thread's hands,
+which matters because nothing human reads this record before the stage routes on it and the
+main thread's own status is what the call decides.
+
+One heading per finding, and a blocking one says so:
+
+    ## TP-03  tb/uvm/checker/m_scoreboard.sv:49  BLOCKING
+    <prose: what the check does, what the intent asked for, where they part>
+
+Nothing parses the prose. `compute_gate` is reused in-process by the finalize verb
+(sim.result), which re-runs it before writing a pass.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
-
-_SCHEMA = (
-    Path(__file__).resolve().parent.parent.parent
-    / "references"
-    / "conformance-review.schema.json"
-)
+# A finding heading. The id is the first token after the hashes and the marker is the last, so
+# a location carrying spaces still parses.
+_HEADING = re.compile(r"^##\s+(?P<tp_id>\S+)\s+(?P<rest>.*?)\s*$")
+_BLOCKING = "BLOCKING"
 
 
-def compute_gate(doc: dict) -> dict:
-    """The gate verdict: any finding the reviewer called blocking stops the round.
+def compute_gate(text: str) -> dict:
+    """The gate verdict: any finding the reviewer marked BLOCKING stops the round.
 
-    There is nothing to reduce beyond that. A taxonomy here would only re-derive a call the
-    reviewer already made, in a vocabulary it had to be taught first. No schema checks
-    (validate() runs those first; finalize calls this over the on-disk doc)."""
-    blocking = [f for f in doc.get("findings", []) if f.get("blocking")]
-    return {
-        "gate": "trip" if blocking else "clear",
-        "flagged": sorted({f.get("tp_id") for f in blocking if f.get("tp_id")}),
-    }
+    There is nothing else to reduce. A field set or a severity word here would only re-encode
+    a call the reviewer already made, in a vocabulary it had to be taught first."""
+    flagged = [
+        m.group("tp_id")
+        for m in (_HEADING.match(ln) for ln in text.splitlines())
+        if m and m.group("rest").split()[-1:] == [_BLOCKING]
+    ]
+    return {"gate": "trip" if flagged else "clear", "flagged": sorted(set(flagged))}
 
 
 def validate(review_path) -> int:
     target = Path(review_path)
     try:
-        schema = json.loads(_SCHEMA.read_text(encoding="utf-8"))
-        doc = json.loads(target.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as e:
-        print(
-            f"conformance-review validate: cannot read {target} or schema: {e}",
-            file=sys.stderr,
-        )
+        text = target.read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"conformance-review: cannot read {target}: {e}", file=sys.stderr)
         return 1
-    errors = sorted(
-        Draft202012Validator(schema).iter_errors(doc), key=lambda e: list(e.path)
-    )
-    if errors:
-        for err in errors:
-            loc = "/".join(str(p) for p in err.path) or "<root>"
-            print(
-                f"conformance-review invalid at {loc}: {err.message}", file=sys.stderr
-            )
-        return 1
-    print(json.dumps(compute_gate(doc)))
+    print(json.dumps(compute_gate(text)))
     return 0
