@@ -265,7 +265,6 @@ def test_run_pass_within_targets(tmp_path):
         0.95,
         0.95,
     ]
-    assert "failure_kind" not in data
 
 
 def test_run_ppa_miss_is_exit0_fail(tmp_path):
@@ -284,7 +283,7 @@ def test_run_ppa_miss_is_exit0_fail(tmp_path):
         _json.dumps([{"dim": "power_mw", "target": 1.2, "scenario_id": "S2"}]),
     )
     assert rc == 0
-    assert data["verdict"] == "fail" and data["failure_kind"] == "ppa"
+    assert data["verdict"] == "fail"
     assert data["violations"] == [
         {
             "dim": "power_mw",
@@ -318,7 +317,6 @@ def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
     rc, data = p.run(plan, wd, "[]")
     assert rc != 0
     assert "FAIL=saif_empty:S1" in capsys.readouterr().err
-    assert data["failure_kind"] == "tooling"
     assert data["failures"][0]["category"] == "saif_dump"
     assert (
         data["failures"][0]["phase"] == "run"
@@ -452,7 +450,7 @@ def test_build_result_pass_lean_shape(tmp_path):
 
 def test_build_result_tooling_fail_on_invariant(tmp_path):
     # A report whose Total != sum(components) by >> 1% (the parser's invariant)
-    # -> parser exit 1 -> build_result writes failure_kind=tooling + failures[].
+    # -> parser exit 1 -> build_result writes fail_reason + failures[].
     wd, plan = _make_workdir(
         tmp_path,
         _SCEN[:1],
@@ -461,13 +459,12 @@ def test_build_result_tooling_fail_on_invariant(tmp_path):
     )  # deliberately off
     assert p.build_result(wd, module="tpu_top", plan_path=str(plan), targets="[]") == 0
     ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["failure_kind"] == "tooling"
     assert ss["failures"] and ss["failures"][0]["category"] == "ptpx_data"
     assert isinstance(ss["fail_reason"], str) and ss["fail_reason"]
 
 
 def test_build_result_ppa_miss(tmp_path):
-    # the failure_kind=ppa branch of build_result: a scenario over target ->
+    # the PPA-miss branch of build_result: a scenario over target ->
     # status=fail + violations + ppa_actual (the schema's ppa-fail if/then).
     wd, plan = _make_workdir(
         tmp_path,
@@ -483,7 +480,6 @@ def test_build_result_ppa_miss(tmp_path):
         p.build_result(wd, module="tpu_top", plan_path=str(plan), targets=targets) == 0
     )
     ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["failure_kind"] == "ppa"
     assert ss["violations"] == [
         {
             "dim": "power_mw",
@@ -622,7 +618,7 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
     assert r.returncode == 0, r.stderr
     env = _json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
-    assert env["status"] == "fail" and ss["failure_kind"] == "ppa"
+    assert env["status"] == "fail"
     assert ss["violations"] == [
         {
             "dim": "power_mw",
@@ -756,12 +752,11 @@ def test_golden_is_schema_valid(tmp_path):
 
 # ── declared failure: the paths where the gate has nothing to read ──────────
 #
-# Before finalize grew --fail-reason / --failure-kind, these two paths (a missing
-# external reference, a non-zero `make`) had no verb at all: SKILL.md told the agent
-# to write status=fail + failure_kind by hand while the same step forbade
-# hand-assembling the envelope. ARCHITECTURE.md §6.2 makes a wrong-enum failure_kind
-# land `blocked` rather than `fail`, so the hand-written path spent a routable failure
-# on a human. These tests hold the verb to being the only writer.
+# Before finalize grew --fail-reason, these two paths (a missing external reference, a
+# non-zero `make`) had no verb at all: SKILL.md told the agent to write status=fail by
+# hand while the same step forbade hand-assembling the envelope, and an envelope the
+# schema rejects reaps as blocked rather than fail, so a hand-written one spent a
+# routable failure on a human. These tests hold the verb to being the only writer.
 
 
 def _declared(tmp_path, **kw):
@@ -778,14 +773,13 @@ def test_declared_fail_writes_the_envelope_without_touching_the_reports(tmp_path
     rc, wd = _declared(
         tmp_path,
         fail_reason="external reference missing: Design/synthesis/out/tpu_top_syn.sdf",
-        failure_kind="infra",
         fix_owner="synthesis",
     )
     assert rc == 0
     env = _json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
-    assert ss["failure_kind"] == "infra" and ss["fix_owner"] == "synthesis"
+    assert ss["fix_owner"] == "synthesis"
     assert "tpu_top_syn.sdf" in ss["fail_reason"]
     # The pass-shape is not invented on a run that produced none of it.
     for absent in ("saif_artifacts", "power_by_scenario", "ppa_actual", "failures"):
@@ -800,7 +794,6 @@ def test_declared_fail_validates_against_the_stage_schema(tmp_path):
     _, wd = _declared(
         tmp_path,
         fail_reason="gls-compile failed: phase=compile, LIB_V not readable",
-        failure_kind="tooling",
         fix_owner="simulation",
     )
     env = _json.loads((wd / "result.json").read_text())
@@ -808,23 +801,17 @@ def test_declared_fail_validates_against_the_stage_schema(tmp_path):
 
 
 def test_declared_fail_omits_fix_owner_when_the_caller_cannot_name_one(tmp_path):
-    _, wd = _declared(
-        tmp_path, fail_reason="pt_shell license checkout failed", failure_kind="infra"
-    )
+    _, wd = _declared(tmp_path, fail_reason="pt_shell license checkout failed")
     ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
     assert "fix_owner" not in ss  # an unnamed owner is how a human gets called in
 
 
-@pytest.mark.parametrize(
-    "reason,kind",
-    [("   ", "infra"), ("dc died", None)],
-)
-def test_finalize_blocked_on_a_malformed_declaration(tmp_path, reason, kind):
-    # An empty reason or a reason without a kind is BLOCKED, never status=fail — and
-    # BLOCKED writes nothing, so the retry is not looking at a half-declared envelope.
+def test_finalize_blocked_on_an_empty_declaration(tmp_path):
+    # A declaration with no cause in it is BLOCKED, never status=fail — and BLOCKED
+    # writes nothing, so the retry is not looking at a half-declared envelope.
     wd = tmp_path / "wd"
     wd.mkdir()
-    assert p.finalize(wd, "m", tmp_path / "plan", "[]", None, reason, kind) == 2
+    assert p.finalize(wd, "m", tmp_path / "plan", "[]", None, "   ") == 2
     assert not (wd / "result.json").exists()
 
 
@@ -855,8 +842,6 @@ def test_declared_fail_through_the_cli(tmp_path):
             "tpu_top",
             "--fail-reason",
             "ptpx failed: phase=ptpx, read_saif annotated 0%",
-            "--failure-kind",
-            "tooling",
             "--fix-owner",
             "simulation-plan",
         ],
@@ -865,30 +850,8 @@ def test_declared_fail_through_the_cli(tmp_path):
     )
     assert r.returncode == 0, r.stderr
     ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["failure_kind"] == "tooling" and ss["fix_owner"] == "simulation-plan"
+    assert ss["fix_owner"] == "simulation-plan"
     assert "annotated 0%" in ss["fail_reason"]
-
-
-def test_cli_rejects_ppa_as_a_declarable_failure_kind(tmp_path):
-    MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
-    r = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "finalize",
-            "--workdir",
-            str(tmp_path),
-            "--module",
-            "m",
-            "--fail-reason",
-            "x",
-            "--failure-kind",
-            "ppa",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert r.returncode == 2  # argparse choices: ppa is the gate's to write
 
 
 # ── failures[].category has exactly one writer ──────────────────────────────

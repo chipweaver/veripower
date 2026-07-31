@@ -64,7 +64,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         targets.get("timing_slack_ns"),
         a.fix_owner,
         a.fail_reason,
-        a.failure_kind,
     )
 
 
@@ -98,14 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="cause of a run with no gradeable reports (license, elaborate/compile "
         "abort, crash after reporting); supplying it declares the failure and wins "
-        "over the gate. Needs --failure-kind.",
-    )
-    sp.add_argument(
-        "--failure-kind",
-        default=None,
-        choices=("infra", "tooling"),
-        help="with --fail-reason: infra = DC never ran, tooling = DC ran and its "
-        "output is unusable (ppa is the gate's to write, never yours)",
+        "over the gate.",
     )
     sp.set_defaults(func=_cmd_finalize)
 

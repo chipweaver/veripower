@@ -10,17 +10,12 @@ synthesis 3250876, timing-analysis b0df23d, power-analysis 357a525.
 
 Locked invariant: every stage's schema accepts the smallest valid
 status=fail envelope (envelope-required fields + stage_specific.fail_reason,
-+ failure_kind for synthesis/timing-analysis/power-analysis, + failure_phase
-for simulation).
++ failure_phase for simulation).
 """
 
 import pytest
 
 from framework.scripts import facts, rules
-
-# Stages that require failure_kind in their fail envelope (per route.py's
-# failure_kind dispatch — route.py is the sole home of the routing maps).
-_FAILURE_KIND_STAGES = {"synthesis", "timing-analysis", "power-analysis"}
 
 # simulation requires failure_phase (which sub-step tripped) alongside fail_reason;
 # the schema gates both under if:{status:fail} per skills/simulation/references/result.schema.json.
@@ -30,8 +25,6 @@ _FAILURE_PHASE_STAGES = {"simulation"}
 @pytest.mark.parametrize("stage", rules.FORWARD_PRIORITY)
 def test_schema_validates_minimum_fail_envelope(stage):
     stage_specific = {"fail_reason": "test fail"}
-    if stage in _FAILURE_KIND_STAGES:
-        stage_specific["failure_kind"] = "infra"
     if stage in _FAILURE_PHASE_STAGES:
         stage_specific["failure_phase"] = "compile"
 
@@ -49,7 +42,7 @@ def test_schema_validates_minimum_fail_envelope(stage):
 
 
 # A fail that reports a PPA miss must carry the numbers behind it. The claim used to be
-# keyed on a label — failure_kind=ppa triggered a required[] — which meant the schema was
+# keyed on a label — a failure-category value triggered a required[] — which meant the schema was
 # checking a description of the data against the data's absence. It is now keyed on the
 # data: carrying violations[] obliges you to carry the measurements it was judged from.
 # That is strictly more than the label caught, because it also fires on the case the label
@@ -94,7 +87,6 @@ def test_ppa_fail_requires_numbers(stage):
             stage,
             {
                 "fail_reason": "PPA gate exceeded",
-                "failure_kind": "ppa",
                 "violations": numbers["violations"],
             },
         ),
@@ -110,7 +102,6 @@ def test_ppa_fail_requires_numbers(stage):
             stage,
             {
                 "fail_reason": "netlist incomplete",
-                "failure_kind": "tooling",
                 "violations": [],
             },
         ),
@@ -124,7 +115,7 @@ def test_ppa_fail_requires_numbers(stage):
         stage,
         _fail_result(
             stage,
-            {"fail_reason": "PPA gate exceeded", "failure_kind": "ppa", **numbers},
+            {"fail_reason": "PPA gate exceeded", **numbers},
         ),
     )
     assert err is None, f"stage {stage}: a fail carrying both rejected: {err}"
@@ -132,6 +123,6 @@ def test_ppa_fail_requires_numbers(stage):
     # And an early fail, which carries neither because no gate ran, stays valid.
     err = facts.validate_result(
         stage,
-        _fail_result(stage, {"fail_reason": "no license", "failure_kind": "infra"}),
+        _fail_result(stage, {"fail_reason": "no license"}),
     )
     assert err is None, f"stage {stage}: early fail rejected: {err}"

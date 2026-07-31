@@ -71,7 +71,7 @@ report included, and you never hand-assemble it:
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
   --workdir {workdir} --module <module> [--fix-owner <rule>] \
-  [--fail-reason "<cause>" --failure-kind {infra|tooling}]
+  [--fail-reason "<cause>"]
 ```
 
 It classifies each direction on the report's `(MET)` / `(VIOLATED)` marker — never the displayed
@@ -99,9 +99,6 @@ The flags carry what the report cannot:
   You are the one who watched it run. Supplying it is itself the declaration of failure, so it
   wins over the gate; write the cause you actually read rather than a category, since nothing
   parses it.
-- **`--failure-kind`**, which fills `stage_specific.failure_kind`, alongside it: `infra` when
-  PrimeTime never ran, `tooling` when it ran and its output is unusable. That is the one thing an
-  absent report cannot settle. The third value, `ppa`, is the gate's to write and never yours.
 - **`--fix-owner`** on every failure, license failures included, since it is what fills
   `stage_specific.fix_owner`. A `fail_reason` naming the guilty stage in prose while the flag was
   omitted reads to the caller as "this stage could not tell", and brings a human in to re-derive
@@ -110,7 +107,7 @@ The flags carry what the report cannot:
   flag only when your own environment broke or you read the evidence and still cannot say.
 
 Exit 0 means written, pass or fail. Exit 2 is BLOCKED and never a `status=fail`: an empty
-`--fail-reason`, one without a `--failure-kind`, or a program exception. stderr names which.
+`--fail-reason`, or a program exception. stderr names which.
 
 ## Return Contract
 

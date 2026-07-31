@@ -63,7 +63,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         json.dumps(targets),
         a.fix_owner,
         a.fail_reason,
-        a.failure_kind,
     )
 
 
@@ -98,14 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="cause of a run with no gradeable reports (missing external reference, "
         "license, a non-zero make); supplying it declares the failure and skips the "
-        "gate. Needs --failure-kind.",
-    )
-    sp.add_argument(
-        "--failure-kind",
-        default=None,
-        choices=("infra", "tooling"),
-        help="with --fail-reason: infra = the flow never ran, tooling = it ran and its "
-        "output is unusable (ppa is the gate's to write, never yours)",
+        "gate.",
     )
     sp.set_defaults(func=_cmd_finalize)
 

@@ -84,7 +84,7 @@ and you never hand-assemble the envelope:
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
   --workdir {workdir} --module <module> [--fix-owner <rule>] \
-  [--fail-reason "<cause>" --failure-kind {infra|tooling}]
+  [--fail-reason "<cause>"]
 ```
 
 After a clean `make` it judges: it parses each `reports_ptpx/<id>/power_flat.rpt`, reconciles the
@@ -105,10 +105,6 @@ The flags carry what the reports cannot:
   cause you actually read rather than a category, since nothing parses it. Each step prefixes its
   own error with `phase=<compile|run|ptpx>`; carry that phase into the sentence. Supplying the
   flag is itself the declaration of failure, so it skips the gate.
-- **`--failure-kind`**, which fills `stage_specific.failure_kind`, alongside it: `infra` when the
-  flow never ran (a missing external reference, no license), `tooling` when it ran and its output
-  is unusable. That is the one thing an absent report cannot settle. The third value, `ppa`, is
-  the gate's to write and never yours.
 - **`--fix-owner`** on every failure, since it is what fills `stage_specific.fix_owner`. You read
   the log, so you are the only party that can say whose artifact is at fault, and nothing
   downstream re-derives it. Go by the file the error names: the synthesized netlist or SDF is
@@ -122,7 +118,7 @@ The flags carry what the reports cannot:
   a human gets called in, and a guess spends a full rework round on a stage that cannot fix it.
 
 Exit 0 means written, pass or fail. Exit 2 is BLOCKED and never a `status=fail`: an empty
-`--fail-reason`, one without a `--failure-kind`, or a program exception. stderr names which.
+`--fail-reason`, or a program exception. stderr names which.
 
 ## Return Contract
 

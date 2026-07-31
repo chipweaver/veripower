@@ -125,7 +125,7 @@ The event schemas at `framework/references/schemas/events/<type>.schema.json` (7
 The `execution` field on each `Rule` (`"main-thread"` or `"task"`) is what the Orchestrator branches on — never a hardcoded stage list. The per-rule trigger:
 
 - **specification** — consumes a frozen, approved `brainstorm.md`; a fan-out dispatcher (decompose + per-child sub-Task waves around a partition gate) plus its main-thread `spec` CLI gate verbs. NOT main-thread for brainstorm dialogue — that moved to the pre-pipeline `brainstorm` skill.
-- **simulation-plan** — multi-turn plan-review dialogue with the user; also self-dispatches a single Level-1 plan-adequacy review sub-Task (§6.3.1).
+- **simulation-plan** — multi-turn plan-review dialogue with the user; also self-dispatches a single Level-1 plan-adequacy review sub-Task (§6.2.1).
 - **rtl-design** — fan-out only, no dialogue: one Level-1 sub-Task per child, an intent-review wave the stage acts on itself, then finalize.
 - **simulation** — fan-out only, no dialogue: every round is homogeneous (the kernel's `carry_self` has already carried the previous round's TB into the workdir before dispatch, or the workdir is genuinely empty on a first run — the skill never branches on which). Wave 1 dispatches the env-build child, then runs the smoke gate, the LLM conformance review-gate (re-judged every round, never skipped), and the verify child (Wave 2).
 
@@ -140,7 +140,7 @@ The `execution` field on each `Rule` (`"main-thread"` or `"task"`) is what the O
 | **Orchestrator agent** | `design-flow` skill, main conversation | Execute the one action each `decide` returns; propose `pin` / `reopen` / human `diagnose` on explicit user intent; escalate; collaborate with the user. Authors no per-dispatch content: it passes the action's coordinates through and the kernel resolves them (§5.6). Also acts as the main-thread executor for the four main-thread rules. | The only role that may call `kernel.py`, use the Task tool, and interact with the user. Authors NO event by hand — every event is written by `kernel.py`. |
 | **Main-thread skill** | one of the four main-thread rules, loaded via `Skill()` | Self-driven work in the Orchestrator's thread: sub-Task fan-out (producers, simulation), multi-turn dialogue (simulation-plan), or a single review dispatch. Each writes its own artifacts + `result.json`. | May dispatch Level-1 sub-Tasks (producers / simulation) or interact with the user (simulation-plan; specification at its two path-handoff gates). No `kernel.py`, no routing. Held by SKILL.md prose discipline, not tool gating. |
 | **Stage subagent** | the four Task-dispatched rules (`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis`) | Execute one rule: read upstream → do the work → write `result.json` → return a STATUS line | Must NOT call `kernel.py` or make routing decisions (§6.1) |
-| **Debug subagent** | `simulation-triage`, dispatched via Task | Graduated (L1 log+code+FSDB reasoning → L2 controlled experiment) root-cause analysis on a simulation failure; its target run and upstream (spec/RTL/plan) are injected at dispatch via `dispatch.json` (`sim_run` names the target run directory), `proof=None` so it is dispatchable even when upstream proofs are invalid; writes a `result.json` whose `stage_specific` carries the attribution the kernel turns into a `diagnosis` at reap (§6.4) | Canonical read-only, scratch-writable under its own workdir; never edits any other rule's `result.json`, RTL, or tests; NOT idempotent (a repeat re-runs L2) |
+| **Debug subagent** | `simulation-triage`, dispatched via Task | Graduated (L1 log+code+FSDB reasoning → L2 controlled experiment) root-cause analysis on a simulation failure; its target run and upstream (spec/RTL/plan) are injected at dispatch via `dispatch.json` (`sim_run` names the target run directory), `proof=None` so it is dispatchable even when upstream proofs are invalid; writes a `result.json` whose `stage_specific` carries the attribution the kernel turns into a `diagnosis` at reap (§6.3) | Canonical read-only, scratch-writable under its own workdir; never edits any other rule's `result.json`, RTL, or tests; NOT idempotent (a repeat re-runs L2) |
 | **`kernel.py`** | Python CLI | State transitions (as events), scheduling, proof derivation, promote | Contains the scheduling logic but makes no *judgment*: it never mints a human diagnosis. |
 
 ### 2.5 Core design principles
@@ -436,15 +436,11 @@ Subagents are dispatched via the Task tool with fresh context, a restricted prom
 
 **MUST NOT:** call `kernel.py`; re-dispatch any subagent; write outside `{workdir}` (including the canonical dir — promotion is the kernel's job); touch other modules; make any routing decision.
 
-### 6.2 `failure_kind` envelope obligation
-
-`synthesis`, `power-analysis`, and `timing-analysis` carry one extra obligation: on `status == "fail"`, `stage_specific.failure_kind ∈ {infra, tooling, ppa}` is required. It describes what KIND of failure this was, for the human and the fix owner reading the envelope; it selects no target (§5.4 does that from `fix_owner`). An absent or wrong-enum `failure_kind` fails schema validation at reap and lands `blocked`, never `fail`.
-
-### 6.3 Main-thread skill
+### 6.2 Main-thread skill
 
 The four `Skill()`-loaded rules share the stage-subagent contract — **no `kernel.py`, no routing, no DAG awareness** — plus two permissions: they may interact with the user across turns (`simulation-plan`'s plan loop; `specification`'s two path-handoff gates), and they may dispatch Level-1 sub-Tasks. The Orchestrator loads them via `Skill()` and calls `reap` exactly once when the skill exits; intermediate dialogue and intra-stage fan-out are skill-internal scratch and never enter the log.
 
-#### 6.3.1 Fan-out dispatch privilege
+#### 6.2.1 Fan-out dispatch privilege
 
 `specification` / `rtl-design` / `simulation` fan out Level-1 sub-Tasks (one per child for the producers; the env-build and verify children for `simulation`); `simulation-plan` self-dispatches a single Level-1 plan-adequacy review sub-Task. Sub-Tasks MUST NOT dispatch further (Level-2 forbidden — the audit boundary). These sub-Tasks run inside the main-thread skill's window: they append no events and are invisible to the kernel's in-flight bookkeeping. A sub-Task may end `STATUS: BLOCKED` as a harness signal (distinct from the envelope's forbidden `status=blocked`); the dispatching skill turns that into a `result.json` `status=fail` listing the failed children, so a later repair can re-dispatch only those.
 
@@ -452,7 +448,7 @@ The four `Skill()`-loaded rules share the stage-subagent contract — **no `kern
 
 **Unified contract for proposed-oracle LLM reviews.** Four stages run a fresh skeptical reviewer over their own output — `specification` Step-7, `rtl-design`, `simulation` conformance, `simulation-plan` Step-4 adequacy — and in each the review is the stage's proposed oracle, promoted and fingerprinted rather than reduced to a stored verdict. What the review says is dispositioned by whether the stage has an in-stage user loop. Stages that do (`specification`, `simulation-plan`) hand it to the user. Stages that do not (`rtl-design`, `simulation` — fan-out only) act on it themselves: a self-locus defect drives a re-dispatch, an upstream-locus defect fails out naming that producer as the `fix_owner` its envelope carries. Either way the endorsement is held to account at `pin`, not at the stage: a script re-reducing a record its own author wrote would only be checking that author against itself.
 
-### 6.4 Debug subagent — `simulation-triage`
+### 6.3 Debug subagent — `simulation-triage`
 
 `simulation-triage` is the sole debug-class rule and the pipeline's authoritative, graduated root-cause analyzer for simulation failures. It is an ordinary Task rule in the kernel: dispatched with `params.sim_run`, it flows through the same `dispatch → reap` path as any stage, and its `result.json` (the `stage_specific` analysis block) is the artifact the kernel turns into a `diagnosis` at reap (§5.3) — the attribution reaches the scheduler as an event, never as a side-channel file pointer.
 
