@@ -57,7 +57,7 @@ def build_result(
 ) -> int:
     """Assemble the lean simulation-plan result.json from the workdir.
 
-    The pass path re-runs check-scaffold in-process. It was clean at Step 2 and every layer
+    The pass path re-runs check-scaffold in-process. It was clean at the script gate and every layer
     of it is a set operation over the plan sidecars plus the authored check hints, so a
     failure now means an artifact was edited after the gate — BLOCKED rather than a routable
     fail. The fail path does not run it: an early-fail workdir may hold no sidecars at all,
@@ -106,7 +106,8 @@ def build_result(
     if errors:
         listed = "; ".join(errors)
         raise ValueError(
-            f"check-scaffold no longer passes at finalize — {listed}. Step 2 left it clean, "
+            f"check-scaffold no longer passes at finalize — {listed}. The script gate left it "
+            "clean, "
             "so an artifact was edited after the gate: repair it, do not finalize."
         )
 
