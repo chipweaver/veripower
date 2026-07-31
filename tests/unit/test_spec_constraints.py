@@ -87,12 +87,23 @@ def test_core_clocks_and_io_delays(tmp_path):
     assert "[get_ports {clk}]" not in sdc
 
 
-def test_bit_range_in_name_reaches_get_ports_verbatim(tmp_path):
-    # The netlist name carries its range; derive-constraints does not decompose it.
-    ports = [_CLK_PORT, _port("token_in[4:0]", "input", "data", width=5)]
+def test_a_bus_is_constrained_by_its_base_name(tmp_path):
+    # `get_ports token_in` selects every bit of the bus; `get_ports token_in[4:0]`
+    # selects nothing (measured on PrimeTime M-2016.12-SP1: 5 ports vs 0 + SEL-005).
+    # The name arrives here already stripped — read_sidecar rejects a bracketed one.
+    ports = [_CLK_PORT, _port("token_in", "input", "data", width=5)]
     _run(_wd(tmp_path, ports))
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
-    assert "set_input_delay  3.0 -clock clk [get_ports {token_in[4:0]}]" in sdc
+    assert "set_input_delay  3.0 -clock clk [get_ports {token_in}]" in sdc
+
+
+def test_a_bit_range_in_a_name_never_reaches_the_sdc(tmp_path):
+    # The verb refuses the file rather than emitting a selector that matches nothing.
+    ports = [_CLK_PORT, _port("token_in[4:0]", "input", "data", width=5)]
+    r = _run(_wd(tmp_path, ports), check=False)
+    assert r.returncode != 0
+    assert "bit range" in (r.stderr + r.stdout)
+    assert not (tmp_path / "constraints" / "m.sdc").exists()
 
 
 def test_async_reset_emits_async_flag(tmp_path):

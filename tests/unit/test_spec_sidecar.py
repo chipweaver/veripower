@@ -135,25 +135,58 @@ def test_source_feature_alias_is_rejected_not_reinterpreted(tmp_path):
     assert "SourceFeature" in str(e.value) or "source_feature" in str(e.value)
 
 
-# ---------- the one rule JSON Schema cannot carry ----------
+# ---------- the rules JSON Schema cannot carry ----------
 
 
-def test_width_agrees_with_the_range_in_the_name(tmp_path):
+def test_a_top_io_name_is_the_base_identifier(tmp_path):
+    _write(tmp_path, "top-io.json", [{**_PORT, "name": "tok", "width": 5}])
+    assert read_sidecar(tmp_path, "top-io.json")[0]["name"] == "tok"
+
+
+def test_a_bit_range_in_a_top_io_name_is_rejected(tmp_path):
+    # It reaches get_ports verbatim, where DC and PrimeTime match zero ports for it —
+    # the port silently loses its IO constraint. Agreeing with `width` does not save it.
     _write(tmp_path, "top-io.json", [{**_PORT, "name": "tok[4:0]", "width": 5}])
-    assert read_sidecar(tmp_path, "top-io.json")[0]["width"] == 5
-
-
-def test_width_disagreeing_with_the_name_is_rejected(tmp_path):
-    _write(tmp_path, "top-io.json", [{**_PORT, "name": "tok[4:0]", "width": 8}])
     with pytest.raises(SidecarError) as e:
         read_sidecar(tmp_path, "top-io.json")
-    assert "implies 5" in str(e.value)
+    assert "bit range" in str(e.value) and "tok[4:0]" in str(e.value)
 
 
-def test_an_index_makes_no_width_claim(tmp_path):
-    # tok[3] is a register-file element, not a bit range.
+def test_a_parameterized_range_in_a_top_io_name_is_rejected(tmp_path):
+    # The case a numeric width-vs-range cross-check cannot see at all: no `[h:l]` to
+    # compare against, so any width passed. Real designs declare ports this way.
+    _write(tmp_path, "top-io.json", [{**_PORT, "name": "dataIn[DATA_WIDTH-1:0]"}])
+    with pytest.raises(SidecarError) as e:
+        read_sidecar(tmp_path, "top-io.json")
+    assert "bit range" in str(e.value)
+
+
+def test_a_bit_select_in_a_top_io_name_is_rejected(tmp_path):
+    # A port is declared once with a width; a single-bit name is a category error here
+    # whatever `width` claims.
     _write(tmp_path, "top-io.json", [{**_PORT, "name": "tok[3]", "width": 32}])
-    assert read_sidecar(tmp_path, "top-io.json")
+    with pytest.raises(SidecarError) as e:
+        read_sidecar(tmp_path, "top-io.json")
+    assert "bit range" in str(e.value)
+
+
+def test_an_interconnect_index_makes_no_width_claim(tmp_path):
+    # regfile[3] is an element, not a bit range. Interconnect wires reach no tool, so
+    # the cross-check — not the ban — is what applies there.
+    _write(
+        tmp_path,
+        "interconnects.json",
+        [
+            {
+                "wire": "regfile[3]",
+                "producers": ["a"],
+                "consumers": ["b"],
+                "width": 32,
+                "clock_domain": "clk",
+            }
+        ],
+    )
+    assert read_sidecar(tmp_path, "interconnects.json")
 
 
 def test_the_width_rule_applies_to_interconnects_too(tmp_path):
