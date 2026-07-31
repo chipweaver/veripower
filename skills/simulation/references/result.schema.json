@@ -15,7 +15,7 @@
             "failure_phase": {"type": "string", "enum": ["prerequisite", "compile", "smoke", "regress", "coverage", "conformance"]},
             "fail_reason": {"type": "string", "minLength": 1},
             "failing_cases": {
-              "description": "One entry per case that failed this run, written by the verify child and read by simulation-triage. The shape is declared here because the triage contract names these fields: without test_id it cannot reach run_logs/<test_id>.log, and error_message is the log anchor its Step-1 reasoning starts from.",
+              "description": "One entry per case that failed this run, written by the verify child and read by simulation-triage. The shape is declared here because the triage contract names these fields: without test_id it cannot reach logs/<test_id>.log, and error_message is the log anchor its Step-1 reasoning starts from.",
               "type": "array",
               "items": {
                 "type": "object",

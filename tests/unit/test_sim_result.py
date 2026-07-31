@@ -295,7 +295,7 @@ def test_conformance_findings_mirrors_its_source_schema():
 
 
 def test_failing_cases_pins_what_triage_reads():
-    # simulation-triage resolves run_logs/<test_id>.log and anchors Step 1 on error_message; both
+    # simulation-triage resolves logs/<test_id>.log and anchors Step 1 on error_message; both
     # must be required, and the entry closed so a producer typo fails here rather than silently
     # giving triage nothing to read.
     item = _ss_props()["failing_cases"]["items"]

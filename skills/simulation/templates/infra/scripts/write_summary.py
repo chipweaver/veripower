@@ -8,6 +8,7 @@ blocking gates.
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections import defaultdict
@@ -59,6 +60,9 @@ def write_text(path, content):
 def main():
     args = parse_args()
     root = Path(args.verification_dir).resolve()
+    # Where run_vcs_regression.sh put the per-test logs this run: same env var, so the
+    # summary points a reader at the directory that exists rather than a fixed guess.
+    log_dir = os.environ.get("RUN_LOG_DIR") or "logs"
     testlist_path = root / "tests" / "testlist.json"
     log_path = root / "regression-log.txt"
     counts_path = root / "case-results.json"
@@ -153,7 +157,7 @@ def main():
             fid = test_by_id.get(item["test_id"], {}).get("feature_id", "-")
             action_rows.append(
                 f"| {item['test_id']} | {fid} | {item['status']} "
-                f"| {action}; see run_logs/{item['test_id']}.log |"
+                f"| {action}; see {log_dir}/{item['test_id']}.log |"
             )
     for test in tests:
         if test["test_id"] not in result_by_test:
@@ -182,7 +186,6 @@ def main():
 
 - Module: `{testlist.get("module", "unknown")}`
 - Top: `{testlist.get("top", "unknown")}`
-- design.md: `{testlist.get("design", "unknown")}`
 - Regression log: `regression-log.txt`
 - Coverage summary: `coverage-summary.txt`
 
@@ -215,7 +218,7 @@ def main():
 ## Status Legend
 
 - `PASS`: testbench reported no UVM_FATAL or UVM_ERROR.
-- `FAIL`: errors reported; investigate per-test log in `run_logs/`.
+- `FAIL`: errors reported; investigate per-test log in `{log_dir}/`.
 - `MANUAL_REVIEW`: status flagged for human inspection.
 - `NOT_RUN`: testcase declared but no result line present (likely a compile or selection issue).
 """

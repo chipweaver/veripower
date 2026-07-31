@@ -88,8 +88,8 @@ instead.
   ```
 
   On a `regress` route-out each failing case is one `failing_cases[]` entry, and its shape is
-  pinned by `references/result.schema.json` — `test_id` (how triage reaches
-  `run_logs/<test_id>.log`) and `error_message` (its log anchor) are required, `log_snippet` is
+  pinned by `references/result.schema.json`: `test_id` (how triage reaches
+  `logs/<test_id>.log`) and `error_message` (its log anchor) are required, `log_snippet` is
   optional. A misspelled key fails the envelope rather than leaving triage with nothing to read.
 
   (omit the failure fields on a clean pass; emit `stimulus_iterations` / coverage summary counts

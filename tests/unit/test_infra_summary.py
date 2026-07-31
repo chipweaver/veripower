@@ -135,6 +135,19 @@ def test_rendered_views_agree_with_the_json(tmp_path):
     assert f"| FAIL | {counts['failed_tests']} |" in md
 
 
+def test_failure_rows_point_at_the_directory_the_runner_wrote(tmp_path):
+    # The Action Items row is what a human follows off a failing run, so the directory it
+    # names has to be the one run_vcs_regression.sh put the logs in: RUN_LOG_DIR, default
+    # logs/. It named run_logs/ for long enough to reach a real module, where no such
+    # directory has ever existed.
+    wd = _workdir(
+        tmp_path, ["RESULT T-02 FAIL uvm_testname=m_corner_test log=logs/T-02.log"]
+    )
+    assert _run_summary(wd).returncode == 0
+    md = (wd / "case-results-summary.md").read_text()
+    assert "logs/T-02.log" in md and "run_logs" not in md
+
+
 def test_traceability_shows_the_real_feature_name(tmp_path):
     # The Feature column must not be the FeatureID column again: feature_name comes from
     # features.json via materialize-scaffold, and this is where a human reads it.
