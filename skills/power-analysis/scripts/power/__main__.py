@@ -53,7 +53,13 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
 
     targets = _read_ppa_targets(a.workdir, {"power_mw"})
     return result.finalize(
-        a.workdir, a.module, a.scaffold, json.dumps(targets), a.fix_owner
+        a.workdir,
+        a.module,
+        a.scaffold,
+        json.dumps(targets),
+        a.fix_owner,
+        a.fail_reason,
+        a.failure_kind,
     )
 
 
@@ -87,6 +93,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--fix-owner",
         default=None,
         help="on a failure, the rule that must act (you name it; the reports cannot)",
+    )
+    sp.add_argument(
+        "--fail-reason",
+        default=None,
+        help="cause of a run with no gradeable reports (missing external reference, "
+        "license, a non-zero make); supplying it declares the failure and skips the "
+        "gate. Needs --failure-kind.",
+    )
+    sp.add_argument(
+        "--failure-kind",
+        default=None,
+        choices=("infra", "tooling"),
+        help="with --fail-reason: infra = the flow never ran, tooling = it ran and its "
+        "output is unusable (ppa is the gate's to write, never yours)",
     )
     sp.set_defaults(func=_cmd_finalize)
 

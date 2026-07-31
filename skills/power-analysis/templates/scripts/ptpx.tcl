@@ -65,15 +65,15 @@ set_app_var link_path   [list "*" $lib_db]
 set_app_var search_path [list "."]
 
 if {[catch { read_verilog $netlist; current_design $top; link } _err]} {
-    puts stderr "ERROR: design load failed (phase=ptpx category=netlist): $_err"
+    puts stderr "ERROR: design load failed (phase=ptpx): $_err"
     exit 1
 }
 if {[catch { read_sdc $sdc_file } _err]} {
-    puts stderr "ERROR: read_sdc failed (phase=ptpx category=sdf): $_err"
+    puts stderr "ERROR: read_sdc failed (phase=ptpx): $_err"
     exit 1
 }
 if {[catch { read_sdf $sdf_file } _err]} {
-    puts stderr "ERROR: read_sdf failed (phase=ptpx category=sdf): $_err"
+    puts stderr "ERROR: read_sdf failed (phase=ptpx): $_err"
     exit 1
 }
 
@@ -147,7 +147,7 @@ foreach entry [split $saif_list " "] {
                 }
             }
             if {!$_coverage_ok} {
-                puts "ERROR: read_saif annotated 0% (phase=ptpx category=ptpx_data) — strip_path='$strip_path' may mismatch (details: $_act_rpt)"
+                puts "ERROR: read_saif annotated 0% (phase=ptpx) — strip_path='$strip_path' may mismatch (details: $_act_rpt)"
                 set scenario_ok 0
                 set scenario_error "read_saif annotated 0% — strip_path='$strip_path' may mismatch (details: $_act_rpt)"
             }

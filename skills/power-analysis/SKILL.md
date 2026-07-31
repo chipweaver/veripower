@@ -20,9 +20,8 @@ Your sole responsibility: run VCS gate-level simulation against the post-synthes
 - Power test classes (`power_<seq>_test.sv`) are **auto-generated** by this stage — do not hand-write them or reuse power tests from any other source. Internally, each test reuses the `{module}_<seq>_seq` class already compiled by simulation (the plan's `power_scenarios[].sequence_ref` and `sequences[].name` share a namespace); this stage does NOT render an independent sequence class (contract violation — multi-source power tests cause naming / semantic drift).
 - The TB emits SAIF directly via `$set_gate_level_monitoring + $toggle_*` — `$dumpfile / $dumpvars` are **forbidden** (architectural violation — the SAIF path does not go through VCD; direct toggle dump avoids intermediate-format loss).
 - `ptpx.tcl` locks `power_analysis_mode averaged` + `read_saif`.
-- On failure, `failures[].{phase, error_summary}` MUST be filled in, and `--fix-owner` named whenever you can tell: `phase` says which flow step broke, `error_summary` what the log said, and `fix_owner` whose artifact must change. Leaving all three empty makes the failure unactionable.
 - `hier_separator` MUST be explicitly set to `"/"` at the top of `ptpx.tcl`: write both `catch {set_app_var hier_separator "/"}` + `set hier_separator "/"` — PT M-2016 treats this as a Tcl global (`set_app_var` reports CMD-104), while newer PT treats it as an application var; the default dot-separated value causes `strip_path` to silently mismatch (contract violation — power hierarchy paths become unresolvable).
-- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
+- **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr, stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
 
 ## Input Artifacts
 
@@ -68,7 +67,7 @@ you interact with it only through the `make` targets.
 
 ### Step 1: Pre-check external references
 
-Confirm `<tb_env>/filelist.f` / `<scaffold>/power-scenarios.json` (non-empty) / the synthesis trio (`<netlist>/out/<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, write `status=fail` + `failure_kind="infra"` + `fail_reason="external reference missing: <path>"` and exit. When `{workdir}/dispatch.json` carries a `scope`, narrow this round's edits to what it names.
+Confirm `<tb_env>/filelist.f` / `<scaffold>/power-scenarios.json` (non-empty) / the synthesis trio (`<netlist>/out/<TOP>_syn.{v,sdc,sdf}`) present AND `LIB_V`/`LIB_DB`/`UVM_HOME` set with valid paths. On any miss, declare it through the `finalize` of Step 3 with `--fail-reason "external reference missing: <path>" --failure-kind infra`, and stop there. When `{workdir}/dispatch.json` carries a `scope`, narrow this round's edits to what it names.
 
 ### Step 2: Bootstrap
 
@@ -82,47 +81,55 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 
 `cd {workdir} && make all >make.out 2>&1` (redirect keeps the multi-thousand-line VCS/PT logs out of context; each stage still tees to its own log file).
 
-- **`make` exited non-zero** → read a **bounded** slice of the failing stage's log (`gls-compile-log.txt` / `gls-run-log.txt` / `ptpx.log`) — never the whole dump. Then:
-  1. If a `make` step already printed `phase=<p>`, copy it verbatim. It also prints a
-     `category=<x>` for the three conditions it detects itself (`SAIF empty` → `saif_dump`;
-     `annotated 0%` → `ptpx_data`; its own env → `tooling`) — copy that too when present.
-  2. Name the owner. You read the log, so you are the only party that can say whose artifact is
-     at fault, and nothing downstream re-derives it. Go by the file the error names:
+Every run ends at `finalize`, a non-zero `make` included. It is the only writer of
+`result.json`, and you never hand-assemble the envelope:
 
-  | error names a file under… | `--fix-owner` |
-  |---|---|
-  | `<netlist>/out/*.v` or `*.sdf` | `synthesis` |
-  | TB filelist roots (`<tb_env>/…`) or local `power_filelist.f` | `simulation` |
-  | `<scaffold>/power-scenarios.json` (a bad `sequence_ref`, a bogus scenario) | `simulation-plan` |
-  | no named file / VCS flag / `UVM_HOME` / license error | *(your own env — omit it)* |
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
+  --workdir {workdir} --module <module> --scaffold <scaffold> [--fix-owner <rule>] \
+  [--fail-reason "<cause>" --failure-kind {infra|tooling}]
+```
 
-  A `power_mw` miss is normally `rtl-design`, but read `<ppa>/ppa.json` first: a target whose unit
-  disagrees with the number stored in it makes a conforming design look over-budget, and then the
-  owner is `specification`.
+After a clean `make` it judges: parses each `reports_ptpx/<id>/power_flat.rpt`, checks the
+Total = internal+switching+leakage reconciliation, judges the `power_mw` PPA dimension against
+the targets it reads from the injected `ppa` location itself (an absent file or dim leaves the
+dimension ungated), folds the per-scenario rows through, and enumerates `artifacts[]`.
 
-  Write `status=fail` + `failure_kind` (`infra` for missing-reference/license; else `tooling`) +
-  `failures[].{phase, error_summary}` + `fail_reason`, and `--fix-owner <rule>` per the table. When
-  your own environment broke, or you read the log and still cannot tell, **omit the owner**: an
-  unnamed owner is how a human gets called in, and a guess spends a full rework round on a stage
-  that cannot fix it.
+The flags carry what the reports cannot:
 
-- **`make` exited 0** → run the parser's finalize subcommand; do not run the parser separately or hand-assemble the envelope:
+- **`--fail-reason`**, which fills `stage_specific.fail_reason`, when `make` exited non-zero
+  and there is nothing gradeable. Read a
+  **bounded** slice of the failing stage's log (`gls-compile-log.txt` / `gls-run-log.txt` /
+  `ptpx.log`) — never the whole dump — and write the cause you actually read rather than a
+  category, since nothing parses it. Each `make` step prefixes its own error with
+  `phase=<compile|run|ptpx>`; carry that phase into the sentence. Supplying the flag is itself
+  the declaration of failure, so it skips the gate.
+- **`--failure-kind`**, which fills `stage_specific.failure_kind`, alongside it: `infra` when
+  the flow never ran (a missing external
+  reference, no license), `tooling` when it ran and its output is unusable. That is the one
+  thing an absent report cannot settle. The third value, `ppa`, is the gate's to write and
+  never yours.
+- **`--fix-owner`** on every failure, since it is what fills `stage_specific.fix_owner`. You
+  read the log, so you are the only party that can say
+  whose artifact is at fault, and nothing downstream re-derives it. Go by the file the error
+  names: the synthesized netlist or SDF is `synthesis`; a TB source under `<tb_env>` is
+  `simulation`; an unresolvable `sequence_ref` or a bogus scenario in
+  `<scaffold>/power-scenarios.json` is `simulation-plan`. A `power_mw` miss compares a measured
+  value against a target and either side can be wrong, so before naming `rtl-design`, read
+  `<ppa>/ppa.json`: a target whose unit disagrees with the number stored in it makes a
+  conforming design look over-budget, and no rebuild converges against it — name
+  `specification` when the target is what is malformed. Omit the flag when your own environment
+  broke, or when you have read both sides and still cannot name an owner: an unnamed owner is
+  how a human gets called in, and a guess spends a full rework round on a stage that cannot
+  fix it.
 
-  ```bash
-  python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
-    --workdir {workdir} --module <module> \
-    --scaffold <scaffold> [--fix-owner <rule>]
-  ```
-
-  `finalize` reuses the parser's PT-PX gate (parses each `reports_ptpx/<id>/power_flat.rpt`, checks the Total = internal+switching+leakage invariant, judges the `power_mw` PPA dimension against the targets it reads itself from the injected `ppa` location — an absent file skips the gate), folds its `stage_specific` fields through, enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
-
-  `failure_kind` is set by finalize (see `references/result.schema.json` `failure_kind` enum/description); `infra` (external reference / license missing) is written by the Step-1 pre-check before finalize runs, and on the `make`-non-zero VCS-compile triage above you also write the `failures[]`/`failure_kind` directly (the gate never runs there).
+Exit 0 means written, pass or fail. Exit 2 is BLOCKED and never a `status=fail`: an empty
+`--fail-reason`, one without a `--failure-kind`, or a program exception. stderr names which.
 
 ## Red Flags
 
 | Excuse | Reality |
 |---|---|
-| "Annotation/SAIF looks empty (0 elements / `size=0` / 0% annotated) but the flow ran — mark pass" | Each is a hard sanity failure: SDF 0 → `status=fail` + `--fix-owner synthesis`; SAIF `size=0` → `failures[]` `category=saif_dump`; PT-PX 0% → `exit 1` + `status=fail` `category=ptpx_data`. Silently passing on no annotation is power-data corruption. |
 | "`power_mw` is a little over target — pass" | PPA self-check is mandatory: a `power_mw` miss → `status=fail` + `violations[]` (one entry each), kept strictly separate from `failures[]` (`failures[]` = process/data failures; `violations[]` = PPA targets missed). |
 
 ## Pitfalls
@@ -135,7 +142,7 @@ Copies `templates/`, substitutes placeholders, renders power tests. Aborts if a 
 
 - [ ] `{workdir}/result.json` has been written and passes schema validation (`references/result.schema.json`).
 - [ ] No Iron Rule or Red Flag was triggered.
-- [ ] result.json was written by the `power` CLI's `finalize` verb (it owns status / the 7 stage_specific fields / artifacts / failure_kind).
+- [ ] result.json was written by the `power` CLI's `finalize` verb (it owns status / stage_specific / artifacts).
 - [ ] Every `saif_artifacts[].saif_path` file exists and `size > 0`.
 - [ ] Every `reports_ptpx/<id>/{power_hier.rpt, power_flat.rpt, switching_activity.rpt, ptpx.log}` is present.
 - [ ] `gls-compile-log.txt` and `gls-run-log.txt` are on disk.

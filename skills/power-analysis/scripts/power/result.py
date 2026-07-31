@@ -453,16 +453,49 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
     return [{"path": pth} for pth in candidates if (workdir / pth).exists()]
 
 
-def build_result(workdir, module, plan_path, targets, fix_owner=None) -> int:
+def build_result(
+    workdir,
+    module,
+    plan_path,
+    targets,
+    fix_owner=None,
+    fail_reason=None,
+    failure_kind=None,
+) -> int:
     """Assemble the lean power-analysis result.json. Reuses run() for the PT-PX gate
     (in-process, per-scenario assembly verbatim); its payload ALREADY carries the
     stage_specific fields + verdict, so this is thin — fold the fields through, set
     status/failure_kind/fail_reason, enumerate artifacts, write the envelope.
-    Returns 0 (result.json written, pass or fail). A raise -> main() exit 2 (BLOCKED).
+    Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED).
 
-    fix_owner is the one judgment this verb cannot derive: which rule must act. The reports
-    say what failed; whose artifact is at fault is the caller's reading."""
+    Three things this verb cannot derive, so the caller states them:
+
+    fix_owner — which rule must act. The reports say what failed; whose artifact is at
+    fault is the caller's reading.
+
+    fail_reason — the cause of a run that produced no gradeable reports: a missing
+    external reference, a license, a non-zero `make`. Supplying it IS the declaration of
+    failure, so it short-circuits the gate — which cannot run anyway, since the reports
+    it parses are the thing that never landed.
+
+    failure_kind — infra or tooling for such a declaration. Absent reports look identical
+    whether the flow never started or died mid-run, and only the caller saw which."""
     workdir = Path(workdir)
+
+    if fail_reason is not None:
+        ss = {"fail_reason": fail_reason, "failure_kind": failure_kind}
+        if fix_owner:
+            ss["fix_owner"] = fix_owner
+        _write_result(
+            workdir,
+            _envelope(
+                module,
+                status="fail",
+                stage_specific=ss,
+                artifacts=enumerate_artifacts(workdir),
+            ),
+        )
+        return 0
 
     rc, data = run(plan_path, workdir, targets)  # reuse the gate verbatim
     ss = _fold(data)
@@ -495,14 +528,45 @@ def build_result(workdir, module, plan_path, targets, fix_owner=None) -> int:
     return 0
 
 
-def finalize(workdir, module, scaffold, ppa_targets, fix_owner=None) -> int:
+def finalize(
+    workdir,
+    module,
+    scaffold,
+    ppa_targets,
+    fix_owner=None,
+    fail_reason=None,
+    failure_kind=None,
+) -> int:
     """Parse PT-PX reports, judge the power_mw PPA gate, write the lean result.json.
-    exit 0 = written (pass or fail); exit 2 = BLOCKED (any internal raise) — never
-    conflated with status=fail. (Owns the policy the deleted main() finalize branch had.)
+    exit 0 = written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason, one
+    without a --failure-kind, or any internal raise) — never conflated with status=fail.
     `scaffold` is the simulation-plan workdir (build_result's `plan_path`);
     `ppa_targets` is the ppa_targets JSON (build_result's `targets`)."""
+    if fail_reason is not None:
+        if not fail_reason.strip():
+            print(
+                "[power finalize] BLOCKED: --fail-reason must be a non-empty "
+                "one-line cause",
+                file=sys.stderr,
+            )
+            return 2
+        if not failure_kind:
+            print(
+                "[power finalize] BLOCKED: --fail-reason needs --failure-kind "
+                "{infra,tooling}",
+                file=sys.stderr,
+            )
+            return 2
     try:
-        return build_result(workdir, module, scaffold, ppa_targets, fix_owner)
+        return build_result(
+            workdir,
+            module,
+            scaffold,
+            ppa_targets,
+            fix_owner,
+            fail_reason,
+            failure_kind,
+        )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        print(f"[power finalize] FAIL=internal {exc}", file=sys.stderr)
+        print(f"[power finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

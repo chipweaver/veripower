@@ -98,7 +98,7 @@ while IFS=$'\t' read -r id seq; do
 		2>&1 | tee "$SAIF_DIR/${id}.run.log" >>"$LOG"
 
 	if [ ! -s "$canonical" ]; then
-		echo "[FAIL]  $id ($seq) — SAIF empty or missing (phase=run category=saif_dump)" | tee -a "$LOG" >&2
+		echo "[FAIL]  $id ($seq) — SAIF empty or missing (phase=run)" | tee -a "$LOG" >&2
 		exit 1
 	fi
 

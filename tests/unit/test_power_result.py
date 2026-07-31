@@ -729,3 +729,186 @@ def test_golden_is_schema_valid(tmp_path):
     Draft202012Validator(stage_schema, registry=registry).validate(
         env
     )  # raises on invalid
+
+
+# ── declared failure: the paths where the gate has nothing to read ──────────
+#
+# Before finalize grew --fail-reason / --failure-kind, these two paths (a missing
+# external reference, a non-zero `make`) had no verb at all: SKILL.md told the agent
+# to write status=fail + failure_kind by hand while the same step forbade
+# hand-assembling the envelope. ARCHITECTURE.md §6.2 makes a wrong-enum failure_kind
+# land `blocked` rather than `fail`, so the hand-written path spent a routable failure
+# on a human. These tests hold the verb to being the only writer.
+
+
+def _declared(tmp_path, **kw):
+    wd = tmp_path / "wd"
+    wd.mkdir()
+    rc = p.build_result(wd, "tpu_top", tmp_path / "nonexistent-plan", "[]", **kw)
+    return rc, wd
+
+
+def test_declared_fail_writes_the_envelope_without_touching_the_reports(tmp_path):
+    # The workdir holds no reports and the scaffold path does not exist — the state a
+    # missing external reference leaves behind. The declaration must precede run(),
+    # which would raise on the absent power-scenarios.json.
+    rc, wd = _declared(
+        tmp_path,
+        fail_reason="external reference missing: Design/synthesis/out/tpu_top_syn.sdf",
+        failure_kind="infra",
+        fix_owner="synthesis",
+    )
+    assert rc == 0
+    env = _json.loads((wd / "result.json").read_text())
+    ss = env["stage_specific"]
+    assert env["status"] == "fail"
+    assert ss["failure_kind"] == "infra" and ss["fix_owner"] == "synthesis"
+    assert "tpu_top_syn.sdf" in ss["fail_reason"]
+    # The pass-shape is not invented on a run that produced none of it.
+    for absent in ("saif_artifacts", "power_by_corner", "ppa_actual", "failures"):
+        assert absent not in ss
+
+
+def test_declared_fail_validates_against_the_stage_schema(tmp_path):
+    # The defect this whole change exists for: an envelope the schema rejects reaps as
+    # `blocked`, so the fix_owner the agent already worked out never reaches the kernel.
+    from framework.scripts import facts
+
+    _, wd = _declared(
+        tmp_path,
+        fail_reason="gls-compile failed: phase=compile, LIB_V not readable",
+        failure_kind="tooling",
+        fix_owner="simulation",
+    )
+    env = _json.loads((wd / "result.json").read_text())
+    assert facts.validate_result("power-analysis", env) is None
+
+
+def test_declared_fail_omits_fix_owner_when_the_caller_cannot_name_one(tmp_path):
+    _, wd = _declared(
+        tmp_path, fail_reason="pt_shell license checkout failed", failure_kind="infra"
+    )
+    ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert "fix_owner" not in ss  # an unnamed owner is how a human gets called in
+
+
+@pytest.mark.parametrize(
+    "reason,kind",
+    [("   ", "infra"), ("dc died", None)],
+)
+def test_finalize_blocked_on_a_malformed_declaration(tmp_path, reason, kind):
+    # An empty reason or a reason without a kind is BLOCKED, never status=fail — and
+    # BLOCKED writes nothing, so the retry is not looking at a half-declared envelope.
+    wd = tmp_path / "wd"
+    wd.mkdir()
+    assert p.finalize(wd, "m", tmp_path / "plan", "[]", None, reason, kind) == 2
+    assert not (wd / "result.json").exists()
+
+
+def test_declared_fail_through_the_cli(tmp_path):
+    # End-to-end through _cmd_finalize: the flags must reach result.finalize in the
+    # right positions. A swapped pair would pass every in-process test above.
+    wd = tmp_path / "wd"
+    wd.mkdir()
+    (wd / "dispatch.json").write_text(
+        _json.dumps({"inputs": {"ppa": str(tmp_path / "no-ppa")}})
+    )
+    MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
+    r = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(wd),
+            "--module",
+            "tpu_top",
+            "--scaffold",
+            str(tmp_path / "plan"),
+            "--fail-reason",
+            "ptpx failed: phase=ptpx, read_saif annotated 0%",
+            "--failure-kind",
+            "tooling",
+            "--fix-owner",
+            "simulation-plan",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert ss["failure_kind"] == "tooling" and ss["fix_owner"] == "simulation-plan"
+    assert "annotated 0%" in ss["fail_reason"]
+
+
+def test_cli_rejects_ppa_as_a_declarable_failure_kind(tmp_path):
+    MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
+    r = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "finalize",
+            "--workdir",
+            str(tmp_path),
+            "--module",
+            "m",
+            "--scaffold",
+            str(tmp_path),
+            "--fail-reason",
+            "x",
+            "--failure-kind",
+            "ppa",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 2  # argparse choices: ppa is the gate's to write
+
+
+# ── failures[].category has exactly one writer ──────────────────────────────
+
+
+def test_category_enum_is_exactly_what_the_parser_writes():
+    # 386b067 narrowed the enum to what the parser can detect but left the deployed
+    # scripts printing `category=sdf` / `category=netlist`, which SKILL.md told the agent
+    # to copy verbatim — two values the schema rejects. And `tooling` survived that commit
+    # on the strength of a condition the parser has no branch for: nothing in the history
+    # ever wrote it. The enum and the parser's literals are now one set.
+    import re
+
+    from tests._skills_sot import load_stage_schema
+
+    schema = load_stage_schema("power-analysis")
+    enum = None
+    for entry in schema["allOf"]:
+        ss = entry.get("properties", {}).get("stage_specific", {})
+        f = ss.get("properties", {}).get("failures")
+        if f:
+            enum = set(f["items"]["properties"]["category"]["enum"])
+    src = (REPO_ROOT / "skills/power-analysis/scripts/power/result.py").read_text()
+    written = set(re.findall(r'"category":\s*"([a-z_]+)"', src))
+    assert enum == written, (
+        f"schema enum {sorted(enum)} vs parser writes {sorted(written)}"
+    )
+
+
+def test_no_deployed_script_emits_a_category_for_the_agent_to_transcribe():
+    # The agent's failure path is --fail-reason prose now, so a `category=` token in a
+    # tool log has no legal destination: transcribing one fails schema validation at reap
+    # and lands `blocked` instead of a routable fail. `phase=` stays — it names which make
+    # step broke, which the caller carries into the reason sentence.
+    tmpl = REPO_ROOT / "skills/power-analysis/templates"
+    offenders = [
+        f"{f.relative_to(REPO_ROOT)}:{n}"
+        for f in sorted(tmpl.rglob("*"))
+        if f.is_file() and f.suffix in {".sh", ".tcl", ".py", ".tmpl"}
+        for n, line in enumerate(f.read_text().splitlines(), 1)
+        if "category=" in line
+    ]
+    assert not offenders, f"deployed scripts still print a category: {offenders}"
+    # and at least one still prints the phase, so the removal did not take both.
+    assert any(
+        "phase=" in f.read_text()
+        for f in tmpl.rglob("*")
+        if f.is_file() and f.suffix in {".sh", ".tcl"}
+    )
