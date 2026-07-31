@@ -18,12 +18,7 @@ from pathlib import Path
 from sim import (
     _render,
 )  # write_text is reached through the module so a test can patch it
-from sim._guards import (
-    _agent_io,
-    _check_list_or_omitted,
-    _check_str_or_omitted,
-    validate_ports,
-)
+from sim._guards import _agent_io, validate_ports
 from sim._plan import load_plan
 from sim._plan import paths as plan_paths
 from sim._render import (
@@ -94,14 +89,12 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
     sb_name = sb_cfg.get("name", "scoreboard")
     # Determine the observer agent (passive agent whose txn is compared by scoreboard)
     obs_agent = sb_cfg.get("observer", "")
-    _check_str_or_omitted(obs_agent, "scoreboard.observer")
     if not obs_agent and agents:
         # Default: last agent if not specified
         obs_agent = agents[-1]["name"]
 
     # Inport agents for RM (active agents that feed into RM)
     rm_inports = rm_cfg.get("inports", [])
-    _check_list_or_omitted(rm_inports, "rm.inports")
 
     pending: list[
         tuple[Path, str]
@@ -300,7 +293,6 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
         # Build sequence start calls
         seq_calls: list[str] = []
         test_seqs = test.get("seqs", [])
-        _check_list_or_omitted(test_seqs, "tests[].seqs")
         for sname in test_seqs:
             # Find the sequence's agent
             seq_agent = "default"

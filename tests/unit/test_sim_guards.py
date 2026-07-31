@@ -25,20 +25,6 @@ def test_agent_io_empty_signals_exits():
         _guards._agent_io({"name": "drv", "interface": {"signals": []}})
 
 
-def test_check_str_rejects_nonstr():
-    with pytest.raises(SystemExit):
-        _guards._check_str_or_omitted(["a"], "scoreboard.observer")
-    _guards._check_str_or_omitted(None, "scoreboard.observer")  # omitted ok
-    _guards._check_str_or_omitted("obs", "scoreboard.observer")  # str ok
-
-
-def test_check_list_rejects_nonlist():
-    with pytest.raises(SystemExit):
-        _guards._check_list_or_omitted("ctrl", "rm.inports")
-    _guards._check_list_or_omitted(None, "rm.inports")  # omitted ok
-    _guards._check_list_or_omitted(["ctrl"], "rm.inports")  # list ok
-
-
 def test_validate_ports_clk_collision():
     agents = [{"name": "drv", "interface": {"signals": [{"name": "clk", "width": 1}]}}]
     with pytest.raises(SystemExit):

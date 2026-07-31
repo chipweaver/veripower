@@ -2,11 +2,14 @@
 """sim scaffold contract guards: the gate-bypass consumer defense.
 
 Reads the canonical agent I/O shape simulation-plan's materialize step produces
-(agent["interface"]["signals"] / agent["transaction"]["fields"]) and exits rather than
-emitting a TB that would compile and verify nothing: an empty interface, a non-string
-observer, a non-list inports or seqs, or a signal that collides with the clock or reset port
-or repeats across agents. simulation-plan's scaffold gate catches most of these first; what
-these cover is a shape that reaches the renderer anyway.
+(agent["interface"]["signals"] / agent["transaction"]["fields"]) and exits rather than emitting
+a TB that would compile and verify nothing: an empty interface, or a signal that collides with
+the clock or reset port or repeats across agents.
+
+These two and no others. tb-scaffold.schema.json types every field simulation-plan authors and
+is validated where the file is written, so re-checking a type here would be a second copy of
+that. What it does not cover is stated in its own description: it tolerates the interface and
+transaction objects materialize-scaffold injects, and names this module as their owner.
 """
 
 from __future__ import annotations
@@ -31,28 +34,6 @@ def _agent_io(agent: dict) -> tuple[list[dict], list[dict]]:
         )
     fields = agent.get("transaction", {}).get("fields", [])
     return signals, fields
-
-
-def _check_str_or_omitted(value, field: str) -> None:
-    """Backstop: scoreboard.observer must be a single agent name (or omitted). A list/dict would
-    otherwise be compared against agent names and silently never match."""
-    if value not in (None, "") and not isinstance(value, str):
-        sys.exit(
-            f"scaffold: {field} must be a single agents[].name string (or omitted), "
-            f"got {type(value).__name__} {value!r}. Re-run simulation-plan (scaffold gate). "
-            f"See skills/simulation-plan/SKILL.md scaffold-spec contract."
-        )
-
-
-def _check_list_or_omitted(value, field: str) -> None:
-    """Backstop: rm.inports / tests[].seqs must be a list (or omitted). A bare string silently
-    iterates character-by-character into garbage SV; fail loud instead."""
-    if value not in (None, "") and not isinstance(value, list):
-        sys.exit(
-            f"scaffold: {field} must be a list (or omitted), got {type(value).__name__} "
-            f"{value!r}. A bare string silently iterates character-by-character. Re-run "
-            f"simulation-plan (scaffold gate)."
-        )
 
 
 def validate_ports(agents: list[dict], clk_port_name: str, rst_port_name: str) -> str:

@@ -83,8 +83,7 @@ the UVM scaffold, compile, and run the smoke suite.
    On a scaffold/wiring error within budget, error-driven repair is allowed (Rule A repairable list);
    on a semantic / expected-behavior error, do **not** retry — end with `STATUS: BLOCKED <one-line
    reason naming compile|smoke + the semantic locus>` so the orchestrator records
-   `failure_phase=compile|smoke`. See `uvm-rules.md` for the UVM coding rules the filled scaffold must
-   obey.
+   `failure_phase=compile|smoke`.
 4. **Env-exit completeness self-gate**: before reporting `STATUS: DONE`, run
 
    ```bash
@@ -165,31 +164,19 @@ smoke gate still decides smoke pass/fail.
   (`pass`/`fail` only); the orchestrator maps it to `status=fail` + `fail_reason` with the
   `failure_phase` classified from the form above.
 
-## `verify-handoff.json` schema
+## `verify-handoff.json`
 
-A small digest with **one entry per testpoint** you materialized a check for. It carries the
-check-intent forward so the verify child can target coverage bins and read failures without
-re-reading the full TB body. Shape:
+The plan maps tests to sequences and sequences to agents. It does not map a **testpoint** to the
+sequences meant to exercise it, and you are the one who wired them, so nothing else can record
+that edge. Write it down:
 
 ```json
-{
-  "module": "<module>",
-  "testpoints": [
-    {
-      "tp_id": "<TP-ID, matching tb-scaffold.json testpoints[].id>",
-      "asserts": "<one-line description of what this testpoint's check verifies>",
-      "seqs": ["<seq-name>→<the bins it targets>", "..."]
-    }
-  ]
-}
+{"testpoints": [{"tp_id": "TP-07", "seqs": ["attn_prefix_seq", "attn_scale_seq"]}]}
 ```
 
-- `tp_id` — the testpoint id, matching `tb-scaffold.json.testpoints[].id`.
-- `asserts` — one line stating what the materialized check verifies (your check-intent in
-  plain prose, e.g. `wb_ack_o follows wb_cyc_i & wb_stb_i, compared every clk edge`).
-- `seqs` — for each sequence you wired toward this testpoint, `<seq-name>→<bins>` naming the
-  `testpoints[].bins[]` it is meant to hit. The verify child uses this for Rule B coverage-bin
-  adjudication: mapping an uncovered bin back to the sequence whose stimulus to iterate.
+One entry per testpoint you materialized a check for, including the ones whose
+`inlined_check_hints[]` was empty. The verify child reads it for Rule B: an uncovered item it
+places on a testpoint leads to the sequence whose stimulus it then iterates.
 
-One entry per materialized testpoint; a testpoint with an empty `inlined_check_hints[]` (free
-functional-model branch) still gets an entry whose `asserts` states the functional intent.
+Nothing else about your checks belongs here. What a check verifies is in the check, the reviewer
+reads it there, and a summary of your own work is the one thing a reviewer is told not to read.

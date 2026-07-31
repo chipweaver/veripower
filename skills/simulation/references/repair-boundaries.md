@@ -1,32 +1,33 @@
 # Rule A: scaffold vs. semantics repair boundary
 
-> **Decision standard:** "Does this code edit change the expected behavior described by the plan? If yes, no retry; end with `STATUS: BLOCKED <compile|smoke + locus>` (the orchestrator maps it to the `status=fail` envelope)."
+When `make simv` or `make smoke` fails, one question decides what you do next:
 
-## Repairable (scaffold / wiring)
+> **Does the edit that would fix this change the behavior the plan describes?**
 
-When `make simv` / `make smoke` fails, you may repair the files below within a **combined** round count of `defaults.yaml.scaffold_repair_max_rounds` (compile + smoke **share** the same counter — it is not N rounds each):
+No, and it is wiring: repair it and re-run. Yes, and it is semantics: stop. Semantic errors do
+not converge by retry, and the budget is not there to be spent finding that out.
 
-- `tb/uvm/<module>/agent/<a>_agent.sv` — factory registration, sub-component instantiation, sequencer / driver / monitor connections.
-- `tb/uvm/<module>/env/<m>_env.sv` — agent instantiation, analysis port connections, sequencer configuration.
-- `tb/uvm/<module>/test/base_test.sv` — config_db set/get, env build_phase.
-- `tb/uvm/<module>/top/<top>_tb_top.sv` — DUT instantiation, interface instantiation, initial reset sequence, `uvm_config_db#(virtual ...)` set.
-- `pkg/tb_pkg.sv` — include order, imports.
-- `filelist.f` — paths, `+incdir+`, file order.
-- `Makefile` — vcs options, `+UVM_TESTNAME` default.
+Compile and smoke **share** one `defaults.yaml.scaffold_repair_max_rounds` counter; it is not N
+rounds each. When it runs out, stop the same way, naming the first phase that did not pass.
 
-## Not repairable (semantics / expected behavior) — no retry; end with `STATUS: BLOCKED`
+Stopping means ending your response with `STATUS: BLOCKED <compile|smoke> <the semantic locus>`,
+which the orchestrator records as `failure_phase=compile|smoke`.
 
-- `check_txn()` / scoreboard compare logic inside `tb/uvm/<module>/checker/<sb>.sv`.
-- `predict()` / `reset()` / state machine inside `tb/uvm/<module>/refmodel/<rm>_rm.sv`.
-- **Field semantics** and **constraint semantics** inside `tb/uvm/<module>/transaction/<a>_txn.sv` (a misspelled field name still counts as scaffold).
-- Any behavioral detail the plan describes as "should be so."
-- `verification-plan.md` and the plan sidecars (not TB code, but equally not modifiable — including `tb-scaffold.json`'s `testpoints[]` and `power-scenarios.json`).
-- `rtl_filelist.f` — bootstrap derives it from `rtl-files.json` and overwrites it every round. A wrong RTL path, `+incdir+` or file order is a defect in that file, which only a rtl-design rework reaches.
+## Where the line falls
 
-## Decision flow
+Wiring is how the parts are connected: factory registration and sub-component construction in an
+agent, analysis-port connections and sequencer configuration in the env, `config_db` set and get,
+the DUT and interface instantiation and reset drive in `tb_top`, include order in `tb_pkg.sv`,
+paths and `+incdir+` in `filelist.f`, VCS options in the `Makefile`. A misspelled signal or field
+name is wiring too, however semantic the symbol sounds.
 
-1. Read com.log / smoke log; locate the error's file:line.
-2. Check whether the change at that location lands in the "repairable" list:
-   - Yes → repair one round, re-run `make simv` / `make smoke`.
-   - No → end the response with `STATUS: BLOCKED <compile|smoke> <semantic locus>` (the orchestrator maps it to the `status=fail` envelope with `failure_phase: <compile|smoke>` + `fail_reason`).
-3. If compile + smoke combined have reached `defaults.yaml.scaffold_repair_max_rounds` rounds and still do not pass, end with `STATUS: BLOCKED <compile|smoke> <locus>` (use the first phase that did not pass; the orchestrator records `failure_phase: <compile|smoke>`).
+Semantics is what the design is expected to do: the compare in the scoreboard, `predict` and the
+state machine in the refmodel, field and constraint meaning in a transaction, and anything the
+plan states as should-be-so. Fixing one of those means deciding what correct is, which is the
+plan's call and not yours.
+
+Two things are not yours to edit at all, for reasons that have nothing to do with the line above.
+`verification-plan.md` and the plan sidecars are the upstream intent. `rtl_filelist.f` is derived
+from `rtl-files.json` and overwritten by `bootstrap` every round, so an edit to it does not
+survive to the next one; a wrong RTL path there is an rtl-design defect and reaching it takes an
+rtl-design rework.

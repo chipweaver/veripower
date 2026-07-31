@@ -30,7 +30,9 @@ not a license to read the RTL.
     monitoring of the trigger condition pin / status bit.
 - Mismatch handling:
   - Mismatches MUST use `` `uvm_error ``, and the scoreboard's `fail_count` / `mismatch_count` MUST
-    actually increment.
+    actually increment. Never `$fatal`: it bypasses the UVM report server, so the regression
+    runner's status file never records the failure and the scoreboard dies before the rest of the
+    run happens.
   - **Forbidden**: mismatch-as-uvm_info mode (loopholes like "only logged at info level"):
     self-admitting comments like "avoid spurious fail" and the equivalent are treated as a Rule A
     semantic error — do not retry; end with `STATUS: BLOCKED <compile|smoke> <locus>` (the
