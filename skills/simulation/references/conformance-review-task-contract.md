@@ -71,7 +71,7 @@ Other categories:
   is an upstream plan defect. (NOTE: a testpoint with non-empty `covers[]` but EMPTY/missing
   `inlined_check_hints[]` is NOT yours to report — env-build already blocks on it upstream.)
 
-**Out of scope (do NOT report):** materialization presence (the env-exit thin-D1 covers it);
+**Out of scope (do NOT report):** materialization presence (the env-exit self-gate covers it);
 coverage sufficiency (the verify phase covers it); lint / CDC / timing / synthesizability /
 pure syntax (other stages / the compiler); whether the DUT RTL has a bug (that is the
 rtl-design domain — you judge whether the *check* adequately verifies the intent, not whether

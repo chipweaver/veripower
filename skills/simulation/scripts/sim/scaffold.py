@@ -3,12 +3,11 @@
 
 Renders one tree of UVM source under <output-dir>/tb/uvm/ (interfaces, transactions, drivers,
 monitors, agents, sequences, tests, RM, scoreboard, env, tb_top, tb_pkg.sv, filelist.f,
-generated_tests.svh, tests/testlist.json) — each with TODO markers for the simulation agent to
-fill. Consumes the scaffold-spec shape simulation-plan's materialize step produces: `rm.inports`
+generated_tests.svh, tests/testlist.json), each carrying TODO markers for the simulation agent
+to fill. Consumes the scaffold-spec shape simulation-plan's materialize step produces: `rm.inports`
 and `scoreboard.observer` name agents, and the `<module>_<agent>_txn` type is built here, so
-nothing has to un-wrap a name to recover the identity inside it. Both the bootstrap verb (first
-render) and this standalone re-render entry call run_scaffold (one code path, two entries — the
-overwrite-guarded re-render path).
+nothing has to un-wrap a name to recover the identity inside it. The bootstrap verb and the
+standalone render-scaffold verb both call run_scaffold, one code path behind two entries.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from pathlib import Path
 
 from sim import (
     _render,
-)  # write_text is called as _render.write_text (monkeypatch-testable, R8)
+)  # write_text is reached through the module so a test can patch it
 from sim._guards import (
     _agent_io,
     _check_list_or_omitted,
@@ -41,6 +40,12 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
     module = spec["module"]
     top = spec["top"]
     agents = spec.get("agents", [])
+    if not agents:
+        sys.exit(
+            "scaffold: tb-scaffold.json declares no agents. Nothing would drive or observe the "
+            "DUT, and the tree this renders would compile against transaction types no agent "
+            "produces. Rerun simulation-plan's materialize step."
+        )
     rm_cfg = spec.get("rm", {})
     sb_cfg = spec.get("scoreboard", {})
     sequences = spec.get("sequences", [])
@@ -107,9 +112,9 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
     for agent in agents:
         aname = agent["name"]
         mode = agent.get("mode", "active")
-        # Canonical agent shape (materialized by simulation-plan's materialize-scaffold verb
-        # from top-io.json grouped by interface_group). _agent_io fails
-        # loud on an empty interface (root cause A) — no silent degenerate scaffold.
+        # Canonical agent shape, materialized by simulation-plan's materialize-scaffold verb
+        # from top-io.json grouped by interface_group. _agent_io exits on an empty interface
+        # rather than rendering a TB that drives nothing.
         signals, fields = _agent_io(agent)
 
         base = {"MODULE": module, "TOP": top, "AGENT_NAME": aname}
@@ -158,7 +163,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
 
     # --- Sequences ---
     for seq in sequences:
-        seq_agent = seq.get("agent", agents[0]["name"] if agents else "default")
+        seq_agent = seq.get("agent", agents[0]["name"])
         content = _render_template_file(
             template_dir,
             "seq.sv",
@@ -198,7 +203,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
 
     # If no explicit inports, create a simple single-write RM (no decl macro needed)
     if not rm_imp_lines:
-        first_agent = agents[0]["name"] if agents else "default"
+        first_agent = agents[0]["name"]
         txn_type = f"{module}_{first_agent}_txn"
         rm_imp_lines.append(f"  uvm_analysis_imp #({txn_type}, {module}_{rm_name}) ai;")
         rm_imp_new_lines.append('    ai = new("ai", this);')
@@ -302,9 +307,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
             seq_agent = "default"
             for s in sequences:
                 if s["name"] == sname:
-                    seq_agent = s.get(
-                        "agent", agents[0]["name"] if agents else "default"
-                    )
+                    seq_agent = s.get("agent", agents[0]["name"])
                     break
             seq_calls.append(
                 f"    begin\n"
@@ -447,10 +450,9 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
     dest = out_dir / "tests" / "testlist.json"
     pending.append((dest, json.dumps(testlist, indent=2, ensure_ascii=False)))
 
-    # Atomic commit: everything above rendered + validated in memory. Write now; if any
-    # write fails mid-loop, roll back the files already written so none of run_scaffold's own
-    # rendered files remain (bootstrap-deployed infra/dirs are untouched) rather than a half-tree
-    # (U1: "either nothing, or the complete tree" -- scoped to this renderer's own output).
+    # Everything above was rendered and validated in memory. Write now; if a write fails
+    # mid-loop, roll back the files already written, so the outcome is either the complete tree
+    # or none of it rather than a half-tree. (bootstrap-deployed infra and dirs are untouched.)
     written: list[Path] = []
     try:
         for dest, content in pending:

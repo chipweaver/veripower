@@ -2,9 +2,8 @@
 """sim render primitives: strict {{KEY}} template renderer, file I/O, and SV emission.
 
 Render/IO/SV-emit half of the scaffold generator. The strict renderer raises on any
-unresolved {{KEY}} (no silent passthrough to SV output); template syntax is {{KEY}}
-(not {KEY}) because SystemVerilog uses single braces extensively (e.g. `{8'h0F, x}`).
-Helpers are small enough to duplicate per-stage (campaign §3 — no cross-stage shared lib).
+unresolved {{KEY}} rather than letting it through into SV output; the syntax is {{KEY}} and
+not {KEY} because SystemVerilog uses single braces heavily (`{8'h0F, x}`).
 """
 
 from __future__ import annotations
@@ -14,13 +13,6 @@ import sys
 from pathlib import Path
 
 _PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")
-
-
-def read_text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        return path.read_text(encoding="utf-8", errors="ignore")
 
 
 def write_text(path: Path, content: str) -> None:
@@ -46,7 +38,7 @@ def _render_template_file(
     tmpl_path = template_dir / template_name
     if not tmpl_path.is_file():
         sys.exit(f"scaffold: missing template file: {tmpl_path}")
-    return _render_strict(read_text(tmpl_path), mapping)
+    return _render_strict(tmpl_path.read_text(encoding="utf-8"), mapping)
 
 
 def _signal_declarations(signals: list[dict]) -> str:

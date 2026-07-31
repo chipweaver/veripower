@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""sim exit-gate core: thin-D1 materialization defense + D5/D6 coverage gate.
+"""The two gate primitives, single-homed so the verbs calling them cannot drift.
 
-The shared gate primitives the check-materialization verb (thin-D1 only) and the finalize verb
-(thin-D1 + coverage) both call — single-homed here so the two verbs cannot drift. Status truth
-is the caller's exit code, not narration. Per-stage copy (campaign §3 — no cross-stage lib).
-  thin-D1  every sequences[]/agents[] SV file present; no TODO residue (any form).
-  D5/D6    structural-coverage.json has an aggregate block; each defaults.yaml threshold dim
-           >= threshold (a null/'--' dim is skipped; an absent-but-configured dim fails).
+check-materialization calls the first; finalize calls both.
+  materialization_errors  every sequences[]/agents[] SV file present; no TODO residue.
+  coverage_gate           structural-coverage.json has an aggregate block, and each dim
+                          defaults.yaml configures is at or above its threshold (a null
+                          or '--' dim is skipped; an absent-but-configured dim fails).
+Status truth is the caller's exit code, not narration.
 """
 
 from __future__ import annotations
@@ -31,11 +31,11 @@ def _load_thresholds(path: Path) -> dict:
     return {k: float(v) for k, v in (data.get("coverage_thresholds") or {}).items()}
 
 
-def thin_d1(workdir: Path, scaffold: dict) -> list[str]:
-    """Materialization defense: required SV files present + no TODO residue (any form). Most
-    files are guaranteed by the render-scaffold verb; this catches agent-side deletion/overwrite
-    + any unfilled stub. Canonical templates carry zero non-marker TODO prose, so a match
-    here is always a real unfilled marker."""
+def materialization_errors(workdir: Path, scaffold: dict) -> list[str]:
+    """Required SV files present, and no TODO residue. The renderer guarantees most of the
+    files, so what this catches is a stub the agent left unfilled or a file it deleted or
+    overwrote. Canonical templates carry no non-marker TODO prose, so a match is always a real
+    unfilled marker."""
     module = scaffold.get("module", "")
     errs: list[str] = []
     for seq in scaffold.get("sequences", []):
@@ -66,7 +66,8 @@ def thin_d1(workdir: Path, scaffold: dict) -> list[str]:
 
 
 def coverage_gate(cov: dict | None, thresholds: dict) -> tuple[list[str], dict]:
-    """D5 (extractable) + D6 (dims >= threshold; null dim skipped). Returns (errors, dims_report)."""
+    """Extractable, and every configured dim at or above threshold (a null dim is skipped).
+    Returns (errors, dims_report)."""
     if (
         cov is None
         or not isinstance(cov.get("aggregate"), dict)

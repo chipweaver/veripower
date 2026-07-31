@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """sim finalize — assemble the lean simulation result.json at the given exit phase.
 
-result.json's sole owner. --phase final re-derives the exit verdict in-process from thin_d1,
-compute_gate and coverage_gate (earliest failing wave wins), folds the reaped verify verdict, and
+result.json's sole owner. --phase final re-derives the exit verdict in-process from
+materialization_errors, compute_gate and coverage_gate (earliest failing wave wins), folds the reaped verify verdict, and
 writes pass|fail; no gate's fail can be argued past it. The early-exit phases
 (env-blocked/smoke/conformance/regress/verify-blocked) write the status=fail envelope,
 with --failure-phase picking the schema failure_phase where the call-site spans several and the
@@ -17,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-from sim._gate import _load_thresholds, coverage_gate, thin_d1
+from sim._gate import _load_thresholds, coverage_gate, materialization_errors
 from sim._plan import load_plan
 from sim.review import compute_gate
 
@@ -53,16 +53,17 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 
 def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path, conformance_review):
-    """Re-derive the exit verdict in-process from thin_d1, compute_gate and coverage_gate.
+    """Re-derive the exit verdict in-process from materialization_errors, compute_gate and
+    coverage_gate.
     Returns (ok, verdict, failure_phase, fail_reason); the earliest wave to fail wins, in the
     order the waves ran: materialization, conformance review, coverage.
 
     The conformance leg is the one the orchestrator could otherwise walk past. The other two
     re-derive a verdict nobody else held; this one re-derives a verdict the main thread was
-    already handed at Step 4 and told not to override, which is worth nothing until something
-    other than the overriding party checks it."""
+    already handed and told not to override, which is worth nothing until something other than
+    the overriding party checks it."""
     scaffold_doc = load_plan(plan_dir)
-    d1_errs = thin_d1(Path(workdir), scaffold_doc)
+    d1_errs = materialization_errors(Path(workdir), scaffold_doc)
     thr = _load_thresholds(Path(thresholds))
     cov_path = Path(workdir) / "structural-coverage.json"
     cov = (
@@ -167,7 +168,6 @@ def build_result(
     return 0
 
 
-# --- pass-summary derivations (Task 2) ---------------------------------------
 def read_case_counts(workdir: Path) -> dict:
     """The suite counts, read from write_summary's structured output.
 
@@ -194,10 +194,11 @@ def read_case_counts(workdir: Path) -> dict:
 
 
 def read_coverage_summary(workdir: Path):
+    """The dims the coverage gate just scored. Only the pass path reaches this, and the gate
+    it passed already required the file and its aggregate block, so this reads rather than
+    checks."""
     f = Path(workdir) / "structural-coverage.json"
-    if not f.is_file():
-        return None
-    agg = (json.loads(f.read_text(encoding="utf-8")) or {}).get("aggregate") or {}
+    agg = json.loads(f.read_text(encoding="utf-8"))["aggregate"]
     return {k: agg.get(k) for k in ("line", "cond", "fsm", "toggle")}
 
 
@@ -290,9 +291,9 @@ def finalize(
     fix_owner=None,
 ) -> int:
     """Assemble the lean simulation result.json. exit 0 = result.json written (pass or fail);
-    exit 2 = BLOCKED (any internal raise) — never conflated with status=fail. (Owns the policy
-    the deleted main() finalize-subcommand had; the --phase-final arg precondition lives in
-    __main__.py, which maps it to exit 2 before calling here.)"""
+    exit 2 = BLOCKED, any internal raise, never conflated with status=fail. The --phase final
+    argument precondition is checked in __main__.py, which maps it to exit 2 before calling
+    here."""
     try:
         return build_result(
             workdir,

@@ -50,19 +50,20 @@ the UVM scaffold, compile, and run the smoke suite.
      scope requires; checks / RM /
      scoreboard already matching the current plan are left byte-identical to the carried baseline.
    All writes happen only in `{workdir}`.
-   **Trust the rendered tree (U4):** the bootstrap verb (with `--plan`) renders an atomic, complete, self-describing
+   **Trust the rendered tree.** The bootstrap verb (with `--plan`) renders an atomic, complete, self-describing
    stub tree. Learn structure and fill-conventions from the **rendered stubs and their TODO/header
    comments** (e.g. each stub's `// TODO(...)` states its config_db key, sequencer type, and intent),
    not by reverse-engineering the renderer (sim/scaffold.py). Reading the renderer source is a documented
    **fallback only** — when a stub comment is missing, self-contradictory, or conflicts with the
    observed structure. Do not whole-read `sim/scaffold.py` as a first resort.
-   **Reading discipline (U5):** do not whole-read `tb-scaffold.json` (it is large and the
+   **Reading discipline.** Do not whole-read `tb-scaffold.json` (it is large and the
    first read gets truncated by the token cap, forcing a costly re-read). Instead: take **structural
    facts** (interface signals, txn fields) from the **rendered stubs** (they are already materialized);
    read **check semantics per-testpoint** via `testpoints[].inlined_check_hints[]` (not the whole
    `check_hints` block at once); and read the small top-level arrays
    (`sequences[].agent` / `tests[].seqs` / `rm` / `scoreboard`) for the testpoint→component mapping.
-   `testpoints[]` itself carries only `id/bins/covers/inlined_check_hints` — never agent/seq/rm — so
+   `testpoints[]` itself carries only `id` / `intent` / `bins` / `covers` / `inlined_check_hints`,
+   never agent/seq/rm, so
    the cross-array join is over small arrays. (`verify-handoff.json` is your *output*, not an
    input — it does not exist at fill time.)
 3. **Compile + smoke**: `make simv` → `make smoke`. The two steps **share** one
@@ -72,7 +73,7 @@ the UVM scaffold, compile, and run the smoke suite.
    reason naming compile|smoke + the semantic locus>` so the orchestrator records
    `failure_phase=compile|smoke`. See `uvm-rules.md` for the UVM coding rules the filled scaffold must
    obey.
-4. **Env-exit completeness self-gate (thin-D1)**: before reporting `STATUS: DONE`, run
+4. **Env-exit completeness self-gate**: before reporting `STATUS: DONE`, run
 
    ```bash
    python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py check-materialization --workdir {workdir} --plan <scaffold>
@@ -87,14 +88,14 @@ the UVM scaffold, compile, and run the smoke suite.
    run remains the authoritative verdict; this is your self-gate so a hollow TB never
    reaches the wave-3 verify run. (Note: `make smoke` runs earlier in wave 1, *before* this gate —
    the savings are that no regress/coverage wave runs on a hollow TB, not that smoke is skipped.)
-   **Limitation (by design):** thin-D1 is presence-only and intentionally does **not** resist marker
-   renaming / empty-stub / plausible-but-wrong fills — TB↔plan semantic conformance is the
-   conformance-review gate's job, not this gate.
+   It checks presence and nothing else: a renamed marker, an empty stub or a plausible but
+   wrong fill all pass it. Whether a check verifies the right thing is the conformance review's
+   question.
 
 The smoke result is judged by the orchestrator's **deterministic gate** (the smoke run's own
 `regression-log.txt` `RESULT` lines / per-test `.status` files in `{workdir}`), **not** by your
 self-reported `STATUS:` prose. Report `STATUS: DONE` once `make simv` + `make smoke` have run
-to completion, the env-exit thin-D1 self-gate (Work step 4) exits 0, and the handoff is written; the
+to completion, the self-gate in Work step 4 exits 0, and the handoff is written; the
 smoke gate still decides smoke pass/fail.
 
 ## Anti-gaming (cycle-accurate checks)

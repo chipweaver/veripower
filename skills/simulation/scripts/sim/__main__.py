@@ -4,15 +4,15 @@
 Verbs (one stage = one tool; see skills/simulation/SKILL.md for usage):
   bootstrap             deploy infra + optional scaffold into a run workdir   (exit 0 / 1 / 2)
   render-scaffold       render the UVM scaffold tree from the plan sidecars    (exit 0 / non-zero raise)
-  check-materialization thin-D1 presence gate (env-exit self-gate)            (stdout verdict; exit 0/1)
+  check-materialization presence gate over the materialized TB (env-exit self-gate) (stdout verdict; exit 0/1)
   validate-review       conformance-review.json schema + gate                 (stdout gate JSON; exit 0/1)
-  finalize              assemble the lean result.json at the exit phase        (exit 0 written / 2 BLOCKED)
+  finalize              write result.json at the exit phase                   (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the sim.*
-library. Library imports are deferred into each handler (NOT top-level) so --help
-and verb dispatch run during incremental per-task TDD, before the sibling modules
-exist. (Library modules themselves use top-level absolute imports; only this thin
-dispatcher defers.) NEVER `import _gate` bare inside this package — only `from sim import …`.
+library. Library imports are deferred into each handler rather than taken at the top so
+that --help and verb dispatch keep working when one library has an import-time problem;
+the library modules themselves import absolutely at the top. NEVER `import _gate` bare
+inside this package, only `from sim import …`.
 """
 
 from __future__ import annotations
@@ -103,7 +103,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=_cmd_render_scaffold)
 
     sp = sub.add_parser(
-        "check-materialization", help="thin-D1 presence gate (env-exit self-gate)"
+        "check-materialization",
+        help="presence gate over the materialized TB (env-exit self-gate)",
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument("--plan", required=True, type=Path)
@@ -113,9 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--review", required=True, type=Path)
     sp.set_defaults(func=_cmd_validate_review)
 
-    sp = sub.add_parser(
-        "finalize", help="assemble the lean result.json at the exit phase"
-    )
+    sp = sub.add_parser("finalize", help="write result.json at the exit phase")
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument("--module", required=True)
     sp.add_argument(

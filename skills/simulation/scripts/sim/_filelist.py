@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """sim rtl-filelist: generate the workdir's rtl_filelist.f from rtl-files.json.
 
-The RTL file layout is authored upstream as JSON, so this GENERATES the VCS filelist
-rather than rewriting a text one. Paths are anchored at the absolute rtl-design stage
-root injected via dispatch.json (not a relpath climb); include directories are emitted as
-`+incdir+` here, which is the one place that prefix is ever written. Private lib for the
-bootstrap verb. Per-stage copy (campaign §3)."""
+The RTL file layout is authored upstream as JSON, so this generates the VCS filelist rather
+than rewriting a text one. Paths are anchored at the absolute rtl-design stage root injected
+via dispatch.json, not a relpath climb, and `+incdir+` is written here and nowhere else.
+Private to the bootstrap verb."""
 
 from __future__ import annotations
 
@@ -14,12 +13,8 @@ from pathlib import Path
 
 
 def load_rtl_files(rtl_root) -> dict:
-    """rtl-files.json from the injected rtl-design stage root.
-
-    Not validated here: rtl-design schema-validates it when it writes it, and a stage does
-    not reach into another skill's references/ (skills stay decoupled). A defect at this
-    point is a missing or unreadable file, which the caller reports.
-    """
+    """rtl-files.json from the injected rtl-design stage root. Not validated here, for the
+    reason given in sim._plan."""
     path = Path(rtl_root) / "rtl-files.json"
     return json.loads(path.read_text(encoding="utf-8"))
 

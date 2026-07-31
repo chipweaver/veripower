@@ -31,8 +31,8 @@ there.
    stimulus-layer or intent-layer gap per `coverage-iteration.md`, and either iterate stimulus
    within `defaults.yaml.stimulus_iterate_max_rounds` rounds or route out with
    `failure_phase=coverage`.
-3. **Summary**: `make summary` produces `coverage-summary.txt` + `case-results-summary.md`. (The full exit self-check —
-   `sim finalize`, thin-D1 + D5/D6 — runs at orchestrator finalize, not here.)
+3. **Summary**: `make summary` produces `coverage-summary.txt` and `case-results-summary.md`.
+   The exit gates run at the orchestrator's finalize, not here.
 
 ## Authority
 
@@ -74,9 +74,10 @@ instead.
 - Verify-phase artifacts written in `{workdir}`: `regression-log.txt`, `structural-coverage.json`,
   `coverage-summary.txt`, `case-results-summary.md` (artifact ownership split is in
   `artifact-contract.md`).
-- End the response with `STATUS: DONE` + a single JSON line carrying the result `stage_specific`
-  fields the orchestrator folds into `result.json` — on a pass run, the informational counts; on a
-  route-out, the failure fields:
+- End the response with `STATUS: DONE` plus a single JSON line. On a clean pass the only field
+  read from it is `stimulus_iterations`, the number of Rule B rounds you spent; the suite counts
+  and coverage numbers are read off `case-results.json` and `structural-coverage.json` by
+  finalize, so do not restate them here. On a route-out, carry the failure fields:
 
   ```json
   {"failure_phase": "coverage", "coverage_gaps": ["..."], "gaps_not_in_testpoints": ["..."]}
@@ -87,7 +88,6 @@ instead.
   `logs/<test_id>.log`) and `error_message` (its log anchor) are required, `log_snippet` is
   optional. A misspelled key fails the envelope rather than leaving triage with nothing to read.
 
-  (omit the failure fields on a clean pass; emit `stimulus_iterations` / coverage summary counts
-  instead) — or `STATUS: BLOCKED <one-line reason>` on a program exception. `STATUS: BLOCKED` is a
-  **harness-level** signal, distinct from the `result.json.status` enum (`pass`/`fail` only); the
-  orchestrator maps it to `status=fail` + `fail_reason`.
+  On a program exception, end with `STATUS: BLOCKED <one-line reason>` instead. That is a
+  harness-level signal, distinct from `result.json`'s `status` enum (`pass`/`fail` only); the
+  orchestrator maps it to `status=fail` plus a `fail_reason`.

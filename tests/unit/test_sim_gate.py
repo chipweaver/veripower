@@ -30,24 +30,26 @@ def _materialized(tmp_path, todo=False, drop_seq=False):
     return tmp_path
 
 
-def test_thin_d1_clean(tmp_path):
-    assert _gate.thin_d1(_materialized(tmp_path), SCAFFOLD) == []
+def test_materialization_clean(tmp_path):
+    assert _gate.materialization_errors(_materialized(tmp_path), SCAFFOLD) == []
 
 
-def test_thin_d1_missing_seq(tmp_path):
-    errs = _gate.thin_d1(_materialized(tmp_path, drop_seq=True), SCAFFOLD)
+def test_materialization_missing_seq(tmp_path):
+    errs = _gate.materialization_errors(
+        _materialized(tmp_path, drop_seq=True), SCAFFOLD
+    )
     assert any("missing sequence file" in e for e in errs)
 
 
-def test_thin_d1_todo_residue(tmp_path):
-    errs = _gate.thin_d1(_materialized(tmp_path, todo=True), SCAFFOLD)
+def test_materialization_todo_residue(tmp_path):
+    errs = _gate.materialization_errors(_materialized(tmp_path, todo=True), SCAFFOLD)
     assert any("TODO residue" in e for e in errs)
 
 
-def test_thin_d1_active_needs_driver(tmp_path):
+def test_materialization_active_needs_driver(tmp_path):
     wd = _materialized(tmp_path)
     (wd / "tb/uvm/agent/m_drv_driver.sv").unlink()  # active agent lost its driver
-    errs = _gate.thin_d1(wd, SCAFFOLD)
+    errs = _gate.materialization_errors(wd, SCAFFOLD)
     assert any("m_drv_driver.sv" in e for e in errs)
 
 
