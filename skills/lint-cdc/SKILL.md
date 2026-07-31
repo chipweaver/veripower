@@ -63,13 +63,17 @@ append all four categories to `scripts/constraints.sgdc` before you run anything
 |---|---|
 | `sync_cell` | `sync_cell -name <module>` |
 | `reset_synchronizer` | `reset_synchronizer -name <module>` |
-| `set_case_analysis` | `set_case_analysis <value> <port>` |
+| `set_case_analysis` | `set_case_analysis -name <port> -value <value>` |
 | `quasi_static` | `quasi_static -name <signal>` |
 
 Every category is always present, so an empty array is that child's claim to have none. These
 are design facts their authors declared rather than suppressions you are guessing at, which is
 why all four go in one pass: each one you left for the tool to surface would cost a full
 SpyGlass iteration to discover.
+
+Use those exact forms. SGDC takes `set_case_analysis` by flag, and the positional spelling that
+is correct in SDC (`set_case_analysis 0 scan_en`) is a syntax fatal here that aborts rule
+checking for the whole run, measured on `vL-2016.06`.
 
 Transcribe, never invent. synthesis reads this same sidecar for its SDC side, so an annotation
 you add here on your own authority has no SDC counterpart and the two constraint sets diverge

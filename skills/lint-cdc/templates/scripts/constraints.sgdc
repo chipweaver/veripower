@@ -47,10 +47,14 @@ abstract_port -ports rst_n -clock clk -reset rst_n
 # ------------------------------------------------------------------------------
 # Case Analysis — fix a port/pin to a constant during analysis to prune
 # unreachable paths.
-# Format: set_case_analysis <value> <objects>
+# Format: set_case_analysis -name <object> -value <value>
+#   - SGDC takes this by flag. The positional form that is correct in SDC
+#     (set_case_analysis 0 se) raises SGDCSTX_003 "Incorrect field" here, and a
+#     syntax fatal aborts rule checking for the entire run — measured on
+#     SpyGlass_vL-2016.06.
 # ------------------------------------------------------------------------------
-# set_case_analysis 1 bypass_mode
-# set_case_analysis 0 se
+# set_case_analysis -name bypass_mode -value 1
+# set_case_analysis -name se -value 0
 
 # ------------------------------------------------------------------------------
 # Quasi-Static Signals — config-class signals that toggle rarely at run time.
