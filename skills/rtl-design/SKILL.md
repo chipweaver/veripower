@@ -42,7 +42,7 @@ Both sidecars must end up carrying an entry for every child in the manifest: eve
 
 **The RTL does not ship until it compiles.** The full `rtl-files.json` file set compiles as one design before the round closes.
 
-**The RTL does not ship until its intent has been reviewed.** Every child in the manifest has a `{workdir}/semantic-review/<child>.md` covering the RTL this round ships, written by fresh Level-1 reviewers per [`references/rtl-review-task-contract.md`](references/rtl-review-task-contract.md).
+**The RTL does not ship until its intent has been reviewed.** Fresh Level-1 reviewers read the RTL this round ships against the design intent it came from, per [`references/rtl-review-task-contract.md`](references/rtl-review-task-contract.md).
 
 Nothing reduces those reviews to a verdict. Read them and act: re-dispatch the children whose RTL is wrong, or close the round and name who must fix what you cannot. A review that finds a defect in `design.md` or a `<child>.md` is not yours to fix — that is the intent source.
 
