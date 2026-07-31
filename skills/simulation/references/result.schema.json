@@ -33,22 +33,7 @@
             },
             "coverage_gaps": {"type": "array", "items": {"type": "string"}},
             "gaps_not_in_testpoints": {"type": "array", "items": {"type": "string"}},
-            "gaps_in_testpoints": {"type": "array", "items": {"type": "string"}},
-            "conformance_findings": {
-              "description": "The blocking subset of conformance-review.json's findings[], copied verbatim by finalize. Same shape as its source (references/conformance-review.schema.json): re-declaring it here keeps the envelope from un-validating a structure that was validated one file earlier. `finding` is the prose simulation-triage reasons over when there is no log to anchor.",
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": ["tp_id", "location", "blocking", "finding"],
-                "additionalProperties": false,
-                "properties": {
-                  "tp_id": {"type": "string", "minLength": 1},
-                  "location": {"type": "string", "minLength": 1},
-                  "blocking": {"type": "boolean"},
-                  "finding": {"type": "string", "minLength": 1}
-                }
-              }
-            }
+            "gaps_in_testpoints": {"type": "array", "items": {"type": "string"}}
           },
           "additionalProperties": true
         }

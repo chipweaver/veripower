@@ -140,7 +140,7 @@ def test_carry_no_carry_fields_and_values():
     assert rules.RULES["rtl-design"].carry == ("**",)
     assert rules.RULES["rtl-design"].no_carry == ("semantic-review/*.md",)
     assert rules.RULES["simulation"].carry == ("**",)
-    assert rules.RULES["simulation"].no_carry == ("conformance-review.json",)
+    assert rules.RULES["simulation"].no_carry == ("conformance-review.md",)
     # lint carries exactly its two human-audited scripts
     assert rules.RULES["lint-cdc"].carry == (
         "scripts/waiver.tcl",

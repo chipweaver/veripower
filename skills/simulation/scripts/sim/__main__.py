@@ -4,7 +4,7 @@
 Verbs (one stage = one tool; see skills/simulation/SKILL.md for usage):
   bootstrap             deploy infra + optional scaffold into a run workdir   (exit 0 / 1 / 2)
   check-materialization presence gate over the materialized TB (env-exit self-gate) (stdout verdict; exit 0/1)
-  validate-review       conformance-review.json schema + gate                 (stdout gate JSON; exit 0/1)
+  validate-review       the conformance review's gate verdict                 (stdout gate JSON; exit 0/1)
   finalize              write result.json at the exit phase                   (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the sim.*
@@ -95,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--plan", required=True, type=Path)
     sp.set_defaults(func=_cmd_check_materialization)
 
-    sp = sub.add_parser("validate-review", help="conformance-review.json schema + gate")
+    sp = sub.add_parser("validate-review", help="the conformance review's gate verdict")
     sp.add_argument("--review", required=True, type=Path)
     sp.set_defaults(func=_cmd_validate_review)
 

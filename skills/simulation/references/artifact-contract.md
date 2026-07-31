@@ -39,7 +39,7 @@ share it).
 
 | Artifact | Path (relative to `{workdir}`) | Description |
 |------|------|------|
-| `conformance-review.json` | `conformance-review.json` | Per-testpoint check-adequacy findings (schema `conformance-review.schema.json`), written by the reviewer Task; the main thread validates it and gates on it. Promoted artifact. |
+| `conformance-review.md` | `conformance-review.md` | Per-testpoint check-adequacy findings, written by the reviewer Task: prose per finding, `BLOCKING` on the heading of one that stops the round. The main thread gates on that marker and copies nothing out. Promoted artifact, and the record simulation-triage opens on a conformance fail. |
 
 ### verify phase (wave 3 — `verify-task-contract.md`)
 
@@ -84,7 +84,7 @@ share it).
     {"path": "regression-log.txt"},
     {"path": "logs"},
     {"path": "verify-handoff.json"},
-    {"path": "conformance-review.json"},
+    {"path": "conformance-review.md"},
     {"path": "structural-coverage.json"},
     {"path": "case-results.json"},
     {"path": "coverage-summary.txt"},
@@ -107,7 +107,7 @@ share it).
 ## Cross-round carry
 
 Your previous round's canonical output is already in `{workdir}` when you are dispatched, all of it
-except `conformance-review.json`, which is re-derived every round. `rtl_filelist.f` arrives with the
+except `conformance-review.md`, which is re-derived every round. `rtl_filelist.f` arrives with the
 rest and `bootstrap` then overwrites it against the current RTL; every other carried file survives,
 because `bootstrap` writes only where a file is missing. On a first run nothing is carried and
 `bootstrap` deploys the complete template.

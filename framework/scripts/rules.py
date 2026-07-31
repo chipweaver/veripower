@@ -220,7 +220,7 @@ RULES: dict[str, Rule] = {
         },
         outputs=(
             "case-results-summary.md",
-            "conformance-review.json",
+            "conformance-review.md",
             "env.sh",
             "filelist.f",
             "rtl_filelist.f",
@@ -232,7 +232,7 @@ RULES: dict[str, Rule] = {
         oracle_selector="tb/uvm/refmodel/*",  # pin endorses the JUDGE itself (spec §2) —
         # survives runs; content drift (LLM regenerates refmodel) drops the pin at reap
         carry=("**",),
-        no_carry=("conformance-review.json",),
+        no_carry=("conformance-review.md",),
     ),
     "power-analysis": Rule(
         name="power-analysis",
