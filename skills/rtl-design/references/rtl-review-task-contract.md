@@ -34,8 +34,8 @@ Three things are worth flagging, and the third differently from the first two:
   area, not correctness.
 
 **Out of scope (do NOT report):** synthesizability / timing / area / power (downstream stages);
-lint / CDC rule violations (lint-cdc); pure syntax and whole-design elaboration (the child
-self-checks, and lint-cdc elaborates).
+lint / CDC rule violations (lint-cdc); pure syntax and whole-design elaboration (a compiler
+decides those).
 
 ## Output
 
