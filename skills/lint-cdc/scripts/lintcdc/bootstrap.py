@@ -74,7 +74,7 @@ def _sync_filelist(dest: Path, rtl_dir: Path) -> int:
     src = rtl_dir / "rtl-files.json"
     if not src.is_file():
         _err(f"{src} not found")
-        _err("  Re-run the rtl-design assemble verb.")
+        _err("  Re-run rtl-design: it authors this sidecar.")
         return 1
     try:
         rtl_files = json.loads(src.read_text(encoding="utf-8"))
@@ -93,7 +93,7 @@ def _sync_filelist(dest: Path, rtl_dir: Path) -> int:
                 entries.append(f)
     if not entries:
         _err(f"{src} lists no RTL files")
-        _err("  Re-run the rtl-design assemble verb.")
+        _err("  Re-run rtl-design: it authors this sidecar.")
         return 1
     header = [
         "# ==============================================================================",

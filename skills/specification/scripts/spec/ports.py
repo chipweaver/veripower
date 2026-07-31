@@ -14,7 +14,7 @@ different fact, authored where it is known, and backstopped by check-crossrefs.
 
 This verb also decides the top-partition purity rule, because it is the cheapest moment to
 decide it: the partition gate is next, so a violation is caught before N children are written
-against it. rtl-design's check-partition re-decides the same rule at its own entry;
+against it. rtl-design's finalize re-decides the same rule at its exit;
 `tests/contracts/test_partition_purity_agreement.py` locks the two together.
 
 Usage:  python3 scripts/spec/__main__.py derive-ports --workdir <workdir>
@@ -32,7 +32,7 @@ def check_purity(manifest: dict) -> list:
     """Exactly one child covers <TOP>, and that child's rtl_modules == [<TOP>] (no bundled
     logic). <TOP> = manifest['module'] — the same source derive_constraints pins; fail loud
     with a clear cause if it is absent rather than misattributing it as miscoverage (the rtl
-    check-partition verb takes <TOP> from a required CLI arg, which cannot be empty)."""
+    side takes <TOP> from a required CLI arg, which cannot be empty)."""
     top = manifest.get("module")
     if not top:
         return [

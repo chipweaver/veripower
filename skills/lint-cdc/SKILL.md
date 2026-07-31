@@ -25,7 +25,7 @@ changed since your last run: that narrows what you triage, never what the tool a
 
 | Path | Use |
 |---|---|
-| `<annotations>/constraint-annotations.json` | The `sgdc` block per child: every depth annotation this RTL implies, in real module names. Its authors declared it and rtl-design verified the names exist. Schema: `skills/rtl-design/references/constraint-annotations.schema.json`. |
+| `<annotations>/constraint-annotations.json` | The `sgdc` block per child: every depth annotation this RTL implies, in real module names. The child that wrote the RTL declared them; nothing upstream matched a name against it, so an annotation naming a module SpyGlass cannot find surfaces here first. Schema: `skills/rtl-design/references/constraint-annotations.schema.json`. |
 | `<rtl>/rtl-files.json` | Per-child file layout, which `bootstrap` turns into `scripts/filelist.txt`. Schema: `skills/rtl-design/references/rtl-files.schema.json`. |
 | `<sgdc_seed>/constraints/<TOP>.sgdc` | Clocks, resets and port associations from specification. Cold-start seed only. |
 

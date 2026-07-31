@@ -6,7 +6,7 @@ because their consumers are: simulation declares only the file layout, so bundli
 invalidate simulation's proof on an annotation-only edit.
 
 In memory the two are one dict, child -> {files, incdirs?, annotations}, because that is
-the shape the child reports arrive in and the shape merge_filter operates on. On disk they
+the shape the child reports arrive in, so a round that re-authors a subset overlays. On disk they
 are two files, each validated against its own schema and each separately declarable as a
 downstream input.
 
