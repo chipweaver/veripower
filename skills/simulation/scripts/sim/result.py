@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """sim finalize — assemble the lean simulation result.json at the given exit phase.
 
-result.json's sole owner. --phase final re-derives the compile/coverage verdict in-process via
-the shared thin_d1 + coverage_gate (earlier phase wins), reads the conformance gate via the pure
-compute_gate, folds the reaped verify verdict, and writes pass|fail. The early-exit phases
+result.json's sole owner. --phase final re-derives the exit verdict in-process from thin_d1,
+compute_gate and coverage_gate (earliest failing wave wins), folds the reaped verify verdict, and
+writes pass|fail; no gate's fail can be argued past it. The early-exit phases
 (prerequisite/env-blocked/smoke/conformance/regress/verify-blocked) write the status=fail envelope,
 with --failure-phase picking the schema failure_phase where the call-site spans several and the
 companion fields keyed off the resolved failure_phase. Exit 0 = result.json written (pass or fail);
@@ -52,9 +52,15 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path):
-    """Reuse thin_d1 + coverage_gate IN-PROCESS to re-derive the compile/coverage verdict.
-    Returns (ok, verdict, failure_phase, fail_reason). Earlier phase wins (thin-D1 -> compile)."""
+def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path, conformance_review):
+    """Re-derive the exit verdict in-process from thin_d1, compute_gate and coverage_gate.
+    Returns (ok, verdict, failure_phase, fail_reason); the earliest wave to fail wins, in the
+    order the waves ran: materialization, conformance review, coverage.
+
+    The conformance leg is the one the orchestrator could otherwise walk past. The other two
+    re-derive a verdict nobody else held; this one re-derives a verdict the main thread was
+    already handed at Step 4 and told not to override, which is worth nothing until something
+    other than the overriding party checks it."""
     scaffold_doc = load_plan(plan_dir)
     d1_errs = thin_d1(Path(workdir), scaffold_doc)
     thr = _load_thresholds(Path(thresholds))
@@ -69,6 +75,15 @@ def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path):
     }
     if d1_errs:
         return (False, verdict, "compile", "; ".join(d1_errs)[:300])
+    gating = gating_findings(conformance_review)
+    if gating:
+        named = ", ".join(f"{f.get('tp_id')} {f.get('category')}" for f in gating)
+        return (
+            False,
+            verdict,
+            "conformance",
+            f"conformance gate tripped: {named}"[:300],
+        )
     if cov_errs:
         return (False, verdict, "coverage", "; ".join(cov_errs)[:300])
     return (True, verdict, None, None)
@@ -88,8 +103,8 @@ def build_result(
     fix_owner=None,
 ) -> int:
     """Assemble the lean simulation result.json for the given exit phase.
-    final -> re-derive compile/coverage from on-disk artifacts (pure thin_d1/coverage_gate),
-             read conformance via compute_gate, fold the reaped verify verdict, write pass|fail.
+    final -> re-derive compile/conformance/coverage from on-disk artifacts, fold the reaped
+             verify verdict, write pass|fail.
     prerequisite|env-blocked|smoke|conformance|regress|verify-blocked -> write the early-exit
              status=fail envelope (observed_phase picks the schema failure_phase where the
              call-site spans several; companions keyed off the resolved failure_phase).
@@ -114,14 +129,18 @@ def build_result(
         )
         return 0
 
-    ok, gate, fphase, freason = _final_gate(workdir, scaffold, thresholds)
+    ok, gate, fphase, freason = _final_gate(
+        workdir, scaffold, thresholds, conformance_review
+    )
     if not ok:
-        ss = {
-            "failure_phase": fphase,
-            "fail_reason": freason,
-            "coverage_extractable": gate["coverage_extractable"],
-            "dims": gate["dims"],
-        }
+        # companions keyed off the resolved failure_phase, the same way _early_exit_ss keys
+        # them, so triage reads one shape per phase whichever call site wrote it.
+        ss = {"failure_phase": fphase, "fail_reason": freason}
+        if fphase == "coverage":
+            ss["coverage_extractable"] = gate["coverage_extractable"]
+            ss["dims"] = gate["dims"]
+        elif fphase == "conformance":
+            ss["conformance_findings"] = gating_findings(conformance_review)
         _write_result(
             workdir,
             _envelope(
@@ -189,6 +208,15 @@ def _findings(review_path):
     if not p or not p.is_file():
         return None
     return (json.loads(p.read_text(encoding="utf-8")) or {}).get("findings", [])
+
+
+def gating_findings(review_path) -> list[dict]:
+    """The findings compute_gate flags, read back off the on-disk review. One derivation for
+    both the Step-4 fail-out and the --phase final backstop, so the two cannot disagree on
+    which findings gated."""
+    findings = _findings(review_path) or []
+    flagged = set(compute_gate({"findings": findings})["flagged"])
+    return [f for f in findings if f.get("tp_id") in flagged]
 
 
 def conformance_gate_label(review_path):
@@ -264,7 +292,7 @@ def _early_exit_ss(
                 ss[k] = verify[k]
     if phase == "conformance":
         # the gating subset, re-derived in-process from the on-disk conformance-review.json
-        # (reaped state, not orchestrator narration — single-homed via compute_gate).
+        # (reaped state, not orchestrator narration).
         # --phase conformance is only reached on a gate=trip, where the main thread has
         # assembled conformance-review.json; an absent file is a caller contract violation.
         if not conformance_review or not Path(conformance_review).is_file():
@@ -272,9 +300,7 @@ def _early_exit_ss(
                 "finalize --phase conformance requires an assembled conformance-review.json "
                 f"(got: {conformance_review!r})"
             )
-        findings = _findings(conformance_review) or []
-        flagged = set(compute_gate({"findings": findings})["flagged"])
-        ss["conformance_findings"] = [f for f in findings if f.get("tp_id") in flagged]
+        ss["conformance_findings"] = gating_findings(conformance_review)
     return ss
 
 

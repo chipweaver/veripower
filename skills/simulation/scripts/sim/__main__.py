@@ -56,9 +56,10 @@ def _cmd_validate_review(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from sim import result
 
-    if a.phase == "final" and not (a.plan and a.thresholds):
+    if a.phase == "final" and not (a.plan and a.thresholds and a.conformance_review):
         print(
-            "[sim finalize] ERROR: --plan and --thresholds are required for --phase final",
+            "[sim finalize] ERROR: --plan, --thresholds and --conformance-review are "
+            "required for --phase final",
             file=sys.stderr,
         )
         return 2

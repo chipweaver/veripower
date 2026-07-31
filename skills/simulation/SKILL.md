@@ -227,14 +227,13 @@ contract's "Severity & gating"), computed by the script, not judged by eye. Appl
   - **both present** → self-heal the self-locus findings first; any `intent-defect` finding
     remaining after convergence then fails out per the upstream rule.
 - **`gate=clear`:** proceed to Step 5. Advisory findings (`unverifiable-arch` any severity, `minor`,
-  `unavailable`) never trip the gate — record them in `conformance-review.json` and surface a
+  `unavailable`) never trip the gate: record them in `conformance-review.json` and surface a
   `⚠ <tp> <category>` line in the completion summary.
 - **Review unavailable** (`STATUS: BLOCKED`, malformed/unparseable JSON, or any dispatch/reap/
   aggregate/validate error) → **do NOT gate**: still write a minimal `conformance-review.json`
   `{... "findings":[{"tp_id":"-","severity":"minor","category":"unavailable","location":"-","summary":"review (wave) failed: <reason>"}]}`
   (so the absence of a real review is a first-class artifact, not invisible; the validator reports
   `gate=clear` for it), note it in the completion summary, and proceed to Step 5.
-- **Verdict integrity:** you MUST NOT override a `gate=trip` to pass.
 
 A self-locus conformance defect self-heals in-stage (above); only an `intent-defect` trip — or a
 conformance-fix Task that `BLOCKED`s — takes the fail-out to the existing
@@ -267,9 +266,9 @@ Only a **clean** verify verdict (no `failure_phase`, not BLOCKED) proceeds to St
 ### Step 6: Finalize + write `{workdir}/result.json` (script)
 
 On a clean verify pass, run the finalize subcommand; do not hand-assemble the envelope, re-derive
-counts, or copy gate verdicts by hand. Pass the scaffold-spec + thresholds it reuses for the
-compile/coverage gate, the assembled `conformance-review.json`, and the reaped verify-child verdict
-(carrying `stimulus_iterations`):
+counts, or copy gate verdicts by hand. `--phase final` requires the scaffold-spec, the thresholds
+and the assembled `conformance-review.json`, one per gate it re-runs; `--verify-verdict` carries
+the reaped `stimulus_iterations`:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize \
@@ -291,22 +290,22 @@ controlled-experiment) analysis, so omitting is a real answer here, not a shrug.
 `finalize` enumerates `conformance-review.json` + `verify-handoff.json` in `artifacts[]` automatically
 via `enumerate_artifacts` — both are written fresh every round (Step 4 / Step 2), never carried.
 
-`finalize --phase final` reuses the host's own `thin_d1` + `coverage_gate` in-process for the
-exit-code gate (thin-D1 fail → `failure_phase=compile`, coverage fail → `failure_phase=coverage`,
-earlier phase wins), derives the informational pass-summary (`total_cases`/`passed`/`failed` from
+`finalize --phase final` re-runs the three gates in-process (thin-D1 fail → `failure_phase=compile`,
+conformance trip → `failure_phase=conformance`, coverage fail → `failure_phase=coverage`, earliest
+wins), derives the informational pass-summary (`total_cases`/`passed`/`failed` from
 `case-results.json`, `coverage_summary` from `structural-coverage.json.aggregate`,
 `conformance_gate` + `conformance_advisory[]` from `conformance-review.json` with each advisory `note`
 copied verbatim from the finding `summary`, `stimulus_iterations` from the reaped verify verdict),
 enumerates `artifacts[]`, and writes the complete `result.json`. Exit 0 = result.json written (status
 pass or fail). A non-zero finalize exit is a program exception (BLOCKED), not a `status=fail`.
 
-**Verdict integrity (anti-gaming):** you MUST NOT override any gate's fail to pass.
-`status=pass` is written by finalize only on `--phase final` when `thin_d1`/`coverage_gate` are clean
-and no upstream gate — smoke, conformance, **or the Step-5 verify wave** (`regress` / Rule-B `coverage` /
-`verify-blocked`) — routed out (each of those wrote its own `status=fail` via its own `--phase` call and
-skipped the downstream waves; so a regression/coverage/blocked failure can never reach the
-compile/coverage-only `--phase final` and be mis-written as pass). This mirrors rtl-design's child-status
-precedence: you record the most-failing verdict, never a more-optimistic one.
+**Verdict integrity.** Before `--phase final` will write `status=pass` it re-runs three gates over
+the workdir: materialization, the conformance verdict off the `--conformance-review` file you hand
+it, and coverage. The earliest failing one wins. So reaching Step 6 with an un-dispositioned
+`gate=trip` costs you the round: finalize writes `failure_phase=conformance` with the same
+`conformance_findings` Step 4's own fail-out would have written. The smoke and verify verdicts are
+the two finalize cannot re-derive; each wrote its own `status=fail` and skipped the downstream
+waves, so record the most-failing verdict rather than a more-optimistic one.
 
 The `failure_phase` value table below documents which step decides each phase; finalize owns the
 `compile`/`coverage` finalize rows and writes the rest via `--phase`. `failure_phase` is required when
@@ -317,7 +316,7 @@ The `failure_phase` value table below documents which step decides each phase; f
 | `prerequisite` | Step 1 reference missing; or env-build `STATUS: BLOCKED` for incomplete `inlined_check_hints[]` | — | main thread |
 | `compile` | `make simv` failed (no smoke status); or `sim finalize` thin-D1 file missing / `TODO(` residue | — | smoke gate (Step 3) / finalize (Step 6) |
 | `smoke` | `make smoke` ran but a `RESULT` line is not `PASS` | `failing_cases` | smoke gate (Step 3) |
-| `conformance` | Conformance gate (Step 4): an `intent-defect` finding at `critical`/`important`, or a self-locus (`missing`/`wrong-behavior`/`fake-green`) finding whose in-stage conformance-fix Task `BLOCKED`s — self-locus otherwise self-heals in-stage | `conformance_findings` | conformance gate (Step 4) |
+| `conformance` | Conformance gate (Step 4): an `intent-defect` finding at `critical`/`important`, or a self-locus (`missing`/`wrong-behavior`/`fake-green`) finding whose in-stage conformance-fix Task `BLOCKED`s (self-locus otherwise self-heals in-stage) | `conformance_findings` | conformance gate (Step 4) / finalize (Step 6) |
 | `regress` | Any case fails in `make regress` | `failing_cases` | verify child |
 | `coverage` | Rule-B uncovered bins, or `sim finalize` coverage gate (dim below threshold / not extractable) | `coverage_gaps` + `gaps_not_in_testpoints` or `gaps_in_testpoints` (Rule B); `coverage_extractable` + `dims` (sim finalize) | verify child / finalize (Step 6) |
 
