@@ -1,6 +1,5 @@
 // power_{{SEQUENCE_REF}}_test.sv — auto-generated UVM test wrapping {{MODULE}}_tb_pkg sequence
 // scenario_id    : {{SCENARIO_ID}}
-// duration_cycles: {{DURATION_CYCLES}}
 // sequence_ref   : {{SEQUENCE_REF}}    (must match a sequences[].name in sequences.json)
 // uvm class      : {{MODULE}}_{{SEQUENCE_REF}}_seq    (already compiled into {{MODULE}}_tb_pkg by simulation)
 //
@@ -39,11 +38,6 @@ class power_{{SEQUENCE_REF}}_test extends {{MODULE}}_base_test;
 
     // Drive stimulus via the simulation TB's already-compiled sequence class.
     seq = {{MODULE}}_{{SEQUENCE_REF}}_seq::type_id::create("seq");
-    // Optional: if the sequence class exposes a duration / iteration field
-    // (typical names: num_cycles / hold_cycles / repeat_count), set it from
-    // the power scenario's duration_cycles. Field name is module-specific —
-    // uncomment + adjust to match the simulation seq class definition:
-    //   seq.num_cycles = {{DURATION_CYCLES}};
     seq.start(m_env.m_{{AGENT_NAME}}_agent.m_sequencer);
 
     // Allow last sample to be captured by the monitor.

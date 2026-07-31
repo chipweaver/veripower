@@ -23,13 +23,12 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["id", "saif_path", "corner_intent", "sequence_ref", "duration_cycles"],
+                "required": ["id", "saif_path", "corner_intent", "sequence_ref"],
                 "properties": {
                   "id":              {"type": "string"},
                   "saif_path":       {"type": "string"},
                   "corner_intent":   {"type": "string"},
-                  "sequence_ref":    {"type": "string"},
-                  "duration_cycles": {"type": "integer", "minimum": 1}
+                  "sequence_ref":    {"type": "string"}
                 }
               }
             },

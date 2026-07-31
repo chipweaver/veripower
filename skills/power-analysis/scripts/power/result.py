@@ -222,7 +222,6 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
         sid = s.get("id", "")
         seq = s.get("sequence_ref", "")
         corner = s.get("corner_intent", "")
-        dur = s.get("duration_cycles")
         saif = workdir / "saif" / f"{sid}.saif"
         size = saif.stat().st_size if saif.is_file() else 0
         flat = workdir / "reports_ptpx" / sid / "power_flat.rpt"
@@ -252,7 +251,6 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
                     "saif_path": f"saif/{sid}.saif",
                     "corner_intent": corner,
                     "sequence_ref": seq,
-                    "duration_cycles": dur,
                 }
             )
 

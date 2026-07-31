@@ -31,7 +31,6 @@ _VALID_SCAFFOLD = {
             "id": "S1",
             "sequence_ref": "idle_seq",
             "scenario": "idle",
-            "duration_cycles": 1000,
         }
     ],
 }
