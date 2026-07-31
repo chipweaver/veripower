@@ -120,45 +120,38 @@ On wake-up, reap its `STATUS:` line and validate the file it left:
 python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py validate-review --review {workdir}/conformance-review.json
 ```
 
-Exit 0 prints one line, `{"gate": "trip"|"clear", "flagged": [...], "dominant_category": ...}`: the
-category × severity reduction the reviewer contract describes, computed rather than eyeballed.
-Advisory findings never appear in it; surface those as `⚠ <tp> <category>` in your completion
-summary and move on.
+Exit 0 prints one line, `{"gate": "trip"|"clear", "flagged": [...]}`. The gate is
+`any(blocking)` over the reviewer's own calls, computed rather than eyeballed. Non-blocking
+findings never appear in it: surface those as `⚠ <tp_id>` in your completion summary and move on.
 
 **`gate=clear`:** go to step 3.
 
-**`gate=trip`:** read each flagged `tp_id`'s category out of `conformance-review.json` and split
-them.
+**`gate=trip`:** dispatch one conformance-fix `Task(run_in_background=True)` per
+[`references/conformance-fix-task-contract.md`](references/conformance-fix-task-contract.md), with
+the flagged findings as its fix scope. It is the one that tries, so it is the one that decides
+whether the check can be made adequate at all.
 
-*Self-locus* (`missing`, `wrong-behavior`, `fake-green`) means the check is inadequate and the
-check is yours, so repair it here. Dispatch one conformance-fix `Task(run_in_background=True)` per
-[`references/conformance-fix-task-contract.md`](references/conformance-fix-task-contract.md) with
-those findings as its fix scope, then check its `STATUS` before anything else. `STATUS: BLOCKED`
-means it judges the defect to be upstream of the check implementation: fail out below without
-re-running the reviewer, since nothing changed to re-judge. `STATUS: DONE` means re-run this whole
-step and re-apply the verdict. There is no round cap and no build step in the loop; the reviewer is
-a static read, and a fix that breaks the compile surfaces at the verify wave.
-
-*Upstream* (`intent-defect`) means the testpoint intent itself is wrong and no check can rescue it.
-Fail out, and dispatch no verify wave:
+- `STATUS: DONE`: re-run this whole step over its work. There is no round cap and no build step in
+  the loop; the reviewer is a static read, and a fix that breaks the compile surfaces at the verify
+  wave.
+- `STATUS: BLOCKED`: it judges the defect to be in the plan rather than in the check. Fail out on
+  its word, without re-running the reviewer, since nothing changed to re-judge:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize --workdir {workdir} \
-  --module <module> --phase conformance --fail-reason "<from flagged + dominant_category>" \
+  --module <module> --phase conformance --fail-reason "<the fixer's reason>" \
   --conformance-review {workdir}/conformance-review.json
 ```
 
-With both kinds present, heal the self-locus ones first; whatever `intent-defect` survives
-convergence then fails out. The route from here is `failure_phase=conformance` into
+Dispatch no verify wave after that. The route from here is `failure_phase=conformance` into
 `simulation-triage`, which supplies the confidence this stage does not try to.
 
 **No usable review** (`STATUS: BLOCKED`, no file, or a non-zero `validate-review`): do not gate on
-it, and do not let it disappear either. Write the minimal record yourself and go to step 3:
+it, and do not let it disappear either. Write the record yourself and go to step 3:
 
 ```json
-{"stage": "simulation", "module": "<module>",
- "findings": [{"tp_id": "-", "severity": "minor", "category": "unavailable",
-               "location": "-", "summary": "review wave failed: <reason>"}]}
+{"findings": [{"tp_id": "-", "location": "-", "blocking": false,
+               "finding": "review wave failed: <reason>; the checks went unjudged this round"}]}
 ```
 
 This is the only record you author, and it says that no review happened, not what a review found.

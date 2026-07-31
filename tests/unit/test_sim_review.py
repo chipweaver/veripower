@@ -10,11 +10,12 @@ sys.path.insert(0, str(ROOT / "skills" / "simulation" / "scripts"))
 from sim import review  # noqa: E402
 
 
-def _doc(findings):
+def _finding(tp_id="tp1", *, blocking):
     return {
-        "stage": "simulation",
-        "module": "m",
-        "findings": findings,
+        "tp_id": tp_id,
+        "location": "tb/uvm/checker/m_sb.sv:44",
+        "blocking": blocking,
+        "finding": "compares the pin against itself; TP asked for a prediction",
     }
 
 
@@ -28,63 +29,60 @@ def _run(tmp_path, doc):
     )
 
 
-def test_valid_doc_exit_0_prints_gate(tmp_path):
-    r = _run(tmp_path, _doc([]))
+def test_empty_findings_is_a_clean_review(tmp_path):
+    r = _run(tmp_path, {"findings": []})
     assert r.returncode == 0, r.stderr
-    gate = json.loads(r.stdout.strip())
-    assert gate["gate"] == "clear"
+    assert json.loads(r.stdout.strip())["gate"] == "clear"
 
 
 def test_invalid_doc_exit_1(tmp_path):
-    # a bad severity enum → schema-invalid → exit 1 (the schema gate)
-    doc = _doc(
-        [
-            {
-                "tp_id": "tp1",
-                "category": "missing",
-                "severity": "bogus",
-                "location": "x",
-                "summary": "x",
-            }
-        ]
-    )
-    r = _run(tmp_path, doc)
+    # blocking is required and typed: a reviewer that leaves the call out fails the gate
+    # rather than defaulting to one side of it.
+    bad = {"findings": [{"tp_id": "tp1", "location": "x", "finding": "y"}]}
+    r = _run(tmp_path, bad)
     assert r.returncode == 1 and "conformance-review invalid" in r.stderr
 
 
-def test_compute_gate_trips_on_gating_finding():
-    gate = review.compute_gate(
-        {
-            "findings": [
-                {"tp_id": "tp1", "category": "wrong-behavior", "severity": "important"}
-            ]
-        }
-    )
+def test_the_old_taxonomy_is_rejected(tmp_path):
+    # severity/category were the reviewer's call in code words, and a table decoded them.
+    # A record still carrying them is a reviewer working from a contract that no longer exists.
+    old = {
+        "stage": "simulation",
+        "module": "m",
+        "findings": [
+            {
+                "tp_id": "tp1",
+                "severity": "critical",
+                "category": "missing",
+                "location": "x",
+                "summary": "y",
+            }
+        ],
+    }
+    assert _run(tmp_path, old).returncode == 1
+
+
+def test_gate_is_any_blocking(tmp_path):
+    r = _run(tmp_path, {"findings": [_finding(blocking=True)]})
+    assert r.returncode == 0, r.stderr
+    gate = json.loads(r.stdout.strip())
     assert gate["gate"] == "trip" and gate["flagged"] == ["tp1"]
 
 
-def test_compute_gate_advisory_never_trips():
+def test_a_reported_non_blocking_finding_does_not_trip():
     gate = review.compute_gate(
-        {
-            "findings": [
-                {
-                    "tp_id": "tp1",
-                    "category": "unverifiable-arch",
-                    "severity": "critical",
-                },
-                {"tp_id": "tp2", "category": "missing", "severity": "minor"},
-            ]
-        }
+        {"findings": [_finding("tp1", blocking=False), _finding("tp2", blocking=False)]}
     )
     assert gate["gate"] == "clear" and gate["flagged"] == []
+
+
+def test_one_blocking_finding_among_many_trips():
+    gate = review.compute_gate(
+        {"findings": [_finding("tp1", blocking=False), _finding("tp2", blocking=True)]}
+    )
+    assert gate["gate"] == "trip" and gate["flagged"] == ["tp2"]
 
 
 def test_compute_gate_does_not_touch_schema():
     # callable on a bare findings dict — no schema read
     assert review.compute_gate({"findings": []})["gate"] == "clear"
-
-
-def test_schema_resolves(tmp_path):
-    # a structurally-valid empty doc validates (proves _SCHEMA path is correct one dir deeper)
-    r = _run(tmp_path, _doc([]))
-    assert r.returncode == 0, r.stderr

@@ -35,20 +35,17 @@
             "gaps_not_in_testpoints": {"type": "array", "items": {"type": "string"}},
             "gaps_in_testpoints": {"type": "array", "items": {"type": "string"}},
             "conformance_findings": {
-              "description": "The gating subset of conformance-review.json's findings[], copied verbatim by finalize. Same shape as its source (references/conformance-review.schema.json): re-declaring it here keeps the envelope from un-validating a structure that was validated one file earlier. `category` is the reasoning key simulation-triage attributes on when there is no log to anchor.",
+              "description": "The blocking subset of conformance-review.json's findings[], copied verbatim by finalize. Same shape as its source (references/conformance-review.schema.json): re-declaring it here keeps the envelope from un-validating a structure that was validated one file earlier. `finding` is the prose simulation-triage reasons over when there is no log to anchor.",
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["tp_id", "severity", "category", "location", "summary"],
+                "required": ["tp_id", "location", "blocking", "finding"],
                 "additionalProperties": false,
                 "properties": {
                   "tp_id": {"type": "string", "minLength": 1},
-                  "severity": {"enum": ["critical", "important", "minor"]},
-                  "category": {
-                    "enum": ["missing", "wrong-behavior", "fake-green", "unverifiable-arch", "intent-defect", "unavailable"]
-                  },
                   "location": {"type": "string", "minLength": 1},
-                  "summary": {"type": "string", "minLength": 1}
+                  "blocking": {"type": "boolean"},
+                  "finding": {"type": "string", "minLength": 1}
                 }
               }
             }

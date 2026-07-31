@@ -1,25 +1,30 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "conformance-review.schema.json",
-  "title": "simulation conformance review (gating reviewer output)",
+  "title": "simulation conformance review (the reviewer's own record)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["stage", "module", "findings"],
+  "required": ["findings"],
   "properties": {
-    "stage": {"const": "simulation"},
-    "module": {"type": "string"},
     "findings": {
+      "description": "One entry per inadequacy found. An empty array is a clean review; nothing else records one.",
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["tp_id", "severity", "category", "location", "summary"],
+        "required": ["tp_id", "location", "blocking", "finding"],
         "properties": {
-          "tp_id": {"type": "string"},
-          "severity": {"enum": ["critical", "important", "minor"]},
-          "category": {"enum": ["missing", "wrong-behavior", "fake-green", "unverifiable-arch", "intent-defect", "unavailable"]},
-          "location": {"type": "string"},
-          "summary": {"type": "string"}
+          "tp_id": {"type": "string", "minLength": 1},
+          "location": {"type": "string", "minLength": 1},
+          "blocking": {
+            "description": "The reviewer's own call on whether this stops the round. The only machine-readable field here, because nothing human reads this record before the stage routes on it: the gate is `any(blocking)`, so a finding worth stopping for has to say so rather than encode it in a severity word.",
+            "type": "boolean"
+          },
+          "finding": {
+            "description": "What the check does, what the testpoint's intent asked for, and where the two part company. Prose: whoever reads it next is deciding what to change, not counting categories.",
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     }

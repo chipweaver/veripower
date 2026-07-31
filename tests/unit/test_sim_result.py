@@ -47,9 +47,7 @@ def _final_workdir(tmp_path):
 
 def _review(wd, findings):
     """The reviewer's own record, as it stands on disk when finalize runs."""
-    (wd / "conformance-review.json").write_text(
-        json.dumps({"stage": "simulation", "module": "m", "findings": findings})
-    )
+    (wd / "conformance-review.json").write_text(json.dumps({"findings": findings}))
 
 
 def _finalize(wd, *extra):
@@ -173,10 +171,9 @@ def test_final_conformance_trip_is_fail_not_pass(tmp_path):
         [
             {
                 "tp_id": "TP-01",
-                "severity": "critical",
-                "category": "fake-green",
                 "location": "tb/uvm/checker/m_sb.sv:10",
-                "summary": "mismatch logged as uvm_info",
+                "blocking": True,
+                "finding": "mismatch logged as uvm_info; the counter never moves",
             }
         ],
     )
@@ -185,22 +182,21 @@ def test_final_conformance_trip_is_fail_not_pass(tmp_path):
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["failure_phase"] == "conformance"
     assert [f["tp_id"] for f in ss["conformance_findings"]] == ["TP-01"]
-    assert "TP-01 fake-green" in ss["fail_reason"]
+    assert "TP-01" in ss["fail_reason"]
 
 
-def test_final_advisory_finding_does_not_trip(tmp_path):
-    # A minor / unverifiable-arch finding is advisory by the same reduction the gate uses;
-    # the backstop must not turn the whole review into a second, stricter gate.
+def test_final_non_blocking_finding_does_not_trip(tmp_path):
+    # A reported-but-not-blocking finding is the reviewer's own call; the backstop reads the
+    # same call and must not turn the whole review into a second, stricter gate.
     wd = _final_workdir(tmp_path)
     _review(
         wd,
         [
             {
                 "tp_id": "TP-02",
-                "severity": "minor",
-                "category": "missing",
                 "location": "tb/uvm/checker/m_sb.sv:44",
-                "summary": "handshake verified only end-to-end",
+                "blocking": False,
+                "finding": "handshake verified only end-to-end; no internal probe",
             }
         ],
     )
@@ -282,16 +278,14 @@ def _ss_props():
 
 
 def test_conformance_findings_mirrors_its_source_schema():
-    # finalize copies the gating subset of conformance-review.json's findings[] verbatim, so the
-    # envelope must not describe it more loosely than the file it came from — a severity or
-    # category the source rejects would otherwise become valid one file later.
+    # finalize copies the blocking subset of conformance-review.json's findings[] verbatim, so
+    # the envelope must not describe it more loosely than the file it came from.
     mine = _ss_props()["conformance_findings"]["items"]
     theirs = json.loads(_CONF_SCHEMA.read_text())["properties"]["findings"]["items"]
     assert sorted(mine["required"]) == sorted(theirs["required"])
     assert mine["additionalProperties"] is False
     for field, spec in theirs["properties"].items():
-        if "enum" in spec:
-            assert mine["properties"][field]["enum"] == spec["enum"], field
+        assert mine["properties"][field]["type"] == spec["type"], field
 
 
 def test_failing_cases_pins_what_triage_reads():

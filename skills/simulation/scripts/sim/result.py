@@ -19,7 +19,6 @@ from pathlib import Path
 
 from sim._gate import _load_thresholds, coverage_gate, materialization_errors
 from sim._plan import load_plan
-from sim.review import compute_gate
 
 STAGE = "simulation"
 
@@ -78,12 +77,12 @@ def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path, conformance_rev
         return (False, verdict, "compile", "; ".join(d1_errs)[:300])
     gating = gating_findings(conformance_review)
     if gating:
-        named = ", ".join(f"{f.get('tp_id')} {f.get('category')}" for f in gating)
+        named = ", ".join(f.get("tp_id", "-") for f in gating)
         return (
             False,
             verdict,
             "conformance",
-            f"conformance gate tripped: {named}"[:300],
+            f"conformance gate tripped on {named}"[:300],
         )
     if cov_errs:
         return (False, verdict, "coverage", "; ".join(cov_errs)[:300])
@@ -210,12 +209,9 @@ def _findings(review_path):
 
 
 def gating_findings(review_path) -> list[dict]:
-    """The findings compute_gate flags, read back off the on-disk review. One derivation for
-    both the Step-4 fail-out and the --phase final backstop, so the two cannot disagree on
-    which findings gated."""
-    findings = _findings(review_path) or []
-    flagged = set(compute_gate({"findings": findings})["flagged"])
-    return [f for f in findings if f.get("tp_id") in flagged]
+    """The findings the reviewer called blocking. One derivation for both the Step-4 fail-out
+    and the --phase final backstop, so the two cannot disagree on which findings gated."""
+    return [f for f in (_findings(review_path) or []) if f.get("blocking")]
 
 
 def enumerate_artifacts(workdir: Path) -> list[dict]:

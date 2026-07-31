@@ -2,16 +2,15 @@
 
 The simulation main thread dispatches one Level-1 `Task(run_in_background=True)` — the
 conformance reviewer — as Wave 2 (Step 4) AFTER the deterministic smoke gate passes
-and BEFORE the verify wave. This review is **gating**: findings above the threshold in
-`SKILL.md` Step 4 set the stage `status=fail` (`failure_phase=conformance`). Do not call the Task tool (no Level-2 dispatch) and do not call `kernel.py`.
+and BEFORE the verify wave. This review is **gating**: a finding you mark blocking stops the round. Do not call the Task
+tool (no Level-2 dispatch) and do not call `kernel.py`.
 
-**Dispatched every round — never skipped.** `conformance-review.json` is deliberately never carried
-forward by the framework's `carry_self` (it is always regenerated), so even a round whose TB and plan
-are both unchanged still gets a fresh review: this judges checks-vs-intent, not RTL correctness, and
-correctness never rests on the TB/plan having been untouched. See SKILL.md Step 4.
+**Dispatched every round, never skipped.** Nothing carries the previous round's review forward,
+so a round whose TB and plan are both unchanged still gets a fresh one. You judge checks against
+intent, not RTL correctness, and that judgment never rests on nothing having moved.
 
-Mechanism = a hybrid of rtl-design's deterministic conformance gate and its advisory
-semantic review: an LLM intent reviewer whose output is used as a gate.
+Nobody reads your record before the stage acts on it. That is why one field in it is machine
+readable and the rest is yours to write.
 
 ## Inputs (paths only — the main thread does not read these bodies)
 
@@ -34,58 +33,49 @@ semantic review: an LLM intent reviewer whose output is used as a gate.
 ## Your job: per-testpoint check-adequacy review (NOT lint / coverage / RTL-bug hunting)
 
 You are a fresh, skeptical reviewer. **Do not trust that a check is adequate because it
-exists.** For each testpoint, branch on whether its `inlined_check_hints[]` is empty:
+exists.** For each testpoint, hold the check that was written against what the testpoint set
+out to verify, and say whether the first would catch the second going wrong.
 
-- **Non-empty `inlined_check_hints[]`:** the refmodel/scoreboard MUST implement a
-  cycle-accurate check matched to the hint's `implementation_detail` shape
-  (assignment-formula → `assign exp_<sig> = <expr>` + `===` compare every clk edge;
-  behavioral → cycle-accurate behavioral model; algorithmic → reference algorithm;
-  error-trigger → time-domain monitoring). **Anti-gaming red lines** (per
-  `inlined-check-hints.md`): mismatch uses `` `uvm_error `` (NOT `uvm_info`),
-  `fail_count`/`mismatch_count` actually increments, the check references `observable`, and
-  it is non-trivial. A violation = `fake-green`.
-- **Empty `inlined_check_hints[]`** (LLM scenario testpoints, e.g. TP-IRQ / TP-RESET): a
-  functional model (shadow-register / RM abstraction) is allowed; cycle-accurate is not
-  required — **but the check must not be a no-op.**
-  - **No-op test:** a check is a no-op iff its expected value is derived SOLELY by mirroring
-    /copying the compared output pin, or is a tautology that can never disagree — with NO
-    independent function of DUT inputs or prior/registered state. A no-op = `missing` with
-    severity **`critical`** (the testpoint is effectively unverified; downstream will not
-    catch it cheaply). When you call a no-op, you MUST cite the testpoint's intent from
-    the testpoint's `intent` and name the prediction it fails to make independently.
-  - **NOT a no-op (exempt):** an expected value computed from DUT input pins or from
-    registered/prior-cycle state (Mealy/Moore feedback) — e.g.
-    `exp = wb_cyc_i & wb_stb_i & ~wb_ack_o & int_ack` (derived from inputs + the `~wb_ack_o`
-    prior-cycle feedback) is a legitimate cycle-accurate check, not a no-op.
+- **Non-empty `inlined_check_hints[]`:** the refmodel and scoreboard must implement a
+  cycle-accurate check matched to the hint's `implementation_detail` shape (assignment
+  formula, behavioral model, reference algorithm, or time-domain trigger monitoring; see
+  `inlined-check-hints.md`). The anti-gaming lines are there too: a mismatch raises
+  `` `uvm_error `` rather than `uvm_info`, the mismatch counter actually increments, and the
+  check reads the `observable` it claims to.
+- **Empty `inlined_check_hints[]`** (scenario testpoints the plan author added, e.g. TP-IRQ /
+  TP-RESET): a functional model is fine and cycle accuracy is not required, but the check
+  must not be a no-op.
 
-Check **both directions**:
-- **`missing`** — no check, a trivial check, or a no-op (per above).
-- **`wrong-behavior`** — a check is present but verifies the wrong thing (plausible-but-wrong).
+  **The no-op test is the one piece of this worth stating precisely,** because a no-op reads
+  as a real check to anyone skimming. A check is a no-op when its expected value comes solely
+  from mirroring the output pin it then compares, or is a tautology that can never disagree,
+  with no independent function of DUT inputs or of prior/registered state. An expected value
+  computed from input pins or from prior-cycle feedback is not a no-op, however simple:
+  `exp = wb_cyc_i & wb_stb_i & ~wb_ack_o & int_ack` is a legitimate check. When you call a
+  no-op, quote the testpoint's `intent` and name the prediction the check fails to make on
+  its own.
 
-Other categories:
-- **`unverifiable-arch`** — the testpoint has no drive/observe path; it cannot be exercised
-  without an architecture change (e.g. a reset/clock hardwired in `tb_top` with no agent
-  takeover path). (Advisory — see "Severity & gating".)
-- **`intent-defect`** — `inlined_check_hints[]` is present but itself semantically wrong or
-  self-contradictory (references a non-existent signal, formula contradicts the spec). This
-  is an upstream plan defect. (NOTE: a testpoint with non-empty `covers[]` but EMPTY/missing
-  `inlined_check_hints[]` is NOT yours to report — env-build already blocks on it upstream.)
+Look both ways: a check can be absent, trivial or a no-op, and it can be present and verify
+the wrong thing. The second is the one that survives a skim.
 
-**Out of scope (do NOT report):** materialization presence (the env-exit self-gate covers it);
-coverage sufficiency (the verify phase covers it); lint / CDC / timing / synthesizability /
-pure syntax (other stages / the compiler); whether the DUT RTL has a bug (that is the
-rtl-design domain — you judge whether the *check* adequately verifies the intent, not whether
-the RTL is correct); over-engineering (deferred).
+**Out of scope, do not report:** materialization presence (the env-exit self-gate covers it);
+coverage sufficiency (the verify phase covers it); lint, CDC, timing, synthesizability or
+syntax (other stages and the compiler); whether the DUT RTL has a bug (you judge the check,
+not the design); over-engineering. A testpoint with a non-empty `covers[]` and no
+`inlined_check_hints[]` is also not yours: env-build blocks on that upstream.
 
-## Severity & gating (how the main thread uses your output)
+## Blocking
 
-- `critical` — likely verifies the wrong thing / verifies nothing, and downstream will not
-  catch it cheaply (covered-testpoint no-op or missing check is this tier).
-- `important` — a real concern worth blocking on.
-- `minor` — a nit. Calibrate — not everything is critical.
-- The main thread GATES (status=fail) on `category ∈ {missing, wrong-behavior, fake-green,
-  intent-defect} ∧ severity ∈ {critical, important}`. `unverifiable-arch` (any severity),
-  `minor`, and `unavailable` are advisory and never gate — but still report them.
+Every finding carries your own call on whether it stops the round, and the gate is exactly
+`any(blocking)`. There is no severity word and no category to file it under: those existed so
+a table could work out what you already knew, and the table could only ever recover the
+answer you had encoded in them.
+
+Block when the testpoint would pass while the behavior it exists to verify is broken. Do not
+block for a nit, for a gap you can name but that costs nothing downstream, or for a testpoint
+with no drive or observe path at all (say so, non-blocking: the architecture is the fix, and
+this round cannot make it). If you find yourself writing prose that describes a real hole and
+then marking it non-blocking, one of the two is wrong.
 
 ## Output
 
@@ -97,17 +87,16 @@ judging, and you do not edit it.
 Schema `references/conformance-review.schema.json`:
 
 ```json
-{"stage": "simulation", "module": "<module>",
- "findings": [{"tp_id": "<TP-ID | component token e.g. 'env:wiring'>",
-               "severity": "critical|important|minor",
-               "category": "missing|wrong-behavior|fake-green|unverifiable-arch|intent-defect",
-               "location": "<file:line | plan ref>", "summary": "<one line>"}]}
+{"findings": [{"tp_id": "<TP-ID | component token e.g. 'env:wiring'>",
+               "location": "<file:line | plan ref>",
+               "blocking": true,
+               "finding": "<what the check does, what the intent asked for, where they part>"}]}
 ```
 
-The main thread validates that file and reduces it to the gate verdict; it does not retype
-your findings, so what you write is what gates. Report every finding you have, at the
-severity you actually believe: nothing downstream re-reads the TB to recover one you left out.
+An empty `findings` array is how a clean review is recorded, and it is the only way. The main
+thread validates the file and reduces it; it does not retype your findings and nothing
+downstream re-reads the TB to recover one you left out.
 
-- If you cannot read the full TB (context budget), do NOT silently pass: emit
-  `STATUS: BLOCKED context-budget: <what was unread>` so the main thread records it as
-  `unavailable` rather than a clean pass.
+If you cannot read the full TB within your context budget, do not silently pass: end with
+`STATUS: BLOCKED context-budget: <what went unread>`, and the main thread records that no review
+happened rather than that one found nothing.
