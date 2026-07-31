@@ -40,9 +40,9 @@ Dispatch one Level-1 `Task(run_in_background=True)` per child in `manifest.child
 
 Both sidecars must end up carrying an entry for every child in the manifest: every downstream filelist is generated from `rtl-files.json`, so a child missing from it never reaches a tool. A round that re-authored only some children therefore overlays its reports onto the entries already in `{workdir}` instead of writing the file from scratch, and `finalize` stops the round while an entry is missing. A child that reports `STATUS: BLOCKED` has no entry to write: close the round with `--fail-reason` naming it.
 
-**The RTL does not ship until it compiles.** Every `.v` this round delivers passes a Verilog compiler before the round closes.
+**The RTL does not ship until it compiles.** The full `rtl-files.json` file set compiles as one design before the round closes.
 
-**The RTL does not ship until its intent has been reviewed.** Every child in the manifest gets a fresh Level-1 reviewer against the RTL this round ships, per [`references/rtl-review-task-contract.md`](references/rtl-review-task-contract.md); each writes its own `{workdir}/semantic-review/<child>.md`.
+**The RTL does not ship until its intent has been reviewed.** Every child in the manifest has a `{workdir}/semantic-review/<child>.md` covering the RTL this round ships, written by fresh Level-1 reviewers per [`references/rtl-review-task-contract.md`](references/rtl-review-task-contract.md).
 
 Nothing reduces those reviews to a verdict. Read them and act: re-dispatch the children whose RTL is wrong, or close the round and name who must fix what you cannot. A review that finds a defect in `design.md` or a `<child>.md` is not yours to fix — that is the intent source.
 

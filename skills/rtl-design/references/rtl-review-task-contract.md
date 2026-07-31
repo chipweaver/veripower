@@ -1,16 +1,17 @@
-# Per-child intent review sub-Task contract
+# Intent review sub-Task contract
 
-The rtl-design main thread dispatches one Level-1 `Task(run_in_background=True)` per child in
-`manifest.children[]`, on every round that reaches a written sidecar. You write your own review
-file. Nothing reduces it to a verdict and no script parses it, so write for the engineer who reads
-it before this RTL ships. Do not call the Task tool: a sub-Task of yours would append no event and
-sit outside the kernel's accounting, where nothing could audit it.
+The rtl-design main thread dispatches fresh Level-1 `Task(run_in_background=True)` reviewers over
+`manifest.children[]`, on every round that reaches a written sidecar; you are assigned one or more
+of those children. You write your own review files. Nothing reduces them to a verdict and no script
+parses them, so write for the engineer who reads them before this RTL ships. Do not call the Task
+tool: a sub-Task of yours would append no event and sit outside the kernel's accounting, where
+nothing could audit it.
 
 ## Inputs (paths only — the main thread does not read these bodies)
 
-- Child unit name + its `manifest.children[<self>].rtl_modules[]` list.
-- The child's authored RTL `files[]` (from `rtl-files.json`) — read these.
-- The child's per-child design doc, located via `manifest.children[<self>].doc` (the registry SSoT —
+- The child units assigned to you + each one's `manifest.children[<name>].rtl_modules[]` list.
+- Each assigned child's authored RTL `files[]` (from `rtl-files.json`) — read these.
+- Each assigned child's design doc, located via `manifest.children[<name>].doc` (the registry SSoT —
   the SAME path authoring uses; do NOT hardcode `Design/specification/<child>.md`, which can drift from
   the deployed layout). **Read its §2 Interface (and, for the top-integration child, the §3.1
   instantiation map wires the `interconnects.json` edges)** as the statement of *intent* to check against.
@@ -39,8 +40,9 @@ decides those).
 
 ## Output
 
-Write `{workdir}/semantic-review/<your-child>.md`. Prose, no schema. Then end the response with
-`STATUS: DONE`, or `STATUS: BLOCKED <reason>` if you could not review at all.
+Write `{workdir}/semantic-review/<child>.md` for every child assigned to you. Prose, no schema.
+Then end the response with `STATUS: DONE`, or `STATUS: BLOCKED <reason>` if you could not review
+at all.
 
 Every finding says four things:
 
