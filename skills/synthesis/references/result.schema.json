@@ -10,6 +10,7 @@
         "stage": {"const": "synthesis"},
         "stage_specific": {
           "type": "object",
+          "dependentRequired": {"violations": ["ppa_actual"]},
           "properties": {
             "fix_owner": {"type": "string", "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."},
             "fail_reason":  {"type": "string", "minLength": 1},
@@ -53,16 +54,6 @@
     {
       "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
       "then": {"properties": {"stage_specific": {"required": ["fail_reason", "failure_kind"]}}}
-    },
-    {
-      "if": {
-        "properties": {
-          "status": {"const": "fail"},
-          "stage_specific": {"properties": {"failure_kind": {"const": "ppa"}}, "required": ["failure_kind"]}
-        },
-        "required": ["status", "stage_specific"]
-      },
-      "then": {"properties": {"stage_specific": {"required": ["ppa_actual", "violations"]}}}
     }
   ]
 }

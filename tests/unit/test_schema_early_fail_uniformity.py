@@ -48,10 +48,14 @@ def test_schema_validates_minimum_fail_envelope(stage):
     assert err is None, f"stage {stage}: minimum status=fail envelope rejected: {err}"
 
 
-# A status=fail + failure_kind=ppa must additionally carry the measured numbers
-# (ppa_actual + violations), per ARCHITECTURE.md §6.2 (uniform across the three
-# failure_kind stages). timing-analysis locks its own variant in test_timing_schema.py;
-# synthesis + power-analysis are gated here.
+# A fail that reports a PPA miss must carry the numbers behind it. The claim used to be
+# keyed on a label — failure_kind=ppa triggered a required[] — which meant the schema was
+# checking a description of the data against the data's absence. It is now keyed on the
+# data: carrying violations[] obliges you to carry the measurements it was judged from.
+# That is strictly more than the label caught, because it also fires on the case the label
+# never described — a gate that ran clean and still omitted the measurements.
+# timing-analysis locks its own variant in test_timing_schema.py; synthesis +
+# power-analysis are gated here.
 _PPA_FAIL_NUMBERS = {
     "synthesis": {
         "ppa_actual": [{"dim": "area_um2", "value": 1234.0}],
@@ -83,18 +87,39 @@ def _fail_result(stage, stage_specific):
 def test_ppa_fail_requires_numbers(stage):
     numbers = _PPA_FAIL_NUMBERS[stage]
 
-    # Without the measured numbers, a failure_kind=ppa fail is rejected.
+    # violations[] without the measurements it was judged from is rejected.
     err = facts.validate_result(
         stage,
         _fail_result(
-            stage, {"fail_reason": "PPA gate exceeded", "failure_kind": "ppa"}
+            stage,
+            {
+                "fail_reason": "PPA gate exceeded",
+                "failure_kind": "ppa",
+                "violations": numbers["violations"],
+            },
         ),
     )
     assert err is not None, (
-        f"stage {stage}: ppa fail without ppa_actual/violations accepted"
+        f"stage {stage}: violations[] accepted without the measurements behind it"
     )
 
-    # With ppa_actual + violations, it validates.
+    # An empty violations[] obliges them just the same: the gate ran either way.
+    err = facts.validate_result(
+        stage,
+        _fail_result(
+            stage,
+            {
+                "fail_reason": "netlist incomplete",
+                "failure_kind": "tooling",
+                "violations": [],
+            },
+        ),
+    )
+    assert err is not None, (
+        f"stage {stage}: an empty violations[] escaped the obligation"
+    )
+
+    # Together they validate.
     err = facts.validate_result(
         stage,
         _fail_result(
@@ -102,4 +127,11 @@ def test_ppa_fail_requires_numbers(stage):
             {"fail_reason": "PPA gate exceeded", "failure_kind": "ppa", **numbers},
         ),
     )
-    assert err is None, f"stage {stage}: ppa fail with numbers rejected: {err}"
+    assert err is None, f"stage {stage}: a fail carrying both rejected: {err}"
+
+    # And an early fail, which carries neither because no gate ran, stays valid.
+    err = facts.validate_result(
+        stage,
+        _fail_result(stage, {"fail_reason": "no license", "failure_kind": "infra"}),
+    )
+    assert err is None, f"stage {stage}: early fail rejected: {err}"
