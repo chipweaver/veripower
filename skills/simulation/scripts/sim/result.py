@@ -152,6 +152,29 @@ def build_result(
         )
         return 0
     cases = read_case_counts(workdir)
+    if cases["not_run"]:
+        # A declared test with no RESULT line did not run, and the counts finalize reports
+        # are over the lines that exist, so a suite cut short reads as a smaller clean one.
+        # Every test the plan declares is in a suite `make regress` selects, so this is the
+        # runner having stopped partway rather than a selection gap.
+        ss = {
+            "failure_phase": "regress",
+            "fail_reason": (
+                f"{cases['not_run']} of {cases['not_run'] + cases['total']} declared tests "
+                f"produced no result; the suite did not finish"
+            ),
+        }
+        _write_result(
+            workdir,
+            _envelope(
+                module,
+                status="fail",
+                stage_specific=ss,
+                artifacts=artifacts,
+                fix_owner=fix_owner,
+            ),
+        )
+        return 0
     ss = {
         "total_cases": cases["total"],
         "passed": cases["passed"],
@@ -188,6 +211,7 @@ def read_case_counts(workdir: Path) -> dict:
         "total": n("total_tests"),
         "passed": n("passed_tests"),
         "failed": n("failed_tests"),
+        "not_run": n("not_run_tests") or 0,
     }
 
 
@@ -277,5 +301,5 @@ def finalize(
             fix_owner=fix_owner,
         )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        print(f"[sim finalize] FAIL=internal {exc}", file=sys.stderr)
+        print(f"[sim finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

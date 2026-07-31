@@ -196,6 +196,29 @@ def test_final_non_blocking_finding_does_not_trip(tmp_path):
     assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
 
+def test_a_suite_that_did_not_finish_is_not_a_pass(tmp_path):
+    # The counts finalize reports are over the RESULT lines that exist, so a run cut short
+    # reads as a smaller clean one: three of ten tests, all green. Every declared test is in a
+    # suite `make regress` selects, so a test with no result is the runner having stopped.
+    wd = _final_workdir(tmp_path)
+    (wd / "case-results.json").write_text(
+        json.dumps(
+            {
+                "total_tests": 3,
+                "passed_tests": 3,
+                "failed_tests": 0,
+                "not_run_tests": 7,
+            }
+        )
+    )
+    proc = _finalize_final(wd)
+    assert proc.returncode == 0, proc.stderr
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    assert env["stage_specific"]["failure_phase"] == "regress"
+    assert "did not finish" in env["stage_specific"]["fail_reason"]
+
+
 def test_final_compile_fail_carries_no_coverage_companions(tmp_path):
     # Companions follow the resolved failure_phase: a compile fail says nothing about
     # coverage, and the failure_phase table in SKILL.md lists none for it.

@@ -37,7 +37,7 @@ def _render_template_file(
 ) -> str:
     tmpl_path = template_dir / template_name
     if not tmpl_path.is_file():
-        sys.exit(f"scaffold: missing template file: {tmpl_path}")
+        sys.exit(f"[sim bootstrap] missing template file: {tmpl_path}")
     return _render_strict(tmpl_path.read_text(encoding="utf-8"), mapping)
 
 
