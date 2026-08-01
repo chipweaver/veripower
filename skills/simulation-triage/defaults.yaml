@@ -1,3 +1,0 @@
-# simulation-triage L2 (controlled experiment) iteration budget.
-# L2 is entered only when L1 cannot reach high confidence; capped to stay bounded.
-l2_experiment_max_rounds: 2
