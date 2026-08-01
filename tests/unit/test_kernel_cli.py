@@ -540,7 +540,7 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
     assert diag["subject"] == {"proof": "simulation", "outcome_run": 7}
     assert diag["confidence"] == "high"
     # D5: fix_locus mapped from advisory.findings[].anchor; evidence includes the triage
-    # result.json plus the L2 experiment artifacts (no longer structurally empty). Every
+    # result.json plus the experiment artifacts (no longer structurally empty). Every
     # entry is anchored on THIS triage run's directory, which keeps the list module-relative
     # throughout and immutable: canonical result.json is overwritten by the next triage,
     # runs/<N>/ is not, and the artifacts are workdir-relative at the source.

@@ -140,7 +140,7 @@ Orchestrator 的三条派发路径：
 | **Orchestrator Agent** | `design-flow` skill，主会话 | 执行每次 `decide` 返回的那一个动作；仅在用户明确意图下提议 `pin` / `reopen` / 人工 `diagnose`；升级；与用户协作。它不撰写任何按派发的内容：只把动作里的坐标原样传过去，由内核解析（§5.6）。同时作为四条主线程规则的主线程执行器。 | 系统中唯一有权调用 `kernel.py`、使用 Task 工具、与用户交互的角色。不手写任何事件——每个事件都由 `kernel.py` 写入。 |
 | **主线程 skill** | 四条主线程规则之一，经 `Skill()` 加载 | 在 Orchestrator 线程中自驱动工作：sub-Task 扇出（生产者规则、simulation）、多轮对话（simulation-plan）、或单次审查派发。各自写入自己的产物和 `result.json`。 | 可派发一级 sub-Task（生产者规则 / simulation）或与用户交互（simulation-plan；specification 限其两次路径交接门）。禁 `kernel.py`、禁路由。靠 SKILL.md 条文纪律约束，不靠工具门控。 |
 | **阶段子 Agent** | 四条 Task 派发的规则（`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis`） | 执行单条规则：读上游 → 做工作 → 写 `result.json` → 返回 STATUS 行 | 不准调 `kernel.py`，不准做路由决策（§6.1） |
-| **调试子 Agent** | `simulation-triage`，经 Task 派发 | 对仿真失败做分级（L1 日志+代码+FSDB 推理 → L2 受控实验）根因分析；其目标 run 与上游（spec/RTL/plan）在派发时经 `dispatch.json` 注入（`sim_run` 指名目标 run 目录），`proof=None`，故即便上游证明失效也可派发；写出的 `result.json` 其 `stage_specific` 携带归因，由内核在收割时转成 `diagnosis`（§6.3） | canonical 只读、自身 workdir 可写；绝不编辑其它规则的 `result.json`、RTL 或测试；非幂等（重复运行重跑 L2） |
+| **调试子 Agent** | `simulation-triage`，经 Task 派发 | 对仿真失败做根因分析：在这一轮自己的证据上推理，证据定不了时另建受控实验；其目标 run 与上游（spec/RTL/plan）在派发时经 `dispatch.json` 注入（`sim_run` 指名目标 run 目录），`proof=None`，故即便上游证明失效也可派发；写出的 `result.json` 其 `stage_specific` 携带归因，由内核在收割时转成 `diagnosis`（§6.3） | canonical 只读、自身 workdir 可写；绝不编辑其它规则的 `result.json`、RTL 或测试；非幂等（重复运行重做一遍） |
 | **`kernel.py`** | Python CLI | 状态转换（以事件形式）、调度、证明推导、promote | 持有调度逻辑但不做*判断*：它从不代人铸造人工诊断。 |
 
 ### 2.5 核心设计原则
@@ -371,7 +371,7 @@ flowchart TD
 
 三种处置是对这一个字段的判断，不是一张映射:
 
-- **谁都没指。** 阶段读了自己的失败仍然无法归因，那就由人决定。唯一的例外是 `simulation`，它背后有一个更深的分析器:它未归因的失败会派发 `simulation-triage`(分级的 L1 日志/代码推理，必要时 L2 受控实验)，由后者的收割铸出诊断。
+- **谁都没指。** 阶段读了自己的失败仍然无法归因，那就由人决定。唯一的例外是 `simulation`，它背后有一个更深的分析器:它未归因的失败会派发 `simulation-triage`，由后者的收割铸出诊断。
 - **指了自己。** 阶段从这里能修的缺陷是在**本轮 run 之内**修掉的——`rtl-design` 重派子作者、`lint-cdc` 就地加 waiver——所以压根不会以失败抵达这里。指自己因而意味着站内补救已尽，而自动重建会把失败规则派给它自己。
 - **指了自己输入闭包内的规则**(`rules.input_closure`，那张派生出来的图——与 `kernel.py diagnose` 对人工归因所用的是同一条校验)。输入可用 → 自动重建 `DISPATCH`；不可用 → 顺延前向。指到闭包之外意味着阶段归咎了自己并不消费的东西，升级。
 
@@ -449,10 +449,10 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 `simulation-triage` 是唯一的调试类规则，也是流水线对仿真失败的权威分级根因分析器。它在内核中是一条普通的 Task 规则：带 `params.sim_run` 派发，与任何阶段走同一条 `dispatch → reap` 路径，其 `result.json`（`stage_specific` 分析块）就是内核在收割时转成 `diagnosis` 的产物（§5.3）——归因以事件形式抵达调度器，从不走旁路文件指针。
 
 - **输入：** Orchestrator 把 `{module, sim_run}` 作为派发参数传入；派发时内核把 `sim_run` 与每个声明的输入（`design`、`rtl`、`plan`）解析为各自的绝对规范阶段根目录，写入 `{workdir}/dispatch.json`（`store.write_dispatch`）。triage 从这些注入的位置读一切——从不自行导航模块相对路径：失败仿真的 `result.json` 与完整 `runs/<sim_run>/`（UVM 日志、coverage/KDB、以及失败 test 的全层次 `<test_id>.fsdb`）、spec、RTL、simulation-plan 的 scaffold/refmodel。
-- **方法（L1 → L2，够用的最廉价层级胜出）：** **L1** 在失败证据加 spec 与 refmodel 上推理，并以查询失败 run 自己的 FSDB 波形（`fsdbreport`）作事实支撑，FSDB 缺失时优雅降级为日志+代码推理。**L2**（仅当 L1 仍留不确定猜想）跑*受控实验*——真实 run 从未驱动过的选定激励、隔离微 harness、或与 UVM refmodel 语义一致的手工黄金模型——绝不编辑规范 RTL。迭代受预算约束。
-- **输出：** 一份 `result.json`，其 `stage_specific` 携带路由层（`analysis_state`、`root_cause`、gating 的 `confidence`）与咨询层（`level`、波形/实验支撑的 `fix_direction`、`findings[]`、证据）。收割时内核从这些字段派生 `diagnosis`。
+- **方法：** 在失败证据加 spec 与 refmodel 上推理，并查询失败 run 自己的 FSDB 波形（`fsdbreport`），二者同为事实。当这些定不了归因时，它可以在自己的 workdir 里建并跑一个*受控实验*——真实 run 从未驱动过的激励、隔离 harness、与 UVM refmodel 一致的黄金模型——绝不编辑规范 RTL。用哪一种、走多远，是这个子 Agent 自己的判断；框架不计量它。
+- **输出：** 一份 `result.json`，其 `stage_specific` 携带路由层（`analysis_state`、`root_cause`、gating 的 `confidence`）与咨询层（`findings[]`、`waveform`、`experiment`）。收割时内核从中派生 `diagnosis`：`findings[].anchor` 成为 `fix_locus`，`experiment.artifacts[]` 成为 `evidence`。
 - **权威性——置信度门控：** `confidence` 是门控字段，不是咨询散文。只有 `high` 置信、非自指的诊断经可靠性门自动路由（§5.3）；`medium`/`low` 升级给操作者。
-- **副作用：** 只写自身 workdir；绝不编辑其它规则的 `result.json`、RTL、TB、spec 或计划。非只读（L2 是建造者）且非幂等（重复即重跑 L2）；是叶子——无扇出。
+- **副作用：** 只写自身 workdir；绝不编辑其它规则的 `result.json`、RTL、TB、spec 或计划。非只读（它可能建造实验）且非幂等（重复即重做一遍）；是叶子——无扇出。
 
 ## 7. 工作空间布局
 
@@ -480,7 +480,7 @@ asic/<module>/
 │   ├── simulation-plan/      { result.json + verification-plan.md / tb-scaffold.json / sequences.json / power-scenarios.json / plan-review/*.md + runs/<N>/ }
 │   ├── simulation/           { result.json + env.sh / rtl_filelist.f / tb/uvm/* / case-results-summary.md /
 │   │                           conformance-review.md + runs/<N>/（失败 test 的 <test_id>.fsdb——pass 即回收，§7.3）}
-│   ├── simulation-triage/    { result.json + runs/<sim_run>/（分析；L2 时另有 experiment/）——proof=None }
+│   ├── simulation-triage/    { result.json + runs/<sim_run>/（分析；建了实验则另有 experiment/）——proof=None }
 │   └── power-analysis/       { result.json + reports_ptpx/*/power_hier.rpt + runs/<N>/ }
 ```
 

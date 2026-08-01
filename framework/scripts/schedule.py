@@ -156,8 +156,7 @@ def _disposition(
     owner = _declared_owner(module, rule)
     if owner is None:
         # simulation is the one stage with a deeper analyzer behind it: a failure it looked
-        # at and still could not attribute is what simulation-triage exists for (graduated
-        # L1 log/code reasoning, then an L2 controlled experiment). Everywhere else, an
+        # at and still could not attribute is what simulation-triage exists for. Everywhere else, an
         # envelope that names nobody is the stage saying it cannot tell — that is a human's
         # call, not a target to guess at.
         if rule == "simulation":

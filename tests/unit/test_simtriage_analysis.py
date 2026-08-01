@@ -174,9 +174,9 @@ def test_unknown_top_level_key_rejected_by_additional_properties_false(tmp_path)
 
 
 def test_advisory_tier_label_rejected(tmp_path):
-    """`advisory.level` is gone: `experiment`'s presence is what marks an L2 verdict, and a
-    label the same author writes one line from the data it labels gated nothing — omitting it
-    or writing "L1" both passed the requirement it was supposed to enforce."""
+    """`advisory.level` is gone: an experiment block is present exactly when one was built,
+    and a label the same author writes one line from the data it labels gated nothing —
+    omitting it or downgrading it both passed the requirement it was supposed to enforce."""
     r = _run(
         tmp_path,
         {
@@ -199,9 +199,11 @@ def test_prose_names_no_advisory_key_the_schema_rejects():
     for sub, node in advisory["properties"].items():
         legal |= {f"{sub}.{k}" for k in node.get("properties", {})}
 
+    skill_dir = ROOT / "skills/simulation-triage"
+    docs = [skill_dir / "SKILL.md", *sorted(skill_dir.glob("references/*.md"))]
     cited: set[str] = set()
-    for name in ("SKILL.md", "references/fail-analysis-patterns.md"):
-        text = (ROOT / "skills/simulation-triage" / name).read_text()
+    for doc in docs:
+        text = doc.read_text()
         for body in re.findall(r"advisory\.\{([^}]*)\}", text):
             cited |= {t.strip().rstrip("[]") for t in body.split(",") if t.strip()}
         for tok in re.findall(r"advisory\.([A-Za-z_]+(?:\.[A-Za-z_]+)?)", text):
