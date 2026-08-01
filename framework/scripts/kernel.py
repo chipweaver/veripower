@@ -320,9 +320,8 @@ def _derive_triage(env, dispatch):
     sim_hit = dispatch["params"].get("sim_run")
     # Structural correlates live in the ADVISORY tier — stage_specific is
     # additionalProperties:false with no evidence/fix_locus keys, so the old
-    # ss.get("evidence"/"fix_locus") reads were ALWAYS empty (D5). Map them: L2 repro
-    # artifacts -> diagnosis.evidence (§3.4 "L2 repro 经 diagnosis.evidence 引用"), and
-    # per-finding anchors -> fix_locus. The triage result.json is the always-present primary
+    # ss.get("evidence"/"fix_locus") reads were ALWAYS empty (D5). Map them: the
+    # experiment's artifacts -> diagnosis.evidence, and per-finding anchors -> fix_locus. The triage result.json is the always-present primary
     # evidence record.
     #
     # Every entry is anchored on THIS triage run's own directory, which makes the list

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-triage/result.schema.json",
   "title": "simulation-triage result.json contract",
-  "description": "Complete contract for asic/<module>/Verification/simulation-triage/result.json. stage_specific carries the analysis in two tiers. Routing tier: analysis_state discriminates ('complete' carries root_cause + confidence, 'skipped' carries skipped_reason), root_cause names the rule that must act, and confidence is gating (high is acted on directly, medium/low reach a human first). Advisory tier: advisory.{findings[], waveform, experiment}, forwarded to the rework target as context. findings[].anchor is the fix locus, and experiment.artifacts[] are the L2 evidence paths — those two are read; the rest is prose for whoever reads the record. experiment's presence is itself what marks an L2-backed verdict.",
+  "description": "Complete contract for asic/<module>/Verification/simulation-triage/result.json. stage_specific carries the analysis in two tiers. Routing tier: analysis_state discriminates ('complete' carries root_cause + confidence, 'skipped' carries skipped_reason), root_cause names the rule that must act, and confidence is gating (high is acted on directly, medium/low reach a human first). Advisory tier: advisory.{findings[], waveform, experiment}, forwarded to the rework target as context. findings[].anchor is the fix locus and experiment.artifacts[] are the evidence paths — those two are read; the rest is prose for whoever opens the record. An experiment block is present exactly when the run built one, so nothing labels the tier separately.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
