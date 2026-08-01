@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/schemas/events/dispatch.schema.json",
   "type": "object",
-  "required": ["ts", "type", "rule", "run", "workdir", "params", "objective"],
+  "required": ["ts", "type", "rule", "run", "workdir", "params"],
   "additionalProperties": true,
   "properties": {
     "ts": {"type": "string"},
@@ -12,7 +12,6 @@
     "workdir": {"type": "string"},
     "inputs": {"type": "object", "description": "consumed input version table; present only for proof-producing rules (sole source of proof.inputs). Absent for no-proof rules (triage)."},
     "params": {"type": "object", "description": "recorded declared params per rules.RULES[rule].params, e.g. {\"sim_run\": 5} for triage"},
-    "objective": {"type": "string", "enum": ["delivery", "repair", "signoff"]},
     "diagnosis_refs": {"type": "array", "items": {"type": "string"}},
     "caused_by": {"type": "array", "description": "the failures this dispatch answers, as [rule, run] pairs; present iff this is a rework", "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "integer", "minimum": 1}]}}
   }

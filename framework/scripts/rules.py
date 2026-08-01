@@ -295,6 +295,11 @@ FORWARD_PRIORITY: list[str] = [
 
 PIPELINE_INPUTS: tuple[str, ...] = ("brainstorm.md",)
 
+# Sequencing edges that are NOT data dependencies: synthesis does not consume lint's
+# reports, but a lint failure changes the RTL under it, so letting the cheap detector speak
+# first avoids spending the expensive stage on a round that is about to be redone. Read by
+# exactly one place — schedule._held_by_advisory — and never by freshness, input
+# availability, or failure attribution, which are artifact edges only.
 ADVISORY_ORDER: dict[str, tuple[str, ...]] = {
     "synthesis": ("lint-cdc",),
     "power-analysis": ("timing-analysis",),
@@ -326,13 +331,6 @@ def input_producers(rule_name: str) -> set[str]:
             if p is not None and p != rule_name:
                 out.add(p)
     return out
-
-
-def sort_prereqs(rule_name: str) -> set[str]:
-    """排序前驱(R) = {producers of R's inputs} ∪ ADVISORY_ORDER[R], minus R itself.
-    ORDERING-ONLY: consumed exclusively by delivery's no-overtake gate. Freshness and
-    proof validity use input_producers/input_closure (artifact edges), never this."""
-    return input_producers(rule_name) | set(ADVISORY_ORDER.get(rule_name, ()))
 
 
 def input_closure(rule_name: str) -> set[str]:

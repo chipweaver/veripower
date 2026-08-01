@@ -122,7 +122,7 @@ _STAGE_FILES = {
 }
 
 
-def _dispatch_write_reap(tree_root, module, rule, files, *, objective="delivery"):
+def _dispatch_write_reap(tree_root, module, rule, files):
     """dispatch `rule`, write `files` (workdir-relative path -> content) + a
     passing schema-valid result.json declaring them as artifacts, then reap.
     Returns the reap JSON."""
@@ -133,8 +133,6 @@ def _dispatch_write_reap(tree_root, module, rule, files, *, objective="delivery"
         module,
         "--rule",
         rule,
-        "--objective",
-        objective,
     )
     assert d["ok"] is True, d
     workdir = d["workdir"]
@@ -172,8 +170,6 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
         module,
         "--rule",
         "rtl-design",
-        "--objective",
-        "delivery",
     )
     assert d1["ok"] is True, d1
     wd1 = tmp_path / "asic" / module / d1["workdir"]
@@ -219,8 +215,6 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
         module,
         "--rule",
         "rtl-design",
-        "--objective",
-        "delivery",
     )
     assert d2["ok"] is True and d2["run"] == d1["run"] + 1
     wd2 = tmp_path / "asic" / module / d2["workdir"]
@@ -275,8 +269,6 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
         module,
         "--rule",
         "power-analysis",
-        "--objective",
-        "delivery",
     )
     assert d["ok"] is True, d
     wd = tmp_path / "asic" / module / d["workdir"]
@@ -366,8 +358,6 @@ def test_relocation_invariance_consumer_reanchors(tmp_path):
         module,
         "--rule",
         "synthesis",
-        "--objective",
-        "delivery",
     )
     assert d_a["ok"] is True, d_a
     wd_a = tree_a / "asic" / module / d_a["workdir"]
@@ -428,8 +418,6 @@ def test_relocation_invariance_consumer_reanchors(tmp_path):
         module,
         "--rule",
         "synthesis",
-        "--objective",
-        "delivery",
     )
     assert d_b["ok"] is True, d_b
     assert d_b["run"] == d_a["run"] + 1

@@ -1,7 +1,7 @@
-"""VeriPower scheduler — objective -> exactly one action. Pure over (disk, ledger,
-args): no state of its own. A self-describing failure is attributed by its own envelope
-(`stage_specific.fix_owner`); this file only checks that naming is legal.
-Bare-importable (`import schedule`)."""
+"""VeriPower scheduler — exactly one action per call. Pure over (disk, ledger, args): no
+state of its own, and nothing the caller has to carry between turns. A self-describing
+failure is attributed by its own envelope (`stage_specific.fix_owner`); this file only
+checks that naming is legal. Bare-importable (`import schedule`)."""
 
 from __future__ import annotations
 
@@ -19,27 +19,43 @@ import rules  # noqa: E402
 _STAGE_PROOFS = [r for r in rules.FORWARD_PRIORITY if rules.RULES[r].proof]
 
 
-def required_proofs(events: list[dict], objective: str) -> set[str]:
-    if objective in ("delivery", "signoff"):
-        # Identical sets, deliberately: signoff does not require MORE proofs than delivery,
-        # it requires the SAME proofs to clear a stricter bar — facts.signoff_gate, applied
-        # at decide's DONE point (step 3).
-        return set(_STAGE_PROOFS)
-    if objective == "repair":
-        # Scan newest-first: the first outcome seen per rule IS that rule's latest;
-        # if it is a fail, that's the repair target. Position by scan order — never
-        # events.index (duplicate event lines collide, and it's O(n) per call).
-        # Only the 8 stage proofs are repair targets: a non-proof rule (simulation-triage)
-        # has no proof to repair and would crash step-2's FORWARD_PRIORITY.index (spec §2/§3.2).
-        seen_rules: set[str] = set()
-        for e in reversed(events):
-            if e["type"] == "outcome" and e["rule"] in _STAGE_PROOFS:
-                if e["rule"] not in seen_rules:
-                    if e["verdict"] == "fail":
-                        return {e["rule"]}
-                    seen_rules.add(e["rule"])
-        return set()
-    sys.exit(f"decide: unknown objective {objective!r}")
+def failing_proofs(events: list[dict]) -> set[str]:
+    """The stage proofs whose LATEST outcome is a fail.
+
+    Scan newest-first: the first outcome seen per rule IS that rule's latest. Position by
+    scan order — never events.index (duplicate event lines collide, and it's O(n) per call).
+    Restricted to the eight stage proofs: a non-proof rule (simulation-triage) has no proof
+    to re-verify and would crash step 2's FORWARD_PRIORITY.index (spec §2/§3.2).
+
+    ALL of them, not the newest one. A failure that is not in this set is not scheduled, so
+    returning a single rule leaves every other failing rule out of the round — two stages
+    that fail together get their fix merged into one dispatch and then re-verify one after
+    the other, even with no artifact edge between them."""
+    out: set[str] = set()
+    seen: set[str] = set()
+    for e in reversed(events):
+        if e["type"] == "outcome" and e["rule"] in _STAGE_PROOFS:
+            if e["rule"] not in seen:
+                seen.add(e["rule"])
+                if e["verdict"] == "fail":
+                    out.add(e["rule"])
+    return out
+
+
+def required_proofs(events: list[dict]) -> set[str]:
+    """The proofs this round must make valid: the ones currently failing, or all eight.
+
+    One concept, derived, carried by nobody. While a proof is failing it IS the goal —
+    nothing downstream of it means anything until it re-verifies, so building the rest is
+    work that a second failure would only invalidate again. When the last one re-verifies
+    the set empties on its own and the goal widens back to the whole DAG; there is no
+    transition to hold in a session, and no way to be left in the narrow mode after the
+    thing that narrowed it is gone.
+
+    Signoff does not appear here. It requires the same proofs at a stricter bar
+    (facts.signoff_gate at decide's DONE, step 3), which is a question about when the work
+    is finished rather than about which work there is."""
+    return failing_proofs(events) or set(_STAGE_PROOFS)
 
 
 def _latest_fail(events: list[dict], rule: str) -> tuple[int, dict] | None:
@@ -60,7 +76,7 @@ def _fail_is_fresh(
 
     Conditions 2/3/4 are facts.proof_fresh_except_verdict, the same three the pass path uses;
     that is the point of asking there rather than here. Artifact edges only:
-    sort_prereqs/ADVISORY_ORDER must NEVER appear in this path (spec §2)."""
+    ADVISORY_ORDER must NEVER appear in this path (spec §2)."""
     if not facts.proof_fresh_except_verdict(module, events, rule, idx, outcome):
         return False
     for upstream in rules.input_closure(rule):
@@ -243,7 +259,41 @@ def _has_inflight_consumer(rule_name: str, inflight: list[dict]) -> bool:
     return any(rule_name in rules.input_producers(f["rule"]) for f in inflight)
 
 
-def _dispatched(module: str, action: dict, objective: str) -> dict:
+def _held_by_advisory(
+    module: str,
+    events: list[dict],
+    rule: str,
+    work: set[str],
+    inflight: list[dict],
+) -> bool:
+    """No-overtake gate (§3.3): hold `rule` back while an `ADVISORY_ORDER` predecessor of it
+    is not yet valid AND is going to speak — it is scheduled this round (`work`) or already
+    running (`inflight`). The sole consumer of advisory data.
+
+    An advisory edge is a bet that the cheap detector will answer before the expensive stage
+    spends a run on inputs it is about to invalidate. The bet is only available while the
+    detector is actually coming: a predecessor that is neither scheduled nor running will
+    never resolve, so holding for it is waiting on nothing. That is not hypothetical — when
+    the goal set narrows to one failing proof its advisory predecessor is not in the set, and
+    a gate blind to that would hold the only candidate and leave the round with none.
+
+    Asking who is coming, rather than which mode we are in, is also what makes the gate
+    uniform. It reproduces the wide behaviour exactly (with nothing failing, every invalid
+    proof is in `work`), and it fixes the case a mode-keyed gate got backwards: two stages
+    joined by an advisory edge that fail together are both in `work`, so the cheap one runs
+    first instead of racing the expensive one.
+
+    Only ADVISORY_ORDER is read, never input_producers: `rule_available`, checked just above
+    this, already implies every input producer's proof is valid, so the union the retired
+    `sort_prereqs` computed had one half the caller had already established."""
+    coming = work | {f["rule"] for f in inflight}
+    for p in rules.ADVISORY_ORDER.get(rule, ()):
+        if p in coming and not facts.proof_valid(module, events, rules.RULES[p].proof):
+            return True
+    return False
+
+
+def _dispatched(module: str, action: dict) -> dict:
     """A DISPATCH action, plus the exact `kernel.py dispatch` argv that executes it.
 
     Every field the dispatch needs was just computed here. Re-serialising them by hand in
@@ -252,15 +302,13 @@ def _dispatched(module: str, action: dict, objective: str) -> dict:
     a multi-cause rework that loses one `caused_by` silently leaves that failure to re-fail
     next pass. Emitting the argv removes the step rather than warning about it; the fields
     stay in the action too, because a reader of the log wants them named, not parsed."""
-    action = {**action, "objective": objective}
+    action = dict(action)
     args = [
         "dispatch",
         "--module",
         module,
         "--rule",
         action["rule"],
-        "--objective",
-        objective,
     ]
     for cb_rule, cb_run in action.get("caused_by", []):
         args += ["--caused-by", f"{cb_rule}:{cb_run}"]
@@ -276,7 +324,7 @@ def decide(
     module: str,
     *,
     wake: str | None = None,
-    objective: str = "delivery",
+    closing: bool = False,
 ) -> dict:
     events = facts.read_events(module)
     inflight = facts.in_flight(events)
@@ -323,15 +371,15 @@ def decide(
                 f["rule"] == disp["rule"] for f in inflight
             ) or _has_inflight_consumer(disp["rule"], inflight):
                 return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
-            return _dispatched(module, disp, objective)
+            return _dispatched(module, disp)
         else:
             return disp  # ESCALATE / YIELD
 
     # step 2: forward — missing/invalid required proofs, expanded to the REBUILD CLOSURE.
-    # §3.3 末句: repair's rebuild chain (timing -> rebuild synthesis FIRST) walks the
-    # producers of unavailable inputs; delivery's required set already spans the DAG so
-    # the expansion is usually a no-op there.
-    required = required_proofs(events, objective)
+    # §3.3 末句: a narrowed rebuild chain (timing -> rebuild synthesis FIRST) walks the
+    # producers of unavailable inputs; when nothing is failing the required set already
+    # spans the DAG, so the expansion is usually a no-op.
+    required = required_proofs(events)
     work = {p for p in required if not facts.proof_valid(module, events, p)}
     frontier = set(work)
     while frontier:
@@ -356,13 +404,8 @@ def decide(
             continue
         if _has_inflight_consumer(rule, inflight):  # Option C torn-read guard
             continue
-        if objective == "delivery":
-            if not all(
-                facts.proof_valid(module, events, rules.RULES[p].proof)
-                for p in rules.sort_prereqs(rule)
-                if rules.RULES[p].proof
-            ):
-                continue  # no overtaking — the ONLY consumer of sort_prereqs/advisory data
+        if _held_by_advisory(module, events, rule, work, inflight):
+            continue
         candidates.append(rule)
     if candidates:
         rule = min(candidates, key=lambda r: rules.FORWARD_PRIORITY.index(r))
@@ -373,18 +416,18 @@ def decide(
                 "rule": rule,
                 "execution": rules.RULES[rule].execution,
             },
-            objective,
         )
 
     # step 3
     if inflight:
         return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
     if all(facts.proof_valid(module, events, p) for p in required):
-        if objective == "signoff":
-            # The gate is what `signoff` MEANS: required_proofs is identical to delivery's,
-            # so drop this and the objective degrades to a delivery alias reporting DONE with
-            # the trust boundary never consulted. DONE here means "the gate is clear, go
-            # stamp" — the Orchestrator then proposes the ask-gated `signoff` verb.
+        if closing:
+            # `closing` changes nothing about WHICH proofs are required — only what a clear
+            # board means. Without it, DONE says the DAG is built; with it, DONE says the
+            # trust boundary is clear and the human may stamp. A blocked gate is an ESCALATE
+            # rather than a field on DONE deliberately: the Orchestrator must execute an
+            # action, and the pin it needs would be one more returned value nobody read.
             reason = facts.signoff_gate(module, events)
             if reason is not None:
                 return {"action": "ESCALATE", "reason": reason}

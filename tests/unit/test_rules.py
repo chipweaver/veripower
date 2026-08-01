@@ -90,13 +90,24 @@ def test_proposed_oracle_declares_selector_within_inputs_union_outputs():
             )
 
 
-def test_sort_prereqs_examples():
-    # rtl-design not blocked by simulation-plan (no artifact edge, no advisory edge).
-    assert "simulation-plan" not in rules.sort_prereqs("rtl-design")
-    # synthesis blocked by lint-cdc via advisory edge.
-    assert "lint-cdc" in rules.sort_prereqs("synthesis")
-    # power-analysis blocked by timing-analysis via advisory edge.
-    assert "timing-analysis" in rules.sort_prereqs("power-analysis")
+def test_advisory_edges_are_sequencing_only():
+    """ADVISORY_ORDER holds the two edges that are NOT data dependencies, and holds only
+    those. A rule with no advisory entry can never be held back by the no-overtake gate,
+    and an advisory predecessor must not also be an input producer — otherwise the gate
+    would duplicate a constraint rule_available already enforces."""
+    assert rules.ADVISORY_ORDER == {
+        "synthesis": ("lint-cdc",),
+        "power-analysis": ("timing-analysis",),
+    }
+    for consumer, prereqs in rules.ADVISORY_ORDER.items():
+        producers = rules.input_producers(consumer)
+        for p in prereqs:
+            assert p not in producers, (
+                f"{consumer}: {p} is an input producer, so the advisory edge is redundant"
+            )
+    # rtl-design is held back by nothing: simulation-plan is neither producer nor advisory.
+    assert "rtl-design" not in rules.ADVISORY_ORDER
+    assert "simulation-plan" not in rules.input_producers("rtl-design")
 
 
 def _assert_acyclic(graph):

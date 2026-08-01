@@ -34,7 +34,6 @@ def test_proof_valid_then_input_change_invalidates(tmp_path, monkeypatch):
             "workdir": "w",
             "inputs": {"brainstorm.md": v},
             "params": {},
-            "objective": "delivery",
         },
         TS,
     )
@@ -83,7 +82,6 @@ def test_proof_invalid_when_own_output_handedited(tmp_path, monkeypatch):
             "workdir": "w",
             "inputs": {"brainstorm.md": v},
             "params": {},
-            "objective": "delivery",
         },
         TS,
     )
@@ -130,7 +128,6 @@ def test_fail_verdict_is_not_valid(tmp_path, monkeypatch):
             "workdir": "w",
             "inputs": {"brainstorm.md": v},
             "params": {},
-            "objective": "delivery",
         },
         TS,
     )
@@ -170,7 +167,6 @@ def test_reopen_after_proof_invalidates(tmp_path, monkeypatch):
             "workdir": "w",
             "inputs": {"brainstorm.md": v},
             "params": {},
-            "objective": "delivery",
         },
         TS,
     )
@@ -219,7 +215,6 @@ def _sign_off_everything(module):
                 "workdir": "w",
                 "inputs": {},
                 "params": {},
-                "objective": "delivery",
             },
             TS,
         )
@@ -281,7 +276,6 @@ def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypa
             "workdir": "w",
             "inputs": {"brainstorm.md": bm},
             "params": {},
-            "objective": "delivery",
         },
         TS,
     )
@@ -324,7 +318,6 @@ def _spec_run(module, run, *, oracle_grade="human"):
             "workdir": "w",
             "inputs": {"brainstorm.md": bm},
             "params": {},
-            "objective": "delivery",
         },
         TS,
     )
@@ -482,7 +475,6 @@ def test_stale_inputs_returns_changed_declared_inputs(tmp_path, monkeypatch):
             "workdir": "w",
             "inputs": recorded,
             "params": {},
-            "objective": "delivery",
         },
         TS,
     )

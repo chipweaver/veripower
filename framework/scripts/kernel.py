@@ -36,7 +36,6 @@ def _resolve_inputs(module: str, rule_name: str) -> dict:
 def cmd_dispatch(
     module,
     rule,
-    objective,
     diagnosis_refs,
     extra_params=None,
     caused_by=None,
@@ -114,7 +113,6 @@ def cmd_dispatch(
         "run": run,
         "workdir": workdir,
         "params": dict(extra_params) if extra_params else {},
-        "objective": objective,
     }
     if caused_by:
         ev["caused_by"] = [[r, n] for r, n in caused_by]
@@ -542,12 +540,16 @@ def main():
     sub = p.add_subparsers(dest="verb", required=True)
     d = sub.add_parser("decide")
     d.add_argument("--module", required=True)
-    d.add_argument("--objective", default="delivery")
     d.add_argument("--wake", default=None)
+    d.add_argument(
+        "--closing",
+        action="store_true",
+        help="arm the signoff gate at DONE and return what it clears (facts.signoff_basis); "
+        "a blocked gate comes back as ESCALATE. Which proofs are required is unaffected.",
+    )
     di = sub.add_parser("dispatch")
     di.add_argument("--module", required=True)
     di.add_argument("--rule", required=True, choices=list(rules.RULES))
-    di.add_argument("--objective", default="delivery")
     di.add_argument(
         "--caused-by",
         action="append",
@@ -658,12 +660,11 @@ def main():
         "decide": lambda: schedule.decide(
             args.module,
             wake=args.wake,
-            objective=args.objective,
+            closing=args.closing,
         ),
         "dispatch": lambda: cmd_dispatch(
             args.module,
             args.rule,
-            args.objective,
             refs,
             extra_params,
             caused_by,

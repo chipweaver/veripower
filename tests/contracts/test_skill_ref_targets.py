@@ -101,9 +101,23 @@ def _resolve_doc_source(doc: str):
     return None  # bare unknown doc → skip
 
 
+def test_module_symbol_lint_still_works() -> None:
+    """Health check for the lint below, against a literal rather than against the corpus.
+
+    A regex that stopped matching would make that test vacuously green, so it needs a
+    canary — but counting hits in SKILL.md made the canary assert something nobody wants
+    guaranteed: that some skill still names a framework symbol. Naming one is usually a
+    defect (a stage acts on what it is handed, not on the kernel's internals), so the
+    corpus is allowed to reach zero, and did."""
+    assert _MOD_RE.findall("`rules.FORWARD_PRIORITY`") == [
+        ("rules", "FORWARD_PRIORITY")
+    ]
+    assert _symbol_defined("rules", "FORWARD_PRIORITY")
+    assert not _symbol_defined("rules", "NO_SUCH_SYMBOL")
+
+
 def test_skill_module_symbol_refs_resolve() -> None:
     bad: list[str] = []
-    checked = 0
     for skill in SKILL_DIRS:
         skill_md = PLUGIN_ROOT / "skills" / skill / "SKILL.md"
         if not skill_md.is_file():
@@ -113,12 +127,10 @@ def test_skill_module_symbol_refs_resolve() -> None:
                 sym == "py"
             ):  # a bare `mod.py` file ref (extension, not a symbol) — path test owns it
                 continue
-            checked += 1
             if not _symbol_defined(mod, sym):
                 bad.append(
                     f"{skill}/SKILL.md: `{mod}.{sym}` — no such symbol in {mod}.py"
                 )
-    assert checked, "regex matched no module.symbol refs — pattern likely broke"
     assert not bad, "Dead module.symbol references:\n  " + "\n  ".join(bad)
 
 

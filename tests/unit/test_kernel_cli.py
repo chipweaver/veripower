@@ -82,7 +82,7 @@ _STAGE_SPECIFIC = {
 }
 
 
-def _dispatch_write_reap(tmp_path, module, rule, files, *, objective="delivery"):
+def _dispatch_write_reap(tmp_path, module, rule, files):
     """dispatch `rule`, write `files` (workdir-relative path -> content) + a passing
     schema-valid result.json declaring them as artifacts, then reap. Returns the
     reap JSON."""
@@ -93,8 +93,6 @@ def _dispatch_write_reap(tmp_path, module, rule, files, *, objective="delivery")
         module,
         "--rule",
         rule,
-        "--objective",
-        objective,
     )
     assert d["ok"] is True, d
     workdir = d["workdir"]
@@ -262,7 +260,7 @@ def test_reap_schema_violation_blocks_and_skips_promote(tmp_path, monkeypatch):
 def test_signoff_decide_gates_on_proposed_oracle(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _build_full_chain(tmp_path, "gate1")
-    a = _run_json(tmp_path, "decide", "--module", "gate1", "--objective", "signoff")
+    a = _run_json(tmp_path, "decide", "--module", "gate1", "--closing")
     assert a == {
         "action": "ESCALATE",
         "reason": "signoff blocked: specification oracle is proposed (pin it)",
@@ -296,7 +294,7 @@ def test_signoff_close_end_to_end(tmp_path, monkeypatch):
     _build_full_chain(tmp_path, "close")
     assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is False
     _pin_every_proposed_oracle(tmp_path, "close")
-    a = _run_json(tmp_path, "decide", "--module", "close", "--objective", "signoff")
+    a = _run_json(tmp_path, "decide", "--module", "close", "--closing")
     assert a["action"] == "DONE"  # gate clear — but nothing is signed off yet
     assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is False
     s = _run_json(
@@ -1119,8 +1117,6 @@ def test_dispatch_writes_dispatch_json(tmp_path, monkeypatch):
         "m",
         "--rule",
         "specification",
-        "--objective",
-        "delivery",
     )
     wd = tmp_path / "asic" / "m" / r["workdir"]
     table = json.loads((wd / "dispatch.json").read_text())["inputs"]
@@ -1141,8 +1137,6 @@ def test_dispatch_carries_author_previous_round(tmp_path, monkeypatch):
         "m",
         "--rule",
         "specification",
-        "--objective",
-        "delivery",
     )
     wd = tmp_path / "asic" / "m" / r["workdir"]
     assert (wd / "design.md").read_text() == "prev"
@@ -1166,8 +1160,6 @@ def test_dispatch_injects_no_upstream_byte_copy(tmp_path, monkeypatch):
         "m",
         "--rule",
         "synthesis",
-        "--objective",
-        "delivery",
     )
     wd = tmp_path / "asic" / "m" / r["workdir"]
     assert (wd / "dispatch.json").is_file()
@@ -1192,8 +1184,6 @@ def test_dispatch_proof_inputs_excludes_self_carry(tmp_path, monkeypatch):
         "m",
         "--rule",
         "specification",
-        "--objective",
-        "delivery",
     )
     events = [
         json.loads(ln)

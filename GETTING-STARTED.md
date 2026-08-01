@@ -157,7 +157,7 @@ revision: …"*. To recover:
 ## Step 5 — Close the signoff
 
 Delivery gets every stage to a valid proof. Signoff is a separate, deliberate act:
-ask for it, and the flow loops `decide --objective signoff`, which requires the same
+ask for it, and the flow loops `decide --closing`, which requires the same
 proofs to clear a stricter gate — every proof valid, no unverified file smuggled in,
 and **every LLM-authored judge pinned by you**. Anything short of that comes back as
 `ESCALATE` naming what blocks it (usually "pin it").

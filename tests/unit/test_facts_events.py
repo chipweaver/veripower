@@ -24,7 +24,6 @@ def test_append_and_read_roundtrip(tmp_path, monkeypatch):
             "run": 1,
             "workdir": "Design/specification/runs/1",
             "params": {},
-            "objective": "delivery",
         },
     )
     evs = facts.read_events("m")
@@ -49,7 +48,6 @@ def test_run_number_and_in_flight(tmp_path, monkeypatch):
             "run": 1,
             "workdir": "w",
             "params": {},
-            "objective": "delivery",
         },
     )
     evs = facts.read_events("m")

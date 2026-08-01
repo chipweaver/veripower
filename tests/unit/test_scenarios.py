@@ -102,7 +102,7 @@ def _mk(module, rel, content):
     p.write_text(content)
 
 
-def _dispatch(module, rule, run, inputs, objective="delivery"):
+def _dispatch(module, rule, run, inputs):
     facts.append_event(
         module,
         {
@@ -112,7 +112,6 @@ def _dispatch(module, rule, run, inputs, objective="delivery"):
             "workdir": f"{rule}/runs/{run}",
             "inputs": inputs,
             "params": {},
-            "objective": objective,
         },
         TS,
     )
@@ -292,9 +291,7 @@ def test_plan_sidecars_invalidate_only_their_own_consumer(tmp_path, monkeypatch)
 def _triage(module, sim_run, root_cause, confidence):
     """Real triage dispatch+reap: crafted schema-valid result.json -> a promoted
     canonical result.json + a minted diagnosis event (kernel _derive_triage)."""
-    d = kernel.cmd_dispatch(
-        module, "simulation-triage", "delivery", None, {"sim_run": sim_run}
-    )
+    d = kernel.cmd_dispatch(module, "simulation-triage", None, {"sim_run": sim_run})
     assert d["ok"], d
     result = {
         "stage": "simulation-triage",
@@ -344,7 +341,7 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
     # transcribed, and the fix owner never navigates to another stage itself.
     _mk(m, "Verification/simulation/runs/1/result.json", json.dumps({"status": "fail"}))
     dr = kernel.cmd_dispatch(
-        m, "rtl-design", "delivery", a["diagnosis_refs"], None, [("simulation", 1)]
+        m, "rtl-design", a["diagnosis_refs"], None, [("simulation", 1)]
     )
     assert dr["ok"], dr
     doc = json.loads(
@@ -383,22 +380,24 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
         assert rtl2[untouched] == rtl1[untouched]
     assert rtl2["Design/rtl-design/matvec.v"] != rtl1["Design/rtl-design/matvec.v"]
 
-    # (a) repair targets simulation directly (the sim fail proof drifted, so its
-    # verdict is stale -> forward re-verifies simulation, not rtl-design).
-    r = schedule.decide(m, objective="repair")
+    # (a) the goal set is still the failing proof, so the round re-verifies simulation
+    # directly (the sim fail drifted, so its verdict is stale -> forward re-verify).
+    r = schedule.decide(m)
     assert r["action"] == "DISPATCH" and r["rule"] == "simulation"
 
-    # (c) lint not dispatched during repair: repair goes DIRECT to simulation, while a
-    # plain delivery (which spans the DAG) WOULD re-lint (lint proof is now stale).
-    assert r["rule"] != "lint-cdc"
+    # (c) lint is NOT re-dispatched while simulation is still failing, even though its own
+    # proof went stale under the same RTL edit — the goal narrows to what is failing and
+    # widens once nothing is. Nothing carries that between turns: it is `failing_proofs`.
+    assert schedule.failing_proofs(facts.read_events(m)) == {"simulation"}
     assert not facts.proof_valid(m, facts.read_events(m), "lint-cdc")  # lint IS stale
-    assert schedule.decide(m, objective="delivery")["rule"] == "lint-cdc"
     lint_dispatches = [
         e
         for e in facts.read_events(m)
         if e["type"] == "dispatch" and e["rule"] == "lint-cdc"
     ]
-    assert len(lint_dispatches) == 1  # only the original — repair never re-linted
+    assert (
+        len(lint_dispatches) == 1
+    )  # only the original — the narrowed round never re-lints
 
 
 # ── Step 2b ─────────────────────────────────────────────────────────────────────
@@ -547,8 +546,8 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
     assert not facts.proof_valid(m, facts.read_events(m), "synthesis")
     assert not _timing_fail_fresh(m)
 
-    # repair rebuilds the producer (synthesis) FIRST — not timing, never ESCALATE.
-    a = schedule.decide(m, objective="repair")
+    # the narrowed round rebuilds the producer (synthesis) FIRST — not timing, never ESCALATE.
+    a = schedule.decide(m)
     assert a["action"] == "DISPATCH" and a["rule"] == "synthesis"
 
     # synthesis rebuilds -> _syn.v drifts -> timing's OWN recorded input now mismatches
@@ -558,7 +557,7 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
     assert not _timing_fail_fresh(m)
 
     # timing re-verifies LAST.
-    b = schedule.decide(m, objective="repair")
+    b = schedule.decide(m)
     assert b["action"] == "DISPATCH" and b["rule"] == "timing-analysis"
 
 
@@ -716,7 +715,7 @@ def test_forward_redispatch_scope_names_the_drifted_inputs(tmp_path, monkeypatch
         m, facts.read_events(m), "rtl-design"
     )  # inputs drifted
 
-    d = kernel.cmd_dispatch(m, "rtl-design", "delivery", None)
+    d = kernel.cmd_dispatch(m, "rtl-design", None)
     assert d["ok"], d
     doc = _dispatch_doc(m, d["workdir"])
     assert "Design/specification/design.md" in doc["scope"]
@@ -732,7 +731,7 @@ def test_first_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
     m = "fwd-first"
     _mk(m, "brainstorm.md", "b1")
     _valid(m, "specification", 1)  # spec present so rtl-design's inputs are available
-    d = kernel.cmd_dispatch(m, "rtl-design", "delivery", None)
+    d = kernel.cmd_dispatch(m, "rtl-design", None)
     assert d["ok"], d
     assert list(_dispatch_doc(m, d["workdir"])) == ["inputs"]
 
@@ -753,7 +752,7 @@ def test_reverify_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
     assert not facts.proof_valid(m, facts.read_events(m), "specification")
     assert facts.stale_inputs(m, facts.read_events(m), "specification") == []
 
-    d = kernel.cmd_dispatch(m, "specification", "delivery", None)
+    d = kernel.cmd_dispatch(m, "specification", None)
     assert d["ok"], d
     assert list(_dispatch_doc(m, d["workdir"])) == ["inputs"]
     # carry_self brought the prior round's products in: that is the disk fact the skill
@@ -794,9 +793,7 @@ def test_repair_dispatch_names_the_failure_and_the_human_reasoning(
     diag = [e for e in facts.read_events(m) if e["type"] == "diagnosis"][-1]
     assert diag["fix_locus"] == ["Design/specification/ppa.json"]
 
-    d = kernel.cmd_dispatch(
-        m, "specification", "repair", ["diag-unit"], None, [("synthesis", 1)]
-    )
+    d = kernel.cmd_dispatch(m, "specification", ["diag-unit"], None, [("synthesis", 1)])
     assert d["ok"], d
     doc = _dispatch_doc(m, d["workdir"])
     assert doc["caused_by"] == ["Design/synthesis/runs/1/result.json"]
@@ -818,9 +815,9 @@ def test_repair_dispatch_rejects_an_unresolvable_channel(tmp_path, monkeypatch):
     m = "repair-guard"
     _mk(m, "brainstorm.md", "b1")
     _valid(m, "specification", 1)
-    r = kernel.cmd_dispatch(m, "rtl-design", "repair", None, None, [("synthesis", 9)])
+    r = kernel.cmd_dispatch(m, "rtl-design", None, None, [("synthesis", 9)])
     assert not r["ok"] and "no result.json" in r["error"]
-    r = kernel.cmd_dispatch(m, "rtl-design", "repair", ["diag-nope"], None)
+    r = kernel.cmd_dispatch(m, "rtl-design", ["diag-nope"], None)
     assert not r["ok"] and "unknown diagnosis ref" in r["error"]
     # neither attempt allocated a run
     assert facts.runs_of(facts.read_events(m), "rtl-design") == 0

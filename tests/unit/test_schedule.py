@@ -29,7 +29,7 @@ def _workdir(rule, run):
     return "/".join(root) + f"/runs/{run}"
 
 
-def _dispatch(module, rule, run, inputs, objective="delivery"):
+def _dispatch(module, rule, run, inputs):
     facts.append_event(
         module,
         {
@@ -39,7 +39,6 @@ def _dispatch(module, rule, run, inputs, objective="delivery"):
             "workdir": _workdir(rule, run),
             "inputs": inputs,
             "params": {},
-            "objective": objective,
         },
         TS,
     )
@@ -180,7 +179,7 @@ def test_dispatch_args_carry_every_channel_the_action_names(tmp_path, monkeypatc
             },
             TS,
         )
-    a = schedule.decide("m", objective="repair")
+    a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "rtl-design"
     assert a["dispatch_args"] == [
         "dispatch",
@@ -188,8 +187,6 @@ def test_dispatch_args_carry_every_channel_the_action_names(tmp_path, monkeypatc
         "m",
         "--rule",
         "rtl-design",
-        "--objective",
-        "repair",
         "--caused-by",
         "timing-analysis:1",
         "--caused-by",
@@ -247,7 +244,7 @@ def test_repair_after_fix_lands_redispatches_failed_rule_not_fix_owner(
     _valid_chain_through_simulation("m")
     _sim_fail("m", run=1)  # records the OLD matvec.v version
     _valid("m", "rtl-design", 2, tag="fix")  # fix lands: matvec.v drifts -> fail stale
-    a = schedule.decide("m", objective="repair")
+    a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "simulation"
 
 
@@ -375,30 +372,132 @@ def test_fresh_rtldesign_spec_locus_dispatches_specification(tmp_path, monkeypat
     assert a["caused_by"] == [["rtl-design", 1]]
 
 
-def test_delivery_no_overtake_but_repair_direct(tmp_path, monkeypatch):
-    # same disk+ledger: delivery does not dispatch synthesis while lint-cdc in flight
-    # (advisory prereq); repair dispatches synthesis even if lint-cdc stale.
+def _timing_fail_over_stale_synthesis(module):
+    """spec/plan/rtl valid; synthesis built then its oracle reopened (proof invalid, RTL
+    bytes untouched); timing-analysis a stale fail. The goal set narrows to timing, and the
+    closure pulls in synthesis — whose advisory predecessor lint-cdc is NOT in that set."""
+    _write(module, "brainstorm.md", "b1")
+    _valid(module, "specification", 1)
+    _valid(module, "simulation-plan", 1)
+    _valid(module, "rtl-design", 1)
+    _valid(module, "synthesis", 1)
+    _reopen(module, "dc-shell")
+    _fail(module, "timing-analysis", 1)
+
+
+def test_advisory_holds_while_its_predecessor_is_still_running(tmp_path, monkeypatch):
+    """An in-flight predecessor IS going to answer, so the bet the advisory edge makes is
+    live and synthesis waits — even though the goal set narrowed to timing-analysis and
+    never scheduled lint-cdc itself. Yielding is the whole point: the round has a candidate
+    it deliberately is not spending yet."""
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _timing_fail_over_stale_synthesis("m")
+    _dispatch("m", "lint-cdc", 1, _recorded_inputs("m", "lint-cdc"))
+    assert schedule.failing_proofs(facts.read_events("m")) == {"timing-analysis"}
+    assert schedule.decide("m")["action"] == "YIELD"
+
+
+def test_advisory_releases_once_its_predecessor_has_spoken(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _timing_fail_over_stale_synthesis("m")
+    _valid("m", "lint-cdc", 1)  # it ran and passed
+    d = schedule.decide("m")
+    assert d["action"] == "DISPATCH" and d["rule"] == "synthesis"
+
+
+def test_advisory_does_not_hold_for_a_predecessor_nobody_is_running(
+    tmp_path, monkeypatch
+):
+    """The deadlock guard. lint-cdc's proof is invalid, but the narrowed goal set does not
+    include it and nothing is running it, so it will never resolve. A gate that held anyway
+    would leave the round with no candidate and nothing in flight — ESCALATE on a module
+    that is simply mid-repair."""
+    monkeypatch.chdir(tmp_path)
+    _timing_fail_over_stale_synthesis("m")
+    _valid("m", "lint-cdc", 1)
+    _mk("m", "Design/lint-cdc/lint-report.txt", "drift")  # lint-cdc proof now invalid
+    ev = facts.read_events("m")
+    assert not facts.proof_valid("m", ev, "lint-cdc")
+    assert "lint-cdc" not in schedule.required_proofs(ev)
+    d = schedule.decide("m")
+    assert d["action"] == "DISPATCH" and d["rule"] == "synthesis"
+
+
+def test_advisory_orders_two_stages_that_failed_together(tmp_path, monkeypatch):
+    """Both ends of an advisory edge failing puts both in the goal set, so the cheap
+    detector runs first instead of racing the expensive stage. A gate keyed on a caller-held
+    mode took the opposite bet here from the one it takes when nothing is failing."""
+    monkeypatch.chdir(tmp_path)
+    _mk("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "simulation-plan", 1)
     _valid("m", "rtl-design", 1)
-    _valid("m", "synthesis", 1)
-    _reopen("m", "dc-shell")  # synthesis proof invalid (RTL bytes unchanged)
-    _dispatch(
-        "m", "lint-cdc", 1, {}
-    )  # lint-cdc in flight (advisory prereq of synthesis)
-    _fail(
-        "m", "timing-analysis", 1
-    )  # stale fail -> repair target whose rebuild is synthesis
+    _fail("m", "lint-cdc", 1)
+    _fail("m", "synthesis", 1)
+    _valid("m", "rtl-design", 2, tag="fix")  # one fix answers both; both fails go stale
+    assert schedule.failing_proofs(facts.read_events("m")) == {"lint-cdc", "synthesis"}
     d = schedule.decide("m")
-    # pin the POSITIVE outcome, not just "not synthesis" (which any action satisfies).
-    # synthesis is held by the no-overtake gate (advisory prereq lint-cdc in flight); the
-    # lowest-priority eligible rule is simulation (missing proof, its prereqs rtl/plan valid).
-    assert d["action"] == "DISPATCH" and d["rule"] == "simulation"
-    assert d["rule"] != "synthesis"  # the no-overtake invariant under test
-    r = schedule.decide("m", objective="repair")
-    assert r["action"] == "DISPATCH" and r["rule"] == "synthesis"
+    assert d["action"] == "DISPATCH" and d["rule"] == "lint-cdc"
+    _valid("m", "lint-cdc", 2)
+    assert schedule.decide("m")["rule"] == "synthesis"
+
+
+def test_co_failing_rules_reverify_in_parallel(tmp_path, monkeypatch):
+    """The real module's shape: lint-cdc and simulation fail seconds apart, one rtl-design
+    round answers both, and then both must be re-verifiable at once — they share no artifact
+    edge. Returning a single re-verify target left the second one out of the goal set, so it
+    waited for the first to finish (1h53m, in the run this is taken from)."""
+    monkeypatch.chdir(tmp_path)
+    _valid_chain_through_simulation("m")
+    _fail("m", "lint-cdc", 1)
+    _sim_fail("m", 1)
+    for rule in ("Design/lint-cdc", "Verification/simulation"):
+        _mk(
+            "m",
+            f"{rule}/result.json",
+            '{"stage_specific": {"fix_owner": "rtl-design"}}',
+        )
+    fix = schedule.decide("m")  # step 1 merges both failures into ONE fix
+    assert fix["rule"] == "rtl-design"
+    assert sorted(fix["caused_by"]) == [["lint-cdc", 1], ["simulation", 1]]
+    _valid("m", "rtl-design", 2, tag="fix")  # the fix lands; both fails go stale
+    assert schedule.failing_proofs(facts.read_events("m")) == {"lint-cdc", "simulation"}
+    first = schedule.decide("m")
+    assert first["action"] == "DISPATCH"
+    _dispatch("m", first["rule"], 2, _recorded_inputs("m", first["rule"]))
+    second = schedule.decide("m")  # the other one, WITHOUT waiting for the first
+    assert second["action"] == "DISPATCH"
+    assert {first["rule"], second["rule"]} == {"lint-cdc", "simulation"}
+
+
+def test_goal_widens_once_nothing_is_failing(tmp_path, monkeypatch):
+    """The narrowing has no off switch to forget. lint-cdc fails early, gets fixed and
+    re-verifies, and the same loop then builds the rest of the DAG — where a caller-held
+    mode reported DONE with five proofs still unbuilt."""
+    monkeypatch.chdir(tmp_path)
+    _mk("m", "brainstorm.md", "b1")
+    _valid("m", "specification", 1)
+    _valid("m", "rtl-design", 1)
+    _fail("m", "lint-cdc", 1)
+    _mk(
+        "m",
+        "Design/lint-cdc/result.json",
+        '{"stage_specific": {"fix_owner": "rtl-design"}}',
+    )
+    seen = []
+    for _ in range(12):
+        a = schedule.decide("m")
+        if a["action"] != "DISPATCH":
+            break
+        seen.append(a["rule"])
+        _valid("m", a["rule"], facts.runs_of(facts.read_events("m"), a["rule"]) + 1)
+    assert seen[:2] == [
+        "rtl-design",
+        "lint-cdc",
+    ]  # narrowed: the fix, then the re-verify
+    assert a["action"] == "DONE"
+    ev = facts.read_events("m")
+    assert all(facts.proof_valid("m", ev, p) for p in rules.FORWARD_PRIORITY)
 
 
 def test_signoff_all_valid_pinned_done(tmp_path, monkeypatch):
@@ -406,21 +505,20 @@ def test_signoff_all_valid_pinned_done(tmp_path, monkeypatch):
     # meaning "the gate is clear, go stamp".
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
-    assert schedule.decide("m", objective="signoff")["action"] == "DONE"
+    assert schedule.decide("m", closing=True)["action"] == "DONE"
 
 
-def test_signoff_objective_is_not_a_delivery_alias(tmp_path, monkeypatch):
-    # required_proofs is IDENTICAL for delivery and signoff, so the gate at decide's DONE
-    # point is the only thing that distinguishes them. Without it, signoff would silently
-    # degrade to a delivery alias and report DONE with the trust boundary never consulted.
-    # Same log, same proofs, opposite verdicts — that delta IS the objective.
+def test_closing_changes_what_done_means_not_which_proofs(tmp_path, monkeypatch):
+    """`--closing` is a terminal predicate, not a scope. The same log and the same required
+    proofs give opposite verdicts, and the gate is the whole of the difference — without it
+    the flag would be a no-op reporting DONE with the trust boundary never consulted."""
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1)  # default (proposed) grades — gate must refuse
-    assert schedule.required_proofs(
-        facts.read_events("m"), "delivery"
-    ) == schedule.required_proofs(facts.read_events("m"), "signoff")
-    assert schedule.decide("m", objective="delivery")["action"] == "DONE"
-    assert schedule.decide("m", objective="signoff")["action"] == "ESCALATE"
+    assert schedule.required_proofs(facts.read_events("m")) == set(
+        rules.FORWARD_PRIORITY
+    )
+    assert schedule.decide("m")["action"] == "DONE"
+    assert schedule.decide("m", closing=True)["action"] == "ESCALATE"
 
 
 def test_signoff_gate_blocks_on_proposed_oracle(tmp_path, monkeypatch):
@@ -429,7 +527,7 @@ def test_signoff_gate_blocks_on_proposed_oracle(tmp_path, monkeypatch):
     # deterministic, never hash-seed-dependent set order.
     monkeypatch.chdir(tmp_path)
     _build_all_valid("proposed", 1)
-    a = schedule.decide("proposed", objective="signoff")
+    a = schedule.decide("proposed", closing=True)
     assert a["action"] == "ESCALATE"
     assert a["reason"] == "signoff blocked: specification oracle is proposed (pin it)"
 
@@ -493,7 +591,7 @@ def test_two_hop_upstream_invalidity_makes_failure_stale(tmp_path, monkeypatch):
 
 def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
     # A2 regression / §3.3 末句: repair on timing while the synthesis proof is invalid
-    # -> decide(objective="repair") returns DISPATCH synthesis (not ESCALATE).
+    # -> the narrowed round returns DISPATCH synthesis (not ESCALATE).
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
@@ -501,7 +599,7 @@ def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
     _valid("m", "synthesis", 1)
     _reopen("m", "dc-shell")  # synthesis proof invalid, inputs still valid
     _fail("m", "timing-analysis", 1)
-    a = schedule.decide("m", objective="repair")
+    a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "synthesis"
 
 
@@ -587,7 +685,6 @@ def test_triage_blocked_redispatches_no_livelock(tmp_path, monkeypatch):
             "run": 1,
             "workdir": "Verification/simulation-triage/runs/1",
             "params": {"sim_run": 1},
-            "objective": "delivery",
         },
         TS,
     )
@@ -688,7 +785,6 @@ def _valid(
     run,
     *,
     oracle_grade=None,
-    objective="delivery",
     extra_inputs=(),
     tag=None,
 ):
@@ -702,7 +798,7 @@ def _valid(
     inputs = _recorded_inputs(module, rule, extra_inputs)
     outputs = {rel: _fp(module, rel) for rel in _OUTPUTS[rule]}
     grade = oracle_grade or r.oracle[1]
-    _dispatch(module, rule, run, inputs, objective=objective)
+    _dispatch(module, rule, run, inputs)
     _outcome(
         module,
         rule,
@@ -819,20 +915,21 @@ def _build_all_valid(module, run, *, include=None, oracle_grades=None):
     for rule in rules.FORWARD_PRIORITY:
         if rule not in include:
             continue
-        _valid(module, rule, run, oracle_grade=grades.get(rule), objective="delivery")
+        _valid(module, rule, run, oracle_grade=grades.get(rule))
 
 
-def test_required_proofs_repair_only_targets_stage_proofs(tmp_path, monkeypatch):
-    # F3: repair targets a failed PROOF; simulation-triage produces none. Even if a triage
-    # outcome ever carries verdict=fail, required_proofs(repair) must stay within the 8
-    # stage proofs — else step-2's sorted(work, key=FORWARD_PRIORITY.index) raises ValueError.
+def test_failing_proofs_only_targets_stage_proofs(tmp_path, monkeypatch):
+    # F3: only a PROOF can be re-verified, and simulation-triage produces none. Even if a
+    # triage outcome ever carries verdict=fail it must not narrow the goal set — else
+    # step-2's sorted(work, key=FORWARD_PRIORITY.index) raises ValueError.
     monkeypatch.chdir(tmp_path)
     _outcome(
         "m", "simulation-triage", 1, "fail", {}, []
     )  # non-proof rule, newest outcome
-    req = schedule.required_proofs(facts.read_events("m"), "repair")
+    assert schedule.failing_proofs(facts.read_events("m")) == set()
+    req = schedule.required_proofs(facts.read_events("m"))
     assert "simulation-triage" not in req
-    assert req <= set(rules.FORWARD_PRIORITY)
+    assert req == set(rules.FORWARD_PRIORITY)
 
 
 def test_decide_repair_survives_triage_fail_outcome(tmp_path, monkeypatch):
@@ -842,7 +939,7 @@ def test_decide_repair_survives_triage_fail_outcome(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1)
     _outcome("m", "simulation-triage", 1, "fail", {}, [])
-    a = schedule.decide("m", objective="repair")  # must not raise ValueError
+    a = schedule.decide("m")  # must not raise ValueError
     assert a["action"] in ("DONE", "YIELD", "DISPATCH", "ESCALATE")
     assert a.get("rule") != "simulation-triage"
 
@@ -853,9 +950,9 @@ def test_unregistered_rule_in_flight_is_not_reapable_forever(tmp_path, monkeypat
     # `REAP` decide keeps returning and no one can execute. in_flight drops it instead.
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1)
-    _dispatch("m", "not-a-rule", 1, {}, objective="delivery")  # never reaped
+    _dispatch("m", "not-a-rule", 1, {})  # never reaped
     assert facts.in_flight(facts.read_events("m")) == []
-    assert schedule.decide("m", objective="delivery")["action"] == "DONE"
+    assert schedule.decide("m")["action"] == "DONE"
 
 
 def test_fresh_fail_fix_owner_in_flight_yields(tmp_path, monkeypatch):
@@ -879,7 +976,7 @@ def test_fresh_fail_fix_owner_in_flight_yields(tmp_path, monkeypatch):
         TS,
     )
     _dispatch("m", "rtl-design", 2, {})  # fix_owner already in flight
-    assert schedule.decide("m", objective="repair")["action"] == "YIELD"
+    assert schedule.decide("m")["action"] == "YIELD"
 
 
 def test_sim_fail_triage_in_flight_yields(tmp_path, monkeypatch):
@@ -889,7 +986,7 @@ def test_sim_fail_triage_in_flight_yields(tmp_path, monkeypatch):
     _valid_chain_through_simulation("m")
     _sim_fail("m", run=1)
     _dispatch("m", "simulation-triage", 1, {"sim_run": 1})
-    assert schedule.decide("m", objective="repair")["action"] == "YIELD"
+    assert schedule.decide("m")["action"] == "YIELD"
 
 
 def test_option_c_defers_producer_with_inflight_consumer(tmp_path, monkeypatch):
@@ -902,7 +999,7 @@ def test_option_c_defers_producer_with_inflight_consumer(tmp_path, monkeypatch):
     _fail("m", "rtl-design", 2)
     _reopen("m", "semantic-review")  # stale-ifies the fail (cond 3) -> step 1 skips it
     _dispatch("m", "lint-cdc", 1, {})  # in-flight consumer of Design/rtl-design/*.v
-    d = schedule.decide("m", objective="repair")
+    d = schedule.decide("m")
     assert not (d["action"] == "DISPATCH" and d["rule"] == "rtl-design")
     assert d["action"] in ("YIELD", "DISPATCH")  # YIELD, or a different safe candidate
 
@@ -931,7 +1028,7 @@ def test_option_c_defers_fix_owner_rebuild_step1(tmp_path, monkeypatch):
     _dispatch(
         "m", "lint-cdc", 1, {}
     )  # in-flight consumer of rtl-design, NOT the fix_owner
-    d = schedule.decide("m", objective="repair")
+    d = schedule.decide("m")
     assert not (d["action"] == "DISPATCH" and d["rule"] == "rtl-design")
     assert d["action"] == "YIELD"
 
@@ -1174,7 +1271,7 @@ def test_basis_names_the_input_set_each_verdict_was_about(tmp_path, monkeypatch)
 def test_decide_signoff_done_carries_the_basis(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _all_valid_and_pinned("m")
-    a = schedule.decide("m", objective="signoff")
+    a = schedule.decide("m", closing=True)
     assert a["action"] == "DONE"
     assert [b["proof"] for b in a["basis"]] == list(rules.FORWARD_PRIORITY)
 
@@ -1183,5 +1280,5 @@ def test_decide_signoff_escalate_carries_no_basis(tmp_path, monkeypatch):
     # Nothing is being endorsed when the gate blocks; a basis there would read as an offer.
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1)  # proposed oracles -> gate blocks
-    a = schedule.decide("m", objective="signoff")
+    a = schedule.decide("m", closing=True)
     assert a["action"] == "ESCALATE" and "basis" not in a

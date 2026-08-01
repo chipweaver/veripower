@@ -30,7 +30,7 @@
 | **proof**（证明） | 产证明规则在收割时落账的 pass/fail 断言：`{name, verdict, inputs, oracle, evidence}`，内嵌于其 `outcome` 事件（§4.4）。 |
 | **证明有效性** | 一个*查询*——不是存下来的标志位。一个证明*此刻*有效，当且仅当其裁决为 `pass`、落账的输入/输出指纹仍与磁盘一致、且其 oracle 此后未被 reopen。陈旧与否在每次读取时重算（§4.4）。 |
 | **oracle 与 grade** | 裁决一个证明的裁判，`(ref, grade)`，`grade ∈ {tool, human, proposed}`。tool oracle 自身即权威；`proposed`（LLM 自撰）oracle 只能经人工 `pin` 棘轮升格为 `human`（§4.5）。 |
-| **objective**（目标） | 一次 `decide` 调用所调度的目标：`delivery`、`repair` 或 `signoff`。它决定所需证明集（§5.1）。 |
+| **目标集**（goal set） | 一次 `decide` 调用所调度的证明集合：当前正在失败的那些；一条都没失败时则是全部八条。每次调用从日志导出，调用方从不携带（§5.1）。 |
 | **disposition**（处置） | 调度器对单个*新鲜*失败的裁定：自动重建、triage 或升级——由附着诊断的可靠性把门（§5.3）。 |
 | **reap**（收割） | 以 `kernel.py reap`（无裁决标志）结束一个在途 run：`cmd_reap` 读该 run 的 `result.json`，提升产物，追加 `outcome`（triage 则另追加 `diagnosis`）（§5.6）。 |
 | **promote**（提升） | 将 `runs/<N>/` 下的文件逐条目硬链接合并到规范阶段目录，`cmd_reap` 在 pass 和 fail 两种路径上均执行，幂等（§7.2）。 |
@@ -107,9 +107,9 @@ Orchestrator 的三条派发路径：
 | 模块 | 职责 |
 |---|---|
 | `kernel.py` | CLI，且是 `events.jsonl` 的**唯一写者**。九个动词：`decide`、`dispatch`、`reap`、`diagnose`、`pin`、`reopen`、`signoff`、`status`、`consequences`。每个动词打印一个 JSON 信封。 |
-| `rules.py` | 规则注册表（`RULES`）——内核调度对象的单一真相源，也是依赖图的*来源*（§3）。另有 `FORWARD_PRIORITY`、`PIPELINE_INPUTS`、`ADVISORY_ORDER`，以及派生助手 `producer_of` / `input_producers` / `input_closure` / `sort_prereqs`。依赖极轻的叶子模块。 |
+| `rules.py` | 规则注册表（`RULES`）——内核调度对象的单一真相源，也是依赖图的*来源*（§3）。另有 `FORWARD_PRIORITY`、`PIPELINE_INPUTS`、`ADVISORY_ORDER`，以及派生助手 `producer_of` / `input_producers` / `input_closure`。依赖极轻的叶子模块。 |
 | `facts.py` | 事件日志 I/O（`read_events` / `append_event`，写入即校验 schema）、内容指纹（`fingerprint`），以及建立在其上的新鲜度查询——`proof_valid`、`input_available`、`projection`，外加其中最严的 `signoff_gate` / `signed_off`（§5.5）。不持有任何可变状态；一切从日志 + 磁盘计算。 |
-| `schedule.py` | 调度器：`decide(objective) → 恰好一个动作`。对 (磁盘， 日志， 参数) 纯函数；组合 `facts.signoff_gate`。持有目标→所需证明集映射与新鲜失败处置，含对失败自陈的 `fix_owner` 的合法性校验。 |
+| `schedule.py` | 调度器：`decide() → 恰好一个动作`。对 (磁盘， 日志， 参数) 纯函数；组合 `facts.signoff_gate`。持有目标集、不超车门与新鲜失败处置，含对失败自陈的 `fix_owner` 的合法性校验。 |
 | `store.py` | 文件系统产物生命周期助手：派发时的 `write_dispatch`（写 `<workdir>/dispatch.json`）与 `carry_self`（把作者自己上一轮的规范产物拷进新 workdir）、收割时的 `promote`。由 `kernel.py` 导入；从不直接调用。 |
 
 事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（7 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
@@ -148,7 +148,7 @@ Orchestrator 的三条派发路径：
 - **判断归 Orchestrator，状态与调度归内核**——确定性边界。Orchestrator 只做一类判断：是否提议 `pin` / `reopen` / 人工 `diagnose`（均需用户明确意图）。其余一切——下一步跑什么、某个证明是否有效、某个失败路由到哪——都由 `kernel.py decide` 计算。Orchestrator 是薄执行器：调 `decide`，执行返回的那一个动作，循环。
 - **决策边界 = 工具边界。** 每个调度决策都下沉到 `decide`。其可验证形式：*两次状态变更类内核调用之间没有 `decide`，就是 bug。*
 - **文件即数据库。** `events.jsonl` 是持久日志；`result.json` 是阶段输出；其余一切（状态、新鲜度、在途）都是二者的纯函数。没有中间缓存，没有服务端存储。模块下的 `.fingerprint-cache.json` 是纯 mtime/size 加速缓存——从不作为事实来源。
-- **压缩安全的续跑。** 因为文件即数据库、Orchestrator 在轮次之间持有*零*持久控制状态，会话中途的上下文压缩或进程崩溃都可幸存：每一轮都经 `decide` 从磁盘重新推导下一个动作。它根本不持有驻留会话的状态：轮次之间唯一带着的东西是当前 `objective`，一个可从刚执行的动作重新推导出来的枚举值。
+- **压缩安全的续跑。** 因为文件即数据库、Orchestrator 在轮次之间持有*零*持久控制状态，会话中途的上下文压缩或进程崩溃都可幸存：每一轮都经 `decide` 从磁盘重新推导下一个动作。它根本不持有驻留会话的状态：下一步建什么每次调用都从日志导出（§5.1），而它唯一可能传的旗标 `--closing` 表达的是一个当下的人类意图，不是序列里的某个位置。
 - **单向通信 + 上下文隔离。** Orchestrator → 提示词 → 子 Agent → `result.json` + STATUS。没有子 Agent 发起的回调，没有子 Agent 之间的通信；子 Agent 不继承父会话历史，所有输入以显式文件路径传入。
 
 **信任边界——proposed 与权威 oracle。** VeriPower 让 LLM 自撰的裁判（spec 意图评审、计划充分性评审、RTL 语义评审、TB refmodel）与确定性 EDA 工具 oracle 并肩运行。二者可信度并不等同，内核把这一点编码进了系统：oracle 带有 `grade`（§4.5）。`tool` 级 oracle（SpyGlass、DC、PT）自身即权威。`proposed` 级 oracle 是 LLM 在为自己的正确性背书——足以把门一次常规 *delivery* 构建，但**不足以**闭合 *signoff*。proposed oracle 获得权威（`human`）信任的唯一途径是人工 `kernel.py pin`：它记下 oracle 内容当前的指纹；只在该内容原封不动期间 grade 升为 `human`，内容一漂移或 pin 被 `reopen`，即刻跌回 `proposed`（§4.5）。因此 `pin`、`reopen` 和 `signoff` 是**问必批的判断动词（ask-gated）**：Orchestrator 只在用户明确意图下提议，且 harness 权限门在每次调用时都会向用户请示。这就是那道接缝——只有人、且必须是人，才能把 LLM 的自我评估转换为签核级信任：`pin` 按 oracle 逐个转换，`signoff` 对整个模块整体转换（§5.5）。
@@ -199,15 +199,15 @@ for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 
 隐式并行从这些边自然得出：`decide` 每次调用派发一条规则并再询，因此输入全部就绪的规则并行运行。Orchestrator 与内核都不写任何并发上限——同时在途几条完全取决于派生边的有无，三条在途是常态（`lint-cdc`、`timing-analysis`、`simulation` 三者之间没有任何 artifact 边）。
 
-### 3.3 三个图查询，三份不同职责
+### 3.3 两个图查询，以及一样不是查询的东西
 
-`rules.py` 上的派生助手从同一份选择子算出三样不同的东西，保持三者互不混淆是一条承重不变式：
+`rules.py` 上的派生助手从同一份选择子算出两样不同的东西，保持两者互不混淆是一条承重不变式：
 
 - **`input_producers(rule)`** — 该规则输入 glob 的直接生产者（一跳，排除自身）。依赖图的边。
 - **`input_closure(rule)`** — 上述生产者的*传递*闭包（输入闭包）。用于两处新鲜度/合法性检查：一个失败只有在其输入闭包内的每个证明当前都有效时才算"新鲜"（§5.3）；人工诊断的 `fix_owner` 必须是主体证明输入闭包内的生产者（否则 `kernel diagnose` 拒绝，§5.3）。仅产物边——`ADVISORY_ORDER` 从构造上就被排除。
-- **`sort_prereqs(rule)` = `input_producers(rule) ∪ ADVISORY_ORDER[rule]`**（排序前驱）— 仅用于排序。`ADVISORY_ORDER`（`synthesis` 排在 `lint-cdc` 之后；`power-analysis` 排在 `timing-analysis` 之后）添加的是并非数据依赖的*时序*边：synthesis 并不消费 lint 的报告，但我们希望 lint 先过。`sort_prereqs` 的消费者*有且只有一处*——delivery 的不超车门（`decide` 第 2 步，§5.2）。它绝不可进入任何新鲜度或证明有效性计算，否则一条咨询性时序提示就会冒充数据依赖。
+`ADVISORY_ORDER` 是第三样东西，而它不是图查询：两条手写的*时序*边（`synthesis` 排在 `lint-cdc` 之后；`power-analysis` 排在 `timing-analysis` 之后），并非数据依赖。synthesis 不消费 lint 的报告，但 lint 一旦失败就会改写它脚下的 RTL，所以让便宜的检测器先说话，可以省下把昂贵阶段花在一轮马上要重做的工作上。它的消费者只有一处——`decide` 第 2 步的不超车门（§5.2）；那道门直接读它，因为紧挨其前的 `rule_available` 已经确立了每个输入生产者的证明。
 
-> **契约：** `ADVISORY_ORDER` / `sort_prereqs` 只影响 *delivery 下的调度顺序*。`input_producers` / `input_closure`（产物边）是证明有效性、输入可用性、失败新鲜度的唯一依据。两者永不交叉。
+> **契约：** `ADVISORY_ORDER` 只影响*调度顺序*。`input_producers` / `input_closure`（产物边）是证明有效性、输入可用性、失败新鲜度的唯一依据。两者永不交叉。
 
 ### 3.4 约束与 SGDC 时钟域声明
 
@@ -229,7 +229,7 @@ for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 
 | **type** | **写入方（动词）** | **用途 / 关键字段** |
 |---|---|---|
-| `dispatch` | 自动（`dispatch`） | 开启一个 run：`rule`、`run`、`workdir`、`params`（该规则声明的参数）、`objective`、`diagnosis_refs`、`caused_by`（一次返修所回答的 `[rule, run]` 失败），以及——仅产证明规则——消费的 `inputs` 版本表（`proof.inputs` 的唯一来源）。 |
+| `dispatch` | 自动（`dispatch`） | 开启一个 run：`rule`、`run`、`workdir`、`params`（该规则声明的参数）、`diagnosis_refs`、`caused_by`（一次返修所回答的 `[rule, run]` 失败），以及——仅产证明规则——消费的 `inputs` 版本表（`proof.inputs` 的唯一来源）。 |
 | `outcome` | 自动（`reap`） | 关闭一个 run：`verdict ∈ {pass, fail, blocked}`、产出的 `outputs` 版本表（含规范 `result.json`）、`proofs[]`、`tool_versions`、可选 `reason`（blocked 子类）。 |
 | `diagnosis` | triage 自动（`reap`）；人工经 `diagnose` | 一条失败归因。必填（按 `diagnosis.schema.json`）：`id`、`subject {proof, outcome_run}`、`attribution`、`evidence`、`source ∈ {triage, human}`。可选：`fix_owner`、`fix_locus`、`confidence`、`supersedes`；`provenance`（背书者的裸身份）与 `reason`（推理本身，逐字带进 fix owner 的 `dispatch.json`）在 `source=human` 时均为必填，由 `diagnose` 强制。 |
 | `pin` | `pin` | 把 `proposed` oracle 向 `human` 棘轮：`oracle_ref`、`content_fingerprint`（pin 时记录）、`provenance`、`reason`。 |
@@ -298,20 +298,24 @@ Orchestrator 每轮运行一个确定性步骤：
 
 ```
 loop:
-  a = kernel.py decide --module <M> --objective <obj> [--wake <rule>:<run>]
+  a = kernel.py decide --module <M> [--wake <rule>:<run>] [--closing]
   execute(a)                       # a.action ∈ {DISPATCH, REAP, YIELD, DONE, ESCALATE}
   if a.action in {YIELD, DONE, ESCALATE}: end turn
 ```
 
 `decide` 对 (磁盘, 日志, 参数) 是纯函数，以 JSON 对象返回恰好一个动作。Orchestrator 执行后再询；`DISPATCH` 和 `REAP` 继续循环，其余三个结束本轮。下一个 `<task-notification>` 到达时 Claude Code harness 重新进入，此时 Orchestrator 传 `--wake <rule>:<run>`（并在该轮的每次再询中重复传递）。
 
-### 5.1 目标决定所需证明集
+### 5.1 目标集是导出的，不是选的
 
-Orchestrator 作为会话值携带的 `objective` 决定 `decide` 向什么调度（`schedule.required_proofs`）：
+`schedule.required_proofs` 只从日志回答「这一次调用在朝什么调度」：
 
-- **`delivery`**（默认）— 前向构建整个 DAG（全部八个证明）。
-- **`signoff`**（仅限用户明确请求）— *同样*这八个证明，但它在 `DONE` 处武装签核门（§5.5）。证明集与 `delivery` 完全相同是刻意设计：签核是让同一批证明去过更高的门槛，而不是要求更多证明。
-- **`repair`** — 最新失败那一条规则的证明。当 `delivery` 下的 `decide` 返回自动重建的 `DISPATCH`（携带非空 `caused_by` 的那一种）时，Orchestrator 切到 `repair`，把后续 `decide` 收窄到只重建能让失败证明重新验证的闭包；`repair` 返回 `DONE` 后切回 `delivery`。
+> **最新 outcome 是 `fail` 的那些证明——一条都没失败时，则是全部八条。**
+
+一个证明还在失败时，它*就是*目标。它重新验证之前，它下游的一切都不说明任何事，先建别的只是在做第二次失败会重新作废的工作；第 2 步会把收窄集扩到它的重建闭包，所以复验所需的生产者会排在前面。最后一个失败的证明复验通过时，这个集合自己变空，目标随之放宽回整个 DAG。
+
+有两个后果值得点名，因为早先的设计把它做成调用方携带的模式，两处都付了代价。**没有需要记住的迁移**：不用切进修复阶段、不用切回来，也不可能在造成收窄的那件事消失之后仍然被留在收窄态。而且这个集合是**复数的**：两条一起失败的规则都在里面，于是它们的复验都可调度——单目标的答案会把第二条排除在这一轮之外，让它去等第一条，而两者之间根本没有产物边。
+
+收尾根本不在这根轴上。`--closing`（§5.5）要求的是同一批证明，只改变「板面干净」意味着什么，所以它是终止谓词上的一个旗标，而不是选择工作量的那个东西上的第三个取值。
 
 ### 5.2 五个动作与决策步骤
 
@@ -319,7 +323,7 @@ Orchestrator 作为会话值携带的 `objective` 决定 `decide` 向什么调�
 
 ```mermaid
 flowchart TD
-    W(["decide (objective)"]) --> S0{"第 0 步：有 run 可收割？"}
+    W(["decide"]) --> S0{"第 0 步：有 run 可收割？"}
     S0 -- "wake 命中 / result.json 已就位" --> RP(["REAP"])
     S0 -- 否 --> S1{"第 1 步：有新鲜失败？"}
     S1 -- 有 --> DISP["处置 → DISPATCH / ESCALATE / YIELD / 顺延"]
@@ -333,14 +337,14 @@ flowchart TD
 
 - **第 0 步——先收割。** 若 `--wake <rule>:<run>` 指名一个在途 run → `REAP` 之。否则，若任何在途 run 的 workdir 已有 `result.json`（已完成但未收割），按 `FORWARD_PRIORITY` 收割最早的一个。先收割再决策，保持日志与现实同步。
 - **第 1 步——新鲜失败处置。** 按 `FORWARD_PRIORITY` 找最新 outcome 为 `fail` *且*该失败*新鲜*（§5.3）的规则，运行 `_disposition`。最早的新鲜失败胜出；`_defer_to_forward` 的结果落到第 2 步。
-- **第 2 步——前向派发。** 计算当前不可复用的所需证明，扩展到*重建闭包*（沿不可用输入的 `input_producers` 行走，让修复先重建正确的上游），然后按 `FORWARD_PRIORITY` 派发最早的、不在途且输入可用的候选。仅在 `delivery` 下，候选还需其全部 `sort_prereqs` 证明有效才放行——不超车门（§3.3）。
+- **第 2 步——前向派发。** 计算当前不可复用的所需证明，扩展到*重建闭包*（沿不可用输入的 `input_producers` 行走，让修复先重建正确的上游），然后按 `FORWARD_PRIORITY` 派发最早的、不在途且输入可用的候选。此外，只要某个候选的 `ADVISORY_ORDER` 前驱尚未有效**且正要说话**——本轮 work 集里有它，或它已经在途——该候选就被扣住：不超车门（§3.3）。问「谁正要来」而不是「调用方处在哪个模式」，正是同一条规则能同时服务收窄目标集与完整目标集的原因：一个既没被调度也没在跑的前驱永远不会有结果，扣着它只会把这一轮搁死。
 - **第 3 步——收束。** 有工作在途 → `YIELD`（返回 `in_flight[]` 视图）。否则所需证明全部可复用 → `DONE`。否则 → `ESCALATE`（"无可派发规则、无在途、未完成"）。
 
 `cmd_dispatch` 是可派发性真相的唯一来源：它在*写入时刻*复查在途前提与输入可用性，若可派发性在扫描与写入之间发生了漂移则返回 `ok:false`。签核门不在这些检查之列——签核不可派发，也就没有派发可把门。它的防绕过职责移交给 `cmd_signoff`：后者自己跑门，而不是信任先前的一次 `decide`——该动词是门的唯一界面，因此越过流程的 `kernel.py signoff` 无法铸造一个门已拒绝的签核（§5.5）。
 
 ### 5.3 新鲜失败处置与可靠性门
 
-一个失败只有在*新鲜*期间才可采取行动（`schedule._fail_is_fresh`）：其 fail 证明必须除裁决外样样新鲜——落账的输入输出仍与磁盘一致、oracle 未被 reopen、**且**其传递 `input_closure` 内的每个证明当前均有效。闭包里有陈旧或缺失证明 = 上游仍在传播，该失败即*陈旧*，顺延给前向重验而不做路由。（此处仅用产物边——`sort_prereqs`/`ADVISORY_ORDER` 永不进入。）
+一个失败只有在*新鲜*期间才可采取行动（`schedule._fail_is_fresh`）：其 fail 证明必须除裁决外样样新鲜——落账的输入输出仍与磁盘一致、oracle 未被 reopen、**且**其传递 `input_closure` 内的每个证明当前均有效。闭包里有陈旧或缺失证明 = 上游仍在传播，该失败即*陈旧*，顺延给前向重验而不做路由。（此处仅用产物边——`ADVISORY_ORDER` 永不进入。）
 
 对一个新鲜失败，`_disposition` 三择其一：
 
@@ -373,15 +377,15 @@ flowchart TD
 2. oracle 等级为 `tool` 或 `human`——`proposed` oracle 阻塞签核（"pin it"），且
 3. 没有带外**新增**输入：磁盘上匹配该规则输入选择器、却不在该证明落账输入集里的文件，从未被任何 run 验证过。已落账文件的改与删本就使证明失效（§4.4）；唯独"加"能逃过落账集比对，所以签核门在此对选择器重新 glob 一遍——日常 delivery/repair 路径仍用便宜的落账集比对。
 
-该门按 `FORWARD_PRIORITY` 顺序迭代，使它返回的理由确定。不满足时按调用方分两条路浮现：`decide --objective signoff` 把它包成指名违规证明的 `ESCALATE`（典型动作是"把 proposed oracle pin 掉"——一次人工 `pin`，§2.5）；`kernel.py signoff` 把它包成 `ok:false`。这就是信任边界咬合之处：流水线可以*交付*在 LLM proposed oracle 之上，但在人把每个 proposed 裁判 pin 到 `human` 等级之前，它无法*签核*。
+该门按 `FORWARD_PRIORITY` 顺序迭代，使它返回的理由确定。不满足时按调用方分两条路浮现：`decide --closing` 把它包成指名违规证明的 `ESCALATE`（典型动作是"把 proposed oracle pin 掉"——一次人工 `pin`，§2.5）；`kernel.py signoff` 把它包成 `ok:false`。这就是信任边界咬合之处：流水线可以*交付*在 LLM proposed oracle 之上，但在人把每个 proposed 裁判 pin 到 `human` 等级之前，它无法*签核*。
 
 **签核是一个动作，不是一个阶段。** 该门只裁定*是否够格*；真正闭合签核的，是人调用 `kernel.py signoff --provenance … --reason …`——`pin`/`reopen` 之外的第三个问必批判断动词（§2.5）。它自己跑门，而不是信任先前的一次 `decide`，因为该动词是门唯一的可绕过面——无论调用方在环内还是环外，都无法铸造一个门已拒绝的签核。一个模块**已签核**，当且仅当该事件存在*且*所有阶段证明当前均有效（`facts.signed_off`）——第二个合取项是实时重新推导的，因此事后某条证明变陈旧，签核就悄无声息地随之失效。刻意没有 `unsign` 动词：`reopen` 使其证明失效（§4.4 条件 3），合取项自然落空。
 
-在 `objective=signoff` 下，所需证明集与 `delivery` **完全相同**——签核不要求更多证明，它要求同一批证明去过更高的门槛。那道门槛就是本门，施加在 `decide` 的 `DONE` 处（§5.2 第 3 步）；没有它，这个目标就只是 `delivery` 的别名，报成功而从未过问信任边界。因此 `signoff` 下的 `DONE` 意味着"门已干净，去盖章"，由 Orchestrator 提议该动词。
+`--closing` 不要求任何额外证明——它要求同一批证明去过更高的门槛。那道门槛就是本门，施加在 `decide` 的 `DONE` 处（§5.2 第 3 步）：这个旗标是终止谓词而不是范围，这正是它是一个旗标、而不是某个「选工作量」的东西上的第三个取值的原因。因此 `--closing` 下的 `DONE` 意味着「门已干净，去盖章」，由 Orchestrator 提议该动词。门被挡住时回来的是 `ESCALATE` 而不是 `DONE` 上的一个字段，因为它要求的那次 pin 是编排者必须执行的动作，不是它可能会读的一个值。
 
 ### 5.6 派发、收割与 `dispatch.json`
 
-**派发。** `kernel.py dispatch --rule <r> --objective <o> [--caused-by <rule>:<run> …] [--diagnosis-refs …] [--params <json>]` 复查可派发性，落账 `dispatch` 事件（分配 `run = 已有 run 数 + 1` 并创建 `runs/<N>/`），返回 `{ok, rule, run, workdir, skill, execution}`。对产证明规则，它把消费的 `inputs` 版本表快照进事件（`proof.inputs` 的唯一来源）。返回之前，dispatch 还执行两个 workdir 填充子步骤——是 promote 在收割中所处位置的派发时对偶：
+**派发。** `kernel.py dispatch --rule <r> [--caused-by <rule>:<run> …] [--diagnosis-refs …] [--params <json>]` 复查可派发性，落账 `dispatch` 事件（分配 `run = 已有 run 数 + 1` 并创建 `runs/<N>/`），返回 `{ok, rule, run, workdir, skill, execution}`。对产证明规则，它把消费的 `inputs` 版本表快照进事件（`proof.inputs` 的唯一来源）。返回之前，dispatch 还执行两个 workdir 填充子步骤——是 promote 在收割中所处位置的派发时对偶：
 
 - **`store.carry_self`**——对 `Rule.carry` 非空的规则——把作者自己上一轮的规范产物（按 `Rule.carry`，减去 `Rule.no_carry`）拷进新 workdir，让返工或增量轮次从自己上一次的产出开始，而不是从空白开始。是拷贝（`copy2`）而非硬链接：规范内容与产出它的那次 run 共享 inode，硬链接会让作者的编辑同时腐蚀两边。在真正首跑（尚无规范内容）或规则的 `Rule.carry` 为空（纯变换器）时是空操作。
 - **`store.write_dispatch`** 写出 `<workdir>/dispatch.json`，内核对这次 run 说的全部话（见下）。
