@@ -504,7 +504,6 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
             "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": {
-                "level": "L2",
                 "findings": [{"anchor": "matvec.v:42", "cases": ["t1"]}],
                 "experiment": {
                     "tool": "verilator",
@@ -576,7 +575,6 @@ def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
             "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": {
-                "level": "L1",
                 "findings": [{"anchor": "a.v:1"}],
             },
         },
@@ -653,7 +651,6 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
             "root_cause": "simulation",  # self-pointing: attribution recorded, no fix_owner
             "confidence": "high",
             "advisory": {
-                "level": "L1",
                 "findings": [{"anchor": "a.v:1"}],
             },
         },
@@ -776,7 +773,6 @@ def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
             "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": {
-                "level": "L1",
                 "findings": [{"anchor": "a.v:1"}],
             },
         },
@@ -802,7 +798,7 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
     # diagnosis subject with the OLD run's sim_run (mirrors the proof path's per-run lookup).
     monkeypatch.chdir(tmp_path)
     module = "rereap"
-    _adv = {"level": "L1", "findings": [{"anchor": "a.v:1"}]}
+    _adv = {"findings": [{"anchor": "a.v:1"}]}
     d1 = _dispatch_triage(tmp_path, module, sim_run=5)
     _write_triage_result(
         module,
@@ -975,39 +971,6 @@ def test_triage_high_confidence_without_findings_blocked(tmp_path, monkeypatch):
             "confidence": "high",
         },
     )  # no advisory.findings
-    r = _run_json(
-        tmp_path,
-        "reap",
-        "--module",
-        module,
-        "--rule",
-        "simulation-triage",
-        "--run",
-        str(d["run"]),
-    )
-    assert r["verdict"] == "blocked"
-
-
-def test_triage_l2_without_experiment_blocked(tmp_path, monkeypatch):
-    # D4/§3.4: an L2 verdict ran a controlled experiment -> advisory.experiment must be
-    # present (its artifacts/conclusion are the mapped evidence). L2 without it is blocked.
-    monkeypatch.chdir(tmp_path)
-    module = "d4b"
-    d = _dispatch_triage(tmp_path, module, sim_run=1)
-    _write_triage_result(
-        module,
-        d["workdir"],
-        status="pass",
-        stage_specific={
-            "analysis_state": "complete",
-            "root_cause": "rtl-design",
-            "confidence": "high",
-            "advisory": {
-                "level": "L2",
-                "findings": [{"anchor": "a.v:1"}],
-            },
-        },
-    )
     r = _run_json(
         tmp_path,
         "reap",
