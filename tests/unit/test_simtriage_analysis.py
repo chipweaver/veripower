@@ -5,6 +5,7 @@ analysis.schema.json is deleted, and there is no more analysis.json + top-level 
 result.json is the single output surface."""
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/simulation-triage/scripts/simtriage/__main__.py"
 RESULT_SCHEMA = ROOT / "skills/simulation-triage/references/result.schema.json"
+
+
+def _stage_specific() -> dict:
+    doc = json.loads(RESULT_SCHEMA.read_text())
+    for sub in doc["allOf"]:
+        if "stage_specific" in sub.get("properties", {}):
+            return sub["properties"]["stage_specific"]
+    raise AssertionError("result.schema.json: no stage_specific subschema found")
 
 
 def _run(tmp_path, payload: dict, *, workdir=None, module="M"):
@@ -179,6 +188,30 @@ def test_advisory_tier_label_rejected(tmp_path):
     )
     assert r.returncode == 1
     assert "level" in r.stderr
+
+
+def test_prose_names_no_advisory_key_the_schema_rejects():
+    """advisory is additionalProperties:false, so prose that instructs writing a key the schema
+    dropped costs the agent a rejected finalize. Both surviving mentions of the deleted
+    `waveform.observation` were exactly that; this pins the whole class."""
+    advisory = _stage_specific()["properties"]["advisory"]
+    legal = set(advisory["properties"])
+    for sub, node in advisory["properties"].items():
+        legal |= {f"{sub}.{k}" for k in node.get("properties", {})}
+
+    cited: set[str] = set()
+    for name in ("SKILL.md", "references/fail-analysis-patterns.md"):
+        text = (ROOT / "skills/simulation-triage" / name).read_text()
+        for body in re.findall(r"advisory\.\{([^}]*)\}", text):
+            cited |= {t.strip().rstrip("[]") for t in body.split(",") if t.strip()}
+        for tok in re.findall(r"advisory\.([A-Za-z_]+(?:\.[A-Za-z_]+)?)", text):
+            cited.add(tok)
+
+    assert cited, "no advisory.* citation found — did the prose stop naming the shape?"
+    assert cited <= legal, (
+        f"prose names advisory key(s) absent from result.schema.json: "
+        f"{sorted(cited - legal)}"
+    )
 
 
 def test_advisory_unknown_key_rejected(tmp_path):
