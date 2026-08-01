@@ -5,6 +5,7 @@ Bare-importable (`import schedule`)."""
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -210,8 +211,6 @@ def _declared_owner(module: str, rule: str) -> str | None:
     caller's check, not this one's — this only reports what was written."""
     p = facts.module_root(module) / Path(*rules.workdir_root(rule)) / "result.json"
     try:
-        import json
-
         ss = json.loads(p.read_text()).get("stage_specific", {})
     except (OSError, ValueError):
         return None
@@ -242,6 +241,35 @@ def _has_inflight_consumer(rule_name: str, inflight: list[dict]) -> bool:
     new round never starts → no concurrent re-promote to tear the consumer's canonical read.
     Covers file- and dir-type tears; the consumer's next reap frees rule_name. Pure, no I/O."""
     return any(rule_name in rules.input_producers(f["rule"]) for f in inflight)
+
+
+def _dispatched(module: str, action: dict, objective: str) -> dict:
+    """A DISPATCH action, plus the exact `kernel.py dispatch` argv that executes it.
+
+    Every field the dispatch needs was just computed here. Re-serialising them by hand in
+    the Orchestrator's turn is a transcription step between two machine endpoints, and the
+    only thing that ever guarded it was prose telling the transcriber not to drop an entry —
+    a multi-cause rework that loses one `caused_by` silently leaves that failure to re-fail
+    next pass. Emitting the argv removes the step rather than warning about it; the fields
+    stay in the action too, because a reader of the log wants them named, not parsed."""
+    action = {**action, "objective": objective}
+    args = [
+        "dispatch",
+        "--module",
+        module,
+        "--rule",
+        action["rule"],
+        "--objective",
+        objective,
+    ]
+    for cb_rule, cb_run in action.get("caused_by", []):
+        args += ["--caused-by", f"{cb_rule}:{cb_run}"]
+    if action.get("diagnosis_refs"):
+        args += ["--diagnosis-refs", ",".join(action["diagnosis_refs"])]
+    if action.get("params"):
+        args += ["--params", json.dumps(action["params"], sort_keys=True)]
+    action["dispatch_args"] = args
+    return action
 
 
 def decide(
@@ -295,7 +323,7 @@ def decide(
                 f["rule"] == disp["rule"] for f in inflight
             ) or _has_inflight_consumer(disp["rule"], inflight):
                 return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
-            return {**disp, "objective": objective}
+            return _dispatched(module, disp, objective)
         else:
             return disp  # ESCALATE / YIELD
 
@@ -338,12 +366,15 @@ def decide(
         candidates.append(rule)
     if candidates:
         rule = min(candidates, key=lambda r: rules.FORWARD_PRIORITY.index(r))
-        return {
-            "action": "DISPATCH",
-            "rule": rule,
-            "execution": rules.RULES[rule].execution,
-            "objective": objective,
-        }
+        return _dispatched(
+            module,
+            {
+                "action": "DISPATCH",
+                "rule": rule,
+                "execution": rules.RULES[rule].execution,
+            },
+            objective,
+        )
 
     # step 3
     if inflight:

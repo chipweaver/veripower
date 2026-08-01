@@ -106,7 +106,7 @@ Orchestrator 的三条派发路径：
 
 | 模块 | 职责 |
 |---|---|
-| `kernel.py` | CLI，且是 `events.jsonl` 的**唯一写者**。十个动词：`decide`、`dispatch`、`reap`、`diagnose`、`escalate`、`pin`、`reopen`、`signoff`、`status`、`consequences`。每个动词打印一个 JSON 信封。 |
+| `kernel.py` | CLI，且是 `events.jsonl` 的**唯一写者**。九个动词：`decide`、`dispatch`、`reap`、`diagnose`、`pin`、`reopen`、`signoff`、`status`、`consequences`。每个动词打印一个 JSON 信封。 |
 | `rules.py` | 规则注册表（`RULES`）——内核调度对象的单一真相源，也是依赖图的*来源*（§3）。另有 `FORWARD_PRIORITY`、`PIPELINE_INPUTS`、`ADVISORY_ORDER`，以及派生助手 `producer_of` / `input_producers` / `input_closure` / `sort_prereqs`。依赖极轻的叶子模块。 |
 | `facts.py` | 事件日志 I/O（`read_events` / `append_event`，写入即校验 schema）、内容指纹（`fingerprint`），以及建立在其上的新鲜度查询——`proof_valid`、`input_available`、`projection`，外加其中最严的 `signoff_gate` / `signed_off`（§5.5）。不持有任何可变状态；一切从日志 + 磁盘计算。 |
 | `schedule.py` | 调度器：`decide(objective) → 恰好一个动作`。对 (磁盘， 日志， 参数) 纯函数；组合 `facts.signoff_gate`。持有目标→所需证明集映射与新鲜失败处置，含对失败自陈的 `fix_owner` 的合法性校验。 |
@@ -190,27 +190,14 @@ Orchestrator 的三条派发路径：
 | simulation | rtl-design、simulation-plan | `veripower:simulation`（主线程） | tb-refmodel（proposed） | `Verification/simulation/` |
 | power-analysis | synthesis、simulation、simulation-plan、specification（`ppa.json`） | `veripower:power-analysis` | pt-shell（tool） | `Verification/power-analysis/` |
 
-上表的生产者→消费者边就是 `rules.input_producers(rule)`——把每条规则的输入 glob 与所有规则的输出 glob 匹配（`producer_of`）算出。画出来即是流水线：
+上表的「消费」列就是 `rules.input_producers(rule)`——把每条规则的输入 glob 与所有规则的输出 glob 匹配（`producer_of`）算出。**那一列就是这张图**；这里刻意不再画第二份，因为一份手画的派生结构是唯一能和注册表说法不一致的东西。要看当前注册表的图：
 
-```
-[specification] → [simulation-plan] → [rtl-design]
-                                            │
-                          ┌─────────────────┴──────────────────┐
-                          ↓                                    ↓
-                     [lint-cdc]                          [simulation]
-                          │                                    │
-                          ↓                                    │
-                     [synthesis]                               │
-                          │                                    │
-                          ↓                                    │
-                  [timing-analysis]                            │
-                          │                                    │
-                          └─────────────────┬──────────────────┘
-                                            ↓
-                                    [power-analysis]
+```bash
+python3 -c "import sys; sys.path.insert(0,'framework/scripts'); import rules
+for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 ```
 
-隐式并行从这张图自然得出：`decide` 每次调用派发一条规则并再询，因此输入全部就绪的规则并行运行。流水线中段即双链并行——`{lint-cdc → synthesis → timing-analysis}` 与 `{simulation}` 并行，同时在途至多两条不同规则——由 `power-analysis` 汇合。Orchestrator 不写任何并发上限；它从派生边的有无中涌现。
+隐式并行从这些边自然得出：`decide` 每次调用派发一条规则并再询，因此输入全部就绪的规则并行运行。Orchestrator 与内核都不写任何并发上限——同时在途几条完全取决于派生边的有无，三条在途是常态（`lint-cdc`、`timing-analysis`、`simulation` 三者之间没有任何 artifact 边）。
 
 ### 3.3 三个图查询，三份不同职责
 
@@ -236,9 +223,9 @@ Orchestrator 的三条派发路径：
 
 因为日志即状态，在途也是派生的：`facts.in_flight` = 每个没有匹配 `outcome` 的 `dispatch`（按 `(rule, run)` 键）。崩溃恢复因此是内生的——执行器死掉的 run 留下一个没有 `outcome` 的 `dispatch`，所以它仍显示在途，`decide` 会去收割它（§5.6）。
 
-### 4.2 七类事件
+### 4.2 六类事件
 
-`events.jsonl` 携带 **7 类事件**，各由 `framework/references/schemas/events/<type>.schema.json` 校验。`kernel.py` 是全部七类的唯一写者——不存在任何让 Agent 提示词注入原始事件的通道。
+`events.jsonl` 携带 **6 类事件**，各由 `framework/references/schemas/events/<type>.schema.json` 校验。`kernel.py` 是全部六类的唯一写者——不存在任何让 Agent 提示词注入原始事件的通道。
 
 | **type** | **写入方（动词）** | **用途 / 关键字段** |
 |---|---|---|
@@ -248,9 +235,8 @@ Orchestrator 的三条派发路径：
 | `pin` | `pin` | 把 `proposed` oracle 向 `human` 棘轮：`oracle_ref`、`content_fingerprint`（pin 时记录）、`provenance`、`reason`。 |
 | `reopen` | `reopen` | 撤销一个 pin：`pin_ref`、`reason`。使 oracle 在其落账后被 reopen 的证明失效（§4.4）。 |
 | `signoff` | `signoff` | 闭合签核：`provenance`、`reason`。仅在 `facts.signoff_gate` 干净时写入（§5.5）。不携带指纹，也从不被撤销——有效性由 `facts.signed_off` 实时重新推导。 |
-| `escalation` | `escalate` | 记录流程把决定交给用户：`reason`、`open_question`、可选 `candidates`。 |
 
-`dispatch` / `outcome` 是执行工作的纯副作用。triage 的 `diagnosis` 在收割时从 triage run 的 `result.json` 派生（§5.3）。另外五个动词（人工 `diagnose`、`pin`、`reopen`、`signoff`、`escalate`）承载 Orchestrator/用户的判断——但仍然经过 `kernel.py`，由它校验并（对 `diagnose`/`pin`）执行 schema 无法表达的结构性关联约束（§5.3、§4.5）。所有事件携带 UTC ISO8601 的 `ts`，写在记录首位。
+`dispatch` / `outcome` 是执行工作的纯副作用。triage 的 `diagnosis` 在收割时从 triage run 的 `result.json` 派生（§5.3）。另外四个动词（人工 `diagnose`、`pin`、`reopen`、`signoff`）承载 Orchestrator/用户的判断——但仍然经过 `kernel.py`，由它校验并（对 `diagnose`/`pin`）执行 schema 无法表达的结构性关联约束（§5.3、§4.5）。所有事件携带 UTC ISO8601 的 `ts`，写在记录首位。
 
 ### 4.3 内容指纹
 

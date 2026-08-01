@@ -73,7 +73,7 @@ The Orchestrator agent decides; `kernel.py` and the skills execute; disk persist
 │ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent       │
 │ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)           │
 │  kernel.py:        │  │   main thread)               │  │                               │
-│   10 verbs; sole   │  │                              │  │  Stage: executes rule         │
+│   9 verbs; sole    │  │                              │  │  Stage: executes rule         │
 │   writer of the    │  │  specification / sim-plan /  │  │    → writes result.json       │
 │   event log        │  │  rtl-design / simulation:    │  │  Debug (triage): canon. RO,   │
 │  schedule.py:      │  │    self-driven fan-out /     │  │    scratch RW builder         │
@@ -106,7 +106,7 @@ The three dispatch paths from the Orchestrator:
 
 | Module | Responsibility |
 |---|---|
-| `kernel.py` | The CLI and the **sole writer** of `events.jsonl`. Ten verbs: `decide`, `dispatch`, `reap`, `diagnose`, `escalate`, `pin`, `reopen`, `signoff`, `status`, `consequences`. Every verb prints a JSON envelope. |
+| `kernel.py` | The CLI and the **sole writer** of `events.jsonl`. Nine verbs: `decide`, `dispatch`, `reap`, `diagnose`, `pin`, `reopen`, `signoff`, `status`, `consequences`. Every verb prints a JSON envelope. |
 | `rules.py` | The rule registry (`RULES`) — the SSoT for what the kernel schedules and the *source* of the dependency graph (§3). Also `FORWARD_PRIORITY`, `PIPELINE_INPUTS`, `ADVISORY_ORDER`, and the derivation helpers `producer_of` / `input_producers` / `input_closure` / `sort_prereqs`. Dependency-light leaf. |
 | `facts.py` | Event-log I/O (`read_events` / `append_event`, schema-validating), content fingerprints (`fingerprint`), and the freshness queries built on them — `proof_valid`, `input_available`, `projection`, plus the strictest of them, `signoff_gate` / `signed_off` (§5.5). Owns nothing mutable; everything is computed from the log + disk. |
 | `schedule.py` | The scheduler: `decide(objective) → exactly one action`. Pure over (disk, log, args); composes `facts.signoff_gate`. Owns the objective→required-proof map and the fresh-failure disposition, including the legality check on a failure's self-named `fix_owner`. |
@@ -114,7 +114,7 @@ The three dispatch paths from the Orchestrator:
 
 The event schemas at `framework/references/schemas/events/<type>.schema.json` (7 of them, §4.2) and the result envelope at `framework/references/schemas/envelope.schema.json` complete the core.
 
-> **Black-box discipline.** The Orchestrator invokes `kernel.py` by its documented command lines (flags via `<verb> --help`, each verb prints a JSON envelope) and never reads the framework scripts' source. On a non-zero exit or an `ok:false` envelope it follows the documented failure protocol (fix the objective, escalate the `ok:false`), never patches around it.
+> **Black-box discipline.** The Orchestrator invokes `kernel.py` by its documented command lines (flags via `<verb> --help`, each verb prints a JSON envelope) and never reads the framework scripts' source. On a non-zero exit or an `ok:false` envelope it follows the documented failure protocol (fix what the error names, surface the `ok:false` to the user), never patches around it.
 
 ### 2.3 Main-thread-loaded stages and the pre-pipeline brainstorm
 
@@ -137,7 +137,7 @@ The `execution` field on each `Rule` (`"main-thread"` or `"task"`) is what the O
 
 | **Role** | **Carrier** | **Responsibilities** | **Capability boundaries** |
 |---|---|---|---|
-| **Orchestrator agent** | `design-flow` skill, main conversation | Execute the one action each `decide` returns; propose `pin` / `reopen` / human `diagnose` on explicit user intent; escalate; collaborate with the user. Authors no per-dispatch content: it passes the action's coordinates through and the kernel resolves them (§5.6). Also acts as the main-thread executor for the four main-thread rules. | The only role that may call `kernel.py`, use the Task tool, and interact with the user. Authors NO event by hand — every event is written by `kernel.py`. |
+| **Orchestrator agent** | `design-flow` skill, main conversation | Execute the one action each `decide` returns; propose `pin` / `reopen` / human `diagnose` on explicit user intent; carry an `ESCALATE` to the user; collaborate with them. Authors no per-dispatch content: it passes the action's coordinates through and the kernel resolves them (§5.6). Also acts as the main-thread executor for the four main-thread rules. | The only role that may call `kernel.py`, use the Task tool, and interact with the user. Authors NO event by hand — every event is written by `kernel.py`. |
 | **Main-thread skill** | one of the four main-thread rules, loaded via `Skill()` | Self-driven work in the Orchestrator's thread: sub-Task fan-out (producers, simulation), multi-turn dialogue (simulation-plan), or a single review dispatch. Each writes its own artifacts + `result.json`. | May dispatch Level-1 sub-Tasks (producers / simulation) or interact with the user (simulation-plan; specification at its two path-handoff gates). No `kernel.py`, no routing. Held by SKILL.md prose discipline, not tool gating. |
 | **Stage subagent** | the four Task-dispatched rules (`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis`) | Execute one rule: read upstream → do the work → write `result.json` → return a STATUS line | Must NOT call `kernel.py` or make routing decisions (§6.1) |
 | **Debug subagent** | `simulation-triage`, dispatched via Task | Root-cause analysis on a simulation failure, reasoning over the run's own evidence and, where that cannot settle it, a controlled experiment it builds in scratch; its target run and upstream (spec/RTL/plan) are injected at dispatch via `dispatch.json` (`sim_run` names the target run directory), `proof=None` so it is dispatchable even when upstream proofs are invalid; writes a `result.json` whose `stage_specific` carries the attribution the kernel turns into a `diagnosis` at reap (§6.3) | Canonical read-only, scratch-writable under its own workdir; never edits any other rule's `result.json`, RTL, or tests; NOT idempotent (a repeat redoes the work) |
@@ -190,27 +190,14 @@ Each rule is a frozen dataclass:
 | simulation | rtl-design, simulation-plan | `veripower:simulation` (main-thread) | tb-refmodel (proposed) | `Verification/simulation/` |
 | power-analysis | synthesis, simulation, simulation-plan, specification (`ppa.json`) | `veripower:power-analysis` | pt-shell (tool) | `Verification/power-analysis/` |
 
-The producer→consumer edges above are exactly `rules.input_producers(rule)` — computed by matching each input glob against every rule's output globs (`producer_of`). Drawn out, they form the pipeline:
+The "Consumes" column above is exactly `rules.input_producers(rule)` — computed by matching each input glob against every rule's output globs (`producer_of`). That column is the graph; there is deliberately no second drawing of it here, because a hand-drawn copy of a derived structure is the one thing that can disagree with the registry. To see it for the current registry:
 
-```
-[specification] → [simulation-plan] → [rtl-design]
-                                            │
-                          ┌─────────────────┴──────────────────┐
-                          ↓                                    ↓
-                     [lint-cdc]                          [simulation]
-                          │                                    │
-                          ↓                                    │
-                     [synthesis]                               │
-                          │                                    │
-                          ↓                                    │
-                  [timing-analysis]                            │
-                          │                                    │
-                          └─────────────────┬──────────────────┘
-                                            ↓
-                                    [power-analysis]
+```bash
+python3 -c "import sys; sys.path.insert(0,'framework/scripts'); import rules
+for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 ```
 
-Implicit parallelism falls out of this graph: `decide` dispatches one rule per call and re-queries, so any rules whose inputs are all available run concurrently. In the middle of the pipeline that is the dual chain `{lint-cdc → synthesis → timing-analysis}` alongside `{simulation}` — at most two distinct rules in flight — with `power-analysis` merging both. The Orchestrator writes no concurrency cap; it emerges from where the derived edges do and do not exist.
+Implicit parallelism falls out of those edges: `decide` dispatches one rule per call and re-queries, so any rules whose inputs are all available run concurrently. There is no concurrency cap anywhere in the Orchestrator or the kernel — how many run at once is entirely a function of where the derived edges do and do not exist, and three in flight is ordinary (`lint-cdc`, `timing-analysis` and `simulation` have no artifact edge between them).
 
 ### 3.3 Three graph queries, three distinct jobs
 
@@ -236,9 +223,9 @@ Everything under `asic/<module>/` that matters to the kernel is derived from one
 
 Because the log is the state, in-flight is derived too: `facts.in_flight` = every `dispatch` with no matching `outcome` (keyed by `(rule, run)`). Crash recovery is thus intrinsic — a run whose executor died left a `dispatch` with no `outcome`, so it still shows in-flight and `decide` will reap it (§5.6).
 
-### 4.2 The seven event types
+### 4.2 The six event types
 
-`events.jsonl` carries **7 event types**, each validated by `framework/references/schemas/events/<type>.schema.json`. `kernel.py` is the sole writer of all seven — there is no channel by which an agent prompt can inject a raw event.
+`events.jsonl` carries **6 event types**, each validated by `framework/references/schemas/events/<type>.schema.json`. `kernel.py` is the sole writer of all six — there is no channel by which an agent prompt can inject a raw event.
 
 | **type** | **Written by (verb)** | **Purpose / key fields** |
 |---|---|---|
@@ -248,9 +235,8 @@ Because the log is the state, in-flight is derived too: `facts.in_flight` = ever
 | `pin` | `pin` | Ratchets a `proposed` oracle toward `human`: `oracle_ref`, `content_fingerprint` (recorded at pin time), `provenance`, `reason`. |
 | `reopen` | `reopen` | Retires a pin: `pin_ref`, `reason`. Invalidates any proof whose oracle was reopened after it landed (§4.4). |
 | `signoff` | `signoff` | Closes signoff: `provenance`, `reason`. Written only if `facts.signoff_gate` is clear (§5.5). Carries no fingerprint and is never retired — validity is re-derived live by `facts.signed_off`. |
-| `escalation` | `escalate` | Records that the flow handed a decision to the user: `reason`, `open_question`, optional `candidates`. |
 
-`dispatch` / `outcome` are pure side-effects of running work. The triage `diagnosis` is derived at reap from the triage run's `result.json` (§5.3). The other five verbs (`diagnose`-human, `pin`, `reopen`, `signoff`, `escalate`) carry the Orchestrator's/user's judgment — but they still go through `kernel.py`, which validates and (for `diagnose`/`pin`) enforces structural correlates the schema alone cannot express (§5.3, §4.5). All events carry a UTC ISO8601 `ts` written first in the record.
+`dispatch` / `outcome` are pure side-effects of running work. The triage `diagnosis` is derived at reap from the triage run's `result.json` (§5.3). The other four verbs (`diagnose`-human, `pin`, `reopen`, `signoff`) carry the Orchestrator's/user's judgment — but they still go through `kernel.py`, which validates and (for `diagnose`/`pin`) enforces structural correlates the schema alone cannot express (§5.3, §4.5). All events carry a UTC ISO8601 `ts` written first in the record.
 
 ### 4.3 Content fingerprints
 

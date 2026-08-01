@@ -4,7 +4,10 @@
 
 ### Background
 
-VeriPower's DAG topology and dispatch logic are owned exclusively by `design-flow`.
+VeriPower's DAG topology is derived from `rules.py`'s artifact selectors and every routing
+decision is computed by `schedule.decide`; `design-flow` is the thin executor that runs the
+one action `decide` returns. So no *skill* owns the topology — but design-flow is the only
+one whose subject matter is the routing decision itself.
 Individual stage skills, in contrast, describe a bounded operation: what they receive, what
 they produce, and what they decide internally. They do not describe DAG position or who calls
 them. DAG-agnostic descriptions stay composable and replaceable — topology can evolve without
@@ -31,7 +34,7 @@ relationships, or dispatch mechanics is a violation.
 Two kinds of skill carry orchestration vocabulary in-role, so it is their subject matter
 rather than a violation:
 
-1. **Router** — `design-flow`. Its output *is* a routing decision; DAG / orchestrator /
+1. **Router** — `design-flow`. What it executes *is* a routing decision; DAG / orchestrator /
    routing vocabulary is what the skill is about.
 2. **Fan-out dispatchers** — `specification`, `rtl-design`, `simulation`, and
    `simulation-plan`. These are main-thread skills that hold Level-1 sub-Task dispatch
@@ -111,15 +114,19 @@ Apply steps in order; stop at the first match.
 The following are always kept in the SKILL.md body. All are stage-bound; externalizing adds
 navigation cost without separability benefit.
 
+- **Iron Rule** — architectural boundary constraints; must be visible before step 1.
+- **Artifacts** — one section, split by who writes each file, not by in/out. Stage-specific;
+  orphans if externalized.
 - **Workflow** — the agent reads steps in sequence during execution; external loading breaks
   single-context.
-- **Pitfalls** — mid-flow warnings needed in context during Workflow execution.
-- **Completion Gate** — pre-return checklist; co-located with Return Contract.
-- **Return Contract** — terminal action; inseparable from Completion Gate.
-- **Decision Rules** — local priority-conflict rules scoped within this stage.
-- **When to Use** — the dispatcher reads this at invocation time.
-- **Iron Rule** — architectural boundary constraints; must be visible before step 1.
-- **Input/Output Artifacts tables** — stage-specific I/O; orphans if externalized.
+- **Return Contract** — the terminal action; the last thing read, so the last thing written.
+
+That is the whole list, and it is the shape the eight pipeline skills converged on. Routing
+is decided from frontmatter `description` alone, so a `When to Use` section has no reader
+that `description` does not already have; the same audit removed `Pitfalls`, `Completion
+Gate`, `Decision Rules`, `Red Flags` and `Bundled References` from every stage as second
+copies of a gate, an Iron Rule, or a link already given at its point of use. Adding one back
+needs a reader that none of those four sections has.
 
 ### Cross-skill reference syntax
 

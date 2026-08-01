@@ -18,6 +18,17 @@ def _write(module, rel, text):
     return facts.fingerprint(p)
 
 
+def _workdir(rule, run):
+    """The workdir the kernel would record — `Design/specification/runs/1`, not a made-up
+    `specification/runs/1`. Everything reached through schedule._workdir_of (the no-wake
+    ready scan, _in_flight_view's has_result) resolves against this, so a fictitious layout
+    makes those branches vacuous rather than tested. A rule outside the registry has no
+    workdir_root; it only ever appears in the unregistered-in-flight test, which never
+    resolves the path."""
+    root = rules.RULES[rule].workdir_root if rule in rules.RULES else (rule,)
+    return "/".join(root) + f"/runs/{run}"
+
+
 def _dispatch(module, rule, run, inputs, objective="delivery"):
     facts.append_event(
         module,
@@ -25,7 +36,7 @@ def _dispatch(module, rule, run, inputs, objective="delivery"):
             "type": "dispatch",
             "rule": rule,
             "run": run,
-            "workdir": f"{rule}/runs/{run}",
+            "workdir": _workdir(rule, run),
             "inputs": inputs,
             "params": {},
             "objective": objective,
@@ -66,11 +77,47 @@ def test_wake_reap(tmp_path, monkeypatch):
         {"brainstorm.md": facts.fingerprint(facts.module_root("m") / "brainstorm.md")},
     )
     # workdir result.json present -> REAP even without wake (收口 branch)
-    rj = facts.module_root("m") / "specification" / "runs" / "1" / "result.json"
-    rj.parent.mkdir(parents=True, exist_ok=True)
-    rj.write_text("{}")
+    _mk("m", _workdir("specification", 1) + "/result.json", "{}")
     a = schedule.decide("m")
     assert a["action"] == "REAP" and a["rule"] == "specification" and a["run"] == 1
+    # --wake names the same run the ready scan would have found on its own; the flag earns
+    # its keep only on the branch below, where there is no result.json to scan for.
+    assert schedule.decide("m", wake="specification:1") == a
+
+
+def test_wake_reaps_a_run_whose_executor_wrote_nothing(tmp_path, monkeypatch):
+    """The one thing --wake does that the ready scan cannot: a dead executor left no
+    result.json, so the scan sees nothing and the ledger would YIELD forever. reap then
+    derives blocked and the next decide re-routes."""
+    monkeypatch.chdir(tmp_path)
+    _write("m", "brainstorm.md", "b1")
+    _dispatch("m", "specification", 1, {"brainstorm.md": _fp("m", "brainstorm.md")})
+    assert schedule.decide("m")["action"] == "YIELD"
+    a = schedule.decide("m", wake="specification:1")
+    assert a["action"] == "REAP" and a["rule"] == "specification" and a["run"] == 1
+
+
+def test_in_flight_view_reports_a_landed_result(tmp_path, monkeypatch):
+    """has_result is resolved through the dispatch event's recorded workdir; with a second
+    rule still running, the finished one must show True so the Dead in-flight check does not
+    reap a run that did produce an envelope."""
+    monkeypatch.chdir(tmp_path)
+    _mk("m", "brainstorm.md", "b1")
+    _valid("m", "specification", 1)
+    _valid("m", "rtl-design", 1)
+    _dispatch("m", "lint-cdc", 1, _recorded_inputs("m", "lint-cdc"))
+    _dispatch("m", "simulation-plan", 1, _recorded_inputs("m", "simulation-plan"))
+    _mk("m", _workdir("simulation-plan", 1) + "/result.json", "{}")
+    # the ready scan claims simulation-plan first; lint-cdc is still genuinely running
+    assert schedule.decide("m") == {
+        "action": "REAP",
+        "rule": "simulation-plan",
+        "run": 1,
+    }
+    assert schedule._in_flight_view("m", facts.read_events("m")) == [
+        {"rule": "lint-cdc", "run": 1, "has_result": False},
+        {"rule": "simulation-plan", "run": 1, "has_result": True},
+    ]
 
 
 def test_in_flight_no_result_yields(tmp_path, monkeypatch):
@@ -107,6 +154,61 @@ def test_fresh_failure_with_reliable_triage_dispatches_fix_owner(tmp_path, monke
     # caused_by, not as a copied hint: coordinates in, kernel resolves them to paths.
     assert a["caused_by"] == [["simulation", 1]]
     assert a["diagnosis_refs"] == ["d1"]
+
+
+def test_dispatch_args_carry_every_channel_the_action_names(tmp_path, monkeypatch):
+    """The action's argv IS the dispatch, so no field can be lost re-serialising it by hand.
+    Two co-failing rules routed to one owner: both must appear as --caused-by, both
+    diagnoses as --diagnosis-refs."""
+    monkeypatch.chdir(tmp_path)
+    _valid_chain_through_simulation("m")
+    _valid("m", "synthesis", 1)
+    _sim_fail("m", 1)
+    _fail("m", "timing-analysis", 1)
+    for i, (proof, run) in enumerate((("simulation", 1), ("timing-analysis", 1))):
+        facts.append_event(
+            "m",
+            {
+                "type": "diagnosis",
+                "id": f"d{i}",
+                "subject": {"proof": proof, "outcome_run": run},
+                "attribution": "rtl-design",
+                "fix_owner": "rtl-design",
+                "evidence": ["Verification/simulation-triage/runs/1/result.json"],
+                "confidence": "high",
+                "source": "triage",
+            },
+            TS,
+        )
+    a = schedule.decide("m", objective="repair")
+    assert a["action"] == "DISPATCH" and a["rule"] == "rtl-design"
+    assert a["dispatch_args"] == [
+        "dispatch",
+        "--module",
+        "m",
+        "--rule",
+        "rtl-design",
+        "--objective",
+        "repair",
+        "--caused-by",
+        "timing-analysis:1",
+        "--caused-by",
+        "simulation:1",
+        "--diagnosis-refs",
+        "d1,d0",
+    ]
+
+
+def test_dispatch_args_carry_declared_params(tmp_path, monkeypatch):
+    """A triage dispatch's mandatory sim_run reaches the argv as --params JSON; cmd_dispatch
+    rejects the dispatch without it, so a hand-built command line that forgot it was the one
+    way to mint an unroutable triage."""
+    monkeypatch.chdir(tmp_path)
+    _valid_chain_through_simulation("m")
+    _sim_fail("m", 3)
+    a = schedule.decide("m")
+    assert a["rule"] == "simulation-triage"
+    assert a["dispatch_args"][-2:] == ["--params", '{"sim_run": 3}']
 
 
 def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
@@ -508,7 +610,6 @@ _OUTPUTS = {
         "Design/specification/ppa.json",
         "Design/specification/clocks.json",
         "Design/specification/features.json",
-        "Design/specification/timing-scenarios.json",
         "Design/specification/check-hints/c.json",
         "Design/specification/top-io.json",
         "Design/specification/interconnects.json",
@@ -539,6 +640,10 @@ _OUTPUTS = {
     "simulation": [
         "Verification/simulation/case-results-summary.md",
         "Verification/simulation/env.sh",
+        # filelist.f is declared by simulation AND consumed by power-analysis's tb_env key.
+        # Omitting it made power-analysis permanently unavailable here, so nothing in this
+        # file ever forward-dispatched the last stage or reached DONE through step 2.
+        "Verification/simulation/filelist.f",
         "Verification/simulation/rtl_filelist.f",
         "Verification/simulation/tb/uvm/agent.sv",
     ],

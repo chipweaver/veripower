@@ -29,6 +29,6 @@
       }
     },
     "tool_versions": {"type": "object"},
-    "reason": {"type": "string", "description": "blocked sub-class (free string): schema_violation / skipped_reason / unparseable / malformed / crash / missing / stale_result / produced_at_unparseable"}
+    "reason": {"type": "string", "description": "blocked sub-class (free string): missing / unparseable / malformed / schema_violation / stale_result / produced_at_unparseable / skipped_reason"}
   }
 }

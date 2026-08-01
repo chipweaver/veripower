@@ -199,7 +199,7 @@ def _tool_versions():
 
     ids = {k: os.environ[k] for k in ("LIB_DB", "LIB_V", "UVM_HOME") if k in os.environ}
     try:
-        ids["plugin"] = subprocess.run(
+        p = subprocess.run(
             [
                 "git",
                 "-C",
@@ -211,7 +211,13 @@ def _tool_versions():
             capture_output=True,
             text=True,
             timeout=5,
-        ).stdout.strip()
+        )
+        # The installed plugin directory is not a git checkout, so this exits 128 with an
+        # empty stdout — the deployment where the key matters most. Write it only when git
+        # actually answered: a missing key reads as "no identity recorded", while the empty
+        # string it used to store is indistinguishable in the log from a recorded value.
+        if p.returncode == 0 and p.stdout.strip():
+            ids["plugin"] = p.stdout.strip()
     except OSError:
         pass  # best-effort: absence never blocks a reap
     return ids
@@ -430,14 +436,6 @@ def cmd_diagnose(
     return {"ok": True, "id": diag_id}
 
 
-def cmd_escalate(module, reason, open_question, candidates):
-    ev = {"type": "escalation", "reason": reason, "open_question": open_question}
-    if candidates:
-        ev["candidates"] = candidates
-    facts.append_event(module, ev, _now())
-    return {"ok": True}
-
-
 def cmd_pin(module, rule, provenance, reason):
     r = rules.RULES[rule]
     if r.oracle_selector is None:
@@ -587,13 +585,6 @@ def main():
     dg.add_argument("--provenance", required=True)
     dg.add_argument("--reason", required=True)
     dg.add_argument("--supersedes", default=None)
-    es = sub.add_parser("escalate")
-    es.add_argument("--module", required=True)
-    es.add_argument("--reason", required=True)
-    es.add_argument("--open-question", required=True)
-    es.add_argument(
-        "--candidates", default=None, help="JSON array of candidate objects"
-    )
     pn = sub.add_parser("pin")
     pn.add_argument("--module", required=True)
     pn.add_argument("--rule", required=True, choices=list(rules.RULES))
@@ -613,6 +604,21 @@ def main():
     co.add_argument("--module", required=True)
     co.add_argument("--paths", nargs="+", required=True)
     args = p.parse_args()
+    # Every verb is module-scoped, and module paths are resolved relative to the CURRENT
+    # WORKING DIRECTORY (facts.module_root). A missing module directory is therefore always
+    # an error and never a legitimate starting state: brainstorm.md is a PIPELINE_INPUT that
+    # must already exist for `specification` to be dispatchable at all, so a module with no
+    # directory can never become schedulable. Without this, the wrong cwd produced two
+    # answers that both looked like real ones — `status` inventing an all-`missing`
+    # projection at exit 0, and `decide` returning the same "no eligible rule" ESCALATE a
+    # genuinely deadlocked module returns. Name the resolved absolute path: that is what
+    # makes a cwd mistake visible.
+    root = facts.module_root(args.module)
+    if not root.is_dir():
+        sys.exit(
+            f"kernel.py {args.verb}: no module directory at {root.resolve()} "
+            f"(module paths resolve against the current working directory)"
+        )
     refs = (
         args.diagnosis_refs.split(",")
         if getattr(args, "diagnosis_refs", None)
@@ -635,19 +641,6 @@ def main():
             )
             return
         caused_by.append((cb_rule, int(cb_run)))
-    candidates = None
-    if getattr(args, "candidates", None):
-        try:
-            candidates = json.loads(args.candidates)
-        except json.JSONDecodeError as e:
-            print(
-                json.dumps(
-                    {"ok": False, "error": f"--candidates JSON parse error: {e}"},
-                    indent=2,
-                    ensure_ascii=False,
-                )
-            )
-            return
     extra_params = None
     if getattr(args, "params", None):
         try:
@@ -689,9 +682,6 @@ def main():
             args.provenance,
             args.reason,
             args.supersedes,
-        ),
-        "escalate": lambda: cmd_escalate(
-            args.module, args.reason, args.open_question, candidates
         ),
         "pin": lambda: cmd_pin(args.module, args.rule, args.provenance, args.reason),
         "reopen": lambda: cmd_reopen(args.module, args.pin_ref, args.reason),

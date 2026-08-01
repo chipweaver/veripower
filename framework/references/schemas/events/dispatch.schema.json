@@ -14,6 +14,6 @@
     "params": {"type": "object", "description": "recorded declared params per rules.RULES[rule].params, e.g. {\"sim_run\": 5} for triage"},
     "objective": {"type": "string", "enum": ["delivery", "repair", "signoff"]},
     "diagnosis_refs": {"type": "array", "items": {"type": "string"}},
-    "caused_by": {"type": "array", "description": "the failures this dispatch answers, as [rule, run] pairs; present iff this is a rework. The route decision reads the failing stage_specific off disk, which moves, so the coordinates are recorded rather than re-derived.", "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "integer", "minimum": 1}]}}
+    "caused_by": {"type": "array", "description": "the failures this dispatch answers, as [rule, run] pairs; present iff this is a rework", "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "integer", "minimum": 1}]}}
   }
 }

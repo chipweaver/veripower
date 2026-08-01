@@ -2,7 +2,7 @@
 
 Exercises the kernel ENTRY POINT (argparse wiring -> verb handlers -> facts/schedule/
 store composition), not the underlying algorithms already covered by
-test_facts_*/test_rules/test_route/test_schedule/test_store.
+test_facts_*/test_rules/test_schedule.
 """
 
 import json
@@ -465,6 +465,10 @@ def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human(
 
 
 def _dispatch_triage(tmp_path, module, sim_run):
+    # Triage only ever fires as a disposition on a simulation failure, so its module
+    # directory always exists by then. Seed it: the CLI refuses a module with no directory,
+    # since module paths resolve against cwd and an absent one is a wrong-cwd mistake.
+    _write_file(module, "brainstorm.md", "b1")
     d = _run_json(
         tmp_path,
         "dispatch",
@@ -751,9 +755,24 @@ def test_dispatch_triage_without_sim_run_rejected(tmp_path, monkeypatch):
     # sim_run, the triage reap builds a diagnosis with subject.outcome_run=None -> schema
     # violation AFTER the outcome already landed -> half-reap. Reject the dispatch up front.
     monkeypatch.chdir(tmp_path)
+    _write_file("m", "brainstorm.md", "b1")
     r = _run_json(tmp_path, "dispatch", "--module", "m", "--rule", "simulation-triage")
     assert r["ok"] is False
     assert "sim_run" in r["error"]
+
+
+def test_unknown_module_directory_is_a_hard_error(tmp_path, monkeypatch):
+    """Module paths resolve against cwd, so an absent module directory is a wrong-cwd
+    mistake, never a starting state — brainstorm.md must already exist for anything to be
+    dispatchable. Both verbs used to answer as if the module were merely empty: `status`
+    invented an all-`missing` projection at exit 0, and `decide` returned the same
+    "no eligible rule" ESCALATE a genuinely deadlocked module returns."""
+    monkeypatch.chdir(tmp_path)
+    for verb in ("status", "decide"):
+        r = _run(tmp_path, verb, "--module", "nosuch")
+        assert r.returncode != 0, r.stdout
+        assert "no module directory" in r.stderr
+        assert str(tmp_path / "asic" / "nosuch") in r.stderr
 
 
 def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
@@ -938,6 +957,7 @@ def test_pin_zero_match_selector_rejected(tmp_path, monkeypatch):
     # content_fingerprint="unknown" and returns ok:true — an inert pin that can never grade
     # human. A pin must endorse real content; reject when nothing matches (conservative).
     monkeypatch.chdir(tmp_path)
+    _write_file("m", "brainstorm.md", "b1")
     r = _run_json(
         tmp_path,
         "pin",

@@ -291,17 +291,25 @@ def _dispatch_index(events: list[dict], rule: str, run: int) -> int | None:
     return None
 
 
-def _live_pin_exists(events: list[dict], oracle_ref: str) -> bool:
-    """True iff some pin of oracle_ref has NO later reopen — i.e. the oracle is currently
-    (re-)endorsed. Mirrors kernel._graded's liveness (existence only; grade needs the record)."""
-    for i, e in enumerate(events):
-        if e["type"] == "pin" and e["oracle_ref"] == oracle_ref:
-            if not any(
-                r["type"] == "reopen" and r["pin_ref"] == oracle_ref
-                for r in events[i + 1 :]
-            ):
-                return True
-    return False
+def live_pins(events: list[dict], oracle_ref: str) -> list[dict]:
+    """The pins of oracle_ref with NO later reopen, in event order — so `[-1]` is the
+    endorsement currently in force. Set-membership over refs would kill re-pinning forever
+    (pin→reopen→pin must yield a live pin again), so liveness is per-pin, not per-ref.
+
+    One implementation, three questions: is the oracle endorsed at all (freshness condition
+    3), what grade does it hold (oracle_grade), and what content did the human name
+    (signoff_basis). They must not drift apart — a proof's validity and the fingerprint the
+    signoff record shows have to be talking about the same pin."""
+    return [
+        e
+        for i, e in enumerate(events)
+        if e["type"] == "pin"
+        and e["oracle_ref"] == oracle_ref
+        and not any(
+            r["type"] == "reopen" and r["pin_ref"] == oracle_ref
+            for r in events[i + 1 :]
+        )
+    ]
 
 
 def oracle_content_fp(module: str, rule) -> str:
@@ -323,23 +331,13 @@ def oracle_content_fp(module: str, rule) -> str:
 
 def oracle_grade(module: str, events: list[dict], rule) -> str:
     """LIVE oracle grade (§5.4 ratchet): proposed unless the LATEST live pin's recorded
-    content fingerprint matches the oracle's CURRENT content. A pin is live iff NO reopen
-    naming its oracle_ref appears AFTER it in event order — set-membership over refs would
-    kill re-pinning forever (pin→reopen→pin must yield a live pin again). Derived live over
-    the current event log (not a reap-time snapshot in the outcome event) so a pin/reopen
-    takes effect immediately — the signoff gate reads this so an endorsement need not wait
-    for a re-reap, and a reopen blocks signoff at once."""
+    content fingerprint matches the oracle's CURRENT content. Derived live over the current
+    event log (not a reap-time snapshot in the outcome event) so a pin/reopen takes effect
+    immediately — the signoff gate reads this so an endorsement need not wait for a re-reap,
+    and a reopen blocks signoff at once."""
     if rule.oracle[1] != "proposed":
         return rule.oracle[1]
-    live = []
-    for i, e in enumerate(events):
-        if e["type"] == "pin" and e["oracle_ref"] == rule.oracle[0]:
-            reopened_later = any(
-                r["type"] == "reopen" and r["pin_ref"] == rule.oracle[0]
-                for r in events[i + 1 :]
-            )
-            if not reopened_later:
-                live.append(e)
+    live = live_pins(events, rule.oracle[0])
     if not live:
         return "proposed"
     current = oracle_content_fp(module, rule)
@@ -387,7 +385,7 @@ def proof_fresh_except_verdict(
         oref = proof["oracle"]["ref"]
         d_idx = _dispatch_index(events, proof_name, outcome["run"])
         anchor = d_idx if d_idx is not None else idx
-        if _reopened_after(events, oref, anchor) and not _live_pin_exists(events, oref):
+        if _reopened_after(events, oref, anchor) and not live_pins(events, oref):
             return False
     return True
 
@@ -608,16 +606,7 @@ def signoff_basis(module: str, events: list[dict]) -> list[dict]:
         oracle: dict = {"ref": rule.oracle[0] if rule.oracle else None}
         oracle["grade"] = oracle_grade(module, events, rule) if rule.oracle else None
         if oracle["grade"] == "human":
-            live = [
-                e
-                for i, e in enumerate(events)
-                if e["type"] == "pin"
-                and e["oracle_ref"] == rule.oracle[0]
-                and not any(
-                    r["type"] == "reopen" and r["pin_ref"] == rule.oracle[0]
-                    for r in events[i + 1 :]
-                )
-            ]
+            live = live_pins(events, rule.oracle[0])
             if live:
                 oracle["pinned_fingerprint"] = live[-1]["content_fingerprint"]
         inputs = sorted(proof.get("inputs", {}))
