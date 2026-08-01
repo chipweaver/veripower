@@ -14,29 +14,17 @@ MAIN = ROOT / "skills/simulation-triage/scripts/simtriage/__main__.py"
 RESULT_SCHEMA = ROOT / "skills/simulation-triage/references/result.schema.json"
 
 
-def _stage_specific_schema() -> dict:
-    doc = json.loads(RESULT_SCHEMA.read_text())
-    for sub in doc["allOf"]:
-        props = sub.get("properties", {})
-        if "stage_specific" in props:
-            return props["stage_specific"]
-    raise AssertionError("result.schema.json: no stage_specific subschema found")
-
-
-def _run(tmp_path, payload: dict, *, schema=None, workdir=None, module="M"):
-    wd = workdir or tmp_path
+def _run(tmp_path, payload: dict, *, workdir=None, module="M"):
     argv = [
         sys.executable,
         str(MAIN),
         "finalize",
         "--workdir",
-        str(wd),
+        str(workdir or tmp_path),
         "--module",
         module,
         "--json-stdin",
     ]
-    if schema is not None:
-        argv += ["--schema", str(schema)]
     return subprocess.run(
         argv, input=json.dumps(payload), capture_output=True, text=True
     )
@@ -50,7 +38,7 @@ def test_result_schema_has_no_standalone_analysis_schema_file():
     ).exists()
 
 
-def test_default_schema_used_when_flag_omitted(tmp_path):
+def test_minimal_complete_accepted(tmp_path):
     r = _run(
         tmp_path,
         {
@@ -58,29 +46,9 @@ def test_default_schema_used_when_flag_omitted(tmp_path):
             "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": {
-                "level": "L1",
                 "findings": [{"anchor": "a.v:1"}],
             },
         },
-    )
-    assert r.returncode == 0, r.stderr
-
-
-def test_explicit_schema_override_still_accepted(tmp_path):
-    schema_path = tmp_path / "override.schema.json"
-    schema_path.write_text(json.dumps(_stage_specific_schema()))
-    r = _run(
-        tmp_path,
-        {
-            "analysis_state": "complete",
-            "root_cause": "rtl-design",
-            "confidence": "high",
-            "advisory": {
-                "level": "L1",
-                "findings": [{"anchor": "a.v:1"}],
-            },
-        },
-        schema=schema_path,
     )
     assert r.returncode == 0, r.stderr
 
@@ -93,7 +61,6 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
             "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": {
-                "level": "L1",
                 "findings": [{"anchor": "a.v:1"}],
             },
         },
@@ -109,7 +76,6 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
         "root_cause": "rtl-design",
         "confidence": "high",
         "advisory": {
-            "level": "L1",
             "findings": [{"anchor": "a.v:1"}],
         },
     }
@@ -198,6 +164,23 @@ def test_unknown_top_level_key_rejected_by_additional_properties_false(tmp_path)
     assert "groups" in r.stderr or "additional" in r.stderr.lower()
 
 
+def test_advisory_tier_label_rejected(tmp_path):
+    """`advisory.level` is gone: `experiment`'s presence is what marks an L2 verdict, and a
+    label the same author writes one line from the data it labels gated nothing — omitting it
+    or writing "L1" both passed the requirement it was supposed to enforce."""
+    r = _run(
+        tmp_path,
+        {
+            "analysis_state": "complete",
+            "root_cause": "rtl-design",
+            "confidence": "high",
+            "advisory": {"level": "L2", "findings": [{"anchor": "a.v:1"}]},
+        },
+    )
+    assert r.returncode == 1
+    assert "level" in r.stderr
+
+
 def test_advisory_unknown_key_rejected(tmp_path):
     r = _run(
         tmp_path,
@@ -233,7 +216,6 @@ def test_advisory_findings_valid(tmp_path):
             "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": {
-                "level": "L1",
                 "findings": [
                     {
                         "anchor": "fp_pkg.svh:264",
@@ -254,7 +236,6 @@ def test_advisory_waveform_valid(tmp_path):
             "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": {
-                "level": "L1",
                 "findings": [{"anchor": "a.v:1"}],
                 "waveform": {
                     "commands": [
@@ -276,7 +257,6 @@ def test_advisory_experiment_valid(tmp_path):
             "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": {
-                "level": "L2",
                 "findings": [{"anchor": "a.v:1"}],
                 "experiment": {
                     "tool": "verilator",
@@ -299,7 +279,6 @@ def test_json_file_input(tmp_path):
                 "root_cause": "rtl-design",
                 "confidence": "high",
                 "advisory": {
-                    "level": "L1",
                     "findings": [{"anchor": "a.v:1"}],
                 },
             }

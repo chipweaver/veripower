@@ -308,7 +308,6 @@ def _triage(module, sim_run, root_cause, confidence):
             "confidence": confidence,
             # high confidence requires a non-empty finding with an anchor (D4/§3.4)
             "advisory": {
-                "level": "L1",
                 "findings": [{"anchor": "matvec.v:1"}],
             },
         },

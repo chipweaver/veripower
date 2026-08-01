@@ -1,18 +1,14 @@
 """simtriage.result — schema-gate the analysis judgment, then atomically write result.json.
 
-Task C7: simulation-triage is now an ordinary kernel-scheduled rule (rules.py: proof=None) —
-the old per-run analysis.json + top-level analysis.json pointer double-file mechanism
-is retired; the single output surface is Verification/simulation-triage/runs/<N>/result.json
-(kernel-issued workdir, atomic temp+rename per Task C1).
+The judgment is entirely agent-authored: unlike the other stages' finalize scripts there is no
+deterministic sidecar to re-derive it from, so `finalize` takes it directly (--json-file /
+--json-stdin), validates it against the stage_specific subschema of references/result.schema.json,
+and only then wraps it into the envelope and writes it. Validating before the write is the point:
+a rejected judgment leaves no file, so the author can fix the content and re-run.
 
-The routing (analysis_state/root_cause/confidence) + advisory (level/fix_direction/findings/
-waveform/experiment) judgment is entirely agent-authored — there is no deterministic sidecar
-to re-derive it from, unlike the other stages' finalize scripts. `finalize` therefore takes
-that judgment directly (--json-file/--json-stdin, same shape the old analysis.json carried),
-schema-gates it against the stage_specific subschema folded into references/result.schema.json
-(single source of truth — the standalone analysis.schema.json is deleted), and on success wraps
-it into the full envelope and writes it. `status` is derived, never agent-supplied: `complete`
-(a landed verdict, including a self-pointing root_cause=simulation) -> pass; `skipped` -> fail.
+`status` is derived, never agent-supplied — `complete` -> pass, `skipped` -> fail. It is written
+because the envelope schema requires it, but nothing routes on it: the reap-time verdict comes
+from analysis_state.
 """
 
 from __future__ import annotations
@@ -32,9 +28,9 @@ _RESULT_SCHEMA_PATH = (
 
 
 def _stage_specific_schema() -> dict:
-    """The bare analysis-fields schema, extracted from the merged result.schema.json's
-    stage_specific subschema (single source of truth — Task C7 folded the old standalone
-    analysis.schema.json in here)."""
+    """The bare analysis-fields schema, extracted from result.schema.json's stage_specific
+    subschema. The agent hands over stage_specific alone, so validating it needs the subschema
+    on its own; the whole envelope is re-validated against the same file at reap."""
     doc = json.loads(_RESULT_SCHEMA_PATH.read_text())
     for sub in doc["allOf"]:
         props = sub.get("properties", {})
@@ -47,12 +43,10 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def validate_analysis(payload: dict, schema: dict | None = None) -> list[str]:
-    """Schema-violation messages (empty list = valid) against the stage_specific
-    contract, or an explicit override schema."""
-    schema_doc = schema if schema is not None else _stage_specific_schema()
+def validate_analysis(payload: dict) -> list[str]:
+    """Schema-violation messages (empty list = valid) against the stage_specific contract."""
     errors = sorted(
-        Draft202012Validator(schema_doc).iter_errors(payload),
+        Draft202012Validator(_stage_specific_schema()).iter_errors(payload),
         key=lambda e: list(e.absolute_path),
     )
     return [
@@ -62,7 +56,7 @@ def validate_analysis(payload: dict, schema: dict | None = None) -> list[str]:
     ]
 
 
-def finalize(workdir, module, json_file, json_stdin, schema_override) -> int:
+def finalize(workdir, module, json_file, json_stdin) -> int:
     """Validate the analysis judgment (--json-file or piped --json-stdin) against the
     stage_specific contract, then atomically write the full result.json.
 
@@ -85,17 +79,9 @@ def finalize(workdir, module, json_file, json_stdin, schema_override) -> int:
         print(f"analysis is not valid JSON: {e}", file=sys.stderr)
         return 2
 
-    schema_doc = None
-    if schema_override is not None:
-        try:
-            schema_doc = json.loads(Path(schema_override).read_text())
-        except (OSError, json.JSONDecodeError) as e:
-            print(f"--schema read/parse error: {e}", file=sys.stderr)
-            return 2
-
     try:
-        errors = validate_analysis(payload, schema_doc)
-    except Exception as e:  # noqa: BLE001 — malformed schema / library failure
+        errors = validate_analysis(payload)
+    except Exception as e:  # noqa: BLE001 — unreadable/malformed schema file
         print(f"validation internal error: {type(e).__name__}: {e}", file=sys.stderr)
         return 2
     if errors:
