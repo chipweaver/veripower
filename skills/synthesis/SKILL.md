@@ -29,7 +29,7 @@ SDC dc_shell reads is rebuilt every round.
 |---|---|
 | `<annotations>/constraint-annotations.json` | The `sdc` block per child: every timing exception and generated clock this RTL implies, in real module names. Its authors declared it and this stage is its only consumer. Schema: `skills/rtl-design/references/constraint-annotations.schema.json`. |
 | `<rtl>/rtl-files.json` | Per-child file layout, which `bootstrap` turns into `scripts/rtl_load.tcl`. The RTL itself is under `<rtl>` too, and step 2 reads it for divider ratios. Schema: `skills/rtl-design/references/rtl-files.schema.json`. |
-| `<sdc>/constraints/<TOP>.sdc` | Clocks and IO delays from specification. Round 1 cold-starts `constraints.sdc` from it; after that the carried copy wins, so a later correction here reaches you only if you carry it across in step 2. `bootstrap` says so when `scope` names this file. |
+| `<sdc>/constraints/<TOP>.sdc` | Clocks and IO delays from specification. `bootstrap` reads it every round, so a correction here arrives on its own; it is not yours to restate or override. |
 | `<ppa>/ppa.json` | The area and slack targets this run is judged against. `finalize` reads them itself; you read them when deciding which side of a PPA miss is wrong. Schema: `skills/specification/references/ppa.schema.json`. |
 
 `LIB_DB` must be in the environment before `make`: `env.sh` refuses to run without it, and the
@@ -57,8 +57,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap --workdir {w
 ```
 
 It generates `scripts/rtl_load.tcl` and `scripts/config.tcl` from the rtl-design file layout, and
-leaves an inherited `constraints.sdc` untouched — on a genuinely first run it cold-starts that
-file from the specification SDC instead. It aborts when `{workdir}/Makefile` already exists (the
+assembles `constraints.sdc` from the specification SDC plus your inherited `constraints.local.sdc`.
+It aborts when `{workdir}/Makefile` already exists (the
 kernel-written `dispatch.json` does not count as "deployed"), and reads the top-module name from
 `manifest.module` when `--top` is omitted. Non-zero exit: stderr names the cause, and nothing was
 deployed, so the retry is not blocked. `make` is the interface to everything it deployed.
@@ -83,12 +83,17 @@ Transcribe, never invent. lint-cdc reads this same sidecar for its SGDC side, so
 add on your own authority has no counterpart there and the two constraint sets diverge silently.
 A path nobody declared is step 3's to report, not yours to except.
 
-Then settle what the seeded file itself asks for: the `set_clock_uncertainty -setup` / `-hold`
-values its `;#` notes flag as placeholders, the `set_input_delay` / `set_output_delay` it already
-carries per port, and `set_drive` / `set_load`, which it carries for no port — add those only
-where the IO cell library documents them. Anything you leave at a placeholder, and anything you
-decide not to add, needs a `# notes:` line saying why: this file is promoted, and the next reader
-cannot tell a measured margin from a default or an omission from an oversight.
+Everything you write goes in `constraints.local.sdc`, which `bootstrap` sources after the seed.
+Tcl takes the last assignment, so settling one of the seed's placeholders is a line here, not an
+edit there: the `set_clock_uncertainty -setup` / `-hold` values its `;#` notes flag, and
+`set_drive` / `set_load`, which it carries for no port — add those only where the IO cell library
+documents them. Anything you leave at a placeholder, and anything you decide not to add, needs a
+`# notes:` line saying why: this file is promoted, and the next reader cannot tell a measured
+margin from a default or an omission from an oversight.
+
+`constraints.sdc` is the file dc_shell reads and is **generated every round** from the seed plus
+your local file. Editing it is pointless — the next round overwrites it — and that is what lets a
+corrected clock upstream reach the tool without touching what you measured.
 
 ### 3. Converge
 

@@ -297,6 +297,7 @@ def enumerate_artifacts(workdir) -> list[dict]:
         "reports/power.rpt",
         "reports/check_design.rpt",
         "constraints.sdc",
+        "constraints.local.sdc",
         "run.log",
         "scripts/dc_run.tcl",
         "scripts/rtl_load.tcl",

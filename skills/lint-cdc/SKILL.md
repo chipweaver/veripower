@@ -21,21 +21,25 @@ module's RTL, and close the run through the `lintcdc` CLI.
 
 `{workdir}/dispatch.json` carries the `inputs` table below, so `<key>` denotes a location and
 you read `<key>/<subpath>`. It also carries a `scope` list when the kernel knows which inputs
-changed since your last run: that narrows what you triage, never what the tool analyzes — except
-when it names the SGDC seed, which is the one input whose change you must carry into a file that
-would otherwise never see it.
+changed since your last run: that narrows what you triage, never what the tool analyzes.
 
 | Path | Use |
 |---|---|
-| `<annotations>/constraint-annotations.json` | The `sgdc` block per child: every depth annotation this RTL implies, in real module names. The child that wrote the RTL declared them; nothing upstream matched a name against it, so an annotation naming a module SpyGlass cannot find surfaces here first. Schema: `skills/rtl-design/references/constraint-annotations.schema.json`. |
+| `<annotations>/constraint-annotations.json` | The `sgdc` block per child: every depth annotation this RTL implies. `bootstrap` renders all four categories into the SGDC itself — you never transcribe them. Nothing upstream matched a name against the netlist, so a name SpyGlass cannot find surfaces here first, as its author's defect. Schema: `skills/rtl-design/references/constraint-annotations.schema.json`. |
 | `<rtl>/rtl-files.json` | Per-child file layout, which `bootstrap` turns into `scripts/filelist.txt`. Schema: `skills/rtl-design/references/rtl-files.schema.json`. |
-| `<sgdc_seed>/constraints/<TOP>.sgdc` | Clocks, resets and port associations from specification. Round 1 cold-starts `scripts/constraints.sgdc` from it; after that the carried copy wins, so a later correction here reaches you only if you carry it across. `bootstrap` says so when `scope` names this file. |
+| `<sgdc_seed>/constraints/<TOP>.sgdc` | Clocks and resets from specification. `bootstrap` reads it every round, so a correction here arrives on its own; it is not yours to restate or override. |
 
-Two files under `{workdir}` are yours to edit, and both reach you holding the previous round's
-work rather than a pristine template:
+Two files under `{workdir}` are yours, and both reach you holding the previous round's work
+rather than a pristine template:
 
-- `scripts/constraints.sgdc`: the seed plus every depth annotation.
+- `scripts/local.sgdc`: your own SGDC — the port/clock associations the seed cannot know.
 - `scripts/waiver.tcl`: the waivers, each carrying its reason.
+
+`scripts/constraints.sgdc` is the file SpyGlass reads and is **generated every round** from the
+seed, the annotations and your `local.sgdc`, in that order. Editing it is pointless: the next
+round overwrites it. That split is what lets an upstream correction reach the tool without
+touching a round's own work, and it is why neither the clock/reset block nor the annotations are
+yours to restate — a wrong one belongs to whoever declared it, and step 4 routes it there.
 
 Everything else under `{workdir}` is produced by the tools you invoke, and `finalize`
 enumerates it into `artifacts[]` for you.
@@ -51,40 +55,24 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap --workdir {wor
 ```
 
 It deploys NO-CLOBBER so your two files survive, substitutes the `MY_TOP` placeholder, and
-cold-starts `scripts/constraints.sgdc` from the seed on a genuinely first run. It aborts when
-`{workdir}/Makefile` already exists (the kernel-written `dispatch.json` does not count as
-"deployed"), and reads the top-module name from `manifest.module` when `--top` is omitted.
-Non-zero exit: stderr names the cause. `make` is the interface to everything it deployed.
+assembles `scripts/constraints.sgdc` from the specification seed, the generated annotations and
+your `scripts/local.sgdc`. It aborts when `{workdir}/Makefile` already exists (the kernel-written
+`dispatch.json` does not count as "deployed"), when the seed does not resolve, and when the
+annotations sidecar is unreadable — the first two would leave SpyGlass analysing a design with no
+clock declared, which it reports as a clean run. It reads the top-module name from
+`manifest.module` when `--top` is omitted. Non-zero exit: stderr names the cause. `make` is the
+interface to everything it deployed.
 
-### 2. Transcribe the annotations
+### 2. Constrain
 
-Union the `sgdc` block across every child of `<annotations>/constraint-annotations.json` and
-append all four categories to `scripts/constraints.sgdc` before you run anything:
+The seed and the annotations are already in the assembled SGDC — you write neither. What is left
+is what only this stage can know, into `scripts/local.sgdc`: the `abstract_port` associations
+that bind a reset to the domain it resets and an input to its driving domain, without which CDC
+cannot see the driver side of a crossing.
 
-| sidecar key | SGDC line |
-|---|---|
-| `sync_cell` | `sync_cell -name <module>` |
-| `reset_synchronizer` | `reset_synchronizer -name <net>` |
-| `set_case_analysis` | `set_case_analysis -name <port> -value <value>` |
-| `quasi_static` | `quasi_static -name <signal>` |
-
-Every category is always present, so an empty array is that child's claim to have none. These
-are design facts their authors declared rather than suppressions you are guessing at, which is
-why all four go in one pass: each one you left for the tool to surface would cost a full
-SpyGlass iteration to discover.
-
-Use those exact forms, and note that the two synchronizer commands do not take the same kind of
-name: `sync_cell` names the module, `reset_synchronizer` names the synchronized reset net it
-drives. Giving `reset_synchronizer` a module name is `checkSGDC_existence` + a Fatal that aborts
-rule checking for the whole run, and the sidecar it leaves behind reads CLEANER than the truth —
-measured on `vL-2016.06`, the aborted run reported 0 unsynchronized crossings where the same RTL
-really had 6. SGDC also takes `set_case_analysis` by flag, and the positional spelling that is
-correct in SDC (`set_case_analysis 0 scan_en`) is a syntax fatal in the same way.
-
-Transcribe, never invent. synthesis reads this same sidecar for its SDC side, so an annotation
-you add here on your own authority has no SDC counterpart and the two constraint sets diverge
-silently. A false positive the sidecar never declared is a gap in its author's work, and step 4
-routes it there.
+The seed's clock/reset block is not yours to override, and an annotation you disagree with is not
+yours to correct. Both belong to whoever declared them, and step 4 routes a failure there — a
+correction you make locally would leave that author's file wrong and synthesis reading it.
 
 ### 3. Converge
 
@@ -93,8 +81,8 @@ then `make cdc` when you want `set_case_analysis` settled before CDC runs. Each 
 `collect_report.py`, which writes `<kind>-report.txt` for a human and `<kind>-violations.json`
 carrying `counts` plus one row per message.
 
-Triage every `severity=error` row in both sidecars. Step 2 already suppressed the false-positive
-classes, so a row that survived is one of two things:
+Triage every `severity=error` row in both sidecars. The annotations already suppressed the
+false-positive classes their authors declared, so a row that survived is one of three things:
 
 - **Acceptable anyway** → a `waive` in `scripts/waiver.tcl` carrying `-comment "<why>"`, then
   re-run that check to confirm it took. SpyGlass subtracts a waived message before anything
@@ -102,6 +90,10 @@ classes, so a row that survived is one of two things:
   BLOCKS on an entry without one.
 - **A real defect, or an annotation its author never declared** → leave it. This run fails and
   step 4 attributes it.
+- **An annotation that names something SpyGlass cannot find** (`checkSGDC_existence`, an
+  `SGDC_*` Fatal) → also leave it. The name came verbatim from the sidecar, so the sidecar is
+  wrong and rtl-design owns it. Do not repair it in `local.sgdc`: that hides the defect and
+  leaves synthesis reading the same bad file.
 
 Re-review inherited waivers on any run whose RTL changed: an entry written against an old
 finding silently swallows a new same-rule violation. Scope each as narrowly as the rule allows,

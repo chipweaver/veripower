@@ -155,33 +155,6 @@ def test_sdc_source_of_truth_copied(tmp_path):
     )  # copied verbatim, never substituted
 
 
-def test_carried_sdc_wins_over_the_specification_copy(tmp_path):
-    # carry_self restores the previous round's constraints.sdc before bootstrap runs; it
-    # holds the timing exceptions supplemented against real RTL, so re-copying the
-    # specification SDC over it would throw that round's work away silently.
-    skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
-    (workdir / "constraints.sdc").write_text("# CARRIED\nset_false_path -from x\n")
-    proc = _run(skill_dst, workdir, "--top", "top")
-    assert proc.returncode == 0, proc.stderr
-    con = (workdir / "constraints.sdc").read_text()
-    assert "CARRIED" in con and "set_false_path" in con
-    assert "spec sdc" not in con
-    assert "carried constraints.sdc" in proc.stdout
-
-
-def test_carried_sdc_survives_a_missing_specification_sdc(tmp_path):
-    # The cold-start guard is about having constraints at all. With a carried file the
-    # run is constrained, so a <TOP>.sdc that no longer resolves is not a fail-closed.
-    skill_dst, rtl, workdir = _mirror(tmp_path)
-    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
-    (tmp_path / "asic/M/Design/specification/constraints/top.sdc").unlink()
-    (workdir / "constraints.sdc").write_text("# CARRIED\n")
-    proc = _run(skill_dst, workdir, "--top", "top")
-    assert proc.returncode == 0, proc.stderr
-    assert (workdir / "constraints.sdc").read_text() == "# CARRIED\n"
-
-
 def test_empty_filelist_fail_closed(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": []}}))
@@ -292,35 +265,31 @@ def test_config_tcl_lib_db_does_not_override_the_environment(tmp_path):
     assert seen.stdout.strip() == "seen: /real/slow.db", seen
 
 
-def _add_scope(workdir, *paths):
-    """dispatch.json's `scope` — the kernel writes it naming the inputs whose fingerprints
-    moved since the last run."""
-    d = json.loads((workdir / "dispatch.json").read_text())
-    d["scope"] = list(paths)
-    (workdir / "dispatch.json").write_text(json.dumps(d))
-
-
-def test_seed_change_in_scope_is_announced_over_the_carried_sdc(tmp_path):
-    """The carried file wins, which is right — but its clocks and IO delays are
-    specification's, and nothing re-reads the seed after round 1, so a correction upstream
-    would land in a file this stage never opens again."""
+def test_sdc_is_assembled_seed_then_local(tmp_path):
+    """The file dc_shell reads is generated, not maintained. The local file comes last so a
+    value settled there wins by Tcl's last-assignment rule, without editing the seed."""
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
-    (workdir / "constraints.sdc").write_text("# CARRIED\ncreate_clock -period 10 x\n")
-    _add_scope(workdir, "Design/specification/constraints/top.sdc")
+    (workdir / "constraints.local.sdc").write_text(
+        "# LOCAL\nset_clock_uncertainty -setup 0.15 [get_clocks clk]\n"
+    )
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
-    assert "specification SDC changed this round" in proc.stderr
-    assert "CARRIED" in (workdir / "constraints.sdc").read_text()
+    out = (workdir / "constraints.sdc").read_text()
+    assert out.index("spec sdc for top") < out.index("# LOCAL")
+    assert "set_clock_uncertainty -setup 0.15" in out
 
 
-def test_no_notice_when_scope_does_not_name_the_sdc(tmp_path):
-    """The two files always differ after round 1, so comparing them would fire every
-    rework. `scope` is what makes this fire only when the seed itself moved."""
+def test_a_corrected_seed_reaches_dc_without_the_stage_acting(tmp_path):
+    """The defect this replaces: the seed was read once, on round 1, so a specification-side
+    correction landed in a file the stage never opened again."""
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
-    (workdir / "constraints.sdc").write_text("# CARRIED\n")
-    _add_scope(workdir, "Design/rtl-design/top.v")
+    (workdir / "constraints.local.sdc").write_text("# carried local, untouched\n")
+    con = workdir.parents[2] / "specification" / "constraints"
+    (con / "top.sdc").write_text("# spec sdc for top\ncreate_clock -period 4.0 x\n")
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
-    assert "SDC changed" not in proc.stderr
+    out = (workdir / "constraints.sdc").read_text()
+    assert "create_clock -period 4.0" in out
+    assert "# carried local, untouched" in out

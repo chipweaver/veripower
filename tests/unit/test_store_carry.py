@@ -58,14 +58,18 @@ def test_lint_carry_only_the_two_scripts(tmp_path, monkeypatch):
     c = _canon(tmp_path, "Design/lint-cdc")
     (c / "scripts").mkdir()
     (c / "scripts" / "waiver.tcl").write_text("w")
-    (c / "scripts" / "constraints.sgdc").write_text("s")
+    (c / "scripts" / "local.sgdc").write_text("s")
+    (c / "scripts" / "constraints.sgdc").write_text(
+        "assembled"
+    )  # generated, NOT carried
     (c / "scripts" / "filelist.txt").write_text("f")  # NOT in carry globs
     (c / "lint-report.txt").write_text("r")  # NOT in carry globs
     wd = c / "runs" / "1"
     wd.mkdir(parents=True)
     store.carry_self(facts.module_root("m"), "lint-cdc", wd)
     assert (wd / "scripts" / "waiver.tcl").exists()
-    assert (wd / "scripts" / "constraints.sgdc").exists()
+    assert (wd / "scripts" / "local.sgdc").exists()
+    assert not (wd / "scripts" / "constraints.sgdc").exists()
     assert not (wd / "scripts" / "filelist.txt").exists()
     assert not (wd / "lint-report.txt").exists()
 
@@ -93,7 +97,8 @@ def test_transformer_carry_is_noop(tmp_path, monkeypatch):
 def test_synthesis_carry_only_the_hand_edited_sdc(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     c = _canon(tmp_path, "Design/synthesis")
-    (c / "constraints.sdc").write_text("set_false_path -from x")
+    (c / "constraints.local.sdc").write_text("set_false_path -from x")
+    (c / "constraints.sdc").write_text("assembled")  # generated, NOT carried
     (c / "out").mkdir()
     (c / "out" / "m_syn.v").write_text("netlist")  # regenerated, NOT in carry globs
     (c / "reports").mkdir()
@@ -101,8 +106,8 @@ def test_synthesis_carry_only_the_hand_edited_sdc(tmp_path, monkeypatch):
     wd = c / "runs" / "2"
     wd.mkdir(parents=True)
     store.carry_self(facts.module_root("m"), "synthesis", wd)
-    assert (wd / "constraints.sdc").read_text() == "set_false_path -from x"
-    assert [p.name for p in wd.iterdir()] == ["constraints.sdc"]
+    assert (wd / "constraints.local.sdc").read_text() == "set_false_path -from x"
+    assert [p.name for p in wd.iterdir()] == ["constraints.local.sdc"]
 
 
 def test_no_canonical_stage_dir_is_noop(tmp_path, monkeypatch):

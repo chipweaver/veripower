@@ -146,11 +146,12 @@ RULES: dict[str, Rule] = {
             "lint-violations.json",
             "cdc-violations.json",
             "scripts/constraints.sgdc",
+            "scripts/local.sgdc",
             "scripts/waiver.tcl",
         ),
         proof="lint-cdc",
         oracle=("spyglass-ruleset", "tool"),
-        carry=("scripts/waiver.tcl", "scripts/constraints.sgdc"),
+        carry=("scripts/waiver.tcl", "scripts/local.sgdc"),
     ),
     "synthesis": Rule(
         name="synthesis",
@@ -176,10 +177,11 @@ RULES: dict[str, Rule] = {
             "out/*_syn.sdf",
             "reports/qor.rpt",
             "constraints.sdc",
+            "constraints.local.sdc",
         ),
         proof="synthesis",
         oracle=("dc-shell", "tool"),
-        carry=("constraints.sdc",),  # the timing exceptions the agent supplements
+        carry=("constraints.local.sdc",),  # the timing exceptions the agent supplements
     ),
     "timing-analysis": Rule(
         name="timing-analysis",

@@ -208,7 +208,8 @@ def parse_tool(workdir: Path) -> str:
 def enumerate_artifacts(workdir: Path) -> list[dict]:
     workdir = Path(workdir)
     candidates = [
-        "scripts/constraints.sgdc",  # the warm-start anchor the next round inherits
+        "scripts/constraints.sgdc",  # generated; promoted as the SGDC the tool actually read
+        "scripts/local.sgdc",  # authored here, and the only SGDC the next round inherits
         "lint-report.txt",
         "cdc-report.txt",
         "lint-violations.json",

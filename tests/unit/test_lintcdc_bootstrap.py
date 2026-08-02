@@ -38,10 +38,25 @@ def _make_tree(
     *,
     top="dut",
     rtl_files={"c": {"files": ["rtl/dut.v"]}},
-    carried_sgdc=None,
+    carried_local=None,
     carried_waiver=None,
-    cold=None,
+    cold="# seed\ncurrent_design dut\nclock -name clk -period 10.0\n",
     sdc=None,
+    annotations={
+        "c": {
+            "sgdc": {
+                "sync_cell": [],
+                "reset_synchronizer": [],
+                "set_case_analysis": [],
+                "quasi_static": [],
+            },
+            "sdc": {
+                "create_generated_clock": [],
+                "set_multicycle_path": [],
+                "set_false_path": [],
+            },
+        }
+    },
 ):
     """Build the upstream asic/<module>/... refs under a tmp design-tree root, and
     pre-populate workdir/dispatch.json (rtl/annotations/sgdc_seed keys) the way kernel.py
@@ -56,6 +71,8 @@ def _make_tree(
     rtl.mkdir(parents=True)
     if rtl_files is not None:
         (rtl / "rtl-files.json").write_text(json.dumps(rtl_files))
+    if annotations is not None:
+        (rtl / "constraint-annotations.json").write_text(json.dumps(annotations))
     spec_root = base / "Design" / "specification"
     if cold is not None or sdc is not None:
         spec_con = spec_root / "constraints"
@@ -66,11 +83,11 @@ def _make_tree(
             (spec_con / f"{top}.sdc").write_text(sdc)
     workdir = base / "Design" / "lint-cdc" / "runs" / "1"
     workdir.mkdir(parents=True)
-    if carried_sgdc is not None or carried_waiver is not None:
+    if carried_local is not None or carried_waiver is not None:
         ws = workdir / "scripts"
         ws.mkdir(parents=True)
-        if carried_sgdc is not None:
-            (ws / "constraints.sgdc").write_text(carried_sgdc)
+        if carried_local is not None:
+            (ws / "local.sgdc").write_text(carried_local)
         if carried_waiver is not None:
             (ws / "waiver.tcl").write_text(carried_waiver)
     spec_root.mkdir(parents=True, exist_ok=True)
@@ -126,19 +143,6 @@ def test_deploys_and_substitutes_template_branch(tmp_path):
     )  # template branch subs it
 
 
-def test_carried_sgdc_used_and_not_resubstituted(tmp_path):
-    # carried SGDC (pre-placed in workdir by carry_self) -> left alone, NOT MY_TOP-substituted.
-    m, workdir, main = _make_tree(
-        tmp_path,
-        carried_sgdc="# SENTINEL carried sgdc\ncurrent_design dut\nquasi_static -name x\n",
-    )
-    r = _run(workdir, main, extra=["--top", "dut"])
-    assert r.returncode == 0, r.stderr
-    assert "SENTINEL carried" in (workdir / "scripts" / "constraints.sgdc").read_text()
-    assert "carried scripts/constraints.sgdc" in r.stdout
-    assert "MY_TOP" not in (workdir / "env.sh").read_text()
-
-
 def test_carried_waiver_survives_template_deploy(tmp_path):
     # Pre-place a carried scripts/waiver.tcl (as kernel.py's carry_self would, BEFORE
     # this verb runs), then deploy: the no-clobber template deploy must NOT clobber it.
@@ -155,17 +159,6 @@ def test_no_carried_waiver_keeps_substituted_template(tmp_path):
     assert r.returncode == 0, r.stderr
     tpl = (workdir / "scripts" / "waiver.tcl").read_text()
     assert "MY_TOP" not in tpl
-
-
-def test_cold_seed_used(tmp_path):
-    # no carried sgdc, but spec <top>.sgdc present -> cold seed copied verbatim.
-    m, workdir, main = _make_tree(
-        tmp_path, cold="# SENTINEL cold sgdc\ncurrent_design dut\n"
-    )
-    r = _run(workdir, main, extra=["--top", "dut"])
-    assert r.returncode == 0, r.stderr
-    assert "SENTINEL cold" in (workdir / "scripts" / "constraints.sgdc").read_text()
-    assert "cold-start" in r.stdout
 
 
 def test_filelist_synced_and_rebased(tmp_path):
@@ -274,50 +267,96 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
     assert (workdir / "env.sh").is_file()
 
 
-def _add_scope(workdir, *paths):
-    """Add dispatch.json's `scope` — the kernel writes it naming the inputs whose
-    fingerprints moved since the last run."""
-    d = json.loads((workdir / "dispatch.json").read_text())
-    d["scope"] = list(paths)
-    (workdir / "dispatch.json").write_text(json.dumps(d))
+# ── the assembled SGDC ────────────────────────────────────────────────────────────────
+_ANN = {
+    "b_child": {
+        "sgdc": {
+            "sync_cell": ["sync2ff"],
+            "reset_synchronizer": ["rst_meta_n"],
+            "set_case_analysis": [{"port": "scan_en", "value": "0"}],
+            "quasi_static": ["cfg_mode"],
+        },
+        "sdc": {
+            "create_generated_clock": [],
+            "set_multicycle_path": [],
+            "set_false_path": [],
+        },
+    },
+    "a_child": {
+        "sgdc": {
+            "sync_cell": [],
+            "reset_synchronizer": [],
+            "set_case_analysis": [],
+            "quasi_static": [],
+        },
+        "sdc": {
+            "create_generated_clock": [],
+            "set_multicycle_path": [],
+            "set_false_path": [],
+        },
+    },
+}
 
 
-def test_seed_change_in_scope_is_announced_over_the_carried_sgdc(tmp_path):
-    """The carried file wins, which is right — but it holds the OLD clock/reset block, so
-    a specification-side correction lands in a file this stage never opens again. Measured:
-    a diagnosis routed a reset-polarity fix upstream, specification made it, and the next
-    round ran the old value anyway."""
+def test_sgdc_is_assembled_seed_then_annotations_then_local(tmp_path):
+    """The file SpyGlass reads is generated, not maintained. Order matters only in that the
+    stage's own file comes last, where SGDC lets it associate what the seed declared."""
     m, workdir, main = _make_tree(
         tmp_path,
-        carried_sgdc="# carried\ncurrent_design dut\nreset -name rst -value 1\n",
-        cold="# seed\ncurrent_design dut\nreset -name rst -value 0\n",
+        cold="# SEED\ncurrent_design dut\nreset -name rst -value 0\n",
+        carried_local="# LOCAL\nabstract_port -ports rst -clock clk -reset rst\n",
+        annotations=_ANN,
     )
-    _add_scope(workdir, "Design/specification/constraints/dut.sgdc")
     r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
-    assert "specification SGDC changed this round" in r.stderr
-    # still carried: reconciling is the agent's call, not a silent overwrite of its work
-    assert "# carried" in (workdir / "scripts" / "constraints.sgdc").read_text()
+    out = (workdir / "scripts" / "constraints.sgdc").read_text()
+    assert out.index("# SEED") < out.index("sync_cell") < out.index("# LOCAL")
+    assert "reset -name rst -value 0" in out
+    assert "# LOCAL" in out
 
 
-def test_no_notice_when_scope_does_not_name_the_seed(tmp_path):
-    """The two files always differ after round 1, so comparing them would fire every
-    rework. `scope` is what makes this fire only when the seed itself moved."""
+def test_annotations_are_generated_from_the_sidecar_not_transcribed(tmp_path):
+    """All four categories, every child, in the sidecar's own spelling. A transcriber who
+    silently corrected a wrong name would hide a defect that belongs to its author."""
+    m, workdir, main = _make_tree(tmp_path, annotations=_ANN)
+    r = _run(workdir, main, extra=["--top", "dut"])
+    assert r.returncode == 0, r.stderr
+    out = (workdir / "scripts" / "constraints.sgdc").read_text()
+    for line in (
+        "sync_cell -name sync2ff",
+        "reset_synchronizer -name rst_meta_n",
+        "quasi_static -name cfg_mode",
+        "set_case_analysis -name scan_en -value 0",
+    ):
+        assert line in out, line
+
+
+def test_a_corrected_seed_reaches_the_tool_without_the_stage_acting(tmp_path):
+    """The defect this replaces: the seed was read once, on round 1, so a specification-side
+    correction landed in a file the stage never opened again."""
     m, workdir, main = _make_tree(
         tmp_path,
-        carried_sgdc="# carried\ncurrent_design dut\n",
-        cold="# seed\ncurrent_design dut\n",
+        cold="# seed v2\ncurrent_design dut\nreset -name rst -value 0\n",
+        carried_local="# carried local, untouched\n",
     )
-    _add_scope(workdir, "Design/rtl-design/dut.v")
     r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
-    assert "SGDC changed" not in r.stderr
+    out = (workdir / "scripts" / "constraints.sgdc").read_text()
+    assert "reset -name rst -value 0" in out
+    assert "# carried local, untouched" in out
 
 
-def test_no_notice_on_a_cold_start(tmp_path):
-    """Round 1 reads the seed, so there is nothing to reconcile."""
-    m, workdir, main = _make_tree(tmp_path, cold="# seed\ncurrent_design dut\n")
-    _add_scope(workdir, "Design/specification/constraints/dut.sgdc")
+def test_missing_seed_fail_closed(tmp_path):
+    """SpyGlass reading a design with no clock declared reports a clean run, so there is no
+    tolerable default here."""
+    m, workdir, main = _make_tree(tmp_path, cold=None)
     r = _run(workdir, main, extra=["--top", "dut"])
-    assert r.returncode == 0, r.stderr
-    assert "SGDC changed" not in r.stderr
+    assert r.returncode == 1
+    assert "SGDC source of truth not found" in r.stderr
+
+
+def test_missing_annotations_fail_closed(tmp_path):
+    m, workdir, main = _make_tree(tmp_path, annotations=None)
+    r = _run(workdir, main, extra=["--top", "dut"])
+    assert r.returncode == 1
+    assert "constraint-annotations.json" in r.stderr

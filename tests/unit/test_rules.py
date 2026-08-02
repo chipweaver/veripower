@@ -152,14 +152,15 @@ def test_carry_no_carry_fields_and_values():
     assert rules.RULES["rtl-design"].no_carry == ("semantic-review/*.md",)
     assert rules.RULES["simulation"].carry == ("**",)
     assert rules.RULES["simulation"].no_carry == ("conformance-review.md",)
-    # lint carries exactly its two human-audited scripts
+    # Both constraint stages carry ONLY what they author. The file the tool reads is
+    # assembled from the upstream seed every round, so carrying it would pin the seed to
+    # whatever it said the round the workdir was first created.
     assert rules.RULES["lint-cdc"].carry == (
         "scripts/waiver.tcl",
-        "scripts/constraints.sgdc",
+        "scripts/local.sgdc",
     )
     assert rules.RULES["lint-cdc"].no_carry == ()
-    # synthesis carries the one file it hand-edits: the timing exceptions
-    assert rules.RULES["synthesis"].carry == ("constraints.sdc",)
+    assert rules.RULES["synthesis"].carry == ("constraints.local.sdc",)
     assert rules.RULES["synthesis"].no_carry == ()
     # pure transformers + triage carry nothing
     for r in ("timing-analysis", "power-analysis", "simulation-triage"):

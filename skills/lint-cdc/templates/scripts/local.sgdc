@@ -1,0 +1,18 @@
+# ==============================================================================
+# local.sgdc — this stage's own SGDC, appended after the specification seed and
+# the generated constraint-annotations block. The only SGDC file you edit, and
+# the only one carried into the next round.
+#
+# What belongs here: port/clock associations the seed cannot know, and analysis
+# scope you decided on. What does NOT: clocks, resets and their polarity (the
+# seed's — a correction goes to specification and arrives here on its own), and
+# anything in constraint-annotations.json (generated — a wrong entry is its
+# author's to fix, and this stage's failure routing sends it there).
+# ==============================================================================
+
+# Reset port association — bind a reset to the domain it resets.
+#   abstract_port -ports <rst> -clock <clk> -reset <rst>
+#
+# Input port clock association — bind an input to its driving domain, so CDC
+# recognises the driver side of a crossing.
+#   abstract_port -ports <port> -clock <clk>
