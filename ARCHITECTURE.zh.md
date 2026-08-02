@@ -27,7 +27,7 @@
 | **kernel**（内核） | `python3 framework/scripts/kernel.py`——`events.jsonl` 的唯一写者，也是唯一的决策者。它的动词就是全部状态/决策界面（§2.2）。 |
 | **decide / 调度器** | `kernel.py decide`（实现在 `schedule.py`）——读取事件日志 + 磁盘，每次调用返回恰好一个动作；Orchestrator 是其薄执行器（§5）。 |
 | **rule**（规则） | 一个内核调度单元，定义于 `rules.py:RULES`。八条流水线规则外加 `simulation-triage`。依赖图从规则的输入/输出选择子*派生*，不单独声明（§3）。 |
-| **proof**（证明） | 产证明规则在收割时落账的 pass/fail 断言：`{name, verdict, inputs, oracle, evidence}`，内嵌于其 `outcome` 事件（§4.4）。 |
+| **proof**（证明） | 产证明规则在收割时落账的 pass/fail 断言：`{name, verdict, inputs, oracle}`，内嵌于其 `outcome` 事件（§4.4）。 |
 | **证明有效性** | 一个*查询*——不是存下来的标志位。一个证明*此刻*有效，当且仅当其裁决为 `pass`、落账的输入/输出指纹仍与磁盘一致、且其 oracle 此后未被 reopen。陈旧与否在每次读取时重算（§4.4）。 |
 | **oracle 与 grade** | 裁决一个证明的裁判，`(ref, grade)`，`grade ∈ {tool, human, proposed}`。tool oracle 自身即权威；`proposed`（LLM 自撰）oracle 只能经人工 `pin` 棘轮升格为 `human`（§4.5）。 |
 | **目标集**（goal set） | 一次 `decide` 调用所调度的证明集合：当前正在失败的那些；一条都没失败时则是全部八条。每次调用从日志导出，调用方从不携带（§5.1）。 |
@@ -251,7 +251,7 @@ for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 
 ### 4.4 证明有效性是查询
 
-产证明规则在收割时把一条 `proof` 落进其 `outcome` 事件：`{name, verdict, inputs, oracle, evidence}`。`inputs` 是该 run 消费一切的版本表（取自 `dispatch` 事件）；`outputs`（在 outcome 上）是它产出一切的版本表。证明不是存储的"有效"位——`facts.proof_valid(module, proof)` 每次调用都重算。它*此刻*有效，当且仅当**全部四个**条件成立：
+产证明规则在收割时把一条 `proof` 落进其 `outcome` 事件：`{name, verdict, inputs, oracle}`。`inputs` 是该 run 消费一切的版本表（取自 `dispatch` 事件）；`outputs`（在 outcome 上）是它产出一切的版本表——规范 `result.json` 加它旁边的每一条 `artifacts[]` 路径，那就是这条裁决所依据的证据，也是 proof 不再单独带一份路径清单的原因。证明不是存储的"有效"位——`facts.proof_valid(module, proof)` 每次调用都重算。它*此刻*有效，当且仅当**全部四个**条件成立：
 
 1. **裁决** — 携带该证明的最新 outcome 有 `verdict == pass`。
 2. **输入未变** — 每个落账的输入指纹仍与磁盘一致。

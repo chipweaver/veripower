@@ -1303,12 +1303,11 @@ def test_basis_names_the_input_set_each_verdict_was_about(tmp_path, monkeypatch)
     events = facts.read_events("m")
     by_proof = {b["proof"]: b for b in facts.signoff_basis("m", events)}
     spec = by_proof["specification"]
-    assert spec["inputs"]["paths"] == ["brainstorm.md"]
-    assert spec["inputs"]["count"] == 1
+    assert spec["inputs"] == ["brainstorm.md"]
     # and it matches what the proof actually recorded, not a re-derivation from rules.py
     _, outcome = facts._proof_outcome(events, "specification")
     proof = next(p for p in outcome["proofs"] if p["name"] == "specification")
-    assert spec["inputs"]["paths"] == sorted(proof["inputs"])
+    assert spec["inputs"] == sorted(proof["inputs"])
 
 
 def test_decide_signoff_done_carries_the_basis(tmp_path, monkeypatch):

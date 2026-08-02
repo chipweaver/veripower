@@ -27,7 +27,7 @@ Core coined terms, each defined once here and elaborated in the linked section. 
 | **kernel** | `python3 framework/scripts/kernel.py` — the sole writer of `events.jsonl` and the sole decider. Its verbs are the whole state/decision surface. (§2.2) |
 | **decide / scheduler** | `kernel.py decide` (implemented in `schedule.py`) — reads the event log + disk and returns exactly one action per call; the Orchestrator is its thin executor. (§5) |
 | **rule** | One kernel-scheduled unit of work, defined in `rules.py:RULES`. Eight pipeline rules plus `simulation-triage`. The dependency graph is *derived* from rules' input/output selectors, not declared separately. (§3) |
-| **proof** | The pass/fail assertion a proof-producing rule records at reap: `{name, verdict, inputs, oracle, evidence}`, embedded in its `outcome` event. (§4.4) |
+| **proof** | The pass/fail assertion a proof-producing rule records at reap: `{name, verdict, inputs, oracle}`, embedded in its `outcome` event. (§4.4) |
 | **proof validity** | A *query* — not a stored flag. A proof is valid *now* iff its verdict is `pass`, its recorded input and output fingerprints still match disk, and its oracle was not reopened since. Staleness is recomputed on every read. (§4.4) |
 | **oracle & grade** | The judge that decided a proof, `(ref, grade)` with `grade ∈ {tool, human, proposed}`. A tool oracle is authoritative; a `proposed` (LLM-authored) oracle can be ratcheted to `human` only by a `pin`. (§4.5) |
 | **goal set** | The proofs a `decide` call is scheduling toward: the currently-failing ones, or all eight when none are failing. Derived from the log every call, never carried by the caller. (§5.1) |
@@ -251,7 +251,7 @@ Freshness is decided by comparing content, so the atom of the whole model is a c
 
 ### 4.4 Proof validity is a query
 
-A proof-producing rule records a `proof` inside its `outcome` event at reap: `{name, verdict, inputs, oracle, evidence}`. `inputs` is the version table of everything the run consumed (from the `dispatch` event); `outputs` (on the outcome) is the version table of everything it produced. A proof is not a stored "valid" bit — `facts.proof_valid(module, proof)` recomputes it on every call. It is valid *now* iff **all four** conditions hold:
+A proof-producing rule records a `proof` inside its `outcome` event at reap: `{name, verdict, inputs, oracle}`. `inputs` is the version table of everything the run consumed (from the `dispatch` event); `outputs` (on the outcome) is the version table of everything it produced — the canonical `result.json` and every `artifacts[]` path beside it, which is the evidence the verdict rests on and the reason the proof carries no separate path list. A proof is not a stored "valid" bit — `facts.proof_valid(module, proof)` recomputes it on every call. It is valid *now* iff **all four** conditions hold:
 
 1. **Verdict** — the latest outcome carrying this proof has `verdict == pass`.
 2. **Inputs unchanged** — every recorded input fingerprint still matches disk.

@@ -587,7 +587,8 @@ def signoff_basis(module: str, events: list[dict]) -> list[dict]:
       stage's own result.json.
     - `inputs` — the proposition is about these bytes. The paths say what the verdict was
       about; their fingerprints are in the log, and the kernel re-checks them on every query,
-      so a reviewer does not re-verify by hand.
+      so a reviewer does not re-verify by hand. A bare list: a sibling count would only ever
+      be its own length.
 
     Nothing new is computed: this reads the event log the gate already reads. Order follows
     FORWARD_PRIORITY, never a set — a signoff record whose row order varied by hash seed
@@ -609,14 +610,13 @@ def signoff_basis(module: str, events: list[dict]) -> list[dict]:
             live = live_pins(events, rule.oracle[0])
             if live:
                 oracle["pinned_fingerprint"] = live[-1]["content_fingerprint"]
-        inputs = sorted(proof.get("inputs", {}))
         basis.append(
             {
                 "proof": proof_name,
                 "run": outcome["run"],
                 "oracle": oracle,
                 "tool_versions": outcome.get("tool_versions", {}),
-                "inputs": {"count": len(inputs), "paths": inputs},
+                "inputs": sorted(proof.get("inputs", {})),
             }
         )
     return basis

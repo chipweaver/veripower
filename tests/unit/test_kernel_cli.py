@@ -317,7 +317,7 @@ def test_signoff_close_end_to_end(tmp_path, monkeypatch):
         assert b["oracle"]["grade"] in ("tool", "human")
         if b["oracle"]["grade"] == "human":
             assert b["oracle"]["pinned_fingerprint"].startswith("sha256:")
-        assert b["inputs"]["count"] == len(b["inputs"]["paths"])
+        assert b["inputs"] == sorted(b["inputs"])
 
 
 def test_reopen_drops_a_landed_signoff(tmp_path, monkeypatch):
@@ -936,18 +936,21 @@ def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
     assert grade == "proposed"
 
 
-def test_proof_evidence_includes_artifacts(tmp_path, monkeypatch):
-    # C9 / spec §5.3: proof.evidence = the canonical result.json AND its artifacts[] paths
-    # (report-class products are the evidence). Recording only result.json truncates the
-    # audit trail.
+def test_outputs_name_the_artifacts_that_are_the_evidence(tmp_path, monkeypatch):
+    # C9 / spec §5.3: the report-class products ARE the evidence, so the outcome must name
+    # the canonical result.json AND every artifacts[] path — recording only result.json
+    # truncates the audit trail. `outputs` carries them with their fingerprints, which is
+    # why the proof no longer repeats the bare paths beside it.
     monkeypatch.chdir(tmp_path)
     _write_file("m", "brainstorm.md", "b1")
     _dispatch_write_reap(tmp_path, "m", "specification", _STAGE_FILES["specification"])
     _, outcome = facts._proof_outcome(facts.read_events("m"), "specification")
+    outs = outcome["outputs"]
+    assert "Design/specification/result.json" in outs
+    assert any(o.endswith("design.md") for o in outs)  # an artifact beyond result.json
+    assert all(v.startswith(("sha256:", "merkle:")) for v in outs.values())
     proof = next(p for p in outcome["proofs"] if p["name"] == "specification")
-    ev = proof["evidence"]
-    assert "Design/specification/result.json" in ev
-    assert any(e.endswith("design.md") for e in ev)  # an artifact beyond result.json
+    assert "evidence" not in proof
 
 
 def test_pin_zero_match_selector_rejected(tmp_path, monkeypatch):

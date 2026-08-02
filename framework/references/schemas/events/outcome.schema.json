@@ -23,8 +23,7 @@
           "oracle": {"type": "object", "required": ["ref", "grade"], "properties": {
             "ref": {"type": "string"},
             "grade": {"type": "string", "enum": ["tool", "human", "proposed"]}
-          }},
-          "evidence": {"type": "array", "items": {"type": "string"}}
+          }}
         }
       }
     },

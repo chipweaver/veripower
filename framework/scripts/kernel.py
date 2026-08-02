@@ -284,13 +284,10 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
         return _derive_triage(env, dispatch)  # Task C7 — same 4-tuple
     if rule.proof is None:
         return status, None, [], None
-    cdir = Path(*rule.workdir_root)
-    # evidence = canonical result.json AND its artifacts[] (§5.3 "及其 artifacts[]"): the
-    # report-class products ARE the evidence; recording only result.json truncates the audit
-    # trail. Audit-only — not in validity (all already covered by output binding, §5.3).
-    evidence = [str(cdir / "result.json")] + [
-        str(cdir / a["path"]) for a in env.get("artifacts", [])
-    ]
+    # No `evidence` list here. The report-class products ARE the evidence (§5.3 "及其
+    # artifacts[]"), and `outcome.outputs` — written from the same artifacts[] one call
+    # later — already names every one of them, with its fingerprint. A bare path list
+    # beside it is the same fact twice in one event, and the weaker copy.
     proof = {
         "name": rule.proof,
         "verdict": status,
@@ -299,7 +296,6 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
             "ref": rule.oracle[0],
             "grade": facts.oracle_grade(module, events, rule),
         },
-        "evidence": evidence,
     }
     return status, None, [proof], None
 
