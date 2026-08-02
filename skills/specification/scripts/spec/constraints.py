@@ -134,13 +134,26 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
             continue
         T = period_of.get(p["clock_domain"])
         if T is None:
-            continue  # a generated clock has no create_clock to delay against
+            # The domain is a generated clock, so there is no create_clock to delay
+            # against yet: synthesis writes create_generated_clock from rtl-design's pin
+            # annotation, and the delay belongs beside it. Named rather than skipped —
+            # an unconstrained port reads to dc_shell as a path with slack to spare, and
+            # only an OUTPUT is caught downstream (timing-analysis counts output bits
+            # carrying a delay; it makes no claim about inputs).
+            out.append(
+                f"# set_{'input' if p['direction'] == 'input' else 'output'}_delay "
+                f"{p['name']}: deferred — clock {p['clock_domain']} is generated, so "
+                f"synthesis completes this next to its create_generated_clock"
+            )
+            continue
         delay = round(T * _IO_DELAY_FRAC, 4)
-        if p["direction"] == "input":
+        # An inout is both, and used to be neither: the branch tested the two unidirectional
+        # values and let the third enum member fall through unconstrained.
+        if p["direction"] in ("input", "inout"):
             out.append(
                 f"set_input_delay  {delay} -clock {p['clock_domain']} [get_ports {{{p['name']}}}]"
             )
-        elif p["direction"] == "output":
+        if p["direction"] in ("output", "inout"):
             out.append(
                 f"set_output_delay {delay} -clock {p['clock_domain']} [get_ports {{{p['name']}}}]"
             )
@@ -178,13 +191,24 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
         out.append("")
     clock_names = {c["name"] for c in clocks if not c["generated"]}
     by_domain: dict[str, list[str]] = {}
+    deferred: list[str] = []
     for p in ports:
         if p["role"] == "data":
             if p["clock_domain"] not in clock_names:
-                continue  # a generated clock has no create_clock to abstract against
+                # A generated clock has no `clock` line here to associate against. Named
+                # rather than skipped: without an association CDC cannot see the driver
+                # side of a crossing into this port, and it reads as clean.
+                deferred.append(p["name"])
+                continue
             by_domain.setdefault(p["clock_domain"], []).append(p["name"])
     for dom, sigs in by_domain.items():
         out.append(f"abstract_port -ports {{{' '.join(sigs)}}} -clock {dom}")
+    if deferred:
+        out.append(
+            f"# abstract_port deferred for {{{' '.join(deferred)}}}: their clock_domain is "
+            "a generated clock, which has no `clock` line until lint-cdc's local.sgdc "
+            "declares it"
+        )
     return "\n".join(out) + "\n"
 
 

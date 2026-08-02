@@ -1,5 +1,6 @@
 # tests/unit/test_spec_constraints.py
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -425,3 +426,115 @@ def test_clock_named_like_domain_flag_not_spurious_fail(tmp_path):
     clocks = [_clk("x-domain", 10.0, role="primary clock")]
     proc = _run(_wd(tmp_path, ports, clocks), check=False)
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
+
+
+# ── shapes the one-clock corpus never reached ────────────────────────────────────────────
+def _io(name, direction, domain, role="data", width=1, **kw):
+    r = {
+        "name": name,
+        "direction": direction,
+        "width": width,
+        "clock_domain": domain,
+        "interface_group": "g",
+        "role": role,
+    }
+    if role == "reset":
+        r.setdefault("reset_polarity", 0)
+        r.setdefault("reset_kind", "async")
+    r.update(kw)
+    return r
+
+
+def test_inout_port_gets_both_delays():
+    """`inout` is a legal `direction`, and the branch tested only the two unidirectional
+    values — so a bidirectional pin came out of the SDC with no delay at all, which reads to
+    dc_shell as a path with slack to spare."""
+    clocks = [
+        {
+            "name": "clk",
+            "period_ns": 10.0,
+            "relationship": "primary",
+            "generated": False,
+        }
+    ]
+    ports = [
+        _io("clk", "input", "clk", "clock"),
+        _io("rst_n", "input", "clk", "reset"),
+        _io("sda", "inout", "clk"),
+    ]
+    sdc = constraints.generate_sdc("dut", clocks, ports)
+    assert "set_input_delay  3.0 -clock clk [get_ports {sda}]" in sdc
+    assert "set_output_delay 3.0 -clock clk [get_ports {sda}]" in sdc
+
+
+def test_generated_clock_domain_is_named_not_dropped():
+    """A data port whose domain is a generated clock cannot be delayed here — synthesis
+    writes create_generated_clock from rtl-design's pin. Skipping it silently left the port
+    unconstrained in both files with nothing saying so."""
+    clocks = [
+        {
+            "name": "clk",
+            "period_ns": 10.0,
+            "relationship": "primary",
+            "generated": False,
+        },
+        {
+            "name": "clk_div2",
+            "period_ns": 20.0,
+            "relationship": "synchronous-related",
+            "generated": True,
+        },
+    ]
+    ports = [
+        _io("clk", "input", "clk", "clock"),
+        _io("rst_n", "input", "clk", "reset"),
+        _io("slow_out", "output", "clk_div2", width=8),
+        _io("fast_in", "input", "clk", width=8),
+    ]
+    sdc = constraints.generate_sdc("dut", clocks, ports)
+    assert "set_output_delay" not in sdc.replace("# set_output_delay", "")
+    assert "slow_out: deferred" in sdc
+    assert "set_input_delay  3.0 -clock clk [get_ports {fast_in}]" in sdc
+
+    sgdc = constraints.generate_sgdc("dut", clocks, ports)
+    assert "abstract_port -ports {fast_in} -clock clk" in sgdc
+    assert "abstract_port deferred for {slow_out}" in sgdc
+
+
+def test_every_data_port_is_accounted_for_in_the_sdc():
+    """The property the shapes are really checking: no data port leaves the emitter without
+    either a delay or a named deferral."""
+    clocks = [
+        {
+            "name": "clk",
+            "period_ns": 4.0,
+            "relationship": "primary",
+            "generated": False,
+        },
+        {
+            "name": "clk_b",
+            "period_ns": 6.0,
+            "relationship": "async",
+            "generated": False,
+        },
+        {
+            "name": "clk_gen",
+            "period_ns": 8.0,
+            "relationship": "async",
+            "generated": True,
+        },
+    ]
+    ports = [
+        _io("clk", "input", "clk", "clock"),
+        _io("clk_b", "input", "clk_b", "clock"),
+        _io("rst_n", "input", "clk", "reset"),
+        _io("a", "input", "clk", width=4),
+        _io("b", "output", "clk_b", width=4),
+        _io("c", "inout", "clk"),
+        _io("d", "output", "clk_gen", width=2),
+    ]
+    sdc = constraints.generate_sdc("dut", clocks, ports)
+    for name in ("a", "b", "c", "d"):
+        assert re.search(
+            rf"(set_(in|out)put_delay .*\b{name}\b|# set_\w+_delay {name}:)", sdc
+        ), f"{name} left the SDC with neither a delay nor a named deferral"
