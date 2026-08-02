@@ -397,3 +397,65 @@ def test_a_new_port_reaches_the_vif_and_the_txn_on_a_rework(tmp_path):
     assert "[7:0] grew;" in sig.read_text()
     assert "grew" in (out / "tb/uvm/transaction/m_drv_fields.svh").read_text()
     assert ".grew(drv_if.grew)" in (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
+
+
+def test_each_vif_runs_on_its_own_declared_clock_domain(tmp_path):
+    """top-io.json states a clock_domain per port. Wiring every vif to the primary made a
+    second-domain agent sample its ports on a clock they are not in — a race the bench
+    invented, not one the DUT has."""
+    top_io = [dict(p) for p in _TOP_IO] + [
+        {
+            "name": "clk2",
+            "direction": "input",
+            "width": 1,
+            "clock_domain": "clk2",
+            "interface_group": "bench",
+            "role": "clock",
+        }
+    ]
+    for p_ in top_io:
+        if p_["interface_group"] == "obs_g":
+            p_["clock_domain"] = "clk2"
+    clocks = _CLOCKS + [{"name": "clk2", "period_ns": 8.0, "relationship": "async"}]
+    tb = (
+        _render(tmp_path, top_io=top_io, clocks=clocks)
+        / "tb"
+        / "uvm"
+        / "top"
+        / "m_top_tb_top.sv"
+    ).read_text()
+    assert "m_drv_if drv_if(.clk(clk), .rst_n(rst_n));" in tb
+    assert "m_obs_if obs_if(.clk(clk2), .rst_n(rst_n));" in tb
+
+
+def test_agent_spanning_two_clock_domains_exits(tmp_path):
+    top_io = [dict(p) for p in _TOP_IO] + [
+        {
+            "name": "clk2",
+            "direction": "input",
+            "width": 1,
+            "clock_domain": "clk2",
+            "interface_group": "bench",
+            "role": "clock",
+        }
+    ]
+    for p_ in top_io:
+        if p_["interface_group"] == "obs_g":
+            p_["clock_domain"] = "clk2"
+    clocks = _CLOCKS + [{"name": "clk2", "period_ns": 8.0, "relationship": "async"}]
+    spec = {
+        **SPEC,
+        "agents": [
+            {"name": "drv", "mode": "active", "interface_groups": ["drv_g", "obs_g"]},
+        ],
+    }
+    msg = _render_exit(tmp_path, spec, top_io=top_io, clocks=clocks)
+    assert "spans clock domains" in msg
+
+
+def test_clock_domain_with_no_clock_port_exits(tmp_path):
+    top_io = [dict(p) for p in _TOP_IO]
+    for p_ in top_io:
+        if p_["interface_group"] == "obs_g":
+            p_["clock_domain"] = "nowhere"
+    assert "nowhere" in _render_exit(tmp_path, top_io=top_io)

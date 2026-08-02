@@ -328,7 +328,9 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     for agent in agents:
         aname = agent["name"]
         if_inst_lines.append(
-            f"  {module}_{aname}_if {aname}_if(.clk(clk), .rst_n(rst_n));"
+            f"  {module}_{aname}_if {aname}_if"
+            f"(.clk({boundary.clock_for(aname, agent.get('interface_groups') or [])}), "
+            f".rst_n(rst_n));"
         )
         config_db_lines.append(
             f'    uvm_config_db#(virtual {module}_{aname}_if)::set(null, "uvm_test_top.*", "{aname}_vif", {aname}_if);'

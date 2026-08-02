@@ -59,6 +59,7 @@ class Boundary:
         self.extra: list[dict] = []
         self.reset = None
         self.groups: dict[str, list[dict]] = {}
+        self.group_domain: dict[str, set[str]] = {}
         self.port_order: list[str] = []
 
         for p in ports:
@@ -86,9 +87,11 @@ class Boundary:
                     )
                 self.reset = {"name": p["name"], "polarity": p["reset_polarity"]}
             else:
-                self.groups.setdefault(p["interface_group"], []).append(
+                g = p["interface_group"]
+                self.groups.setdefault(g, []).append(
                     {"name": p["name"], "width": p["width"]}
                 )
+                self.group_domain.setdefault(g, set()).add(p["clock_domain"])
 
         if self.primary is None:
             sys.exit(
@@ -112,3 +115,31 @@ class Boundary:
 
     def signals_for(self, groups: list[str]) -> list[dict]:
         return [s for g in groups for s in self.groups.get(g, [])]
+
+    def clock_for(self, agent_name: str, groups: list[str]) -> str:
+        """The TB net carrying the clock this agent's ports are declared in.
+
+        top-io.json states a `clock_domain` per port and the bench used to drop it, wiring
+        every virtual interface to the primary clock. On a single-clock DUT that is the same
+        thing; on a multi-clock one the agent then samples a second-domain port on a clock it
+        does not belong to, which is not a race the DUT has — it is one the bench invented.
+
+        `clk` is the primary's TB net; the others are declared under their own port name.
+        """
+        domains = {d for g in groups for d in self.group_domain.get(g, set())}
+        if len(domains) > 1:
+            sys.exit(
+                f"[sim bootstrap] agent {agent_name!r} spans clock domains {sorted(domains)}: "
+                f"one virtual interface has one clock, so its ports cannot be sampled "
+                f"coherently. Split it into one agent per domain in tb-scaffold.json."
+            )
+        domain = domains.pop() if domains else self.primary["name"]
+        if domain == self.primary["name"]:
+            return "clk"
+        if any(c["name"] == domain for c in self.extra):
+            return domain
+        sys.exit(
+            f"[sim bootstrap] agent {agent_name!r} is in clock_domain {domain!r}, which "
+            f"top-io.json declares no clock port for. The bench cannot generate it; correct "
+            f"the ports' clock_domain or add the clock (re-run specification)."
+        )
