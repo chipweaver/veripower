@@ -387,7 +387,6 @@ def cmd_diagnose(
     fix_owner,
     fix_locus,
     evidence,
-    confidence,
     provenance,
     reason,
     supersedes,
@@ -426,8 +425,6 @@ def cmd_diagnose(
         ev["fix_owner"] = fix_owner
     if fix_locus:
         ev["fix_locus"] = [_module_relative(module, a) for a in fix_locus]
-    if confidence:
-        ev["confidence"] = confidence
     if supersedes:
         ev["supersedes"] = supersedes
     facts.append_event(module, ev, _now())
@@ -583,7 +580,6 @@ def main():
     dg.add_argument("--fix-owner", default=None, choices=rules.FORWARD_PRIORITY)
     dg.add_argument("--fix-locus", nargs="+", default=None)
     dg.add_argument("--evidence", nargs="+", required=True)
-    dg.add_argument("--confidence", default=None, choices=["high", "medium", "low"])
     dg.add_argument("--provenance", required=True)
     dg.add_argument("--reason", required=True)
     dg.add_argument("--supersedes", default=None)
@@ -679,7 +675,6 @@ def main():
             args.fix_owner,
             args.fix_locus,
             args.evidence,
-            args.confidence,
             args.provenance,
             args.reason,
             args.supersedes,

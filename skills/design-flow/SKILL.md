@@ -126,7 +126,7 @@ kernel.py diagnose --module {module} --id <diag-id> \
   --subject-proof <failed proof> --subject-run <run> \
   --attribution <stage> --fix-owner <producer inside the subject's input closure> \
   --evidence <path…> --provenance "<the identity that vouches>" --reason "<the reasoning>" \
-  [--confidence high|medium|low] [--fix-locus <path…>] [--supersedes <prior diag-id>]
+  [--fix-locus <path…>] [--supersedes <prior diag-id>]
 ```
 
 `--provenance` and `--reason` are both required and are different things: the bare identity

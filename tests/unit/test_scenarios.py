@@ -783,7 +783,6 @@ def test_repair_dispatch_names_the_failure_and_the_human_reasoning(
         "specification",
         [str(facts.module_root(m).resolve() / "Design/specification/ppa.json")],
         ["Design/synthesis/runs/1/reports/area.rpt"],
-        "high",
         "operator",
         "the area target's unit is wrong, not the RTL",
         None,

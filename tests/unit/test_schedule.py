@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "framework" / "scripts"))
 import facts  # noqa: E402
+import kernel  # noqa: E402
 import rules  # noqa: E402
 import schedule  # noqa: E402
 
@@ -215,10 +216,45 @@ def test_dispatch_args_carry_declared_params(tmp_path, monkeypatch):
     assert a["dispatch_args"][-2:] == ["--params", '{"sim_run": 3}']
 
 
+def test_neither_writer_can_mint_a_routable_self_pointing_diagnosis(
+    tmp_path, monkeypatch
+):
+    """The reliability gate refuses an oracle-side attribution on the `fix_owner` clause
+    alone, so it needs no separate attribution test — and could not use one, because neither
+    writer can produce a self-pointing diagnosis that carries a `fix_owner`."""
+    monkeypatch.chdir(tmp_path)
+    _mk("m", "brainstorm.md", "b1")
+    _valid("m", "specification", 1)
+    _valid("m", "simulation-plan", 1)
+    _valid("m", "rtl-design", 1)
+    _fail("m", "simulation", 1)
+    # the human path: cmd_diagnose rejects a fix_owner outside the subject's input closure,
+    # and the graph is acyclic, so the subject is never inside its own.
+    assert not any(r in rules.input_closure(r) for r in rules.RULES)
+    r = kernel.cmd_diagnose(
+        "m",
+        "d0",
+        "simulation",
+        1,
+        "simulation",
+        "simulation",
+        None,
+        ["e"],
+        "op",
+        "why",
+        None,
+    )
+    assert not r["ok"] and "not in input closure" in r["error"]
+    # the triage path: _derive_triage writes fix_owner only for a root cause inside that
+    # same closure, so root_cause == simulation lands recorded but unroutable.
+    assert "simulation" not in rules.input_closure("simulation")
+
+
 def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
-    # A3 regression: confidence=high but the attribution points at the failed rule's own
-    # judge (root_cause=simulation, no fix_owner) -> a 现成归因 that is UNRELIABLE ->
-    # ESCALATE citing it as a candidate. NOT re-dispatch triage, NOT auto-rebuild.
+    # A3 regression: an oracle-side attribution (root_cause=simulation, so no fix_owner) is
+    # a 现成归因 that is UNRELIABLE -> ESCALATE citing it as a candidate. NOT re-dispatch
+    # triage, NOT auto-rebuild. `confidence: high` is present to show it does not rescue a
+    # diagnosis with nothing to route to.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")  # helper: spec/plan/rtl proofs valid on disk
     _sim_fail("m", run=1)  # helper: fresh simulation fail outcome

@@ -349,7 +349,7 @@ flowchart TD
 对一个新鲜失败，`_disposition` 三择其一：
 
 1. **已有诊断附着。** `_active_diagnoses` 收集 `subject` 与该失败 `(proof, outcome_run)` 匹配、未被 supersede 的全部 `diagnosis`。若最新一条**可靠** → 自动重建：`DISPATCH` 其 `fix_owner`（在 `repair` 下），并把所有新鲜失败中共享该 `fix_owner` 的每条可靠诊断的 `id` 合并进 `diagnosis_refs`、其 `(rule, run)` 坐标合并进 `caused_by`（多因修复逐条引用——无一静默丢弃，而且这个合并是内核求并后解析的，不是给撰写派发者的一条指示）。若 `fix_owner` 输入不可用，顺延前向。若最新诊断**不**可靠 → `ESCALATE`，把各诊断作为候选呈给用户。
-   - **可靠性门**（`_reliable`）：一条诊断可靠，当且仅当它有 `fix_owner` **且**（`source == human`，或 `confidence == high` 且其 `attribution` 不指向失败规则自己的裁判）。自指诊断（无 `fix_owner`——归因指向 oracle 一侧）永远无法自动重建：没有重建目标，所以一律升级。正是这道门拦住了低置信或怪罪裁判的猜测去静默重建上游阶段。
+   - **可靠性门**（`_reliable`）：一条诊断可靠，当且仅当它点名了 `fix_owner` **且** `source == human` 或 `confidence == high`。指向 oracle 一侧的归因——怪罪失败规则自己的裁判——到达时根本没有 `fix_owner`，被第一条挡下，所以这道门不再单独检查归因：两个写入方都已经强制它，`cmd_diagnose` 拒绝闭包之外的 `fix_owner`，`_derive_triage` 只在根因落在闭包内时才写，而没有任何规则在自己的闭包里。正是这道门拦住了低置信的猜测、以及无人能据以行动的判断去静默重建上游阶段。
 2. **无诊断，且失败是 `simulation`。** 失败有歧义（仿真挂掉可能是 RTL、计划或 spec）→ `DISPATCH simulation-triage`，带 `params.sim_run = <失败 run>`（若 triage 已在途则 `YIELD`）。triage 运行，在*它的*收割时内核派生诊断（见下）；下一次 `decide` 看到诊断即重入处置分支 1。
 3. **无诊断，自描述失败。** 失败的信封自陈 `stage_specific.fix_owner`（无需诊断事件）。合法指名且其输入可用 → 自动重建 `DISPATCH`；输入不可用 → 顺延前向；谁都没指、指了自己、或指到输入闭包之外 → 升级（§5.4）。
 
@@ -441,7 +441,7 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 - **输入：** Orchestrator 把 `{module, sim_run}` 作为派发参数传入；派发时内核把 `sim_run` 与每个声明的输入（`design`、`rtl`、`plan`）解析为各自的绝对规范阶段根目录，写入 `{workdir}/dispatch.json`（`store.write_dispatch`）。triage 从这些注入的位置读一切——从不自行导航模块相对路径：失败仿真的 `result.json` 与完整 `runs/<sim_run>/`（UVM 日志、coverage/KDB、以及失败 test 的全层次 `<test_id>.fsdb`）、spec、RTL、simulation-plan 的 scaffold/refmodel。
 - **方法：** 在失败证据加 spec 与 refmodel 上推理，并查询失败 run 自己的 FSDB 波形（`fsdbreport`），二者同为事实。当这些定不了归因时，它可以在自己的 workdir 里建并跑一个*受控实验*——真实 run 从未驱动过的激励、隔离 harness、与 UVM refmodel 一致的黄金模型——绝不编辑规范 RTL。用哪一种、走多远，是这个子 Agent 自己的判断；框架不计量它。
 - **输出：** 一份 `result.json`，其 `stage_specific` 携带路由层（`analysis_state`、`root_cause`、gating 的 `confidence`）与咨询层（`findings[]`、`waveform`、`experiment`）。收割时内核从中派生 `diagnosis`：`findings[].anchor` 成为 `fix_locus`，`experiment.artifacts[]` 成为 `evidence`。
-- **权威性——置信度门控：** `confidence` 是门控字段，不是咨询散文。只有 `high` 置信、非自指的诊断经可靠性门自动路由（§5.3）；`medium`/`low` 升级给操作者。
+- **权威性——置信度门控：** `confidence` 是门控字段，不是咨询散文。只有 `high` 置信的诊断经可靠性门自动路由（§5.3）；其余一律升级给操作者。这道门只对 triage 诊断读它：人工诊断仅凭 `source` 即为终审，所以 `kernel.py diagnose` 不接受置信度参数。
 - **副作用：** 只写自身 workdir；绝不编辑其它规则的 `result.json`、RTL、TB、spec 或计划。非只读（它可能建造实验）且非幂等（重复即重做一遍）；是叶子——无扇出。
 
 ## 7. 工作空间布局

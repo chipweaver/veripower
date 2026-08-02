@@ -107,16 +107,21 @@ def _active_diagnoses(events: list[dict], rule: str, outcome: dict) -> list[dict
 
 
 def _reliable(diag: dict) -> bool:
-    """§3.4: reliable iff source=human (终审), OR confidence=high AND the attribution
-    does not point at the failed rule's own judge. A diagnosis without fix_owner
-    (self-pointing) can never auto-rebuild — there is no rebuild target."""
+    """§3.4: reliable iff it names a rebuild target at all, AND either a human authored it
+    (终审) or a triage run called it high-confidence.
+
+    An oracle-side attribution — the failed rule blaming its own judge — is caught by the
+    first clause and needs no separate test, because neither writer can produce one with a
+    `fix_owner`. `kernel.cmd_diagnose` rejects a `fix_owner` outside the subject's input
+    closure, `kernel._derive_triage` only writes one when the root cause is inside it, and
+    the graph is acyclic, so no rule is ever in its own closure. Re-checking the attribution
+    here would be a third copy of a rule both write paths already enforce, and it could only
+    ever mask a writer that had stopped enforcing it."""
     if not diag.get("fix_owner"):
         return False
     if diag["source"] == "human":
         return True
-    if diag.get("confidence") != "high":
-        return False
-    return diag["attribution"] != diag["subject"]["proof"]
+    return diag.get("confidence") == "high"
 
 
 def _disposition(
