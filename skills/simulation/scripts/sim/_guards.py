@@ -36,27 +36,37 @@ def _agent_io(agent: dict) -> tuple[list[dict], list[dict]]:
     return signals, fields
 
 
-def validate_ports(agents: list[dict], clk_port_name: str, rst_port_name: str) -> str:
+def validate_ports(
+    agents: list[dict],
+    clk_port_name: str,
+    rst_port_name: str,
+    extra_clock_names: list[str] | None = None,
+) -> str:
     """Validate per-agent signal names and build the DUT port-map block.
 
-    Exit on a signal that collides with the clock or reset port name, or repeats across
+    Exit on a signal that collides with a clock or reset port name, or repeats across
     agents. Called during the in-memory render pass before any file is written, so a collision
     leaves nothing on disk. Returns the dut_port_map string for tb_top
-    (leading ',\\n' so it concatenates after .rst(rst_n))."""
+    (leading ',\\n' so it concatenates after the bench-owned ports).
+
+    materialize-scaffold already excludes clock and reset ports from interface.signals, so
+    the collision branch fires only on a hand-edited scaffold — the gate-bypass case this
+    module exists for."""
+    bench_owned = {clk_port_name, rst_port_name, *(extra_clock_names or [])}
     dut_port_lines: list[str] = []
-    seen_signals: set[str] = {clk_port_name, rst_port_name}
+    seen_signals: set[str] = set(bench_owned)
     first_owner: dict[str, str] = {}
     for agent in agents:
         aname = agent["name"]
         signals, _ = _agent_io(agent)
         for s in signals:
             sig = s["name"]
-            if sig in {clk_port_name, rst_port_name}:
+            if sig in bench_owned:
                 sys.exit(
-                    f"[sim bootstrap] agent '{aname}' signal '{sig}' collides with "
-                    f"clock/reset port name (clk={clk_port_name!r}, rst={rst_port_name!r}). "
-                    f"Rename the signal in scaffold-spec or fix primary_clock.dut_port_name / "
-                    f"reset.dut_port_name to disambiguate."
+                    f"[sim bootstrap] agent '{aname}' signal '{sig}' collides with a "
+                    f"bench-driven clock/reset port ({sorted(bench_owned)}). The materialize "
+                    f"step drops those from interface.signals, so this scaffold was edited by "
+                    f"hand; re-run simulation-plan's materialize step."
                 )
             if sig in seen_signals:
                 sys.exit(

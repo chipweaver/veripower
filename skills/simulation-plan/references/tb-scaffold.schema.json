@@ -4,7 +4,7 @@
   "title": "tb-scaffold.json contract (post-materialize)",
   "description": "Structural contract for <module>/Verification/simulation-plan/tb-scaffold.json, validated by the check-scaffold gate AFTER the materialize-scaffold verb has run. The sequence roster and the power scenarios live in their own files (sequences.json / power-scenarios.json); what remains here is what simulation alone reads. Every field below says whether it is yours to author or script-injected, and carries the authoring judgment no validator can express. Strongly validates LLM-authored fields; tolerates (does not deep-validate) the interface/transaction objects materialize-scaffold injects into agents[] (their content is owned by materialize-scaffold + sim/_guards._agent_io). Referential integrity (observer/inports/seqs resolving to declared agents, and sequences.json/power-scenarios.json resolving against each other) is NOT expressible here; the check-scaffold gate's semantic layer enforces it.",
   "type": "object",
-  "required": ["module", "top", "agents", "tests", "rm", "scoreboard", "primary_clock", "reset", "testpoints"],
+  "required": ["module", "top", "agents", "tests", "rm", "scoreboard", "primary_clock", "additional_clocks", "reset", "testpoints"],
   "additionalProperties": true,
   "properties": {
     "module": {"type": "string"},
@@ -104,13 +104,27 @@
         "period_ns": {"type": "number", "exclusiveMinimum": 0}
       }
     },
+    "additional_clocks": {
+      "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): every top-io.json clock port that is not primary_clock, with its clocks.json period. `[]` on a single-clock design. The TB generates one clock per entry and binds it, because a clock port left out of the DUT instantiation compiles without an error and stops that domain forever — and no report afterwards points at the bench. The agents' vif still clocks on primary_clock: which clock a second-domain agent should sample on is the clocking-block decision the interface template leaves to whoever fills it.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dut_port_name", "period_ns"],
+        "additionalProperties": false,
+        "properties": {
+          "dut_port_name": {"type": "string"},
+          "period_ns": {"type": "number", "exclusiveMinimum": 0}
+        }
+      }
+    },
     "reset": {
-      "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the top-io.json entry with role==\"reset\".",
+      "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the top-io.json entry with role==\"reset\". `polarity` is that row's reset_polarity and it has to travel: the TB drives reset itself, so without it the bench assumes one — an active-high DUT then runs every test with reset asserted the whole time. The TB's internal reset stays active-low whatever the DUT is, and the renderer inverts at the DUT boundary, so every agent reads `rst_n` the same way.",
       "type": "object",
-      "required": ["dut_port_name"],
+      "required": ["dut_port_name", "polarity"],
       "additionalProperties": false,
       "properties": {
-        "dut_port_name": {"type": "string"}
+        "dut_port_name": {"type": "string"},
+        "polarity": {"enum": [0, 1]}
       }
     },
     "testpoints": {

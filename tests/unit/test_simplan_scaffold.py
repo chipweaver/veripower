@@ -51,7 +51,8 @@ GOOD = {
     "rm": {"name": "m_rm", "inports": ["drv"]},
     "scoreboard": {"name": "m_sb", "observer": "obs"},
     "primary_clock": {"dut_port_name": "clk", "period_ns": 10.0},
-    "reset": {"dut_port_name": "rst_n"},
+    "additional_clocks": [],
+    "reset": {"dut_port_name": "rst_n", "polarity": 0},
     "testpoints": [
         {
             "id": "TP-1",

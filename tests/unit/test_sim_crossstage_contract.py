@@ -84,4 +84,17 @@ def test_primary_clock_and_reset_consumed(tmp_path):
     assert (
         f".{spec['primary_clock']['dut_port_name']}(clk)" in tb_top
     )  # e.g. .i_clk(clk)
-    assert f".{spec['reset']['dut_port_name']}(rst_n)" in tb_top  # e.g. .i_rstn(rst_n)
+    drive = "rst_n" if spec["reset"]["polarity"] == 0 else "~rst_n"
+    assert f".{spec['reset']['dut_port_name']}({drive})" in tb_top
+
+
+def test_every_clock_port_is_generated_and_bound(tmp_path):
+    """A DUT clock port the bench does not bind compiles without an error and stops that
+    domain for the whole run, so the contract is that every entry reaches tb_top."""
+    out, spec = _render(tmp_path)
+    tb_top = (out / "tb/uvm/top" / f"{spec['top']}_tb_top.sv").read_text()
+    for c in spec["additional_clocks"]:
+        n = c["dut_port_name"]
+        assert f"logic {n};" in tb_top
+        assert f"{n} = ~{n};" in tb_top
+        assert f".{n}({n})" in tb_top

@@ -154,7 +154,8 @@ def test_bootstrap_renders_scaffold_when_given(tmp_path):
         "module": module,
         "top": "dut",
         "primary_clock": {"dut_port_name": "clk", "period_ns": 10.0},
-        "reset": {"dut_port_name": "rst_n"},
+        "additional_clocks": [],
+        "reset": {"dut_port_name": "rst_n", "polarity": 0},
         "agents": [
             {
                 "name": "drv",

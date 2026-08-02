@@ -14,7 +14,8 @@ SPEC = {
     "module": "m",
     "top": "m_top",
     "primary_clock": {"dut_port_name": "clk", "period_ns": 10.0},
-    "reset": {"dut_port_name": "rst_n"},
+    "additional_clocks": [],
+    "reset": {"dut_port_name": "rst_n", "polarity": 0},
     "agents": [
         {
             "name": "drv",
@@ -216,3 +217,49 @@ def test_atomic_rollback_on_write_error(tmp_path, monkeypatch):
         scaffold.render(spec_path, out, TEMPLATES)
     # the first two written files were rolled back (none of run_scaffold's own output remains)
     assert not (out / "tb/uvm/interface/m_drv_if.sv").exists()
+
+
+def test_additional_clock_is_generated_and_bound(tmp_path):
+    """The failure this replaces was silent: the DUT's second clock port appeared nowhere
+    in the instantiation and VCS compiled it clean."""
+    spec = {
+        **SPEC,
+        "additional_clocks": [{"dut_port_name": "clk_out", "period_ns": 8.0}],
+    }
+    tb = (
+        _render(tmp_path, spec) / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
+    ).read_text()
+    assert "logic clk_out;" in tb
+    assert "forever #4 clk_out = ~clk_out;" in tb
+    assert ".clk_out(clk_out)" in tb
+
+
+def test_active_high_reset_is_inverted_at_the_dut_boundary(tmp_path):
+    """The bench's rst_n stays active-low for every DUT so agents never branch on
+    polarity; the inversion happens once, in the port binding."""
+    low = (
+        _render(tmp_path, SPEC) / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
+    ).read_text()
+    assert ".rst_n(rst_n)" in low
+
+    high = {**SPEC, "reset": {"dut_port_name": "rst", "polarity": 1}}
+    plan = tmp_path / "high-plan"
+    plan.mkdir()
+    out = tmp_path / "high-out"
+    out.mkdir()
+    scaffold.render(_write_spec(plan, high), out, TEMPLATES)
+    tb = (out / "tb" / "uvm" / "top" / "m_top_tb_top.sv").read_text()
+    assert ".rst(~rst_n)" in tb
+
+
+def test_missing_reset_polarity_exits(tmp_path):
+    spec = {**SPEC, "reset": {"dut_port_name": "rst_n"}}
+    assert "polarity" in _render_exit(tmp_path, spec)
+
+
+def test_agent_signal_colliding_with_an_additional_clock_exits(tmp_path):
+    spec = {
+        **SPEC,
+        "additional_clocks": [{"dut_port_name": "req", "period_ns": 8.0}],
+    }
+    assert "req" in _render_exit(tmp_path, spec)

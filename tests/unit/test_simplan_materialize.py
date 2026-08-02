@@ -1,5 +1,6 @@
-"""Tests for the simplan materialize-scaffold verb — fills scaffold agents[] signals + transaction.fields
-(clk/rst excluded), primary_clock, reset, and inlined_check_hints[] from the sidecars."""
+"""Tests for the simplan materialize-scaffold verb — fills scaffold agents[] signals +
+transaction.fields (clk/rst in neither), primary_clock, additional_clocks, reset, and
+inlined_check_hints[] from the sidecars."""
 
 import json
 import subprocess
@@ -12,7 +13,7 @@ HINTS: list = []
 
 
 def _p(name, direction, role, group, width=1):
-    return {
+    r = {
         "name": name,
         "direction": direction,
         "width": width,
@@ -20,6 +21,10 @@ def _p(name, direction, role, group, width=1):
         "interface_group": group,
         "role": role,
     }
+    if role == "reset":
+        r["reset_polarity"] = 0
+        r["reset_kind"] = "async"
+    return r
 
 
 TOP_IO = [
@@ -91,19 +96,18 @@ def _scaffold(agents):
     return {"module": "m", "top": "t", "agents": agents, "testpoints": []}
 
 
-def test_interface_keeps_clkrst_transaction_excludes_them(tmp_path):
+def test_clkrst_excluded_from_interface_and_transaction(tmp_path):
+    """The bench owns clk/rst: agent_if's header already declares them and tb_top drives
+    them, so a DUT clock re-declared in an agent's vif would bind that port to a signal
+    nothing drives. Excluding them here is what makes the interface_group specification
+    happened to put a clock in stop mattering."""
     sc_in = _scaffold(
         [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
     )
     spec, sc = _write(tmp_path, HINTS, sc_in)
     _run(spec, sc)
     agent = json.loads(sc.read_text())["agents"][0]
-    assert [s["name"] for s in agent["interface"]["signals"]] == [
-        "clk",
-        "rst_n",
-        "wdata",
-        "wen",
-    ]
+    assert [s["name"] for s in agent["interface"]["signals"]] == ["wdata", "wen"]
     assert [f["name"] for f in agent["transaction"]["fields"]] == ["wdata", "wen"]
 
 
@@ -115,7 +119,8 @@ def test_primary_clock_and_reset_derived(tmp_path):
     _run(spec, sc)
     out = json.loads(sc.read_text())
     assert out["primary_clock"] == {"dut_port_name": "clk", "period_ns": 10.0}
-    assert out["reset"] == {"dut_port_name": "rst_n"}
+    assert out["additional_clocks"] == []
+    assert out["reset"] == {"dut_port_name": "rst_n", "polarity": 0}
 
 
 def test_no_primary_relationship_fails_loud(tmp_path):
@@ -223,15 +228,12 @@ def test_multiple_groups_union_excludes_clkrst(tmp_path):
     spec, sc = _write(tmp_path, HINTS, sc_in)
     _run(spec, sc)
     agent = json.loads(sc.read_text())["agents"][0]
-    # interface.signals = union of both groups, clk/rst KEPT
+    # union of both groups, minus clk/rst in both tables
     assert [s["name"] for s in agent["interface"]["signals"]] == [
-        "clk",
-        "rst_n",
         "wdata",
         "wen",
         "rdata",
     ]
-    # transaction.fields = union minus clk/rst
     assert [f["name"] for f in agent["transaction"]["fields"]] == [
         "wdata",
         "wen",
@@ -378,3 +380,60 @@ def test_feature_name_reinjection_is_stable(tmp_path):
     first = sc.read_text()
     _run(spec, sc)
     assert sc.read_text() == first
+
+
+def test_additional_clocks_carry_every_non_primary_clock_port(tmp_path):
+    """A second clock port with nowhere to be declared came out of the DUT instantiation
+    unbound — which VCS compiles without an error, so the domain simply never ran."""
+    top_io = TOP_IO + [_p("clk2", "input", "clock", "cfg")]
+    clocks = CLOCKS + [{"name": "clk2", "period_ns": 8.0, "relationship": "async"}]
+    sc_in = _scaffold(
+        [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
+    )
+    spec, sc = _write(tmp_path, HINTS, sc_in, clocks=clocks, top_io=top_io)
+    _run(spec, sc)
+    out = json.loads(sc.read_text())
+    assert out["primary_clock"]["dut_port_name"] == "clk"
+    assert out["additional_clocks"] == [{"dut_port_name": "clk2", "period_ns": 8.0}]
+    # still out of the agent's tables — the bench drives it
+    names = [s["name"] for s in out["agents"][0]["interface"]["signals"]]
+    assert "clk2" not in names
+
+
+def test_clock_port_absent_from_clocks_json_fails_loud(tmp_path):
+    """Dropping it is the silent binding additional_clocks exists to remove, and the
+    period cannot be invented."""
+    top_io = TOP_IO + [_p("clk2", "input", "clock", "cfg")]
+    sc_in = _scaffold(
+        [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
+    )
+    spec, sc = _write(tmp_path, HINTS, sc_in, top_io=top_io)
+    proc = _run(spec, sc, check=False)
+    assert proc.returncode != 0
+    assert "clk2" in proc.stderr and "clocks.json" in proc.stderr
+
+
+def test_reset_polarity_travels(tmp_path):
+    """tb_top drives reset itself; without the polarity an active-high DUT runs every test
+    with reset asserted for the whole run."""
+    top_io = [dict(p) for p in TOP_IO]
+    for p in top_io:
+        if p["role"] == "reset":
+            p["reset_polarity"] = 1
+    sc_in = _scaffold(
+        [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
+    )
+    spec, sc = _write(tmp_path, HINTS, sc_in, top_io=top_io)
+    _run(spec, sc)
+    assert json.loads(sc.read_text())["reset"]["polarity"] == 1
+
+
+def test_reset_without_polarity_fails_loud(tmp_path):
+    top_io = [{k: v for k, v in p.items() if k != "reset_polarity"} for p in TOP_IO]
+    sc_in = _scaffold(
+        [{"name": "cfg_a", "mode": "active", "interface_groups": ["cfg"]}]
+    )
+    spec, sc = _write(tmp_path, HINTS, sc_in, top_io=top_io)
+    proc = _run(spec, sc, check=False)
+    assert proc.returncode != 0
+    assert "reset_polarity" in proc.stderr

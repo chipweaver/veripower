@@ -3,8 +3,11 @@
 Which fields it injects, and that they are never hand-authored, is on each field in
 references/tb-scaffold.schema.json. What is not visible there:
 
-- Clock/reset signals stay in interface.signals but are excluded from transaction.fields.
-  A rand txn field driving the clock would fight the bench's own clock generator.
+- Clock/reset ports are excluded from interface.signals as well as transaction.fields. The
+  bench owns them: `agent_if.sv`'s header already takes `clk` / `rst_n`, and `tb_top` drives
+  both. Re-declaring a DUT clock inside an agent's vif would bind that DUT port to a signal
+  nothing drives, which is why simulation's renderer refuses one. Excluding them here means
+  which interface_group specification put a clock in stops mattering.
 - Every injection is a verbatim copy, never an abstraction: the LLM authoring covers[] and
   interface_groups is the only judgment in the loop, and a renamed signal or a paraphrased
   check would break the `===` comparison the downstream refmodel is built to make.
@@ -36,10 +39,46 @@ def _derive_primary_clock(clocks: list) -> dict:
     return {"dut_port_name": primary["name"], "period_ns": primary["period_ns"]}
 
 
-def _derive_reset(ports: list) -> dict:
+def _derive_additional_clocks(clocks: list, ports: list) -> list:
+    """Every DUT clock port that is not the primary, with the period clocks.json gives it.
+
+    Without this the renderer has one clock generator and no name for the others, so a
+    second clock port comes out of the DUT instantiation unbound — which VCS compiles
+    without an error and no report afterwards points at.
+
+    A clock port with no clocks.json entry is fatal rather than dropped: the period cannot
+    be invented, and dropping it is the silent binding this exists to remove."""
+    by_name = {c["name"]: c for c in clocks}
+    primary = next((c for c in clocks if c.get("relationship") == "primary"), None)
+    out = []
     for s in ports:
-        if s.get("role") == "reset":
-            return {"dut_port_name": s["name"]}
+        if s.get("role") != "clock" or (primary and s["name"] == primary["name"]):
+            continue
+        entry = by_name.get(s["name"])
+        if entry is None:
+            sys.exit(
+                f"materialize-scaffold: top-io.json declares clock port {s['name']!r} with no "
+                f"clocks.json entry, so its period is unknown and the TB cannot generate it. "
+                f"Add it to clocks.json (re-run specification), or correct the port's role."
+            )
+        out.append({"dut_port_name": s["name"], "period_ns": entry["period_ns"]})
+    return out
+
+
+def _derive_reset(ports: list) -> dict:
+    """dut_port_name + polarity. The polarity travels because the TB drives reset itself and
+    is otherwise free to guess: `tb_top` used to hold an active-low `rst_n` unconditionally,
+    so an active-high DUT ran every test with reset asserted the whole time."""
+    for s in ports:
+        if s.get("role") != "reset":
+            continue
+        if s.get("reset_polarity") not in (0, 1):
+            sys.exit(
+                f"materialize-scaffold: top-io.json reset port {s['name']!r} has "
+                f"reset_polarity={s.get('reset_polarity')!r}, not 0 or 1. The schema makes it "
+                f"required on a reset row; the TB drives reset and cannot guess the level."
+            )
+        return {"dut_port_name": s["name"], "polarity": s["reset_polarity"]}
     sys.exit(
         "materialize-scaffold: no top-io.json entry with role=='reset' — "
         "reset.dut_port_name cannot be derived. Re-run specification."
@@ -145,6 +184,7 @@ def materialize(
                 "width": s["width"],
             }
             for s in matched
+            if s["name"] not in exclude
         ]
         agent["interface"] = {"signals": signals}
         agent["transaction"] = {
@@ -156,11 +196,11 @@ def materialize(
                     "rand": True,
                 }
                 for sig in signals
-                if sig["name"] not in exclude
             ]
         }
 
     scaffold["primary_clock"] = _derive_primary_clock(clocks)
+    scaffold["additional_clocks"] = _derive_additional_clocks(clocks, ports)
     scaffold["reset"] = _derive_reset(ports)
     _materialize_inline(check_hints, scaffold)
     _inject_feature_names(scaffold, features)

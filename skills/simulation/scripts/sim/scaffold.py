@@ -78,12 +78,33 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
 
     try:
         rst_port_name = spec["reset"]["dut_port_name"]
-    except KeyError:
+        rst_polarity = spec["reset"]["polarity"]
+    except KeyError as e:
         sys.exit(
-            "[sim bootstrap] scaffold-spec missing reset.dut_port_name. "
-            "Rerun simulation-plan to populate reset from top-io.json "
-            "(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
+            f"[sim bootstrap] scaffold-spec missing reset.{e.args[0] if e.args else 'field'}. "
+            f"Rerun simulation-plan to populate reset from top-io.json "
+            f"(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
         )
+    if rst_polarity not in (0, 1):
+        sys.exit(
+            f"[sim bootstrap] reset.polarity is {rst_polarity!r}, not 0 or 1. It comes from "
+            f"top-io.json's reset_polarity; the schema pins both, so check that sidecar."
+        )
+    # The bench's rst_n is active-low for every DUT; an active-high port is driven inverted
+    # here rather than by flipping the bench, so agents never branch on polarity.
+    rst_drive = "rst_n" if rst_polarity == 0 else "~rst_n"
+
+    extra_clocks = spec.get("additional_clocks", [])
+    for c in extra_clocks:
+        try:
+            float(c["period_ns"])
+            str(c["dut_port_name"])
+        except (KeyError, TypeError, ValueError):
+            sys.exit(
+                f"[sim bootstrap] additional_clocks entry is malformed: {c!r}. Each needs a "
+                f"dut_port_name and a numeric period_ns; rerun simulation-plan's materialize "
+                f"step, which fills them from clocks.json."
+            )
 
     rm_name = rm_cfg.get("name", "rule_rm")
     sb_name = sb_cfg.get("name", "scoreboard")
@@ -340,7 +361,20 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
             f'    uvm_config_db#(virtual {module}_{aname}_if)::set(null, "uvm_test_top.*", "{aname}_vif", {aname}_if);'
         )
 
-    dut_port_map = validate_ports(agents, clk_port_name, rst_port_name)
+    extra_names = [c["dut_port_name"] for c in extra_clocks]
+    dut_port_map = validate_ports(
+        agents, clk_port_name, rst_port_name, extra_clock_names=extra_names
+    )
+    extra_decls = "".join(f"  logic {n};\n" for n in extra_names)
+    extra_gens = "".join(
+        f"\n  initial begin\n"
+        f"    {c['dut_port_name']} = 0;\n"
+        f"    forever #{float(c['period_ns']) / 2:g} "
+        f"{c['dut_port_name']} = ~{c['dut_port_name']};\n"
+        f"  end\n"
+        for c in extra_clocks
+    )
+    extra_ports = "".join(f",\n    .{n}({n})" for n in extra_names)
 
     content = _render_template_file(
         template_dir,
@@ -351,6 +385,10 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
             "CLK_HALF_PERIOD": f"{clk_half_period:g}",
             "CLK_PORT_NAME": clk_port_name,
             "RST_PORT_NAME": rst_port_name,
+            "RST_DRIVE": rst_drive,
+            "EXTRA_CLOCK_DECLS": extra_decls,
+            "EXTRA_CLOCK_GENS": extra_gens,
+            "EXTRA_CLOCK_PORTS": extra_ports,
             "DUT_PORT_MAP": dut_port_map,
             "IF_INSTANTIATIONS": "\n".join(if_inst_lines),
             "CONFIG_DB_SETS": "\n".join(config_db_lines),

@@ -30,15 +30,22 @@ is what the Feature column of `case-results-summary.md` shows a human.
   `interface_group`, never by `clock_domain`.
 - A group's `direction` values decide the agent's `mode`: `active` for a group you drive, `passive`
   for one you only observe.
-- clk/rst ports carry no `interface_group`: they bind through `primary_clock` / `reset`. Putting one
-  in a group collides with the clk/rst port name at render time.
+- clk/rst ports bind through `primary_clock` / `additional_clocks` / `reset`, so whichever
+  `interface_group` they carry is ignored — the bench drives them and an agent must not.
 - `interface.signals` and `transaction.fields` are script-injected from this file — same names, same
-  widths, clk/rst excluded from the transaction. materialize does not abstract, rename, or merge, so
-  there is no `addr` / `data` / `rw` to invent.
+  widths, clk/rst in neither. materialize does not abstract, rename, or merge, so there is no
+  `addr` / `data` / `rw` to invent. An agent whose groups hold nothing but clk/rst therefore has an
+  empty interface, which simulation refuses: give it the data ports it is meant to drive.
 - `protocol` is your reference for which sequence pattern to author (`APB3` / `AXI4` / `custom`).
 
-`top-io.json` also carries `reset_polarity` / `reset_kind` / `encoding`; those are for the
-specification stage's constraint generation and its reviewers, not for you.
+`reset_polarity` is script-injected into `reset.polarity`, because the bench drives reset and
+cannot otherwise know which level asserts it. `reset_kind` / `encoding` are for the specification
+stage's constraint generation and its reviewers, not for you.
+
+Every `role: "clock"` port needs a `clocks.json` entry: the primary becomes `primary_clock` and
+the rest become `additional_clocks`, one generator each. materialize refuses a clock port with no
+entry rather than leaving it out — a DUT clock port the TB does not bind compiles without an error
+and stops that domain for the whole run.
 
 ## design.md §1.5 timing scenarios → sequences
 
