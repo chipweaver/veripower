@@ -204,7 +204,7 @@ def test_dispatch_then_decide_yields(tmp_path, monkeypatch):
     assert d["ok"] is True
     a = _run_json(tmp_path, "decide", "--module", "m")
     assert a["action"] == "YIELD"
-    assert a["in_flight"] == [{"rule": "specification", "run": 1, "has_result": False}]
+    assert a["in_flight"] == [{"rule": "specification", "run": 1}]
 
 
 def test_full_mini_loop_dispatch_result_reap_decide(tmp_path, monkeypatch):

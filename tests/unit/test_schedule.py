@@ -21,7 +21,7 @@ def _write(module, rel, text):
 def _workdir(rule, run):
     """The workdir the kernel would record — `Design/specification/runs/1`, not a made-up
     `specification/runs/1`. Everything reached through schedule._workdir_of (the no-wake
-    ready scan, _in_flight_view's has_result) resolves against this, so a fictitious layout
+    ready scan, cmd_reap's workdir) resolves against this, so a fictitious layout
     makes those branches vacuous rather than tested. A rule outside the registry has no
     workdir_root; it only ever appears in the unregistered-in-flight test, which never
     resolves the path."""
@@ -96,27 +96,34 @@ def test_wake_reaps_a_run_whose_executor_wrote_nothing(tmp_path, monkeypatch):
     assert a["action"] == "REAP" and a["rule"] == "specification" and a["run"] == 1
 
 
-def test_in_flight_view_reports_a_landed_result(tmp_path, monkeypatch):
-    """has_result is resolved through the dispatch event's recorded workdir; with a second
-    rule still running, the finished one must show True so the Dead in-flight check does not
-    reap a run that did produce an envelope."""
+def test_a_landed_result_is_reaped_not_yielded_over(tmp_path, monkeypatch):
+    """Step 0 claims any in-flight run whose workdir holds a result.json, so a YIELD can only
+    ever list runs that have not written one. That is why `in_flight[]` carries coordinates
+    and nothing else: a per-run "did it finish" flag would be constant false everywhere the
+    Orchestrator can see it, and reads as a filter while filtering nothing."""
     monkeypatch.chdir(tmp_path)
     _mk("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
     _dispatch("m", "lint-cdc", 1, _recorded_inputs("m", "lint-cdc"))
     _dispatch("m", "simulation-plan", 1, _recorded_inputs("m", "simulation-plan"))
+    rj = facts.module_root("m") / _workdir("simulation-plan", 1) / "result.json"
     _mk("m", _workdir("simulation-plan", 1) + "/result.json", "{}")
-    # the ready scan claims simulation-plan first; lint-cdc is still genuinely running
     assert schedule.decide("m") == {
         "action": "REAP",
         "rule": "simulation-plan",
         "run": 1,
     }
-    assert schedule._in_flight_view("m", facts.read_events("m")) == [
-        {"rule": "lint-cdc", "run": 1, "has_result": False},
-        {"rule": "simulation-plan", "run": 1, "has_result": True},
-    ]
+    # take the envelope away and the same two runs YIELD instead — carrying coordinates and
+    # nothing else, because "has it finished" is exactly what the branch above already used up.
+    rj.unlink()
+    assert schedule.decide("m") == {
+        "action": "YIELD",
+        "in_flight": [
+            {"rule": "lint-cdc", "run": 1},
+            {"rule": "simulation-plan", "run": 1},
+        ],
+    }
 
 
 def test_in_flight_no_result_yields(tmp_path, monkeypatch):
@@ -125,7 +132,7 @@ def test_in_flight_no_result_yields(tmp_path, monkeypatch):
     _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:x"})
     a = schedule.decide("m")
     assert a["action"] == "YIELD"
-    assert a["in_flight"] == [{"rule": "specification", "run": 1, "has_result": False}]
+    assert a["in_flight"] == [{"rule": "specification", "run": 1}]
 
 
 def test_fresh_failure_with_reliable_triage_dispatches_fix_owner(tmp_path, monkeypatch):

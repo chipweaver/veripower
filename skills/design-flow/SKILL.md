@@ -92,16 +92,21 @@ yours to decide, and there is no flag through which to say so.
 
 ## `YIELD` — report what is running, end the turn
 
-The action returns `in_flight[]`, each entry `{rule, run, has_result}`. Reply the list to the
-user and end the turn. (A triage-pending `YIELD` carries the triage run — say a triage
-subagent is running.)
+The action returns `in_flight[]`, each entry `{rule, run}` — the only place a run *number*
+surfaces, and what you need to name one. Reply the list to the user and end the turn. (A
+triage-pending `YIELD` carries the triage run — say a triage subagent is running.)
 
-**Dead in-flight.** A run with `has_result: false` whose executor you confirm is **dead**
-(the Task subagent crashed, exited without writing `result.json`, or its wake was lost) gets
-an explicit `kernel.py reap --module {module} --rule <rule> --run <run>` — with no
-`result.json` present, `reap` derives `blocked`, unblocking the ledger so the next `decide`
-can re-route. Never reap a run whose executor is still alive: that discards work in progress
-and records it as a failure.
+**Dead in-flight.** A run whose executor you confirm is **dead** (the Task subagent crashed,
+exited without writing `result.json`, or its wake was lost) gets an explicit `kernel.py reap
+--module {module} --rule <rule> --run <run>` — with no `result.json` present, `reap` derives
+`blocked`, unblocking the ledger so the next `decide` can re-route. Without this a run whose
+wake never arrives holds the ledger open indefinitely.
+
+Only the harness can tell you an executor died; the kernel cannot see it, and a `YIELD` never
+implies it. Never reap a run whose executor is still alive: it will write `result.json` into
+a workdir whose outcome has already landed. The opposite mistake is harmless — `reap` reads
+the file at the moment you call it, so a run that finished in the meantime is reaped on its
+own envelope, not as `blocked`.
 
 ## `ESCALATE` — hand the decision to the user, end the turn
 

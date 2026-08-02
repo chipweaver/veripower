@@ -405,7 +405,7 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 
 **收割。** `kernel.py reap --rule <r> --run <n>` 不接受裁决标志——一切由 `cmd_reap` 派生（§4.7），包括时间完整性检查：`produced_at` 早于本 run dispatch 的 `result.json` 是被携带进来的陈旧信封，派生为 `blocked` / `stale_result`（§4.7）。它派生 `(verdict, reason, proofs, diagnosis)` 四元组，在 `pass` *与* `fail` 上（`blocked` 除外）`store.promote` 产物到规范目录，按实际 promote 集把指纹记入 outcome 的 `outputs`，追加 `outcome`，并——对完成的 triage——追加派生的 `diagnosis`。promote 幂等（§7.2），promote 中途崩溃由下一次收割修复。
 
-**崩溃恢复折叠进循环。** 没有单独的初始化或恢复阶段：第一次 `dispatch` 创建日志；已完成但未收割的 run 由 `decide` 第 0 步接住。执行器*没写* `result.json` 就死掉的 run 仍在途，在 `YIELD` 的 `in_flight[]` 视图中以 `has_result: false` 现身；Orchestrator 确认执行器已死后，发出显式 `reap`，派生 `blocked`，为重路由解锁账本（`skills/design-flow/SKILL.md` 的 Dead-in-flight 规则）。
+**崩溃恢复折叠进循环。** 没有单独的初始化或恢复阶段：第一次 `dispatch` 创建日志；已完成但未收割的 run 由 `decide` 第 0 步接住。执行器*没写* `result.json` 就死掉的 run 仍在途，出现在 `YIELD` 的 `in_flight[]` 里；Orchestrator 确认执行器已死后——只有 harness 能告诉它这件事，内核没有任何信号可读——发出显式 `reap`，派生 `blocked`，为重路由解锁账本（`skills/design-flow/SKILL.md` 的 Dead-in-flight 规则）。
 
 ## 6. 子 Agent 契约
 

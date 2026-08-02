@@ -178,7 +178,7 @@ def _disposition(
         # call, not a target to guess at.
         if rule == "simulation":
             if any(f["rule"] == "simulation-triage" for f in facts.in_flight(events)):
-                return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
+                return {"action": "YIELD", "in_flight": facts.in_flight(events)}
             return {
                 "action": "DISPATCH",
                 "rule": "simulation-triage",
@@ -232,16 +232,6 @@ def _declared_owner(module: str, rule: str) -> str | None:
         return None
     owner = ss.get("fix_owner")
     return owner if owner in rules.RULES else None
-
-
-def _in_flight_view(module: str, events: list[dict]) -> list[dict]:
-    root = facts.module_root(module)
-    out = []
-    for f in facts.in_flight(events):
-        wd = _workdir_of(events, f["rule"], f["run"])
-        has = (root / wd / "result.json").exists() if wd else False
-        out.append({"rule": f["rule"], "run": f["run"], "has_result": has})
-    return out
 
 
 def _workdir_of(events, rule, run):
@@ -370,7 +360,7 @@ def decide(
             if any(
                 f["rule"] == disp["rule"] for f in inflight
             ) or _has_inflight_consumer(disp["rule"], inflight):
-                return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
+                return {"action": "YIELD", "in_flight": facts.in_flight(events)}
             return _dispatched(module, disp)
         else:
             return disp  # ESCALATE / YIELD
@@ -420,7 +410,7 @@ def decide(
 
     # step 3
     if inflight:
-        return {"action": "YIELD", "in_flight": _in_flight_view(module, events)}
+        return {"action": "YIELD", "in_flight": facts.in_flight(events)}
     if all(facts.proof_valid(module, events, p) for p in required):
         if closing:
             # `closing` changes nothing about WHICH proofs are required — only what a clear
