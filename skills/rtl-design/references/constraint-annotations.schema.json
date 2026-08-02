@@ -31,7 +31,7 @@
             }
           },
           "reset_synchronizer": {
-            "description": "Module names of reset synchronizers this child authored.",
+            "description": "The synchronized-reset NETS this child drives out of a reset synchronizer \u2014 not the synchronizer module\u0027s name. SGDC\u0027s two synchronizer commands take different kinds of name: sync_cell takes the module, reset_synchronizer takes the net, and giving it a module name is a Fatal that aborts rule checking for the whole run (measured on vL-2016.06). The net is named in the scope that instantiates the synchronizer, so it is that child\u0027s to declare, not the one that wrote the module.",
             "type": "array",
             "items": {
               "type": "string",

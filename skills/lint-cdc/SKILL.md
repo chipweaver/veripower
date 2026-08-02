@@ -62,7 +62,7 @@ append all four categories to `scripts/constraints.sgdc` before you run anything
 | sidecar key | SGDC line |
 |---|---|
 | `sync_cell` | `sync_cell -name <module>` |
-| `reset_synchronizer` | `reset_synchronizer -name <module>` |
+| `reset_synchronizer` | `reset_synchronizer -name <net>` |
 | `set_case_analysis` | `set_case_analysis -name <port> -value <value>` |
 | `quasi_static` | `quasi_static -name <signal>` |
 
@@ -71,9 +71,13 @@ are design facts their authors declared rather than suppressions you are guessin
 why all four go in one pass: each one you left for the tool to surface would cost a full
 SpyGlass iteration to discover.
 
-Use those exact forms. SGDC takes `set_case_analysis` by flag, and the positional spelling that
-is correct in SDC (`set_case_analysis 0 scan_en`) is a syntax fatal here that aborts rule
-checking for the whole run, measured on `vL-2016.06`.
+Use those exact forms, and note that the two synchronizer commands do not take the same kind of
+name: `sync_cell` names the module, `reset_synchronizer` names the synchronized reset net it
+drives. Giving `reset_synchronizer` a module name is `checkSGDC_existence` + a Fatal that aborts
+rule checking for the whole run, and the sidecar it leaves behind reads CLEANER than the truth —
+measured on `vL-2016.06`, the aborted run reported 0 unsynchronized crossings where the same RTL
+really had 6. SGDC also takes `set_case_analysis` by flag, and the positional spelling that is
+correct in SDC (`set_case_analysis 0 scan_en`) is a syntax fatal in the same way.
 
 Transcribe, never invent. synthesis reads this same sidecar for its SDC side, so an annotation
 you add here on your own authority has no SDC counterpart and the two constraint sets diverge
