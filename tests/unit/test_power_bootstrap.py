@@ -290,3 +290,66 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
     assert proc.returncode == 0, proc.stderr
     assert (workdir / "Makefile").is_file()  # resolved to the absolute location
     assert (workdir / "env.sh").is_file()
+
+
+# ── the deployed shell's contract with the Makefile that calls it ────────────────────────
+def test_run_gls_power_accepts_the_plan_stage_root(tmp_path):
+    """The Makefile passes PLAN_DIR — the simulation-plan stage root — and
+    extract_power_scenarios.py reads power-scenarios.json out of it. The guard tested for a
+    file, left over from when the plan was one scaffold-specification.json, so gls-run could
+    not start on any module. Reaching the tools takes real EDA; what is checkable here is
+    that the guard admits what the only caller passes."""
+    import subprocess
+
+    script = REPO_ROOT / "skills/power-analysis/templates/scripts/run_gls_power.sh"
+    plan = tmp_path / "simulation-plan"
+    plan.mkdir()
+    (plan / "power-scenarios.json").write_text("[]")
+    simv = tmp_path / "simv"
+    simv.write_text("#!/bin/sh\nexit 0\n")
+    simv.chmod(0o755)
+    r = subprocess.run(
+        [
+            "bash",
+            str(script),
+            "--plan",
+            str(plan),
+            "--saif-dir",
+            str(tmp_path / "saif"),
+            "--simv",
+            str(simv),
+            "--log",
+            str(tmp_path / "log.txt"),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert "not a directory" not in r.stderr, r.stderr
+    assert "--plan not found" not in r.stderr, r.stderr
+
+
+def test_run_gls_power_rejects_a_file_as_plan(tmp_path):
+    import subprocess
+
+    script = REPO_ROOT / "skills/power-analysis/templates/scripts/run_gls_power.sh"
+    f = tmp_path / "power-scenarios.json"
+    f.write_text("[]")
+    r = subprocess.run(
+        [
+            "bash",
+            str(script),
+            "--plan",
+            str(f),
+            "--saif-dir",
+            str(tmp_path / "saif"),
+            "--simv",
+            "/bin/true",
+            "--log",
+            str(tmp_path / "log.txt"),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert r.returncode != 0 and "not a directory" in r.stderr

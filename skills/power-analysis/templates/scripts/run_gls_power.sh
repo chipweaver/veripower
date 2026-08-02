@@ -51,8 +51,12 @@ done
 	exit 2
 }
 
-[ -f "$PLAN" ] || {
-	echo "[run_gls_power] ERROR: --plan not found: $PLAN" >&2
+# --plan is the simulation-plan STAGE ROOT, not a file: extract_power_scenarios.py reads
+# power-scenarios.json out of it. It was a single scaffold-specification.json before the
+# plan split into sidecars, and this guard kept testing for a file afterwards — which no
+# caller passes, so gls-run could not start on any module.
+[ -d "$PLAN" ] || {
+	echo "[run_gls_power] ERROR: --plan is not a directory: $PLAN" >&2
 	exit 1
 }
 if [ "${SIMV#./}" != "$SIMV" ] || [ "${SIMV#/}" != "$SIMV" ]; then
