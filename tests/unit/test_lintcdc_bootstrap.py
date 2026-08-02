@@ -272,3 +272,52 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
     assert proc.returncode == 0, proc.stderr
     assert (workdir / "Makefile").is_file()  # resolved to the absolute location
     assert (workdir / "env.sh").is_file()
+
+
+def _add_scope(workdir, *paths):
+    """Add dispatch.json's `scope` — the kernel writes it naming the inputs whose
+    fingerprints moved since the last run."""
+    d = json.loads((workdir / "dispatch.json").read_text())
+    d["scope"] = list(paths)
+    (workdir / "dispatch.json").write_text(json.dumps(d))
+
+
+def test_seed_change_in_scope_is_announced_over_the_carried_sgdc(tmp_path):
+    """The carried file wins, which is right — but it holds the OLD clock/reset block, so
+    a specification-side correction lands in a file this stage never opens again. Measured:
+    a diagnosis routed a reset-polarity fix upstream, specification made it, and the next
+    round ran the old value anyway."""
+    m, workdir, main = _make_tree(
+        tmp_path,
+        carried_sgdc="# carried\ncurrent_design dut\nreset -name rst -value 1\n",
+        cold="# seed\ncurrent_design dut\nreset -name rst -value 0\n",
+    )
+    _add_scope(workdir, "Design/specification/constraints/dut.sgdc")
+    r = _run(workdir, main, extra=["--top", "dut"])
+    assert r.returncode == 0, r.stderr
+    assert "specification SGDC changed this round" in r.stderr
+    # still carried: reconciling is the agent's call, not a silent overwrite of its work
+    assert "# carried" in (workdir / "scripts" / "constraints.sgdc").read_text()
+
+
+def test_no_notice_when_scope_does_not_name_the_seed(tmp_path):
+    """The two files always differ after round 1, so comparing them would fire every
+    rework. `scope` is what makes this fire only when the seed itself moved."""
+    m, workdir, main = _make_tree(
+        tmp_path,
+        carried_sgdc="# carried\ncurrent_design dut\n",
+        cold="# seed\ncurrent_design dut\n",
+    )
+    _add_scope(workdir, "Design/rtl-design/dut.v")
+    r = _run(workdir, main, extra=["--top", "dut"])
+    assert r.returncode == 0, r.stderr
+    assert "SGDC changed" not in r.stderr
+
+
+def test_no_notice_on_a_cold_start(tmp_path):
+    """Round 1 reads the seed, so there is nothing to reconcile."""
+    m, workdir, main = _make_tree(tmp_path, cold="# seed\ncurrent_design dut\n")
+    _add_scope(workdir, "Design/specification/constraints/dut.sgdc")
+    r = _run(workdir, main, extra=["--top", "dut"])
+    assert r.returncode == 0, r.stderr
+    assert "SGDC changed" not in r.stderr

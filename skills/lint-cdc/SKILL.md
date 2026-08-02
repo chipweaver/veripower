@@ -21,13 +21,15 @@ module's RTL, and close the run through the `lintcdc` CLI.
 
 `{workdir}/dispatch.json` carries the `inputs` table below, so `<key>` denotes a location and
 you read `<key>/<subpath>`. It also carries a `scope` list when the kernel knows which inputs
-changed since your last run: that narrows what you triage, never what the tool analyzes.
+changed since your last run: that narrows what you triage, never what the tool analyzes — except
+when it names the SGDC seed, which is the one input whose change you must carry into a file that
+would otherwise never see it.
 
 | Path | Use |
 |---|---|
 | `<annotations>/constraint-annotations.json` | The `sgdc` block per child: every depth annotation this RTL implies, in real module names. The child that wrote the RTL declared them; nothing upstream matched a name against it, so an annotation naming a module SpyGlass cannot find surfaces here first. Schema: `skills/rtl-design/references/constraint-annotations.schema.json`. |
 | `<rtl>/rtl-files.json` | Per-child file layout, which `bootstrap` turns into `scripts/filelist.txt`. Schema: `skills/rtl-design/references/rtl-files.schema.json`. |
-| `<sgdc_seed>/constraints/<TOP>.sgdc` | Clocks, resets and port associations from specification. Cold-start seed only. |
+| `<sgdc_seed>/constraints/<TOP>.sgdc` | Clocks, resets and port associations from specification. Round 1 cold-starts `scripts/constraints.sgdc` from it; after that the carried copy wins, so a later correction here reaches you only if you carry it across. `bootstrap` says so when `scope` names this file. |
 
 Two files under `{workdir}` are yours to edit, and both reach you holding the previous round's
 work rather than a pristine template:

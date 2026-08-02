@@ -29,7 +29,7 @@ SDC dc_shell reads is rebuilt every round.
 |---|---|
 | `<annotations>/constraint-annotations.json` | The `sdc` block per child: every timing exception and generated clock this RTL implies, in real module names. Its authors declared it and this stage is its only consumer. Schema: `skills/rtl-design/references/constraint-annotations.schema.json`. |
 | `<rtl>/rtl-files.json` | Per-child file layout, which `bootstrap` turns into `scripts/rtl_load.tcl`. The RTL itself is under `<rtl>` too, and step 2 reads it for divider ratios. Schema: `skills/rtl-design/references/rtl-files.schema.json`. |
-| `<sdc>/constraints/<TOP>.sdc` | Clocks and IO delays from specification. Cold-start seed only. |
+| `<sdc>/constraints/<TOP>.sdc` | Clocks and IO delays from specification. Round 1 cold-starts `constraints.sdc` from it; after that the carried copy wins, so a later correction here reaches you only if you carry it across in step 2. `bootstrap` says so when `scope` names this file. |
 | `<ppa>/ppa.json` | The area and slack targets this run is judged against. `finalize` reads them itself; you read them when deciding which side of a PPA miss is wrong. Schema: `skills/specification/references/ppa.schema.json`. |
 
 `LIB_DB` must be in the environment before `make`: `env.sh` refuses to run without it, and the

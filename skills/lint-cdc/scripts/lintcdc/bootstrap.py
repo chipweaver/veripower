@@ -129,6 +129,35 @@ def _deploy_no_clobber(src_root: Path, dest: Path) -> None:
         shutil.copy2(p, d)
 
 
+def _warn_seed_changed(dest: Path, cold: Path, top: str) -> None:
+    """Say so when this round was scheduled BECAUSE the specification SGDC changed.
+
+    The carried constraints.sgdc wins over the seed, which is right — it holds the depth
+    annotations and waivable structure a round put there. But the seed's clock/reset block
+    is specification's, and once round 1 cold-started from it nothing re-reads it, so a
+    correction upstream would land in a file this stage never opens again. The kernel
+    already knows: it re-dispatched because that input's fingerprint moved, and names the
+    file in dispatch.json's `scope`. Reading `scope` is what makes this fire only then,
+    instead of on every rework (the two files always differ after round 1)."""
+    try:
+        scope = json.loads((dest / "dispatch.json").read_text(encoding="utf-8")).get(
+            "scope"
+        )
+    except (OSError, json.JSONDecodeError):
+        return
+    tail = f"constraints/{top}.sgdc"
+    if not scope or not any(str(p).endswith(tail) for p in scope):
+        return
+    _err(
+        f"the specification SGDC changed this round — dispatch.json scope names {tail}"
+    )
+    _err(
+        "  The carried scripts/constraints.sgdc still holds the OLD clock/reset block. "
+        "Reconcile it against"
+    )
+    _err(f"  {cold} before running, keeping your annotations and waivers.")
+
+
 def run(workdir, top: str | None = None) -> int:
     if not _TEMPLATE_DIR.is_dir():
         _err(f"missing template directory: {_TEMPLATE_DIR}")
@@ -190,6 +219,7 @@ def run(workdir, top: str | None = None) -> int:
             "[lintcdc bootstrap] carried scripts/constraints.sgdc used (survived from a prior round)"
         )
         sgdc_source = "scripts/constraints.sgdc (carried)"
+        _warn_seed_changed(dest, cold, top)
     elif cold.is_file():
         shutil.copyfile(cold, sgdc)
         print(

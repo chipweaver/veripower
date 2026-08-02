@@ -154,6 +154,33 @@ def _write_config_tcl(dest: Path, top: str) -> None:
         print(f"[synthesis bootstrap] wrote scripts/config.tcl (LIB_DB={lib_db})")
 
 
+def _warn_seed_changed(dest: Path, user_sdc: Path, top: str) -> None:
+    """Say so when this round was scheduled BECAUSE the specification SDC changed.
+
+    The carried constraints.sdc wins over the seed, which is right — it holds the exceptions
+    and the uncertainty/drive values a round measured. But the clocks and IO delays in it are
+    specification's, and once round 1 cold-started from them nothing re-reads the seed, so a
+    correction upstream would land in a file this stage never opens again. The kernel already
+    knows: it re-dispatched because that input's fingerprint moved, and names the file in
+    dispatch.json's `scope`. Reading `scope` is what makes this fire only then, instead of on
+    every rework (the two files always differ after round 1)."""
+    try:
+        scope = json.loads((dest / "dispatch.json").read_text(encoding="utf-8")).get(
+            "scope"
+        )
+    except (OSError, json.JSONDecodeError):
+        return
+    tail = f"constraints/{top}.sdc"
+    if not scope or not any(str(p).endswith(tail) for p in scope):
+        return
+    _err(f"the specification SDC changed this round — dispatch.json scope names {tail}")
+    _err(
+        "  The carried constraints.sdc still holds the OLD clock and IO-delay "
+        "declarations. Reconcile it against"
+    )
+    _err(f"  {user_sdc} in step 2, keeping your exceptions and measured margins.")
+
+
 def run(workdir, top: str | None = None) -> int:
     if not _TEMPLATE_DIR.is_dir():
         _err(f"missing template directory: {_TEMPLATE_DIR}")
@@ -221,6 +248,7 @@ def run(workdir, top: str | None = None) -> int:
             "[synthesis bootstrap] carried constraints.sdc used "
             "(survived from a prior round)"
         )
+        _warn_seed_changed(dest, user_sdc, top)
     else:
         shutil.copyfile(user_sdc, dest / "constraints.sdc")
         print(

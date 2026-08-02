@@ -290,3 +290,37 @@ def test_config_tcl_lib_db_does_not_override_the_environment(tmp_path):
         env={"LIB_DB": "/real/slow.db", "PATH": "/usr/bin:/bin"},
     )
     assert seen.stdout.strip() == "seen: /real/slow.db", seen
+
+
+def _add_scope(workdir, *paths):
+    """dispatch.json's `scope` — the kernel writes it naming the inputs whose fingerprints
+    moved since the last run."""
+    d = json.loads((workdir / "dispatch.json").read_text())
+    d["scope"] = list(paths)
+    (workdir / "dispatch.json").write_text(json.dumps(d))
+
+
+def test_seed_change_in_scope_is_announced_over_the_carried_sdc(tmp_path):
+    """The carried file wins, which is right — but its clocks and IO delays are
+    specification's, and nothing re-reads the seed after round 1, so a correction upstream
+    would land in a file this stage never opens again."""
+    skill_dst, rtl, workdir = _mirror(tmp_path)
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
+    (workdir / "constraints.sdc").write_text("# CARRIED\ncreate_clock -period 10 x\n")
+    _add_scope(workdir, "Design/specification/constraints/top.sdc")
+    proc = _run(skill_dst, workdir, "--top", "top")
+    assert proc.returncode == 0, proc.stderr
+    assert "specification SDC changed this round" in proc.stderr
+    assert "CARRIED" in (workdir / "constraints.sdc").read_text()
+
+
+def test_no_notice_when_scope_does_not_name_the_sdc(tmp_path):
+    """The two files always differ after round 1, so comparing them would fire every
+    rework. `scope` is what makes this fire only when the seed itself moved."""
+    skill_dst, rtl, workdir = _mirror(tmp_path)
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
+    (workdir / "constraints.sdc").write_text("# CARRIED\n")
+    _add_scope(workdir, "Design/rtl-design/top.v")
+    proc = _run(skill_dst, workdir, "--top", "top")
+    assert proc.returncode == 0, proc.stderr
+    assert "SDC changed" not in proc.stderr
