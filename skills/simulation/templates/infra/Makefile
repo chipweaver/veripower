@@ -24,7 +24,7 @@ summary:  ## Generate case-results.json + case-results-summary.md
 
 coverage:  ## Merge per-test coverage to a text report and emit structural-coverage.json
 	@bash -lc 'source ./env.sh && \
-		urg -dir "$$SIMV.vdb" -dir ./cov_test/*.vdb -report cov_merge -format text && \
+		urg -dir "$$COV_DB.vdb" -dir ./cov_test/*.vdb -report cov_merge -format text && \
 		"$$PYTHON" ./scripts/parse_coverage.py --cov-dir ./cov_merge --out ./structural-coverage.json'
 
 clean:  ## Remove intermediate artifacts and reports

@@ -49,7 +49,7 @@ compile_simv() {
 	vcs -full64 -f filelist.f \
 		-sverilog \
 		-debug_access+all \
-		-kdb -lca "${VCS_COV_ARGS[@]}" \
+		-kdb -lca "${VCS_COV_ARGS[@]}" -cm_dir "$ROOT/$COV_DB" \
 		-timescale=1ns/1ps \
 		${VCS_CC:+-cc "$VCS_CC"} ${VCS_CPP:+-cpp "$VCS_CPP"} \
 		-LDFLAGS "-Wl,--no-as-needed -Wl,--allow-shlib-undefined" \
