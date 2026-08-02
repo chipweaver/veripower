@@ -103,9 +103,9 @@ def cmd_dispatch(
     workdir = str(Path(*rules.workdir_root(rule), "runs", str(run)))
     (root / workdir).mkdir(parents=True, exist_ok=True)
     abs_workdir = root / workdir
-    store.carry_self(module, rule, abs_workdir)  # self-carry (no-op unless Rule.carry)
+    store.carry_self(root, rule, abs_workdir)  # self-carry (no-op unless Rule.carry)
     store.write_dispatch(
-        module, rule, abs_workdir, extra_params, scope, caused_by_paths, reasons
+        root, rule, abs_workdir, extra_params, scope, caused_by_paths, reasons
     )
     ev = {
         "type": "dispatch",
@@ -127,7 +127,10 @@ def cmd_dispatch(
         "ok": True,
         "rule": rule,
         "run": run,
-        "workdir": workdir,
+        # ABSOLUTE, while the event keeps the module-relative form: the log must not bake in
+        # one machine's layout, and the executor must not have to guess a root to resolve
+        # against. dispatch.json's input paths are absolute for the same reason.
+        "workdir": str(abs_workdir.resolve()),
         "skill": rules.RULES[rule].skill,
         "execution": rules.RULES[rule].execution,
     }
@@ -149,7 +152,7 @@ def cmd_reap(module, rule, run):
     verdict, reason, proofs, diagnosis = _derive_verdict(module, rule, run, rj, events)
     if verdict != "blocked":  # promote produced artifacts (pass and fail both promote)
         try:
-            store.promote(module, rule, run)
+            store.promote(facts.module_root(module), rule, run)
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": f"promote failed: {e}"}
     outputs = _fingerprint_outputs(module, rule) if verdict != "blocked" else {}
@@ -531,8 +534,18 @@ def cmd_consequences(module, paths):
 def main():
     p = argparse.ArgumentParser(prog="kernel.py")
     sub = p.add_subparsers(dest="verb", required=True)
+    # Every verb is module-scoped and takes the same --module. Its help is the answer to
+    # "where does the kernel expect the module to be", a question the black-box rule leaves
+    # nowhere else to ask: the one real run reached for the source, was correctly stopped by
+    # that rule, and found this flag undocumented.
+    module_help = (
+        "path to the module directory — the one holding events.jsonl, brainstorm.md, "
+        "Design/ and Verification/. Relative paths resolve against the current directory, "
+        "so an absolute path works from anywhere (e.g. --module ~/chips/mydesign, or "
+        "--module . inside it)."
+    )
     d = sub.add_parser("decide")
-    d.add_argument("--module", required=True)
+    d.add_argument("--module", required=True, help=module_help)
     d.add_argument("--wake", default=None)
     d.add_argument(
         "--closing",
@@ -541,7 +554,7 @@ def main():
         "a blocked gate comes back as ESCALATE. Which proofs are required is unaffected.",
     )
     di = sub.add_parser("dispatch")
-    di.add_argument("--module", required=True)
+    di.add_argument("--module", required=True, help=module_help)
     di.add_argument("--rule", required=True, choices=list(rules.RULES))
     di.add_argument(
         "--caused-by",
@@ -564,11 +577,11 @@ def main():
         "names what a rule expects)",
     )
     re_ = sub.add_parser("reap")
-    re_.add_argument("--module", required=True)
+    re_.add_argument("--module", required=True, help=module_help)
     re_.add_argument("--rule", required=True, choices=list(rules.RULES))
     re_.add_argument("--run", required=True, type=int)
     dg = sub.add_parser("diagnose")
-    dg.add_argument("--module", required=True)
+    dg.add_argument("--module", required=True, help=module_help)
     dg.add_argument("--id", required=True, dest="diag_id")
     dg.add_argument("--subject-proof", required=True, choices=rules.FORWARD_PRIORITY)
     dg.add_argument("--subject-run", required=True, type=int)
@@ -580,39 +593,35 @@ def main():
     dg.add_argument("--reason", required=True)
     dg.add_argument("--supersedes", default=None)
     pn = sub.add_parser("pin")
-    pn.add_argument("--module", required=True)
+    pn.add_argument("--module", required=True, help=module_help)
     pn.add_argument("--rule", required=True, choices=list(rules.RULES))
     pn.add_argument("--provenance", required=True)
     pn.add_argument("--reason", required=True)
     ro = sub.add_parser("reopen")
-    ro.add_argument("--module", required=True)
+    ro.add_argument("--module", required=True, help=module_help)
     ro.add_argument("--pin-ref", required=True)
     ro.add_argument("--reason", required=True)
     so = sub.add_parser("signoff")
-    so.add_argument("--module", required=True)
+    so.add_argument("--module", required=True, help=module_help)
     so.add_argument("--provenance", required=True)
     so.add_argument("--reason", required=True)
     st = sub.add_parser("status")
-    st.add_argument("--module", required=True)
+    st.add_argument("--module", required=True, help=module_help)
     co = sub.add_parser("consequences")
-    co.add_argument("--module", required=True)
+    co.add_argument("--module", required=True, help=module_help)
     co.add_argument("--paths", nargs="+", required=True)
     args = p.parse_args()
-    # Every verb is module-scoped, and module paths are resolved relative to the CURRENT
-    # WORKING DIRECTORY (facts.module_root). A missing module directory is therefore always
-    # an error and never a legitimate starting state: brainstorm.md is a PIPELINE_INPUT that
-    # must already exist for `specification` to be dispatchable at all, so a module with no
-    # directory can never become schedulable. Without this, the wrong cwd produced two
-    # answers that both looked like real ones — `status` inventing an all-`missing`
-    # projection at exit 0, and `decide` returning the same "no eligible rule" ESCALATE a
-    # genuinely deadlocked module returns. Name the resolved absolute path: that is what
-    # makes a cwd mistake visible.
+    # A missing module directory is always an error and never a legitimate starting state:
+    # brainstorm.md is a PIPELINE_INPUT that must already exist for `specification` to be
+    # dispatchable at all, so a module with no directory can never become schedulable.
+    # Without this, a mistyped or misresolved path produced two answers that both looked
+    # real — `status` inventing an all-`missing` projection at exit 0, and `decide`
+    # returning the same "no eligible rule" ESCALATE a genuinely deadlocked module returns.
+    # Name the resolved absolute path, so a relative one that landed somewhere unintended
+    # says so.
     root = facts.module_root(args.module)
     if not root.is_dir():
-        sys.exit(
-            f"kernel.py {args.verb}: no module directory at {root.resolve()} "
-            f"(module paths resolve against the current working directory)"
-        )
+        sys.exit(f"kernel.py {args.verb}: no module directory at {root.resolve()}")
     refs = (
         args.diagnosis_refs.split(",")
         if getattr(args, "diagnosis_refs", None)

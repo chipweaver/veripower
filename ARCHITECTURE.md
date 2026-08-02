@@ -44,7 +44,7 @@ VeriPower separates a deterministic scheduling core from the LLM Orchestrator: a
 
 Three commitments make it work; each is elaborated where it lives:
 
-- **The event log is the only durable state.** `asic/<module>/events.jsonl` is the sole persisted state file. There is *no* status snapshot: whether a stage is done, stale, failed, or in-flight is *derived* on demand from the log by comparing recorded content fingerprints against disk (§4). `kernel.py` is the only writer of the log, and every event is schema-validated at write time, so the audit trail cannot be forged through an agent prompt.
+- **The event log is the only durable state.** `<module-dir>/events.jsonl` is the sole persisted state file. There is *no* status snapshot: whether a stage is done, stale, failed, or in-flight is *derived* on demand from the log by comparing recorded content fingerprints against disk (§4). `kernel.py` is the only writer of the log, and every event is schema-validated at write time, so the audit trail cannot be forged through an agent prompt.
 - **Validity is a query, not a stored bit.** A stage's output is trusted only while a *proof* it recorded still holds — its inputs and outputs unchanged, its oracle un-reopened (§4.4). Edit an upstream file and every proof whose fingerprints no longer match silently becomes invalid on the next query; nothing has to remember to mark it stale. Freshness therefore falls out of content, not out of bookkeeping.
 - **The dependency graph is derived, not declared.** A rule names the artifact globs it consumes and produces; the producer→consumer graph is computed from those selectors (`rules.producer_of`), so there is no second DAG structure to drift out of sync with what stages actually read and write (§3).
 
@@ -84,7 +84,7 @@ The Orchestrator agent decides; `kernel.py` and the skills execute; disk persist
            │ reads/writes
            ▼
 ┌────────────────────────────────────────────────────────────────────────────────────┐
-│                              asic/<module>/                                        │
+│                        <module-dir>  (the --module path)                           │
 │                                                                                    │
 │   events.jsonl                       the ONLY durable state (append-only log)      │
 │   Design/<rule>/result.json          specification / rtl-design / lint-cdc /       │
@@ -131,7 +131,7 @@ The `execution` field on each `Rule` (`"main-thread"` or `"task"`) is what the O
 
 > **Red Flag:** If `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis)` appears in the Orchestrator's tool history, it is a bug — those four rules must dispatch via `Task()`.
 
-**Pre-pipeline `brainstorm` skill (not kernel-dispatched).** The heavy D0–D7 requirements dialogue runs in a separate `brainstorm` skill in its own session — it is NOT one of the four main-thread stages above and is never dispatched by the Orchestrator. It produces the approved `asic/<module>/brainstorm.md` (module root) that the pipeline starts from; it writes no `result.json` and calls no `kernel.py`. `brainstorm.md` is the pipeline's sole external input — `rules.PIPELINE_INPUTS` — needing only to exist and be `Status: approved` (the Orchestrator's session-start gate) for `specification` to become schedulable.
+**Pre-pipeline `brainstorm` skill (not kernel-dispatched).** The heavy D0–D7 requirements dialogue runs in a separate `brainstorm` skill in its own session — it is NOT one of the four main-thread stages above and is never dispatched by the Orchestrator. It produces the approved `brainstorm.md` at the module root that the pipeline starts from; it writes no `result.json` and calls no `kernel.py`. `brainstorm.md` is the pipeline's sole external input — `rules.PIPELINE_INPUTS` — needing only to exist and be `Status: approved` (the Orchestrator's session-start gate) for `specification` to become schedulable.
 
 ### 2.4 Role responsibilities
 
@@ -219,7 +219,7 @@ Asynchronous clock relationships are carried differently in each format because 
 
 ### 4.1 `events.jsonl` is the only durable state
 
-Everything under `asic/<module>/` that matters to the kernel is derived from one append-only file: `events.jsonl`. There is no `task.json`, no status snapshot, no freshness field. `facts.read_events` parses it (tolerating a truncated final line); `facts.append_event` is the only writer, and it is reached only through `kernel.py`. Each append validates the record against the event's JSON Schema *before* writing, so a malformed event is a hard error, never a written line.
+Everything under the module directory that matters to the kernel is derived from one append-only file: `events.jsonl`. There is no `task.json`, no status snapshot, no freshness field. `facts.read_events` parses it (tolerating a truncated final line); `facts.append_event` is the only writer, and it is reached only through `kernel.py`. Each append validates the record against the event's JSON Schema *before* writing, so a malformed event is a hard error, never a written line.
 
 Because the log is the state, in-flight is derived too: `facts.in_flight` = every `dispatch` with no matching `outcome` (keyed by `(rule, run)`). Crash recovery is thus intrinsic — a run whose executor died left a `dispatch` with no `outcome`, so it still shows in-flight and `decide` will reap it (§5.6).
 
@@ -450,12 +450,12 @@ The four `Skill()`-loaded rules share the stage-subagent contract — **no `kern
 
 ## 7. Workspace layout
 
-Each module's working state lives under `asic/<module>/`. Each rule's canonical directory uses a **dual-layer structure**: a canonical view plus a `runs/<N>/` working area.
+Each module's working state lives under the directory `--module` names — the kernel layers no convention on that path, so a module can sit anywhere and the same command reaches it from any working directory. Each rule's canonical directory uses a **dual-layer structure**: a canonical view plus a `runs/<N>/` working area.
 
 ### 7.1 Per-module workspace tree
 
 ```
-asic/<module>/
+<module-dir>/            # e.g. asic/mychip, or ~/chips/mychip
 ├── events.jsonl               # the ONLY durable state (append-only, 7 event types)
 ├── .fingerprint-cache.json    # pure mtime/size speed cache — never a fact source
 ├── brainstorm.md              # pre-pipeline external input (module root; written by the brainstorm skill)

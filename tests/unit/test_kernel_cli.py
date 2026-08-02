@@ -770,7 +770,7 @@ def test_unknown_module_directory_is_a_hard_error(tmp_path, monkeypatch):
         r = _run(tmp_path, verb, "--module", "nosuch")
         assert r.returncode != 0, r.stdout
         assert "no module directory" in r.stderr
-        assert str(tmp_path / "asic" / "nosuch") in r.stderr
+        assert str(tmp_path / "nosuch") in r.stderr
 
 
 def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
@@ -1111,8 +1111,8 @@ def test_stale_result_reason_boundaries():
 def test_dispatch_writes_dispatch_json(tmp_path, monkeypatch):
     # cold specification dispatch → workdir has dispatch.json with the brainstorm location
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "asic" / "m").mkdir(parents=True)
-    (tmp_path / "asic" / "m" / "brainstorm.md").write_text("bs")
+    (tmp_path / "m").mkdir(parents=True)
+    (tmp_path / "m" / "brainstorm.md").write_text("bs")
     r = _run_json(
         tmp_path,
         "dispatch",
@@ -1121,18 +1121,18 @@ def test_dispatch_writes_dispatch_json(tmp_path, monkeypatch):
         "--rule",
         "specification",
     )
-    wd = tmp_path / "asic" / "m" / r["workdir"]
+    wd = tmp_path / "m" / r["workdir"]
     table = json.loads((wd / "dispatch.json").read_text())["inputs"]
-    assert table["brainstorm"] == str((tmp_path / "asic" / "m").resolve())
+    assert table["brainstorm"] == str((tmp_path / "m").resolve())
 
 
 def test_dispatch_carries_author_previous_round(tmp_path, monkeypatch):
     # seed a canonical specification product, then re-dispatch → carried into new workdir
     monkeypatch.chdir(tmp_path)
-    canon = tmp_path / "asic" / "m" / "Design" / "specification"
+    canon = tmp_path / "m" / "Design" / "specification"
     canon.mkdir(parents=True)
     (canon / "design.md").write_text("prev")
-    (tmp_path / "asic" / "m" / "brainstorm.md").write_text("bs")
+    (tmp_path / "m" / "brainstorm.md").write_text("bs")
     r = _run_json(
         tmp_path,
         "dispatch",
@@ -1141,7 +1141,7 @@ def test_dispatch_carries_author_previous_round(tmp_path, monkeypatch):
         "--rule",
         "specification",
     )
-    wd = tmp_path / "asic" / "m" / r["workdir"]
+    wd = tmp_path / "m" / r["workdir"]
     assert (wd / "design.md").read_text() == "prev"
 
 
@@ -1164,7 +1164,7 @@ def test_dispatch_injects_no_upstream_byte_copy(tmp_path, monkeypatch):
         "--rule",
         "synthesis",
     )
-    wd = tmp_path / "asic" / "m" / r["workdir"]
+    wd = tmp_path / "m" / r["workdir"]
     assert (wd / "dispatch.json").is_file()
     assert not (wd / "top.v").exists()  # upstream RTL injected, not copied
 
@@ -1174,12 +1174,12 @@ def test_dispatch_proof_inputs_excludes_self_carry(tmp_path, monkeypatch):
     # recorded input table (proof.inputs source) never contains them — dropping/editing a
     # carried product cannot stale the author's fresh proof.
     monkeypatch.chdir(tmp_path)
-    canon = tmp_path / "asic" / "m" / "Design" / "specification"
+    canon = tmp_path / "m" / "Design" / "specification"
     canon.mkdir(parents=True)
     (canon / "design.md").write_text(
         "prev"
     )  # a self-PRODUCT (output), carried, not an input
-    (tmp_path / "asic" / "m" / "brainstorm.md").write_text("bs")
+    (tmp_path / "m" / "brainstorm.md").write_text("bs")
     _run_json(
         tmp_path,
         "dispatch",
@@ -1190,7 +1190,7 @@ def test_dispatch_proof_inputs_excludes_self_carry(tmp_path, monkeypatch):
     )
     events = [
         json.loads(ln)
-        for ln in (tmp_path / "asic" / "m" / "events.jsonl").read_text().splitlines()
+        for ln in (tmp_path / "m" / "events.jsonl").read_text().splitlines()
     ]
     disp = [e for e in events if e["type"] == "dispatch"][-1]
     assert set(disp["inputs"]) == {"brainstorm.md"}  # design.md (self-product) absent

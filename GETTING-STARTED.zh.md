@@ -10,7 +10,7 @@ VeriPower 通过一条 9 个阶段的流水线，把一个已批准的想法变�
 有两点决定了你的使用体验：
 
 - **头脑风暴（brainstorm）先行，且在独立会话中进行。** 进入流水线之前，你先运行
-  `brainstorm` 技能来敲定需求与架构；它产出一份冻结的 `asic/{module}/brainstorm.md`。
+  `brainstorm` 技能来敲定需求与架构；它产出一份冻结的 `{module}/brainstorm.md`。
   只有当该文件的 `Status: approved` 时，流水线才会启动。
 - **一句话启动流水线。** 你对 agent 说一句*「为 {module} 运行设计流程」*，
   `design-flow` 协调器（Orchestrator）就会接管——它会自举模块状态，然后沿着阶段图
@@ -75,7 +75,7 @@ VeriPower 通过一条 9 个阶段的流水线，把一个已批准的想法变�
 > 为新模块 {module} 做头脑风暴
 
 它会进行一套结构化的 D0–D7 对话（需求、接口、架构——每次问一个问题），并写出
-`asic/{module}/brainstorm.md`。审阅它，并把 frontmatter 设为 `Status: approved`。
+`{module}/brainstorm.md`。审阅它，并把 frontmatter 设为 `Status: approved`。
 这份冻结文件是流水线唯一的上游输入——流水线绝不会再回头去重开这段头脑风暴对话。
 
 > **【真实运行记录——即将补充】** 待第一次 benchmark 扫测完成后，这里会放入一段
@@ -154,7 +154,7 @@ kernel.py signoff --module {module} --provenance <you> --reason "<why>"
 
 它背后是每次运行都会产生的审计轨迹：
 
-- `asic/{module}/events.jsonl` —— 仅追加、经 schema 校验的事件日志；**唯一**的持久状态文件（真源）。
+- `{module}/events.jsonl` —— 仅追加、经 schema 校验的事件日志；**唯一**的持久状态文件（真源）。
 - 每个阶段的状态 —— **不**存储在任何地方；`kernel.py status` 按需从事件日志与磁盘指纹
   计算得出，因此它绝不会与磁盘上的真实内容发生漂移。
 

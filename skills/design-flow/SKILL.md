@@ -15,7 +15,11 @@ loop:
   if a.action in {YIELD, DONE, ESCALATE}: end turn
 ```
 
-`kernel.py` is the **sole writer** of `asic/{module}/events.jsonl` and the sole decider.
+`{module}` is the path to the module's directory — the one holding `events.jsonl` and
+`brainstorm.md`, with every stage's tree beneath it. Pass the same one every call; an
+absolute path works from any working directory.
+
+`kernel.py` is the **sole writer** of `{module}/events.jsonl` and the sole decider.
 `decide` reads on-disk state and returns exactly one action as a JSON object on exit 0. All
 routing lives inside it — you never re-derive the next stage yourself, and you carry nothing
 between turns: what to build is derived from the log every call, so a compaction or a crash
@@ -41,7 +45,7 @@ a bug — each action's executor runs, then you loop back to `decide`.
 
 ## Session entry gate
 
-Before entering the loop, `grep` the frontmatter of `asic/{module}/brainstorm.md`
+Before entering the loop, `grep` the frontmatter of `{module}/brainstorm.md`
 (frontmatter only — do NOT load the body; you hold no document content, and this is the
 largest thing upstream). If `Status` ≠ `approved`, reply "module {module} has no approved
 brainstorm.md — run `Skill(veripower:brainstorm)` for {module}, then re-invoke design-flow"

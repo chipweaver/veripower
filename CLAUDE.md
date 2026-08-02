@@ -17,13 +17,13 @@ whose reap lands a `diagnosis` event. Authoritative registry and routing rules:
 
 ## Module Layout
 
-Per-module work tree under `asic/<module>/`:
+Per-module work tree under the module directory `--module` names (conventionally `asic/<module>/`, but the kernel layers no convention on the path it is given):
 
 - `events.jsonl` — append-only event log, the SOLE durable state file (6 event types: `dispatch`, `outcome`, `diagnosis`, `pin`, `reopen`, `signoff`; schemas `framework/references/schemas/events/`). Written only by `kernel.py`; per-stage status is derived from it + disk fingerprints on demand (`kernel.py status`), never stored.
 - `Design/rtl-design/semantic-review/*.md` — the intent review of the delivered RTL against its design intent, written by fresh reviewers (contract `skills/rtl-design/references/rtl-review-task-contract.md`); how the wave splits the RTL across files is the stage's call. rtl-design's proposed oracle, prose rather than a verdict.
 - `Verification/simulation/conformance-review.md` — per-testpoint check-adequacy review, written by simulation's own Level-1 reviewer: prose per finding, with `BLOCKING` on the heading of one that stops the round. Unlike the other stages' reviews it is not an oracle and no human reads it before the stage routes on it, so that one marker is the whole machine-readable part and a trip is dispositioned in-stage; `failure_phase=conformance` is what survives that.
 - `Verification/simulation-plan/plan-review/review.md` + `decisions.md` — testpoint-adequacy review, written by simulation-plan's self-dispatched Level-1 reviewer (prose: what it compared against, whether it blocks, where); `decisions.md` records the user's per-finding resolution at its human gate. Simulation-plan's proposed oracle — the kernel fingerprints it, no script reduces it to a verdict.
-- `brainstorm.md` (module root, `asic/<module>/brainstorm.md`) — sole upstream of `design.md`; produced by the pre-pipeline `brainstorm` skill (own session), frozen for the run, NOT listed in specification's `result.json.artifacts[]`.
+- `brainstorm.md` (module root) — sole upstream of `design.md`; produced by the pre-pipeline `brainstorm` skill (own session), frozen for the run, NOT listed in specification's `result.json.artifacts[]`.
 - `Design/specification/manifest.json` — child registry SSoT (every module, N≥1; contains `module` and `children[]` with `name` / `doc` / `rtl_modules[]` / `brainstorm_anchor`).
 - `Design/specification/ppa.json` — PPA targets emitted by specification; a declared input of `synthesis` and `power-analysis` (they read it themselves — nothing is injected into their prompts). `rtl-design` reads it too, from its own injected specification location.
 - `Design/specification/spec-review/<child>.md × N` + `decisions.md` — per-child spec intent review, written by that child's reviewer (prose: what it compared against, whether it blocks, where); `decisions.md` records the user's per-finding resolution at the design.md gate. Specification's proposed oracle — the kernel fingerprints it, no script reduces it to a verdict.

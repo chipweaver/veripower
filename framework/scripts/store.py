@@ -4,7 +4,8 @@ Split out so the kernel stays focused on state mutations. No I/O beyond the
 promote operation itself. Imports only stdlib + rules (no
 jsonschema/referencing deps).
 
-Imported by kernel.py: its reap path calls `store.promote`.
+Imported by kernel.py, which passes the module root in: where a module's tree sits is
+facts.module_root's single call, and this file never re-derives it.
 """
 
 from __future__ import annotations
@@ -20,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 import rules  # noqa: E402
 
 
-def _result_path(module: str, rule: str) -> Path:
-    return Path("asic", module, *rules.workdir_root(rule), "result.json")
+def _result_path(root: Path, rule: str) -> Path:
+    return Path(root, *rules.workdir_root(rule), "result.json")
 
 
 def _is_safe_rel(rel: str) -> bool:
@@ -55,7 +56,7 @@ def _resolve_sim_run(root: Path, sim_run) -> str:
 
 
 def write_dispatch(
-    module: str,
+    root: Path,
     rule: str,
     workdir,
     params=None,
@@ -79,7 +80,6 @@ def write_dispatch(
     The three narrowing keys are derived by the caller (cmd_dispatch); this function owns
     only the file's shape."""
     r = rules.RULES[rule]
-    root = Path("asic", module)
     module_root_abs = str(root.resolve())
     table: dict[str, str] = {}
     for key, globs in r.inputs.items():
@@ -115,7 +115,7 @@ _CARRY_EXCLUDE = (
 )
 
 
-def carry_self(module: str, rule: str, workdir) -> None:
+def carry_self(root: Path, rule: str, workdir) -> None:
     """dispatch-time: copy the author's own previous round into the fresh workdir so it
     edits incrementally. Source = the canonical stage root (the GC'd clean product set,
     parent of runs/), NOT runs/N-1. copy2 (NOT hardlink — canonical shares inodes with the
@@ -128,7 +128,7 @@ def carry_self(module: str, rule: str, workdir) -> None:
     r = rules.RULES[rule]
     if not r.carry:
         return
-    stage_dir = _result_path(module, rule).parent
+    stage_dir = _result_path(root, rule).parent
     if not stage_dir.is_dir():
         return
     dest = Path(workdir)
@@ -173,7 +173,7 @@ def _cp_al(src: Path, dst: Path) -> None:
             os.link(str(entry), str(dst / entry.name))
 
 
-def promote(module: str, rule: str, run_n: int) -> None:
+def promote(root: Path, rule: str, run_n: int) -> None:
     """Atomic per-entry merge promote.
 
     1. Build new canonical view in .promote-tmp/ (all hardlinks)
@@ -187,7 +187,7 @@ def promote(module: str, rule: str, run_n: int) -> None:
     promote(), which clears any stale .promote-tmp/ before starting and
     rebuilds from scratch — promote is idempotent.
     """
-    stage_dir = _result_path(module, rule).parent
+    stage_dir = _result_path(root, rule).parent
     run_dir = stage_dir / "runs" / str(run_n)
     rj_src = run_dir / "result.json"
     if not rj_src.exists():

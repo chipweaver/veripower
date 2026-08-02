@@ -50,7 +50,7 @@ def _run_json(tree_root, *args):
 
 
 def _write_file(tree_root, module, rel, content):
-    p = tree_root / "asic" / module / rel
+    p = tree_root / module / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
     return p
@@ -172,9 +172,9 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
         "rtl-design",
     )
     assert d1["ok"] is True, d1
-    wd1 = tmp_path / "asic" / module / d1["workdir"]
+    wd1 = tmp_path / module / d1["workdir"]
     table = json.loads((wd1 / "dispatch.json").read_text())["inputs"]
-    spec_root = str((tmp_path / "asic" / module / "Design" / "specification").resolve())
+    spec_root = str((tmp_path / module / "Design" / "specification").resolve())
     assert table["design"] == spec_root
     assert table["manifest"] == spec_root
     assert table["children"] == spec_root
@@ -203,7 +203,7 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
         str(d1["run"]),
     )
     assert r1 == {"ok": True, "rule": "rtl-design", "run": d1["run"], "verdict": "pass"}
-    canonical = tmp_path / "asic" / module / "Design" / "rtl-design"
+    canonical = tmp_path / module / "Design" / "rtl-design"
     assert (canonical / "top.v").read_text() == _STAGE_FILES["rtl-design"]["top.v"]
 
     # 4. re-dispatch rtl-design -> the previous *.v and both sidecars were
@@ -217,7 +217,7 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
         "rtl-design",
     )
     assert d2["ok"] is True and d2["run"] == d1["run"] + 1
-    wd2 = tmp_path / "asic" / module / d2["workdir"]
+    wd2 = tmp_path / module / d2["workdir"]
     assert (wd2 / "top.v").read_text() == _STAGE_FILES["rtl-design"]["top.v"]
     assert (wd2 / "rtl-files.json").read_text() == _STAGE_FILES["rtl-design"][
         "rtl-files.json"
@@ -271,9 +271,9 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
         "power-analysis",
     )
     assert d["ok"] is True, d
-    wd = tmp_path / "asic" / module / d["workdir"]
+    wd = tmp_path / module / d["workdir"]
     table = json.loads((wd / "dispatch.json").read_text())["inputs"]
-    base = str((tmp_path / "asic" / module).resolve())
+    base = str((tmp_path / module).resolve())
     assert table["netlist"] == base + "/Design/synthesis"
     assert table["tb_env"] == base + "/Verification/simulation"
     assert table["scaffold"] == base + "/Verification/simulation-plan"
@@ -334,7 +334,7 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
         "run": d["run"],
         "verdict": "pass",
     }
-    canonical = tmp_path / "asic" / module / "Verification" / "power-analysis"
+    canonical = tmp_path / module / "Verification" / "power-analysis"
     assert (canonical / "reports_ptpx" / "run1" / "power_hier.rpt").is_file()
 
 
@@ -360,7 +360,7 @@ def test_relocation_invariance_consumer_reanchors(tmp_path):
         "synthesis",
     )
     assert d_a["ok"] is True, d_a
-    wd_a = tree_a / "asic" / module / d_a["workdir"]
+    wd_a = tree_a / module / d_a["workdir"]
     br_a = subprocess.run(
         [
             sys.executable,
@@ -377,7 +377,7 @@ def test_relocation_invariance_consumer_reanchors(tmp_path):
     )
     assert br_a.returncode == 0, br_a.stderr
     tcl_a = (wd_a / "scripts" / "rtl_load.tcl").read_text()
-    rtl_root_a = str((tree_a / "asic" / module / "Design" / "rtl-design").resolve())
+    rtl_root_a = str((tree_a / module / "Design" / "rtl-design").resolve())
     assert rtl_root_a in tcl_a
 
     # reap synthesis run 1 in A (so it is no longer in-flight) -> promote
@@ -421,7 +421,7 @@ def test_relocation_invariance_consumer_reanchors(tmp_path):
     )
     assert d_b["ok"] is True, d_b
     assert d_b["run"] == d_a["run"] + 1
-    wd_b = tree_b / "asic" / module / d_b["workdir"]
+    wd_b = tree_b / module / d_b["workdir"]
     br_b = subprocess.run(
         [
             sys.executable,

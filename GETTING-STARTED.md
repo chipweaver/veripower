@@ -12,7 +12,7 @@ VeriPower turns an approved idea into a signed-off frontend design through a
 
 - **Brainstorm comes first, in its own session.** Before the pipeline, you run
   the `brainstorm` skill to settle requirements and architecture; it produces a
-  frozen `asic/{module}/brainstorm.md`. The pipeline starts only once that file
+  frozen `{module}/brainstorm.md`. The pipeline starts only once that file
   reads `Status: approved`.
 - **One sentence starts the pipeline.** You tell the agent *"Run the design
   flow for {module}"* and the `design-flow` Orchestrator takes over — it
@@ -81,7 +81,7 @@ In its own session, ask the agent to brainstorm your module — this runs the
 > Brainstorm a new module called {module}
 
 It runs a structured D0–D7 dialogue (requirements, interfaces, architecture —
-one question at a time) and writes `asic/{module}/brainstorm.md`. Review it and
+one question at a time) and writes `{module}/brainstorm.md`. Review it and
 set its frontmatter to `Status: approved`. That frozen file is the pipeline's
 sole upstream input — the pipeline never re-opens the brainstorm conversation.
 
@@ -176,7 +176,7 @@ good as the proofs beneath it.
 
 Behind it sits the audit trail every run produces:
 
-- `asic/{module}/events.jsonl` — append-only, schema-validated event log; the
+- `{module}/events.jsonl` — append-only, schema-validated event log; the
   **sole** durable state file (the source of truth).
 - per-stage status — **not** stored anywhere; `kernel.py status` computes it on
   demand from the event log and disk fingerprints, so it can never drift from

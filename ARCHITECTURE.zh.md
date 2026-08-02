@@ -44,7 +44,7 @@ VeriPower 把确定性调度核心和 LLM Orchestrator 分开：一次路由失�
 
 三条承诺撑起整个系统，每条在各自章节展开：
 
-- **事件日志是唯一的持久状态。** `asic/<module>/events.jsonl` 是仅有的持久状态文件。*没有*状态快照：一个阶段是完成、陈旧、失败还是在途，都是按需从日志*派生*的——把落账的内容指纹和磁盘现状逐一比对（§4）。`kernel.py` 是日志的唯一写者，每个事件写入时都做 schema 校验，因此审计轨迹无法经由 Agent 提示词伪造。
+- **事件日志是唯一的持久状态。** `<模块目录>/events.jsonl` 是仅有的持久状态文件。*没有*状态快照：一个阶段是完成、陈旧、失败还是在途，都是按需从日志*派生*的——把落账的内容指纹和磁盘现状逐一比对（§4）。`kernel.py` 是日志的唯一写者，每个事件写入时都做 schema 校验，因此审计轨迹无法经由 Agent 提示词伪造。
 - **有效性是查询，不是存储位。** 一个阶段的输出只在它落账的*证明*仍然成立时才被信任——输入输出未变、oracle 未被 reopen（§4.4）。改动任何上游文件，指纹对不上的证明在下一次查询时就静默失效；没有任何东西需要"记得"去标脏。新鲜与否因此由内容决定，而不是由记账决定。
 - **依赖图是派生的，不是声明的。** 每条规则声明自己消费和产出的产物 glob；生产者→消费者图从这些选择子计算得出（`rules.producer_of`），因此不存在第二份会与阶段实际读写漂移脱节的 DAG 结构（§3）。
 
@@ -84,7 +84,7 @@ Orchestrator Agent 做决策；`kernel.py` 和 skills 负责执行；磁盘负�
            │ reads/writes
            ▼
 ┌────────────────────────────────────────────────────────────────────────────────────┐
-│                              asic/<module>/                                        │
+│                       <模块目录>  (--module 给的那个路径)                          │
 │                                                                                    │
 │   events.jsonl                       the ONLY durable state (append-only log)      │
 │   Design/<rule>/result.json          specification / rtl-design / lint-cdc /       │
@@ -131,7 +131,7 @@ Orchestrator 的三条派发路径：
 
 > **警告：** 如果 `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis)` 出现在 Orchestrator 的工具历史中，这是个 bug——那四条规则必须走 `Task()` 派发。
 
-**流水线前的 `brainstorm` skill（不由内核派发）。** 重量级 D0–D7 需求对话在自己的独立会话中运行，是一个单独的 `brainstorm` skill——不属于上述四个主线程阶段，Orchestrator 永远不派发它。它产出流水线启动所需的已批准 `asic/<module>/brainstorm.md`（模块根目录）；不写 `result.json`，不调 `kernel.py`。`brainstorm.md` 是流水线唯一的外部输入——`rules.PIPELINE_INPUTS`——只需存在且为 `Status: approved`（Orchestrator 的会话启动门），`specification` 即可调度。
+**流水线前的 `brainstorm` skill（不由内核派发）。** 重量级 D0–D7 需求对话在自己的独立会话中运行，是一个单独的 `brainstorm` skill——不属于上述四个主线程阶段，Orchestrator 永远不派发它。它产出流水线启动所需的已批准的模块根 `brainstorm.md`；不写 `result.json`，不调 `kernel.py`。`brainstorm.md` 是流水线唯一的外部输入——`rules.PIPELINE_INPUTS`——只需存在且为 `Status: approved`（Orchestrator 的会话启动门），`specification` 即可调度。
 
 ### 2.4 角色职责
 
@@ -219,7 +219,7 @@ for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 
 ### 4.1 `events.jsonl` 是唯一的持久状态
 
-`asic/<module>/` 下内核关心的一切都从一个只追加文件派生：`events.jsonl`。没有 `task.json`，没有状态快照，没有新鲜度字段。`facts.read_events` 解析它（容忍被截断的末行）；`facts.append_event` 是唯一写者，且只能经 `kernel.py` 到达。每次追加都*先*按该事件的 JSON Schema 校验再写入，因此畸形事件是硬错误，绝不会成为已写入的一行。
+模块目录下内核关心的一切都从一个只追加文件派生：`events.jsonl`。没有 `task.json`，没有状态快照，没有新鲜度字段。`facts.read_events` 解析它（容忍被截断的末行）；`facts.append_event` 是唯一写者，且只能经 `kernel.py` 到达。每次追加都*先*按该事件的 JSON Schema 校验再写入，因此畸形事件是硬错误，绝不会成为已写入的一行。
 
 因为日志即状态，在途也是派生的：`facts.in_flight` = 每个没有匹配 `outcome` 的 `dispatch`（按 `(rule, run)` 键）。崩溃恢复因此是内生的——执行器死掉的 run 留下一个没有 `outcome` 的 `dispatch`，所以它仍显示在途，`decide` 会去收割它（§5.6）。
 
@@ -446,12 +446,12 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 
 ## 7. 工作空间布局
 
-每个模块的工作状态位于 `asic/<module>/`。每条规则的规范目录使用**双层结构**：一个规范视图加一个 `runs/<N>/` 工作区。
+每个模块的工作状态位于 `--module` 指名的那个目录 —— 内核不在这个路径上叠加任何约定，所以模块可以放在任何地方，同一条命令从任何工作目录都够得到。每条规则的规范目录使用**双层结构**：一个规范视图加一个 `runs/<N>/` 工作区。
 
 ### 7.1 按模块工作空间树
 
 ```
-asic/<module>/
+<模块目录>/              # 例如 asic/mychip，或 ~/chips/mychip
 ├── events.jsonl               # 唯一持久状态（只追加，7 类事件）
 ├── .fingerprint-cache.json    # 纯 mtime/size 加速缓存——从不作为事实来源
 ├── brainstorm.md              # 流水线前外部输入（模块根；由 brainstorm skill 写出）

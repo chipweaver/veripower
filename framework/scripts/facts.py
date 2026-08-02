@@ -1,6 +1,6 @@
 """VeriPower facts — event I/O, content fingerprints, and freshness queries.
 
-The sole durable state is asic/<module>/events.jsonl (append-only). Everything
+The sole durable state is <module-dir>/events.jsonl (append-only). Everything
 else (freshness, projections, in-flight) is COMPUTED here by comparing recorded
 input/output versions against current disk fingerprints. Bare-importable
 (`import facts`); imports the rules registry."""
@@ -144,7 +144,14 @@ _EVENT_SCHEMA_DIR = _PLUGIN_ROOT / "framework" / "references" / "schemas" / "eve
 
 
 def module_root(module: str) -> Path:
-    return Path("asic") / module
+    """The module's directory, exactly as the caller named it.
+
+    No convention layered on top. An `asic/` prefix bolted on here made the tree's location
+    an unwritten rule: absolute from nowhere, derivable from no output, and unavailable to
+    an agent that is (correctly) told not to read this source — the one real run spent its
+    opening turns asking where the kernel expected the module, then prefixed 71 kernel calls
+    with a `cd`. A path argument answers it at the call site and works from any directory."""
+    return Path(module)
 
 
 def events_path(module: str) -> Path:
