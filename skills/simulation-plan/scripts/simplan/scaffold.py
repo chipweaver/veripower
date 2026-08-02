@@ -18,7 +18,9 @@ Pairs with simulation's renderer and its thin consumer-side backstops (defense-i
 scaffolds that bypass this gate).
 """
 
+import json
 import sys
+from pathlib import Path
 
 from simplan._plan import PlanError, load_plan
 from simplan.hints import HintsError, load_check_hints
@@ -150,7 +152,53 @@ def verdict(plan_dir, spec_workdir) -> list:
         check_hints = load_check_hints(spec_workdir)
     except HintsError as e:
         return [str(e)]
-    return semantic_errors(plan) or coverage_errors(plan, check_hints)
+    return (
+        semantic_errors(plan)
+        or boundary_errors(plan, spec_workdir)
+        or coverage_errors(plan, check_hints)
+    )
+
+
+def boundary_errors(scaffold: dict, spec_workdir) -> list:
+    """The agents' interface_groups must PARTITION top-io.json's data ports.
+
+    simulation binds the DUT by walking those ports, so a port no agent claims has nothing to
+    bind to. Before this gate existed that rendered as a DUT port left open — which Verilog
+    accepts and VCS compiles without an error, so the signal was dead for the whole run and no
+    report named the bench. Held here rather than only there because the plan passes a human
+    approval gate first, and a defect found after it costs a specification round and a
+    re-approval."""
+    try:
+        ports = json.loads(
+            (Path(spec_workdir) / "top-io.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as e:
+        return [f"top-io.json unreadable: {e}"]
+    owner: dict[str, str] = {}
+    errs = []
+    for agent in scaffold.get("agents", []):
+        for g in agent.get("interface_groups") or []:
+            if g in owner:
+                errs.append(
+                    f"interface_group {g!r} is claimed by both {owner[g]!r} and "
+                    f"{agent.get('name')!r}. One group is one virtual interface, so its ports "
+                    f"would be bound twice."
+                )
+            owner[g] = agent.get("name")
+    unclaimed = sorted(
+        {
+            p["interface_group"]
+            for p in ports
+            if p.get("role") == "data" and p.get("interface_group") not in owner
+        }
+    )
+    if unclaimed:
+        errs.append(
+            f"interface_group(s) {unclaimed} hold data ports no agent claims, so nothing "
+            f"would drive them and the DUT instantiation would leave those ports open. Give "
+            f"some agent each group, or move the ports to a group that has one."
+        )
+    return errs
 
 
 def run(plan_dir, spec_workdir) -> int:

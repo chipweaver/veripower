@@ -2,36 +2,53 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-plan/tb-scaffold.schema.json",
   "title": "tb-scaffold.json contract (post-materialize)",
-  "description": "Structural contract for <module>/Verification/simulation-plan/tb-scaffold.json, validated by the check-scaffold gate AFTER the materialize-scaffold verb has run. The sequence roster and the power scenarios live in their own files (sequences.json / power-scenarios.json); what remains here is what simulation alone reads. Every field below says whether it is yours to author or script-injected, and carries the authoring judgment no validator can express. Strongly validates LLM-authored fields; tolerates (does not deep-validate) the interface/transaction objects materialize-scaffold injects into agents[] (their content is owned by materialize-scaffold + sim/_guards._agent_io). Referential integrity (observer/inports/seqs resolving to declared agents, and sequences.json/power-scenarios.json resolving against each other) is NOT expressible here; the check-scaffold gate's semantic layer enforces it.",
+  "description": "Structural contract for <module>/Verification/simulation-plan/tb-scaffold.json, validated by the check-scaffold gate AFTER the materialize-scaffold verb has run. The sequence roster and the power scenarios live in their own files (sequences.json / power-scenarios.json); what remains here is what simulation alone reads. Every field below says whether it is yours to author or script-injected, and carries the authoring judgment no validator can express. Every field here is the plan author's judgment. What the DUT looks like is NOT restated: simulation reads top-io.json and clocks.json directly at render time, so the signals, the clocks and the reset polarity cannot drift from what specification declared, and cannot be partial — a port missing from a copy rendered as a DUT port bound to nothing, which Verilog accepts and VCS compiles without an error. Referential integrity (observer/inports/seqs resolving to declared agents, and sequences.json/power-scenarios.json resolving against each other) is NOT expressible here; the check-scaffold gate's semantic layer enforces it.",
   "type": "object",
-  "required": ["module", "top", "agents", "tests", "rm", "scoreboard", "primary_clock", "additional_clocks", "reset", "testpoints"],
+  "required": [
+    "module",
+    "top",
+    "agents",
+    "tests",
+    "rm",
+    "scoreboard",
+    "testpoints"
+  ],
   "additionalProperties": true,
   "properties": {
-    "module": {"type": "string"},
-    "top": {"type": "string"},
+    "module": {
+      "type": "string"
+    },
+    "top": {
+      "type": "string"
+    },
     "agents": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "mode", "interface_groups"],
+        "required": [
+          "name",
+          "mode",
+          "interface_groups"
+        ],
         "additionalProperties": false,
         "properties": {
-          "name": {"type": "string"},
+          "name": {
+            "type": "string"
+          },
           "mode": {
             "description": "`active` for a driver/master group you drive, `passive` for a monitor/slave group you only observe. Take it from the group's top-io.json `direction` values.",
-            "enum": ["active", "passive"]
+            "enum": [
+              "active",
+              "passive"
+            ]
           },
           "interface_groups": {
             "description": "top-io.json `interface_group` names. Ports sharing a group become one virtual interface and this one agent.",
-            "type": "array", "minItems": 1, "items": {"type": "string"}
-          },
-          "interface": {
-            "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): every signal of every declared group, name and width verbatim from top-io.json.",
-            "type": "object"
-          },
-          "transaction": {
-            "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the same signals minus clk/rst, which must never be rand txn fields.",
-            "type": "object"
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
           }
         }
       }
@@ -40,10 +57,17 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "feature", "test_id", "suites"],
+        "required": [
+          "name",
+          "feature",
+          "test_id",
+          "suites"
+        ],
         "additionalProperties": false,
         "properties": {
-          "name": {"type": "string"},
+          "name": {
+            "type": "string"
+          },
           "feature": {
             "description": "The features.json id this test exercises. Required, and it must resolve: it is the key materialize-scaffold reads feature_name through (an id that resolves to nothing fails it loud), and the only thing that makes a result traceable.",
             "type": "string",
@@ -59,14 +83,24 @@
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
-            "items": {"enum": ["smoke", "regress"]}
+            "items": {
+              "enum": [
+                "smoke",
+                "regress"
+              ]
+            }
           },
           "feature_name": {
             "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the matching features.json entry's `name`, verbatim. It is what the Feature column of case-results-summary.md prints, so a human reads this rather than a bare id.",
             "type": "string",
             "minLength": 1
           },
-          "seqs": {"type": "array", "items": {"type": "string"}}
+          "seqs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -74,11 +108,16 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "name": {"type": "string"},
+        "name": {
+          "type": "string"
+        },
         "inports": {
           "description": "The agents[].name values whose monitor streams feed the RM — one analysis_imp port each. YOUR judgment: which agents feed the reference model. Name the AGENT, not its transaction type: simulation's renderer builds the type as <module>_<agent>_txn where it needs one, so a name written here in txn form would have to be un-wrapped and re-wrapped to reach the same string. The gate only checks the names resolve.",
           "type": "array",
-          "items": {"type": "string", "minLength": 1}
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
@@ -86,7 +125,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "name": {"type": "string"},
+        "name": {
+          "type": "string"
+        },
         "observer": {
           "description": "The ONE agents[].name whose monitor stream the scoreboard compares against the RM. Omitted only when a single agent is declared; with more than one, omitting it is ambiguous and the gate rejects it.",
           "type": "string",
@@ -94,47 +135,21 @@
         }
       }
     },
-    "primary_clock": {
-      "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the clocks.json entry with relationship==\"primary\".",
-      "type": "object",
-      "required": ["dut_port_name", "period_ns"],
-      "additionalProperties": false,
-      "properties": {
-        "dut_port_name": {"type": "string"},
-        "period_ns": {"type": "number", "exclusiveMinimum": 0}
-      }
-    },
-    "additional_clocks": {
-      "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): every top-io.json clock port that is not primary_clock, with its clocks.json period. `[]` on a single-clock design. The TB generates one clock per entry and binds it, because a clock port left out of the DUT instantiation compiles without an error and stops that domain forever — and no report afterwards points at the bench. The agents' vif still clocks on primary_clock: which clock a second-domain agent should sample on is the clocking-block decision the interface template leaves to whoever fills it.",
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["dut_port_name", "period_ns"],
-        "additionalProperties": false,
-        "properties": {
-          "dut_port_name": {"type": "string"},
-          "period_ns": {"type": "number", "exclusiveMinimum": 0}
-        }
-      }
-    },
-    "reset": {
-      "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the top-io.json entry with role==\"reset\". `polarity` is that row's reset_polarity and it has to travel: the TB drives reset itself, so without it the bench assumes one — an active-high DUT then runs every test with reset asserted the whole time. The TB's internal reset stays active-low whatever the DUT is, and the renderer inverts at the DUT boundary, so every agent reads `rst_n` the same way.",
-      "type": "object",
-      "required": ["dut_port_name", "polarity"],
-      "additionalProperties": false,
-      "properties": {
-        "dut_port_name": {"type": "string"},
-        "polarity": {"enum": [0, 1]}
-      }
-    },
     "testpoints": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "intent", "covers"],
+        "required": [
+          "id",
+          "intent",
+          "covers"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": {"type": "string", "minLength": 1},
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
           "intent": {
             "description": "What this testpoint drives and why — the stimulus/intent the env and conformance-fix children read as the intent source. Write the situation being created, not the check: `inlined_check_hints` already says how each covered check is verified.",
             "type": "string",
@@ -153,9 +168,15 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["check_id"],
+              "required": [
+                "check_id"
+              ],
               "additionalProperties": true,
-              "properties": {"check_id": {"type": "string"}}
+              "properties": {
+                "check_id": {
+                  "type": "string"
+                }
+              }
             }
           }
         }
@@ -166,11 +187,20 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["check_id", "reason"],
+        "required": [
+          "check_id",
+          "reason"
+        ],
         "additionalProperties": false,
         "properties": {
-          "check_id": {"type": "string"},
-          "reason": {"type": "string", "minLength": 1, "description": "Why no testpoint verifies it, e.g. \"static lint gate, no runtime testpoint\"."}
+          "check_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Why no testpoint verifies it, e.g. \"static lint gate, no runtime testpoint\"."
+          }
         }
       }
     }

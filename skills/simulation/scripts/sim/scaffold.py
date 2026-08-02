@@ -18,7 +18,8 @@ from pathlib import Path
 from sim import (
     _render,
 )  # write_text is reached through the module so a test can patch it
-from sim._guards import _agent_io, validate_ports
+from sim._boundary import Boundary
+from sim._guards import dut_port_map
 from sim._plan import load_plan
 from sim._plan import paths as plan_paths
 from sim._render import (
@@ -29,8 +30,9 @@ from sim._render import (
 )
 
 
-def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
+def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     spec = load_plan(plan_dir)
+    boundary = Boundary(spec_dir)
     module = spec["module"]
     top = spec["top"]
     agents = spec.get("agents", [])
@@ -45,66 +47,12 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
     sequences = spec.get("sequences", [])
     tests = spec.get("tests", [])
 
-    # primary_clock + reset are REQUIRED fields in scaffold-spec.
-    # Missing / malformed → fail-fast; user must rerun simulation-plan to populate.
-    # Outer block missing and inner field missing are split into two try/except
-    # so the error message identifies the exact path (avoids "primary_clock.primary_clock"
-    # artifact when the top-level key is absent).
-    try:
-        primary_clock = spec["primary_clock"]
-    except KeyError:
-        sys.exit(
-            "[sim bootstrap] scaffold-spec missing primary_clock block. "
-            "Rerun simulation-plan to populate primary_clock from clocks.json "
-            "(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
-        )
-    try:
-        clk_port_name = primary_clock["dut_port_name"]
-        period_ns_raw = primary_clock["period_ns"]
-    except KeyError as e:
-        sys.exit(
-            f"[sim bootstrap] scaffold-spec primary_clock.{e.args[0] if e.args else 'field'} missing. "
-            f"Rerun simulation-plan to populate primary_clock from clocks.json "
-            f"(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
-        )
-
-    try:
-        clk_half_period = float(period_ns_raw) / 2
-    except (TypeError, ValueError):
-        sys.exit(
-            f"[sim bootstrap] primary_clock.period_ns is not numeric: {period_ns_raw!r}. "
-            f"The schema pins it as a number; check Design/specification/clocks.json."
-        )
-
-    try:
-        rst_port_name = spec["reset"]["dut_port_name"]
-        rst_polarity = spec["reset"]["polarity"]
-    except KeyError as e:
-        sys.exit(
-            f"[sim bootstrap] scaffold-spec missing reset.{e.args[0] if e.args else 'field'}. "
-            f"Rerun simulation-plan to populate reset from top-io.json "
-            f"(see skills/simulation-plan/SKILL.md scaffold-spec contract)."
-        )
-    if rst_polarity not in (0, 1):
-        sys.exit(
-            f"[sim bootstrap] reset.polarity is {rst_polarity!r}, not 0 or 1. It comes from "
-            f"top-io.json's reset_polarity; the schema pins both, so check that sidecar."
-        )
-    # The bench's rst_n is active-low for every DUT; an active-high port is driven inverted
-    # here rather than by flipping the bench, so agents never branch on polarity.
-    rst_drive = "rst_n" if rst_polarity == 0 else "~rst_n"
-
-    extra_clocks = spec.get("additional_clocks", [])
-    for c in extra_clocks:
-        try:
-            float(c["period_ns"])
-            str(c["dut_port_name"])
-        except (KeyError, TypeError, ValueError):
-            sys.exit(
-                f"[sim bootstrap] additional_clocks entry is malformed: {c!r}. Each needs a "
-                f"dut_port_name and a numeric period_ns; rerun simulation-plan's materialize "
-                f"step, which fills them from clocks.json."
-            )
+    clk_port_name = boundary.primary["name"]
+    clk_half_period = float(boundary.primary["period_ns"]) / 2
+    rst_port_name = boundary.reset["name"]
+    # The bench's rst_n is active-low for every DUT so no agent branches on polarity; the
+    # inversion happens once, in the port binding below.
+    rst_drive = "rst_n" if boundary.reset["polarity"] == 0 else "~rst_n"
 
     rm_name = rm_cfg.get("name", "rule_rm")
     sb_name = sb_cfg.get("name", "scoreboard")
@@ -117,45 +65,70 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
     # Inport agents for RM (active agents that feed into RM)
     rm_inports = rm_cfg.get("inports", [])
 
-    pending: list[
-        tuple[Path, str]
-    ] = []  # (dest, content) staged in memory; written atomically at the end
+    # Two sets, split on who owns the content. `pending` is stubs: created once, then the
+    # round that filled them owns them. `derived` is everything computed from the sidecars —
+    # rewritten every round, because a stub kept for its author's sake is the right default
+    # and a stale derivation is not: the plan or the boundary moving has to reach the SV.
+    pending: list[tuple[Path, str]] = []
+    derived: list[tuple[Path, str]] = []
 
     # --- Per-agent files ---
     for agent in agents:
         aname = agent["name"]
         mode = agent.get("mode", "active")
-        # Canonical agent shape, materialized by simulation-plan's materialize-scaffold verb
-        # from top-io.json grouped by interface_group. _agent_io exits on an empty interface
-        # rather than rendering a TB that drives nothing.
-        signals, fields = _agent_io(agent)
+        # The agent's ports are its interface_groups resolved against top-io.json. Clock and
+        # reset never appear: agent_if's header already takes clk/rst_n and tb_top drives them,
+        # so a DUT clock re-declared in a vif would bind that port to a signal nothing drives.
+        signals = boundary.signals_for(agent.get("interface_groups") or [])
+        fields = [{**sig, "type": "logic", "rand": True} for sig in signals]
 
         base = {"MODULE": module, "TOP": top, "AGENT_NAME": aname}
 
-        # Interface
-        content = _render_template_file(
-            template_dir,
-            "agent_if.sv",
-            {
-                **base,
-                "SIGNAL_DECLARATIONS": _signal_declarations(signals),
-            },
-        )
+        # Interface: the clocking blocks are authored, the signal list is not.
+        content = _render_template_file(template_dir, "agent_if.sv", base)
         dest = out_dir / "tb" / "uvm" / "interface" / f"{module}_{aname}_if.sv"
         pending.append((dest, content))
-
-        # Transaction
         content = _render_template_file(
             template_dir,
-            "agent_txn.sv",
-            {
-                **base,
-                "FIELD_MACROS": _field_macros(fields),
-                "FIELD_DECLARATIONS": _field_declarations(fields),
-            },
+            "agent_signals.svh",
+            {**base, "SIGNAL_DECLARATIONS": _signal_declarations(signals)},
         )
+        derived.append(
+            (
+                out_dir / "tb" / "uvm" / "interface" / f"{module}_{aname}_signals.svh",
+                content,
+            )
+        )
+
+        # Transaction: the debug formatter is authored, the field list is not.
+        content = _render_template_file(template_dir, "agent_txn.sv", base)
         dest = out_dir / "tb" / "uvm" / "transaction" / f"{module}_{aname}_txn.sv"
         pending.append((dest, content))
+        for tmpl, slot, val, suffix in (
+            (
+                "agent_fields.svh",
+                "FIELD_DECLARATIONS",
+                _field_declarations(fields),
+                "fields",
+            ),
+            (
+                "agent_field_macros.svh",
+                "FIELD_MACROS",
+                _field_macros(fields),
+                "field_macros",
+            ),
+        ):
+            content = _render_template_file(template_dir, tmpl, {**base, slot: val})
+            derived.append(
+                (
+                    out_dir
+                    / "tb"
+                    / "uvm"
+                    / "transaction"
+                    / f"{module}_{aname}_{suffix}.svh",
+                    content,
+                )
+            )
 
         # Monitor (all agents have a monitor)
         content = _render_template_file(template_dir, "agent_monitor.sv", base)
@@ -361,20 +334,16 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
             f'    uvm_config_db#(virtual {module}_{aname}_if)::set(null, "uvm_test_top.*", "{aname}_vif", {aname}_if);'
         )
 
-    extra_names = [c["dut_port_name"] for c in extra_clocks]
-    dut_port_map = validate_ports(
-        agents, clk_port_name, rst_port_name, extra_clock_names=extra_names
-    )
-    extra_decls = "".join(f"  logic {n};\n" for n in extra_names)
+    port_map = dut_port_map(agents, boundary)
+    extra_decls = "".join(f"  logic {c['name']};\n" for c in boundary.extra)
     extra_gens = "".join(
         f"\n  initial begin\n"
-        f"    {c['dut_port_name']} = 0;\n"
-        f"    forever #{float(c['period_ns']) / 2:g} "
-        f"{c['dut_port_name']} = ~{c['dut_port_name']};\n"
+        f"    {c['name']} = 0;\n"
+        f"    forever #{float(c['period_ns']) / 2:g} {c['name']} = ~{c['name']};\n"
         f"  end\n"
-        for c in extra_clocks
+        for c in boundary.extra
     )
-    extra_ports = "".join(f",\n    .{n}({n})" for n in extra_names)
+    extra_ports = "".join(f",\n    .{c['name']}({c['name']})" for c in boundary.extra)
 
     content = _render_template_file(
         template_dir,
@@ -389,13 +358,13 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
             "EXTRA_CLOCK_DECLS": extra_decls,
             "EXTRA_CLOCK_GENS": extra_gens,
             "EXTRA_CLOCK_PORTS": extra_ports,
-            "DUT_PORT_MAP": dut_port_map,
+            "DUT_PORT_MAP": port_map,
             "IF_INSTANTIATIONS": "\n".join(if_inst_lines),
             "CONFIG_DB_SETS": "\n".join(config_db_lines),
         },
     )
     dest = out_dir / "tb" / "uvm" / "top" / f"{top}_tb_top.sv"
-    pending.append((dest, content))
+    derived.append((dest, content))
 
     # --- tb_pkg.sv ---
     txn_includes: list[str] = []
@@ -425,7 +394,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
         },
     )
     dest = out_dir / "tb" / "uvm" / "pkg" / "tb_pkg.sv"
-    pending.append((dest, content))
+    derived.append((dest, content))
 
     # --- filelist.f ---
     if_file_lines: list[str] = []
@@ -443,7 +412,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
         },
     )
     dest = out_dir / "filelist.f"
-    pending.append((dest, content))
+    derived.append((dest, content))
 
     # --- testlist.json ---
     # Field format must match run_vcs_regression.sh:
@@ -478,16 +447,25 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
         "tests": testlist_entries,
     }
     dest = out_dir / "tests" / "testlist.json"
-    pending.append((dest, json.dumps(testlist, indent=2, ensure_ascii=False)))
+    derived.append((dest, json.dumps(testlist, indent=2, ensure_ascii=False)))
 
-    # Everything above was rendered and validated in memory. Write now, and only where no file
-    # is there yet: this renderer creates stubs, it does not maintain them, so once a path
-    # exists it belongs to whoever filled it. On a rework the whole carried testbench is
-    # already on disk, and writing over it would replace a round of authored checks with
-    # `// TODO`. If a write fails mid-loop, roll back what this call wrote, so the outcome is
-    # the complete new set or none of it rather than a half-tree.
+    # Everything above was rendered and validated in memory; write it now.
+    #
+    # `pending` is stubs, written only where no file is there yet: once a path exists it
+    # belongs to whoever filled it, and on a rework the carried testbench is already on disk,
+    # so writing over it would replace a round of authored checks with `// TODO`.
+    #
+    # `derived` is rewritten unconditionally. Everything in it is computed from the plan and
+    # the boundary, so keeping a carried copy is keeping a stale one — which is what used to
+    # happen: a rework re-read the sidecars, rendered the right tb_top in memory, found the
+    # old one on disk and kept it, and the round ran against a DUT instantiation, a clock set
+    # and a reset polarity from whenever the workdir was first created.
+    #
+    # A failed write rolls back only what this call wrote, so the outcome is the complete new
+    # set or none of it rather than a half-tree.
     written: list[Path] = []
     kept: list[Path] = []
+    replaced: list[tuple[Path, str | None]] = []
     try:
         for dest, content in pending:
             if dest.exists():
@@ -495,20 +473,29 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path) -> int:
                 continue
             _render.write_text(dest, content)
             written.append(dest)
+        for dest, content in derived:
+            replaced.append((dest, dest.read_text() if dest.exists() else None))
+            _render.write_text(dest, content)
     except OSError:
         for p in written:
             p.unlink(missing_ok=True)
+        for p, before in replaced:
+            if before is None:
+                p.unlink(missing_ok=True)
+            else:
+                p.write_text(before)
         raise
 
     print(
-        f"[sim bootstrap] wrote {len(written)} files in {out_dir}, kept {len(kept)} already there"
+        f"[sim bootstrap] wrote {len(written)} stub(s) in {out_dir}, kept {len(kept)}, "
+        f"regenerated {len(derived)} derived file(s)"
     )
     for dest in written:
         print(f"  {dest.relative_to(out_dir)}")
     return 0
 
 
-def render(plan_dir, out_dir, template_dir=None) -> int:
+def render(plan_dir, out_dir, spec_dir, template_dir=None) -> int:
     """Render the scaffold tree, creating only what is not there yet. Exits on a missing
     sidecar or template dir; returns run_scaffold's int (0). A run_scaffold sys.exit or raise
     propagates to the caller."""
@@ -524,4 +511,4 @@ def render(plan_dir, out_dir, template_dir=None) -> int:
         )
     if not tmpl_dir.is_dir():
         sys.exit(f"[sim bootstrap] missing template directory: {tmpl_dir}")
-    return run_scaffold(plan_dir, tmpl_dir, out_dir)
+    return run_scaffold(plan_dir, tmpl_dir, out_dir, spec_dir)

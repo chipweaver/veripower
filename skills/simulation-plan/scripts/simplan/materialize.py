@@ -3,16 +3,14 @@
 Which fields it injects, and that they are never hand-authored, is on each field in
 references/tb-scaffold.schema.json. What is not visible there:
 
-- Clock/reset ports are excluded from interface.signals as well as transaction.fields. The
-  bench owns them: `agent_if.sv`'s header already takes `clk` / `rst_n`, and `tb_top` drives
-  both. Re-declaring a DUT clock inside an agent's vif would bind that DUT port to a signal
-  nothing drives, which is why simulation's renderer refuses one. Excluding them here means
-  which interface_group specification put a clock in stops mattering.
-- Every injection is a verbatim copy, never an abstraction: the LLM authoring covers[] and
-  interface_groups is the only judgment in the loop, and a renamed signal or a paraphrased
-  check would break the `===` comparison the downstream refmodel is built to make.
-- Pairs with simulation's scaffold renderer, which consumes interface.signals /
-  transaction.fields via its _agent_io() helper.
+- What the DUT looks like is NOT injected. Signals, clocks and the reset polarity are read
+  from top-io.json / clocks.json by simulation itself, at render time. A stored copy could
+  disagree with the source after either moved, and had no totality — a port absent from it
+  rendered as a DUT port bound to nothing. What this verb still checks is the assignment the
+  plan author made: that every agent's interface_groups resolve, and hold data ports.
+- Every injection that remains is a verbatim copy, never an abstraction: the LLM authoring
+  covers[] and interface_groups is the only judgment in the loop, and a paraphrased check
+  would break the `===` comparison the downstream refmodel is built to make.
 """
 
 import json
@@ -21,68 +19,6 @@ from pathlib import Path
 
 from simplan._plan import SCAFFOLD_NAME
 from simplan.hints import HintsError, load_check_hints
-
-
-def _clk_rst_signal_names(ports: list) -> set:
-    """Names of the clock/reset ports. `role` is a schema enum, so an absent or bogus value
-    cannot reach here — top-io.json is validated upstream."""
-    return {s["name"] for s in ports if s.get("role") in {"clock", "reset"}}
-
-
-def _derive_primary_clock(clocks: list) -> dict:
-    primary = next((c for c in clocks if c.get("relationship") == "primary"), None)
-    if primary is None:
-        sys.exit(
-            "materialize-scaffold: no clocks.json entry with relationship=='primary' — "
-            "refusing to pick entry 0 as the TB main clock. Re-run specification."
-        )
-    return {"dut_port_name": primary["name"], "period_ns": primary["period_ns"]}
-
-
-def _derive_additional_clocks(clocks: list, ports: list) -> list:
-    """Every DUT clock port that is not the primary, with the period clocks.json gives it.
-
-    Without this the renderer has one clock generator and no name for the others, so a
-    second clock port comes out of the DUT instantiation unbound — which VCS compiles
-    without an error and no report afterwards points at.
-
-    A clock port with no clocks.json entry is fatal rather than dropped: the period cannot
-    be invented, and dropping it is the silent binding this exists to remove."""
-    by_name = {c["name"]: c for c in clocks}
-    primary = next((c for c in clocks if c.get("relationship") == "primary"), None)
-    out = []
-    for s in ports:
-        if s.get("role") != "clock" or (primary and s["name"] == primary["name"]):
-            continue
-        entry = by_name.get(s["name"])
-        if entry is None:
-            sys.exit(
-                f"materialize-scaffold: top-io.json declares clock port {s['name']!r} with no "
-                f"clocks.json entry, so its period is unknown and the TB cannot generate it. "
-                f"Add it to clocks.json (re-run specification), or correct the port's role."
-            )
-        out.append({"dut_port_name": s["name"], "period_ns": entry["period_ns"]})
-    return out
-
-
-def _derive_reset(ports: list) -> dict:
-    """dut_port_name + polarity. The polarity travels because the TB drives reset itself and
-    is otherwise free to guess: `tb_top` used to hold an active-low `rst_n` unconditionally,
-    so an active-high DUT ran every test with reset asserted the whole time."""
-    for s in ports:
-        if s.get("role") != "reset":
-            continue
-        if s.get("reset_polarity") not in (0, 1):
-            sys.exit(
-                f"materialize-scaffold: top-io.json reset port {s['name']!r} has "
-                f"reset_polarity={s.get('reset_polarity')!r}, not 0 or 1. The schema makes it "
-                f"required on a reset row; the TB drives reset and cannot guess the level."
-            )
-        return {"dut_port_name": s["name"], "polarity": s["reset_polarity"]}
-    sys.exit(
-        "materialize-scaffold: no top-io.json entry with role=='reset' — "
-        "reset.dut_port_name cannot be derived. Re-run specification."
-    )
 
 
 def _materialize_inline(check_hints: list, scaffold: dict) -> None:
@@ -140,7 +76,6 @@ def _inject_feature_names(scaffold: dict, features: list) -> None:
 def materialize(
     check_hints: list, scaffold: dict, clocks: list, ports: list, features: list
 ) -> dict:
-    exclude = _clk_rst_signal_names(ports)
     by_group: dict[str, list[dict]] = {}
     for s in ports:
         g = (s.get("interface_group") or "").strip()
@@ -169,7 +104,13 @@ def materialize(
                 f"materialize-scaffold: agent {aname!r} has duplicate interface_groups "
                 f"entries: {dupes}."
             )
-        matched = [s for g in groups for s in by_group[g]]
+        matched = [s for g in groups for s in by_group[g] if s.get("role") == "data"]
+        if not matched:
+            sys.exit(
+                f"materialize-scaffold: agent {aname!r} has no data ports: its "
+                f"interface_groups {groups} hold only clock/reset, which the bench drives. "
+                f"Give it the ports it is meant to drive or observe."
+            )
         matched_names = [s["name"] for s in matched]
         dupe_names = sorted({n for n in matched_names if matched_names.count(n) > 1})
         if dupe_names:
@@ -178,30 +119,7 @@ def materialize(
                 f"{dupe_names} across its interface_groups {groups} — would emit duplicate "
                 f"SV declarations."
             )
-        signals = [
-            {
-                "name": s["name"],
-                "width": s["width"],
-            }
-            for s in matched
-            if s["name"] not in exclude
-        ]
-        agent["interface"] = {"signals": signals}
-        agent["transaction"] = {
-            "fields": [
-                {
-                    "name": sig["name"],
-                    "width": sig["width"],
-                    "type": "logic",
-                    "rand": True,
-                }
-                for sig in signals
-            ]
-        }
 
-    scaffold["primary_clock"] = _derive_primary_clock(clocks)
-    scaffold["additional_clocks"] = _derive_additional_clocks(clocks, ports)
-    scaffold["reset"] = _derive_reset(ports)
     _materialize_inline(check_hints, scaffold)
     _inject_feature_names(scaffold, features)
     return scaffold

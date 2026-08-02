@@ -13,22 +13,9 @@ from sim import scaffold  # noqa: E402
 SPEC = {
     "module": "m",
     "top": "m_top",
-    "primary_clock": {"dut_port_name": "clk", "period_ns": 10.0},
-    "additional_clocks": [],
-    "reset": {"dut_port_name": "rst_n", "polarity": 0},
     "agents": [
-        {
-            "name": "drv",
-            "mode": "active",
-            "interface": {"signals": [{"name": "req", "width": 1}]},
-            "transaction": {"fields": [{"name": "data", "width": 8, "rand": True}]},
-        },
-        {
-            "name": "obs",
-            "mode": "passive",
-            "interface": {"signals": [{"name": "ack", "width": 1}]},
-            "transaction": {"fields": [{"name": "resp", "width": 8}]},
-        },
+        {"name": "drv", "mode": "active", "interface_groups": ["drv_g"]},
+        {"name": "obs", "mode": "passive", "interface_groups": ["obs_g"]},
     ],
     "sequences": [{"name": "smoke", "agent": "drv"}],
     "tests": [
@@ -46,6 +33,54 @@ SPEC = {
 }
 
 
+_TOP_IO = [
+    {
+        "name": "clk",
+        "direction": "input",
+        "width": 1,
+        "clock_domain": "clk",
+        "interface_group": "bench",
+        "role": "clock",
+    },
+    {
+        "name": "rst_n",
+        "direction": "input",
+        "width": 1,
+        "clock_domain": "clk",
+        "interface_group": "bench",
+        "role": "reset",
+        "reset_polarity": 0,
+        "reset_kind": "async",
+    },
+    {
+        "name": "req",
+        "direction": "input",
+        "width": 1,
+        "clock_domain": "clk",
+        "interface_group": "drv_g",
+        "role": "data",
+    },
+    {
+        "name": "ack",
+        "direction": "output",
+        "width": 1,
+        "clock_domain": "clk",
+        "interface_group": "obs_g",
+        "role": "data",
+    },
+]
+_CLOCKS = [{"name": "clk", "period_ns": 10.0, "relationship": "primary"}]
+
+
+def _write_boundary(d, top_io=None, clocks=None):
+    """The specification stage root the renderer reads the DUT boundary from."""
+    d = Path(d)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "top-io.json").write_text(json.dumps(_TOP_IO if top_io is None else top_io))
+    (d / "clocks.json").write_text(json.dumps(_CLOCKS if clocks is None else clocks))
+    return d
+
+
 def _write_spec(tmp_path, spec=SPEC):
     """The plan dir: the renderer reads tb-scaffold.json + sequences.json out of it."""
     doc = dict(spec)
@@ -54,23 +89,25 @@ def _write_spec(tmp_path, spec=SPEC):
     return tmp_path
 
 
-def _render(tmp_path, spec=SPEC):
+def _render(tmp_path, spec=SPEC, top_io=None, clocks=None):
     """Render into tmp_path/out. bootstrap is the only caller in the pipeline and is covered
     as a subprocess in test_sim_bootstrap; here the subject is the renderer itself."""
-    spec_path = _write_spec(tmp_path, spec)
+    plan = _write_spec(tmp_path, spec)
+    boundary = _write_boundary(tmp_path / "spec", top_io, clocks)
     out = tmp_path / "out"
     out.mkdir(exist_ok=True)
-    scaffold.render(spec_path, out, TEMPLATES)
+    scaffold.render(plan, out, boundary, TEMPLATES)
     return out
 
 
-def _render_exit(tmp_path, spec=SPEC, plan_dir=None):
+def _render_exit(tmp_path, spec=SPEC, plan_dir=None, top_io=None, clocks=None):
     """Render expecting a fail-loud exit; returns the message."""
-    spec_path = plan_dir or _write_spec(tmp_path, spec)
+    plan = plan_dir or _write_spec(tmp_path, spec)
+    boundary = _write_boundary(tmp_path / "spec", top_io, clocks)
     out = tmp_path / "out"
     out.mkdir(exist_ok=True)
     with pytest.raises(SystemExit) as e:
-        scaffold.render(spec_path, out, TEMPLATES)
+        scaffold.render(plan, out, boundary, TEMPLATES)
     return str(e.value)
 
 
@@ -83,7 +120,7 @@ def test_rerender_keeps_a_filled_file(tmp_path):
     sb = out / "tb/uvm/checker/m_scoreboard.sv"
     filled = "class m_scoreboard; // 400 lines of real implementation\nendclass\n"
     sb.write_text(filled)
-    scaffold.render(tmp_path, out, TEMPLATES)
+    scaffold.render(tmp_path, out, tmp_path / "spec", TEMPLATES)
     assert sb.read_text() == filled
 
 
@@ -93,7 +130,7 @@ def test_rerender_adds_what_the_plan_gained(tmp_path):
     grown = json.loads(json.dumps(SPEC))
     grown["sequences"] = grown["sequences"] + [{"name": "corner", "agent": "drv"}]
     _write_spec(tmp_path, grown)
-    scaffold.render(tmp_path, out, TEMPLATES)
+    scaffold.render(tmp_path, out, tmp_path / "spec", TEMPLATES)
     assert (out / "tb/uvm/seq/m_corner_seq.sv").is_file()
 
 
@@ -170,29 +207,6 @@ def test_driver_monitor_vif_key_matches_tb_top_set(tmp_path):
             assert '"vif"' not in sv, f"{agent} {kind} must not use the bare 'vif' key"
 
 
-def test_missing_primary_clock_exits(tmp_path):
-    spec = {**SPEC}
-    del spec["primary_clock"]
-    assert "primary_clock" in _render_exit(tmp_path, spec)
-
-
-def test_nonnumeric_period_exits(tmp_path):
-    spec = {**SPEC, "primary_clock": {"dut_port_name": "clk", "period_ns": "fast"}}
-    assert "period_ns" in _render_exit(tmp_path, spec)
-
-
-def test_missing_reset_exits(tmp_path):
-    spec = {**SPEC}
-    del spec["reset"]
-    assert "reset" in _render_exit(tmp_path, spec)
-
-
-def test_empty_agent_signals_exits(tmp_path):
-    spec = json.loads(json.dumps(SPEC))
-    spec["agents"][0]["interface"]["signals"] = []
-    assert "interface.signals" in _render_exit(tmp_path, spec)
-
-
 def test_render_missing_scaffold_exits(tmp_path):
     msg = _render_exit(tmp_path, plan_dir=tmp_path / "nope")
     assert "missing tb-scaffold.json" in msg
@@ -201,6 +215,7 @@ def test_render_missing_scaffold_exits(tmp_path):
 def test_atomic_rollback_on_write_error(tmp_path, monkeypatch):
     # A mid-loop OSError rolls back run_scaffold's own files; re-raises. (in-process; U1)
     spec_path = _write_spec(tmp_path)
+    boundary = _write_boundary(tmp_path / "spec")
     out = tmp_path / "out"
     out.mkdir()
     calls = {"n": 0}
@@ -214,52 +229,171 @@ def test_atomic_rollback_on_write_error(tmp_path, monkeypatch):
 
     monkeypatch.setattr(scaffold._render, "write_text", boom)
     with pytest.raises(OSError):
-        scaffold.render(spec_path, out, TEMPLATES)
+        scaffold.render(spec_path, out, boundary, TEMPLATES)
     # the first two written files were rolled back (none of run_scaffold's own output remains)
     assert not (out / "tb/uvm/interface/m_drv_if.sv").exists()
 
 
-def test_additional_clock_is_generated_and_bound(tmp_path):
-    """The failure this replaces was silent: the DUT's second clock port appeared nowhere
-    in the instantiation and VCS compiled it clean."""
-    spec = {
-        **SPEC,
-        "additional_clocks": [{"dut_port_name": "clk_out", "period_ns": 8.0}],
-    }
+# ── the boundary the renderer derives, rather than the copy it used to be handed ────────
+def test_every_clock_is_generated_and_bound(tmp_path):
+    """A DUT clock port the bench does not bind renders as an open port, which Verilog
+    accepts and VCS compiles without an error — the domain is then dead for the whole run."""
+    top_io = _TOP_IO + [
+        {
+            "name": "clk2",
+            "direction": "input",
+            "width": 1,
+            "clock_domain": "clk2",
+            "interface_group": "bench",
+            "role": "clock",
+        }
+    ]
+    clocks = _CLOCKS + [{"name": "clk2", "period_ns": 8.0, "relationship": "async"}]
     tb = (
-        _render(tmp_path, spec) / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
+        _render(tmp_path, top_io=top_io, clocks=clocks)
+        / "tb"
+        / "uvm"
+        / "top"
+        / "m_top_tb_top.sv"
     ).read_text()
-    assert "logic clk_out;" in tb
-    assert "forever #4 clk_out = ~clk_out;" in tb
-    assert ".clk_out(clk_out)" in tb
+    assert "logic clk2;" in tb
+    assert "forever #4 clk2 = ~clk2;" in tb
+    assert ".clk2(clk2)" in tb
 
 
 def test_active_high_reset_is_inverted_at_the_dut_boundary(tmp_path):
-    """The bench's rst_n stays active-low for every DUT so agents never branch on
-    polarity; the inversion happens once, in the port binding."""
-    low = (
-        _render(tmp_path, SPEC) / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
-    ).read_text()
+    """The bench's rst_n stays active-low for every DUT so agents never branch on polarity;
+    the inversion happens once, in the port binding."""
+    low = (_render(tmp_path) / "tb" / "uvm" / "top" / "m_top_tb_top.sv").read_text()
     assert ".rst_n(rst_n)" in low
 
-    high = {**SPEC, "reset": {"dut_port_name": "rst", "polarity": 1}}
-    plan = tmp_path / "high-plan"
-    plan.mkdir()
-    out = tmp_path / "high-out"
-    out.mkdir()
-    scaffold.render(_write_spec(plan, high), out, TEMPLATES)
-    tb = (out / "tb" / "uvm" / "top" / "m_top_tb_top.sv").read_text()
+    top_io = [dict(p) for p in _TOP_IO]
+    for p_ in top_io:
+        if p_["role"] == "reset":
+            p_.update(name="rst", reset_polarity=1)
+    high = tmp_path / "high"
+    high.mkdir()
+    tb = (
+        _render(high, top_io=top_io) / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
+    ).read_text()
     assert ".rst(~rst_n)" in tb
 
 
-def test_missing_reset_polarity_exits(tmp_path):
-    spec = {**SPEC, "reset": {"dut_port_name": "rst_n"}}
-    assert "polarity" in _render_exit(tmp_path, spec)
+def test_unclaimed_data_port_exits(tmp_path):
+    top_io = _TOP_IO + [
+        {
+            "name": "orphan",
+            "direction": "input",
+            "width": 4,
+            "clock_domain": "clk",
+            "interface_group": "nobody",
+            "role": "data",
+        }
+    ]
+    msg = _render_exit(tmp_path, top_io=top_io)
+    assert "orphan" in msg and "no agent claims" in msg
 
 
-def test_agent_signal_colliding_with_an_additional_clock_exits(tmp_path):
+def test_group_claimed_by_two_agents_exits(tmp_path):
     spec = {
         **SPEC,
-        "additional_clocks": [{"dut_port_name": "req", "period_ns": 8.0}],
+        "agents": [
+            {"name": "drv", "mode": "active", "interface_groups": ["drv_g", "obs_g"]},
+            {"name": "obs", "mode": "passive", "interface_groups": ["obs_g"]},
+        ],
     }
-    assert "req" in _render_exit(tmp_path, spec)
+    assert "claimed by both" in _render_exit(tmp_path, spec)
+
+
+def test_agent_with_no_data_ports_exits(tmp_path):
+    spec = {
+        **SPEC,
+        "agents": [
+            {"name": "drv", "mode": "active", "interface_groups": ["bench"]},
+            {"name": "obs", "mode": "passive", "interface_groups": ["obs_g"]},
+        ],
+    }
+    msg = _render_exit(tmp_path, spec)
+    assert "no data ports" in msg
+
+
+def test_clock_port_without_a_clocks_json_entry_exits(tmp_path):
+    top_io = _TOP_IO + [
+        {
+            "name": "clk2",
+            "direction": "input",
+            "width": 1,
+            "clock_domain": "clk2",
+            "interface_group": "bench",
+            "role": "clock",
+        }
+    ]
+    msg = _render_exit(tmp_path, top_io=top_io)
+    assert "clk2" in msg and "clocks.json" in msg
+
+
+def test_reset_polarity_out_of_range_exits(tmp_path):
+    top_io = [dict(p) for p in _TOP_IO]
+    for p_ in top_io:
+        if p_["role"] == "reset":
+            p_.pop("reset_polarity")
+    assert "reset_polarity" in _render_exit(tmp_path, top_io=top_io)
+
+
+# ── a rework has to re-derive: the plan or the boundary moving must reach the SV ────────
+def test_rework_regenerates_the_derived_files(tmp_path):
+    """The defect this replaces: render no-clobbered everything, so a second round found the
+    old tb_top on disk and kept it — the run then used a DUT instantiation, a clock set and a
+    reset polarity from whenever the workdir was first created."""
+    out = _render(tmp_path)
+    tb = out / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
+    assert ".rst_n(rst_n)" in tb.read_text()
+
+    top_io = [dict(p) for p in _TOP_IO]
+    for p_ in top_io:
+        if p_["role"] == "reset":
+            p_["reset_polarity"] = 1
+    scaffold.render(
+        _write_spec(tmp_path),
+        out,
+        _write_boundary(tmp_path / "spec", top_io),
+        TEMPLATES,
+    )
+    assert ".rst_n(~rst_n)" in tb.read_text()
+
+
+def test_rework_keeps_the_authored_stubs(tmp_path):
+    """The other half: what a round filled in is never overwritten, which is why the derived
+    part had to move out of those files rather than the whole tree becoming regenerable."""
+    out = _render(tmp_path)
+    sb = out / "tb" / "uvm" / "checker" / "m_m_sb.sv"
+    sb.write_text("// a round's authored compare\n")
+    scaffold.render(
+        _write_spec(tmp_path), out, _write_boundary(tmp_path / "spec"), TEMPLATES
+    )
+    assert sb.read_text() == "// a round's authored compare\n"
+
+
+def test_a_new_port_reaches_the_vif_and_the_txn_on_a_rework(tmp_path):
+    out = _render(tmp_path)
+    sig = out / "tb" / "uvm" / "interface" / "m_drv_signals.svh"
+    assert "grew" not in sig.read_text()
+    top_io = _TOP_IO + [
+        {
+            "name": "grew",
+            "direction": "input",
+            "width": 8,
+            "clock_domain": "clk",
+            "interface_group": "drv_g",
+            "role": "data",
+        }
+    ]
+    scaffold.render(
+        _write_spec(tmp_path),
+        out,
+        _write_boundary(tmp_path / "spec", top_io),
+        TEMPLATES,
+    )
+    assert "[7:0] grew;" in sig.read_text()
+    assert "grew" in (out / "tb/uvm/transaction/m_drv_fields.svh").read_text()
+    assert ".grew(drv_if.grew)" in (out / "tb/uvm/top/m_top_tb_top.sv").read_text()

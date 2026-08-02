@@ -18,23 +18,11 @@ GOOD = {
             "name": "drv",
             "mode": "active",
             "interface_groups": ["cfg"],
-            "interface": {"signals": [{"name": "wdata", "width": 32}]},
-            "transaction": {
-                "fields": [
-                    {"name": "wdata", "width": 32, "type": "logic", "rand": True}
-                ]
-            },
         },
         {
             "name": "obs",
             "mode": "passive",
             "interface_groups": ["stat"],
-            "interface": {"signals": [{"name": "rdata", "width": 32}]},
-            "transaction": {
-                "fields": [
-                    {"name": "rdata", "width": 32, "type": "logic", "rand": True}
-                ]
-            },
         },
     ],
     "sequences": [{"name": "smoke", "agent": "drv", "desc": "smoke"}],
@@ -50,9 +38,6 @@ GOOD = {
     ],
     "rm": {"name": "m_rm", "inports": ["drv"]},
     "scoreboard": {"name": "m_sb", "observer": "obs"},
-    "primary_clock": {"dut_port_name": "clk", "period_ns": 10.0},
-    "additional_clocks": [],
-    "reset": {"dut_port_name": "rst_n", "polarity": 0},
     "testpoints": [
         {
             "id": "TP-1",
@@ -74,8 +59,49 @@ GOOD = {
 }
 
 
-def _spec(tmp_path, hints=None):
-    """tmp_path doubles as the spec workdir: manifest + check-hints/."""
+_TOP_IO = [
+    {
+        "name": "clk",
+        "direction": "input",
+        "width": 1,
+        "clock_domain": "clk",
+        "interface_group": "cfg",
+        "role": "clock",
+    },
+    {
+        "name": "rst_n",
+        "direction": "input",
+        "width": 1,
+        "clock_domain": "clk",
+        "interface_group": "cfg",
+        "role": "reset",
+        "reset_polarity": 0,
+        "reset_kind": "async",
+    },
+    {
+        "name": "wdata",
+        "direction": "input",
+        "width": 32,
+        "clock_domain": "clk",
+        "interface_group": "cfg",
+        "role": "data",
+    },
+    {
+        "name": "rdata",
+        "direction": "output",
+        "width": 32,
+        "clock_domain": "clk",
+        "interface_group": "stat",
+        "role": "data",
+    },
+]
+
+
+def _spec(tmp_path, hints=None, top_io=None):
+    """tmp_path doubles as the spec workdir: manifest + check-hints/ + top-io.json."""
+    (tmp_path / "top-io.json").write_text(
+        json.dumps(_TOP_IO if top_io is None else top_io)
+    )
     (tmp_path / "manifest.json").write_text(
         json.dumps({"module": "m", "children": [{"name": "c", "doc": "c.md"}]})
     )
@@ -100,9 +126,9 @@ def _split(tmp_path, scaffold):
     (tmp_path / "tb-scaffold.json").write_text(json.dumps(doc))
 
 
-def _run(tmp_path, scaffold, check=True, hints=None):
+def _run(tmp_path, scaffold, check=True, hints=None, top_io=None):
     _split(tmp_path, scaffold)
-    _spec(tmp_path, hints)
+    _spec(tmp_path, hints, top_io)
     return subprocess.run(
         [
             "python3",
@@ -202,11 +228,33 @@ def test_agent_extra_key_fails(tmp_path):
     assert proc.returncode != 0  # additionalProperties:false on agents[]
 
 
-def test_missing_primary_clock_fails(tmp_path):
+# ---- boundary: the agents must partition top-io.json's data ports ----
+def test_unclaimed_data_port_group_fails(tmp_path):
+    """simulation binds the DUT by walking the ports, so a group no agent claims has nothing
+    to bind to. Held here because the plan passes a human approval gate first."""
     s = copy.deepcopy(GOOD)
-    del s["primary_clock"]
+    s["agents"] = [a for a in s["agents"] if a["name"] != "obs"]
+    s["scoreboard"]["observer"] = "drv"
     proc = _run(tmp_path, s, check=False)
-    assert proc.returncode != 0 and "primary_clock" in proc.stderr
+    assert proc.returncode != 0
+    assert "stat" in proc.stderr and "no agent claims" in proc.stderr
+
+
+def test_group_claimed_twice_fails(tmp_path):
+    s = copy.deepcopy(GOOD)
+    s["agents"][1]["interface_groups"] = ["cfg", "stat"]
+    proc = _run(tmp_path, s, check=False)
+    assert proc.returncode != 0 and "claimed by both" in proc.stderr
+
+
+def test_clock_and_reset_groups_need_no_agent(tmp_path):
+    """clk/rst carry an interface_group like every other row, but the bench drives them, so
+    a group holding only clock/reset is not one an agent has to claim."""
+    top_io = [dict(p) for p in _TOP_IO]
+    for p_ in top_io:
+        if p_["role"] in ("clock", "reset"):
+            p_["interface_group"] = "clkrst"
+    assert _run(tmp_path, GOOD, top_io=top_io).returncode == 0
 
 
 # ---- semantic ----
@@ -223,6 +271,7 @@ def test_observer_omitted_single_agent_passes(tmp_path):
     s["sequences"] = [{"name": "smoke", "agent": "drv"}]
     s["rm"]["inports"] = ["drv"]
     del s["scoreboard"]["observer"]
+    s["agents"][0]["interface_groups"] = ["cfg", "stat"]  # one agent, so it owns both
     assert _run(tmp_path, s).returncode == 0
 
 

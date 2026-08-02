@@ -70,7 +70,7 @@ the UVM scaffold, compile, and run the smoke suite.
    observed structure. Do not whole-read `sim/scaffold.py` as a first resort.
    **Reading discipline.** Do not whole-read `tb-scaffold.json` (it is large and the
    first read gets truncated by the token cap, forcing a costly re-read). Instead: take **structural
-   facts** (interface signals, txn fields) from the **rendered stubs** (they are already materialized);
+   facts** (interface signals, txn fields) from the **rendered includes** (`*_signals.svh` / `*_fields.svh`, regenerated from top-io.json every round);
    read **check semantics per-testpoint** via `testpoints[].inlined_check_hints[]` (not the whole
    `check_hints` block at once); and read the small top-level arrays
    (`sequences[].agent` / `tests[].seqs` / `rm` / `scoreboard`) for the testpoint→component mapping.

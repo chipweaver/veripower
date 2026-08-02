@@ -52,6 +52,43 @@ def _mirror(
     plan_root = tmp_path / "asic" / module / "Verification" / "simulation-plan"
     plan_root.mkdir(parents=True)
     (plan_root / "tb-scaffold.json").write_text(json.dumps({"top": scaffold_top}))
+    spec_root = tmp_path / "asic" / module / "Design" / "specification"
+    spec_root.mkdir(parents=True)
+    (spec_root / "top-io.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "clk",
+                    "direction": "input",
+                    "width": 1,
+                    "clock_domain": "clk",
+                    "interface_group": "bench",
+                    "role": "clock",
+                },
+                {
+                    "name": "rst_n",
+                    "direction": "input",
+                    "width": 1,
+                    "clock_domain": "clk",
+                    "interface_group": "bench",
+                    "role": "reset",
+                    "reset_polarity": 0,
+                    "reset_kind": "async",
+                },
+                {
+                    "name": "req",
+                    "direction": "input",
+                    "width": 1,
+                    "clock_domain": "clk",
+                    "interface_group": "drv_g",
+                    "role": "data",
+                },
+            ]
+        )
+    )
+    (spec_root / "clocks.json").write_text(
+        json.dumps([{"name": "clk", "period_ns": 10.0, "relationship": "primary"}])
+    )
     workdir = tmp_path / "asic" / module / "Verification" / "simulation" / "runs" / "1"
     workdir.mkdir(parents=True)
     (workdir / "dispatch.json").write_text(
@@ -61,6 +98,7 @@ def _mirror(
                     "rtl": str(rtl),
                     "plan": str(plan_root),
                     "scaffold": str(plan_root),
+                    "spec": str(spec_root),
                 }
             }
         )
@@ -153,17 +191,7 @@ def test_bootstrap_renders_scaffold_when_given(tmp_path):
     spec = {
         "module": module,
         "top": "dut",
-        "primary_clock": {"dut_port_name": "clk", "period_ns": 10.0},
-        "additional_clocks": [],
-        "reset": {"dut_port_name": "rst_n", "polarity": 0},
-        "agents": [
-            {
-                "name": "drv",
-                "mode": "active",
-                "interface": {"signals": [{"name": "req", "width": 1}]},
-                "transaction": {"fields": []},
-            }
-        ],
+        "agents": [{"name": "drv", "mode": "active", "interface_groups": ["drv_g"]}],
         "sequences": [{"name": "smoke", "agent": "drv"}],
         "tests": [
             {

@@ -17,28 +17,8 @@ GOOD = {
     "module": "m",
     "top": "m_top",
     "agents": [
-        {
-            "name": "drv",
-            "mode": "active",
-            "interface_groups": ["cfg"],
-            "interface": {"signals": [{"name": "wdata", "width": 32}]},
-            "transaction": {
-                "fields": [
-                    {"name": "wdata", "width": 32, "type": "logic", "rand": True}
-                ]
-            },
-        },
-        {
-            "name": "obs",
-            "mode": "passive",
-            "interface_groups": ["stat"],
-            "interface": {"signals": [{"name": "rdata", "width": 32}]},
-            "transaction": {
-                "fields": [
-                    {"name": "rdata", "width": 32, "type": "logic", "rand": True}
-                ]
-            },
-        },
+        {"name": "drv", "mode": "active", "interface_groups": ["cfg"]},
+        {"name": "obs", "mode": "passive", "interface_groups": ["stat"]},
     ],
     "sequences": [{"name": "smoke", "agent": "drv", "desc": "smoke"}],
     "tests": [
@@ -53,9 +33,6 @@ GOOD = {
     ],
     "rm": {"name": "m_rm", "inports": ["drv"]},
     "scoreboard": {"name": "m_sb", "observer": "obs"},
-    "primary_clock": {"dut_port_name": "clk", "period_ns": 10.0},
-    "additional_clocks": [],
-    "reset": {"dut_port_name": "rst_n", "polarity": 0},
     "testpoints": [
         {
             "id": "TP-1",
@@ -92,6 +69,46 @@ def _spec(tmp_path, hints=("CHK-0",)):
     """A minimal specification workdir for the coverage layer finalize re-runs."""
     sd = tmp_path / "spec"
     (sd / "check-hints").mkdir(parents=True, exist_ok=True)
+    (sd / "top-io.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "clk",
+                    "direction": "input",
+                    "width": 1,
+                    "clock_domain": "clk",
+                    "interface_group": "bench",
+                    "role": "clock",
+                },
+                {
+                    "name": "rst_n",
+                    "direction": "input",
+                    "width": 1,
+                    "clock_domain": "clk",
+                    "interface_group": "bench",
+                    "role": "reset",
+                    "reset_polarity": 0,
+                    "reset_kind": "async",
+                },
+                {
+                    "name": "wdata",
+                    "direction": "input",
+                    "width": 32,
+                    "clock_domain": "clk",
+                    "interface_group": "cfg",
+                    "role": "data",
+                },
+                {
+                    "name": "rdata",
+                    "direction": "output",
+                    "width": 32,
+                    "clock_domain": "clk",
+                    "interface_group": "stat",
+                    "role": "data",
+                },
+            ]
+        )
+    )
     (sd / "manifest.json").write_text(
         json.dumps({"module": "m", "children": [{"name": "c", "doc": "c.md"}]})
     )

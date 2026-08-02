@@ -7,55 +7,7 @@
       "mode": "active",
       "interface_groups": [
         "data_in"
-      ],
-      "interface": {
-        "signals": [
-          {
-            "name": "in1",
-            "width": 32
-          },
-          {
-            "name": "in2",
-            "width": 32
-          },
-          {
-            "name": "in1_en",
-            "width": 1
-          },
-          {
-            "name": "in2_en",
-            "width": 1
-          }
-        ]
-      },
-      "transaction": {
-        "fields": [
-          {
-            "name": "in1",
-            "width": 32,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "in2",
-            "width": 32,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "in1_en",
-            "width": 1,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "in2_en",
-            "width": 1,
-            "type": "logic",
-            "rand": true
-          }
-        ]
-      }
+      ]
     },
     {
       "name": "core",
@@ -64,125 +16,7 @@
         "apb",
         "ctrl",
         "status"
-      ],
-      "interface": {
-        "signals": [
-          {
-            "name": "i_paddr",
-            "width": 32
-          },
-          {
-            "name": "i_psel",
-            "width": 1
-          },
-          {
-            "name": "i_pwrite",
-            "width": 1
-          },
-          {
-            "name": "i_pwdata",
-            "width": 32
-          },
-          {
-            "name": "i_penable",
-            "width": 1
-          },
-          {
-            "name": "o_prdata",
-            "width": 32
-          },
-          {
-            "name": "start",
-            "width": 1
-          },
-          {
-            "name": "counter",
-            "width": 4
-          },
-          {
-            "name": "o_full",
-            "width": 3
-          },
-          {
-            "name": "o_empty",
-            "width": 3
-          },
-          {
-            "name": "done",
-            "width": 1
-          }
-        ]
-      },
-      "transaction": {
-        "fields": [
-          {
-            "name": "i_paddr",
-            "width": 32,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "i_psel",
-            "width": 1,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "i_pwrite",
-            "width": 1,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "i_pwdata",
-            "width": 32,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "i_penable",
-            "width": 1,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "o_prdata",
-            "width": 32,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "start",
-            "width": 1,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "counter",
-            "width": 4,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "o_full",
-            "width": 3,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "o_empty",
-            "width": 3,
-            "type": "logic",
-            "rand": true
-          },
-          {
-            "name": "done",
-            "width": 1,
-            "type": "logic",
-            "rand": true
-          }
-        ]
-      }
+      ]
     }
   ],
   "tests": [
@@ -791,14 +625,5 @@
       ]
     }
   ],
-  "skipped_checks": [],
-  "primary_clock": {
-    "dut_port_name": "i_clk",
-    "period_ns": 10.0
-  },
-  "reset": {
-    "dut_port_name": "i_rstn",
-    "polarity": 0
-  },
-  "additional_clocks": []
+  "skipped_checks": []
 }

@@ -154,7 +154,9 @@ def run(module: str, workdir, scaffold=None) -> int:
             plan_dir = tree_root / plan_dir
         from sim import scaffold as scaffold_mod
 
-        scaffold_mod.render(plan_dir, dest)  # default template dir = templates/scaffold
+        # spec: the DUT boundary the TB is built against, read at render time rather
+        # than from a copy the plan made of it.
+        scaffold_mod.render(plan_dir, dest, inputs["spec"])
         print(f"[sim bootstrap] rendered UVM scaffold from {plan_dir}")
     else:
         print("[sim bootstrap] --plan not supplied; deployed infra only.")

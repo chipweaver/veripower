@@ -30,22 +30,25 @@ is what the Feature column of `case-results-summary.md` shows a human.
   `interface_group`, never by `clock_domain`.
 - A group's `direction` values decide the agent's `mode`: `active` for a group you drive, `passive`
   for one you only observe.
-- clk/rst ports bind through `primary_clock` / `additional_clocks` / `reset`, so whichever
-  `interface_group` they carry is ignored — the bench drives them and an agent must not.
-- `interface.signals` and `transaction.fields` are script-injected from this file — same names, same
-  widths, clk/rst in neither. materialize does not abstract, rename, or merge, so there is no
-  `addr` / `data` / `rw` to invent. An agent whose groups hold nothing but clk/rst therefore has an
-  empty interface, which simulation refuses: give it the data ports it is meant to drive.
+- Every `role: "data"` port must end up in exactly one agent, so your `interface_groups` have to
+  PARTITION them. check-scaffold enforces it: a group nobody claims would leave those DUT ports
+  bound to nothing, which Verilog accepts and VCS compiles without an error.
+- clk/rst are the bench's, whichever `interface_group` they carry. An agent whose groups hold
+  nothing else has nothing to drive, and is refused.
+- You author no signal list. simulation reads this file itself at render time and builds the vif
+  signals, the transaction fields, every clock generator and the reset drive from it — same names,
+  same widths, verbatim. There is no `addr` / `data` / `rw` to invent, and nothing you write can
+  disagree with what specification declared.
 - `protocol` is your reference for which sequence pattern to author (`APB3` / `AXI4` / `custom`).
 
-`reset_polarity` is script-injected into `reset.polarity`, because the bench drives reset and
-cannot otherwise know which level asserts it. `reset_kind` / `encoding` are for the specification
-stage's constraint generation and its reviewers, not for you.
+`reset_polarity` reaches the TB, which drives reset and cannot otherwise know which level asserts
+it. `reset_kind` / `encoding` are for the specification stage's constraint generation and its
+reviewers, not for you.
 
-Every `role: "clock"` port needs a `clocks.json` entry: the primary becomes `primary_clock` and
-the rest become `additional_clocks`, one generator each. materialize refuses a clock port with no
-entry rather than leaving it out — a DUT clock port the TB does not bind compiles without an error
-and stops that domain for the whole run.
+Every `role: "clock"` port needs a `clocks.json` entry: the primary is the one the agents' vifs
+run on, the rest each get their own generator. simulation refuses a clock port with no entry
+rather than leaving it out — a DUT clock port nothing binds compiles without an error and stops
+that domain for the whole run.
 
 ## design.md §1.5 timing scenarios → sequences
 
@@ -79,9 +82,9 @@ complete; `corner_cases`: `pready` inserts wait cycles; `negative_cases`: illega
 `pslverr` high), and `check-hints/apb_slave.json` with `CHK-APB-00` (write→`reg_file[addr]`,
 read→`prdata`) and `CHK-APB-01` (`pslverr <= (addr not in legal_range)`):
 
-- **agents**: one `apb_agent`, `mode: active`, `interface_groups: ["APB"]`. Its signals and
-  transaction fields are script-injected — the eight APB-group signals verbatim, `pclk` / `preset_n`
-  excluded from the transaction and bound via `primary_clock` / `reset`.
+- **agents**: one `apb_agent`, `mode: active`, `interface_groups: ["APB"]`. You write nothing
+  else about it: simulation reads the eight APB-group signals out of top-io.json, and `pclk` /
+  `preset_n` are the bench's.
 - **sequences**: one entry per `SC-NNN` id, each naming `apb_agent`.
 - **tests**: one per testcase from `F-00`, each with `feature: "F-00"`, its `seqs`, and its `suites`.
 - **testpoints**: a positive one covering `CHK-APB-00` and a negative one covering `CHK-APB-01`.

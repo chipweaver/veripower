@@ -17,9 +17,15 @@ which the orchestrator records as `failure_phase=compile|smoke`.
 
 Wiring is how the parts are connected: factory registration and sub-component construction in an
 agent, analysis-port connections and sequencer configuration in the env, `config_db` set and get,
-the DUT and interface instantiation and reset drive in `tb_top`, include order in `tb_pkg.sv`,
-paths and `+incdir+` in `filelist.f`, VCS options in the `Makefile`. A misspelled signal or field
-name is wiring too, however semantic the symbol sounds.
+the clocking blocks and modports in an interface, VCS options in the `Makefile`. A misspelled
+signal or field name is wiring too, however semantic the symbol sounds.
+
+`tb_top.sv`, `tb_pkg.sv`, `filelist.f`, `tests/testlist.json` and the `*_signals.svh` /
+`*_fields.svh` / `*_field_macros.svh` includes are **regenerated every round** from the plan and
+`top-io.json`. Editing one is not forbidden so much as pointless — the next bootstrap overwrites
+it — and it would be the wrong repair anyway: the clock set, the reset polarity, the DUT port
+bindings and every vif signal are specification's declaration, so a TB that has them wrong means
+that declaration is wrong and the fix routes there.
 
 Semantics is what the design is expected to do: the compare in the scoreboard, `predict` and the
 state machine in the refmodel, field and constraint meaning in a transaction, and anything the

@@ -219,6 +219,12 @@ RULES: dict[str, Rule] = {
                 "Verification/simulation-plan/tb-scaffold.json",
                 "Verification/simulation-plan/sequences.json",
             ),
+            # The DUT boundary the TB is built against. Declared rather than copied into the
+            # scaffold: a copy can disagree with it, and cannot be checked for totality.
+            "spec": (
+                "Design/specification/top-io.json",
+                "Design/specification/clocks.json",
+            ),
         },
         outputs=(
             "case-results-summary.md",
