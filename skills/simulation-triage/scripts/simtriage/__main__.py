@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from simtriage import result
 
-    return result.finalize(a.workdir, a.module, a.json_file, a.json_stdin)
+    return result.finalize(a.workdir, a.json_file, a.json_stdin)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,7 +41,6 @@ def build_parser() -> argparse.ArgumentParser:
         "finalize", help="schema-gate the analysis judgment, then write result.json"
     )
     sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument("--module", required=True)
     g = sp.add_mutually_exclusive_group(required=True)
     g.add_argument("--json-file", type=Path)
     g.add_argument("--json-stdin", action="store_true")

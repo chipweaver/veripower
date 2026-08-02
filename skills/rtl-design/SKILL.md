@@ -49,7 +49,7 @@ Nothing reduces those reviews to a verdict. Read them and act: re-dispatch the c
 **Write the envelope.**
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir} --module {module} --manifest <manifest>/manifest.json [--fail-reason "<one line>"] [--fix-owner <rule>]
+python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir} --manifest <manifest>/manifest.json [--fail-reason "<one line>"] [--fix-owner <rule>]
 ```
 
 `finalize` derives the envelope from disk. It validates both sidecars against their schemas, and refuses to write a pass while a manifest child has no entry in them or a file they name is not in `{workdir}`.

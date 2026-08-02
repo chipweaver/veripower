@@ -29,14 +29,13 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _envelope(module, *, status, stage_specific, artifacts, fix_owner=None) -> dict:
+def _envelope(*, status, stage_specific, artifacts, fix_owner=None) -> dict:
     """fix_owner rides on a failure only, and only when the caller named one: its ABSENCE is
     what decide reads as "this stage cannot tell", so it must never serialize empty."""
     if status == "fail" and fix_owner:
         stage_specific = {**stage_specific, "fix_owner": fix_owner}
     return {
         "stage": STAGE,
-        "module": module,
         "produced_at": _now_iso(),
         "status": status,
         "artifacts": artifacts,
@@ -78,7 +77,7 @@ def _caller_reported_artifacts(workdir: Path) -> list:
     return files + _reviews(workdir)
 
 
-def build_result(workdir, module, manifest, fail_reason=None, fix_owner=None) -> int:
+def build_result(workdir, manifest, fail_reason=None, fix_owner=None) -> int:
     """Build the lean rtl-design result.json from the on-disk workdir. The caller supplies
     only what no on-disk state can express: `fail_reason` for an early exit, and `fix_owner` for
     the rule that must act on a failure. Returns 0 (result.json written, pass or fail); a raise
@@ -91,7 +90,6 @@ def build_result(workdir, module, manifest, fail_reason=None, fix_owner=None) ->
         _write_result(
             workdir,
             _envelope(
-                module,
                 status="fail",
                 stage_specific={"fail_reason": fail_reason},
                 artifacts=_caller_reported_artifacts(workdir),
@@ -103,18 +101,18 @@ def build_result(workdir, module, manifest, fail_reason=None, fix_owner=None) ->
     artifacts = exit_artifacts(manifest, workdir) + _reviews(workdir)
     _write_result(
         workdir,
-        _envelope(module, status="pass", stage_specific={}, artifacts=artifacts),
+        _envelope(status="pass", stage_specific={}, artifacts=artifacts),
     )
     return 0
 
 
-def finalize(workdir, module, manifest, fail_reason=None, fix_owner=None) -> int:
+def finalize(workdir, manifest, fail_reason=None, fix_owner=None) -> int:
     """Build the lean rtl-design result.json from the on-disk workdir.
     exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (any internal
     raise) — never conflated with status=fail. (Owns the policy the deleted main() had.)"""
     try:
         return build_result(
-            workdir, module, manifest, fail_reason=fail_reason, fix_owner=fix_owner
+            workdir, manifest, fail_reason=fail_reason, fix_owner=fix_owner
         )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[rtl finalize] BLOCKED: {exc}", file=sys.stderr)

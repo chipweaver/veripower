@@ -34,7 +34,7 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from lintcdc import result
 
-    return result.finalize(a.workdir, a.module, a.fix_owner, a.fail_reason)
+    return result.finalize(a.workdir, a.fix_owner, a.fail_reason)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -58,7 +58,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="AND the two *-violations.json sidecars, assemble result.json",
     )
     sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument("--module", required=True)
     sp.add_argument(
         "--fix-owner",
         default=None,

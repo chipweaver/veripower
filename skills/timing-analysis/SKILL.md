@@ -70,7 +70,7 @@ report included, and you never hand-assemble it:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
-  --workdir {workdir} --module <module> [--fix-owner <rule>] \
+  --workdir {workdir} [--fix-owner <rule>] \
   [--fail-reason "<cause>"]
 ```
 

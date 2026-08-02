@@ -16,7 +16,7 @@ You MUST NOT:
 - Make routing decisions (orchestrator decides next stage).
 
 result.json contract (write to {workdir}/result.json):
-- result.json required fields: stage, module={module}, produced_at (ISO8601 UTC, e.g. 2026-07-12T08:00:00Z — a produced_at predating this run's dispatch is reaped blocked/stale_result), status is `pass` or `fail`, artifacts, stage_specific.
+- result.json required fields: stage, produced_at (ISO8601 UTC, e.g. 2026-07-12T08:00:00Z — a produced_at predating this run's dispatch is reaped blocked/stale_result), status is `pass` or `fail`, artifacts, stage_specific.
 - stage_specific shape per the Skill's references/result.schema.json (composes the envelope via $ref).
 - artifacts[].path is relative to {workdir}; every listed path must be a file or directory actually present in {workdir} at write time (the kernel's reap-time promote raises FileNotFoundError otherwise).
 

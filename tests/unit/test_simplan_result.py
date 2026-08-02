@@ -116,9 +116,9 @@ def _finalize_workdir(tmp_path, *, scaffold=None, review=True):
 def test_build_result_pass_lean_shape(tmp_path):
     wd = _finalize_workdir(tmp_path)
     spec = _spec(tmp_path)
-    assert vs.build_result(wd, "tpu_top", spec, status=None, revision=None) == 0
+    assert vs.build_result(wd, spec, status=None, revision=None) == 0
     env = json.loads((wd / "result.json").read_text())
-    assert (env["stage"], env["module"]) == ("simulation-plan", "tpu_top")
+    assert env["stage"] == "simulation-plan"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     # Lean shape: nothing at all on a plain pass. The review is prose under plan-review/,
     # fingerprinted as the oracle; no verdict derived from it reaches the envelope.
@@ -129,7 +129,7 @@ def test_build_result_carries_revision(tmp_path):
     wd = _finalize_workdir(tmp_path)
     spec = _spec(tmp_path)
     rev = "rev 0.2 (rework r1): narrowed TP-1 bins"
-    assert vs.build_result(wd, "tpu_top", spec, status=None, revision=rev) == 0
+    assert vs.build_result(wd, spec, status=None, revision=rev) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss == {
         "revision": rev
@@ -139,7 +139,7 @@ def test_build_result_carries_revision(tmp_path):
 def test_build_result_fail_on_user_reject(tmp_path):
     wd = _finalize_workdir(tmp_path)
     spec = _spec(tmp_path)
-    assert vs.build_result(wd, "tpu_top", spec, status="fail", revision=None) == 0
+    assert vs.build_result(wd, spec, status="fail", revision=None) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert env["stage_specific"] == {"fail_reason": "user rejected plan"}
@@ -150,7 +150,7 @@ def test_pass_blocked_when_scaffold_edited_after_the_gate(tmp_path):
     # failure here means an artifact changed afterwards — BLOCKED, not a routable fail.
     wd = _finalize_workdir(tmp_path)
     spec = _spec(tmp_path, hints=("CHK-0", "CHK-1"))  # CHK-1 covered by nothing
-    assert vs.finalize(wd, "m", spec, status=None, revision=None) == 2
+    assert vs.finalize(wd, spec, status=None, revision=None) == 2
     assert not (wd / "result.json").exists()
 
 
@@ -161,7 +161,6 @@ def test_fail_path_does_not_re_run_the_gate(tmp_path):
     wd.mkdir()
     rc = vs.finalize(
         wd,
-        "m",
         tmp_path / "nonexistent-spec",
         status="fail",
         revision=None,
@@ -228,7 +227,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     rev = "rev 0.3 (rework r2): added apb_weight_load precondition to T-04 + T-07"
     # The plan fixture's covers[] resolve against the specification fixture's check hints —
     # the same pairing the real run had, so the re-run gate is exercised on real content.
-    assert vs.build_result(wd, "tpu_top", SPEC_FIX, status=None, revision=rev) == 0
+    assert vs.build_result(wd, SPEC_FIX, status=None, revision=rev) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
     assert env["stage_specific"] == {"revision": rev}
@@ -248,13 +247,13 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
 # ── finalize-wrapper exit-code BLOCKED semantics ──
 def test_finalize_blocked_on_internal_raise(tmp_path):
     # missing tb-scaffold.json → the re-run gate reports it → exit 2 BLOCKED
-    assert vs.finalize(tmp_path, "m", _spec(tmp_path), status=None, revision=None) == 2
+    assert vs.finalize(tmp_path, _spec(tmp_path), status=None, revision=None) == 2
     assert not (tmp_path / "result.json").exists()
 
 
 def test_finalize_blocked_on_empty_fail_reason(tmp_path):
     rc = vs.finalize(
-        tmp_path, "m", _spec(tmp_path), status="fail", revision=None, fail_reason="  "
+        tmp_path, _spec(tmp_path), status="fail", revision=None, fail_reason="  "
     )
     assert rc == 2
     assert not (tmp_path / "result.json").exists()
@@ -266,7 +265,6 @@ def test_fail_reason_without_status_fail_is_blocked(tmp_path):
     wd = _finalize_workdir(tmp_path)
     rc = vs.finalize(
         wd,
-        "m",
         _spec(tmp_path),
         status=None,
         revision=None,
@@ -280,7 +278,7 @@ def test_bare_status_fail_without_review_is_blocked(tmp_path):
     # A user reject can only follow the review, and the reviewer — not this caller — writes
     # that file, so requiring it is not the checked party vouching for itself.
     wd = _finalize_workdir(tmp_path, review=False)
-    rc = vs.finalize(wd, "m", _spec(tmp_path), status="fail", revision=None)
+    rc = vs.finalize(wd, _spec(tmp_path), status="fail", revision=None)
     assert rc == 2
     assert not (wd / "result.json").exists()
 
@@ -292,7 +290,6 @@ def test_earlyfail_seeded_workdir_carries_products(tmp_path):
     (tmp_path / "tb-scaffold.json").write_text("{}", encoding="utf-8")
     rc = vs.finalize(
         tmp_path,
-        "m",
         _spec(tmp_path),
         status="fail",
         revision=None,

@@ -176,30 +176,15 @@ def test_parse_wns_summary_setup_not_hold():
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):
     MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
-    # missing --module
+    # --workdir is the one flag finalize cannot infer; omitting it is argparse exit 2,
+    # never a written envelope.
     r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--workdir", str(tmp_path)],
+        ["python3", str(MAIN), "finalize"],
         capture_output=True,
         text=True,
     )
-    assert r.returncode == 2  # argparse: missing --module
-    # --top is not a flag at all: the netlist trio is matched by glob
-    r = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "finalize",
-            "--workdir",
-            str(tmp_path),
-            "--module",
-            "m",
-            "--top",
-            "m",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert r.returncode == 2 and "unrecognized arguments" in r.stderr
+    assert r.returncode == 2
+    assert not (tmp_path / "result.json").exists()
 
 
 # ── run() exit-code contract ──────────────────────────────────────────────────
@@ -306,14 +291,9 @@ def _workdir(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR, netlist=True):
 
 def test_build_result_pass_lean_shape(tmp_path):
     wd = _workdir(tmp_path)
-    assert (
-        sp.build_result(wd, module="tpu_top", area_target=None, slack_target=None) == 0
-    )
+    assert sp.build_result(wd, area_target=None, slack_target=None) == 0
     env = json.loads((wd / "result.json").read_text())
-    assert (env["stage"], env["module"]) == (
-        "synthesis",
-        "tpu_top",
-    )
+    assert env["stage"] == "synthesis"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
     slack = [a for a in ss["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]
@@ -327,9 +307,7 @@ def test_build_result_pass_lean_shape(tmp_path):
 
 def test_build_result_tooling_fail_on_unparseable(tmp_path):
     wd = _workdir(tmp_path, area=AREA_NO_TOTAL)  # parser run() returns 3
-    assert (
-        sp.build_result(wd, module="tpu_top", area_target=None, slack_target=None) == 0
-    )
+    assert sp.build_result(wd, area_target=None, slack_target=None) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "synthesis report unparseable"
 
@@ -341,7 +319,6 @@ def test_declared_failure_wins_over_a_clean_gate(tmp_path):
     assert (
         sp.build_result(
             wd,
-            module="tpu_top",
             area_target=None,
             slack_target=None,
             fix_owner="rtl-design",
@@ -360,7 +337,7 @@ def test_declared_failure_wins_over_a_clean_gate(tmp_path):
 
 def test_declared_failure_needs_a_reason(tmp_path):
     wd = _workdir(tmp_path)
-    assert sp.finalize(wd, "m", None, None, fail_reason="   ") == 2
+    assert sp.finalize(wd, None, None, fail_reason="   ") == 2
     assert not (wd / "result.json").exists()  # BLOCKED writes nothing
 
 
@@ -376,8 +353,6 @@ def test_finalize_cli_declared_infra_failure(tmp_path):
             "finalize",
             "--workdir",
             str(wd),
-            "--module",
-            "tpu_top",
             "--fail-reason",
             "DC license missing: dc_shell exited with LICENSE_ERROR",
         ],
@@ -396,7 +371,7 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
         raise RuntimeError("synthetic")
 
     monkeypatch.setattr(sp, "build_result", boom)
-    assert sp.finalize(tmp_path, "m", "m", None, None) == 2
+    assert sp.finalize(tmp_path, "m", None, None) == 2
 
 
 # ── reproducibility header: the DC version, which nothing else records ────────
@@ -443,9 +418,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
 
     wd = tmp_path / "synthesis"
     shutil.copytree(_FIXTURE, wd)
-    assert (
-        sp.build_result(wd, module="tpu_top", area_target=None, slack_target=None) == 0
-    )
+    assert sp.build_result(wd, area_target=None, slack_target=None) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "pass"
@@ -476,7 +449,7 @@ def test_golden_is_schema_valid(tmp_path):
 
     wd = tmp_path / "synthesis"
     shutil.copytree(_FIXTURE, wd)
-    sp.build_result(wd, module="tpu_top", area_target=None, slack_target=None)
+    sp.build_result(wd, area_target=None, slack_target=None)
     env = json.loads((wd / "result.json").read_text())
     env_schema = json.loads(
         (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()
@@ -513,19 +486,13 @@ def test_finalize_cli_happy_path(tmp_path):
             "finalize",
             "--workdir",
             str(wd),
-            "--module",
-            "tpu_top",
         ],
         capture_output=True,
         text=True,
     )
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
-    assert (env["stage"], env["module"], env["status"]) == (
-        "synthesis",
-        "tpu_top",
-        "pass",
-    )
+    assert (env["stage"], env["status"]) == ("synthesis", "pass")
 
 
 # ── PPA targets read from the injected dispatch.json "ppa" stage root ──────────
@@ -562,8 +529,6 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
             "finalize",
             "--workdir",
             str(wd),
-            "--module",
-            "tpu_top",
         ],
         capture_output=True,
         text=True,
@@ -601,8 +566,6 @@ def test_finalize_cli_no_ppa_json_is_vacuous_pass(tmp_path):
             "finalize",
             "--workdir",
             str(wd),
-            "--module",
-            "tpu_top",
         ],
         capture_output=True,
         text=True,
@@ -617,7 +580,7 @@ def test_pass_requires_the_full_netlist_trio(tmp_path):
     # dc_run.tcl reports before it writes, and no write is return-checked, so a clean
     # reports/ can sit next to no netlist at all.
     wd = _workdir(tmp_path, netlist=False)
-    assert sp.build_result(wd, module="m", area_target=None, slack_target=None) == 0
+    assert sp.build_result(wd, area_target=None, slack_target=None) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
@@ -630,7 +593,7 @@ def test_partial_netlist_names_only_what_is_absent(tmp_path):
     (wd / "out").mkdir()
     (wd / "out" / "m_syn.v").write_text("netlist")
     (wd / "out" / "m_syn.sdc").write_text("sdc")
-    assert sp.build_result(wd, module="m", area_target=None, slack_target=None) == 0
+    assert sp.build_result(wd, area_target=None, slack_target=None) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "netlist incomplete: dc_shell wrote no out/*_syn.sdf"
 
@@ -640,7 +603,6 @@ def test_missing_netlist_outranks_a_ppa_miss(tmp_path):
     assert (
         sp.build_result(
             wd,
-            module="m",
             area_target=1.0,  # unreachable -> the gate fails too
             slack_target=None,
             fix_owner="rtl-design",

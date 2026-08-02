@@ -14,14 +14,13 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _envelope(module, *, status, stage_specific, artifacts, fix_owner=None) -> dict:
+def _envelope(*, status, stage_specific, artifacts, fix_owner=None) -> dict:
     """fix_owner rides on a failure only, and only when the caller named one: its ABSENCE is
     what decide reads as "this stage cannot tell", so it must never serialize empty."""
     if status == "fail" and fix_owner:
         stage_specific = {**stage_specific, "fix_owner": fix_owner}
     return {
         "stage": STAGE,
-        "module": module,
         "produced_at": _now_iso(),
         "status": status,
         "artifacts": artifacts,
@@ -53,7 +52,7 @@ def enumerate_artifacts(workdir) -> list:
 
 
 def build_result(
-    workdir, module, spec_workdir, *, status, revision, fail_reason=None, fix_owner=None
+    workdir, spec_workdir, *, status, revision, fail_reason=None, fix_owner=None
 ) -> int:
     """Assemble the lean simulation-plan result.json from the workdir.
 
@@ -91,7 +90,6 @@ def build_result(
         _write_result(
             workdir,
             _envelope(
-                module,
                 status="fail",
                 stage_specific=ss,
                 artifacts=enumerate_artifacts(workdir),
@@ -117,7 +115,6 @@ def build_result(
     _write_result(
         workdir,
         _envelope(
-            module,
             status="pass",
             stage_specific=ss,
             artifacts=enumerate_artifacts(workdir),
@@ -128,7 +125,7 @@ def build_result(
 
 
 def finalize(
-    workdir, module, spec_workdir, *, status, revision, fail_reason=None, fix_owner=None
+    workdir, spec_workdir, *, status, revision, fail_reason=None, fix_owner=None
 ) -> int:
     """Parse the human-gate outcome args, then build_result. exit 0 = result.json written
     (pass or fail); exit 2 = BLOCKED (empty --fail-reason, a re-run check-scaffold failure,
@@ -150,7 +147,6 @@ def finalize(
     try:
         return build_result(
             workdir,
-            module,
             spec_workdir,
             status=status,
             revision=revision,

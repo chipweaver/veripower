@@ -121,7 +121,7 @@ reports included, and you never hand-assemble it:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
-  --workdir {workdir} --module <module> [--fix-owner <rule>] \
+  --workdir {workdir} [--fix-owner <rule>] \
   [--fail-reason "<cause>"]
 ```
 

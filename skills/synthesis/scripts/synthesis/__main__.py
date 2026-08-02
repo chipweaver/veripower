@@ -59,7 +59,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     targets = read_ppa_targets(a.workdir)
     return result.finalize(
         a.workdir,
-        a.module,
         targets.get("area_um2"),
         targets.get("timing_slack_ns"),
         a.fix_owner,
@@ -86,7 +85,6 @@ def build_parser() -> argparse.ArgumentParser:
         "finalize", help="parse DC reports, judge PPA, assemble result.json"
     )
     sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument("--module", required=True)
     sp.add_argument(
         "--fix-owner",
         default=None,

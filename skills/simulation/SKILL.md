@@ -87,7 +87,7 @@ On `STATUS: BLOCKED <reason>`, close the round and dispatch nothing further:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize --workdir {workdir} \
-  --module <module> --phase env-blocked --failure-phase <compile|smoke|prerequisite> \
+  --phase env-blocked --failure-phase <compile|smoke|prerequisite> \
   --fail-reason "<reason>"
 ```
 
@@ -137,7 +137,7 @@ whether the check can be made adequate at all.
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize --workdir {workdir} \
-  --module <module> --phase conformance --fail-reason "<the fixer's reason>"
+  --phase conformance --fail-reason "<the fixer's reason>"
 ```
 
 Dispatch no verify wave after that. The envelope carries the phase and the reason; the findings
@@ -186,7 +186,7 @@ copy a gate verdict across by hand.
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize \
-  --workdir {workdir} --module <module> --phase final \
+  --workdir {workdir} --phase final \
   --plan <scaffold> \
   --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml \
   --conformance-review {workdir}/conformance-review.md \

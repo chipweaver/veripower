@@ -114,7 +114,7 @@ never hand-assemble it:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py finalize \
-  --workdir {workdir} --module <module> [--fix-owner <rule>] [--fail-reason "<cause>"]
+  --workdir {workdir} [--fix-owner <rule>] [--fail-reason "<cause>"]
 ```
 
 It ANDs the two sidecars for the gate (`status=pass` iff both exist and `counts.error == 0` in

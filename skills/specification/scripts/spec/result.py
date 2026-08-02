@@ -16,10 +16,9 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _envelope(module, *, status, stage_specific, artifacts) -> dict:
+def _envelope(*, status, stage_specific, artifacts) -> dict:
     return {
         "stage": STAGE,
-        "module": module,
         "produced_at": _now_iso(),
         "status": status,
         "artifacts": artifacts,
@@ -85,7 +84,7 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
     ]
 
 
-def build_result(workdir, module, ppa_targets, status, fail_reason=None) -> int:
+def build_result(workdir, ppa_targets, status, fail_reason=None) -> int:
     """Assemble the lean specification result.json. Returns 0 (written, pass or fail); a
     raise becomes finalize exit 2 (BLOCKED).
 
@@ -105,7 +104,6 @@ def build_result(workdir, module, ppa_targets, status, fail_reason=None) -> int:
         _write_result(
             workdir,
             _envelope(
-                module,
                 status="fail",
                 stage_specific=ss,
                 artifacts=enumerate_artifacts(workdir, top),
@@ -141,14 +139,13 @@ def build_result(workdir, module, ppa_targets, status, fail_reason=None) -> int:
     artifacts = enumerate_artifacts(workdir, top)
     _write_result(
         workdir,
-        _envelope(module, status="pass", stage_specific=ss, artifacts=artifacts),
+        _envelope(status="pass", stage_specific=ss, artifacts=artifacts),
     )
     return 0
 
 
 def finalize(
     workdir,
-    module,
     *,
     status,
     ppa_targets_json=None,
@@ -174,7 +171,7 @@ def finalize(
         )
         return 2
     try:
-        return build_result(workdir, module, ppa, status, fail_reason=fail_reason)
+        return build_result(workdir, ppa, status, fail_reason=fail_reason)
     except SystemExit as exc:
         # derive_constraints' fail-loud sys.exit is a BaseException; keep the
         # documented exit-code contract (2 = BLOCKED) instead of leaking exit 1.

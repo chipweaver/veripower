@@ -58,7 +58,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
 
     return result.finalize(
         a.workdir,
-        a.module,
         status=a.status,
         ppa_targets_json=a.ppa_targets,
         fail_reason=a.fail_reason,
@@ -83,7 +82,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("finalize", help="assemble the lean result.json")
     sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument("--module", required=True)
     sp.add_argument(
         "--status",
         required=True,

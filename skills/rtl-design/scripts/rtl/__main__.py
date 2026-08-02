@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from rtl import result
 
-    return result.finalize(a.workdir, a.module, a.manifest, a.fail_reason, a.fix_owner)
+    return result.finalize(a.workdir, a.manifest, a.fail_reason, a.fix_owner)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -37,7 +37,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("finalize", help="write the lean result.json envelope")
     sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument("--module", required=True)
     sp.add_argument(
         "--manifest",
         required=True,

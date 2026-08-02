@@ -83,7 +83,7 @@ and you never hand-assemble the envelope:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
-  --workdir {workdir} --module <module> [--fix-owner <rule>] \
+  --workdir {workdir} [--fix-owner <rule>] \
   [--fail-reason "<cause>"]
 ```
 

@@ -58,7 +58,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     targets = _read_ppa_targets(inputs, {"power_mw"})
     return result.finalize(
         a.workdir,
-        a.module,
         inputs["scaffold"],
         json.dumps(targets),
         a.fix_owner,
@@ -86,7 +85,6 @@ def build_parser() -> argparse.ArgumentParser:
         "finalize", help="parse PT-PX reports, judge power_mw PPA, assemble result.json"
     )
     sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument("--module", required=True)
     sp.add_argument(
         "--fix-owner",
         default=None,

@@ -227,7 +227,7 @@ def test_an_untimed_boundary_cannot_pass(tmp_path):
     # Both directions MET, and the SDC reached two of eight output bits. The markers
     # grade what PrimeTime analyzed, so they cannot answer for the rest.
     wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_SHORT)
-    assert sp.build_result(wd, module="tpu_top", fix_owner="synthesis") == 0
+    assert sp.build_result(wd, fix_owner="synthesis") == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
@@ -244,7 +244,7 @@ def test_unconstrained_endpoints_alone_never_fail_a_run(tmp_path):
     # carry no input delay. Measured 0..4242 across eight synthesized designs with a
     # complete SDC, and identical to the broken SDC on two of them.
     wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
-    assert sp.build_result(wd, module="tpu_top") == 0
+    assert sp.build_result(wd) == 0
     assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
 
@@ -254,7 +254,7 @@ def test_an_untimed_boundary_outranks_a_missed_target(tmp_path):
     wd = _workdir(
         tmp_path, report=_SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING + _COV_SHORT
     )
-    assert sp.build_result(wd, module="tpu_top") == 0
+    assert sp.build_result(wd) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["violations"][0]["dim"] == "timing_hold"
 
@@ -299,13 +299,15 @@ def test_run_violated_marker_with_positive_slack_exit3(tmp_path):
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):
     MAIN = REPO_ROOT / "skills/timing-analysis/scripts/timing/__main__.py"
-    # missing --module -> argparse exit 2 (--top is optional, defaults to --module)
+    # --workdir is the one flag finalize cannot infer; omitting it is argparse exit 2,
+    # never a written envelope.
     r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--workdir", str(tmp_path)],
+        ["python3", str(MAIN), "finalize"],
         capture_output=True,
         text=True,
     )
-    assert r.returncode == 2  # argparse: missing --module
+    assert r.returncode == 2
+    assert not (tmp_path / "result.json").exists()
 
 
 # ── Task 1: build_result + finalize subcommand ───────────────────────────────
@@ -323,12 +325,9 @@ def _workdir(tmp_path, report=None):
 
 def test_build_result_pass_lean_shape(tmp_path):
     wd = _workdir(tmp_path)
-    assert sp.build_result(wd, module="tpu_top") == 0
+    assert sp.build_result(wd) == 0
     env = json.loads((wd / "result.json").read_text())
-    assert (env["stage"], env["module"]) == (
-        "timing-analysis",
-        "tpu_top",
-    )
+    assert env["stage"] == "timing-analysis"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
     assert ss["timing"]["setup"]["met"] is True and ss["timing"]["hold"]["met"] is True
@@ -341,14 +340,14 @@ def test_build_result_tooling_fail_on_unparseable(tmp_path):
     # test_run_no_slack_line_exit3 above).
     broken = re.sub(r"slack \(MET\)\s+2\.93", "", _SETUP_MET)
     wd = _workdir(tmp_path, report=broken + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
-    assert sp.build_result(wd, module="tpu_top") == 0
+    assert sp.build_result(wd) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "timing-report.txt unparseable"
     assert "timing" not in ss  # heavy pass-shape dropped when nothing was graded
 
 
 def test_build_result_tooling_fail_on_missing_report(tmp_path):
-    assert sp.build_result(tmp_path, module="tpu_top") == 0  # no report file
+    assert sp.build_result(tmp_path) == 0  # no report file
     ss = json.loads((tmp_path / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "timing-report.txt missing"
 
@@ -360,7 +359,7 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
         raise RuntimeError("synthetic")
 
     monkeypatch.setattr(sp, "build_result", boom)
-    assert sp.finalize(tmp_path, "m") == 2
+    assert sp.finalize(tmp_path) == 2
 
 
 def test_fail_reason_wins_over_a_clean_gate(tmp_path):
@@ -370,7 +369,6 @@ def test_fail_reason_wins_over_a_clean_gate(tmp_path):
     assert (
         sp.build_result(
             wd,
-            module="tpu_top",
             fix_owner="synthesis",
             fail_reason="PT license unavailable",
         )
@@ -389,7 +387,7 @@ def test_fail_reason_wins_over_a_clean_gate(tmp_path):
 
 def test_finalize_blocked_on_empty_fail_reason(tmp_path):
     wd = _workdir(tmp_path)
-    assert sp.finalize(wd, "tpu_top", fail_reason="  ") == 2
+    assert sp.finalize(wd, fail_reason="  ") == 2
     assert not (wd / "result.json").exists()
 
 
@@ -405,8 +403,6 @@ def test_finalize_cli_declared_failure(tmp_path):
             "finalize",
             "--workdir",
             str(wd),
-            "--module",
-            "tpu_top",
             "--fail-reason",
             "PT license unavailable",
         ],
@@ -424,7 +420,7 @@ def test_finalize_cli_happy_path(tmp_path):
     wd = _workdir(tmp_path)
     MAIN = REPO_ROOT / "skills/timing-analysis/scripts/timing/__main__.py"
     r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--workdir", str(wd), "--module", "tpu_top"],
+        ["python3", str(MAIN), "finalize", "--workdir", str(wd)],
         capture_output=True,
         text=True,
     )
@@ -465,7 +461,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     # Fixture is rooted at Design/ (no `asic` path component — it would be .gitignored).
     shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
     wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
-    assert sp.build_result(wd, module="tpu_top") == 0
+    assert sp.build_result(wd) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     # A real tpu_top run: both directions MET, its whole boundary timed, and 1142
@@ -509,7 +505,7 @@ def test_golden_is_schema_valid(tmp_path):
     ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-tpu_top"
     shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
     wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
-    sp.build_result(wd, module="tpu_top")
+    sp.build_result(wd)
     env = json.loads((wd / "result.json").read_text())
     env_schema = json.loads(
         (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()

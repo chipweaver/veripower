@@ -51,7 +51,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         return 2
     return result.finalize(
         a.workdir,
-        a.module,
         phase=a.phase,
         scaffold=a.plan,
         thresholds=a.thresholds,
@@ -90,7 +89,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("finalize", help="write result.json at the exit phase")
     sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument("--module", required=True)
     sp.add_argument(
         "--phase",
         required=True,

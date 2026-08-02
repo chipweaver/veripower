@@ -60,12 +60,9 @@ def _clean_workdir(tmp_path, lint_err=0, cdc_err=0):
 
 def test_envelope_pass_lean_shape(tmp_path):
     wd = _clean_workdir(tmp_path)
-    assert rb.run(wd, module="tpu_top") == 0
+    assert rb.run(wd) == 0
     env = json.loads((wd / "result.json").read_text())
-    assert (env["stage"], env["module"]) == (
-        "lint-cdc",
-        "tpu_top",
-    )
+    assert env["stage"] == "lint-cdc"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
     assert ss["tool"] == "SpyGlass vL-2016.06"
@@ -103,7 +100,7 @@ def test_envelope_fail_on_lint_error(tmp_path):
             }
         )
     )
-    assert rb.run(wd, module="tpu_top") == 0
+    assert rb.run(wd) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     ss = env["stage_specific"]
@@ -165,7 +162,7 @@ FIX = Path(__file__).resolve().parent / "fixtures" / "lint-cdc-tpu_top"
 def test_golden_lean_against_real_tpu_top(tmp_path):
     wd = tmp_path / "lint-cdc"
     shutil.copytree(FIX, wd)
-    assert rb.run(wd, module="tpu_top") == 0
+    assert rb.run(wd) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     # contract / header fields — exact to the real run
@@ -196,7 +193,7 @@ def test_golden_is_schema_valid(tmp_path):
 
     wd = tmp_path / "asic" / "tpu_top" / "Design" / "lint-cdc"
     shutil.copytree(FIX, wd)
-    rb.run(wd, module="tpu_top")
+    rb.run(wd)
     result = json.loads((wd / "result.json").read_text())
     err = facts.validate_result("lint-cdc", result)
     assert err is None, f"golden lint-cdc result.json is not schema-valid: {err}"
@@ -228,7 +225,7 @@ def test_fail_envelope_is_schema_valid(tmp_path):
             }
         )
     )
-    assert rb.run(wd, module="tpu_top") == 0
+    assert rb.run(wd) == 0
     result = json.loads((wd / "result.json").read_text())
     err = facts.validate_result("lint-cdc", result)
     assert err is None, f"fail-path lint-cdc result.json is not schema-valid: {err}"
@@ -262,7 +259,7 @@ def test_fail_envelope_carries_the_agent_named_fix_owner(tmp_path):
             }
         )
     )
-    assert rb.run(wd, module="tpu_top", fix_owner="specification") == 0
+    assert rb.run(wd, fix_owner="specification") == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fix_owner"] == "specification"
 
@@ -271,7 +268,7 @@ def test_fail_envelope_omits_fix_owner_when_unnamed(tmp_path):
     """Absence is the signal decide reads as "this stage cannot tell", so an unnamed owner
     must not serialize as a present-but-empty key."""
     wd = _clean_workdir(tmp_path, cdc_err=1)
-    assert rb.run(wd, module="tpu_top") == 0
+    assert rb.run(wd) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert "fix_owner" not in ss
 
@@ -281,7 +278,7 @@ def test_fail_envelope_no_violations_omits_failures(tmp_path):
     # nothing to classify -> failures[] stays unset (not invented).
     wd = _clean_workdir(tmp_path)
     (wd / "lint-violations.json").unlink()
-    assert rb.run(wd, module="tpu_top") == 0
+    assert rb.run(wd) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
@@ -300,7 +297,7 @@ def test_early_fail_reason_wins_and_is_the_failure_declaration(tmp_path):
     wd = _clean_workdir(tmp_path)
     (wd / "cdc-violations.json").unlink()  # write-fresh-or-nothing removed it
     reason = "SpyGlass exited 1 before cdc_setup: no license for cdc/cdc_verify_struct"
-    assert rb.run(wd, module="tpu_top", fail_reason=reason, fix_owner="rtl-design") == 0
+    assert rb.run(wd, fail_reason=reason, fix_owner="rtl-design") == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
@@ -312,7 +309,7 @@ def test_fail_reason_forces_fail_on_an_otherwise_clean_pair(tmp_path):
     # A tool failure can leave both sidecars clean (e.g. make died after reporting).
     # Supplying the reason is the failure declaration, so the gate must not out-vote it.
     wd = _clean_workdir(tmp_path)
-    assert rb.run(wd, module="tpu_top", fail_reason="spyglass crashed post-report") == 0
+    assert rb.run(wd, fail_reason="spyglass crashed post-report") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert env["stage_specific"]["fail_reason"] == "spyglass crashed post-report"
@@ -321,7 +318,7 @@ def test_fail_reason_forces_fail_on_an_otherwise_clean_pair(tmp_path):
 def test_empty_fail_reason_is_blocked_not_a_fail(tmp_path):
     # An unreasoned early-fail is a program error, never a routable verdict.
     wd = _clean_workdir(tmp_path)
-    assert rb.finalize(wd, "tpu_top", None, "   ") == 2
+    assert rb.finalize(wd, None, "   ") == 2
     assert not (wd / "result.json").exists()
 
 
@@ -334,7 +331,7 @@ def test_unreasoned_waiver_is_blocked(tmp_path):
     (wd / "scripts" / "waiver.tcl").write_text(
         "# a real rule id, no reason given\nwaive -rules {W257}\n"
     )
-    assert rb.finalize(wd, "tpu_top") == 2
+    assert rb.finalize(wd) == 2
     assert not (wd / "result.json").exists()
 
 
@@ -342,7 +339,7 @@ def test_empty_comment_waiver_is_blocked(tmp_path):
     wd = _clean_workdir(tmp_path)
     (wd / "scripts").mkdir(exist_ok=True)
     (wd / "scripts" / "waiver.tcl").write_text('waive -rules {W257} -comment "   "\n')
-    assert rb.finalize(wd, "tpu_top") == 2
+    assert rb.finalize(wd) == 2
 
 
 def test_reasoned_waiver_passes_across_continuations_and_comments(tmp_path):
@@ -358,7 +355,7 @@ def test_reasoned_waiver_passes_across_continuations_and_comments(tmp_path):
         "      -file {foo.v} \\\n"
         '      -comment "synthesis ignores the delay; simulation-only model"\n'
     )
-    assert rb.finalize(wd, "tpu_top") == 0
+    assert rb.finalize(wd) == 0
     assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
 
@@ -380,25 +377,20 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
         raise RuntimeError("synthetic")
 
     monkeypatch.setattr(rb, "run", boom)
-    assert rb.finalize(tmp_path, "tpu_top") == 2
+    assert rb.finalize(tmp_path) == 2
 
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):
     MAIN = REPO_ROOT / "skills/lint-cdc/scripts/lintcdc/__main__.py"
-    # missing --module -> argparse exit 2
+    # --workdir is the one flag finalize cannot infer; omitting it is argparse exit 2,
+    # never a written envelope.
     r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--workdir", str(tmp_path)],
+        ["python3", str(MAIN), "finalize"],
         capture_output=True,
         text=True,
     )
-    assert r.returncode == 2  # argparse: missing --module
-    # missing --workdir -> argparse exit 2
-    r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--module", "tpu_top"],
-        capture_output=True,
-        text=True,
-    )
-    assert r.returncode == 2  # argparse: missing --workdir
+    assert r.returncode == 2
+    assert not (tmp_path / "result.json").exists()
 
 
 def test_finalize_cli_happy_path(tmp_path):
@@ -414,16 +406,10 @@ def test_finalize_cli_happy_path(tmp_path):
             "finalize",
             "--workdir",
             str(wd),
-            "--module",
-            "tpu_top",
         ],
         capture_output=True,
         text=True,
     )
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
-    assert (env["stage"], env["status"], env["module"]) == (
-        "lint-cdc",
-        "pass",
-        "tpu_top",
-    )
+    assert (env["stage"], env["status"]) == ("lint-cdc", "pass")

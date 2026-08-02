@@ -159,7 +159,7 @@ Run `finalize` to schema-gate the judgment and atomically write `{workdir}/resul
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/simtriage/__main__.py finalize \
-  --workdir {workdir} --module {module} \
+  --workdir {workdir} \
   --json-file <path to the analysis JSON you assembled>   # or --json-stdin
 ```
 

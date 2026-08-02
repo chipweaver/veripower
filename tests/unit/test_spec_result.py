@@ -119,12 +119,9 @@ def _validate_envelope(env: dict) -> None:
 
 def test_build_result_pass_lean_shape(tmp_path):
     wd = _spec_workdir(tmp_path)
-    assert result.build_result(wd, module="tpu_top", ppa_targets=[], status="pass") == 0
+    assert result.build_result(wd, ppa_targets=[], status="pass") == 0
     env = json.loads((wd / "result.json").read_text())
-    assert (env["stage"], env["module"]) == (
-        "specification",
-        "tpu_top",
-    )
+    assert env["stage"] == "specification"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
     assert ss["top_module"] == "tpu_top"
@@ -145,7 +142,7 @@ def test_build_result_override_writes_ppa_sidecar(tmp_path):
         {"dim": "area_um2", "target": 70000.0},
         {"dim": "power_mw", "target": 12.5},
     ]
-    result.build_result(wd, module="tpu_top", ppa_targets=targets, status="pass")
+    result.build_result(wd, ppa_targets=targets, status="pass")
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert "ppa_targets" not in ss  # the sidecar is the SSoT, not the envelope
     # ppa.json is the stable sidecar synthesis/power-analysis read directly (spec §4.3)
@@ -155,7 +152,7 @@ def test_build_result_override_writes_ppa_sidecar(tmp_path):
 def test_build_result_reject_status_writes_fail(tmp_path):
     # the human REJECTED at the Step-8 gate -> --status fail, gate still clear.
     wd = _spec_workdir(tmp_path)
-    assert result.build_result(wd, module="tpu_top", ppa_targets=[], status="fail") == 0
+    assert result.build_result(wd, ppa_targets=[], status="fail") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail" and env["stage_specific"]["fail_reason"]
 
@@ -196,10 +193,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     shutil.copytree(_FIX, wd)
     targets = [{"dim": "area_um2", "target": 70000.0}]
     # γ-floor: agent relays the human-gate outcome (approve, no waivers, PPA from D6).
-    assert (
-        result.build_result(wd, module="tpu_top", ppa_targets=targets, status="pass")
-        == 0
-    )
+    assert result.build_result(wd, ppa_targets=targets, status="pass") == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "pass"
@@ -256,8 +250,6 @@ def test_finalize_bad_ppa_targets_json_is_blocked(tmp_path):
             "finalize",
             "--workdir",
             str(tmp_path),
-            "--module",
-            "m",
             "--status",
             "pass",
             "--ppa-targets",
@@ -287,9 +279,7 @@ def test_pass_reads_ppa_from_disk_when_no_override(tmp_path):
     wd = _spec_workdir(tmp_path)
     targets = [{"dim": "area_um2", "target": 70000.0}]
     (wd / "ppa.json").write_text(json.dumps(targets))
-    assert (
-        result.build_result(wd, module="tpu_top", ppa_targets=None, status="pass") == 0
-    )
+    assert result.build_result(wd, ppa_targets=None, status="pass") == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert "ppa_targets" not in ss
     # the wave-1 disk copy IS the source — untouched, not rewritten
@@ -310,8 +300,6 @@ def test_forgotten_override_no_longer_wipes_ppa_json(tmp_path):
             "finalize",
             "--workdir",
             str(wd),
-            "--module",
-            "tpu_top",
             "--status",
             "pass",
         ],
@@ -326,7 +314,7 @@ def test_forgotten_override_no_longer_wipes_ppa_json(tmp_path):
 
 def test_pass_missing_ppa_json_is_blocked(tmp_path):
     wd = _spec_workdir(tmp_path)  # no ppa.json on disk
-    rc = result.finalize(wd, "tpu_top", status="pass")
+    rc = result.finalize(wd, status="pass")
     assert rc == 2  # BLOCKED: wave-1 must emit ppa.json (or caller overrides)
     assert not (wd / "result.json").exists()
 
@@ -334,14 +322,13 @@ def test_pass_missing_ppa_json_is_blocked(tmp_path):
 def test_pass_invalid_disk_ppa_is_blocked(tmp_path):
     wd = _spec_workdir(tmp_path)
     (wd / "ppa.json").write_text(json.dumps([{"dim": "bogus", "target": 1}]))
-    assert result.finalize(wd, "tpu_top", status="pass") == 2
+    assert result.finalize(wd, status="pass") == 2
 
 
 def test_invalid_override_is_blocked(tmp_path):
     wd = _spec_workdir(tmp_path)
     rc = result.finalize(
         wd,
-        "tpu_top",
         status="pass",
         ppa_targets_json='[{"dim": "bogus", "target": 1}]',
     )
@@ -363,7 +350,6 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
     assert (
         result.build_result(
             wd,
-            module="tpu_top",
             ppa_targets=None,
             status="fail",
             fail_reason="external reference missing: /x/design.md",
@@ -391,7 +377,7 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
 def test_reject_default_reason_unchanged(tmp_path):
     # the human-reject path (no --fail-reason) keeps its established wording
     wd = _spec_workdir(tmp_path)
-    result.build_result(wd, module="tpu_top", ppa_targets=[], status="fail")
+    result.build_result(wd, ppa_targets=[], status="fail")
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "design.md gate rejected at human review"
 
@@ -403,9 +389,7 @@ def test_fail_without_manifest_is_blocked(tmp_path):
     # first-run wave-1 BLOCKED before manifest.json exists: finalize must exit 2
     # (fail-closed — a blocked run never promotes, so canonical cannot be GC'd
     # against a hollow view). Documented in the Fan-out carve-out edge note.
-    rc = result.finalize(
-        tmp_path, "tpu_top", status="fail", fail_reason="wave-1 BLOCKED: x"
-    )
+    rc = result.finalize(tmp_path, status="fail", fail_reason="wave-1 BLOCKED: x")
     assert rc == 2
     assert not (tmp_path / "result.json").exists()
 
@@ -413,7 +397,7 @@ def test_fail_without_manifest_is_blocked(tmp_path):
 def test_pass_ignores_fail_reason(tmp_path):
     wd = _spec_workdir(tmp_path)
     (wd / "ppa.json").write_text("[]")
-    rc = result.finalize(wd, "tpu_top", status="pass", fail_reason="should be ignored")
+    rc = result.finalize(wd, status="pass", fail_reason="should be ignored")
     assert rc == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
@@ -429,13 +413,12 @@ def test_nan_ppa_is_blocked_on_both_paths(tmp_path):
     wd = _spec_workdir(tmp_path)
     rc = result.finalize(
         wd,
-        "tpu_top",
         status="pass",
         ppa_targets_json='[{"dim": "power_mw", "target": NaN}]',
     )
     assert rc == 2
     (wd / "ppa.json").write_text('[{"dim": "power_mw", "target": NaN}]')
-    assert result.finalize(wd, "tpu_top", status="pass") == 2
+    assert result.finalize(wd, status="pass") == 2
 
 
 def test_derivation_failure_on_pass_is_blocked_exit2(tmp_path):
@@ -456,14 +439,14 @@ def test_derivation_failure_on_pass_is_blocked_exit2(tmp_path):
             ]
         )
     )
-    assert result.finalize(wd, "tpu_top", status="pass") == 2
+    assert result.finalize(wd, status="pass") == 2
 
 
 def test_empty_fail_reason_is_blocked(tmp_path):
     # an empty --fail-reason must never be silently replaced by the human-reject
     # wording (that would fabricate a human-gate record for a run that had none).
     wd = _spec_workdir(tmp_path)
-    rc = result.finalize(wd, "tpu_top", status="fail", fail_reason="   ")
+    rc = result.finalize(wd, status="fail", fail_reason="   ")
     assert rc == 2
     assert not (wd / "result.json").exists()
 
@@ -476,7 +459,7 @@ def test_pass_non_string_scenario_id_is_blocked(tmp_path):
     (wd / "ppa.json").write_text(
         json.dumps([{"dim": "power_mw", "target": 1, "scenario_id": 5}])
     )
-    assert result.finalize(wd, "tpu_top", status="pass") == 2
+    assert result.finalize(wd, status="pass") == 2
 
 
 def test_pass_non_finite_ppa_target_is_blocked(tmp_path):
@@ -485,7 +468,7 @@ def test_pass_non_finite_ppa_target_is_blocked(tmp_path):
     # false for every input, disarming that gate. The explicit finite check must survive.
     wd = _spec_workdir(tmp_path)
     (wd / "ppa.json").write_text('[{"dim": "power_mw", "target": NaN}]')
-    assert result.finalize(wd, "tpu_top", status="pass") == 2
+    assert result.finalize(wd, status="pass") == 2
 
 
 def test_unreadable_schema_blocks_instead_of_waving_a_doc_through(

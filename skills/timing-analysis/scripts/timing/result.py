@@ -222,10 +222,9 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _envelope(module, *, status, stage_specific, artifacts) -> dict:
+def _envelope(*, status, stage_specific, artifacts) -> dict:
     return {
         "stage": STAGE,
-        "module": module,
         "produced_at": _now_iso(),
         "status": status,
         "artifacts": artifacts,
@@ -261,7 +260,7 @@ def enumerate_artifacts(workdir: Path) -> list:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def build_result(workdir, module, fix_owner=None, fail_reason=None) -> int:
+def build_result(workdir, fix_owner=None, fail_reason=None) -> int:
     """Assemble the lean timing-analysis result.json. Reuses run() for the timing gate
     (in-process), then derives the header + artifacts + writes the envelope.
     Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED).
@@ -284,7 +283,6 @@ def build_result(workdir, module, fix_owner=None, fail_reason=None) -> int:
         _write_result(
             workdir,
             _envelope(
-                module,
                 status="fail",
                 stage_specific=ss,
                 artifacts=enumerate_artifacts(workdir),
@@ -303,7 +301,6 @@ def build_result(workdir, module, fix_owner=None, fail_reason=None) -> int:
         _write_result(
             workdir,
             _envelope(
-                module,
                 status="fail",
                 stage_specific=ss,
                 artifacts=enumerate_artifacts(workdir),
@@ -334,7 +331,6 @@ def build_result(workdir, module, fix_owner=None, fail_reason=None) -> int:
     _write_result(
         workdir,
         _envelope(
-            module,
             status=status,
             stage_specific=ss,
             artifacts=enumerate_artifacts(workdir),
@@ -343,7 +339,7 @@ def build_result(workdir, module, fix_owner=None, fail_reason=None) -> int:
     return 0
 
 
-def finalize(workdir, module, fix_owner=None, fail_reason=None) -> int:
+def finalize(workdir, fix_owner=None, fail_reason=None) -> int:
     """Parse the PT report, judge the timing gate, write the lean result.json.
     exit 0 = written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason, one
     or any internal raise) — never conflated with
@@ -357,7 +353,7 @@ def finalize(workdir, module, fix_owner=None, fail_reason=None) -> int:
             )
             return 2
     try:
-        return build_result(workdir, module, fix_owner, fail_reason)
+        return build_result(workdir, fix_owner, fail_reason)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[timing finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2

@@ -139,7 +139,7 @@ Every run ends here, including one you could not carry to the human gate:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
-  --workdir {workdir} --module {module} --spec <design> \
+  --workdir {workdir} --spec <design> \
   [--status fail] [--fail-reason "<one-line reason>"] [--fix-owner <rule>] \
   [--revision '<one-line revision narrative>']
 ```

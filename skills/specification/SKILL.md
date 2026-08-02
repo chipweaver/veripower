@@ -110,7 +110,7 @@ Every run ends here, an unresolvable failure included:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
-  --workdir {workdir} --module {module} --status <pass|fail> [--fail-reason "<one-line reason>"]
+  --workdir {workdir} --status <pass|fail> [--fail-reason "<one-line reason>"]
 ```
 
 You supply only the human-gate outcome; everything else in the envelope is finalize's, including `stage_specific.top_module`, which it takes from `manifest.module`. On the pass path it re-runs `check-crossrefs` and `derive-constraints` in-process — both were clean at Wave 2, so a failure now means an artifact was edited after that gate, which is BLOCKED rather than a routable fail — and validates the Wave-1-authored `{workdir}/ppa.json` (missing or invalid is BLOCKED, never a silent default). Exit 0 = `result.json` written, status pass or fail. A non-zero exit is a program exception: BLOCKED, reason on stderr, never a `status=fail`.

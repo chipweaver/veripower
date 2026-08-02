@@ -32,14 +32,13 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _envelope(module, *, status, stage_specific, artifacts, fix_owner=None) -> dict:
+def _envelope(*, status, stage_specific, artifacts, fix_owner=None) -> dict:
     """fix_owner rides on a failure only, and only when the caller named one: its ABSENCE is
     what decide reads as "this stage cannot tell", so it must never serialize empty."""
     if status == "fail" and fix_owner:
         stage_specific = {**stage_specific, "fix_owner": fix_owner}
     return {
         "stage": STAGE,
-        "module": module,
         "produced_at": _now_iso(),
         "status": status,
         "artifacts": artifacts,
@@ -94,7 +93,6 @@ def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path, conformance_rev
 
 def build_result(
     workdir,
-    module,
     *,
     phase,
     scaffold=None,
@@ -121,7 +119,6 @@ def build_result(
         _write_result(
             workdir,
             _envelope(
-                module,
                 status="fail",
                 stage_specific=ss,
                 artifacts=artifacts,
@@ -143,7 +140,6 @@ def build_result(
         _write_result(
             workdir,
             _envelope(
-                module,
                 status="fail",
                 stage_specific=ss,
                 artifacts=artifacts,
@@ -167,7 +163,6 @@ def build_result(
         _write_result(
             workdir,
             _envelope(
-                module,
                 status="fail",
                 stage_specific=ss,
                 artifacts=artifacts,
@@ -184,7 +179,7 @@ def build_result(
     }
     _write_result(
         workdir,
-        _envelope(module, status="pass", stage_specific=ss, artifacts=artifacts),
+        _envelope(status="pass", stage_specific=ss, artifacts=artifacts),
     )
     return 0
 
@@ -267,7 +262,6 @@ def _early_exit_ss(phase, fail_reason, verify, observed_phase=None) -> dict:
 
 def finalize(
     workdir,
-    module,
     *,
     phase,
     scaffold=None,
@@ -285,7 +279,6 @@ def finalize(
     try:
         return build_result(
             workdir,
-            module,
             phase=phase,
             scaffold=scaffold,
             thresholds=thresholds,

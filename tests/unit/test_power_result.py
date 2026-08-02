@@ -431,12 +431,9 @@ def test_build_result_pass_lean_shape(tmp_path):
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
-    assert p.build_result(wd, module="tpu_top", plan_path=str(plan), targets="[]") == 0
+    assert p.build_result(wd, plan_path=str(plan), targets="[]") == 0
     env = _json.loads((wd / "result.json").read_text())
-    assert (env["stage"], env["module"]) == (
-        "power-analysis",
-        "tpu_top",
-    )
+    assert env["stage"] == "power-analysis"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
     # the 7 fields the sidecar carries fold straight through (minus verdict)
@@ -457,7 +454,7 @@ def test_build_result_tooling_fail_on_invariant(tmp_path):
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(9.99, 0.05, 0.02, 0.35)},
     )  # deliberately off
-    assert p.build_result(wd, module="tpu_top", plan_path=str(plan), targets="[]") == 0
+    assert p.build_result(wd, plan_path=str(plan), targets="[]") == 0
     ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["failures"] and ss["failures"][0]["category"] == "ptpx_data"
     assert isinstance(ss["fail_reason"], str) and ss["fail_reason"]
@@ -476,9 +473,7 @@ def test_build_result_ppa_miss(tmp_path):
         },
     )
     targets = _json.dumps([{"dim": "power_mw", "target": 1.2, "scenario_id": "S2"}])
-    assert (
-        p.build_result(wd, module="tpu_top", plan_path=str(plan), targets=targets) == 0
-    )
+    assert p.build_result(wd, plan_path=str(plan), targets=targets) == 0
     ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["violations"] == [
         {
@@ -499,37 +494,20 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
         raise RuntimeError("synthetic")
 
     monkeypatch.setattr(p, "build_result", boom)
-    assert p.finalize(tmp_path, "m", "scaffold.json", "[]") == 2
+    assert p.finalize(tmp_path, "scaffold.json", "[]") == 2
 
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
-    # missing --module -> argparse exit 2
+    # --workdir is the one flag finalize cannot infer; omitting it is argparse exit 2,
+    # never a written envelope.
     r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--workdir", str(tmp_path)],
-        capture_output=True,
-        text=True,
-    )
-    assert r.returncode == 2  # argparse: missing --module
-    # --scaffold is not a flag: the scaffold location comes from dispatch.json, so a
-    # caller who passes it is corrected rather than trusted.
-    r = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "finalize",
-            "--workdir",
-            str(tmp_path),
-            "--module",
-            "m",
-            "--scaffold",
-            str(tmp_path),
-        ],
+        ["python3", str(MAIN), "finalize"],
         capture_output=True,
         text=True,
     )
     assert r.returncode == 2
-    assert "unrecognized arguments: --scaffold" in r.stderr
+    assert not (tmp_path / "result.json").exists()
 
 
 def test_finalize_cli_happy_path(tmp_path):
@@ -557,19 +535,13 @@ def test_finalize_cli_happy_path(tmp_path):
             "finalize",
             "--workdir",
             str(wd),
-            "--module",
-            "tpu_top",
         ],
         capture_output=True,
         text=True,
     )
     assert r.returncode == 0, r.stderr
     env = _json.loads((wd / "result.json").read_text())
-    assert (env["stage"], env["status"], env["module"]) == (
-        "power-analysis",
-        "pass",
-        "tpu_top",
-    )
+    assert (env["stage"], env["status"]) == ("power-analysis", "pass")
 
 
 # ── PPA targets read from the injected dispatch.json "ppa" stage root ──────────
@@ -609,8 +581,6 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
             "finalize",
             "--workdir",
             str(wd),
-            "--module",
-            "tpu_top",
         ],
         capture_output=True,
         text=True,
@@ -685,17 +655,12 @@ def test_golden_real_reports_lean_pass(tmp_path):
     ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
     wd = tmp_path / "wd"
     shutil.copytree(ROOT / "real", wd)
-    rc = p.build_result(
-        wd, module="tpu_top", plan_path=str(ROOT / "plan"), targets="[]"
-    )
+    rc = p.build_result(wd, plan_path=str(ROOT / "plan"), targets="[]")
     assert rc == 0
     env = _json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     # With B3 fixed (Task 1), the gate parses the real 4-sig-fig reports clean -> pass.
-    assert (env["stage"], env["module"]) == (
-        "power-analysis",
-        "tpu_top",
-    )
+    assert env["stage"] == "power-analysis"
     assert env["status"] == "pass"
     assert env["produced_at"].endswith("Z")
     # the 7 stage_specific fields fold through verbatim from the clean sidecar (minus verdict)
@@ -733,7 +698,7 @@ def test_golden_is_schema_valid(tmp_path):
     ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
     wd = tmp_path / "wd"
     shutil.copytree(ROOT / "real", wd)
-    p.build_result(wd, module="tpu_top", plan_path=str(ROOT / "plan"), targets="[]")
+    p.build_result(wd, plan_path=str(ROOT / "plan"), targets="[]")
     env = _json.loads((wd / "result.json").read_text())
     env_schema = _json.loads(
         (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()
@@ -762,7 +727,7 @@ def test_golden_is_schema_valid(tmp_path):
 def _declared(tmp_path, **kw):
     wd = tmp_path / "wd"
     wd.mkdir()
-    rc = p.build_result(wd, "tpu_top", tmp_path / "nonexistent-plan", "[]", **kw)
+    rc = p.build_result(wd, tmp_path / "nonexistent-plan", "[]", **kw)
     return rc, wd
 
 
@@ -811,7 +776,7 @@ def test_finalize_blocked_on_an_empty_declaration(tmp_path):
     # writes nothing, so the retry is not looking at a half-declared envelope.
     wd = tmp_path / "wd"
     wd.mkdir()
-    assert p.finalize(wd, "m", tmp_path / "plan", "[]", None, "   ") == 2
+    assert p.finalize(wd, tmp_path / "plan", "[]", None, "   ") == 2
     assert not (wd / "result.json").exists()
 
 
@@ -838,8 +803,6 @@ def test_declared_fail_through_the_cli(tmp_path):
             "finalize",
             "--workdir",
             str(wd),
-            "--module",
-            "tpu_top",
             "--fail-reason",
             "ptpx failed: phase=ptpx, read_saif annotated 0%",
             "--fix-owner",

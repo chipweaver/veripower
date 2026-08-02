@@ -56,7 +56,7 @@ def validate_analysis(payload: dict) -> list[str]:
     ]
 
 
-def finalize(workdir, module, json_file, json_stdin) -> int:
+def finalize(workdir, json_file, json_stdin) -> int:
     """Validate the analysis judgment (--json-file or piped --json-stdin) against the
     stage_specific contract, then atomically write the full result.json.
 
@@ -92,7 +92,6 @@ def finalize(workdir, module, json_file, json_stdin) -> int:
     status = "pass" if payload.get("analysis_state") == "complete" else "fail"
     env = {
         "stage": STAGE,
-        "module": module,
         "produced_at": _now_iso(),
         "status": status,
         "artifacts": [],

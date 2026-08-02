@@ -23,15 +23,13 @@ def _stage_specific() -> dict:
     raise AssertionError("result.schema.json: no stage_specific subschema found")
 
 
-def _run(tmp_path, payload: dict, *, workdir=None, module="M"):
+def _run(tmp_path, payload: dict, *, workdir=None):
     argv = [
         sys.executable,
         str(MAIN),
         "finalize",
         "--workdir",
         str(workdir or tmp_path),
-        "--module",
-        module,
         "--json-stdin",
     ]
     return subprocess.run(
@@ -77,7 +75,6 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
     assert r.returncode == 0, r.stderr
     env = json.loads((tmp_path / "result.json").read_text())
     assert env["stage"] == "simulation-triage"
-    assert env["module"] == "M"
     assert env["status"] == "pass"
     assert env["artifacts"] == []
     assert env["stage_specific"] == {
@@ -326,8 +323,6 @@ def test_json_file_input(tmp_path):
             "finalize",
             "--workdir",
             str(tmp_path),
-            "--module",
-            "M",
             "--json-file",
             str(p),
         ],
@@ -346,8 +341,6 @@ def test_invalid_json_exits_blocked_not_written(tmp_path):
             "finalize",
             "--workdir",
             str(tmp_path),
-            "--module",
-            "M",
             "--json-stdin",
         ],
         input="{not json",

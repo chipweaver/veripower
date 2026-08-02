@@ -56,8 +56,6 @@ def _finalize(wd, *extra):
             "finalize",
             "--workdir",
             str(wd),
-            "--module",
-            "m",
             *extra,
         ],
         capture_output=True,

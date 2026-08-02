@@ -28,10 +28,9 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _envelope(module, *, status, stage_specific, artifacts) -> dict:
+def _envelope(*, status, stage_specific, artifacts) -> dict:
     return {
         "stage": STAGE,
-        "module": module,
         "produced_at": _now_iso(),
         "status": status,
         "artifacts": artifacts,
@@ -78,7 +77,7 @@ def _error_violations(doc: dict) -> list[dict]:
     return out
 
 
-def run(workdir, module, *, fix_owner=None, fail_reason=None) -> int:
+def run(workdir, *, fix_owner=None, fail_reason=None) -> int:
     workdir = Path(workdir)
     lint = _load_violations(workdir / "lint-violations.json")
     cdc = _load_violations(workdir / "cdc-violations.json")
@@ -110,7 +109,7 @@ def run(workdir, module, *, fix_owner=None, fail_reason=None) -> int:
             ss["fix_owner"] = fix_owner
         _write(
             workdir,
-            _envelope(module, status="fail", stage_specific=ss, artifacts=artifacts),
+            _envelope(status="fail", stage_specific=ss, artifacts=artifacts),
         )
         return 0
     # No per-severity counts here: they are a reduction of the two promoted, fingerprinted
@@ -119,7 +118,7 @@ def run(workdir, module, *, fix_owner=None, fail_reason=None) -> int:
     ss = {"tool": tool, "violations": violations}
     _write(
         workdir,
-        _envelope(module, status="pass", stage_specific=ss, artifacts=artifacts),
+        _envelope(status="pass", stage_specific=ss, artifacts=artifacts),
     )
     return 0
 
@@ -222,7 +221,7 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def finalize(workdir, module, fix_owner=None, fail_reason=None) -> int:
+def finalize(workdir, fix_owner=None, fail_reason=None) -> int:
     """Assemble the lean lint-cdc result.json from the two *-violations.json + headers.
     exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (an unreasoned
     waiver, an empty --fail-reason, or any internal raise), never a status=fail."""
@@ -243,7 +242,7 @@ def finalize(workdir, module, fix_owner=None, fail_reason=None) -> int:
             for d in defects:
                 print(f"  {d}", file=sys.stderr)
             return 2
-        return run(workdir, module, fix_owner=fix_owner, fail_reason=fail_reason)
+        return run(workdir, fix_owner=fix_owner, fail_reason=fail_reason)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[lintcdc finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2
