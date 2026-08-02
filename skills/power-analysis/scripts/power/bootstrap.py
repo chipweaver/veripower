@@ -6,10 +6,10 @@ Behavior-preserving deploy built from focused, unit-testable steps (campaign des
 no sed-delimiter hazard on '/'-containing paths).
 
 Deploys templates/ into the caller-provided workdir
-(asic/<module>/Verification/power-analysis/runs/<N>/). The upstream synthesis /
+(<module>/Verification/power-analysis/runs/<N>/). The upstream synthesis /
 simulation / simulation-plan stage-root locations come from the injected
 `<workdir>/dispatch.json` `inputs` table ("netlist" / "tb_env" / "scaffold"), not by
-self-navigating tree_root/asic/<module>/Design|Verification/<stage> — power has no
+self-navigating <module>/Design|Verification/<stage> — power has no
 "rtl" key (it never consumes rtl-design). TOP is inferred from the injected
 netlist's out/*_syn.v (suffix '_syn.v' stripped, same mechanism as
 timing.infer_top) when not given. Substitutes the MY_TOP / MY_MODULE / MY_SYN_OUT
@@ -40,9 +40,9 @@ from pathlib import Path
 
 # This file: skills/power-analysis/scripts/power/bootstrap.py
 #   parents[2] = skills/power-analysis   (-> templates/, ships with the skill)
-# The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
-# lives — matching kernel.py and the stage-subagent contract ("workdir is relative to
-# the working tree root containing asic/").
+# The kernel hands this verb an ABSOLUTE workdir, so nothing here depends on where it
+# was launched from. A relative --workdir is still resolved against the CWD, for a
+# human running the verb by hand from inside the module.
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
 
@@ -85,7 +85,7 @@ def run(module: str, workdir, top: str | None = None) -> int:
 
     # The synthesis / simulation / simulation-plan stage roots are injected into
     # dispatch.json (dispatch-time), not self-navigated via
-    # tree_root/asic/<module>/Design|Verification/<stage>. No "rtl" key — power
+    # <module>/Design|Verification/<stage>. No "rtl" key — power
     # never consumes rtl-design.
     inputs = json.loads((dest / "dispatch.json").read_text(encoding="utf-8"))["inputs"]
     syn_out_dir = Path(inputs["netlist"]) / "out"

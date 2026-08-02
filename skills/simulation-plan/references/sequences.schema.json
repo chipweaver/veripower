@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-plan/sequences.schema.json",
   "title": "sequences.json contract",
-  "description": "Structural contract for asic/<module>/Verification/simulation-plan/sequences.json — the sequence roster, the one part of the plan both consumers read: simulation compiles a <module>_<name>_seq class per entry, and power-analysis resolves power-scenarios.json's sequence_ref against these names.",
+  "description": "Structural contract for <module>/Verification/simulation-plan/sequences.json — the sequence roster, the one part of the plan both consumers read: simulation compiles a <module>_<name>_seq class per entry, and power-analysis resolves power-scenarios.json's sequence_ref against these names.",
   "type": "array",
   "items": {
     "type": "object",

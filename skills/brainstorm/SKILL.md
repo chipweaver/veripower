@@ -6,7 +6,7 @@ description: Use when brainstorming a new module's requirements and architecture
 # Pre-Pipeline Requirements Brainstorm
 
 Own the interactive D0–D7 brainstorm dialogue and produce a frozen
-`asic/{module}/brainstorm.md`. Run **in your own session, before** the design
+`{module}/brainstorm.md`. Run **in your own session, before** the design
 pipeline: the brainstorm conversation never enters the pipeline's context. The pipeline
 starts only after `brainstorm.md` reaches `Status: approved`, and reads that file solely
 inside its sub-agent contexts (it is the pipeline's input, not a pipeline stage).
@@ -19,8 +19,8 @@ inside its sub-agent contexts (it is the pipeline's input, not a pipeline stage)
 
 ## Iron Rule
 
-- You are **pre-pipeline**: write exactly one artifact, `asic/{module}/brainstorm.md`
-  (creating `asic/{module}/` if absent, before the module enters the pipeline). Write
+- You are **pre-pipeline**: write exactly one artifact, `{module}/brainstorm.md`
+  (creating `{module}` if absent, before the module enters the pipeline). Write
   **no** `result.json`, and you are **not** a pipeline stage — you run before any pipeline state exists.
 - **Do not author design.md / RTL / constraints / any downstream artifact.** Your
   output is the brainstorm only; `design.md` is derived from it downstream.
@@ -32,17 +32,20 @@ inside its sub-agent contexts (it is the pipeline's input, not a pipeline stage)
 
 | Variable / input | Purpose |
 |---|---|
-| `{module}` | Module name (used for the `asic/{module}/` path + the brainstorm title). |
+| `{module}` | The module's directory — the same path the pipeline is later given as `--module`, and where its whole work tree goes. Anywhere the user wants: `~/chips/mydesign`, `./mychip`, `asic/mychip`. Its last component is the module name, which titles the brainstorm. |
 | User-provided material (optional) | Public spec / reference docs the user pastes or points to. |
 
 No fixed external inputs. Revision mode additionally reads the existing
-`asic/{module}/brainstorm.md`.
+`{module}/brainstorm.md`.
+
+Ask for the directory if the user named only a module. Do not invent a parent for them:
+nothing downstream imposes one, and a guess sends them looking for a tree they did not ask for.
 
 ## Output Artifacts
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `asic/{module}/brainstorm.md` | Custom markdown; frontmatter `Status: draft\|approved`; descriptive ATX sections per the checklist's Section Layout | The pipeline's frozen input. |
+| `{module}/brainstorm.md` | Custom markdown; frontmatter `Status: draft\|approved`; descriptive ATX sections per the checklist's Section Layout | The pipeline's frozen input. |
 
 `brainstorm.md` lives at the **module root**, NOT under any stage workdir. There
 is **no** `version` frontmatter field (re-derivation after a revision is given naturally
@@ -50,7 +53,7 @@ by the fresh run's empty workdir).
 
 ## Workflow
 
-### Step 1: Read `{module}` + any user-provided material
+### Step 1: Settle `{module}` + read any user-provided material
 
 ### Step 2: D0–D7 dimensional brainstorm dialogue
 
@@ -58,10 +61,10 @@ by the fresh run's empty workdir).
 preferred; D0 first; D4 presents 2–3 candidate architectures with side-by-side
 mermaid): see `references/brainstorm-checklist.md`.
 
-### Step 3: Write `asic/{module}/brainstorm.md`
+### Step 3: Write `{module}/brainstorm.md`
 
 with descriptive section headers per the
-checklist's Section Layout (create `asic/{module}/` if it does not exist), with
+checklist's Section Layout (create `{module}` if it does not exist), with
 frontmatter:
 ```markdown
 ---
@@ -97,7 +100,7 @@ whole doc, so a changed dimension contradicting an untouched one is caught).
 
 ## Completion Gate
 
-- `asic/{module}/brainstorm.md` exists with frontmatter `Status: approved`.
+- `{module}/brainstorm.md` exists with frontmatter `Status: approved`.
 - The brainstorm covers the D0–D7 dimensions reached (D0 intent settled; D4 had 2–3
   candidates; feature IDs / interface-group names / scenario IDs are stable named
   anchors per the checklist's "Subsection IDs" section).
@@ -106,8 +109,8 @@ whole doc, so a changed dimension contradicting an untouched one is caught).
 
 ## Return Contract
 
-Control returns to the user. Produce only `asic/{module}/brainstorm.md` (no `result.json`, no state files — per the Iron Rule). After approval, the user starts
-the pipeline for `{module}`; its entry gate verifies the approved brainstorm before the
+Control returns to the user. Produce only `{module}/brainstorm.md` (no `result.json`, no state files — per the Iron Rule). After approval, the user starts
+the pipeline with `--module {module}`; its entry gate verifies the approved brainstorm before the
 first stage consumes it.
 
 ## Bundled References

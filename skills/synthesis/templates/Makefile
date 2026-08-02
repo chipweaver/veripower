@@ -1,7 +1,7 @@
 # ==============================================================================
 # IPD synthesis — Design Compiler synthesis.
 # Workdir:      synthesis stage per-run workdir
-#               (asic/<module>/Design/synthesis/runs/<N>/)
+#               (<module>/Design/synthesis/runs/<N>/)
 # RTL paths:    the absolute rtl-design stage root, written by synthesis bootstrap
 #               into scripts/rtl_load.tcl + dc_run.tcl
 # Top module:   synthesis bootstrap substitutes MY_TOP at deploy time.

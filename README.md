@@ -28,13 +28,13 @@ VeriPower's answer: the deterministic scheduling core is cleanly separated from 
 
 ## What a run looks like
 
-Settle the module's requirements with the pre-pipeline `brainstorm` skill (its own session) until `asic/{module}/brainstorm.md` reads `Status: approved`, then ask the agent:
+Settle the module's requirements with the pre-pipeline `brainstorm` skill (its own session) until `{module_dir}/brainstorm.md` reads `Status: approved`, then ask the agent:
 
-> Run the design flow for {module}
+> Run the design flow for {module_dir}
 
 The `design-flow` Orchestrator bootstraps the module's state and walks the pipeline from there. A run produces:
 
-- `asic/{module}/events.jsonl` — append-only, schema-validated event log; the **sole** durable state file (the audit trail).
+- `{module_dir}/events.jsonl` — append-only, schema-validated event log; the **sole** durable state file (the audit trail).
 - per-stage status is **not** persisted — it is computed on demand from the event log + disk fingerprints (`kernel.py status`), so it can never drift from what's on disk.
 - per-stage `result.json` artifacts under `Design/` and `Verification/`.
 

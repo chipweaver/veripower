@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/rtl-design/result.schema.json",
   "title": "rtl-design result.json contract",
-  "description": "Complete contract for asic/<module>/Design/rtl-design/result.json. stage_specific has no pass-required fields; on status=fail it requires fail_reason (if/then below), the one-line failure narrative, and may name fix_owner. The stage's substance is handed off through its promoted sidecars and its per-child intent reviews, not through this envelope, and TOP is not restated here: it is manifest.module, which every consumer declares as an input.",
+  "description": "Complete contract for <module>/Design/rtl-design/result.json. stage_specific has no pass-required fields; on status=fail it requires fail_reason (if/then below), the one-line failure narrative, and may name fix_owner. The stage's substance is handed off through its promoted sidecars and its per-child intent reviews, not through this envelope, and TOP is not restated here: it is manifest.module, which every consumer declares as an input.",
   "allOf": [
     {
       "$ref": "https://veripower.local/schemas/envelope.schema.json"

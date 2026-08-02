@@ -1,7 +1,7 @@
 # ==============================================================================
 # IPD power-analysis — merged GLS power simulation + PT-PX averaged analysis.
 #
-# Workdir:           asic/<module>/Verification/power-analysis/
+# Workdir:           <module>/Verification/power-analysis/
 # External inputs:   Design/synthesis/out/<TOP>_syn.{v,sdc,sdf} + LIB_V + LIB_DB + UVM_HOME
 #                    Verification/simulation/{filelist.f, tb/uvm/} (read-only TB infra)
 #                    Verification/simulation-plan/{sequences,power-scenarios}.json

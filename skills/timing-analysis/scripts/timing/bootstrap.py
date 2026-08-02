@@ -6,10 +6,10 @@ sed-delimiter hazard on the '/'-containing paths every substitution here carries
 
 The upstream synthesis-stage-root location comes from the injected
 `<workdir>/dispatch.json` `inputs."netlist"`, not by self-navigating
-tree_root/asic/<module>/Design/synthesis.
+<module>/Design/synthesis.
 
 Deploys templates/ into the caller-provided workdir
-(asic/<module>/Design/timing-analysis/runs/<N>/), verifies the netlist+SDC the TCL
+(<module>/Design/timing-analysis/runs/<N>/), verifies the netlist+SDC the TCL
 reads, resolves TOP, and substitutes the MY_NETLIST_DIR / MY_WORKDIR (run_sta.tcl)
 and MY_TOP / FILL_IN_LIB_DB_PATH (config.tcl) placeholders. Fail-closed on an
 un-inferrable top, a missing external reference, or an unset LIB_DB. Idempotency
@@ -34,9 +34,9 @@ from pathlib import Path
 
 # This file: skills/timing-analysis/scripts/timing/bootstrap.py
 #   parents[2] = skills/timing-analysis   (-> templates/, ships with the skill)
-# The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
-# lives — matching kernel.py and the stage-subagent contract ("workdir is relative to
-# the working tree root containing asic/").
+# The kernel hands this verb an ABSOLUTE workdir, so nothing here depends on where it
+# was launched from. A relative --workdir is still resolved against the CWD, for a
+# human running the verb by hand from inside the module.
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
 
@@ -73,7 +73,7 @@ def run(workdir, top: str | None = None) -> int:
         workdir = tree_root / workdir
 
     # The synthesis stage root is injected into dispatch.json (dispatch-time), not
-    # self-navigated via tree_root/asic/<module>/Design/synthesis.
+    # self-navigated via <module>/Design/synthesis.
     inputs = json.loads((workdir / "dispatch.json").read_text(encoding="utf-8"))[
         "inputs"
     ]

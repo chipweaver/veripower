@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/power-analysis/result.schema.json",
   "title": "power-analysis result.json contract (merged GLS+PT-PX, SAIF flow)",
-  "description": "Complete contract for asic/<module>/Verification/power-analysis/result.json. On status=pass, stage_specific requires saif_artifacts + compile_info + failures + ppa_actual + violations + power_by_scenario (compile_info carries vcs_version only). On status=fail, stage_specific.fail_reason is required (if/then below): the one-line cause, which on a run that produced nothing gradeable is all there is, and the heavy pass-shape is dropped there. ppa_actual / violations / power_by_scenario carry PT averaged power_mw plus its three components; carrying violations[] obliges ppa_actual with it (dependentRequired), so the gate's judgement never travels without the measurements behind it.",
+  "description": "Complete contract for <module>/Verification/power-analysis/result.json. On status=pass, stage_specific requires saif_artifacts + compile_info + failures + ppa_actual + violations + power_by_scenario (compile_info carries vcs_version only). On status=fail, stage_specific.fail_reason is required (if/then below): the one-line cause, which on a run that produced nothing gradeable is all there is, and the heavy pass-shape is dropped there. ppa_actual / violations / power_by_scenario carry PT averaged power_mw plus its three components; carrying violations[] obliges ppa_actual with it (dependentRequired), so the gate's judgement never travels without the measurements behind it.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {

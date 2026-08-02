@@ -10,7 +10,7 @@ dispatch is work the kernel cannot see or audit.
 
 ### Inputs (paths only)
 - The child's per-child design doc, located via `manifest.children[<self>].doc`.
-- `asic/{module}/brainstorm.md`, **read all of it** — the frozen statement of *intent*. Your
+- `<brainstorm>/brainstorm.md`, **read all of it** — the frozen statement of *intent*. Your
   child's `brainstorm_anchor` says which passage is primarily yours: start there, but a formula
   or constraint stated anywhere in the document is in scope. (Slices do not cover the document —
   on a real module 53% of the lines fell in no child's anchor — and slicing would presume a shape

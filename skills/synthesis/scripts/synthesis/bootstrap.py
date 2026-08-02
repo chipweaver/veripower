@@ -6,7 +6,7 @@ Upstream locations (rtl-design, the specification SDC) come from the injected
 ABSOLUTE producer stage root; no relpath, no self-navigation.
 
 Deploys templates/ into the caller-provided workdir
-(asic/<module>/Design/synthesis/runs/<N>/), substitutes the MY_TOP / MY_RTL_DIR
+(<module>/Design/synthesis/runs/<N>/), substitutes the MY_TOP / MY_RTL_DIR
 placeholders, writes scripts/rtl_load.tcl from the rtl-design filelist, and
 writes scripts/config.tcl. Every guard that can fail runs BEFORE the copytree, so a
 fail-closed leaves no Makefile for the already-deployed guard to block the retry on.
@@ -30,9 +30,9 @@ from pathlib import Path
 
 # This file: skills/synthesis/scripts/synthesis/bootstrap.py
 #   parents[2] = skills/synthesis   (-> templates/, ships with the skill)
-# The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
-# lives — matching kernel.py and the stage-subagent contract ("workdir is relative to
-# the working tree root containing asic/").
+# The kernel hands this verb an ABSOLUTE workdir, so nothing here depends on where it
+# was launched from. A relative --workdir is still resolved against the CWD, for a
+# human running the verb by hand from inside the module.
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
 

@@ -3,7 +3,7 @@
 
 Upstream locations (rtl-design, the specification SGDC seed) come from the injected
 `<workdir>/dispatch.json` `inputs` table ("rtl" / "sgdc_seed"), never by
-self-navigating tree_root/asic/<module>/Design/.... str.replace does the `sed -i`
+self-navigating <module>/Design/.... str.replace does the `sed -i`
 work: it has no delimiter hazard.
 
 The deploy is NO-CLOBBER, so a dest file already present when this verb runs — the
@@ -31,9 +31,9 @@ from pathlib import Path
 
 # This file: skills/lint-cdc/scripts/lintcdc/bootstrap.py
 #   parents[2] = skills/lint-cdc   (-> templates/, ships with the skill)
-# The design tree (asic/<module>/...) is anchored on the CWD, NOT on where this code
-# lives — matching kernel.py and the stage-subagent contract ("workdir is relative to
-# the working tree root containing asic/").
+# The kernel hands this verb an ABSOLUTE workdir, so nothing here depends on where it
+# was launched from. A relative --workdir is still resolved against the CWD, for a
+# human running the verb by hand from inside the module.
 _HERE = Path(__file__).resolve()
 _TEMPLATE_DIR = _HERE.parents[2] / "templates"
 
@@ -143,7 +143,7 @@ def run(workdir, top: str | None = None) -> int:
     dest = Path(str(dest).rstrip("/"))
 
     # The rtl-design stage root is injected into dispatch.json (dispatch-time), not
-    # self-navigated via tree_root/asic/<module>/Design/rtl-design.
+    # self-navigated via <module>/Design/rtl-design.
     inputs = json.loads((dest / "dispatch.json").read_text(encoding="utf-8"))["inputs"]
     rtl_dir = Path(inputs["rtl"])
 
