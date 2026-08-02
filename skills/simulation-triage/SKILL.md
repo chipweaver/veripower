@@ -95,7 +95,7 @@ You may build and run a scratch experiment under `{workdir}/experiment/`. That d
 the read-only rule is scoped to canonical artifacts rather than to you.
 
 Reach for one when reading the evidence cannot settle whose fault it is. It costs a real slice of
-the pipeline's wall clock, and `medium` plus a human is a legitimate cheaper answer; that tradeoff
+the pipeline's wall clock, and `low` plus a human is a legitimate cheaper answer; that tradeoff
 is yours to make. Pick the tool yourself — a lightweight open-source simulator, installed if it is
 not already present, or the one the failing run used.
 
@@ -115,10 +115,15 @@ Those paths are what the next reader opens, so nothing there is cleaned up.
 the run. When two stages are genuinely both implicated, that is what `confidence` is for, not a
 tiebreak rule.
 
-`confidence` is not a hedge on your prose; it decides what happens next. A `high` verdict is acted
-on directly. `medium` and `low` reach a human instead, which is the honest answer whenever the
-evidence supports more than one explanation, and not a failure of the analysis. Do not reach for
-`high` to spare someone the interruption: the interruption is cheaper than a wrong rebuild.
+`confidence` is not a hedge on your prose; it decides what happens next, and it has two values
+because there are two things that can happen. A `high` verdict is acted on directly. `low` reaches
+a human instead, which is the honest answer whenever the evidence supports more than one
+explanation, and not a failure of the analysis. Do not reach for `high` to spare someone the
+interruption: the interruption is cheaper than a wrong rebuild.
+
+Note what `low` is not saying. It is about the attribution, not the location: you can be certain
+where the symptom is and still be unsure whose fault it is, which is why an anchored finding does
+not make a verdict `high` on its own.
 
 A `high` verdict also has to be anchored, and the schema enforces it — at least one finding
 carrying an `anchor`, because that `anchor` is the `file:line` the rework starts from.
