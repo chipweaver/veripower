@@ -96,6 +96,34 @@ A0/A2/A5 的残差**全部**是同一件事,且是正确行为:220/232 是"与�
 | 在途准入(有闭包关系) | **34 准入 / 0 拦住** ← 越权 | **0 准入 / 34 拦住** |
 | 返修两 owner 独立时并行派 | **0/48** | **48/48** |
 
+### 5.3 逐轮对照(真代码,v1 用 `0065bf5` 的独立 worktree 跑)
+
+**同一个 owner 的三种形状** —— 一个回合内 owner 收到了哪几份信封:
+
+| 形状 | v1 收到 | v2 收到 |
+|---|---|---|
+| A 两条都是信封自述(`lint-cdc` + `synthesis` 都指 `rtl-design`) | `[lint-cdc:2, synthesis:2]` | 同 |
+| **B 混合来源**(`lint-cdc` 信封 + `simulation` 的 triage 归因,同指 `rtl-design`) | `[lint-cdc:2]` | `[lint-cdc:2, simulation:2]` + `refs=[diag]` |
+| **C 配对有闭包关系**(`rtl-design` 与 `lint-cdc` 都指 `specification`) | `[rtl-design:2]` | `[rtl-design:2, lint-cdc:2]` |
+
+A 是 v1 本来就正确的那一档(基线 33 个同 owner episode 里干净的 19 个)。丢失发生在 B(两个合并筛子各漏一半,38 格)与 C(靠下游那条被 `_fail_is_fresh` 判 stale,根本不进 `fresh` 列表,56 格)。
+
+**两个 owner 有闭包关系**(`lint-cdc → specification`,`simulation → rtl-design`),跑到收口:
+
+```
+v1 · 11 轮
+  spec:2 ←[lint-cdc:2]   plan:2   rtl-design:2 ←(盲)   lint-cdc:3   simulation:3(白跑,又失败)
+  rtl-design:3 ←[simulation:3]    simulation:4   lint-cdc:4   syn:2  timing:2  power:2
+
+v2 · 8 轮
+  spec:2 ←[lint-cdc:2]   rtl-design:2 ←[simulation:2]   lint-cdc:3   plan:2   simulation:3
+  syn:2  timing:2  power:2
+```
+
+v1 的 `rtl-design:2` 是盲重建:sim 的申诉在 spec 修完后被判 stale 丢弃,于是要花一整轮 `simulation`(54min)重新问出来,再补一轮 `rtl-design` 和一轮 `lint-cdc`。v2 里 `rtl-design:2` 这一轮**本来就要跑**(spec 改了),只是顺手挂上了 `simulation:2` 的信封 —— `dispatch.json` 同时带 `scope`(漂掉的 spec 输入)和 `caused_by`(sim 的失败信封)。
+
+**一个先结束怎么办**:`decide` step 0 的 ready 扫描对**任何**在途 run 生效,谁先写出 `result.json` 就先 `REAP` 谁(多个同时就绪按 `FORWARD_PRIORITY` 取最前),收完继续 loop。这一段 v1/v2 逐字相同。差别在于 v1 很少有两个可等 —— 同样的状态(两条失败、两个独立 owner)v1 一个回合只派得出一个,v2 派出两个。
+
 ## 6. 执行侧:契约 + 场景测试
 
 `decide` 仍然一次一个动作,并行只来自"`task` 立即返回 + 只有 YIELD/DONE/ESCALATE 结束回合"。这一层是**模型行为**,harness 摸不到,所以配套做了两件事:
