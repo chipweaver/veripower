@@ -1,0 +1,91 @@
+########## A0
+A0: a legal conclusion is DELIVERED: the failing run's own envelope reaches its owner's dispatch.json
+  violated by 984/1781
+
+  two/specification(none)+simulation-plan(env:specification)
+    -> Verification/simulation-plan/runs/2/result.json
+       ['E:specification: envelope named no fix_owner']
+  two/specification(none)+simulation-plan(diag:specification)
+    -> Verification/simulation-plan/runs/2/result.json
+       ['E:specification: envelope named no fix_owner']
+  two/specification(self)+simulation-plan(env:specification)
+    -> Verification/simulation-plan/runs/2/result.json
+       ['E:specification: fix_owner is itself, in-stage remedy exhausted']
+########## A1
+A1: no two runs open at once are related by the input closure
+  violated by 23/1781
+
+  fwd/specification+timing-analysis
+    -> specification + timing-analysis (upstream)
+       ['M:specification', 'D:timing-analysis', 'Y:specification:2,timing-analysis:2']
+  fwd/rtl-design+timing-analysis
+    -> rtl-design + timing-analysis (upstream)
+       ['M:rtl-design', 'D:timing-analysis', 'Y:rtl-design:2,timing-analysis:2']
+  fwd/rtl-design+power-analysis
+    -> rtl-design + power-analysis (upstream)
+       ['M:rtl-design', 'D:power-analysis', 'Y:rtl-design:2,power-analysis:2']
+########## A2
+A2: every failure carrying a legal owner is answered by some dispatch
+  violated by 890/1781
+
+  two/specification(none)+simulation-plan(env:specification)
+    -> specification
+       ['E:specification: envelope named no fix_owner']
+  two/specification(none)+simulation-plan(diag:specification)
+    -> specification
+       ['E:specification: envelope named no fix_owner']
+  two/specification(self)+simulation-plan(env:specification)
+    -> specification
+       ['E:specification: fix_owner is itself, in-stage remedy exhausted']
+########## A3
+A3: two failures naming the SAME owner are merged into one dispatch
+  violated by 94/1781
+
+  two/simulation-plan(env:specification)+rtl-design(diag:specification)
+    -> caused_by names one failure
+       ['M:specification[simulation-plan:2]', 'Y:specification:2']
+  two/simulation-plan(diag:specification)+rtl-design(env:specification)
+    -> caused_by names one failure
+       ['M:specification[simulation-plan:2]<d-simulation-plan-2>', 'Y:specification:2']
+  two/simulation-plan(env:specification)+lint-cdc(diag:specification)
+    -> caused_by names one failure
+       ['M:specification[simulation-plan:2]', 'Y:specification:2']
+########## A4
+A4: an unroutable failure never blocks a routable one
+  violated by 540/1781
+
+  two/specification(none)+simulation-plan(env:specification)
+    -> specification: envelope named no fix_owner
+       ['E:specification: envelope named no fix_owner']
+  two/specification(none)+simulation-plan(diag:specification)
+    -> specification: envelope named no fix_owner
+       ['E:specification: envelope named no fix_owner']
+  two/specification(self)+simulation-plan(env:specification)
+    -> specification: fix_owner is itself, in-stage remedy exhausted
+       ['E:specification: fix_owner is itself, in-stage remedy exhausted']
+########## A5
+A5: a reliable diagnosis is cited by the dispatch it caused
+  violated by 492/1781
+
+  two/specification(none)+simulation-plan(diag:specification)
+    -> d-simulation-plan-2
+       ['E:specification: envelope named no fix_owner']
+  two/specification(self)+simulation-plan(diag:specification)
+    -> d-simulation-plan-2
+       ['E:specification: fix_owner is itself, in-stage remedy exhausted']
+  two/specification(outside)+simulation-plan(diag:specification)
+    -> d-simulation-plan-2
+       ["E:specification: fix_owner 'simulation-plan' is outside its input closure"]
+########## A7
+A7: 两个独立且都可启动的规则,必须在同一回合都被派出(能并行就要并行派)
+  violated by 48/1781
+
+  two/lint-cdc(env:rtl-design)+simulation(env:simulation-plan)
+    -> opened ['rtl-design'], wanted ['rtl-design', 'simulation-plan']
+       ['M:rtl-design[lint-cdc:2]', 'Y:rtl-design:2']
+  two/lint-cdc(env:rtl-design)+simulation(diag:simulation-plan)
+    -> opened ['rtl-design'], wanted ['rtl-design', 'simulation-plan']
+       ['M:rtl-design[lint-cdc:2]', 'Y:rtl-design:2']
+  two/lint-cdc(diag:rtl-design)+simulation(env:simulation-plan)
+    -> opened ['rtl-design'], wanted ['rtl-design', 'simulation-plan']
+       ['M:rtl-design[lint-cdc:2]<d-lint-cdc-2>', 'Y:rtl-design:2']

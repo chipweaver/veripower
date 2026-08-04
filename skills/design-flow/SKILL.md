@@ -37,6 +37,15 @@ is a read-only query for the user, outside the loop.
 calls (`dispatch` / `reap` / `diagnose` / `pin` / `reopen`) with no `decide` between them is
 a bug — each action's executor runs, then you loop back to `decide`.
 
+**A turn holds as many runs as the kernel gives it.** Only `YIELD` / `DONE` / `ESCALATE` end
+a turn. A `task` dispatch returns the moment the background subagent starts, and the very next
+`decide` may hand you a second rule that can run alongside it — stages with no dependency
+between them are dispatched in the same turn on purpose, and that overlap is the only
+parallelism the system has. So a background dispatch is **not** a stopping point: starting one
+and reporting "X is running, I'll check back" ends the turn one action early and silently
+serialises the round. Keep looping until an action tells you to stop; `YIELD` is what "now we
+wait" looks like, and it names every run in flight.
+
 ## Iron Rule
 
 - Do not run EDA tools (make / vcs / dc_shell / pt_shell / spyglass) yourself — that is the stage subagent's job.
@@ -120,6 +129,12 @@ change — `kernel.py consequences --module {module} --paths <path…>` (the cur
 proofs a path change would invalidate). Offer 2–3 concrete next steps. The same applies to a
 subagent's own words: forward the text verbatim, because tidying it into a cleaner escalation
 is how a real hold gets read as a soft one.
+
+**A `DISPATCH` may also carry `escalations[]`** — failures nobody can route, found in the same
+round as work that *can* proceed. The round keeps moving (an unroutable failure must not hold
+up a fix the kernel knows how to make), so these reach the user only if you pass them on: report
+each one's `reason` verbatim alongside what you dispatched, in the same turn. Holding them until
+the board clears is how a human waits hours for news that was available immediately.
 
 Recovery is **exclusively a human `kernel.py diagnose`** (source=human) — there is no
 `resolve` verb, and you never auto-author a diagnosis (only triage mints one). Surface the

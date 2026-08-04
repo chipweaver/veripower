@@ -33,3 +33,6 @@ docs/adr/
 /*.svf
 /*.pvl
 /svf.txt
+
+# Regenerable measurement output (docs/design/*/harness re-runs it in ~75s)
+docs/design/*/out/grid-*.jsonl

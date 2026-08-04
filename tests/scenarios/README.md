@@ -9,6 +9,8 @@ judgment (`open`).
 **The full procedure lives in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) → "Bulletproofing a skill
 (RED-GREEN-REFACTOR)".** This file documents only the corpus layout and conventions.
 
+> **Status (2026-08-04): 2 teeth-ful scenarios.** `design-flow/scenario-03` joined on 2026-08-04 (RED 5/5 violate, GREEN 0/8) when the orchestrator loop's parallelism invariant was first written down: until then nothing said a turn may hold several runs in flight, and a bare agent reliably ends the turn after starting a background dispatch.
+>
 > **Status (2026-06-10): deliberately lean — exactly 1 teeth-ful scenario.** A full RED-first
 > traversal of ~50 candidate invariants across all 12 skills (clean harness, Opus, with a 5× majority
 > vote on boundary cases) found that **CLAUDE.md + Opus + EDA domain knowledge already produce the

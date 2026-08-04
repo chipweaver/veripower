@@ -603,23 +603,23 @@ def test_decide_is_pure_same_disk_same_ledger_same_action(tmp_path, monkeypatch)
 
 
 def test_advisory_edge_never_enters_freshness(tmp_path, monkeypatch):
-    # §6/A1-①: sort predicate stays out of validity paths. power←timing is ADVISORY
-    # (not an input edge): a fresh power fail must enter disposition even while the
-    # timing proof is invalid.
+    # §6/A1-①: the sort predicate stays out of validity paths. power←timing is ADVISORY
+    # (not an input edge): a power failure must stay an OPEN complaint even while the
+    # timing proof is invalid, because only ADVISORY_ORDER's own consumer may read it.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_power("m")  # helper: power's ARTIFACT closure all valid
     _invalidate_proof("m", "timing-analysis")  # helper: drift a timing-only input
-    _power_fail("m", run=1)  # fresh power fail (its own inputs untouched)
-    hit = schedule._latest_fail(facts.read_events("m"), "power-analysis")
-    assert schedule._fail_is_fresh(
-        "m", facts.read_events("m"), "power-analysis", hit[0], hit[1]
-    )
+    _power_fail("m", run=1)  # power fail, its own inputs untouched
+    open_ = schedule.complaints("m", facts.read_events("m"))
+    assert [c["rule"] for c in open_] == ["power-analysis"]
 
 
-def test_two_hop_upstream_invalidity_makes_failure_stale(tmp_path, monkeypatch):
-    # A1-② livelock regression: timing fail; rtl-design proof (TWO hops up via
-    # synthesis) invalid while synthesis proof still valid (RTL bytes unchanged) ->
-    # the fail is STALE (transitive closure), so step 1 must NOT re-fire disposition.
+def test_two_hop_upstream_invalidity_does_not_discard_the_failure(tmp_path, monkeypatch):
+    # A1-② livelock regression, restated for v2. timing fails; rtl-design's proof (TWO hops
+    # up via synthesis) is invalid while synthesis's is still valid. The old rule called such
+    # a failure STALE and dropped it, which threw away its attribution; the open-complaint
+    # rule keeps it and instead refuses to re-run the rule that raised it. Either way the
+    # round must not spin: this envelope names nobody, so it is a human's call.
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
@@ -627,9 +627,10 @@ def test_two_hop_upstream_invalidity_makes_failure_stale(tmp_path, monkeypatch):
     _valid("m", "synthesis", 1)
     _reopen("m", "semantic-review")  # rtl-design invalid; RTL bytes unchanged
     _fail("m", "timing-analysis", 1)
-    evs = facts.read_events("m")
-    hit = schedule._latest_fail(evs, "timing-analysis")
-    assert not schedule._fail_is_fresh("m", evs, "timing-analysis", hit[0], hit[1])
+    open_ = schedule.complaints("m", facts.read_events("m"))
+    assert [(c["rule"], c["owner"]) for c in open_] == [("timing-analysis", None)]
+    a = schedule.decide("m")
+    assert a["action"] == "ESCALATE" and "named no fix_owner" in a["reason"]
 
 
 def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
@@ -1172,7 +1173,8 @@ def test_fail_stale_when_reopen_lands_during_the_run(tmp_path, monkeypatch):
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
     events = facts.read_events("m")
     idx, outcome = facts._proof_outcome(events, "specification")
-    assert not schedule._fail_is_fresh("m", events, "specification", idx, outcome)
+    assert not facts.verdict_trustworthy("m", events, "specification", idx, outcome)
+    assert schedule.complaints("m", events) == []
 
 
 def test_fail_stays_stale_after_a_bare_re_reap(tmp_path, monkeypatch):
@@ -1188,7 +1190,8 @@ def test_fail_stays_stale_after_a_bare_re_reap(tmp_path, monkeypatch):
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))  # bare re-reap
     events = facts.read_events("m")
     idx, outcome = facts._proof_outcome(events, "specification")
-    assert not schedule._fail_is_fresh("m", events, "specification", idx, outcome)
+    assert not facts.verdict_trustworthy("m", events, "specification", idx, outcome)
+    assert schedule.complaints("m", events) == []
 
 
 def test_fail_fresh_again_after_a_re_pin(tmp_path, monkeypatch):
@@ -1204,7 +1207,8 @@ def test_fail_fresh_again_after_a_re_pin(tmp_path, monkeypatch):
     _pin_oracle("m", "spec-review", fp="sha256:y", reason="re-endorse")
     events = facts.read_events("m")
     idx, outcome = facts._proof_outcome(events, "specification")
-    assert schedule._fail_is_fresh("m", events, "specification", idx, outcome)
+    assert facts.verdict_trustworthy("m", events, "specification", idx, outcome)
+    assert [c["rule"] for c in schedule.complaints("m", events)] == ["specification"]
 
 
 def test_re_reap_does_not_dispatch_upstream_rework(tmp_path, monkeypatch):

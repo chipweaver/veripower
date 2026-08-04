@@ -1,7 +1,22 @@
 """VeriPower scheduler — exactly one action per call. Pure over (disk, ledger, args): no
-state of its own, and nothing the caller has to carry between turns. A self-describing
-failure is attributed by its own envelope (`stage_specific.fix_owner`); this file only
-checks that naming is legal. Bare-importable (`import schedule`)."""
+state of its own, and nothing the caller has to carry between turns.
+
+One concept carries the whole repair path: a **complaint**. A proof whose latest outcome is
+a fail is a complaint; it is OPEN until something has been done about it, and while it is
+open the scheduler's job is to hand it to the party that must act. Everything the old
+disposition tree decided by branching — merge or not, route or re-verify, escalate or
+triage — is a query over the open complaint set:
+
+  * its OWNER is one field pair, `(attribution, fix_owner)`, read from ONE function that
+    knows both channels (the failing envelope's self-report, and any diagnosis that
+    superseded it). The scheduler reads no other attribution field.
+  * complaints sharing an owner are one dispatch. That is a group-by, not a merge rule, so
+    there is no sieve to get half right.
+  * a complaint OPEN against a rule blocks that rule from running at all: re-verifying a
+    proof whose failure nobody has answered spends the stage to rediscover what is already
+    written down.
+
+Bare-importable (`import schedule`)."""
 
 from __future__ import annotations
 
@@ -25,7 +40,7 @@ def failing_proofs(events: list[dict]) -> set[str]:
     Scan newest-first: the first outcome seen per rule IS that rule's latest. Position by
     scan order — never events.index (duplicate event lines collide, and it's O(n) per call).
     Restricted to the eight stage proofs: a non-proof rule (simulation-triage) has no proof
-    to re-verify and would crash step 2's FORWARD_PRIORITY.index (spec §2/§3.2).
+    to re-verify and would crash the FORWARD_PRIORITY.index sort (spec §2/§3.2).
 
     ALL of them, not the newest one. A failure that is not in this set is not scheduled, so
     returning a single rule leaves every other failing rule out of the round — two stages
@@ -67,25 +82,6 @@ def _latest_fail(events: list[dict], rule: str) -> tuple[int, dict] | None:
     return None
 
 
-def _fail_is_fresh(
-    module: str, events: list[dict], rule: str, idx: int, outcome: dict
-) -> bool:
-    """§3.4 fresh failure = the fail proof is fresh EXCEPT its verdict, AND every proof in the
-    TRANSITIVE input closure is currently valid — closure has stale/missing = upstream still
-    propagating, so the fail is STALE and goes to forward re-verify instead.
-
-    Conditions 2/3/4 are facts.proof_fresh_except_verdict, the same three the pass path uses;
-    that is the point of asking there rather than here. Artifact edges only:
-    ADVISORY_ORDER must NEVER appear in this path (spec §2)."""
-    if not facts.proof_fresh_except_verdict(module, events, rule, idx, outcome):
-        return False
-    for upstream in rules.input_closure(rule):
-        ur = rules.RULES[upstream]
-        if ur.proof and not facts.proof_valid(module, events, ur.proof):
-            return False
-    return True
-
-
 def _active_diagnoses(events: list[dict], rule: str, outcome: dict) -> list[dict]:
     """ALL diagnoses effective for this failure (subject matches this outcome's run,
     not superseded), oldest first. NO fix_owner filter: a self-pointing diagnosis
@@ -114,9 +110,7 @@ def _reliable(diag: dict) -> bool:
     first clause and needs no separate test, because neither writer can produce one with a
     `fix_owner`. `kernel.cmd_diagnose` rejects a `fix_owner` outside the subject's input
     closure, `kernel._derive_triage` only writes one when the root cause is inside it, and
-    the graph is acyclic, so no rule is ever in its own closure. Re-checking the attribution
-    here would be a third copy of a rule both write paths already enforce, and it could only
-    ever mask a writer that had stopped enforcing it."""
+    the graph is acyclic, so no rule is ever in its own closure."""
     if not diag.get("fix_owner"):
         return False
     if diag["source"] == "human":
@@ -124,112 +118,14 @@ def _reliable(diag: dict) -> bool:
     return diag.get("confidence") == "high"
 
 
-def _disposition(
-    module: str,
-    events: list[dict],
-    rule: str,
-    outcome: dict,
-    all_fresh: list[tuple[str, dict]],
-) -> dict:
-    """Action for one FRESH failure (§3.4): auto-rebuild / triage / escalate.
-    all_fresh = every (rule, fail-outcome) fresh this round — used to merge every failure
-    that routes to the chosen fix_owner into ONE dispatch (§3.3: 同 fix_owner 多条归因合并、
-    逐条引用，无静默丢弃). The merge is a union of `caused_by` coordinates and
-    `diagnosis_refs`, which the kernel resolves to paths at dispatch, so "no silent drop"
-    is mechanical rather than an instruction to whoever writes the dispatch."""
-    diags = _active_diagnoses(events, rule, outcome)
-    if diags:
-        latest = diags[-1]
-        if _reliable(latest):
-            fix_owner = latest["fix_owner"]
-            if not facts.rule_available(module, events, fix_owner):
-                return {"action": "_defer_to_forward"}  # fix_owner inputs unavailable
-            refs, caused_by = [], []
-            for frule, fout in all_fresh:
-                for d in _active_diagnoses(events, frule, fout):
-                    if _reliable(d) and d["fix_owner"] == fix_owner:
-                        refs.append(d["id"])
-                        coord = [frule, fout["run"]]
-                        if coord not in caused_by:
-                            caused_by.append(coord)
-            return {
-                "action": "DISPATCH",
-                "rule": fix_owner,
-                "execution": rules.RULES[fix_owner].execution,
-                "diagnosis_refs": refs,
-                "caused_by": caused_by,
-            }
-        # 现成归因但不可靠 (low confidence / self-pointing) -> 叫人, cited as candidates
-        return {
-            "action": "ESCALATE",
-            "reason": f"unreliable diagnosis for {rule}",
-            "candidates": [
-                {
-                    "attribution": d["attribution"],
-                    "confidence": d.get("confidence"),
-                    "diagnosis": d["id"],
-                }
-                for d in diags
-            ],
-        }
-    # No ready diagnosis: the failing envelope names its own fix owner. The party that read
-    # the raw tool output is the one that knows whose problem it is, so nothing re-derives
-    # that from a classification.
-    owner = _declared_owner(module, rule)
-    if owner is None:
-        # simulation is the one stage with a deeper analyzer behind it: a failure it looked
-        # at and still could not attribute is what simulation-triage exists for. Everywhere else, an
-        # envelope that names nobody is the stage saying it cannot tell — that is a human's
-        # call, not a target to guess at.
-        if rule == "simulation":
-            if any(f["rule"] == "simulation-triage" for f in facts.in_flight(events)):
-                return {"action": "YIELD", "in_flight": facts.in_flight(events)}
-            return {
-                "action": "DISPATCH",
-                "rule": "simulation-triage",
-                "execution": "task",
-                "params": {"sim_run": outcome["run"]},
-            }
-        return {"action": "ESCALATE", "reason": f"{rule}: envelope named no fix_owner"}
-    if owner == rule:
-        # A defect the stage could fix from here is fixed WITHIN its run (rtl-design
-        # re-dispatches a child, lint-cdc adds a waiver), so it never reaches this point as
-        # a failure. Naming itself therefore means the in-stage remedy is exhausted; an
-        # auto-rebuild would dispatch the failing rule at itself and loop.
-        return {
-            "action": "ESCALATE",
-            "reason": f"{rule}: fix_owner is itself, in-stage remedy exhausted",
-        }
-    if owner not in rules.input_closure(rule):
-        return {
-            "action": "ESCALATE",
-            "reason": f"{rule}: fix_owner {owner!r} is outside its input closure",
-        }
-    if not facts.rule_available(module, events, owner):
-        return {"action": "_defer_to_forward"}
-    # Merge every OTHER fresh failure that names this same owner, so one rework round answers
-    # them together. Without it a co-failing stage is silently dropped and re-fails on the
-    # next pass — the same 无静默丢弃 rule the diagnosis branch above obeys. A rule with an
-    # active diagnosis is skipped: its own attribution decides its fix_owner.
-    caused_by = [[rule, outcome["run"]]]
-    for frule, fout in all_fresh:
-        if frule == rule or _active_diagnoses(events, frule, fout):
-            continue
-        if _declared_owner(module, frule) == owner:
-            caused_by.append([frule, fout["run"]])
-    return {
-        "action": "DISPATCH",
-        "rule": owner,
-        "execution": rules.RULES[owner].execution,
-        "caused_by": caused_by,
-    }
-
-
 def _declared_owner(module: str, rule: str) -> str | None:
-    """`stage_specific.fix_owner` from the failed rule's canonical result.json: the rule its
-    own envelope says must act. None when the envelope names nobody (including an unreadable
-    or absent envelope), which the caller reads as "this stage cannot tell". Legality is the
-    caller's check, not this one's — this only reports what was written."""
+    """`stage_specific.fix_owner` from the failed rule's canonical result.json, VERBATIM: the
+    rule its own envelope says must act, legal or not. None when the envelope names nobody
+    (including an unreadable or absent envelope).
+
+    Reading canonical is sound for a complaint: a complaint exists only while the rule's
+    LATEST outcome is that fail, and a fail promotes, so canonical holds that run's envelope.
+    (A `blocked` run does not promote — and mints no complaint either.)"""
     p = facts.module_root(module) / Path(*rules.workdir_root(rule)) / "result.json"
     try:
         ss = json.loads(p.read_text()).get("stage_specific", {})
@@ -239,6 +135,145 @@ def _declared_owner(module: str, rule: str) -> str | None:
     return owner if owner in rules.RULES else None
 
 
+def _legal(rule: str, name: str | None) -> bool:
+    """A name is a legal auto-rebuild target iff it produces something inside the failed
+    rule's TRANSITIVE input closure. Naming itself is excluded by construction (no rule is in
+    its own closure), which is also why naming itself means the in-stage remedy is exhausted:
+    a defect the stage could fix from here is fixed WITHIN its run."""
+    return bool(name) and name in rules.input_closure(rule)
+
+
+def _attribution(module: str, events: list[dict], rule: str, outcome: dict) -> dict:
+    """`(attribution, owner, diagnoses)` for one failure — the SINGLE shape both attribution
+    channels reduce to, and the only thing the scheduler reads about why a stage failed.
+
+    `attribution` is what was written, verbatim; `owner` is its routable projection, present
+    only when the naming is legal AND (for a diagnosis) reliable. Every branch the old
+    disposition tree took over these two channels is a condition on this pair, so an
+    escalation reason is derivable from it rather than raised at the branch that noticed.
+
+    Precedence: a later analysis outranks the stage's own self-report. `_active_diagnoses`
+    is already scoped to this outcome's run, so a diagnosis of an older run cannot speak."""
+    diags = _active_diagnoses(events, rule, outcome)
+    if diags:
+        latest = diags[-1]
+        if _reliable(latest):
+            owner = latest["fix_owner"]
+            return {
+                "attribution": latest["attribution"],
+                "owner": owner,
+                "diagnoses": [
+                    d for d in diags if _reliable(d) and d["fix_owner"] == owner
+                ],
+                "unreliable": [],
+            }
+        return {
+            "attribution": latest["attribution"],
+            "owner": None,
+            "diagnoses": [],
+            "unreliable": diags,
+        }
+    named = _declared_owner(module, rule)
+    return {
+        "attribution": named,
+        "owner": named if _legal(rule, named) else None,
+        "diagnoses": [],
+        "unreliable": [],
+    }
+
+
+def _answered(events: list[dict], idx: int, owner: str) -> bool:
+    """True iff the owner has been dispatched since this failure landed, and that run did not
+    die. This — not input freshness — is what closes a complaint.
+
+    Dispatch, not delivery: the question is whether the party that must act has had its turn.
+    A round that rebuilt the owner for some other reason still had the chance, and asking it
+    again would spend the stage twice on one defect; the same argument covers an out-of-band
+    edit answered by the next rebuild. A run reaped `blocked` is the exception — nothing
+    landed, so the complaint re-opens rather than being silently consumed by a dead executor."""
+    for i, e in enumerate(events):
+        if i <= idx or e["type"] != "dispatch" or e["rule"] != owner:
+            continue
+        done = next(
+            (
+                o
+                for o in events[i + 1 :]
+                if o["type"] == "outcome"
+                and o["rule"] == owner
+                and o["run"] == e["run"]
+            ),
+            None,
+        )
+        if done is None or done["verdict"] != "blocked":
+            return True
+    return False
+
+
+def complaints(module: str, events: list[dict]) -> list[dict]:
+    """The OPEN complaints, in FORWARD_PRIORITY order.
+
+    A failure is open while there is a specific thing to do about it that has not been done:
+
+    * its verdict must still describe reality (`facts.verdict_trustworthy` — the run's own
+      products, and the judge that reached the verdict). A reopened oracle retracts a failure
+      exactly as it retracts a pass.
+    * OWNED: open until the owner has been dispatched (`_answered`). Input drift is
+      deliberately NOT a closer — a sibling repair moving this failure's inputs does not make
+      the fix owner's job go away, and treating it as one is how an attribution that is
+      written down, legal, and unanswered gets thrown away and then rediscovered by spending
+      the stage again.
+    * UNOWNED: closed by input drift, because the specific thing to do is triage or a human,
+      and both would be reading evidence the drift has already moved. Re-verifying is then the
+      cheapest well-defined act, and forward scheduling does it."""
+    out = []
+    for rule in rules.FORWARD_PRIORITY:
+        hit = _latest_fail(events, rule)
+        if hit is None:
+            continue
+        idx, outcome = hit
+        if not facts.verdict_trustworthy(module, events, rule, idx, outcome):
+            continue
+        att = _attribution(module, events, rule, outcome)
+        if att["owner"]:
+            if _answered(events, idx, att["owner"]):
+                continue
+        elif not facts.inputs_unchanged(module, rule, outcome):
+            continue
+        out.append({"rule": rule, "run": outcome["run"], **att})
+    return out
+
+
+def _escalation(c: dict) -> dict:
+    """Why a complaint cannot be routed, derived from `(attribution, owner)` rather than
+    raised where it was noticed — so the three namings and the unreliable diagnosis read as
+    one classification instead of four scattered branches."""
+    rule, named = c["rule"], c["attribution"]
+    if c["unreliable"]:
+        return {
+            "rule": rule,
+            "reason": f"unreliable diagnosis for {rule}",
+            "candidates": [
+                {
+                    "attribution": d["attribution"],
+                    "confidence": d.get("confidence"),
+                    "diagnosis": d["id"],
+                }
+                for d in c["unreliable"]
+            ],
+        }
+    if named is None:
+        return {"rule": rule, "reason": f"{rule}: envelope named no fix_owner"}
+    if named == rule:
+        return {
+            "rule": rule,
+            "reason": f"{rule}: fix_owner is itself, in-stage remedy exhausted",
+        }
+    return {
+        "rule": rule,
+        "reason": f"{rule}: fix_owner {named!r} is outside its input closure",
+    }
+
+
 def _workdir_of(events, rule, run):
     for e in events:
         if e["type"] == "dispatch" and e["rule"] == rule and e["run"] == run:
@@ -246,46 +281,77 @@ def _workdir_of(events, rule, run):
     return None
 
 
-def _has_inflight_consumer(rule_name: str, inflight: list[dict]) -> bool:
-    """Option C torn-read guard: True iff some in-flight run consumes rule_name's output
-    (rule_name ∈ input_producers(that consumer)). Deferring rule_name's (re)dispatch means its
-    new round never starts → no concurrent re-promote to tear the consumer's canonical read.
-    Covers file- and dir-type tears; the consumer's next reap frees rule_name. Pure, no I/O."""
-    return any(rule_name in rules.input_producers(f["rule"]) for f in inflight)
+def _antichain_ok(rule_name: str, inflight: list[dict]) -> bool:
+    """The in-flight set must stay an ANTICHAIN in the input-closure order: no run may be
+    open alongside another that (transitively) produces what it consumes, in either
+    direction. One predicate for what used to be two unrelated half-guards:
+
+    * downstream (a consumer is running) — the torn read Option C described: this rule's
+      re-promote would land under the consumer's canonical read. That guard tested DIRECT
+      consumers only, so a two-hop consumer (timing over rtl-design) slipped through.
+    * upstream (a producer is running) — nothing guarded this at all. `rule_available` reads
+      the producer's proof, which stays valid until the in-flight run reaps, so a consumer
+      was admitted on inputs that were about to change and spent a full round on them.
+
+    Pure, no I/O: the closure is a registry query."""
+    for f in inflight:
+        other = f["rule"]
+        if other == rule_name:
+            return False
+        if other in rules.input_closure(rule_name):
+            return False
+        if rule_name in rules.input_closure(other):
+            return False
+    return True
 
 
 def _held_by_advisory(
     module: str,
     events: list[dict],
     rule: str,
-    work: set[str],
+    coming: set[str],
     inflight: list[dict],
 ) -> bool:
     """No-overtake gate (§3.3): hold `rule` back while an `ADVISORY_ORDER` predecessor of it
-    is not yet valid AND is going to speak — it is scheduled this round (`work`) or already
-    running (`inflight`). The sole consumer of advisory data.
+    is not yet valid AND is going to speak — scheduled this round (`coming`) or already
+    running. The sole consumer of advisory data.
 
     An advisory edge is a bet that the cheap detector will answer before the expensive stage
     spends a run on inputs it is about to invalidate. The bet is only available while the
     detector is actually coming: a predecessor that is neither scheduled nor running will
-    never resolve, so holding for it is waiting on nothing. That is not hypothetical — when
-    the goal set narrows to one failing proof its advisory predecessor is not in the set, and
-    a gate blind to that would hold the only candidate and leave the round with none.
+    never resolve, so holding for it is waiting on nothing.
 
-    Asking who is coming, rather than which mode we are in, is also what makes the gate
-    uniform. It reproduces the wide behaviour exactly (with nothing failing, every invalid
-    proof is in `work`), and it fixes the case a mode-keyed gate got backwards: two stages
-    joined by an advisory edge that fail together are both in `work`, so the cheap one runs
-    first instead of racing the expensive one.
-
-    Only ADVISORY_ORDER is read, never input_producers: `rule_available`, checked just above
-    this, already implies every input producer's proof is valid, so the union the retired
-    `sort_prereqs` computed had one half the caller had already established."""
-    coming = work | {f["rule"] for f in inflight}
+    Only ADVISORY_ORDER is read, never input_producers: `rule_available`, checked beside
+    this, already implies every input producer's proof is valid."""
+    coming = coming | {f["rule"] for f in inflight}
     for p in rules.ADVISORY_ORDER.get(rule, ()):
         if p in coming and not facts.proof_valid(module, events, rules.RULES[p].proof):
             return True
     return False
+
+
+def _forward_work(module: str, events: list[dict], required: set[str]) -> set[str]:
+    """The required proofs that are not currently valid, expanded to the REBUILD CLOSURE.
+    §3.3 末句: a narrowed rebuild chain (timing -> rebuild synthesis FIRST) walks the
+    producers of unavailable inputs; when nothing is failing the required set already spans
+    the DAG, so the expansion is usually a no-op."""
+    work = {p for p in required if not facts.proof_valid(module, events, p)}
+    frontier = set(work)
+    while frontier:
+        nxt = set()
+        for rule in frontier:
+            if facts.rule_available(module, events, rule):
+                continue
+            for prod in rules.input_producers(rule):
+                pr = rules.RULES[prod]
+                needs = (
+                    pr.proof and not facts.proof_valid(module, events, pr.proof)
+                ) or not facts.rule_available(module, events, prod)
+                if needs and prod not in work:
+                    work.add(prod)
+                    nxt.add(prod)
+        frontier = nxt
+    return work
 
 
 def _dispatched(module: str, action: dict) -> dict:
@@ -348,74 +414,97 @@ def decide(
         )
         return {"action": "REAP", "rule": ready[0]["rule"], "run": ready[0]["run"]}
 
-    # step 1: fresh-failure disposition, FORWARD_PRIORITY order, before forward
-    fresh = []
-    for rule in rules.FORWARD_PRIORITY:
-        hit = _latest_fail(events, rule)
-        if hit and _fail_is_fresh(module, events, rule, hit[0], hit[1]):
-            fresh.append((rule, hit[1]))
-    if fresh:
-        rule, o = min(fresh, key=lambda t: rules.FORWARD_PRIORITY.index(t[0]))
-        disp = _disposition(module, events, rule, o, fresh)
-        if disp["action"] == "_defer_to_forward":
-            pass  # fall through to step 2
-        elif disp["action"] == "DISPATCH":
-            # target already in-flight, OR its output has an in-flight consumer (Option C:
-            # repair's fix_owner rebuild would re-promote under a background consumer's read)
-            if any(
-                f["rule"] == disp["rule"] for f in inflight
-            ) or _has_inflight_consumer(disp["rule"], inflight):
-                return {"action": "YIELD", "in_flight": facts.in_flight(events)}
-            return _dispatched(module, disp)
-        else:
-            return disp  # ESCALATE / YIELD
+    # step 1: the open complaints, grouped by who must act
+    open_ = complaints(module, events)
+    repair: dict[str, list[dict]] = {}
+    triage: dict[str, list[dict]] = {}
+    unowned: list[dict] = []
+    for c in open_:
+        if c["owner"]:
+            repair.setdefault(c["owner"], []).append(c)
+            continue
+        unowned.append(c)
+        # A stage that read its own failure and cannot attribute it hands off to the
+        # diagnostic its rule declares — but only when nothing has analysed this failure
+        # yet. An analysis that came back unreliable is a human's call, and re-running the
+        # same analyzer over the same evidence would only reproduce it.
+        t = rules.RULES[c["rule"]].triage
+        if t and not c["unreliable"]:
+            triage.setdefault(t, []).append(c)
 
-    # step 2: forward — missing/invalid required proofs, expanded to the REBUILD CLOSURE.
-    # §3.3 末句: a narrowed rebuild chain (timing -> rebuild synthesis FIRST) walks the
-    # producers of unavailable inputs; when nothing is failing the required set already
-    # spans the DAG, so the expansion is usually a no-op.
+    # step 2: one candidate set — repairing and building are the same act (dispatch a rule,
+    # hand it the complaints it owns), so they are ordered together rather than staged.
     required = required_proofs(events)
-    work = {p for p in required if not facts.proof_valid(module, events, p)}
-    frontier = set(work)
-    while frontier:
-        nxt = set()
-        for rule in frontier:
-            if facts.rule_available(module, events, rule):
-                continue
-            for prod in rules.input_producers(rule):
-                pr = rules.RULES[prod]
-                needs = (
-                    pr.proof and not facts.proof_valid(module, events, pr.proof)
-                ) or not facts.rule_available(module, events, prod)
-                if needs and prod not in work:
-                    work.add(prod)
-                    nxt.add(prod)
-        frontier = nxt
-    candidates = []
-    for rule in sorted(work, key=rules.FORWARD_PRIORITY.index):
-        if any(f["rule"] == rule for f in inflight):
-            continue
-        if not facts.rule_available(module, events, rule):
-            continue
-        if _has_inflight_consumer(rule, inflight):  # Option C torn-read guard
-            continue
-        if _held_by_advisory(module, events, rule, work, inflight):
-            continue
-        candidates.append(rule)
+    work = _forward_work(module, events, required)
+    # A rule with an OPEN complaint does not run, in either role: re-verifying a proof whose
+    # failure nobody has answered spends the stage to rediscover what is already written
+    # down, and rebuilding a rule whose own failure is unattributed answers nothing.
+    complained = {c["rule"] for c in open_}
+    # Who is actually coming, for the advisory gate: a rule held out of the candidate set is
+    # not going to speak this round, and an advisory hold that waits for it waits forever.
+    # The gate's own premise (a predecessor that will never resolve must not hold anyone) is
+    # what makes the subtraction load-bearing rather than cosmetic: an unroutable lint-cdc
+    # failure otherwise pins synthesis behind a detector that is blocked on a human.
+    coming = (work | set(repair) | set(triage)) - complained
+    candidates = [
+        r
+        for r in (work | set(repair) | set(triage)) - complained
+        if facts.rule_available(module, events, r)
+        and _antichain_ok(r, inflight)
+        and not _held_by_advisory(module, events, r, coming, inflight)
+    ]
+    # A candidate whose (transitive) producer is ALSO a candidate this round must wait for
+    # it: its round would be built on inputs the other one is about to change. `_antichain_ok`
+    # says the same thing about runs already open; this says it about the ones we are choosing
+    # between, which the in-flight guard cannot see because the choice happens first. Without
+    # it the tie-breakers below are free to pick a downstream owner (synthesis, `task`) ahead
+    # of an upstream one (specification, `main-thread`) and spend that round twice.
+    candidates = [
+        r
+        for r in candidates
+        if not any(o != r and o in rules.input_closure(r) for o in candidates)
+    ]
     if candidates:
-        rule = min(candidates, key=lambda r: rules.FORWARD_PRIORITY.index(r))
-        return _dispatched(
-            module,
-            {
-                "action": "DISPATCH",
-                "rule": rule,
-                "execution": rules.RULES[rule].execution,
-            },
+        rule = min(
+            candidates,
+            key=lambda r: (
+                # answer a complaint before building anything: a proof with an unanswered
+                # complaint is going to be re-verified either way, and doing it before the
+                # fix lands spends the stage twice
+                0 if (r in repair or r in triage) else 1,
+                # a `task` executor returns immediately and a `main-thread` Skill() blocks
+                # the turn, so starting the async one first is what makes the two overlap.
+                # Safe because the filter above left only closure-minimal candidates: what
+                # remains is an antichain, and reordering an antichain reorders nothing that
+                # had an order.
+                0 if rules.RULES[r].execution == "task" else 1,
+                rules.FORWARD_PRIORITY.index(r) if r in rules.FORWARD_PRIORITY else -1,
+            ),
         )
+        action = {
+            "action": "DISPATCH",
+            "rule": rule,
+            "execution": rules.RULES[rule].execution,
+        }
+        if rule in repair:
+            group = repair[rule]
+            action["caused_by"] = [[c["rule"], c["run"]] for c in group]
+            refs = [d["id"] for c in group for d in c["diagnoses"]]
+            if refs:
+                action["diagnosis_refs"] = refs
+        elif rule in triage:
+            action["params"] = {"sim_run": triage[rule][0]["run"]}
+        if unowned:
+            # The round keeps moving, but the human hears about the unroutable failures now
+            # rather than after everything else has finished (§3.3: 无静默丢弃).
+            action["escalations"] = [_escalation(c) for c in unowned]
+        return _dispatched(module, action)
 
-    # step 3
+    # step 3: settle
     if inflight:
         return {"action": "YIELD", "in_flight": facts.in_flight(events)}
+    if unowned:
+        return {"action": "ESCALATE", **_escalation(unowned[0])}
     if all(facts.proof_valid(module, events, p) for p in required):
         if closing:
             # `closing` changes nothing about WHICH proofs are required — only what a clear

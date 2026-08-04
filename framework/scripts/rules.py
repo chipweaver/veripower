@@ -26,6 +26,11 @@ class Rule:
         None  # proposed-oracle content selector (workdir-root-relative glob)
     )
     params: tuple[str, ...] = ()
+    # The diagnostic to dispatch when THIS rule fails and names nobody. A rule name rather
+    # than a scheduler branch: which stage has an analyzer behind it is a registry fact, and
+    # the one place that used to know it (`schedule._disposition`) carried the only rule-name
+    # literal in the scheduler.
+    triage: str | None = None
     carry: tuple[
         str, ...
     ] = ()  # self-products to copy into a fresh workdir (self-carry)
@@ -239,6 +244,7 @@ RULES: dict[str, Rule] = {
         oracle=("tb-refmodel", "proposed"),
         oracle_selector="tb/uvm/refmodel/*",  # pin endorses the JUDGE itself (spec §2) —
         # survives runs; content drift (LLM regenerates refmodel) drops the pin at reap
+        triage="simulation-triage",  # the one stage with a deeper analyzer behind it
         carry=("**",),
         no_carry=("conformance-review.md",),
     ),

@@ -1,0 +1,92 @@
+=== grid-v2: 1781 scenarios ===
+
+--- parallelism: pairs both open in one turn ---
+  upstream     serial/-=17
+  independent  co-open/overlap=8  serial/-=2  co-open/-=1
+
+--- in-flight admission (one running with a valid proof) ---
+  downstream   held      17
+  independent  admitted  22
+  upstream     held      17
+
+--- single failure: first action by category ---
+  specification    none                       E:specification: envelope named no fix_owner
+  specification    outside                    E:specification: fix_owner 'simulation-plan' is outside its input closure
+  specification    self                       E:specification: fix_owner is itself, in-stage remedy exhausted
+  simulation-plan  diag:specification         M:specification[simulation-plan:2]<d-simulation-plan-2>
+  simulation-plan  env:specification          M:specification[simulation-plan:2]
+  simulation-plan  none                       E:simulation-plan: envelope named no fix_owner
+  simulation-plan  outside                    E:simulation-plan: fix_owner 'rtl-design' is outside its input closure
+  simulation-plan  self                       E:simulation-plan: fix_owner is itself, in-stage remedy exhausted
+  rtl-design       diag:specification         M:specification[rtl-design:2]<d-rtl-design-2>
+  rtl-design       env:specification          M:specification[rtl-design:2]
+  rtl-design       none                       E:rtl-design: envelope named no fix_owner
+  rtl-design       outside                    E:rtl-design: fix_owner 'simulation-plan' is outside its input closure
+  rtl-design       self                       E:rtl-design: fix_owner is itself, in-stage remedy exhausted
+  lint-cdc         diag:rtl-design            M:rtl-design[lint-cdc:2]<d-lint-cdc-2>
+  lint-cdc         diag:specification         M:specification[lint-cdc:2]<d-lint-cdc-2>
+  lint-cdc         env:rtl-design             M:rtl-design[lint-cdc:2]
+  lint-cdc         env:specification          M:specification[lint-cdc:2]
+  lint-cdc         none                       E:lint-cdc: envelope named no fix_owner
+  lint-cdc         outside                    E:lint-cdc: fix_owner 'simulation-plan' is outside its input closure
+  lint-cdc         self                       E:lint-cdc: fix_owner is itself, in-stage remedy exhausted
+  synthesis        diag:rtl-design            M:rtl-design[synthesis:2]<d-synthesis-2>
+  synthesis        diag:specification         M:specification[synthesis:2]<d-synthesis-2>
+  synthesis        env:rtl-design             M:rtl-design[synthesis:2]
+  synthesis        env:specification          M:specification[synthesis:2]
+  synthesis        none                       E:synthesis: envelope named no fix_owner
+  synthesis        outside                    E:synthesis: fix_owner 'simulation-plan' is outside its input closure
+  synthesis        self                       E:synthesis: fix_owner is itself, in-stage remedy exhausted
+  timing-analysis  diag:rtl-design            M:rtl-design[timing-analysis:2]<d-timing-analysis-2>
+  timing-analysis  diag:specification         M:specification[timing-analysis:2]<d-timing-analysis-2>
+  timing-analysis  diag:synthesis             D:synthesis[timing-analysis:2]<d-timing-analysis-2>
+  timing-analysis  env:rtl-design             M:rtl-design[timing-analysis:2]
+  timing-analysis  env:specification          M:specification[timing-analysis:2]
+  timing-analysis  env:synthesis              D:synthesis[timing-analysis:2]
+  timing-analysis  none                       E:timing-analysis: envelope named no fix_owner
+  timing-analysis  outside                    E:timing-analysis: fix_owner 'simulation-plan' is outside its input closure
+  timing-analysis  self                       E:timing-analysis: fix_owner is itself, in-stage remedy exhausted
+  simulation       diag:rtl-design            M:rtl-design[simulation:2]<d-simulation-2>
+  simulation       diag:simulation-plan       M:simulation-plan[simulation:2]<d-simulation-2>
+  simulation       diag:specification         M:specification[simulation:2]<d-simulation-2>
+  simulation       diaglow:rtl-design         E:unreliable diagnosis for simulation
+  simulation       diaglow:simulation-plan    E:unreliable diagnosis for simulation
+  simulation       diaglow:specification      E:unreliable diagnosis for simulation
+  simulation       diagnone                   E:unreliable diagnosis for simulation
+  simulation       env:rtl-design             M:rtl-design[simulation:2]
+  simulation       env:simulation-plan        M:simulation-plan[simulation:2]
+  simulation       env:specification          M:specification[simulation:2]
+  simulation       none                       D:simulation-triage
+  simulation       outside                    D:simulation-triage
+  simulation       self                       D:simulation-triage
+  power-analysis   diag:rtl-design            M:rtl-design[power-analysis:2]<d-power-analysis-2>
+  power-analysis   diag:simulation            M:simulation[power-analysis:2]<d-power-analysis-2>
+  power-analysis   diag:simulation-plan       M:simulation-plan[power-analysis:2]<d-power-analysis-2>
+  power-analysis   diag:specification         M:specification[power-analysis:2]<d-power-analysis-2>
+  power-analysis   diag:synthesis             D:synthesis[power-analysis:2]<d-power-analysis-2>
+  power-analysis   env:rtl-design             M:rtl-design[power-analysis:2]
+  power-analysis   env:simulation             M:simulation[power-analysis:2]
+  power-analysis   env:simulation-plan        M:simulation-plan[power-analysis:2]
+  power-analysis   env:specification          M:specification[power-analysis:2]
+  power-analysis   env:synthesis              D:synthesis[power-analysis:2]
+  power-analysis   none                       E:power-analysis: envelope named no fix_owner
+  power-analysis   outside                    E:power-analysis: fix_owner 'lint-cdc' is outside its input closure
+  power-analysis   self                       E:power-analysis: fix_owner is itself, in-stage remedy exhausted
+
+--- two failures: first action shape by owner relation ---
+  diff-owner/downstream        n=60    DISPATCH x1cb=60
+  diff-owner/independent       n=48    DISPATCH x1cb=48
+  diff-owner/upstream          n=232   DISPATCH x1cb=232
+  neither-routes               n=336   ESCALATE=273  DISPATCH x0cb=63
+  one-routes                   n=826   DISPATCH x1cb=620  ESCALATE=188  DISPATCH x0cb=18
+  same-owner                   n=132   DISPATCH x2cb=132
+
+--- properties ---
+  A1  violated     0/1781   no two runs open at once are related by the input closure
+  A2  violated   220/1781   every failure carrying a legal owner is answered by some dispatch
+  A3  violated     0/1781   two failures naming the SAME owner are merged into one dispatch
+  A4  violated     0/1781   an unroutable failure never blocks a routable one
+  A5  violated   110/1781   a reliable diagnosis is cited by the dispatch it caused
+  A0  violated   220/1781   a legal conclusion is DELIVERED: the failing run's own envelope reaches its owner's dispatch.json
+  A7  violated     0/1781   两个独立且都可启动的规则,必须在同一回合都被派出(能并行就要并行派)
+  A6  violated     0/1781   a failing rule is never re-verified while its own fix is unanswered

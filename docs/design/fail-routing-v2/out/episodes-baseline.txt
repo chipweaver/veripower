@@ -1,0 +1,48 @@
+=== baseline: 出口判据 ===
+  类别                           n      E1     E2     E3     E4     E6     E5
+  单 fail                      17      17     17     17     17     17     17
+  双 fail diff-owner/downstream  15      15      2     15      2      2      0
+  双 fail diff-owner/independent  12      12      1     12      1      1      1
+  双 fail diff-owner/upstream  58      58      0     58      0      0      0
+  双 fail same-owner           33      33     19     19     19     19     19
+
+  判据:
+    E1  135/135  任务不丢:每个缺陷最终被修复,回合收敛
+    E2   39/135  结论不丢:每条失败的信封都送达过某个 owner 的 dispatch.json
+    E3  121/135  形态正确:同 owner 合并为一轮,不同 owner 各自一轮
+    E4   39/135  无额外重跑:每个缺陷只失败一次
+    E6   39/135  最近注入:失败与它被交付之间,owner 没有白跑过一轮
+    E5   37/135  无额外轮次:总轮数等于 registry 下界
+
+=== baseline: 135 episodes, endings {'DONE': 135} ===
+  single-defect (17): waste {0: 17}
+
+  pair        owners                       n  clean  med+runs  med+min  tot+min
+  independent diff-owner/downstream       11      0         3      175     1639
+  independent diff-owner/independent       8      1         1       54      358
+  independent diff-owner/upstream         26      0         2       76     2984
+  independent same-owner                  19     19         0        0        0
+  upstream    diff-owner/downstream        4      0         4      226      708
+  upstream    diff-owner/independent       4      0         2       76      250
+  upstream    diff-owner/upstream         32      0         2       76     3411
+  upstream    same-owner                  14      0         4      205     2870
+
+  two-defect: 98/118 waste at least one run; total 12220 min over 32162 min of floor
+
+  worst 6:
+    +267min +6 runs  two/simulation-plan->specification+power-analysis->specification
+        ['specification:2', 'simulation-plan:3', 'rtl-design:2', 'synthesis:2', 'simulation:2', 'power-analysis:3', 'specification:3', 'simulation-plan:4', 'rtl-design:3', 'synthesis:3', 'simulation:3', 'power-analysis:4', 'lint-cdc:2', 'timing-analysis:2']
+    +267min +6 runs  two/rtl-design->specification+power-analysis->specification
+        ['specification:2', 'simulation-plan:2', 'rtl-design:3', 'synthesis:2', 'simulation:2', 'power-analysis:3', 'specification:3', 'simulation-plan:3', 'rtl-design:4', 'synthesis:3', 'simulation:3', 'power-analysis:4', 'lint-cdc:2', 'timing-analysis:2']
+    +267min +6 runs  two/synthesis->specification+power-analysis->specification
+        ['specification:2', 'simulation-plan:2', 'rtl-design:2', 'synthesis:3', 'simulation:2', 'power-analysis:3', 'specification:3', 'simulation-plan:3', 'rtl-design:3', 'synthesis:4', 'simulation:3', 'power-analysis:4', 'lint-cdc:2', 'timing-analysis:2']
+    +267min +6 runs  two/simulation->specification+power-analysis->specification
+        ['specification:2', 'simulation-plan:2', 'rtl-design:2', 'synthesis:2', 'simulation:3', 'power-analysis:3', 'specification:3', 'simulation-plan:3', 'rtl-design:3', 'synthesis:3', 'simulation:4', 'power-analysis:4', 'lint-cdc:2', 'timing-analysis:2']
+    +240min +5 runs  two/lint-cdc->specification+power-analysis->rtl-design
+        ['specification:2', 'simulation-plan:2', 'rtl-design:2', 'lint-cdc:3', 'synthesis:2', 'simulation:2', 'power-analysis:3', 'rtl-design:3', 'synthesis:3', 'simulation:3', 'power-analysis:4', 'lint-cdc:4', 'timing-analysis:2']
+    +240min +5 runs  two/lint-cdc->rtl-design+power-analysis->specification
+        ['rtl-design:2', 'lint-cdc:3', 'synthesis:2', 'simulation:2', 'power-analysis:3', 'specification:2', 'simulation-plan:2', 'rtl-design:3', 'synthesis:3', 'simulation:3', 'power-analysis:4', 'lint-cdc:4', 'timing-analysis:2']
+
+=== diff baseline -> v2 ===
+  better=98 same=37 worse=0
+  total waste 12220 -> 0 min

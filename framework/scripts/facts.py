@@ -356,28 +356,29 @@ def oracle_grade(module: str, events: list[dict], rule) -> str:
     return "human" if live[-1]["content_fingerprint"] == current else "proposed"
 
 
-def proof_fresh_except_verdict(
+def verdict_trustworthy(
     module: str, events: list[dict], proof_name: str, idx: int, outcome: dict
 ) -> bool:
-    """Conditions 2, 3 and 4 of §1.3 validity — everything except the verdict itself.
+    """Conditions 3 and 4 of §1.3 — whether the recorded VERDICT still describes reality.
 
-    proof_valid adds `verdict == pass`; schedule._fail_is_fresh adds the transitive
-    input-closure check. Both ask the same question of these three conditions, so they ask it
-    here — and condition 3 is the one that must not be re-derived per caller, because it leans
-    two ways: anchored on the outcome instead of the dispatch it is too loose (a bare re-reap
-    whitewashes a stale fail, and the scheduler then dispatches upstream rework on a verdict
-    whose judge was just reopened); without the live-pin conjunct it is too tight (a re-pinned
-    oracle makes a genuinely fresh fail look stale, losing the repair path).
-    """
+    Deliberately excludes condition 2 (inputs). The three conditions answer different
+    questions, and only these two are about the verdict itself: condition 4 says the run's own
+    products are still the ones it judged, condition 3 says the judge that reached the verdict
+    still stands. Condition 2 says something else — that the world the verdict was about has
+    not moved — which invalidates a PASS (it may no longer hold) but does not retract a FAIL's
+    account of what went wrong. The scheduler needs the two questions apart, because a
+    sibling repair drifting a failure's inputs must not throw away its attribution.
+
+    Condition 3 is the one that must not be re-derived per caller, because it leans two ways:
+    anchored on the outcome instead of the dispatch it is too loose (a bare re-reap whitewashes
+    a stale fail, and the scheduler then dispatches upstream rework on a verdict whose judge was
+    just reopened); without the live-pin conjunct it is too tight (a re-pinned oracle makes a
+    genuinely fresh fail look stale, losing the repair path)."""
     proof = next((p for p in outcome["proofs"] if p["name"] == proof_name), None)
     if proof is None:
         return False
     root = module_root(module)
     rule = rules.RULES[proof_name]
-    # condition 2 (inputs) — every recorded input version must match disk
-    for path, recorded in proof.get("inputs", {}).items():
-        if not versions_match(recorded, fingerprint_cached(root / path, root)):
-            return False
     # condition 4 (own outputs, incl. canonical result.json)
     for path, recorded in outcome.get("outputs", {}).items():
         if not versions_match(recorded, fingerprint_cached(root / path, root)):
@@ -395,6 +396,28 @@ def proof_fresh_except_verdict(
         if _reopened_after(events, oref, anchor) and not live_pins(events, oref):
             return False
     return True
+
+
+def inputs_unchanged(module: str, proof_name: str, outcome: dict) -> bool:
+    """Condition 2 alone: every recorded input version still matches disk."""
+    proof = next((p for p in outcome["proofs"] if p["name"] == proof_name), None)
+    if proof is None:
+        return False
+    root = module_root(module)
+    for path, recorded in proof.get("inputs", {}).items():
+        if not versions_match(recorded, fingerprint_cached(root / path, root)):
+            return False
+    return True
+
+
+def proof_fresh_except_verdict(
+    module: str, events: list[dict], proof_name: str, idx: int, outcome: dict
+) -> bool:
+    """Conditions 2, 3 and 4 of §1.3 validity — everything except the verdict itself.
+    proof_valid adds `verdict == pass`."""
+    return inputs_unchanged(module, proof_name, outcome) and verdict_trustworthy(
+        module, events, proof_name, idx, outcome
+    )
 
 
 def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:

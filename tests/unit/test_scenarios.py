@@ -519,11 +519,10 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
 # ── Step 4 ──────────────────────────────────────────────────────────────────────
 
 
-def _timing_fail_fresh(module):
+def _timing_complaint_open(module):
     evs = facts.read_events(module)
-    hit = schedule._latest_fail(evs, "timing-analysis")
-    assert hit is not None
-    return schedule._fail_is_fresh(module, evs, "timing-analysis", hit[0], hit[1])
+    assert schedule._latest_fail(evs, "timing-analysis") is not None
+    return any(c["rule"] == "timing-analysis" for c in schedule.complaints(module, evs))
 
 
 def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
@@ -538,23 +537,25 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
     _valid(m, "synthesis", 1)
     _fail(m, "timing-analysis", 1)  # fresh: closure (spec/rtl/synth) valid
 
-    assert _timing_fail_fresh(m)  # baseline (non-vacuous)
+    assert _timing_complaint_open(m)  # baseline (non-vacuous)
 
-    # rtl-design fix lands -> synthesis proof invalid (its recorded RTL input drifts),
-    # but _syn.v not yet regenerated. timing's fail is STALE via the transitive closure.
+    # rtl-design fix lands -> synthesis proof invalid (its recorded RTL input drifts), but
+    # _syn.v not yet regenerated, so timing's OWN inputs have not moved. The complaint stays
+    # open: an upstream rebuild two hops away does not retract what timing reported.
     _valid(m, "rtl-design", 2)
     assert not facts.proof_valid(m, facts.read_events(m), "synthesis")
-    assert not _timing_fail_fresh(m)
+    assert _timing_complaint_open(m)
 
     # the narrowed round rebuilds the producer (synthesis) FIRST — not timing, never ESCALATE.
     a = schedule.decide(m)
     assert a["action"] == "DISPATCH" and a["rule"] == "synthesis"
 
-    # synthesis rebuilds -> _syn.v drifts -> timing's OWN recorded input now mismatches
-    # (condition 2), so the fail is still stale for a different, closer reason.
+    # synthesis rebuilds -> _syn.v drifts -> timing's OWN recorded input now mismatches, and
+    # this envelope names nobody, so there is no longer a specific thing to do about the
+    # failure: it closes, and forward re-verification takes over.
     _valid(m, "synthesis", 2)
     assert facts.proof_valid(m, facts.read_events(m), "synthesis")
-    assert not _timing_fail_fresh(m)
+    assert not _timing_complaint_open(m)
 
     # timing re-verifies LAST.
     b = schedule.decide(m)
