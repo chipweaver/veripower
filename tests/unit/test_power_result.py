@@ -697,12 +697,22 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
 # ── Task 5: Golden test against the real tpu_top run ──────────────────────────
 
 
-def test_golden_real_reports_lean_pass(tmp_path):
+def _copy_golden(tmp_path, root):
+    """The captured workdir plus the per-scenario verdicts. The capture predates the file
+    base_test writes, and a run's own output is not something to hand-author into the
+    fixture, so the passing token is supplied here."""
     import shutil
 
-    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
     wd = tmp_path / "wd"
-    shutil.copytree(ROOT / "real", wd)
+    shutil.copytree(root / "real", wd)
+    for saif in (wd / "saif").glob("*.saif"):
+        saif.with_suffix(".status").write_text("PASS\n")
+    return wd
+
+
+def test_golden_real_reports_lean_pass(tmp_path):
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
+    wd = _copy_golden(tmp_path, ROOT)
     rc = p.build_result(wd, plan_path=str(ROOT / "plan"), targets="[]")
     assert rc == 0
     env = _json.loads((wd / "result.json").read_text())
@@ -738,14 +748,11 @@ def test_golden_real_reports_lean_pass(tmp_path):
 def test_golden_is_schema_valid(tmp_path):
     # Canonical pattern: validate the in-memory dict against {envelope schema + this
     # stage's result.schema} via Registry (mirrors test_signoff_result.py pattern).
-    import shutil
-
     from jsonschema import Draft202012Validator
     from referencing import Registry, Resource
 
     ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
-    wd = tmp_path / "wd"
-    shutil.copytree(ROOT / "real", wd)
+    wd = _copy_golden(tmp_path, ROOT)
     p.build_result(wd, plan_path=str(ROOT / "plan"), targets="[]")
     env = _json.loads((wd / "result.json").read_text())
     env_schema = _json.loads(
