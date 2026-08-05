@@ -18,6 +18,9 @@ docs/superpowers/
 # Defect retrospectives are point-in-time working notes kept out of VCS
 docs/retrospective/
 
+# Design notes + their measurement harnesses: working notes for one change, kept local
+docs/design/
+
 # Local test outputs
 tests/scenarios/results/
 
@@ -33,6 +36,3 @@ docs/adr/
 /*.svf
 /*.pvl
 /svf.txt
-
-# Regenerable measurement output (docs/design/*/harness re-runs it in ~75s)
-docs/design/*/out/grid-*.jsonl
