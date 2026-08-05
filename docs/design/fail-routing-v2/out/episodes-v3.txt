@@ -1,0 +1,40 @@
+=== v3: 出口判据 ===
+  类别                           n      E1     E2     E3     E4     E6     E5
+  单 fail                      20      20     20     20     20     20     20
+  双 fail diff-owner/downstream  27      27     27     27     27     27     27
+  双 fail diff-owner/independent  19      19     19     19     19     19     19
+  双 fail diff-owner/upstream  70      70     70     70     70     70     70
+  双 fail same-owner           44      44     44     44     44     44     44
+
+  判据:
+    E1  180/180  任务不丢:每个缺陷最终被修复,回合收敛
+    E2  180/180  结论不丢:每条失败的信封都送达过某个 owner 的 dispatch.json
+    E3  180/180  形态正确:同 owner 合并为一轮,不同 owner 各自一轮
+    E4  180/180  无额外重跑:每个缺陷只失败一次
+    E6  180/180  最近注入:失败与它被交付之间,owner 没有白跑过一轮
+    E5  180/180  无额外轮次:总轮数等于 registry 下界
+
+=== v3: 180 episodes, endings {'DONE': 180} ===
+  single-defect (20): waste {0: 20}
+
+  pair        owners                       n  clean  med+runs  med+min  tot+min
+  downstream  diff-owner/downstream        4      4         0        0        0
+  downstream  same-owner                   2      2         0        0        0
+  independent diff-owner/downstream       17     17         0        0        0
+  independent diff-owner/independent      12     12         0        0        0
+  independent diff-owner/upstream         31     31         0        0        0
+  independent same-owner                  25     25         0        0        0
+  upstream    diff-owner/downstream        6      6         0        0        0
+  upstream    diff-owner/independent       7      7         0        0        0
+  upstream    diff-owner/upstream         39     39         0        0        0
+  upstream    same-owner                  17     17         0        0        0
+
+  two-defect: 0/160 waste at least one run; total 0 min over 43343 min of floor
+
+  worst 3:
+    +  0min +0 runs  two/simulation-plan->specification+rtl-design->specification
+        ['specification:2', 'simulation-plan:3', 'rtl-design:3', 'lint-cdc:2', 'synthesis:2', 'timing-analysis:2', 'simulation:2', 'power-analysis:2']
+    +  0min +0 runs  two/simulation-plan->specification+lint-cdc->specification
+        ['specification:2', 'simulation-plan:3', 'rtl-design:2', 'lint-cdc:3', 'synthesis:2', 'timing-analysis:2', 'simulation:2', 'power-analysis:2']
+    +  0min +0 runs  two/simulation-plan->specification+lint-cdc->rtl-design
+        ['specification:2', 'rtl-design:2', 'lint-cdc:3', 'simulation-plan:3', 'synthesis:2', 'timing-analysis:2', 'simulation:2', 'power-analysis:2']

@@ -1,7 +1,7 @@
 # 最终方案:归因先澄清,再统一调度
 
-> **这是什么**:失败路由的最终形态。结构与 [`03-v2-as-built.md`](03-v2-as-built.md) 相同(先整体、再子函数),便于逐节对照。
-> **状态**:**设计已确认,代码未实现。** 七项逐项走查的裁决见 `01-v2-design.md` §9。落地后本文取代 03。
+> **这是什么**:失败路由的原样说明 —— 先整体,再逐个函数。和 [`02-v1-as-built.md`](02-v1-as-built.md) 对照着读。
+> **状态**:**已落地**。七项逐项走查的裁决见 `01-v2-design.md` §9,验收数字见 §5。
 > **一句话**:任何一条失败的归因没澄清,整轮停下等人;走过那一行之后,每条失败都有明确 owner,后面用一套策略调度。
 
 ---
@@ -50,7 +50,9 @@ step 1 的早退是这版的骨架:**先消除不确定性,再用一套策略调
 
 ## 2. step 0 · 收口
 
-`_ready_to_reap` 不变,见 [`03-v2-as-built.md` §2](03-v2-as-built.md)。
+两条路,都返回 `REAP`:`--wake <rule>:<run>` 命中一个在途 run;或者扫描全部在途 run 的 workdir,谁写出了 `result.json` 就收谁(多个同时就绪按 `FORWARD_PRIORITY` 取最靠前)。
+
+先收口是为了让后面三步都基于最新日志。`--wake` 有一件扫描做不到的事:**执行器死了、没写 `result.json`**,扫描看不见它,只有 `--wake` 能把它收成 `blocked` 把日志解开。
 
 ---
 
@@ -72,34 +74,56 @@ for rule in rules.FORWARD_PRIORITY:
 
 不做任何过滤 —— 过滤是调用方的事(先挑出说不清的,再挑出还欠着的)。
 
-### 3.2 `_owner(...)` —— 一条 or 链
+### 3.2 `_owner(...)` —— 一个否决 + 三个信息源
 
-调度器读"为什么失败"的唯一入口。返回 `attribution` / `owner` / `diagnoses` / `unreliable` 四个键,owner 由五档 or 链求出:
+调度器读"为什么失败"的唯一入口。返回 `attribution`(原样写下的指名)/ `owner`(它的可路由投影)/ `diagnoses`(支撑这个 owner 的可靠归因,给 `--diagnosis-refs`)/ `unreliable`(给 ESCALATE 的候选)/ `since`(§3.4)。
 
+**一个否决,加三个信息源,按权威性排序,第一个开口的说了算:**
+
+```python
+# 否决:判这条失败的 oracle 被 reopen 了 —— 判决本身不作数
+if _oracle_retracted(...):        return 没有 owner
+
+# 源 1:有人分析过这条失败吗?分析过,就以分析为准
+diags = _active_diagnoses(...)
+if diags:
+    latest = diags[-1]
+    if _reliable(latest):         return owner = latest["fix_owner"]
+    return 没有 owner              # ← 分析过但说不准,到此为止,不再往下问
+
+# 源 2:失败的 stage 自己的信封怎么写的
+named = _declared_owner(...)
+if named:                         return owner = named if _legal(...) else 没有
+
+# 源 3:注册表说这个 stage 背后有分析器吗
+if rules.RULES[rule].triage:      return owner = rules.RULES[rule].triage
+
+return 没有 owner
 ```
-① None                              判它的 oracle 已被 reopen 且未重新 pin
-② 有 active diagnosis → 由它说了算    高置信/human → 它的 fix_owner;低置信 → None(终止,不再往下)
-③ 信封里合法的 fix_owner              _declared_owner + _legal(∈ input_closure)
-④ 该规则声明的 Rule.triage            指不出来时,该动手的是分析器
-⑤ None                              没人可派
-```
+
+| | 谁在说话 | 为什么排这个位置 |
+|---|---|---|
+| 否决 | 人(reopen 了 oracle) | 判决的权威被撤回,不能拿它去指使上游改东西 |
+| 源 1 | 事后分析(triage / 人的 diagnose) | **后来的分析压过当场的自述** |
+| 源 2 | 失败的 stage 自己 | 它是唯一读过原始工具输出的人 |
+| 源 3 | 注册表(`Rule.triage`) | 前两个都没答案 → 派分析器去查 |
 
 四点说明:
 
 **① 判决被撤回 = 归因失效,不是"当没发生过"。** reopen 一个 oracle 的意思是"我不再为这个 judge 背书",那就**不能拿它的判决去指使上游改东西** —— 正确后果是交给人。(仓库里有 `test_re_reap_does_not_dispatch_upstream_rework` 守着这个危害。)`facts.verdict_trustworthy` 的条件 4(自身产物漂了)边际价值太低,直接删。
 
-**② 是终止分支,不是穿透。** 一旦有人分析过这条失败,分析结果说了算 —— 包括"说不准"(低置信 → owner=None → 交给人)。于是"已经分析过"这个守卫**自动消失**:分析过且低置信的失败,owner 已经是 None,永远走不到 ④。
+**源 1 是终止分支,不是穿透。** 一旦有人分析过这条失败,分析结果说了算 —— 包括"说不准"(低置信 → owner=None → 交给人)。于是"已经分析过"这个守卫**自动消失**:分析过且低置信的失败,owner 已经是 None,永远走不到 ④。
 
-**③④ 的先后就是"triage 是后备通道"这件事的表达。** simulation 有 UVM 参考模型作自己的 oracle,大多数失败它自己就能指名(功能/时延不符 → `rtl-design`,测试点缺失 → `simulation-plan`,规格缺陷 → `specification`);`simulation/SKILL.md` 明写"读了日志和参考模型仍然定位不了才省略 `--fix-owner`,**省略在这里是一个答案,不是耸肩**"。所以 ④ 只在 ③ 拿不到东西时才轮到。
+**源 2 在源 3 之前,就是"triage 是后备通道"这件事的表达。** simulation 有 UVM 参考模型作自己的 oracle,大多数失败它自己就能指名(功能/时延不符 → `rtl-design`,测试点缺失 → `simulation-plan`,规格缺陷 → `specification`);`simulation/SKILL.md` 明写"读了日志和参考模型仍然定位不了才省略 `--fix-owner`,**省略在这里是一个答案,不是耸肩**"。所以源 3 只在源 2 拿不到东西时才轮到。
 
 **owner 是每次重新求值的,不是记下来的。** triage 带回可靠归因后,同一条失败的 owner 从 `simulation-triage` 变成 `rtl-design`,"派过没有"这个问题的主语跟着换,于是申诉自动重新开着 —— 不需要任何"重置"逻辑。
 
 | 事件 | owner | 结果 |
 |---|---|---|
-| sim 失败,信封没指名 | `simulation-triage` | 欠着 → 派 triage |
+| sim 失败,信封没指名 | `simulation-triage`(源 3) | 欠着 → 派 triage |
 | triage 在途 | 同上 | 已答复(在途算派过);sim 不会趁机重跑,因为反链挡着(见 §4.3) |
 | triage reap 成 `blocked` | 同上 | 重新欠着 → **再派一次**。不设上限,由人自己介入 |
-| triage 带回高置信归因 | 变成归因的 `fix_owner` | 欠着 → 路由 |
+| triage 带回高置信归因 | 变成归因的 `fix_owner`(源 1) | 欠着 → 路由 |
 | triage 带回低置信归因 | `None` | → `ESCALATE`,人来判 |
 
 ### 3.3 早退:`_escalate(f)`
@@ -128,17 +152,19 @@ if unclear:
 >
 > 依据是这类失败罕见且有结构上的兜底:`simulation` 有 triage(④);闭包非空的其余 stage 契约上都要求 fail 时指名(如 `power-analysis/SKILL.md`:"`--fix-owner` on **every** failure, tool and license failures included");而 `specification` 的输入闭包为空 —— 它的失败**结构上**永远无法自动路由,新老方案都只能停下来叫人。
 
-### 3.4 `_answered(events, idx, owner) -> bool`
+### 3.4 `_answered(events, since, owner) -> bool`
 
-不变。判"**owner 被派过**",不是"被 `caused_by` 点名过" —— 问题是"该动手的那个 stage 有没有轮到过",一次因别的原因重建 owner 的轮次同样给过它机会。
-
-在途算派过;reap 成 `blocked` 不算(什么都没落成)。
+判"**owner 被派过**",不是"被 `caused_by` 点名过" —— 问题是"该动手的那个 stage 有没有轮到过",一次因别的原因重建 owner 的轮次同样给过它机会。在途算派过;reap 成 `blocked` 不算(什么都没落成)。
 
 走过 3.3 的早退之后,**这是唯一的关闭条件**:
 
 ```
-欠着(f) = ¬ _answered(owner)
+欠着(f) = ¬ _answered(f.since, f.owner)
 ```
+
+**`since` 是"这个指名何时被知道",不是"失败何时发生"。** 两者在一种情况下不同:分析指出的 owner **早就因为别的原因被派过**。那一轮不可能针对一个当时还不存在的结论做任何事,把它算成"轮到过"就会让这条失败在没人被告知的情况下关闭。所以由 diagnosis 决定的指名,`since` 取那条 diagnosis 的事件位置;信封或分析器决定的,取失败自己的 outcome 位置。
+
+这条是实现时被 episode 下界抓出来的:漏掉它,triage 报回归因后 owner 恰好是先前修另一条失败的那个 stage,于是回归白跑一轮、triage 再跑一轮。
 
 ### 3.5 `_group(open_) -> dict`
 
@@ -189,15 +215,22 @@ if unclear:
 
 ```python
 def _unblocked(rule_name, pending, inflight):
-    """pending = 在途 ∪ 本轮其它候选。"""
-    if any(p != rule_name and p in rules.input_closure(rule_name) for p in pending):
-        return False          # 生产者在途,或也在本轮候选里 → 等它
-    if any(rule_name in rules.input_closure(f["rule"]) for f in inflight):
-        return False          # 消费者在途 → 撕裂读
-    return True
+    closure = rules.input_closure(rule_name)
+    running = {f["rule"] for f in inflight}
+    if any(r in closure for r in running):
+        return False        # ① 生产者在途:它正在改写我要读的东西(物理危险)
+    if rules.RULES[rule_name].proof and any(
+        p != rule_name and p in closure for p in pending - running
+    ):
+        return False        # ② 生产者也在本轮候选里:我的产出会被它作废(逻辑陈旧)
+    return not any(rule_name in rules.input_closure(r) for r in running)   # ③ 消费者在途:撕裂读
 ```
 
-两个子句方向不同,**第二句只对在途生效**:对同批候选也生效的话,两个有上下游关系的候选会互相挡住而死锁 —— 生产者被"消费者也在候选里"挡住,消费者被"生产者也在候选里"挡住。对同批候选,正确处理是"生产者先走、消费者等下一轮",这正是第一句。
+三个子句,不对称之处都是设计:
+
+- **①** 对每条规则都成立 —— 边写边读是物理危险。
+- **② 只约束产出 proof 的规则。** 无 proof 的规则(分析器)分析的是**一个冻结的历史 run**,落下的 diagnosis 绑定在那次 run 上,上游怎么重建都作废不了它。压住它的代价是实打实的:它本该指出的 owner 一直不为人知,于是修另一条失败的那一轮无法顺带把这条也修了 —— 实现时这一条让整条流水线多重建一遍。
+- **③ 只对在途生效**,绝不对同批候选生效:对同批也生效的话,有上下游关系的两个候选会互相挡住而死锁。对同批候选,正确处理是"生产者先走、消费者等下一轮",那正是 ②。
 
 两个方向都从严,是确认过的:**RTL 正在重写时不起综合/lint**(人手工要一版 QoR 参考属于探索性动作,不进内核调度);**消费者在途要等它结束**,结束后如果 fail 再由 decide 重新判去哪。
 
@@ -252,40 +285,58 @@ triage 只看当次失败的波形和日志,**不需要**上一次通过的 run 
 
 ---
 
-## 7. 与落地版(03)的差异一览
+## 7. 与上一版的差异一览
 
-| | 03 落地版 | 本文 |
+| | 上一版 | 现在 |
 |---|---|---|
 | 失败开着的判据 | 三问四支(判决算数 / 有主-派过 / 无主-输入没漂) | **一条子句**:owner 没被派过 |
 | 归因说不清时 | 挂 `escalations[]` 随派发上报,流程继续 | **整轮停下等人**(step 1 早退) |
-| `facts.verdict_trustworthy` | `complaints` 调用 | 条件 3 → owner 链第 ① 档;条件 4 删 |
+| `facts.verdict_trustworthy` | `complaints` 调用 | 条件 3 → `_oracle_retracted`(否决档);条件 4 删 |
 | `facts.inputs_unchanged` | `complaints` 调用 | **删** |
-| 归因求值 | 两条通道 + 守卫 | **一条 or 链**,五档 |
-| `unreliable` 守卫 | `_group` 里一条 | **自动消失**(② 是终止分支) |
-| triage | 第三个桶 + 专用分支 | **or 链里的一档**,普通 owner |
-| 闭包冲突 | `_antichain_ok` + 闭包极小筛 | **一个 `_unblocked`**,两个子句 |
+| 归因求值 | 两条通道 + 守卫 | **一个否决 + 三个信息源** |
+| `unreliable` 守卫 | `_group` 里一条 | **自动消失**(源 1 是终止分支) |
+| triage | 第三个桶 + 专用分支 | **源 3**,普通 owner |
+| 闭包冲突 | `_antichain_ok` + 闭包极小筛 | **一个 `_unblocked`**,三个子句 |
 | `escalations[]` 动作字段 | 有 | **删** |
-| `Rule.triage_attempts` | 无 | **不加**(不设上限,由人介入) |
 | 注册表 | — | `simulation-triage` 声明消费 `simulation` |
 | 概念词 | 申诉 / 有主 / 无主 / 判决算数 / 可靠 / 反链 / 闭包极小 | **失败 / owner / 派过没有 / 反链** |
+| `schedule.py` 最大圈复杂度 | 9 | **9**(函数 25 个,if 40 处) |
 
-## 8. 预期行为变化(验收时必须只落在这几类)
+## 8. 验收(实测)
 
-| # | 情形 | 03 | 本文 |
-|---|---|---|---|
-| Δ1 | 无人可派的失败 + 输入漂了 | 关闭 → 前向重验 | 一直 escalate 到人介入 |
-| Δ2 | 判它的 oracle 被 reopen | 关闭 → 前向重验 | 归因失效 → 交给人 |
-| Δ3 | 有说不清的失败时,其他能自动修的活 | 照常推进(`escalations` 随派发上报) | **停下** |
-| Δ4 | sim 说不出 + 上游刚改过 | 前向重验 sim(54min) | 先派 triage(便宜的 `task`) |
-| Δ5 | triage 分析期间 | sim 可能被重验 | 反链挡住 |
+180 个 episode(含新补的 45 个 triage 通路),六项判据:
 
-**已验收的机时账不受影响**:135 个 episode 的缺陷全是"信封指名合法"的,Δ1–Δ4 一个都不触发,E1–E6 应保持 135/135、浪费 0。
+| # | 判据 | 上一版 | 现在 |
+|---|---|---:|---:|
+| E1 | 任务不丢 | 180 | **180** |
+| E2 | 结论不丢 | 147 | **180** |
+| E3 | 合并/分轮形态正确 | 169 | **180** |
+| E4 | 无额外重跑 | 147 | **180** |
+| E6 | 最近注入 | 147 | **180** |
+| E5 | 无额外轮次(== registry 下界) | 147 | **180** |
 
-Δ3 会让状态网格里 A4 那 348 格回到"整轮 ESCALATE" —— **A4 这条性质随之退休**(它是度量时发明的判据,与最终策略相反)。
+```
+episode_report.py --tag v2 --diff v3
+  better=33  same=147  worse=0
+  总浪费 4960 min → 0 min
+```
 
-## 9. 落地顺序
+**180 个 episode 全部跑在 registry 下界上。** 之前 45 个 triage 通路 episode 里有 33 个丢结论,现在 0 个。
 
-1. episode 集补 `none` 类缺陷,把 triage 通路端到端量出来(Δ4 唯一缺数字的地方);顺带修正 `00-scenario-space.md` §7 里"triage 环路有覆盖"那句错话
-2. 注册表加 triage 的输入声明,逐格验证(只应影响 triage 在途的格子)
-3. 上 step 1 / step 2 的最终形态,逐格对照,变化必须只在 Δ1–Δ5
-4. 文档:本文取代 `03-v2-as-built.md`;`02-v1-as-built.md` 保留作对照
+状态网格 1781 格里变化 **704 格**,全部落在两类:
+
+| 类别 | 格数 | 说明 |
+|---|---:|---|
+| 首动作 DISPATCH → ESCALATE | 675 | Δ3:归因说不清就停下等人(裁决第 5 项) |
+| 派发目标变化 | 29 | triage 提前(便宜的 `task` 先起),且它现在也拿到失败信封 |
+
+性质表:A1(反链)、A3(同 owner 合并)、A6(不重验未答复的失败)、A7(能并行必并行)**全部 0**;A4 按裁决退休。
+
+## 9. 实现时被基线抓出来的两处
+
+两处都是我在这一版里引入的,靠 180 个 episode 的下界对照发现:
+
+1. **`_answered` 的起点错了**(§3.4)。分析报回的 owner 若早已因别的原因被派过,会被当成"轮到过",于是失败在没人被告知的情况下关闭 —— 回归白跑一轮、triage 再跑一轮。修法:起点取"这个指名何时被知道"。
+2. **无 proof 的规则被"生产者也在候选里"挡住**(§4.3)。分析器读的是冻结的历史 run,产出不会被上游作废;压住它导致它本该指出的 owner 一直不为人知,整条流水线多重建一遍。修法:② 只约束产出 proof 的规则。
+
+没有这套下界对照,两处都会静默留下。
