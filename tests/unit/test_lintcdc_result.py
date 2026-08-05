@@ -28,7 +28,7 @@ def _clean_workdir(tmp_path, lint_err=0, cdc_err=0):
         json.dumps(
             {
                 "kind": "lint",
-                "counts": {"error": lint_err, "warning": 2, "info": 5},
+                "counts": {"error": lint_err, "warning": 0, "info": 5},
                 "violations": [],
             }
         )
@@ -114,6 +114,49 @@ def test_envelope_fail_on_lint_error(tmp_path):
     )
 
 
+def test_envelope_fail_on_warning_with_no_error(tmp_path):
+    """A warning-severity message gates exactly as an error does: a run that left one standing
+    is not sign-off, and a waive carrying its reason is the only route from there to pass."""
+    wd = _clean_workdir(tmp_path)
+    (wd / "lint-violations.json").write_text(
+        json.dumps(
+            {
+                "kind": "lint",
+                "counts": {"error": 0, "warning": 1, "info": 5},
+                "violations": [
+                    {
+                        "id": "SYNTH_5118:fa_core.v:723",
+                        "rule": "SYNTH_5118",
+                        "severity": "warning",
+                        "file": "fa_core.v",
+                        "line": 723,
+                        "message": (
+                            "Function (f32_add) may not return a correct value as 'n_t01' is "
+                            "either unassigned or assigned some uninitialized variable in some "
+                            "path(s)"
+                        ),
+                    }
+                ],
+            }
+        )
+    )
+    assert rb.run(wd) == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    ss = env["stage_specific"]
+    assert "1 lint warning(s)" in ss["fail_reason"]
+    v = ss["violations"][0]
+    assert (v["id"], v["severity"]) == ("SYNTH_5118:fa_core.v:723", "warning")
+    assert v["reason"].startswith("SYNTH_5118: Function (f32_add) may not return")
+
+
+def test_info_severity_does_not_gate(tmp_path):
+    # The pass fixture carries info rows in its counts; only error and warning are counted.
+    wd = _clean_workdir(tmp_path)
+    assert rb.run(wd) == 0
+    assert json.loads((wd / "result.json").read_text())["status"] == "pass"
+
+
 # ---------------------------------------------------------------------------
 # Task 2: Reproducibility-header derivations
 # ---------------------------------------------------------------------------
@@ -159,16 +202,31 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
 FIX = Path(__file__).resolve().parent / "fixtures" / "lint-cdc-tpu_top"
 
 
+def _resolve_warnings(wd):
+    """The same real run with its two W528 resolved: the rows gone and the count with them."""
+    p = wd / "lint-violations.json"
+    doc = json.loads(p.read_text())
+    doc["violations"] = [v for v in doc["violations"] if v["severity"] != "warning"]
+    doc["counts"]["warning"] = 0
+    p.write_text(json.dumps(doc))
+
+
 def test_golden_lean_against_real_tpu_top(tmp_path):
+    """The real tpu_top run carried zero errors and two W528 warnings, and the error-only gate
+    passed it. Both rows are real findings, so the run does not close on them."""
     wd = tmp_path / "lint-cdc"
     shutil.copytree(FIX, wd)
     assert rb.run(wd) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     # contract / header fields — exact to the real run
-    assert env["status"] == "pass"
+    assert env["status"] == "fail"
     assert ss["tool"] == "SpyGlass vL-2016.06"
-    assert ss["violations"] == []  # no error-severity rows -> empty, no reason derived
+    assert "2 lint warning(s)" in ss["fail_reason"]
+    assert [(v["rule"], v["severity"], v["line"]) for v in ss["violations"]] == [
+        ("W528", "warning", 231),
+        ("W528", "warning", 252),
+    ]
     # lean: dropped fields ABSENT
     for k in (
         "note",
@@ -193,10 +251,14 @@ def test_golden_is_schema_valid(tmp_path):
 
     wd = tmp_path / "asic" / "tpu_top" / "Design" / "lint-cdc"
     shutil.copytree(FIX, wd)
+    _resolve_warnings(
+        wd
+    )  # the pass path is what this guards, so close the real findings
     rb.run(wd)
     result = json.loads((wd / "result.json").read_text())
     err = facts.validate_result("lint-cdc", result)
     assert err is None, f"golden lint-cdc result.json is not schema-valid: {err}"
+    assert result["status"] == "pass"
 
 
 def test_fail_envelope_is_schema_valid(tmp_path):

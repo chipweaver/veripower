@@ -5,8 +5,8 @@ description: Use when running SpyGlass lint or CDC checks, analyzing violations,
 
 # Lint / CDC
 
-Your sole responsibility: converge SpyGlass lint and CDC to a clean error count on this
-module's RTL, and close the run through the `lintcdc` CLI.
+Your sole responsibility: converge SpyGlass lint and CDC to a clean error and warning count on
+this module's RTL, and close the run through the `lintcdc` CLI.
 
 ## Iron Rule
 
@@ -81,8 +81,9 @@ then `make cdc` when you want `set_case_analysis` settled before CDC runs. Each 
 `collect_report.py`, which writes `<kind>-report.txt` for a human and `<kind>-violations.json`
 carrying `counts` plus one row per message.
 
-Triage every `severity=error` row in both sidecars. The annotations already suppressed the
-false-positive classes their authors declared, so a row that survived is one of three things:
+Triage every `severity=error` and `severity=warning` row in both sidecars. The annotations
+already suppressed the false-positive classes their authors declared, so a row that survived is
+one of three things:
 
 - **Acceptable anyway** → a `waive` in `scripts/waiver.tcl` carrying `-comment "<why>"`, then
   re-run that check to confirm it took. SpyGlass subtracts a waived message before anything
@@ -115,9 +116,9 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] [--fail-reason "<cause>"]
 ```
 
-It ANDs the two sidecars for the gate (`status=pass` iff both exist and `counts.error == 0` in
-both), reads the SpyGlass version off the report, reshapes the error rows into `violations[]`,
-and enumerates `artifacts[]`. Both flags carry what the report cannot:
+It ANDs the two sidecars for the gate (`status=pass` iff both exist and `counts.error` and
+`counts.warning` are both 0 in both), reads the SpyGlass version off the report, reshapes those
+rows into `violations[]`, and enumerates `artifacts[]`. Both flags carry what the report cannot:
 
 - **`--fail-reason`**, which fills `stage_specific.fail_reason`, when a `make` died before the
   parser wrote its sidecar, so the cause exists only on the stderr you read. Supplying it is

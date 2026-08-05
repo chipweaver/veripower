@@ -7,10 +7,10 @@ path) and runs ONCE PER KIND, each writing its own `*-violations.json`. So this 
 a pure file-reader over those two sidecars: it neither imports nor subprocesses the
 parser, and writes no sidecar of its own.
 
-The gate ANDs the two: status=pass iff both sidecars exist and counts.error == 0 in both.
-`reason` on each violation row is derived from the parser's tool `message`, which is
-faithful rather than a judgment, because the gate is the error COUNT and never the reason
-text.
+The gate ANDs the two: status=pass iff both sidecars exist and neither counts an
+error- or warning-severity message. `reason` on each violation row is derived from the
+parser's tool `message`, which is faithful rather than a judgment, because the gate is the
+COUNT and never the reason text.
 """
 
 from __future__ import annotations
@@ -54,20 +54,23 @@ def _load_violations(path: Path):
     return json.loads(path.read_text()) if path.is_file() else None
 
 
-def _error_violations(doc: dict) -> list[dict]:
-    """Reshape the error-severity rows to the schema's {id, rule, severity, reason} (+
-    file/line/message kept as additionalProperties). Error rows only, so this is empty
+GATED = ("error", "warning")
+
+
+def _gated_violations(doc: dict) -> list[dict]:
+    """Reshape the gate-counted rows to the schema's {id, rule, severity, reason} (+
+    file/line/message kept as additionalProperties). Gated rows only, so this is empty
     on every pass: the full all-severity account stays in the promoted sidecar."""
     out = []
     for v in (doc or {}).get("violations", []):
-        if v.get("severity") != "error":
+        if v.get("severity") not in GATED:
             continue
         msg = v.get("message", "")
         out.append(
             {
                 "id": v["id"],
                 "rule": v["rule"],
-                "severity": "error",
+                "severity": v["severity"],
                 "reason": f"{v['rule']}: {msg}" if msg else v["rule"],
                 "file": v.get("file"),
                 "line": v.get("line"),
@@ -75,6 +78,13 @@ def _error_violations(doc: dict) -> list[dict]:
             }
         )
     return out
+
+
+def _gated_count(doc: dict) -> int:
+    """How many messages the gate counts in one sidecar. A `counts` block the parser did
+    not write reads as 0 here and the missing-sidecar branch is what fails that run."""
+    counts = (doc or {}).get("counts") or {}
+    return sum(counts.get(sev) or 0 for sev in GATED)
 
 
 def run(workdir, *, fix_owner=None, fail_reason=None) -> int:
@@ -85,19 +95,18 @@ def run(workdir, *, fix_owner=None, fail_reason=None) -> int:
     artifacts = enumerate_artifacts(workdir)
 
     # AND gate: both *-violations.json present (== both make runs reached collect_report
-    # cleanly) AND counts.error == 0 in both. A missing file means that kind's make did
-    # not produce a clean report, which is a fail on its own.
-    lint_err = (lint or {}).get("counts", {}).get("error")
-    cdc_err = (cdc or {}).get("counts", {}).get("error")
-    violations = _error_violations(lint) + _error_violations(cdc)
-    if fail_reason or lint is None or cdc is None or lint_err or cdc_err:
+    # cleanly) AND neither counts an error- or warning-severity message. A missing file
+    # means that kind's make did not produce a clean report, which is a fail on its own.
+    lint_bad = _gated_count(lint)
+    cdc_bad = _gated_count(cdc)
+    violations = _gated_violations(lint) + _gated_violations(cdc)
+    if fail_reason or lint is None or cdc is None or lint_bad or cdc_bad:
         # A caller-supplied reason wins: it comes from the agent that watched `make`
         # fail and read the parser's stderr, which is strictly more than this verb can
         # reconstruct from a report that is not on disk.
         ss: dict = {
             "tool": tool,
-            "fail_reason": fail_reason
-            or _gate_fail_reason(lint, cdc, lint_err, cdc_err),
+            "fail_reason": fail_reason or _gate_fail_reason(lint, cdc),
         }
         if violations:
             # violations[] IS the failure account: every row carries rule + file:line +
@@ -123,8 +132,8 @@ def run(workdir, *, fix_owner=None, fail_reason=None) -> int:
     return 0
 
 
-def _gate_fail_reason(lint, cdc, lint_err, cdc_err) -> str:
-    # Both gate-fail shapes: a sidecar the parser never wrote, and error rows in one it
+def _gate_fail_reason(lint, cdc) -> str:
+    # Both gate-fail shapes: a sidecar the parser never wrote, and gated rows in one it
     # did. Only reached when the caller passed no --fail-reason, so the wording stays
     # generic on purpose: whoever watched `make` fail knows more than this, and saying it
     # is their job.
@@ -133,11 +142,13 @@ def _gate_fail_reason(lint, cdc, lint_err, cdc_err) -> str:
     if cdc is None:
         return "CDC report missing/unparseable, not real sign-off"
     bits = []
-    if lint_err:
-        bits.append(f"{lint_err} lint error(s)")
-    if cdc_err:
-        bits.append(f"{cdc_err} CDC error(s)")
-    return "error-severity violations: " + ", ".join(bits)
+    for kind, doc in (("lint", lint), ("CDC", cdc)):
+        counts = (doc or {}).get("counts") or {}
+        for sev in GATED:
+            n = counts.get(sev) or 0
+            if n:
+                bits.append(f"{n} {kind} {sev}(s)")
+    return "gated violations: " + ", ".join(bits)
 
 
 # ---------------------------------------------------------------------------
@@ -170,8 +181,8 @@ def _logical_lines(text: str) -> list[str]:
 def waiver_defects(workdir: Path) -> list[str]:
     """Active `waive` entries that do not say why, if any.
 
-    A waiver is the only route from a real error-severity violation to status=pass: SpyGlass
-    subtracts it before the parser ever counts, so the envelope cannot tell a waived error
+    A waiver is the only route from a real gated violation to status=pass: SpyGlass
+    subtracts it before the parser ever counts, so the envelope cannot tell a waived message
     from one that never happened. An entry with no rationale therefore converts a fail into a
     pass and records nothing about what was accepted, which is the one thing a reader of this
     proof later needs. Deterministic, so it is enforced rather than merely asked for.
