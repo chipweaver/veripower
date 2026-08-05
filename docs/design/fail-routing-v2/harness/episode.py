@@ -199,11 +199,18 @@ def _land_triage(module, run, defects):
 
 
 def episodes():
-    """Every self-describing (envelope-attributed) failure combination: one failing rule,
-    then every pair. `env:` only — a `diag:` episode would need a human in the loop for
-    every re-fail (a human diagnosis binds to one outcome_run), which is not a scheduler
-    property. simulation's triage loop IS exercised: its `none` category dispatches triage,
-    and the executor mints the diagnosis a complete triage would."""
+    """Two families.
+
+    ENVELOPE (`env:`): the failing stage names its own fix owner. One failing rule, then
+    every pair. A `diag:` variant is not generated — a human diagnosis binds to one
+    outcome_run, so every re-fail would need a human back in the loop, which is not a
+    scheduler property.
+
+    TRIAGE (`none:`): simulation's envelope names nobody, so the diagnostic runs and its
+    reap mints the attribution. This is the path `simulation/SKILL.md` calls "an answer
+    rather than a shrug", and until 2026-08-05 the episode set never once entered it —
+    simulation-triage ran zero times across both tags, so every acceptance number spoke
+    only for the envelope family."""
     out = []
     for r in space.PROOFS:
         for o in sorted(rules.input_closure(r), key=space.PROOFS.index):
@@ -219,6 +226,34 @@ def episodes():
                         "owner_rel": "same-owner"
                         if oa == ob
                         else f"diff-owner/{space.relation(oa, ob)}",
+                    }
+                )
+
+    # triage family: simulation cannot attribute its own failure, so the diagnostic has to
+    # find the owner first. Paired against every envelope defect too, because the
+    # interesting question is what happens to an un-analysed failure while a sibling repair
+    # lands under it.
+    for o in sorted(rules.input_closure("simulation"), key=space.PROOFS.index):
+        out.append(
+            {
+                "id": f"one/simulation~triage->{o}",
+                "defects": [("simulation", o)],
+                "triage": ["simulation"],
+            }
+        )
+        for r in space.PROOFS:
+            if r == "simulation":
+                continue
+            for oo in sorted(rules.input_closure(r), key=space.PROOFS.index):
+                out.append(
+                    {
+                        "id": f"two/simulation~triage->{o}+{r}->{oo}",
+                        "defects": [("simulation", o), (r, oo)],
+                        "triage": ["simulation"],
+                        "pair_rel": space.relation("simulation", r),
+                        "owner_rel": "same-owner"
+                        if o == oo
+                        else f"diff-owner/{space.relation(o, oo)}",
                     }
                 )
     return out
@@ -248,7 +283,12 @@ def main():
         for i, ep in enumerate(eps):
             mdir = SCRATCH / f"e{i:05d}" / "m"
             shutil.copytree(template, mdir)
-            defects = [Defect(r, o, f"env:{o}") for r, o in ep["defects"]]
+            # a rule listed in `triage` names nobody, so its owner has to be discovered
+            triaged = set(ep.get("triage", []))
+            defects = [
+                Defect(r, o, "none" if r in triaged else f"env:{o}")
+                for r, o in ep["defects"]
+            ]
             for d in defects:  # land the initial failures, FORWARD order
                 F.fail(str(mdir), d.rule, 2, d.category)
             runs, actions, ending, occ, occ_step, deliv, told_log = run_episode(str(mdir), defects)
@@ -282,6 +322,7 @@ def main():
                     "n_runs": len(runs),
                     "minutes": sum(MINUTES[r] for r, _ in runs),
                     "triage_runs": sum(1 for r, _ in runs if r == "simulation-triage"),
+                    "triage": ep.get("triage", []),
                     "ending": ending,
                     "actions": actions,
                     "occurrences": [f"{r}:{n}" for r, n in occ],

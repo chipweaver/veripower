@@ -42,7 +42,9 @@ def load(tag):
     for r in recs:
         owners = [x.split("->")[1] for x in r["id"].split("/", 1)[1].split("+")]
         fr = floor_runs(owners)
-        r["floor_runs"] = len(fr)
+        # a failure whose stage cannot attribute it needs one analysis round before anyone
+        # can be dispatched — that round is part of the floor, not waste
+        r["floor_runs"] = len(fr) + len(r.get("triage", []))
         r["floor_min"] = sum(MINUTES[x] for x in fr)
         r["waste_runs"] = r["n_runs"] - r["floor_runs"]
         r["waste_min"] = r["minutes"] - r["floor_min"]
