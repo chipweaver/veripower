@@ -178,7 +178,9 @@ def test_yield_says_whether_the_executor_ever_wrote(tmp_path, monkeypatch):
     # store.carry_self copies with copy2 and keeps the source mtime.
     p = facts.module_root("m") / wd / "draft.md"
     p.write_text("working")
-    os.utime(p, ns=(0, (facts.module_root("m") / wd / "dispatch.json").stat().st_mtime_ns))
+    os.utime(
+        p, ns=(0, (facts.module_root("m") / wd / "dispatch.json").stat().st_mtime_ns)
+    )
     assert schedule.decide("m")["in_flight"][0]["executor_wrote"] is False
     p.write_text("working, and later than the dispatch")
     assert schedule.decide("m")["in_flight"][0]["executor_wrote"] is True
@@ -445,7 +447,11 @@ def test_escalation_names_the_verb_that_clears_it(tmp_path, monkeypatch):
     )
 
     # and it is not one branch: every class says what unblocks it
-    for named in (None, "simulation", "lint-cdc"):  # nobody / itself / outside the closure
+    for named in (
+        None,
+        "simulation",
+        "lint-cdc",
+    ):  # nobody / itself / outside the closure
         c = {
             "rule": "simulation",
             "run": 2,
@@ -486,7 +492,9 @@ def test_repair_after_fix_lands_redispatches_failed_rule_not_fix_owner(
     )  # the fix lands, so the owner has had its turn
     opened = _turn("m")
     assert "simulation" in opened and "rtl-design" not in opened
-    assert opened.index("lint-cdc") < opened.index("simulation")  # async one starts first
+    assert opened.index("lint-cdc") < opened.index(
+        "simulation"
+    )  # async one starts first
 
 
 def test_blocked_goes_forward_no_escalate(tmp_path, monkeypatch):
@@ -645,9 +653,7 @@ def test_advisory_releases_once_its_predecessor_has_spoken(tmp_path, monkeypatch
     assert d["action"] == "DISPATCH" and d["rule"] == "synthesis"
 
 
-def test_advisory_predecessor_is_scheduled_rather_than_waited_on(
-    tmp_path, monkeypatch
-):
+def test_advisory_predecessor_is_scheduled_rather_than_waited_on(tmp_path, monkeypatch):
     """The advisory hold is only ever a bet that the predecessor is about to speak, so the
     predecessor has to be schedulable. It is, because the goal set spans the DAG: a stale
     lint-cdc is picked up in the same turn and synthesis follows it. While the goal set

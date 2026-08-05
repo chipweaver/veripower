@@ -602,8 +602,14 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
         },
     )
     r = _run_json(
-        tmp_path, "reap", "--module", module, "--rule", "simulation-triage",
-        "--run", str(d["run"]),
+        tmp_path,
+        "reap",
+        "--module",
+        module,
+        "--rule",
+        "simulation-triage",
+        "--run",
+        str(d["run"]),
     )
     assert r["ok"] is True
     diagnoses = [e for e in facts.read_events(module) if e["type"] == "diagnosis"]
