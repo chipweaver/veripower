@@ -75,6 +75,8 @@ cd {workdir} && make all >make.out 2>&1
 `all` is `gls-compile` (which re-renders the power tests and absolutizes the TB filelist first),
 then `gls-run` for one SAIF per scenario, then `ptpx`. The redirect keeps multi-thousand-line VCS
 and PT logs out of context; every step also tees its own log, which is what you read on a failure.
+`make all` outlives the foreground Bash timeout, so launch it detached (`run_in_background=True`)
+and stay in this turn until it exits — nothing resumes a subagent when a job it started finishes.
 
 ### 3. Close
 
