@@ -94,8 +94,8 @@ from `<ppa>/ppa.json` itself — an absent file or dim leaves the dimension unga
 claim. It records the measurements as `stage_specific.power_by_scenario[]` and
 `stage_specific.ppa_actual[]`, a missed target as `stage_specific.violations[]`, the SAIF set as
 `stage_specific.saif_artifacts[]`, the VCS identity as `stage_specific.compile_info`, and the data
-faults it detected itself — an empty SAIF, an unreadable or irreconcilable report — as
-`stage_specific.failures[]`.
+faults it detected itself — an empty SAIF, a gate-level run that did not report `PASS`, an
+unreadable or irreconcilable report — as `stage_specific.failures[]`.
 
 The flags carry what the reports cannot:
 

@@ -49,7 +49,7 @@
                 "properties": {
                   "id":            {"type": "string"},
                   "phase":         {"enum": ["compile", "run", "ptpx", "parse"]},
-                  "category":      {"enum": ["saif_dump", "ptpx_data"], "description": "What the parser itself detected, and only that: saif_dump = the SAIF came out empty; ptpx_data = a PT-PX report is absent, missing its Total, or fails the Total = internal+switching+leakage reconciliation. Nothing else writes this array, so the enum is exactly the set of conditions the parser has a branch for. The upstream-naming values it used to carry (netlist/sdf/tb_uvm/gls_runtime/plan) encoded WHOSE artifact was at fault, which fix_owner now states directly; tooling named this stage's own environment, which the parser cannot detect and never wrote."},
+                  "category":      {"enum": ["saif_dump", "gls_uvm", "ptpx_data"], "description": "What the parser itself detected, and only that: saif_dump = the SAIF came out empty; gls_uvm = that scenario's gate-level run reported a UVM error, or left no verdict beside its SAIF at all; ptpx_data = a PT-PX report is absent, missing its Total, or fails the Total = internal+switching+leakage reconciliation. Nothing else writes this array, so the enum is exactly the set of conditions the parser has a branch for. The upstream-naming values it used to carry (netlist/sdf/tb_uvm/gls_runtime/plan) encoded WHOSE artifact was at fault, which fix_owner now states directly; tooling named this stage's own environment, which the parser cannot detect and never wrote."},
                   "error_summary": {"type": "string"},
                   "log_excerpt":      {"type": "string"}
                 }

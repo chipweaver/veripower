@@ -10,6 +10,8 @@ Source files:
                                 stable verbose-summary sentence form is more
                                 regex-friendly than the hierarchical table.
   - switching_activity.rpt    ← from `report_switching_activity`.
+  - saif/<id>.status          ← from base_test.report_phase, one token per
+                                gate-level run (see _read_gls_status).
 
 Each function returns None on missing file / parse failure; the caller
 (typically build_result_json or the subagent writing result.json) decides
@@ -201,6 +203,20 @@ def _parse_vcs_version(log_path: Path | str) -> str:
     return m.group(1) if m else "unknown"
 
 
+def _read_gls_status(workdir: Path, sid: str) -> str | None:
+    """The one-token verdict `base_test.report_phase` wrote for that scenario's gate-level
+    run, or None when the run left none.
+
+    The token is computed from the UVM report server's own UVM_ERROR + UVM_FATAL counts, so
+    it is the same pass/fail contract the RTL regression closes on. None is not "clean": a
+    run that hit $fatal or died never reached report_phase, and the simulator's exit code
+    says nothing (the eda-exec shim normalizes it to 0). A SAIF is produced either way, and
+    activity recorded off a run whose stimulus failed does not qualify a power number.
+    """
+    p = Path(workdir) / "saif" / f"{sid}.status"
+    return p.read_text(errors="replace").strip() if p.is_file() else None
+
+
 def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
     """Assemble + judge. Returns (rc, payload): rc 0 = parsed+judged (incl ppa-miss), non-zero =
     deterministic data failure (FAIL=<token> on stderr). The payload is returned on BOTH paths —
@@ -252,6 +268,23 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
                     "sequence_ref": seq,
                 }
             )
+
+        status = _read_gls_status(workdir, sid)
+        if status != "PASS":
+            failures.append(
+                {
+                    "id": sid,
+                    "phase": "run",
+                    "category": "gls_uvm",
+                    "error_summary": (
+                        f"gate-level run reported {status}: saif/{sid}.status"
+                        if status
+                        else f"gate-level run left no verdict: saif/{sid}.status absent"
+                    ),
+                    "log_excerpt": f"saif/{sid}.run.log",
+                }
+            )
+            scenario_failed = True
 
         if total is None:
             summ = (
@@ -327,7 +360,9 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
         }
         f0 = failures[0]
         summ = f0["error_summary"]
-        if "!=" in summ:
+        if f0["category"] == "gls_uvm":
+            token = "gls_uvm"
+        elif "!=" in summ:
             token = "invariant"
         elif "not found" in summ:
             token = "report_missing"

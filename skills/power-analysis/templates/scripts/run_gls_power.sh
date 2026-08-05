@@ -78,26 +78,39 @@ while IFS=$'\t' read -r id seq; do
 	[ -z "$id" ] && continue
 
 	canonical="$SAIF_DIR/_dedup/${seq}.saif"
+	canonical_status="$SAIF_DIR/_dedup/${seq}.status"
 	target="$SAIF_DIR/${id}.saif"
+	target_status="$SAIF_DIR/${id}.status"
 
 	# Stale 0-byte canonical (from a prior aborted run) must NOT be reused —
-	# delete and fall through to re-simulate.
-	if [ -f "$canonical" ] && [ ! -s "$canonical" ]; then
-		echo "[stale] $canonical (size=0); deleting and re-running" | tee -a "$LOG"
-		rm -f "$canonical"
+	# delete and fall through to re-simulate. A canonical SAIF with no status file
+	# beside it is the same case: the two are one record of one run, and activity
+	# whose run reported no verdict is not inheritable by the scenarios sharing it.
+	if [ -f "$canonical" ] && { [ ! -s "$canonical" ] || [ ! -f "$canonical_status" ]; }; then
+		echo "[stale] $canonical (empty, or no status beside it); deleting and re-running" | tee -a "$LOG"
+		rm -f "$canonical" "$canonical_status"
 	fi
 
 	if [ -f "$canonical" ]; then
 		if ! ln -f "$canonical" "$target" 2>/dev/null; then
 			cp -p "$canonical" "$target"
 		fi
+		if ! ln -f "$canonical_status" "$target_status" 2>/dev/null; then
+			cp -p "$canonical_status" "$target_status"
+		fi
 		echo "[reuse] $id ← $seq" | tee -a "$LOG"
 		continue
 	fi
 
+	# Write-fresh-or-nothing: an inherited status file would report the previous run.
+	# base_test writes it in report_phase from the UVM report server's own UVM_ERROR +
+	# UVM_FATAL counts, so a run that died before that phase leaves none — and its absence
+	# is the signal, exactly as in the RTL regression this TB is shared with.
+	rm -f "$canonical_status"
 	echo "[run]   $id ($seq)" | tee -a "$LOG"
 	"$SIMV" +UVM_TESTNAME="power_${seq}_test" \
 		+saif_file="$canonical" \
+		+IPD_STATUS_PATH="$canonical_status" \
 		+vcs+initreg+0 \
 		2>&1 | tee "$SAIF_DIR/${id}.run.log" >>"$LOG"
 
@@ -108,6 +121,11 @@ while IFS=$'\t' read -r id seq; do
 
 	if ! ln -f "$canonical" "$target" 2>/dev/null; then
 		cp -p "$canonical" "$target"
+	fi
+	# Not gated here: every scenario runs, and finalize reads the whole set, so one
+	# scenario's UVM errors do not cost the account of the others.
+	if [ -f "$canonical_status" ]; then
+		ln -f "$canonical_status" "$target_status" 2>/dev/null || cp -p "$canonical_status" "$target_status"
 	fi
 done < <(python3 "$(dirname "$0")/extract_power_scenarios.py" "$PLAN")
 
