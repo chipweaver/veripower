@@ -4,7 +4,7 @@
 > **完备性怎么保证**:场景不是手写清单,是从 `framework/scripts/rules.py` 推导的(`space.py`)。registry 一改,场景集自动跟着改。
 > **被测代码**:`main @ 0065bf5`。**测量日期**:2026-08-04。
 > **它不是什么**:不是重构方案(见 [`01-v2-design.md`](01-v2-design.md)),不评价 EDA 工具耗时。
-> **结果**:v2 已落地并按本文判据验收 —— E1–E6 全部 135/135,A1/A3/A4/A7 全部归零,浪费 12220min → 0。详见 `01-v2-design.md` §5。
+> **结果**:v2 已落地并按本文判据验收 —— E1–E6 全部 135/135,A1/A3/A7 全部归零,浪费 12220min → 0(A4 这条判据后被裁决退休)。详见 `01-v2-design.md` §5、§9。
 
 ```bash
 cd harness
@@ -229,7 +229,7 @@ E6 今天与 E2 恰好同集合(结论从未送达 ⇒ owner 后来跑过的每�
 | A1 | 同时在途的两个 run 不得有输入闭包关系 | **23**/1781 |
 | A2 | 每条带合法 owner 的失败被某次 dispatch 答复 | **890**/1781 |
 | A3 | 指向同一 owner 的两条失败合并为一次 dispatch | **94**/1781 |
-| A4 | 不可路由的失败不得挡住可路由的失败 | **540**/1781 |
+| A4 | 不可路由的失败不得挡住可路由的失败 | **540**/1781 ← 此判据已按裁决**退休**(最终策略是「触发 escalate 就等人」),见 `01-v2-design.md` §9 |
 | A5 | 可靠归因必须被它引发的 dispatch 引用 | **492**/1781 |
 | A7 | 能并行就要并行派(两个独立且都可启动的规则同回合派出) | **48**/1781 |
 
@@ -251,7 +251,8 @@ A7 的适用范围分得很开:
 
 - **真产物 / 真信封**:全部合成。调度器只读 `status` 与 `fix_owner`,但别把这里的数字当成某个电路的数据。
 - **episode 不走 `kernel.cmd_reap`**:reap 会拿每个 stage 自己的 `result.schema.json` 校验信封,那会把这套实验变成"八个合成信封的生成器"。dispatch 走**真** `cmd_dispatch`(caused_by 解析、scope、dispatch.json 都是落地代码)。
-- **`diag:` 类不进 episode**:human 归因绑定单次 outcome_run,重新失败后需要人再判一次,那不是调度器性质。simulation 的 triage 环路**有**覆盖(`none` → 派 triage → 执行器落一条 high 归因)。
+- **`diag:` 类不进 episode**:human 归因绑定单次 outcome_run,重新失败后需要人再判一次,那不是调度器性质。
+- **triage 通路完全没有 episode 覆盖**(2026-08-05 更正)。`episodes()` 只生成 `env:` 类缺陷,实测两个 tag 各 135 个 episode 里 `simulation-triage` 跑了 **0 次**,`_land_triage` 那段代码从未执行。所以 E1–E6 的验收结论**只覆盖信封自述这条归因通道**。这是待补的缺口,不是已覆盖项。
 - **执行侧的并发是涌现的,不是声明的,而且这里测不到。** `decide` 每次只返回一个动作;`design-flow/SKILL.md` 的循环只有 `YIELD/DONE/ESCALATE` 结束回合,所以 DISPATCH 之后会继续 `decide` —— 并行**只**来自 `task` 的 `Task(run_in_background=True)` 立即返回这一个副作用。整份 Orchestrator 契约里没有一句话提到"一个回合可以有多个 run 在途"。因此本文所有 `n_open` / `started_together` 是**上界**:"照着 loop 走会开几个",不是模型实际会开几个。一个模型在后台 Task 之后结束回合读起来完全自然,而今天没有任何测试会发现。要补:SKILL 明写该不变量 + `tests/scenarios/design-flow/` 加一个"回合结束时 in_flight 有两条"的用例。
 - **墙钟重叠是语义推导**(`started_together`),不是实测。
 - **三条以上同时失败**:未枚举。两条已经暴露了全部已知机制,但三条的合并/反链行为未测。
@@ -272,7 +273,7 @@ E6   39 → 135    最近注入(owner 不白跑)
 E5   39 → 135    无额外轮次
 A7   48 → 0      能并行就要并行派(返修路径)
 A1   23 → 0      在途集是闭包上的反链
-A4  540 → 0      不可路由不挡可路由
+A4  (退休)       最终策略是「触发 escalate 就等人」,见 01 §9
 
 外加一条代码测不到、必须靠契约与场景测试守的:
 Orchestrator 在后台 dispatch 之后必须继续 loop —— SKILL 明写 + tests/scenarios/design-flow 用例
