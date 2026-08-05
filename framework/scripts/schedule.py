@@ -60,19 +60,19 @@ def failing_proofs(events: list[dict]) -> set[str]:
 
 
 def required_proofs(events: list[dict]) -> set[str]:
-    """The proofs this round must make valid: the ones currently failing, or all eight.
+    """The proofs this round must make valid: all eight, whatever is failing.
 
-    One concept, derived, carried by nobody. While a proof is failing it IS the goal —
-    nothing downstream of it means anything until it re-verifies, so building the rest is
-    work that a second failure would only invalidate again. When the last one re-verifies
-    the set empties on its own and the goal widens back to the whole DAG; there is no
-    transition to hold in a session, and no way to be left in the narrow mode after the
-    thing that narrowed it is gone.
+    Not narrowed to the failing ones. What must not be built during a repair is already said
+    by three filters, each naming a reason: `facts.rule_available` (the producer's proof is
+    invalid), `owed_rules` (nobody has answered for it), `_unblocked` (its producer is in
+    flight or is a co-candidate). Narrowing added only the siblings — a lint or a synthesis
+    stale from the same edit with no artifact edge to the failure — and holding those back
+    trades machine time that was idle anyway for finding out later.
 
     Signoff does not appear here. It requires the same proofs at a stricter bar
     (facts.signoff_gate at decide's DONE, step 3), which is a question about when the work
     is finished rather than about which work there is."""
-    return failing_proofs(events) or set(_STAGE_PROOFS)
+    return set(_STAGE_PROOFS)
 
 
 def _latest_fail(events: list[dict], rule: str) -> tuple[int, dict] | None:
@@ -176,48 +176,53 @@ def _oracle_retracted(events: list[dict], rule: str, outcome: dict) -> bool:
 def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) -> dict:
     """WHO must act on this failure — one veto, then three sources, most authoritative first.
 
-    Returns `attribution` (what was written, verbatim), `owner` (its routable projection, or
-    None), `diagnoses` (the reliable ones behind that owner, for --diagnosis-refs) and
-    `unreliable` (candidates to show a human). The four escalation reasons are readings of
-    the first two, so no branch has to raise its own.
+    Returns `attribution` (what was written, verbatim), `owners` (its routable projection,
+    possibly empty) and `unreliable` (candidates to show a human). The four escalation
+    reasons are readings of the first two, so no branch has to raise its own.
+
+    `owners` is a LIST: one failure can need more than one stage to move, and an analysis
+    says so with one diagnosis per independent root cause (the log already permits several
+    against one outcome, and `_active_diagnoses` already returns all of them).
+
+    Each entry carries its own `since`: the event position from which "has this owner acted"
+    is measured, which is where THAT naming became known rather than where the failure
+    landed. They differ whenever an analysis names someone already dispatched for an
+    unrelated reason — that round could not have acted on information that did not exist yet,
+    so counting it would close the failure with nobody ever told about it.
 
     The analysis source is TERMINAL, not a fallthrough: an analysis that came back unsure
     has spoken, and its answer is "nobody". Letting it fall through would reach the
-    diagnostic rung again and re-run the same analyzer over the same evidence forever.
-
-    `since` is the event position from which "has the owner acted" is measured: where this
-    naming BECAME KNOWN, not where the failure landed. They differ whenever an analysis
-    names someone who had already been dispatched for an unrelated reason — that round
-    could not have acted on information that did not exist yet, so counting it would close
-    the failure with nobody ever told about it."""
+    diagnostic rung again and re-run the same analyzer over the same evidence forever. One
+    unsure entry among several makes the whole failure unclear: part of it has no owner, and
+    a half-known attribution is what the early exit exists to keep out of scheduling."""
     if _oracle_retracted(events, rule, outcome):
         return {
             "attribution": None,
-            "owner": None,
-            "diagnoses": [],
+            "owners": [],
             "unreliable": [],
             "retracted": True,
-            "since": idx,
         }
-    base = {"retracted": False, "since": idx}
+    base = {"retracted": False}
     diags = _active_diagnoses(events, rule, outcome)
     if diags:  # source 1: a later analysis outranks the stage's own self-report
-        latest = diags[-1]
-        if not _reliable(latest):
+        if not all(_reliable(d) for d in diags):
             return {
                 **base,
-                "attribution": latest["attribution"],
-                "owner": None,
-                "diagnoses": [],
-                "unreliable": diags,
+                "attribution": diags[-1]["attribution"],
+                "owners": [],
+                "unreliable": [d for d in diags if not _reliable(d)],
             }
-        owner = latest["fix_owner"]
-        base = {**base, "since": max(idx, _event_index(events, latest))}
+        owners = {}
+        for d in diags:
+            o = owners.setdefault(
+                d["fix_owner"], {"owner": d["fix_owner"], "since": idx, "diagnoses": []}
+            )
+            o["since"] = max(o["since"], _event_index(events, d))
+            o["diagnoses"].append(d)
         return {
             **base,
-            "attribution": latest["attribution"],
-            "owner": owner,
-            "diagnoses": [d for d in diags if _reliable(d) and d["fix_owner"] == owner],
+            "attribution": diags[-1]["attribution"],
+            "owners": sorted(owners.values(), key=lambda o: o["since"]),
             "unreliable": [],
         }
     named = _declared_owner(module, rule)  # source 2: the failing stage's own envelope
@@ -225,16 +230,19 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
         return {
             **base,
             "attribution": named,
-            "owner": named if _legal(rule, named) else None,
-            "diagnoses": [],
+            "owners": (
+                [{"owner": named, "since": idx, "diagnoses": []}]
+                if _legal(rule, named)
+                else []
+            ),
             "unreliable": [],
         }
     # source 3: nobody named anyone, so the stage's declared diagnostic must find out
+    triage = rules.RULES[rule].triage
     return {
         **base,
         "attribution": None,
-        "owner": rules.RULES[rule].triage,
-        "diagnoses": [],
+        "owners": [{"owner": triage, "since": idx, "diagnoses": []}] if triage else [],
         "unreliable": [],
     }
 
@@ -288,24 +296,59 @@ def _failures(module: str, events: list[dict]) -> list[dict]:
 
 
 def owed(events: list[dict], fails: list[dict]) -> list[dict]:
-    """The failures still owed: their owner has not been dispatched since they landed.
+    """What is still owed: one entry per (failure, owner) whose owner has not been dispatched
+    since that naming landed.
 
-        owed(f) = not _answered(owner)
+        owed(f, o) = not _answered(o)
 
-    One clause. Callers must have cleared the unclear ones first (`decide` escalates on
-    them), so every entry here has an owner."""
-    return [f for f in fails if not _answered(events, f["since"], f["owner"])]
+    Still one clause. Flattening here rather than carrying the list downstream is what leaves
+    the rest untouched: `_group` buckets by `owner`, so a failure needing two stages lands in
+    two buckets. Callers must have cleared the unclear ones first (`decide` escalates on
+    them), so every failure reaching here has at least one owner."""
+    out = []
+    for f in fails:
+        rest = {k: v for k, v in f.items() if k != "owners"}
+        for o in f["owners"]:
+            if not _answered(events, o["since"], o["owner"]):
+                out.append({**rest, **o})
+    return out
 
 
-def _escalation(c: dict) -> dict:
+def _attribute_args(module: str, c: dict, supersedes: str | None = None) -> list[str]:
+    """The `kernel.py diagnose` argv that answers this escalation. Only the fields the
+    scheduler knows — the rest the human fills from `--help`."""
+    legal = (
+        ", ".join(sorted(rules.input_closure(c["rule"]))) or "nothing: closure is empty"
+    )
+    args = [
+        "diagnose",
+        "--module",
+        module,
+        "--subject-proof",
+        c["rule"],
+        "--subject-run",
+        str(c["run"]),
+        "--fix-owner",
+        f"<{legal}>",
+    ]
+    return args + (["--supersedes", supersedes] if supersedes else [])
+
+
+def _escalation(module: str, c: dict) -> dict:
     """Why a complaint cannot be routed, derived from `(attribution, owner)` rather than
     raised where it was noticed — so the three namings and the unreliable diagnosis read as
-    one classification instead of four scattered branches."""
+    one classification instead of four scattered branches.
+
+    Each carries `remedy`: the argv that unblocks it. A round that stops the whole pipeline
+    has to say what reopens it, or the reader reaches for a verb that does not."""
     rule, named = c["rule"], c["attribution"]
     if c.get("retracted"):
         return {
             "rule": rule,
             "reason": f"{rule}: the oracle that judged this failure was reopened",
+            # re-endorsing the judge, not re-attributing: the retraction is checked ahead of
+            # any diagnosis (`_owner`), so a fresh one would not be consulted
+            "remedy": ["pin", "--module", module, "--rule", rule],
         }
     if c["unreliable"]:
         return {
@@ -319,17 +362,24 @@ def _escalation(c: dict) -> dict:
                 }
                 for d in c["unreliable"]
             ],
+            "remedy": _attribute_args(module, c, c["unreliable"][-1]["id"]),
         }
     if named is None:
-        return {"rule": rule, "reason": f"{rule}: envelope named no fix_owner"}
+        return {
+            "rule": rule,
+            "reason": f"{rule}: envelope named no fix_owner",
+            "remedy": _attribute_args(module, c),
+        }
     if named == rule:
         return {
             "rule": rule,
             "reason": f"{rule}: fix_owner is itself, in-stage remedy exhausted",
+            "remedy": _attribute_args(module, c),
         }
     return {
         "rule": rule,
         "reason": f"{rule}: fix_owner {named!r} is outside its input closure",
+        "remedy": _attribute_args(module, c),
     }
 
 
@@ -338,6 +388,26 @@ def _workdir_of(events, rule, run):
         if e["type"] == "dispatch" and e["rule"] == rule and e["run"] == run:
             return e["workdir"]
     return None
+
+
+def _executor_wrote(module: str, events: list[dict], rule: str, run: int) -> bool:
+    """Has anything landed in this run's workdir that the dispatch itself did not put there.
+
+    `dispatch` marks a run open; it does not prove a process is running, and a turn that never
+    launched its executor reads exactly like a stage still working. `dispatch.json` is the
+    newest thing a dispatch leaves behind (`store.carry_self` copies with copy2, keeping the
+    source mtimes), so anything newer came from an executor. Comparing inside one directory
+    rather than against the event's timestamp keeps `decide` free of the clock."""
+    root = facts.module_root(module) / (_workdir_of(events, rule, run) or "")
+    try:
+        opened = (root / "dispatch.json").stat().st_mtime_ns
+    except OSError:
+        return False
+    return any(
+        p.is_file() and not p.is_symlink() and p.stat().st_mtime_ns > opened
+        for p in root.rglob("*")
+        if p.name != "dispatch.json"
+    )
 
 
 def _unblocked(rule_name: str, pending: set[str], inflight: list[dict]) -> bool:
@@ -546,7 +616,23 @@ def _dispatch_action(module, rule, repair):
 def _settle(module, events, inflight, required, closing):
     """Nothing can start. Say why, in the order that makes the reason true."""
     if inflight:
-        return {"action": "YIELD", "in_flight": facts.in_flight(events)}
+        # `dispatched_at` beside `executor_wrote` is the whole report: how long is too long
+        # is the reader's call, so no elapsed time is computed and `decide` stays pure.
+        return {
+            "action": "YIELD",
+            "in_flight": [
+                {
+                    **f,
+                    "dispatched_at": events[
+                        facts._dispatch_index(events, f["rule"], f["run"])
+                    ]["ts"],
+                    "executor_wrote": _executor_wrote(
+                        module, events, f["rule"], f["run"]
+                    ),
+                }
+                for f in inflight
+            ],
+        }
     if all(facts.proof_valid(module, events, p) for p in required):
         if closing:
             # `closing` changes nothing about WHICH proofs are required — only what a clear
@@ -582,12 +668,12 @@ def decide(
         return reap
 
     fails = _failures(module, events)
-    unclear = [f for f in fails if not f["owner"]]
+    unclear = [f for f in fails if not f["owners"]]
     if unclear:
         # Attribution is clarified BEFORE anything is scheduled. One at a time, earliest
         # first: a failure nobody can attribute only arises on a parallel branch, and
         # parallel runs do not land together, so a round discovers one of them at a time.
-        return {"action": "ESCALATE", **_escalation(unclear[0])}
+        return {"action": "ESCALATE", **_escalation(module, unclear[0])}
     # ↓ every failure below this line has an owner
     owed_ = owed(events, fails)
 

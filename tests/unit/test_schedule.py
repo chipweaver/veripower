@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -59,6 +60,21 @@ def _outcome(module, rule, run, verdict, outputs, proofs, **extra):
     facts.append_event(module, ev, TS)
 
 
+def _turn(module, limit=6):
+    """The rules one Orchestrator turn opens, in order: decide -> dispatch -> decide, never
+    reaping, stopping at the first non-DISPATCH. A round can now open several runs, so a test
+    about WHICH rule a repair reaches has to look at the turn rather than at decide's first
+    answer — a cheap `task` sorting ahead of it does not mean the repair was skipped."""
+    out = []
+    for run in range(1, limit + 1):
+        a = schedule.decide(module)
+        if a["action"] != "DISPATCH":
+            break
+        out.append(a["rule"])
+        _dispatch(module, a["rule"], 90 + run, {})
+    return out
+
+
 def test_cold_start_dispatches_specification(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")
@@ -99,9 +115,11 @@ def test_wake_reaps_a_run_whose_executor_wrote_nothing(tmp_path, monkeypatch):
 
 def test_a_landed_result_is_reaped_not_yielded_over(tmp_path, monkeypatch):
     """Step 0 claims any in-flight run whose workdir holds a result.json, so a YIELD can only
-    ever list runs that have not written one. That is why `in_flight[]` carries coordinates
-    and nothing else: a per-run "did it finish" flag would be constant false everywhere the
-    Orchestrator can see it, and reads as a filter while filtering nothing."""
+    ever list runs that have not written one. That is why `in_flight[]` carries no "did it
+    finish" flag: it would be constant false everywhere the Orchestrator can see it, and
+    reads as a filter while filtering nothing. `executor_wrote` is the different question —
+    did anything ever START — and that one is not constant (see
+    test_yield_says_whether_the_executor_ever_wrote)."""
     monkeypatch.chdir(tmp_path)
     _mk("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
@@ -118,13 +136,12 @@ def test_a_landed_result_is_reaped_not_yielded_over(tmp_path, monkeypatch):
     # take the envelope away and the same two runs YIELD instead — carrying coordinates and
     # nothing else, because "has it finished" is exactly what the branch above already used up.
     rj.unlink()
-    assert schedule.decide("m") == {
-        "action": "YIELD",
-        "in_flight": [
-            {"rule": "lint-cdc", "run": 1},
-            {"rule": "simulation-plan", "run": 1},
-        ],
-    }
+    a = schedule.decide("m")
+    assert a["action"] == "YIELD"
+    assert [(f["rule"], f["run"]) for f in a["in_flight"]] == [
+        ("lint-cdc", 1),
+        ("simulation-plan", 1),
+    ]
 
 
 def test_in_flight_no_result_yields(tmp_path, monkeypatch):
@@ -133,7 +150,38 @@ def test_in_flight_no_result_yields(tmp_path, monkeypatch):
     _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:x"})
     a = schedule.decide("m")
     assert a["action"] == "YIELD"
-    assert a["in_flight"] == [{"rule": "specification", "run": 1}]
+    assert [(f["rule"], f["run"]) for f in a["in_flight"]] == [("specification", 1)]
+
+
+def test_yield_says_whether_the_executor_ever_wrote(tmp_path, monkeypatch):
+    """`dispatch` opening a run does not mean a process is running it. One real run idled
+    6h10m because the Orchestrator marked a stage in flight and never launched it, and the
+    ledger looked identical to a stage still working. The distinguishing fact is on disk —
+    something newer than the dispatch's own `dispatch.json` — so the YIELD carries it."""
+    monkeypatch.chdir(tmp_path)
+    _write("m", "brainstorm.md", "b1")
+    _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:x"})
+    wd = _workdir("specification", 1)
+    _mk("m", wd + "/dispatch.json", "{}")
+
+    a = schedule.decide("m")
+    assert a["in_flight"] == [
+        {
+            "rule": "specification",
+            "run": 1,
+            "dispatched_at": facts.read_events("m")[0]["ts"],
+            "executor_wrote": False,
+        }
+    ]
+
+    # anything the dispatch did not put there flips it — carried files do not, because
+    # store.carry_self copies with copy2 and keeps the source mtime.
+    p = facts.module_root("m") / wd / "draft.md"
+    p.write_text("working")
+    os.utime(p, ns=(0, (facts.module_root("m") / wd / "dispatch.json").stat().st_mtime_ns))
+    assert schedule.decide("m")["in_flight"][0]["executor_wrote"] is False
+    p.write_text("working, and later than the dispatch")
+    assert schedule.decide("m")["in_flight"][0]["executor_wrote"] is True
 
 
 def test_fresh_failure_with_reliable_triage_dispatches_fix_owner(tmp_path, monkeypatch):
@@ -161,6 +209,92 @@ def test_fresh_failure_with_reliable_triage_dispatches_fix_owner(tmp_path, monke
     # caused_by, not as a copied hint: coordinates in, kernel resolves them to paths.
     assert a["caused_by"] == [["simulation", 1]]
     assert a["diagnosis_refs"] == ["d1"]
+
+
+def _diagnosis(module, did, run, owner, locus):
+    facts.append_event(
+        module,
+        {
+            "type": "diagnosis",
+            "id": did,
+            "subject": {"proof": "simulation", "outcome_run": run},
+            "attribution": owner,
+            "fix_owner": owner,
+            "fix_locus": [locus],
+            "evidence": ["Verification/simulation-triage/runs/1/result.json"],
+            "confidence": "high",
+            "source": "triage",
+        },
+        TS,
+    )
+
+
+def test_one_failure_with_two_root_causes_reaches_both_owners(tmp_path, monkeypatch):
+    """One regression, two independent root causes, two stages that must move. Each owner is
+    dispatched, each is told about the same failing run, and each cites only the analysis
+    that named it — so the RTL edit and the plan rewrite both get scheduled.
+
+    A real analysis of exactly this shape named one owner while its loci reached into
+    another's files; the operator dispatched the second by hand, and a scheduler following
+    one name would simply never have scheduled that fix."""
+    monkeypatch.chdir(tmp_path)
+    _valid_chain_through_simulation("m")
+    _sim_fail("m", run=1)
+    _diagnosis("m", "d-rtl", 1, "rtl-design", "core_muldiv.v:129")
+    _diagnosis("m", "d-plan", 1, "simulation-plan", "verification-plan.md:88")
+
+    opened, runs = {}, {}
+    for i in range(4):
+        a = schedule.decide("m")
+        if a["action"] != "DISPATCH":
+            break
+        opened[a["rule"]] = a
+        runs[a["rule"]] = 90 + i
+        _dispatch("m", a["rule"], 90 + i, {})
+    assert set(opened) == {"rtl-design", "simulation-plan"}
+    for rule, ref in (("rtl-design", "d-rtl"), ("simulation-plan", "d-plan")):
+        assert opened[rule]["caused_by"] == [["simulation", 1]]
+        assert opened[rule]["diagnosis_refs"] == [ref]
+
+    # and the failure stays open until BOTH have had their turn — one owner answering is not
+    # the failure answered
+    ev = facts.read_events("m")
+    still = schedule.owed(ev, schedule._failures("m", ev))
+    assert still == []
+    # that round died, so it re-opens — for its owner alone, not for the other one
+    _outcome("m", "rtl-design", runs["rtl-design"], "blocked", {}, [])
+    ev = facts.read_events("m")
+    assert [o["owner"] for o in schedule.owed(ev, schedule._failures("m", ev))] == [
+        "rtl-design"
+    ]
+
+
+def test_an_unsure_second_opinion_makes_the_whole_failure_unclear(
+    tmp_path, monkeypatch
+):
+    """Splitting an analysis does not let a confident half carry an unsure one. Part of this
+    failure has no owner, and scheduling around a half-known attribution is what the early
+    exit exists to prevent — so the round stops on the unsure one and names it."""
+    monkeypatch.chdir(tmp_path)
+    _valid_chain_through_simulation("m")
+    _sim_fail("m", run=1)
+    _diagnosis("m", "d-rtl", 1, "rtl-design", "core_muldiv.v:129")
+    facts.append_event(
+        "m",
+        {
+            "type": "diagnosis",
+            "id": "d-unsure",
+            "subject": {"proof": "simulation", "outcome_run": 1},
+            "attribution": "simulation",  # self-pointing: nothing to route to
+            "evidence": ["Verification/simulation-triage/runs/1/result.json"],
+            "confidence": "high",
+            "source": "triage",
+        },
+        TS,
+    )
+    a = schedule.decide("m")
+    assert a["action"] == "ESCALATE"
+    assert [c["diagnosis"] for c in a["candidates"]] == ["d-unsure"]
 
 
 def test_dispatch_args_carry_every_channel_the_action_names(tmp_path, monkeypatch):
@@ -278,19 +412,81 @@ def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
     assert schedule.decide("m")["action"] == "ESCALATE"
 
 
+def test_escalation_names_the_verb_that_clears_it(tmp_path, monkeypatch):
+    """An ESCALATE stops the whole round, so it has to say what reopens it. `diagnose` for an
+    attribution nobody can act on, superseding the one that failed; `pin` for a retracted
+    oracle, because `_owner` checks the retraction ahead of any diagnosis and a fresh one
+    would not be consulted."""
+    monkeypatch.chdir(tmp_path)
+    _valid_chain_through_simulation("m")
+    _sim_fail("m", run=1)
+    facts.append_event(
+        "m",
+        {
+            "type": "diagnosis",
+            "id": "d1",
+            "subject": {"proof": "simulation", "outcome_run": 1},
+            "attribution": "simulation",
+            "evidence": ["Verification/simulation-triage/runs/1/result.json"],
+            "confidence": "high",
+            "source": "triage",
+        },
+        TS,
+    )
+    remedy = schedule.decide("m")["remedy"]
+    assert remedy[0] == "diagnose"
+    assert remedy[remedy.index("--subject-proof") + 1] == "simulation"
+    assert remedy[remedy.index("--subject-run") + 1] == "1"
+    assert remedy[remedy.index("--supersedes") + 1] == "d1"
+    # the choice it leaves open is bounded by what the kernel would accept
+    offered = remedy[remedy.index("--fix-owner") + 1]
+    assert set(rules.input_closure("simulation")) == set(
+        offered.strip("<>").removeprefix("one of: ").split(", ")
+    )
+
+    # and it is not one branch: every class says what unblocks it
+    for named in (None, "simulation", "lint-cdc"):  # nobody / itself / outside the closure
+        c = {
+            "rule": "simulation",
+            "run": 2,
+            "attribution": named,
+            "unreliable": [],
+            "retracted": False,
+        }
+        assert schedule._escalation("m", c)["remedy"][0] == "diagnose"
+    retracted = schedule._escalation(
+        "m",
+        {
+            "rule": "simulation",
+            "run": 2,
+            "attribution": None,
+            "unreliable": [],
+            "retracted": True,
+        },
+    )
+    assert retracted["remedy"][:2] == ["pin", "--module"]
+
+
 def test_repair_after_fix_lands_redispatches_failed_rule_not_fix_owner(
     tmp_path, monkeypatch
 ):
-    # spec §3.4 case: fix changes matvec.v -> simulation fail proof stale -> forward
-    # re-dispatches simulation (re-verify), NOT rtl-design again.
+    # spec §3.4 case: fix changes matvec.v -> simulation fail proof stale -> the turn
+    # re-verifies simulation, and never rtl-design again.
+    #
+    # The same edit also staled lint-cdc, which has no artifact edge to the failure and is
+    # opened in the same turn — a `task` executor returning immediately, so it costs the
+    # re-verify nothing and reports its own violations hours earlier. That is the shape a
+    # real run had (lint-cdc and the regression started 10 minutes apart, after the RTL fix
+    # landed), so this asserts the turn rather than decide's first answer.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
     _fail("m", "simulation", 1, owner="rtl-design")  # records the OLD matvec.v version
     _valid(
         "m", "rtl-design", 2, tag="fix"
     )  # the fix lands, so the owner has had its turn
-    a = schedule.decide("m")
-    assert a["action"] == "DISPATCH" and a["rule"] == "simulation"
+    opened = _turn("m")
+    assert "simulation" in opened and "rtl-design" not in opened
+    assert opened.index("lint-cdc") < opened.index("simulation")  # async one starts first
 
 
 def test_blocked_goes_forward_no_escalate(tmp_path, monkeypatch):
@@ -419,8 +615,8 @@ def test_fresh_rtldesign_spec_locus_dispatches_specification(tmp_path, monkeypat
 
 def _timing_fail_over_stale_synthesis(module):
     """spec/plan/rtl valid; synthesis built then its oracle reopened (proof invalid, RTL
-    bytes untouched); timing-analysis a stale fail. The goal set narrows to timing, and the
-    closure pulls in synthesis — whose advisory predecessor lint-cdc is NOT in that set."""
+    bytes untouched); timing-analysis a stale fail. The repair runs through synthesis, whose
+    advisory predecessor lint-cdc has never run."""
     _write(module, "brainstorm.md", "b1")
     _valid(module, "specification", 1)
     _valid(module, "simulation-plan", 1)
@@ -432,14 +628,13 @@ def _timing_fail_over_stale_synthesis(module):
 
 def test_advisory_holds_while_its_predecessor_is_still_running(tmp_path, monkeypatch):
     """An in-flight predecessor IS going to answer, so the bet the advisory edge makes is
-    live and synthesis waits — even though the goal set narrowed to timing-analysis and
-    never scheduled lint-cdc itself. Yielding is the whole point: the round has a candidate
-    it deliberately is not spending yet."""
+    live and synthesis waits. The turn is not idle — the goal set spans the DAG, so other
+    stale work starts — but the expensive stage the cheap detector guards does not."""
     monkeypatch.chdir(tmp_path)
     _timing_fail_over_stale_synthesis("m")
     _dispatch("m", "lint-cdc", 1, _recorded_inputs("m", "lint-cdc"))
     assert schedule.failing_proofs(facts.read_events("m")) == {"timing-analysis"}
-    assert schedule.decide("m")["action"] == "YIELD"
+    assert "synthesis" not in _turn("m")
 
 
 def test_advisory_releases_once_its_predecessor_has_spoken(tmp_path, monkeypatch):
@@ -450,22 +645,23 @@ def test_advisory_releases_once_its_predecessor_has_spoken(tmp_path, monkeypatch
     assert d["action"] == "DISPATCH" and d["rule"] == "synthesis"
 
 
-def test_advisory_does_not_hold_for_a_predecessor_nobody_is_running(
+def test_advisory_predecessor_is_scheduled_rather_than_waited_on(
     tmp_path, monkeypatch
 ):
-    """The deadlock guard. lint-cdc's proof is invalid, but the narrowed goal set does not
-    include it and nothing is running it, so it will never resolve. A gate that held anyway
-    would leave the round with no candidate and nothing in flight — ESCALATE on a module
-    that is simply mid-repair."""
+    """The advisory hold is only ever a bet that the predecessor is about to speak, so the
+    predecessor has to be schedulable. It is, because the goal set spans the DAG: a stale
+    lint-cdc is picked up in the same turn and synthesis follows it. While the goal set
+    narrowed to the failing proof this was the deadlock case — nothing would ever run
+    lint-cdc, so the gate had to be taught to give up on it."""
     monkeypatch.chdir(tmp_path)
     _timing_fail_over_stale_synthesis("m")
     _valid("m", "lint-cdc", 1)
     _mk("m", "Design/lint-cdc/lint-report.txt", "drift")  # lint-cdc proof now invalid
     ev = facts.read_events("m")
     assert not facts.proof_valid("m", ev, "lint-cdc")
-    assert "lint-cdc" not in schedule.required_proofs(ev)
+    assert "lint-cdc" in schedule.required_proofs(ev)
     d = schedule.decide("m")
-    assert d["action"] == "DISPATCH" and d["rule"] == "synthesis"
+    assert d["action"] == "DISPATCH" and d["rule"] == "lint-cdc"
 
 
 def test_advisory_orders_two_stages_that_failed_together(tmp_path, monkeypatch):
@@ -635,18 +831,21 @@ def test_two_hop_upstream_invalidity_does_not_discard_the_failure(
     _reopen("m", "semantic-review")  # rtl-design invalid; RTL bytes unchanged
     _fail("m", "timing-analysis", 1, owner=None)
     fails = schedule._failures("m", facts.read_events("m"))
-    assert [(f["rule"], f["owner"]) for f in fails] == [("timing-analysis", None)]
+    assert [(f["rule"], f["owners"]) for f in fails] == [("timing-analysis", [])]
     a = schedule.decide("m")
     assert a["action"] == "ESCALATE" and "named no fix_owner" in a["reason"]
 
 
 def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
     # A2 regression / §3.3 末句: repair on timing while the synthesis proof is invalid
-    # -> the narrowed round returns DISPATCH synthesis (not ESCALATE).
+    # -> the round rebuilds the PRODUCER, never ESCALATE. With lint-cdc already valid its
+    # advisory edge is satisfied, so synthesis is the first thing the turn opens; the
+    # unsatisfied case is test_advisory_predecessor_is_scheduled_rather_than_waited_on.
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
+    _valid("m", "lint-cdc", 1)
     _valid("m", "synthesis", 1)
     _reopen("m", "dc-shell")  # synthesis proof invalid, inputs still valid
     _fail("m", "timing-analysis", 1, owner="synthesis")
@@ -1048,14 +1247,14 @@ def test_fresh_fail_fix_owner_in_flight_yields(tmp_path, monkeypatch):
     assert schedule.decide("m")["action"] == "YIELD"
 
 
-def test_sim_fail_triage_in_flight_yields(tmp_path, monkeypatch):
-    # E5 / §6: ambiguous sim failure with simulation-triage already in flight -> YIELD, not a
-    # second triage dispatch.
+def test_sim_fail_triage_in_flight_is_not_dispatched_twice(tmp_path, monkeypatch):
+    # E5 / §6: ambiguous sim failure with simulation-triage already in flight -> no second
+    # triage dispatch. The turn is not idle — other stale work starts alongside the analysis.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
     _sim_fail("m", run=1)
     _dispatch("m", "simulation-triage", 1, {"sim_run": 1})
-    assert schedule.decide("m")["action"] == "YIELD"
+    assert "simulation-triage" not in _turn("m")
 
 
 def test_option_c_defers_producer_with_inflight_consumer(tmp_path, monkeypatch):

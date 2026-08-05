@@ -395,24 +395,18 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
         assert rtl2[untouched] == rtl1[untouched]
     assert rtl2["Design/rtl-design/matvec.v"] != rtl1["Design/rtl-design/matvec.v"]
 
-    # (a) the goal set is still the failing proof, so the round re-verifies simulation
-    # directly (the sim fail drifted, so its verdict is stale -> forward re-verify).
-    r = schedule.decide(m)
-    assert r["action"] == "DISPATCH" and r["rule"] == "simulation"
-
-    # (c) lint is NOT re-dispatched while simulation is still failing, even though its own
-    # proof went stale under the same RTL edit — the goal narrows to what is failing and
-    # widens once nothing is. Nothing carries that between turns: it is `failing_proofs`.
-    assert schedule.failing_proofs(facts.read_events(m)) == {"simulation"}
+    # (a) the round re-verifies simulation — the fix owner has had its turn, so what is left
+    # is to find out whether the fix worked. (c) lint went stale under the same RTL edit and
+    # has no artifact edge to the failure, so the same turn opens it too — a `task`, sorted
+    # first, costing the re-verify nothing.
     assert not facts.proof_valid(m, facts.read_events(m), "lint-cdc")  # lint IS stale
-    lint_dispatches = [
-        e
-        for e in facts.read_events(m)
-        if e["type"] == "dispatch" and e["rule"] == "lint-cdc"
-    ]
-    assert (
-        len(lint_dispatches) == 1
-    )  # only the original — the narrowed round never re-lints
+    opened = []
+    while len(opened) < 2:
+        a = schedule.decide(m)
+        assert a["action"] == "DISPATCH", a
+        opened.append(a["rule"])
+        assert kernel.cmd_dispatch(m, a["rule"], None)["ok"]
+    assert opened == ["lint-cdc", "simulation"]
 
 
 # ── Step 2b ─────────────────────────────────────────────────────────────────────
@@ -565,7 +559,11 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
     assert not facts.proof_valid(m, facts.read_events(m), "synthesis")
     assert _timing_owed(m)
 
-    # the narrowed round rebuilds the producer (synthesis) FIRST — not timing, never ESCALATE.
+    # the round rebuilds the producer (synthesis) — not timing, never ESCALATE. lint-cdc goes
+    # first: the RTL edit staled it too, and synthesis's advisory edge waits on it.
+    a = schedule.decide(m)
+    assert a["action"] == "DISPATCH" and a["rule"] == "lint-cdc"
+    _valid(m, "lint-cdc", 2)
     a = schedule.decide(m)
     assert a["action"] == "DISPATCH" and a["rule"] == "synthesis"
 

@@ -149,7 +149,7 @@ def cmd_reap(module, rule, run):
     root = facts.module_root(module)
     rj = root / workdir / "result.json"
     # UNIFORM 4-tuple across proof rules AND triage — never a shape-shifting return.
-    verdict, reason, proofs, diagnosis = _derive_verdict(module, rule, run, rj, events)
+    verdict, reason, proofs, diagnoses = _derive_verdict(module, rule, run, rj, events)
     if verdict != "blocked":  # promote produced artifacts (pass and fail both promote)
         try:
             store.promote(facts.module_root(module), rule, run)
@@ -168,7 +168,7 @@ def cmd_reap(module, rule, run):
     if reason:
         ev["reason"] = reason
     facts.append_event(module, ev, _now())
-    if diagnosis is not None:  # triage complete -> land the attribution (Task C7)
+    for diagnosis in diagnoses:  # triage complete -> land the attributions (Task C7)
         facts.append_event(module, diagnosis, _now())
     return {"ok": True, "rule": rule, "run": run, "verdict": verdict}
 
@@ -252,26 +252,26 @@ def _stale_result_reason(produced_at, dispatch_ts) -> str | None:
 
 
 def _derive_verdict(module, rule_name, run, rj: Path, events):
-    """UNIFORM return: (verdict, reason, proofs, diagnosis) — proofs is [] and diagnosis
-    is None whenever not applicable; the shape NEVER varies by rule kind. result.json
-    status -> verdict; missing/unparseable/malformed/schema-violation/stale -> blocked
-    (stale = produced_at predates this run's dispatch, _stale_result_reason). For
-    simulation-triage (proof=None) the triage branch (Task C7) derives a diagnosis event
-    dict from stage_specific — or blocked when it skipped/crashed."""
+    """UNIFORM return: (verdict, reason, proofs, diagnoses) — proofs and diagnoses are []
+    whenever not applicable; the shape NEVER varies by rule kind. result.json status ->
+    verdict; missing/unparseable/malformed/schema-violation/stale -> blocked (stale =
+    produced_at predates this run's dispatch, _stale_result_reason). For simulation-triage
+    (proof=None) the triage branch (Task C7) derives the diagnosis events from
+    stage_specific — or blocked when it skipped/crashed."""
     rule = rules.RULES[rule_name]
     if not rj.is_file():
-        return "blocked", "missing", [], None
+        return "blocked", "missing", [], []
     try:
         env = json.loads(rj.read_text())
     except (ValueError, OSError):
-        return "blocked", "unparseable", [], None
+        return "blocked", "unparseable", [], []
     status = env.get("status")
     if status not in ("pass", "fail"):
-        return "blocked", "malformed", [], None
+        return "blocked", "malformed", [], []
     # schema validation reuses the per-stage result.schema.json via facts;
-    # a schema violation -> ("blocked", "schema_violation", [], None).
+    # a schema violation -> ("blocked", "schema_violation", [], []).
     if facts.validate_result(rule_name, env) is not None:
-        return "blocked", "schema_violation", [], None
+        return "blocked", "schema_violation", [], []
     # Temporal integrity for EVERY rule kind (proof, triage, none) — the dispatch event
     # exists by cmd_reap's guard. A re-reap of an old run compares against that run's OWN
     # dispatch, so the crash-repair and pin-regrade paths are unaffected.
@@ -282,11 +282,11 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
     )
     stale = _stale_result_reason(env.get("produced_at"), dispatch["ts"])
     if stale:
-        return "blocked", stale, [], None
+        return "blocked", stale, [], []
     if rule_name == "simulation-triage":
         return _derive_triage(env, dispatch)  # Task C7 — same 4-tuple
     if rule.proof is None:
-        return status, None, [], None
+        return status, None, [], []
     # No `evidence` list here. The report-class products ARE the evidence (§5.3 "及其
     # artifacts[]"), and `outcome.outputs` — written from the same artifacts[] one call
     # later — already names every one of them, with its fingerprint. A bare path list
@@ -300,17 +300,23 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
             "grade": facts.oracle_grade(module, events, rule),
         },
     }
-    return status, None, [proof], None
+    return status, None, [proof], []
 
 
 def _derive_triage(env, dispatch):
-    """Triage reap (§2 triage contract): complete -> (verdict, None, [], diagnosis-event);
+    """Triage reap (§2 triage contract): complete -> (verdict, None, [], diagnosis-events);
     skipped/crash -> blocked, no diagnosis (the sim failure stays ambiguous; next round
     re-dispatches triage, §3.3). Confidence lands as-is (P4) — reliability is decide's
     gate, not a reap branch. `root_cause` IS the rule name, so no map decodes it: it
     becomes `fix_owner` when it is a legal auto-rebuild target, and a self-pointing
     attribution (root_cause == the failing rule) is outside simulation's input closure by
     construction, so it lands recorded-but-unroutable (A3).
+
+    ONE DIAGNOSIS PER ROOT CAUSE: a regression fails for as many reasons as it fails for, and
+    a finding can sit in a different stage's files from its neighbour. `findings[].root_cause`
+    splits the analysis, each diagnosis carrying the loci of its own findings; a finding that
+    names nobody falls to the top-level `root_cause`.
+
     `dispatch` is THIS run's own dispatch event, located once in _derive_verdict (not
     the latest triage dispatch, which would mislabel subject.outcome_run when
     re-reaping an older run — F8b)."""
@@ -318,8 +324,7 @@ def _derive_triage(env, dispatch):
 
     ss = env.get("stage_specific", {})
     if ss.get("analysis_state") != "complete":
-        return "blocked", "skipped_reason", [], None
-    root_cause = ss.get("root_cause")
+        return "blocked", "skipped_reason", [], []
     sim_hit = dispatch["params"].get("sim_run")
     # Structural correlates live in the ADVISORY tier — stage_specific is
     # additionalProperties:false with no evidence/fix_locus keys, so the old
@@ -341,23 +346,33 @@ def _derive_triage(env, dispatch):
     evidence = [str(triage_run / "result.json")] + [
         str(triage_run / a) for a in advisory.get("experiment", {}).get("artifacts", [])
     ]
-    fix_locus = [f["anchor"] for f in advisory.get("findings", []) if f.get("anchor")]
-    diagnosis = {
-        "type": "diagnosis",
-        "id": f"diag-{uuid.uuid4().hex[:12]}",
-        "subject": {"proof": "simulation", "outcome_run": sim_hit},
-        "attribution": root_cause,
-        "fix_locus": fix_locus,
-        "evidence": evidence,
-        "confidence": ss.get("confidence"),
-        "source": "triage",
-    }
-    if root_cause in rules.input_closure("simulation"):
-        diagnosis["fix_owner"] = root_cause
+    # {root cause -> its loci}, insertion-ordered so the record reads in the order the
+    # analysis wrote it. The top-level root_cause seeds it, so an analysis that found one
+    # thing lands exactly the one diagnosis it always did.
+    by_cause: dict[str, list] = {ss.get("root_cause"): []}
+    for f in advisory.get("findings", []):
+        loci = by_cause.setdefault(f.get("root_cause") or ss.get("root_cause"), [])
+        if f.get("anchor"):
+            loci.append(f["anchor"])
+    out = []
+    for cause, loci in by_cause.items():
+        diagnosis = {
+            "type": "diagnosis",
+            "id": f"diag-{uuid.uuid4().hex[:12]}",
+            "subject": {"proof": "simulation", "outcome_run": sim_hit},
+            "attribution": cause,
+            "fix_locus": loci,
+            "evidence": evidence,
+            "confidence": ss.get("confidence"),
+            "source": "triage",
+        }
+        if cause in rules.input_closure("simulation"):
+            diagnosis["fix_owner"] = cause
+        out.append(diagnosis)
     # A complete triage is never a fail (spec §2 triage 无独立 fail 态): it mints no proof,
     # so its verdict is a plain non-blocked "pass" regardless of env["status"] (the envelope
     # schema permits status=fail, but a triage fail outcome would crash repair's proof scan).
-    return "pass", None, [], diagnosis
+    return "pass", None, [], out
 
 
 # Oracle grade derivation (proposed/human ratchet) lives in facts.oracle_grade /

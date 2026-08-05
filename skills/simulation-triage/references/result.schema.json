@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-triage/result.schema.json",
   "title": "simulation-triage result.json contract",
-  "description": "Complete contract for <module>/Verification/simulation-triage/result.json. stage_specific carries the analysis in two tiers. Routing tier: analysis_state discriminates ('complete' carries root_cause + confidence, 'skipped' carries skipped_reason), root_cause names the rule that must act, and confidence is gating (high is acted on directly, low reaches a human first). Advisory tier: advisory.{findings[], waveform, experiment}, forwarded to the rework target as context. findings[].anchor is the fix locus and experiment.artifacts[] are the evidence paths — those two are read; the rest is prose for whoever opens the record. An experiment block is present exactly when the run built one, so nothing labels the tier separately.",
+  "description": "Complete contract for <module>/Verification/simulation-triage/result.json. stage_specific carries the analysis in two tiers. Routing tier: analysis_state discriminates ('complete' carries root_cause + confidence, 'skipped' carries skipped_reason), root_cause names the rule that must act, and confidence is gating (high is acted on directly, low reaches a human first). Advisory tier: advisory.{findings[], waveform, experiment}, forwarded to the rework target as context. findings[].anchor is the fix locus, findings[].root_cause overrides the top-level one for that finding (the reap mints one diagnosis per distinct value), and experiment.artifacts[] are the evidence paths — those are read; the rest is prose for whoever opens the record. An experiment block is present exactly when the run built one, so nothing labels the tier separately.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
@@ -25,7 +25,8 @@
                     "type": "object", "additionalProperties": false,
                     "properties": {
                       "anchor":     {"type": "string"},
-                      "cases":      {"type": "array", "items": {"type": "string"}}
+                      "cases":      {"type": "array", "items": {"type": "string"}},
+                      "root_cause": {"type": "string", "enum": ["rtl-design", "simulation-plan", "specification", "simulation"]}
                     }
                   }
                 },

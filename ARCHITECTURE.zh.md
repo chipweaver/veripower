@@ -307,13 +307,13 @@ loop:
 
 ### 5.1 目标集是导出的，不是选的
 
-`schedule.required_proofs` 只从日志回答「这一次调用在朝什么调度」：
+`schedule.required_proofs` 回答「这一次调用在朝什么调度」：
 
-> **最新 outcome 是 `fail` 的那些证明——一条都没失败时，则是全部八条。**
+> **全部八条，无论什么在失败。**
 
-一个证明还在失败时，它*就是*目标。它重新验证之前，它下游的一切都不说明任何事，先建别的只是在做第二次失败会重新作废的工作；第 2 步会把收窄集扩到它的重建闭包，所以复验所需的生产者会排在前面。最后一个失败的证明复验通过时，这个集合自己变空，目标随之放宽回整个 DAG。
+返修不收窄它。修复期间哪些不该建，已经由三层过滤各自给出理由:生产者的证明无效（`facts.rule_available`，覆盖失败真正的全部下游）、还没人为它答复过（`owed_rules`）、生产者在途或也在本轮候选里（`_unblocked`）。收窄到失败的那几条只额外多做了一件事——压住**兄弟**，即被同一次编辑弄陈旧、与那条失败之间根本没有产物边的 lint 或 synthesis。它们是跑 EDA 工具的 `task` 执行器，压住它们等于拿本来就闲着的机时，换晚几个小时才知道它们要说什么。
 
-有两个后果值得点名，因为早先的设计把它做成调用方携带的模式，两处都付了代价。**没有需要记住的迁移**：不用切进修复阶段、不用切回来，也不可能在造成收窄的那件事消失之后仍然被留在收窄态。而且这个集合是**复数的**：两条一起失败的规则都在里面，于是它们的复验都可调度——单目标的答案会把第二条排除在这一轮之外，让它去等第一条，而两者之间根本没有产物边。
+因此**没有需要记住的迁移**：不用切进修复阶段、不用切回来，也不存在调用方可能被留在里面的模式。第 2 步仍会把集合扩到它的重建闭包，所以复验所需的生产者依然排在前面。
 
 收尾根本不在这根轴上。`--closing`（§5.5）要求的是同一批证明，只改变「板面干净」意味着什么，所以它是终止谓词上的一个旗标，而不是选择工作量的那个东西上的第三个取值。
 
@@ -353,7 +353,7 @@ flowchart TD
 2. **无诊断，且失败是 `simulation`。** 失败有歧义（仿真挂掉可能是 RTL、计划或 spec）→ `DISPATCH simulation-triage`，带 `params.sim_run = <失败 run>`（若 triage 已在途则 `YIELD`）。triage 运行，在*它的*收割时内核派生诊断（见下）；下一次 `decide` 看到诊断即重入处置分支 1。
 3. **无诊断，自描述失败。** 失败的信封自陈 `stage_specific.fix_owner`（无需诊断事件）。合法指名且其输入可用 → 自动重建 `DISPATCH`；输入不可用 → 顺延前向；谁都没指、指了自己、或指到输入闭包之外 → 升级（§5.4）。
 
-**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`skipped_reason`、`root_cause`、`confidence`、`advisory`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（仿真失败保持歧义；下一轮重新派发 triage）。否则内核追加一条 `diagnosis`（`source: triage`），`attribution` 取 `root_cause`，`fix_owner` 就取同一个 `root_cause`，前提是它指名的规则落在 `simulation` 的输入闭包内。自指归因（`root_cause == simulation`）按构造落在闭包之外，于是省略 `fix_owner`，由处置将它升级。`confidence` 原样落账；决定它能否自动路由的是可靠性门，不是收割分支。
+**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`skipped_reason`、`root_cause`、`confidence`、`advisory`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（仿真失败保持歧义；下一轮重新派发 triage）。否则内核按根因逐条追加 `diagnosis`（`source: triage`）——`advisory.findings[].root_cause` 覆盖该 finding 的顶层取值，每条诊断带自己那些 finding 的 anchor——`attribution` 取该根因，`fix_owner` 就取同一个名字，前提是它落在 `simulation` 的输入闭包内。自指归因（`root_cause == simulation`）按构造落在闭包之外，于是省略 `fix_owner`，由处置将它升级。`confidence` 原样落账；决定它能否自动路由的是可靠性门，不是收割分支。
 
 ### 5.4 失败归因
 

@@ -204,7 +204,16 @@ def test_dispatch_then_decide_yields(tmp_path, monkeypatch):
     assert d["ok"] is True
     a = _run_json(tmp_path, "decide", "--module", "m")
     assert a["action"] == "YIELD"
-    assert a["in_flight"] == [{"rule": "specification", "run": 1}]
+    # a real dispatch leaves dispatch.json and nothing else, so the run reads as opened but
+    # not yet started — the state a forgotten executor stays in
+    assert a["in_flight"] == [
+        {
+            "rule": "specification",
+            "run": 1,
+            "dispatched_at": a["in_flight"][0]["dispatched_at"],
+            "executor_wrote": False,
+        }
+    ]
 
 
 def test_full_mini_loop_dispatch_result_reap_decide(tmp_path, monkeypatch):
@@ -558,6 +567,58 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
         facts.module_root(module) / "Verification" / "simulation-triage" / "result.json"
     )
     assert canonical.exists()
+
+
+def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
+    tmp_path, monkeypatch
+):
+    """A regression fails for as many reasons as it fails for. A real analysis named
+    `simulation-plan` while its loci reached into RTL and the testbench, and the record could
+    hold only one owner, so a human had to notice and dispatch the second by hand. Per-finding
+    `root_cause` splits it: one diagnosis per distinct owner, each carrying its own anchors,
+    the shared evidence on all of them."""
+    monkeypatch.chdir(tmp_path)
+    module = "triage-split"
+    d = _dispatch_triage(tmp_path, module, sim_run=4)
+    _write_triage_result(
+        module,
+        d["workdir"],
+        status="pass",
+        stage_specific={
+            "analysis_state": "complete",
+            "root_cause": "simulation-plan",
+            "confidence": "high",
+            "advisory": {
+                "findings": [
+                    {"anchor": "verification-plan.md:88", "cases": ["t1"]},
+                    {
+                        "anchor": "core_muldiv.v:129",
+                        "cases": ["t2"],
+                        "root_cause": "rtl-design",
+                    },
+                    {"anchor": "sequences.json:12", "cases": ["t3"]},
+                ]
+            },
+        },
+    )
+    r = _run_json(
+        tmp_path, "reap", "--module", module, "--rule", "simulation-triage",
+        "--run", str(d["run"]),
+    )
+    assert r["ok"] is True
+    diagnoses = [e for e in facts.read_events(module) if e["type"] == "diagnosis"]
+    by_owner = {e["fix_owner"]: e for e in diagnoses}
+    assert set(by_owner) == {"simulation-plan", "rtl-design"}
+    assert by_owner["simulation-plan"]["fix_locus"] == [
+        "verification-plan.md:88",
+        "sequences.json:12",
+    ]
+    assert by_owner["rtl-design"]["fix_locus"] == ["core_muldiv.v:129"]
+    # both rest on the same analysis, and both bind to the run that was analysed
+    assert len({e["id"] for e in diagnoses}) == 2
+    for e in diagnoses:
+        assert e["subject"] == {"proof": "simulation", "outcome_run": 4}
+        assert e["evidence"][0].endswith("result.json")
 
 
 def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):

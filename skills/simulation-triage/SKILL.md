@@ -111,9 +111,17 @@ Those paths are what the next reader opens, so nothing there is cleaned up.
 ## Landing the verdict
 
 `root_cause` names the rule that must act — `rtl-design`, `simulation-plan`, `specification`, or
-`simulation` — and choosing between them is the judgment this stage exists to make. One value for
-the run. When two stages are genuinely both implicated, that is what `confidence` is for, not a
-tiebreak rule.
+`simulation` — and choosing between them is the judgment this stage exists to make.
+
+A regression fails for as many reasons as it fails for. When your findings have **separate root
+causes** — an RTL bug in one, a testbench check that was never written in another — say so per
+finding, with `findings[].root_cause`. Each distinct value becomes its own attribution carrying its
+own anchors, and every named stage is dispatched. Do not pick the biggest one and let the rest ride
+along in the prose: an anchor whose stage is never named is a fix nobody schedules.
+
+That is for genuinely separate causes. When two stages are implicated in **the same** cause and you
+cannot tell which is at fault, splitting is the wrong answer and so is picking one — that is what
+`confidence: low` is for.
 
 `confidence` is not a hedge on your prose; it decides what happens next, and it has two values
 because there are two things that can happen. A `high` verdict is acted on directly. `low` reaches
@@ -136,7 +144,8 @@ carrying an `anchor`, because that `anchor` is the `file:line` the rework starts
   "root_cause": "rtl-design",
   "confidence": "high",
   "advisory": {
-    "findings": [ { "anchor": "file:line", "cases": ["…"] } ],
+    // root_cause per finding ONLY when it differs from the top-level one; omit otherwise
+    "findings": [ { "anchor": "file:line", "cases": ["…"], "root_cause": "simulation-plan" } ],
     "waveform": {                    // when you queried a dump
       "commands": ["fsdbreport <sim_run>/<test_id>.fsdb -s /<dut_top>_tb_top/u_dut/<sig> -bt 40ns -et 80ns -of h -o w.txt"],
       "signals": ["/<dut_top>_tb_top/u_dut/<sig>"]

@@ -18,17 +18,17 @@ def decide(module, *, wake=None, closing=False):
         return reap
 
     fails   = _failures(module, events)                        # step 1 每条最新 fail + 求 owner
-    unclear = [f for f in fails if not f["owner"]]
+    unclear = [f for f in fails if not f["owners"]]
     if unclear:
         return _escalate(unclear[0])                           #    归因没澄清 → 停下等人
     # ↓ 走过这一行,每条失败都有明确 owner
-    open_ = [f for f in fails if not _answered(events, f["idx"], f["owner"])]
+    owed_ = owed(events, fails)                                #    每条失败 × 它每个 owner
 
-    repair     = _group(open_)                                 # step 2 一个候选集
-    complained = {f["rule"] for f in open_}
+    repair     = _group(owed_)                                 # step 2 一个候选集
+    owed_rules = {f["rule"] for f in owed_}
     required   = required_proofs(events)
     candidates = _candidates(module, events, inflight, repair,
-                             complained, _forward_work(module, events, required))
+                             owed_rules, _forward_work(module, events, required))
     if candidates:
         return _dispatch_action(module, candidates[0], repair)
 
@@ -76,7 +76,9 @@ for rule in rules.FORWARD_PRIORITY:
 
 ### 3.2 `_owner(...)` —— 一个否决 + 三个信息源
 
-调度器读"为什么失败"的唯一入口。返回 `attribution`(原样写下的指名)/ `owner`(它的可路由投影)/ `diagnoses`(支撑这个 owner 的可靠归因,给 `--diagnosis-refs`)/ `unreliable`(给 ESCALATE 的候选)/ `since`(§3.4)。
+调度器读"为什么失败"的唯一入口。返回 `attribution`(原样写下的指名)/ `owners`(它的可路由投影,**一个列表**)/ `unreliable`(给 ESCALATE 的候选)。`owners` 的每一项自带 `since`(§3.4)与支撑它的 `diagnoses`(给 `--diagnosis-refs`)。
+
+**`owners` 是列表**:一次回归有几个独立根因就是几个,而两个 finding 可能落在两个 stage 的文件里;分析用"一个根因一条 diagnosis"表达(`advisory.findings[].root_cause`),日志本来就允许一个 outcome 挂多条。有一条说不准,整条失败就算说不清 —— 它有一部分没有 owner。
 
 **一个否决,加三个信息源,按权威性排序,第一个开口的说了算:**
 
@@ -87,16 +89,16 @@ if _oracle_retracted(...):        return 没有 owner
 # 源 1:有人分析过这条失败吗?分析过,就以分析为准
 diags = _active_diagnoses(...)
 if diags:
-    latest = diags[-1]
-    if _reliable(latest):         return owner = latest["fix_owner"]
-    return 没有 owner              # ← 分析过但说不准,到此为止,不再往下问
+    if not all(_reliable(d) for d in diags):
+        return 没有 owner          # ← 分析过但有一条说不准,到此为止,不再往下问
+    return owners = {每条 diagnosis 的 fix_owner}      # ← 按 owner 归并,各带自己的 anchor
 
 # 源 2:失败的 stage 自己的信封怎么写的
 named = _declared_owner(...)
-if named:                         return owner = named if _legal(...) else 没有
+if named:                         return owners = [named] if _legal(...) else 没有
 
 # 源 3:注册表说这个 stage 背后有分析器吗
-if rules.RULES[rule].triage:      return owner = rules.RULES[rule].triage
+if rules.RULES[rule].triage:      return owners = [rules.RULES[rule].triage]
 
 return 没有 owner
 ```
@@ -131,7 +133,7 @@ return 没有 owner
 只要有**一条**失败求不出 owner,整轮停下:
 
 ```python
-unclear = [f for f in fails if not f["owner"]]
+unclear = [f for f in fails if not f["owners"]]
 if unclear:
     return _escalate(unclear[0])
 ```
@@ -148,6 +150,8 @@ if unclear:
 | `attribution` == 失败的规则自己 | `<rule>: fix_owner is itself, in-stage remedy exhausted` |
 | `attribution` 在闭包外 | `<rule>: fix_owner '<x>' is outside its input closure` |
 
+每条理由都带 `remedy` —— 解开它的那条 argv,只把人必须决定的位置留成占位符(可选的 owner 就是该失败输入闭包里的那几个;不可靠归因那条还带 `--supersedes`)。判决被撤回那一档另给 `remedy_alt`。停下整条流水线的一轮要说清什么能把它重开。
+
 > **代价,写在明处**:一条没人能归因的失败会把**整条流水线**停到有人 `diagnose` 为止 —— 包括那些跟它毫无关系、本来能自动修的失败。这是刻意的:先澄清 fix_owner,再按统一策略决定走哪个阶段,避免"带着不确定性分头推进"引入的分支。
 >
 > 依据是这类失败罕见且有结构上的兜底:`simulation` 有 triage(④);闭包非空的其余 stage 契约上都要求 fail 时指名(如 `power-analysis/SKILL.md`:"`--fix-owner` on **every** failure, tool and license failures included");而 `specification` 的输入闭包为空 —— 它的失败**结构上**永远无法自动路由,新老方案都只能停下来叫人。
@@ -159,8 +163,10 @@ if unclear:
 走过 3.3 的早退之后,**这是唯一的关闭条件**:
 
 ```
-欠着(f) = ¬ _answered(f.since, f.owner)
+欠着(f, o) = ¬ _answered(o.since, o.owner)      对 f.owners 里的每一个 o
 ```
+
+`owed()` 在这里把 (失败 × owner) 展平,于是下游一行未改:`_group` 按 `owner` 分桶,需要两个 stage 动手的失败就落进两个桶。一个 owner 答复了不等于这条失败答复了。
 
 **`since` 是"这个指名何时被知道",不是"失败何时发生"。** 两者在一种情况下不同:分析指出的 owner **早就因为别的原因被派过**。那一轮不可能针对一个当时还不存在的结论做任何事,把它算成"轮到过"就会让这条失败在没人被告知的情况下关闭。所以由 diagnosis 决定的指名,`since` 取那条 diagnosis 的事件位置;信封或分析器决定的,取失败自己的 outcome 位置。
 
@@ -182,17 +188,19 @@ if unclear:
 
 ### 4.1 `required_proofs` + `_forward_work`
 
-不变。目标集收窄兼任"修完切回来验证"的机制:失败的 proof 一直留在 `work` 里,被冻结过滤器挡着,闸门一开就重验。
+**目标集恒为八条 proof,不再收窄。** 修复期间哪些不该建,已经由三层过滤各自给出理由:`facts.rule_available`(生产者 proof 无效,覆盖全部真下游)、`owed_rules`(没人答复过)、`_unblocked`(生产者在途或也在本轮候选里)。收窄只额外压住**兄弟** —— 被同一次编辑弄陈旧、与失败之间没有产物边的 lint 或 synthesis,而它们是跑 EDA 工具的 `task`。
+
+失败的 proof 仍然一直留在 `work` 里被冻结过滤器挡着,闸门一开就重验。
 
 ### 4.2 `_candidates(...)`
 
 ```
-候选池 = (work ∪ repair.keys) − complained
+候选池 = (work ∪ repair.keys) − owed_rules
 ```
 
 | 过滤 | 判据 | 为什么 |
 |---|---|---|
-| ① 冻结 | `− complained` | 重验一个还没人答复的失败 = 花一轮重新发现已经写下来的东西 |
+| ① 冻结 | `− owed_rules` | 重验一个还没人答复的失败 = 花一轮重新发现已经写下来的东西 |
 | ② 可用 | `facts.rule_available` | 生产者的 proof 无效时拿不到可用输入 |
 | ③ 无冲突 | `_unblocked(r, pending, inflight)` | §4.3 |
 | ④ advisory | `_held_by_advisory` | 便宜的探测器先说话。`coming` 要减掉被①冻住的规则 —— 自己被卡住的前驱不会来 |
@@ -250,12 +258,14 @@ DISPATCH rule
 ## 5. step 3 · 收尾
 
 ```
-有在途            → YIELD(带 in_flight[])
+有在途            → YIELD(带 in_flight[]:每项 rule / run / dispatched_at / executor_wrote)
 required 全 valid → DONE(--closing 时先过 signoff_gate,不清则 ESCALATE)
 否则              → ESCALATE "no eligible rule, none in-flight, not done"
 ```
 
 比 03 少一支:"有无人可派的申诉"那一档已经在 step 1 早退掉了。
+
+`executor_wrote`:`dispatch` 开了一个 run 不等于有进程在跑它,而忘了启动执行者的一轮在日志里和还在干活的 stage 一模一样。判据是 workdir 里有没有比 `dispatch.json` 更新的文件 —— 比对发生在一个目录内部,不看时钟,`decide` 仍是纯的。
 
 ---
 
@@ -270,13 +280,13 @@ required 全 valid → DONE(--closing 时先过 signoff_gate,不清则 ESCALATE)
         "design": ("Design/specification/design.md",),
         "rtl":    ("Design/rtl-design/*.v", "Design/rtl-design/rtl-files.json"),
         "plan":   ("Verification/simulation-plan/verification-plan.md",),
-        "sim":    ("Verification/simulation/*",),          # ← 新增
+        "sim":    ("Verification/simulation/case-results-summary.md",),   # ← 新增
     },
 ```
 
 两个理由:
 
-1. **事实如此**。`simulation/SKILL.md:67` 特意把 `<test_id>.fsdb` 留在 run 目录根部"for `simulation-triage` to open",还有失败用例清单和日志。不声明,注册表就在说假话。
+1. **事实如此**。triage 分析的就是那次失败的回归结果;不声明,注册表就在说假话。选择器点的是失败用例清单这一个文件而不是 `Verification/simulation/*`,因为闭包只需要存在一条到 `simulation` 的边;波形留在 run 目录(`simulation/SKILL.md` 把 `<test_id>.fsdb` 放在 run 目录根部"for `simulation-triage` to open"),不属于任何选择器,由 `params.sim_run` 定位。
 2. **副作用正好需要**:`simulation ∈ input_closure(simulation-triage)` ⇒ 反链挡住 **triage 分析期间 simulation 重跑**(否则那是 54 分钟)。
 
 安全性:triage 的 `proof=None`,`facts.rule_available` 对无 proof 的规则直接短路返回 True,所以声明输入**不影响它能不能被派**,只影响闭包。
@@ -298,7 +308,11 @@ triage 只看当次失败的波形和日志,**不需要**上一次通过的 run 
 | triage | 第三个桶 + 专用分支 | **源 3**,普通 owner |
 | 闭包冲突 | `_antichain_ok` + 闭包极小筛 | **一个 `_unblocked`**,三个子句 |
 | `escalations[]` 动作字段 | 有 | **删** |
-| 注册表 | — | `simulation-triage` 声明消费 `simulation` |
+| 一条失败的 owner | 一个 | **一个集合**(`owed` 展平成 失败 × owner) |
+| 目标集 | 有失败时收窄到失败的那几条 | **恒为八条** |
+| `ESCALATE` | 只说问题 | **带 `remedy`** |
+| `YIELD` 的 `in_flight[]` | 只有坐标 | **加 `dispatched_at` / `executor_wrote`** |
+| 注册表 | — | `simulation-triage` 声明消费 `simulation`;`advisory.findings[].root_cause` |
 | 概念词 | 申诉 / 有主 / 无主 / 判决算数 / 可靠 / 反链 / 闭包极小 | **失败 / owner / 派过没有 / 反链** |
 | `schedule.py` 最大圈复杂度 | 9 | **9**(函数 25 个,if 40 处) |
 
