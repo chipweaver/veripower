@@ -10,20 +10,22 @@
 
 ## 跑
 
+**日志不在库里**,由 `--log` 传入:它是某一次运行的记录,不是插件的产物。任何一份 veripower 的 `events.jsonl` 都能重放;本文的数字取自 `Coral-NPU/submissions/cc-opus5-t1-v3-vp/events.jsonl`(CoreMiniAxi,8 个 child,75 个事件,2026-07-29 → 08-02,该仓唯一走完 `signoff` 的一轮)。
+
 ```bash
 cd tests/replay
-python3 replay.py --scripts ../../framework/scripts --tag v4          # 当前调度器
+LOG=<某次真跑的 events.jsonl>
+python3 replay.py --scripts ../../framework/scripts --tag v4 --log $LOG      # 当前调度器
 git archive main framework/scripts | tar -x -C /tmp --one-top-level=vp-v1
-python3 replay.py --scripts /tmp/vp-v1/framework/scripts --tag v1     # 对照组
-python3 summarize.py                                                  # -> out/replay.txt
-python3 probe.py --scripts ../../framework/scripts -k 19              # 某个决策点为什么是那个动作
+python3 replay.py --scripts /tmp/vp-v1/framework/scripts --tag v1 --log $LOG # 对照组
+python3 summarize.py                                                         # -> out/replay.txt
+python3 probe.py --scripts ../../framework/scripts --log $LOG -k 19          # 某个决策点为什么是那个动作
 ```
 
-无外部依赖。输出落 `out/`,中间树落 `$VP_SCRATCH/vp-real-log-replay/`(默认 `/tmp`)。`summarize.py` 的 `TAGS` 决定对照哪两个 tag。
+输出落 `out/`,中间树落 `$VP_SCRATCH/vp-real-log-replay/`(默认 `/tmp`)。`summarize.py` 的 `TAGS` 决定对照哪两个 tag。`.gitignore` 挡掉 `out/` 与就地放的 `*.events.jsonl`。
 
 | 文件 | 角色 |
 |---|---|
-| `coreminiaxi-run06.events.jsonl` | 被重放的真实日志,75 个事件,逐字取自 `Coral-NPU/submissions/cc-opus5-t1-v3-vp/`(CoreMiniAxi,8 个 child,2026-07-29 → 08-02,该仓唯一走完 `signoff` 的一轮)。就地存一份,是为了让度量不依赖仓外路径——上一代 harness 读 `/home/mhc/backup/...`,那条路径今天已经不存在 |
 | `replay.py` | 重放器 |
 | `probe.py` | 单点诊断:某个 `k` 上每条规则的 `proof_valid` / `rule_available` / `stale_inputs` / 缺失选择器 |
 | `summarize.py` | 两个 tag 的分歧集与逐点差异 |
@@ -33,7 +35,7 @@ python3 probe.py --scripts ../../framework/scripts -k 19              # 某个�
 | 成分 | 是真的吗 |
 |---|---|
 | `schedule` / `facts` / `rules` | 被测版本的代码,无打桩 |
-| 事件日志 | **逐字真实**:30 dispatch / 30 outcome / 5 diagnosis / 3 escalation / 6 pin / 1 signoff,含真时间戳 |
+| 事件日志 | **逐字真实**(上面那一份:30 dispatch / 30 outcome / 5 diagnosis / 3 escalation / 6 pin / 1 signoff,含真时间戳) |
 | 树的指纹结构 | 每个前缀按 promote 语义还原(一个 stage 的 canonical 就是它最新一次非 blocked outcome 的产物集) |
 | 文件字节 | **代理** |
 | `<stage>/result.json` | 真 verdict + 真 `fix_owner` |

@@ -49,7 +49,10 @@ PLG-13 fix it as `simulation`. That one value is an inference.
 NOT COVERED: the closing/signoff decision. A pin's `content_fingerprint` is taken over an
 oracle *selector*, not one recorded path, so the bijection does not carry it.
 
-    python3 replay.py --scripts <dir containing schedule.py> --tag v4
+The log itself is NOT in the repo — it is one run's record, not a plugin artifact. Pass it
+with --log; `README.md` says which run the numbers there were taken from.
+
+    python3 replay.py --scripts <dir containing schedule.py> --tag v4 --log <events.jsonl>
 """
 
 from __future__ import annotations
@@ -65,7 +68,6 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-LOG = HERE / "coreminiaxi-run06.events.jsonl"
 OUT = HERE / "out"
 # Intermediate trees are regenerable and large-ish; keep them out of the repo.
 SCRATCH = (
@@ -78,6 +80,10 @@ FIX_OWNER: dict[str, dict[int, str | None]] = {
     "simulation": {1: None, 2: None, 3: None, 4: None, 5: None},
     "power-analysis": {1: "simulation"},  # inferred
 }
+
+
+def load(path: Path) -> list[dict]:
+    return [json.loads(ln) for ln in path.read_text().splitlines() if ln.strip()]
 
 
 def seg_match(path: str, pat: str) -> bool:
@@ -291,6 +297,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scripts", required=True)
     ap.add_argument("--tag", required=True)
+    ap.add_argument("--log", required=True, help="a real run's events.jsonl (README)")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -299,7 +306,7 @@ def main():
     import rules  # noqa: E402
     import schedule  # noqa: E402
 
-    events = [json.loads(ln) for ln in LOG.read_text().splitlines() if ln.strip()]
+    events = load(Path(args.log))
     events, fillers = augment(events, rules)
     sur = Surrogate(events, facts)
 

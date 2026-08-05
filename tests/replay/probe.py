@@ -12,6 +12,7 @@ import replay as R  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--scripts", required=True)
+ap.add_argument("--log", required=True)
 ap.add_argument("-k", type=int, required=True)
 a = ap.parse_args()
 
@@ -20,7 +21,7 @@ import facts  # noqa: E402
 import rules  # noqa: E402
 import schedule  # noqa: E402
 
-events = [json.loads(ln) for ln in R.LOG.read_text().splitlines() if ln.strip()]
+events = R.load(Path(a.log))
 events, _ = R.augment(events, rules)
 sur = R.Surrogate(events, facts)
 bfp = None
