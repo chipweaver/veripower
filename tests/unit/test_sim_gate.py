@@ -55,28 +55,28 @@ def test_materialization_active_needs_driver(tmp_path):
 
 def test_coverage_gate_pass(tmp_path):
     thr = _gate._load_thresholds(DEFAULTS)
-    cov = {"aggregate": {"line": 92.0, "cond": 70.0, "fsm": 80.0, "toggle": 85.0}}
+    cov = {"aggregate": {"line": 92.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0}}
     errs, dims = _gate.coverage_gate(cov, thr)
     assert errs == [] and dims["line"]["pass"] is True
 
 
 def test_coverage_gate_below_threshold(tmp_path):
     thr = _gate._load_thresholds(DEFAULTS)
-    cov = {"aggregate": {"line": 10.0, "cond": 70.0, "fsm": 80.0, "toggle": 85.0}}
+    cov = {"aggregate": {"line": 10.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0}}
     errs, _ = _gate.coverage_gate(cov, thr)
     assert any("line coverage 10.0 <" in e for e in errs)
 
 
 def test_coverage_gate_null_dim_skipped(tmp_path):
     thr = _gate._load_thresholds(DEFAULTS)
-    cov = {"aggregate": {"line": 92.0, "cond": 70.0, "fsm": None, "toggle": 85.0}}
+    cov = {"aggregate": {"line": 92.0, "cond": 91.0, "fsm": None, "toggle": 93.0}}
     errs, dims = _gate.coverage_gate(cov, thr)
     assert errs == [] and dims["fsm"]["skipped"] is True
 
 
 def test_coverage_gate_absent_dim_fails(tmp_path):
     thr = _gate._load_thresholds(DEFAULTS)
-    cov = {"aggregate": {"line": 92.0, "cond": 70.0, "toggle": 85.0}}  # fsm absent
+    cov = {"aggregate": {"line": 92.0, "cond": 91.0, "toggle": 93.0}}  # fsm absent
     errs, dims = _gate.coverage_gate(cov, thr)
     assert any("fsm threshold configured but absent" in e for e in errs)
     assert dims["fsm"]["value"] == "absent"
