@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-orange?style=flat-square">
-  <img alt="Version 0.1.1" src="https://img.shields.io/badge/version-0.1.1-lightgrey?style=flat-square">
+  <img alt="Version 0.1.2" src="https://img.shields.io/badge/version-0.1.2-lightgrey?style=flat-square">
 </p>
 
 ---
@@ -163,6 +163,6 @@ veripower/
 Three tiers, each answering a different question: **`tests/unit/`** (pure-Python code behavior), **`tests/contracts/`** (deterministic artifact-sync / invariant lints, no code executed), and **`tests/scenarios/`** (skill-level agent-discipline regression — Claude as the system under test, no EDA tools). How to run each, the fast loop, and the CI gate are in [CONTRIBUTING.md § Testing](CONTRIBUTING.md#testing).
 ## Status, license, contributing
 
-- **Status:** alpha (v0.1.1). Stable interfaces: the `kernel.py` CLI surface and the cross-stage envelope schema. Unstable: skill internals.
+- **Status:** alpha (v0.1.2). Stable interfaces: the `kernel.py` CLI surface and the cross-stage envelope schema. Unstable: skill internals.
 - **License:** MIT. See [`LICENSE`](LICENSE).
 - **Contributing:** the contribution model is documented in [`CONTRIBUTING.md`](CONTRIBUTING.md). For now, please file issues at <https://github.com/chipweaver/veripower/issues>.
