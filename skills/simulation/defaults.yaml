@@ -3,16 +3,14 @@
 # is no waiver path, so a threshold set too high routes real rework rather than warning anyone.
 
 # Structural coverage gate dims (VCS -cm, no covergroup needed). functional removed:
-# no covergroup substrate exists. Tuned 2026-06-04 against real eval traces: toggle 70->50
-# (70 was aes-anchored at 96-98%; deep-FSM DUTs e.g. sdc run far lower) and fsm 50->40 (still
-# above run2's present-but-shallow 36% ceiling, so shallow-FSM TBs are still failed). line/cond
-# kept (line is the core structural floor; manual gates used line>=70). These right-size the bar;
-# they do NOT make under-covered TBs pass.
+# no covergroup substrate exists. One bar across all four dims, set above what the 2026-06-04
+# eval traces reached — toggle 50 and fsm 40 were fitted to those runs, and a bar fitted to what
+# a TB happened to achieve cannot tell an adequate TB from the one it was measured on.
 coverage_thresholds:
-  line:    80
-  cond:    60
-  fsm:     40
-  toggle:  50
+  line:    90
+  cond:    90
+  fsm:     90
+  toggle:  90
 
 # Round budget for stimulus iterate (when coverage gaps all map to testpoints)
 stimulus_iterate_max_rounds: 3

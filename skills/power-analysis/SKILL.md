@@ -75,6 +75,8 @@ cd {workdir} && make all >make.out 2>&1
 `all` is `gls-compile` (which re-renders the power tests and absolutizes the TB filelist first),
 then `gls-run` for one SAIF per scenario, then `ptpx`. The redirect keeps multi-thousand-line VCS
 and PT logs out of context; every step also tees its own log, which is what you read on a failure.
+`make all` outlives the foreground Bash timeout, so launch it detached (`run_in_background=True`)
+and stay in this turn until it exits — nothing resumes a subagent when a job it started finishes.
 
 ### 3. Close
 
@@ -94,8 +96,8 @@ from `<ppa>/ppa.json` itself — an absent file or dim leaves the dimension unga
 claim. It records the measurements as `stage_specific.power_by_scenario[]` and
 `stage_specific.ppa_actual[]`, a missed target as `stage_specific.violations[]`, the SAIF set as
 `stage_specific.saif_artifacts[]`, the VCS identity as `stage_specific.compile_info`, and the data
-faults it detected itself — an empty SAIF, an unreadable or irreconcilable report — as
-`stage_specific.failures[]`.
+faults it detected itself — an empty SAIF, a gate-level run that did not report `PASS`, an
+unreadable or irreconcilable report — as `stage_specific.failures[]`.
 
 The flags carry what the reports cannot:
 

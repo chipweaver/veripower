@@ -14,6 +14,7 @@ You MUST NOT:
 - Dispatch further subagents: a sub-Task writes no events, so anything you dispatch is work the kernel cannot see or audit.
 - Touch files outside {workdir} — which includes every other module (reading upstream artifacts is allowed).
 - Make routing decisions (orchestrator decides next stage).
+- End your turn while a job you started is still running — nothing resumes you when a background job finishes, so the run is stranded in flight with no result.json. Long EDA runs go in the background and you stay in the turn until they exit.
 
 result.json contract (write to {workdir}/result.json):
 - result.json required fields: stage, produced_at (ISO8601 UTC, e.g. 2026-07-12T08:00:00Z — a produced_at predating this run's dispatch is reaped blocked/stale_result), status is `pass` or `fail`, artifacts, stage_specific.

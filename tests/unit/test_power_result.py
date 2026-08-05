@@ -205,8 +205,9 @@ _SA_RPT = (
 _VCS_LOG = "Chronologic VCS simulator copyright ...\nVersion L-2016.06_Full64\n"
 
 
-def _make_workdir(tmp_path, scenarios, sizes, flats):
-    """sizes: {id:int saif bytes}.  flats: {id: power_flat text, or None to omit the file}."""
+def _make_workdir(tmp_path, scenarios, sizes, flats, statuses=None):
+    """sizes: {id:int saif bytes}.  flats: {id: power_flat text, or None to omit the file}.
+    statuses: {id: token, or None to omit the file}; a scenario not named here passes."""
     wd = tmp_path / "wd"
     (wd / "saif").mkdir(parents=True)
     (wd / "gls-compile-log.txt").write_text(_VCS_LOG)
@@ -214,6 +215,9 @@ def _make_workdir(tmp_path, scenarios, sizes, flats):
         sid = s["id"]
         if sizes.get(sid, 0) > 0:
             (wd / "saif" / f"{sid}.saif").write_bytes(b"x" * sizes[sid])
+        token = (statuses or {}).get(sid, "PASS")
+        if token is not None:
+            (wd / "saif" / f"{sid}.status").write_text(token + "\n")
         rdir = wd / "reports_ptpx" / sid
         rdir.mkdir(parents=True)
         if flats.get(sid) is not None:
@@ -326,6 +330,49 @@ def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
     assert all(a["id"] != "S1" for a in data["saif_artifacts"])
 
 
+def test_run_gls_uvm_failure_nulls_the_power_number(tmp_path, capsys):
+    """The gate-level run is the only functional evidence this stage produces, and it is also
+    what the SAIF is a recording of: activity dumped from a run whose stimulus reported errors
+    does not qualify a power number, however cleanly PT-PX parses."""
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN,
+        sizes={"S1": 2000, "S2": 4000},
+        flats={
+            "S1": _flat_rpt(0.42, 0.05, 0.02, 0.35),
+            "S2": _flat_rpt(1.10, 0.45, 0.55, 0.10),
+        },
+        statuses={"S1": "FAIL"},  # S2 passes
+    )
+    rc, data = p.run(plan, wd, _json.dumps([{"dim": "power_mw", "target": 1.2}]))
+    assert rc != 0
+    assert "FAIL=gls_uvm:S1" in capsys.readouterr().err
+    f0 = data["failures"][0]
+    assert (f0["id"], f0["category"], f0["phase"]) == ("S1", "gls_uvm", "run")
+    assert f0["log_excerpt"] == "saif/S1.run.log"
+    assert data["power_by_scenario"][0]["power_mw"] is None
+    assert (
+        data["power_by_scenario"][1]["power_mw"] == 1.10
+    )  # the passing scenario stands
+
+
+def test_run_missing_gls_status_is_not_a_pass(tmp_path):
+    """A run that hit $fatal or died never reached report_phase, so it leaves no verdict — and
+    the simulator's exit code cannot fill that in. Absence fails the scenario."""
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN[:1],
+        sizes={"S1": 2000},
+        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+        statuses={"S1": None},  # never written
+    )
+    rc, data = p.run(plan, wd, "[]")
+    assert rc != 0
+    assert data["failures"][0]["category"] == "gls_uvm"
+    assert "absent" in data["failures"][0]["error_summary"]
+    assert data["ppa_actual"][0]["value"] is None
+
+
 def test_run_report_missing_token(tmp_path, capsys):
     wd, plan = _make_workdir(
         tmp_path, _SCEN[:1], sizes={"S1": 2000}, flats={"S1": None}
@@ -387,6 +434,7 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
     wd = tmp_path / "wd"
     (wd / "saif").mkdir(parents=True)
     (wd / "saif" / "S1.saif").write_text("x" * 100)
+    (wd / "saif" / "S1.status").write_text("PASS\n")
     rdir = wd / "reports_ptpx" / "S1"
     rdir.mkdir(parents=True)
     (rdir / "power_flat.rpt").write_text(
@@ -649,12 +697,22 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
 # ── Task 5: Golden test against the real tpu_top run ──────────────────────────
 
 
-def test_golden_real_reports_lean_pass(tmp_path):
+def _copy_golden(tmp_path, root):
+    """The captured workdir plus the per-scenario verdicts. The capture predates the file
+    base_test writes, and a run's own output is not something to hand-author into the
+    fixture, so the passing token is supplied here."""
     import shutil
 
-    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
     wd = tmp_path / "wd"
-    shutil.copytree(ROOT / "real", wd)
+    shutil.copytree(root / "real", wd)
+    for saif in (wd / "saif").glob("*.saif"):
+        saif.with_suffix(".status").write_text("PASS\n")
+    return wd
+
+
+def test_golden_real_reports_lean_pass(tmp_path):
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
+    wd = _copy_golden(tmp_path, ROOT)
     rc = p.build_result(wd, plan_path=str(ROOT / "plan"), targets="[]")
     assert rc == 0
     env = _json.loads((wd / "result.json").read_text())
@@ -690,14 +748,11 @@ def test_golden_real_reports_lean_pass(tmp_path):
 def test_golden_is_schema_valid(tmp_path):
     # Canonical pattern: validate the in-memory dict against {envelope schema + this
     # stage's result.schema} via Registry (mirrors test_signoff_result.py pattern).
-    import shutil
-
     from jsonschema import Draft202012Validator
     from referencing import Registry, Resource
 
     ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
-    wd = tmp_path / "wd"
-    shutil.copytree(ROOT / "real", wd)
+    wd = _copy_golden(tmp_path, ROOT)
     p.build_result(wd, plan_path=str(ROOT / "plan"), targets="[]")
     env = _json.loads((wd / "result.json").read_text())
     env_schema = _json.loads(

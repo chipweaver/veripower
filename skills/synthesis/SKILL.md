@@ -98,9 +98,9 @@ corrected clock upstream reach the tool without touching what you measured.
 ### 3. Converge
 
 `make synthesis` runs `dc_shell` and outlives the foreground Bash timeout. Launch it as one
-detached background job (`run_in_background=True`) from `{workdir}`, end your turn, and wait for
-the harness completion notification; on wake read `run.log` once. The Makefile tees that log, and
-the run never returns synchronously, so there is nothing to poll for.
+detached background job (`run_in_background=True`) from `{workdir}`, stay in this turn until it
+exits, then read `run.log` once. The Makefile tees that log, so poll it — nothing resumes a
+subagent when a job it started finishes.
 
 Read the violated paths in `reports/timing_setup.rpt`, keeping each one's startpoint, endpoint and
 slack. Step 2 already carried in every exception the design declares, so a path that is still

@@ -14,7 +14,7 @@ SCAFFOLD = {
     "sequences": [{"name": "smoke", "agent": "drv"}],
     "tests": [{"name": "t_smoke", "seqs": ["smoke"]}],
 }
-COV_PASS = {"aggregate": {"line": 92.0, "cond": 70.0, "fsm": 80.0, "toggle": 85.0}}
+COV_PASS = {"aggregate": {"line": 92.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0}}
 
 
 def _final_workdir(tmp_path):
@@ -145,7 +145,7 @@ def test_final_coverage_fail(tmp_path):
     wd = _final_workdir(tmp_path)
     (wd / "structural-coverage.json").write_text(
         json.dumps(
-            {"aggregate": {"line": 10.0, "cond": 70.0, "fsm": 80.0, "toggle": 85.0}}
+            {"aggregate": {"line": 10.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0}}
         )
     )
     proc = _finalize_final(wd)
