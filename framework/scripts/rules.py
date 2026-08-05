@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class Rule:
     name: str
-    stage: str
     skill: str
     execution: str  # "task" | "main-thread"
     workdir_root: tuple[str, ...]
@@ -42,7 +41,6 @@ class Rule:
 RULES: dict[str, Rule] = {
     "specification": Rule(
         name="specification",
-        stage="specification",
         skill="veripower:specification",
         execution="main-thread",
         workdir_root=("Design", "specification"),
@@ -70,7 +68,6 @@ RULES: dict[str, Rule] = {
     ),
     "simulation-plan": Rule(
         name="simulation-plan",
-        stage="simulation-plan",
         skill="veripower:simulation-plan",
         execution="main-thread",
         workdir_root=("Verification", "simulation-plan"),
@@ -101,7 +98,6 @@ RULES: dict[str, Rule] = {
     ),
     "rtl-design": Rule(
         name="rtl-design",
-        stage="rtl-design",
         skill="veripower:rtl-design",
         execution="main-thread",
         workdir_root=("Design", "rtl-design"),
@@ -130,7 +126,6 @@ RULES: dict[str, Rule] = {
     ),
     "lint-cdc": Rule(
         name="lint-cdc",
-        stage="lint-cdc",
         skill="veripower:lint-cdc",
         execution="task",
         workdir_root=("Design", "lint-cdc"),
@@ -160,7 +155,6 @@ RULES: dict[str, Rule] = {
     ),
     "synthesis": Rule(
         name="synthesis",
-        stage="synthesis",
         skill="veripower:synthesis",
         execution="task",
         workdir_root=("Design", "synthesis"),
@@ -190,7 +184,6 @@ RULES: dict[str, Rule] = {
     ),
     "timing-analysis": Rule(
         name="timing-analysis",
-        stage="timing-analysis",
         skill="veripower:timing-analysis",
         execution="task",
         workdir_root=("Design", "timing-analysis"),
@@ -209,7 +202,6 @@ RULES: dict[str, Rule] = {
     ),
     "simulation": Rule(
         name="simulation",
-        stage="simulation",
         skill="veripower:simulation",
         execution="main-thread",
         workdir_root=("Verification", "simulation"),
@@ -250,7 +242,6 @@ RULES: dict[str, Rule] = {
     ),
     "power-analysis": Rule(
         name="power-analysis",
-        stage="power-analysis",
         skill="veripower:power-analysis",
         execution="task",
         workdir_root=("Verification", "power-analysis"),
@@ -280,7 +271,6 @@ RULES: dict[str, Rule] = {
     ),
     "simulation-triage": Rule(
         name="simulation-triage",
-        stage="simulation-triage",
         skill="veripower:simulation-triage",
         execution="task",
         workdir_root=("Verification", "simulation-triage"),

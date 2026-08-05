@@ -22,9 +22,11 @@
 
 ## 2. 一对字段:`(attribution, fix_owner)`
 
-两条归因通道(信封自述 / diagnosis 事件)收敛成一个函数 `_attribution` 的一对返回值:`attribution` 是原样写下的,`fix_owner` 是它的**可路由投影**(合法 + 对 diagnosis 而言可靠)。后来的分析压过当场的自述。
+两条归因通道(信封自述 / diagnosis 事件)收敛成一个函数 `_attribution` 的一对返回值:`attribution` 是原样写下的,`fix_owner` 是它的**可路由投影**(合法 + 对 diagnosis 而言可靠)。后来的分析压过当场的自述。四种升级理由(未指名 / 自指 / 越界 / 归因不可靠)不再是四个分支,而是这对值的四种读法(`_escalation`)。
 
-调度器读的归因字段从 8 个降到 2 个。四种升级理由(未指名 / 自指 / 越界 / 归因不可靠)不再是四个分支,而是这对值的四种读法(`_escalation`)。
+**这是内聚,不是削减 —— 字段一个都没少。** 实测两版归因路径读到的原始字段:v1 十一个,v2 十二个(多的那个是 v2 自己的内部键)。变的是它们**只在一个函数里被读**,决策逻辑消费的是那对派生值;v1 里同一批字段散在 `_disposition` 的十个分支、`_declared_owner`、`_reliable` 三处各读各的。
+
+同样要说清:`schedule.py` 的 if 分支总数 44 → 42,几乎没动。真正塌掉的是**第二座山** —— `_disposition` 那棵 98 行、10 个 return 的决策树没有了(圈复杂度 19 → 该位置最大 9)。
 
 ## 3. 一个候选集
 
@@ -135,7 +137,23 @@ v1 的 `rtl-design:2` 是盲重建:sim 的申诉在 spec 修完后被判 stale �
 
 三个 stage skill(`specification` / `simulation-plan` / `rtl-design`)的 `caused_by` 措辞同步改了:它不再等价于"这是返修轮",而是"有失败的信封在等这个 stage",可以和 `scope`(上游漂移)同时出现 —— 那正是 v2 让级联轮不再盲目的方式。
 
-## 7. 兼容性与边界
+## 7. 字段审计:哪些是承重的,哪些只做审计
+
+重构时按"每个字段谁读"过了一遍(grep 出读点,不靠记忆)。结论:除一个死字段外,没有可删的;但有六个字段**机器零读点**,它们的价值在人身上。文档必须点名,否则下一个人会试图让它们承重。
+
+| 字段 | 机器读点 | 为什么留着 |
+|---|---:|---|
+| `dispatch.caused_by` / `.diagnosis_refs`(事件里那份) | 0 | 同一份信息经 `dispatch.json` 到达 stage;事件里这份是给日志读者的因果链 |
+| `outcome.reason`(blocked 子类) | 0 | `missing` 与 `schema_violation` 的区别是"执行器死了"还是"stage 写了垃圾" |
+| `diagnosis.evidence` | 0 | 分析结论的出处;triage 的由内核合成,human 的由 `--evidence` 必填 |
+| `diagnosis.provenance` | 0 | 只在写入时校验非空 —— 谁为这条归因背书 |
+| `stage_specific.fail_reason` | 0 | 指名 `fix_owner` 的理由。归因有作者、有账可查,是它相对"一张映射表"的全部优势 |
+
+**唯一删掉的**:`Rule.stage` —— 9 条规则里逐条等于 `name`,全仓库零引用。
+
+一处必须写死的语义:`_answered` 判的是"**owner 被派过**",不是"被 `caused_by` 点名过"。改成后者会把"那个 stage 有没有轮到过"偷换成"有没有被正式点名",于是一次因别的原因重建 owner 的轮次不再关闭申诉,同一个缺陷会被派两遍。
+
+## 8. 兼容性与边界
 
 - **事件 schema 未改**,旧 `events.jsonl` 直接可读;`stage_specific.fix_owner` 的 stage 契约一字未动(只是改由谁来读它的**时机**)。
 - `schedule._fail_is_fresh` 删除,`facts.proof_fresh_except_verdict` 拆成 `verdict_trustworthy` + `inputs_unchanged`(前者是新的公开查询)。仓库内 6 个直接调用旧内部函数的测试已按 v2 词汇改写;**没有一个行为断言需要放宽**。

@@ -381,16 +381,13 @@ def _dispatched(module: str, action: dict) -> dict:
     return action
 
 
-def decide(
-    module: str,
-    *,
-    wake: str | None = None,
-    closing: bool = False,
-) -> dict:
-    events = facts.read_events(module)
-    inflight = facts.in_flight(events)
+def _ready_to_reap(module, events, inflight, wake):
+    """Step 0: a run whose result is already on disk, or one `--wake` names. Reaping before
+    deciding keeps every later step reading a current log.
 
-    # step 0: wake reap, then no-wake 收口 (completed run whose workdir has result.json)
+    `--wake` earns its keep only on the branch the scan cannot serve: an executor that died
+    without writing `result.json` is invisible to the scan, and the ledger would YIELD on it
+    forever."""
     if wake and ":" in wake:
         r, _, n = wake.partition(":")
         if n.isdigit() and {"rule": r, "run": int(n)} in inflight:
@@ -404,18 +401,27 @@ def decide(
             / "result.json"
         ).is_file()
     ]
-    if ready:
-        ready.sort(
-            key=lambda f: (
-                rules.FORWARD_PRIORITY.index(f["rule"])
-                if f["rule"] in rules.FORWARD_PRIORITY
-                else 99
-            )
+    if not ready:
+        return None
+    ready.sort(
+        key=lambda f: (
+            rules.FORWARD_PRIORITY.index(f["rule"])
+            if f["rule"] in rules.FORWARD_PRIORITY
+            else 99
         )
-        return {"action": "REAP", "rule": ready[0]["rule"], "run": ready[0]["run"]}
+    )
+    return {"action": "REAP", "rule": ready[0]["rule"], "run": ready[0]["run"]}
 
-    # step 1: the open complaints, grouped by who must act
-    open_ = complaints(module, events)
+
+def _group(open_):
+    """Step 1: the open complaints, by who must act. `(repair, triage, unowned)`.
+
+    A group-by, not a merge rule — which is the whole point: "co-failures naming one owner
+    become one dispatch" cannot be implemented half-way if it is never implemented at all.
+
+    An unowned complaint goes to the diagnostic its rule declares (`Rule.triage`) only when
+    nothing has analysed this failure yet. An analysis that came back unreliable is a human's
+    call, and re-running the same analyzer over the same evidence would only reproduce it."""
     repair: dict[str, list[dict]] = {}
     triage: dict[str, list[dict]] = {}
     unowned: list[dict] = []
@@ -424,31 +430,27 @@ def decide(
             repair.setdefault(c["owner"], []).append(c)
             continue
         unowned.append(c)
-        # A stage that read its own failure and cannot attribute it hands off to the
-        # diagnostic its rule declares — but only when nothing has analysed this failure
-        # yet. An analysis that came back unreliable is a human's call, and re-running the
-        # same analyzer over the same evidence would only reproduce it.
         t = rules.RULES[c["rule"]].triage
         if t and not c["unreliable"]:
             triage.setdefault(t, []).append(c)
+    return repair, triage, unowned
 
-    # step 2: one candidate set — repairing and building are the same act (dispatch a rule,
-    # hand it the complaints it owns), so they are ordered together rather than staged.
-    required = required_proofs(events)
-    work = _forward_work(module, events, required)
-    # A rule with an OPEN complaint does not run, in either role: re-verifying a proof whose
-    # failure nobody has answered spends the stage to rediscover what is already written
-    # down, and rebuilding a rule whose own failure is unattributed answers nothing.
-    complained = {c["rule"] for c in open_}
+
+def _candidates(module, events, inflight, repair, triage, complained, work):
+    """Every rule that could start right now, in the order they should be tried.
+
+    Repairing and building are the same act — dispatch a rule, hand it the complaints it
+    owns — so one set is ordered rather than two staged. Four filters, then three
+    tie-breakers, each named where it is applied."""
     # Who is actually coming, for the advisory gate: a rule held out of the candidate set is
     # not going to speak this round, and an advisory hold that waits for it waits forever.
     # The gate's own premise (a predecessor that will never resolve must not hold anyone) is
     # what makes the subtraction load-bearing rather than cosmetic: an unroutable lint-cdc
     # failure otherwise pins synthesis behind a detector that is blocked on a human.
     coming = (work | set(repair) | set(triage)) - complained
-    candidates = [
+    out = [
         r
-        for r in (work | set(repair) | set(triage)) - complained
+        for r in coming
         if facts.rule_available(module, events, r)
         and _antichain_ok(r, inflight)
         and not _held_by_advisory(module, events, r, coming, inflight)
@@ -459,48 +461,50 @@ def decide(
     # between, which the in-flight guard cannot see because the choice happens first. Without
     # it the tie-breakers below are free to pick a downstream owner (synthesis, `task`) ahead
     # of an upstream one (specification, `main-thread`) and spend that round twice.
-    candidates = [
-        r
-        for r in candidates
-        if not any(o != r and o in rules.input_closure(r) for o in candidates)
+    out = [
+        r for r in out if not any(o != r and o in rules.input_closure(r) for o in out)
     ]
-    if candidates:
-        rule = min(
-            candidates,
-            key=lambda r: (
-                # answer a complaint before building anything: a proof with an unanswered
-                # complaint is going to be re-verified either way, and doing it before the
-                # fix lands spends the stage twice
-                0 if (r in repair or r in triage) else 1,
-                # a `task` executor returns immediately and a `main-thread` Skill() blocks
-                # the turn, so starting the async one first is what makes the two overlap.
-                # Safe because the filter above left only closure-minimal candidates: what
-                # remains is an antichain, and reordering an antichain reorders nothing that
-                # had an order.
-                0 if rules.RULES[r].execution == "task" else 1,
-                rules.FORWARD_PRIORITY.index(r) if r in rules.FORWARD_PRIORITY else -1,
-            ),
-        )
-        action = {
-            "action": "DISPATCH",
-            "rule": rule,
-            "execution": rules.RULES[rule].execution,
-        }
-        if rule in repair:
-            group = repair[rule]
-            action["caused_by"] = [[c["rule"], c["run"]] for c in group]
-            refs = [d["id"] for c in group for d in c["diagnoses"]]
-            if refs:
-                action["diagnosis_refs"] = refs
-        elif rule in triage:
-            action["params"] = {"sim_run": triage[rule][0]["run"]}
-        if unowned:
-            # The round keeps moving, but the human hears about the unroutable failures now
-            # rather than after everything else has finished (§3.3: 无静默丢弃).
-            action["escalations"] = [_escalation(c) for c in unowned]
-        return _dispatched(module, action)
+    return sorted(
+        out,
+        key=lambda r: (
+            # answer a complaint before building anything: a proof with an unanswered
+            # complaint is going to be re-verified either way, and doing it before the fix
+            # lands spends the stage twice
+            0 if (r in repair or r in triage) else 1,
+            # a `task` executor returns immediately and a `main-thread` Skill() blocks the
+            # turn, so starting the async one first is what makes the two overlap. Safe
+            # because the filter above left only closure-minimal candidates: what remains is
+            # an antichain, and reordering an antichain reorders nothing that had an order.
+            0 if rules.RULES[r].execution == "task" else 1,
+            rules.FORWARD_PRIORITY.index(r) if r in rules.FORWARD_PRIORITY else -1,
+        ),
+    )
 
-    # step 3: settle
+
+def _dispatch_action(module, rule, repair, triage, unowned):
+    """The DISPATCH, carrying everything this round is answerable for."""
+    action = {
+        "action": "DISPATCH",
+        "rule": rule,
+        "execution": rules.RULES[rule].execution,
+    }
+    if rule in repair:
+        group = repair[rule]
+        action["caused_by"] = [[c["rule"], c["run"]] for c in group]
+        refs = [d["id"] for c in group for d in c["diagnoses"]]
+        if refs:
+            action["diagnosis_refs"] = refs
+    elif rule in triage:
+        action["params"] = {"sim_run": triage[rule][0]["run"]}
+    if unowned:
+        # The round keeps moving, but the human hears about the unroutable failures now
+        # rather than after everything else has finished (§3.3: 无静默丢弃).
+        action["escalations"] = [_escalation(c) for c in unowned]
+    return _dispatched(module, action)
+
+
+def _settle(module, events, inflight, required, unowned, closing):
+    """Step 3: nothing can start. Say why, in the order that makes the reason true."""
     if inflight:
         return {"action": "YIELD", "in_flight": facts.in_flight(events)}
     if unowned:
@@ -523,3 +527,41 @@ def decide(
         "action": "ESCALATE",
         "reason": "no eligible rule, none in-flight, not done",
     }
+
+
+def decide(
+    module: str,
+    *,
+    wake: str | None = None,
+    closing: bool = False,
+) -> dict:
+    """Four steps, first one that can act wins. Each is one call, so the priority order —
+    reap, then answer, then build, then settle — is the whole of the control flow."""
+    events = facts.read_events(module)
+    inflight = facts.in_flight(events)
+
+    reap = _ready_to_reap(module, events, inflight, wake)
+    if reap:
+        return reap
+
+    open_ = complaints(module, events)
+    repair, triage, unowned = _group(open_)
+
+    required = required_proofs(events)
+    # A rule with an OPEN complaint does not run, in either role: re-verifying a proof whose
+    # failure nobody has answered spends the stage to rediscover what is already written
+    # down, and rebuilding a rule whose own failure is unattributed answers nothing.
+    complained = {c["rule"] for c in open_}
+    candidates = _candidates(
+        module,
+        events,
+        inflight,
+        repair,
+        triage,
+        complained,
+        _forward_work(module, events, required),
+    )
+    if candidates:
+        return _dispatch_action(module, candidates[0], repair, triage, unowned)
+
+    return _settle(module, events, inflight, required, unowned, closing)
