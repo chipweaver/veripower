@@ -278,6 +278,12 @@ RULES: dict[str, Rule] = {
             "design": ("Design/specification/design.md",),
             "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/rtl-files.json"),
             "plan": ("Verification/simulation-plan/verification-plan.md",),
+            # The failed run itself — the waveform kept at its run-dir root, the failing
+            # case list, the logs. Declaring what it already reads is what puts simulation
+            # in this rule's input closure, so the antichain holds the regression back
+            # while the analysis is open instead of spending it on the run being analysed.
+            # Availability is unaffected: a rule with no proof is always dispatchable.
+            "sim": ("Verification/simulation/case-results-summary.md",),
         },
         outputs=(),
         proof=None,
