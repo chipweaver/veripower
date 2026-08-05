@@ -1,20 +1,22 @@
 """VeriPower scheduler — exactly one action per call. Pure over (disk, ledger, args): no
 state of its own, and nothing the caller has to carry between turns.
 
-One concept carries the whole repair path: a **complaint**. A proof whose latest outcome is
-a fail is a complaint; it is OPEN until something has been done about it, and while it is
-open the scheduler's job is to hand it to the party that must act. Everything the old
-disposition tree decided by branching — merge or not, route or re-verify, escalate or
-triage — is a query over the open complaint set:
+Two questions carry the whole repair path, and the order between them is the design:
 
-  * its OWNER is one field pair, `(attribution, fix_owner)`, read from ONE function that
-    knows both channels (the failing envelope's self-report, and any diagnosis that
-    superseded it). The scheduler reads no other attribution field.
-  * complaints sharing an owner are one dispatch. That is a group-by, not a merge rule, so
-    there is no sieve to get half right.
-  * a complaint OPEN against a rule blocks that rule from running at all: re-verifying a
-    proof whose failure nobody has answered spends the stage to rediscover what is already
-    written down.
+  1. WHO must act on each failure. One veto (the oracle that judged it was reopened —
+     a retracted judge cannot direct rework) and three sources, most authoritative first:
+     any analysis of this failure, then the failing stage's own envelope, then the
+     diagnostic the registry declares for that stage. If none of them names anyone, the
+     round STOPS and asks a human — attribution is clarified before anything is scheduled,
+     so nothing downstream of that point has to reason about an unclear failure.
+  2. HAS THEY ACTED — the owner dispatched since the failure landed. That is the only
+     thing that closes a failure. Input drift deliberately does not: a sibling repair
+     moving a failure's inputs does not make the fix owner's job go away, and treating it
+     as if it did is how an attribution that is written down, legal and unanswered gets
+     discarded and then rediscovered by spending the stage that raised it again.
+
+Everything else follows: failures sharing an owner are one dispatch (a group-by, not a
+merge rule), and a failure still owed against a rule keeps that rule from running at all.
 
 Bare-importable (`import schedule`)."""
 
@@ -143,48 +145,103 @@ def _legal(rule: str, name: str | None) -> bool:
     return bool(name) and name in rules.input_closure(rule)
 
 
-def _attribution(module: str, events: list[dict], rule: str, outcome: dict) -> dict:
-    """`(attribution, owner, diagnoses)` for one failure — the SINGLE shape both attribution
-    channels reduce to, and the only thing the scheduler reads about why a stage failed.
+def _event_index(events: list[dict], event: dict) -> int:
+    """Position of `event` in the log, by identity — never `.index()`, which compares by
+    value and would collide on two structurally identical records."""
+    for i, e in enumerate(events):
+        if e is event:
+            return i
+    return 0
 
-    `attribution` is what was written, verbatim; `owner` is its routable projection, present
-    only when the naming is legal AND (for a diagnosis) reliable. Every branch the old
-    disposition tree took over these two channels is a condition on this pair, so an
-    escalation reason is derivable from it rather than raised at the branch that noticed.
 
-    Precedence: a later analysis outranks the stage's own self-report. `_active_diagnoses`
-    is already scoped to this outcome's run, so a diagnosis of an older run cannot speak."""
-    diags = _active_diagnoses(events, rule, outcome)
-    if diags:
-        latest = diags[-1]
-        if _reliable(latest):
-            owner = latest["fix_owner"]
-            return {
-                "attribution": latest["attribution"],
-                "owner": owner,
-                "diagnoses": [
-                    d for d in diags if _reliable(d) and d["fix_owner"] == owner
-                ],
-                "unreliable": [],
-            }
+def _oracle_retracted(events: list[dict], rule: str, outcome: dict) -> bool:
+    """True iff the oracle that judged this failure was reopened after the run executed and
+    has not since been re-pinned — §4.4 condition 3, asked of a fail rather than a pass.
+
+    Reopening an oracle says "I no longer stand behind this judge". A pass loses its proof;
+    a fail loses its AUTHORITY — it can no longer direct rework at an upstream stage on that
+    judge's word. So the failure keeps existing and goes to a human, rather than being
+    quietly treated as if it had not happened."""
+    proof = next((p for p in outcome["proofs"] if p["name"] == rule), None)
+    if proof is None or not rules.RULES[rule].oracle:
+        return False
+    oref = proof["oracle"]["ref"]
+    d_idx = facts._dispatch_index(events, rule, outcome["run"])
+    anchor = d_idx if d_idx is not None else 0
+    return facts._reopened_after(events, oref, anchor) and not facts.live_pins(
+        events, oref
+    )
+
+
+def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) -> dict:
+    """WHO must act on this failure — one veto, then three sources, most authoritative first.
+
+    Returns `attribution` (what was written, verbatim), `owner` (its routable projection, or
+    None), `diagnoses` (the reliable ones behind that owner, for --diagnosis-refs) and
+    `unreliable` (candidates to show a human). The four escalation reasons are readings of
+    the first two, so no branch has to raise its own.
+
+    The analysis source is TERMINAL, not a fallthrough: an analysis that came back unsure
+    has spoken, and its answer is "nobody". Letting it fall through would reach the
+    diagnostic rung again and re-run the same analyzer over the same evidence forever.
+
+    `since` is the event position from which "has the owner acted" is measured: where this
+    naming BECAME KNOWN, not where the failure landed. They differ whenever an analysis
+    names someone who had already been dispatched for an unrelated reason — that round
+    could not have acted on information that did not exist yet, so counting it would close
+    the failure with nobody ever told about it."""
+    if _oracle_retracted(events, rule, outcome):
         return {
-            "attribution": latest["attribution"],
+            "attribution": None,
             "owner": None,
             "diagnoses": [],
-            "unreliable": diags,
+            "unreliable": [],
+            "retracted": True,
+            "since": idx,
         }
-    named = _declared_owner(module, rule)
+    base = {"retracted": False, "since": idx}
+    diags = _active_diagnoses(events, rule, outcome)
+    if diags:  # source 1: a later analysis outranks the stage's own self-report
+        latest = diags[-1]
+        if not _reliable(latest):
+            return {
+                **base,
+                "attribution": latest["attribution"],
+                "owner": None,
+                "diagnoses": [],
+                "unreliable": diags,
+            }
+        owner = latest["fix_owner"]
+        base = {**base, "since": max(idx, _event_index(events, latest))}
+        return {
+            **base,
+            "attribution": latest["attribution"],
+            "owner": owner,
+            "diagnoses": [d for d in diags if _reliable(d) and d["fix_owner"] == owner],
+            "unreliable": [],
+        }
+    named = _declared_owner(module, rule)  # source 2: the failing stage's own envelope
+    if named:
+        return {
+            **base,
+            "attribution": named,
+            "owner": named if _legal(rule, named) else None,
+            "diagnoses": [],
+            "unreliable": [],
+        }
+    # source 3: nobody named anyone, so the stage's declared diagnostic must find out
     return {
-        "attribution": named,
-        "owner": named if _legal(rule, named) else None,
+        **base,
+        "attribution": None,
+        "owner": rules.RULES[rule].triage,
         "diagnoses": [],
         "unreliable": [],
     }
 
 
-def _answered(events: list[dict], idx: int, owner: str) -> bool:
-    """True iff the owner has been dispatched since this failure landed, and that run did not
-    die. This — not input freshness — is what closes a complaint.
+def _answered(events: list[dict], since: int, owner: str) -> bool:
+    """True iff the owner has been dispatched since this naming became known, and that run
+    did not die. This — not input freshness — is what closes a failure.
 
     Dispatch, not delivery: the question is whether the party that must act has had its turn.
     A round that rebuilt the owner for some other reason still had the chance, and asking it
@@ -192,7 +249,7 @@ def _answered(events: list[dict], idx: int, owner: str) -> bool:
     edit answered by the next rebuild. A run reaped `blocked` is the exception — nothing
     landed, so the complaint re-opens rather than being silently consumed by a dead executor."""
     for i, e in enumerate(events):
-        if i <= idx or e["type"] != "dispatch" or e["rule"] != owner:
+        if i <= since or e["type"] != "dispatch" or e["rule"] != owner:
             continue
         done = next(
             (
@@ -209,38 +266,35 @@ def _answered(events: list[dict], idx: int, owner: str) -> bool:
     return False
 
 
-def complaints(module: str, events: list[dict]) -> list[dict]:
-    """The OPEN complaints, in FORWARD_PRIORITY order.
-
-    A failure is open while there is a specific thing to do about it that has not been done:
-
-    * its verdict must still describe reality (`facts.verdict_trustworthy` — the run's own
-      products, and the judge that reached the verdict). A reopened oracle retracts a failure
-      exactly as it retracts a pass.
-    * OWNED: open until the owner has been dispatched (`_answered`). Input drift is
-      deliberately NOT a closer — a sibling repair moving this failure's inputs does not make
-      the fix owner's job go away, and treating it as one is how an attribution that is
-      written down, legal, and unanswered gets thrown away and then rediscovered by spending
-      the stage again.
-    * UNOWNED: closed by input drift, because the specific thing to do is triage or a human,
-      and both would be reading evidence the drift has already moved. Re-verifying is then the
-      cheapest well-defined act, and forward scheduling does it."""
+def _failures(module: str, events: list[dict]) -> list[dict]:
+    """Every proof whose latest outcome is a fail, in FORWARD_PRIORITY order, each carrying
+    who must act on it. No filtering — the caller decides what to do with an unclear one and
+    what to do with one already answered."""
     out = []
     for rule in rules.FORWARD_PRIORITY:
         hit = _latest_fail(events, rule)
         if hit is None:
             continue
         idx, outcome = hit
-        if not facts.verdict_trustworthy(module, events, rule, idx, outcome):
-            continue
-        att = _attribution(module, events, rule, outcome)
-        if att["owner"]:
-            if _answered(events, idx, att["owner"]):
-                continue
-        elif not facts.inputs_unchanged(module, rule, outcome):
-            continue
-        out.append({"rule": rule, "run": outcome["run"], **att})
+        out.append(
+            {
+                "rule": rule,
+                "run": outcome["run"],
+                "idx": idx,
+                **_owner(module, events, rule, idx, outcome),
+            }
+        )
     return out
+
+
+def owed(events: list[dict], fails: list[dict]) -> list[dict]:
+    """The failures still owed: their owner has not been dispatched since they landed.
+
+        owed(f) = not _answered(owner)
+
+    One clause. Callers must have cleared the unclear ones first (`decide` escalates on
+    them), so every entry here has an owner."""
+    return [f for f in fails if not _answered(events, f["since"], f["owner"])]
 
 
 def _escalation(c: dict) -> dict:
@@ -248,6 +302,11 @@ def _escalation(c: dict) -> dict:
     raised where it was noticed — so the three namings and the unreliable diagnosis read as
     one classification instead of four scattered branches."""
     rule, named = c["rule"], c["attribution"]
+    if c.get("retracted"):
+        return {
+            "rule": rule,
+            "reason": f"{rule}: the oracle that judged this failure was reopened",
+        }
     if c["unreliable"]:
         return {
             "rule": rule,
@@ -281,28 +340,35 @@ def _workdir_of(events, rule, run):
     return None
 
 
-def _antichain_ok(rule_name: str, inflight: list[dict]) -> bool:
-    """The in-flight set must stay an ANTICHAIN in the input-closure order: no run may be
-    open alongside another that (transitively) produces what it consumes, in either
-    direction. One predicate for what used to be two unrelated half-guards:
+def _unblocked(rule_name: str, pending: set[str], inflight: list[dict]) -> bool:
+    """Nothing this rule depends on is about to change under it.
 
-    * downstream (a consumer is running) — the torn read Option C described: this rule's
-      re-promote would land under the consumer's canonical read. That guard tested DIRECT
-      consumers only, so a two-hop consumer (timing over rtl-design) slipped through.
-    * upstream (a producer is running) — nothing guarded this at all. `rule_available` reads
-      the producer's proof, which stays valid until the in-flight run reaps, so a consumer
-      was admitted on inputs that were about to change and spent a full round on them.
+    `pending` = what is in flight plus the other candidates this round. Three clauses, and
+    the asymmetries are the design:
 
-    Pure, no I/O: the closure is a registry query."""
-    for f in inflight:
-        other = f["rule"]
-        if other == rule_name:
-            return False
-        if other in rules.input_closure(rule_name):
-            return False
-        if rule_name in rules.input_closure(other):
-            return False
-    return True
+    * a producer IN FLIGHT is a physical hazard — it is rewriting its products while this
+      rule would be reading them. Transitive, and it applies to every rule.
+    * a producer that is merely a CO-CANDIDATE is a logical one: this round's OUTPUT would
+      be invalidated by the other one. So it binds only on a rule that produces a proof —
+      a rule with none (the diagnostic) analyses one frozen past run and lands a diagnosis
+      bound to it, and nothing an upstream rebuild does can invalidate that. Holding it
+      anyway costs the analysis a whole repair cycle: the owner it would have named stays
+      unknown, so the round that fixes the other failure cannot fix this one too.
+    * a CONSUMER in flight is the torn read: promoting a new version under its canonical
+      read. In-flight only, never co-candidates — applied to co-candidates it would
+      deadlock, each of a producer/consumer pair held by the other, and for them the first
+      clause already says the right thing: producer first, consumer next round.
+
+    Pure: the closure is a registry query."""
+    closure = rules.input_closure(rule_name)
+    running = {f["rule"] for f in inflight}
+    if any(r in closure for r in running):
+        return False
+    if rules.RULES[rule_name].proof and any(
+        p != rule_name and p in closure for p in pending - running
+    ):
+        return False
+    return not any(rule_name in rules.input_closure(r) for r in running)
 
 
 def _held_by_advisory(
@@ -413,102 +479,74 @@ def _ready_to_reap(module, events, inflight, wake):
     return {"action": "REAP", "rule": ready[0]["rule"], "run": ready[0]["run"]}
 
 
-def _group(open_):
-    """Step 1: the open complaints, by who must act. `(repair, triage, unowned)`.
+def _group(owed_: list[dict]) -> dict[str, list[dict]]:
+    """`{owner -> [the failures it is owed]}`.
 
-    A group-by, not a merge rule — which is the whole point: "co-failures naming one owner
-    become one dispatch" cannot be implemented half-way if it is never implemented at all.
-
-    An unowned complaint goes to the diagnostic its rule declares (`Rule.triage`) only when
-    nothing has analysed this failure yet. An analysis that came back unreliable is a human's
-    call, and re-running the same analyzer over the same evidence would only reproduce it."""
-    repair: dict[str, list[dict]] = {}
-    triage: dict[str, list[dict]] = {}
-    unowned: list[dict] = []
-    for c in open_:
-        if c["owner"]:
-            repair.setdefault(c["owner"], []).append(c)
-            continue
-        unowned.append(c)
-        t = rules.RULES[c["rule"]].triage
-        if t and not c["unreliable"]:
-            triage.setdefault(t, []).append(c)
-    return repair, triage, unowned
+    "Failures naming one owner become one dispatch" is what this returns, not a rule applied
+    to it — there is no sieve that could be implemented half-way. The declared diagnostic is
+    in here too: it is an ordinary owner, reached by the third source in `_owner`."""
+    out: dict[str, list[dict]] = {}
+    for f in owed_:
+        out.setdefault(f["owner"], []).append(f)
+    return out
 
 
-def _candidates(module, events, inflight, repair, triage, complained, work):
-    """Every rule that could start right now, in the order they should be tried.
+def _candidates(module, events, inflight, repair, owed_rules, work):
+    """Every rule that could start right now, best first.
 
-    Repairing and building are the same act — dispatch a rule, hand it the complaints it
-    owns — so one set is ordered rather than two staged. Four filters, then three
-    tie-breakers, each named where it is applied."""
-    # Who is actually coming, for the advisory gate: a rule held out of the candidate set is
-    # not going to speak this round, and an advisory hold that waits for it waits forever.
-    # The gate's own premise (a predecessor that will never resolve must not hold anyone) is
-    # what makes the subtraction load-bearing rather than cosmetic: an unroutable lint-cdc
-    # failure otherwise pins synthesis behind a detector that is blocked on a human.
-    coming = (work | set(repair) | set(triage)) - complained
-    out = [
+    Repairing and building are the same act — dispatch a rule, hand it the failures it is
+    owed — so one set is ordered rather than two staged."""
+    pool = (work | set(repair)) - owed_rules - {f["rule"] for f in inflight}
+    # `coming`, for the advisory gate: a rule held out of the pool is not going to speak
+    # this round, and an advisory hold that waits for it waits forever.
+    startable = [
         r
-        for r in coming
+        for r in pool
         if facts.rule_available(module, events, r)
-        and _antichain_ok(r, inflight)
-        and not _held_by_advisory(module, events, r, coming, inflight)
+        and not _held_by_advisory(module, events, r, pool, inflight)
     ]
-    # A candidate whose (transitive) producer is ALSO a candidate this round must wait for
-    # it: its round would be built on inputs the other one is about to change. `_antichain_ok`
-    # says the same thing about runs already open; this says it about the ones we are choosing
-    # between, which the in-flight guard cannot see because the choice happens first. Without
-    # it the tie-breakers below are free to pick a downstream owner (synthesis, `task`) ahead
-    # of an upstream one (specification, `main-thread`) and spend that round twice.
-    out = [
-        r for r in out if not any(o != r and o in rules.input_closure(r) for o in out)
-    ]
+    pending = {f["rule"] for f in inflight} | set(startable)
+    out = [r for r in startable if _unblocked(r, pending, inflight)]
     return sorted(
         out,
         key=lambda r: (
-            # answer a complaint before building anything: a proof with an unanswered
-            # complaint is going to be re-verified either way, and doing it before the fix
-            # lands spends the stage twice
-            0 if (r in repair or r in triage) else 1,
+            # answer a failure before building anything: a proof still owed against is going
+            # to be re-verified either way, and doing it before the fix lands spends it twice
+            0 if r in repair else 1,
             # a `task` executor returns immediately and a `main-thread` Skill() blocks the
-            # turn, so starting the async one first is what makes the two overlap. Safe
-            # because the filter above left only closure-minimal candidates: what remains is
-            # an antichain, and reordering an antichain reorders nothing that had an order.
+            # turn, so starting the async one first is what makes two independent stages
+            # overlap. Safe because `_unblocked` left an antichain: reordering an antichain
+            # reorders nothing that had an order.
             0 if rules.RULES[r].execution == "task" else 1,
             rules.FORWARD_PRIORITY.index(r) if r in rules.FORWARD_PRIORITY else -1,
         ),
     )
 
 
-def _dispatch_action(module, rule, repair, triage, unowned):
-    """The DISPATCH, carrying everything this round is answerable for."""
+def _dispatch_action(module, rule, repair):
+    """The DISPATCH, carrying every failure this round is answerable for."""
     action = {
         "action": "DISPATCH",
         "rule": rule,
         "execution": rules.RULES[rule].execution,
     }
-    if rule in repair:
-        group = repair[rule]
-        action["caused_by"] = [[c["rule"], c["run"]] for c in group]
-        refs = [d["id"] for c in group for d in c["diagnoses"]]
+    group = repair.get(rule, [])
+    if group:
+        action["caused_by"] = [[f["rule"], f["run"]] for f in group]
+        refs = [d["id"] for f in group for d in f["diagnoses"]]
         if refs:
             action["diagnosis_refs"] = refs
-    elif rule in triage:
-        action["params"] = {"sim_run": triage[rule][0]["run"]}
-    if unowned:
-        # The round keeps moving, but the human hears about the unroutable failures now
-        # rather than after everything else has finished (§3.3: 无静默丢弃).
-        action["escalations"] = [_escalation(c) for c in unowned]
+        # A rule that declares params is being dispatched AT one of these failures — today
+        # only the diagnostic, which needs the run it must open.
+        if "sim_run" in rules.RULES[rule].params:
+            action["params"] = {"sim_run": group[0]["run"]}
     return _dispatched(module, action)
 
 
-def _settle(module, events, inflight, required, unowned, closing):
-    """Step 3: nothing can start. Say why, in the order that makes the reason true."""
+def _settle(module, events, inflight, required, closing):
+    """Nothing can start. Say why, in the order that makes the reason true."""
     if inflight:
         return {"action": "YIELD", "in_flight": facts.in_flight(events)}
-    if unowned:
-        return {"action": "ESCALATE", **_escalation(unowned[0])}
     if all(facts.proof_valid(module, events, p) for p in required):
         if closing:
             # `closing` changes nothing about WHICH proofs are required — only what a clear
@@ -535,8 +573,7 @@ def decide(
     wake: str | None = None,
     closing: bool = False,
 ) -> dict:
-    """Four steps, first one that can act wins. Each is one call, so the priority order —
-    reap, then answer, then build, then settle — is the whole of the control flow."""
+    """Four steps, first one that can act wins."""
     events = facts.read_events(module)
     inflight = facts.in_flight(events)
 
@@ -544,24 +581,31 @@ def decide(
     if reap:
         return reap
 
-    open_ = complaints(module, events)
-    repair, triage, unowned = _group(open_)
+    fails = _failures(module, events)
+    unclear = [f for f in fails if not f["owner"]]
+    if unclear:
+        # Attribution is clarified BEFORE anything is scheduled. One at a time, earliest
+        # first: a failure nobody can attribute only arises on a parallel branch, and
+        # parallel runs do not land together, so a round discovers one of them at a time.
+        return {"action": "ESCALATE", **_escalation(unclear[0])}
+    # ↓ every failure below this line has an owner
+    owed_ = owed(events, fails)
 
-    required = required_proofs(events)
-    # A rule with an OPEN complaint does not run, in either role: re-verifying a proof whose
+    repair = _group(owed_)
+    # A rule still owed against does not run, in either role: re-verifying a proof whose
     # failure nobody has answered spends the stage to rediscover what is already written
-    # down, and rebuilding a rule whose own failure is unattributed answers nothing.
-    complained = {c["rule"] for c in open_}
+    # down, and rebuilding a rule that is itself owed against answers nothing.
+    owed_rules = {f["rule"] for f in owed_}
+    required = required_proofs(events)
     candidates = _candidates(
         module,
         events,
         inflight,
         repair,
-        triage,
-        complained,
+        owed_rules,
         _forward_work(module, events, required),
     )
     if candidates:
-        return _dispatch_action(module, candidates[0], repair, triage, unowned)
+        return _dispatch_action(module, candidates[0], repair)
 
-    return _settle(module, events, inflight, required, unowned, closing)
+    return _settle(module, events, inflight, required, closing)

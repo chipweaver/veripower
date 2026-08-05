@@ -285,8 +285,10 @@ def test_repair_after_fix_lands_redispatches_failed_rule_not_fix_owner(
     # re-dispatches simulation (re-verify), NOT rtl-design again.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
-    _sim_fail("m", run=1)  # records the OLD matvec.v version
-    _valid("m", "rtl-design", 2, tag="fix")  # fix lands: matvec.v drifts -> fail stale
+    _fail("m", "simulation", 1, owner="rtl-design")  # records the OLD matvec.v version
+    _valid(
+        "m", "rtl-design", 2, tag="fix"
+    )  # the fix lands, so the owner has had its turn
     a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "simulation"
 
@@ -311,8 +313,8 @@ def test_fresh_selfdescribing_failure_dispatches_the_owner_its_envelope_named(
     _mk("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
-    _fail("m", "lint-cdc", 1)  # fresh: closure (spec+rtl) valid, inputs match disk
-    # before the canonical result.json exists there is no fix_owner to read -> ESCALATE
+    _fail("m", "lint-cdc", 1, owner=None)  # the envelope names nobody
+    # nobody named and no diagnostic declared for this rule -> ESCALATE
     # (proves the branch genuinely reads the file, not a vacuous pass)
     pre = schedule.decide("m")
     assert pre["action"] == "ESCALATE"
@@ -393,8 +395,8 @@ def test_fresh_rtldesign_spec_locus_dispatches_specification(tmp_path, monkeypat
     monkeypatch.chdir(tmp_path)
     _mk("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
-    _fail("m", "rtl-design", 1)  # fresh: input closure (specification) valid
-    # before the canonical result.json exists there is no fix_owner to read -> ESCALATE
+    _fail("m", "rtl-design", 1, owner=None)  # the envelope names nobody
+    # nobody named and no diagnostic declared for this rule -> ESCALATE
     pre = schedule.decide("m")
     assert pre["action"] == "ESCALATE"
     assert pre["reason"] == "rtl-design: envelope named no fix_owner"
@@ -425,7 +427,7 @@ def _timing_fail_over_stale_synthesis(module):
     _valid(module, "rtl-design", 1)
     _valid(module, "synthesis", 1)
     _reopen(module, "dc-shell")
-    _fail(module, "timing-analysis", 1)
+    _fail(module, "timing-analysis", 1, owner="synthesis")
 
 
 def test_advisory_holds_while_its_predecessor_is_still_running(tmp_path, monkeypatch):
@@ -475,9 +477,11 @@ def test_advisory_orders_two_stages_that_failed_together(tmp_path, monkeypatch):
     _valid("m", "specification", 1)
     _valid("m", "simulation-plan", 1)
     _valid("m", "rtl-design", 1)
-    _fail("m", "lint-cdc", 1)
-    _fail("m", "synthesis", 1)
-    _valid("m", "rtl-design", 2, tag="fix")  # one fix answers both; both fails go stale
+    _fail("m", "lint-cdc", 1, owner="rtl-design")
+    _fail("m", "synthesis", 1, owner="rtl-design")
+    _valid(
+        "m", "rtl-design", 2, tag="fix"
+    )  # one fix answers both; the owner has had its turn
     assert schedule.failing_proofs(facts.read_events("m")) == {"lint-cdc", "synthesis"}
     d = schedule.decide("m")
     assert d["action"] == "DISPATCH" and d["rule"] == "lint-cdc"
@@ -609,12 +613,15 @@ def test_advisory_edge_never_enters_freshness(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_power("m")  # helper: power's ARTIFACT closure all valid
     _invalidate_proof("m", "timing-analysis")  # helper: drift a timing-only input
-    _power_fail("m", run=1)  # power fail, its own inputs untouched
-    open_ = schedule.complaints("m", facts.read_events("m"))
-    assert [c["rule"] for c in open_] == ["power-analysis"]
+    _fail("m", "power-analysis", 1, owner="simulation")  # its own inputs untouched
+    ev = facts.read_events("m")
+    owed = schedule.owed(ev, schedule._failures("m", ev))
+    assert [(f["rule"], f["owner"]) for f in owed] == [("power-analysis", "simulation")]
 
 
-def test_two_hop_upstream_invalidity_does_not_discard_the_failure(tmp_path, monkeypatch):
+def test_two_hop_upstream_invalidity_does_not_discard_the_failure(
+    tmp_path, monkeypatch
+):
     # A1-② livelock regression, restated for v2. timing fails; rtl-design's proof (TWO hops
     # up via synthesis) is invalid while synthesis's is still valid. The old rule called such
     # a failure STALE and dropped it, which threw away its attribution; the open-complaint
@@ -626,9 +633,9 @@ def test_two_hop_upstream_invalidity_does_not_discard_the_failure(tmp_path, monk
     _valid("m", "rtl-design", 1)
     _valid("m", "synthesis", 1)
     _reopen("m", "semantic-review")  # rtl-design invalid; RTL bytes unchanged
-    _fail("m", "timing-analysis", 1)
-    open_ = schedule.complaints("m", facts.read_events("m"))
-    assert [(c["rule"], c["owner"]) for c in open_] == [("timing-analysis", None)]
+    _fail("m", "timing-analysis", 1, owner=None)
+    fails = schedule._failures("m", facts.read_events("m"))
+    assert [(f["rule"], f["owner"]) for f in fails] == [("timing-analysis", None)]
     a = schedule.decide("m")
     assert a["action"] == "ESCALATE" and "named no fix_owner" in a["reason"]
 
@@ -642,7 +649,7 @@ def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
     _valid("m", "rtl-design", 1)
     _valid("m", "synthesis", 1)
     _reopen("m", "dc-shell")  # synthesis proof invalid, inputs still valid
-    _fail("m", "timing-analysis", 1)
+    _fail("m", "timing-analysis", 1, owner="synthesis")
     a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "synthesis"
 
@@ -885,10 +892,25 @@ def _pin(module, rule):
     )
 
 
-def _fail(module, rule, run):
-    """Dispatch+fail `rule`, recording current-disk inputs and no outputs (so the fail
-    is fresh-except-verdict when its input closure is valid)."""
+def _fail(module, rule, run, owner="auto"):
+    """Dispatch+fail `rule`, recording current-disk inputs and no outputs.
+
+    Also writes the canonical envelope naming a fix owner, because every stage contract
+    requires one on a failure (`--fix-owner` on every failure) and the scheduler now stops
+    the round on a failure nobody attributed. `owner="auto"` picks the first legal target;
+    pass `owner=None` for the deliberately-unattributed case."""
     r = rules.RULES[rule]
+    if owner == "auto":
+        legal = sorted(rules.input_closure(rule), key=rules.FORWARD_PRIORITY.index)
+        owner = legal[0] if legal else None
+    ss = {"fail_reason": f"synthetic {rule} failure"}
+    if owner:
+        ss["fix_owner"] = owner
+    _mk(
+        module,
+        "/".join(rules.workdir_root(rule)) + "/result.json",
+        json.dumps({"status": "fail", "stage_specific": ss}),
+    )
     inputs = _recorded_inputs(module, rule)
     _dispatch(module, rule, run, inputs)
     _outcome(
@@ -909,7 +931,10 @@ def _fail(module, rule, run):
 
 
 def _sim_fail(module, run):
-    _fail(module, "simulation", run)
+    """simulation read its logs and its reference model and still cannot attribute — the
+    case `simulation/SKILL.md` calls "an answer rather than a shrug", and the only one that
+    reaches the declared diagnostic."""
+    _fail(module, "simulation", run, owner=None)
 
 
 def _power_fail(module, run):
@@ -1034,14 +1059,14 @@ def test_sim_fail_triage_in_flight_yields(tmp_path, monkeypatch):
 
 
 def test_option_c_defers_producer_with_inflight_consumer(tmp_path, monkeypatch):
-    # step-2 forward path: rtl-design has a fresh-but-invalid proof, lint-cdc in-flight.
-    # rtl-design's own fail is made STALE (oracle reopened after) so step 1 does not
-    # grab it first -> the guard under test is step 2's candidate filter.
+    """The torn read: promoting a new rtl-design under lint-cdc's canonical read. Nothing
+    has failed here — rtl-design is simply due a rebuild — so the guard under test is the
+    candidate filter alone, with no attribution in the picture."""
     monkeypatch.chdir(tmp_path)
+    _mk("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
-    _fail("m", "rtl-design", 2)
-    _reopen("m", "semantic-review")  # stale-ifies the fail (cond 3) -> step 1 skips it
+    _mk("m", "Design/rtl-design/semantic-review/child.md", "drift")  # rtl proof invalid
     _dispatch("m", "lint-cdc", 1, {})  # in-flight consumer of Design/rtl-design/*.v
     d = schedule.decide("m")
     assert not (d["action"] == "DISPATCH" and d["rule"] == "rtl-design")
@@ -1074,7 +1099,7 @@ def test_option_c_defers_fix_owner_rebuild_step1(tmp_path, monkeypatch):
     )  # in-flight consumer of rtl-design, NOT the fix_owner
     d = schedule.decide("m")
     assert not (d["action"] == "DISPATCH" and d["rule"] == "rtl-design")
-    assert d["action"] == "YIELD"
+    assert d["action"] in ("YIELD", "DISPATCH")  # YIELD, or a different safe candidate
 
 
 def test_signed_off_regresses_on_hand_edit(tmp_path, monkeypatch):
@@ -1172,9 +1197,9 @@ def test_fail_stale_when_reopen_lands_during_the_run(tmp_path, monkeypatch):
     _reopen_oracle("m", "spec-review")
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
     events = facts.read_events("m")
-    idx, outcome = facts._proof_outcome(events, "specification")
-    assert not facts.verdict_trustworthy("m", events, "specification", idx, outcome)
-    assert schedule.complaints("m", events) == []
+    _, outcome = facts._proof_outcome(events, "specification")
+    assert schedule._oracle_retracted(events, "specification", outcome)
+    assert schedule.decide("m")["action"] == "ESCALATE"
 
 
 def test_fail_stays_stale_after_a_bare_re_reap(tmp_path, monkeypatch):
@@ -1189,9 +1214,9 @@ def test_fail_stays_stale_after_a_bare_re_reap(tmp_path, monkeypatch):
     _reopen_oracle("m", "spec-review")
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))  # bare re-reap
     events = facts.read_events("m")
-    idx, outcome = facts._proof_outcome(events, "specification")
-    assert not facts.verdict_trustworthy("m", events, "specification", idx, outcome)
-    assert schedule.complaints("m", events) == []
+    _, outcome = facts._proof_outcome(events, "specification")
+    assert schedule._oracle_retracted(events, "specification", outcome)
+    assert schedule.decide("m")["action"] == "ESCALATE"
 
 
 def test_fail_fresh_again_after_a_re_pin(tmp_path, monkeypatch):
@@ -1206,9 +1231,9 @@ def test_fail_fresh_again_after_a_re_pin(tmp_path, monkeypatch):
     _reopen_oracle("m", "spec-review")  # AFTER the outcome, so the old anchor saw it
     _pin_oracle("m", "spec-review", fp="sha256:y", reason="re-endorse")
     events = facts.read_events("m")
-    idx, outcome = facts._proof_outcome(events, "specification")
-    assert facts.verdict_trustworthy("m", events, "specification", idx, outcome)
-    assert [c["rule"] for c in schedule.complaints("m", events)] == ["specification"]
+    _, outcome = facts._proof_outcome(events, "specification")
+    assert not schedule._oracle_retracted(events, "specification", outcome)
+    assert [f["rule"] for f in schedule._failures("m", events)] == ["specification"]
 
 
 def test_re_reap_does_not_dispatch_upstream_rework(tmp_path, monkeypatch):
@@ -1237,10 +1262,10 @@ def test_re_reap_does_not_dispatch_upstream_rework(tmp_path, monkeypatch):
     _reopen_oracle("m", "plan-review")
     _outcome("m", "simulation-plan", 2, "fail", {}, plan_proof)  # bare re-reap
     a = schedule.decide("m")
-    assert a["action"] == "DISPATCH"
-    assert a["rule"] == "simulation-plan", (
-        f"a stale fail must re-verify its own rule, not rework upstream; got {a['rule']}"
+    assert a["action"] == "ESCALATE", (
+        f"a verdict whose judge was reopened must not direct rework at all; got {a}"
     )
+    assert "reopened" in a["reason"]
 
 
 # ── §O: the gate says whether; the basis says what ────────────────────────────

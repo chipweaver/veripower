@@ -175,10 +175,25 @@ def _valid(module, rule, run, *, tag=None, out_content=None):
     )
 
 
-def _fail(module, rule, run):
-    """Dispatch+fail `rule`, recording current-disk inputs and no outputs (so the fail
-    is fresh-except-verdict when its input closure is valid)."""
+def _fail(module, rule, run, owner="auto"):
+    """Dispatch+fail `rule`, recording current-disk inputs and no outputs.
+
+    Also writes the canonical envelope naming a fix owner, because every stage contract
+    requires one on a failure (`--fix-owner` on every failure) and the scheduler now stops
+    the round on a failure nobody attributed. `owner="auto"` picks the first legal target;
+    pass `owner=None` for the deliberately-unattributed case."""
     r = rules.RULES[rule]
+    if owner == "auto":
+        legal = sorted(rules.input_closure(rule), key=rules.FORWARD_PRIORITY.index)
+        owner = legal[0] if legal else None
+    ss = {"fail_reason": f"synthetic {rule} failure"}
+    if owner:
+        ss["fix_owner"] = owner
+    _mk(
+        module,
+        "/".join(rules.workdir_root(rule)) + "/result.json",
+        json.dumps({"status": "fail", "stage_specific": ss}),
+    )
     inputs = _recorded_inputs(module, rule)
     _dispatch(module, rule, run, inputs)
     _outcome(
@@ -519,10 +534,12 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
 # ── Step 4 ──────────────────────────────────────────────────────────────────────
 
 
-def _timing_complaint_open(module):
+def _timing_owed(module):
+    """Is timing-analysis still owed a fix — i.e. has its owner not been dispatched since?"""
     evs = facts.read_events(module)
     assert schedule._latest_fail(evs, "timing-analysis") is not None
-    return any(c["rule"] == "timing-analysis" for c in schedule.complaints(module, evs))
+    fails = schedule._failures(module, evs)
+    return any(f["rule"] == "timing-analysis" for f in schedule.owed(evs, fails))
 
 
 def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
@@ -535,16 +552,18 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
     _valid(m, "specification", 1)
     _valid(m, "rtl-design", 1)
     _valid(m, "synthesis", 1)
-    _fail(m, "timing-analysis", 1)  # fresh: closure (spec/rtl/synth) valid
+    _fail(
+        m, "timing-analysis", 1, owner="synthesis"
+    )  # a setup violation is synthesis's to fix
 
-    assert _timing_complaint_open(m)  # baseline (non-vacuous)
+    assert _timing_owed(m)  # baseline (non-vacuous)
 
     # rtl-design fix lands -> synthesis proof invalid (its recorded RTL input drifts), but
     # _syn.v not yet regenerated, so timing's OWN inputs have not moved. The complaint stays
     # open: an upstream rebuild two hops away does not retract what timing reported.
     _valid(m, "rtl-design", 2)
     assert not facts.proof_valid(m, facts.read_events(m), "synthesis")
-    assert _timing_complaint_open(m)
+    assert _timing_owed(m)
 
     # the narrowed round rebuilds the producer (synthesis) FIRST — not timing, never ESCALATE.
     a = schedule.decide(m)
@@ -553,9 +572,11 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
     # synthesis rebuilds -> _syn.v drifts -> timing's OWN recorded input now mismatches, and
     # this envelope names nobody, so there is no longer a specific thing to do about the
     # failure: it closes, and forward re-verification takes over.
+    # synthesis has now had its turn, so timing is no longer owed anything and the forward
+    # step re-verifies it.
     _valid(m, "synthesis", 2)
     assert facts.proof_valid(m, facts.read_events(m), "synthesis")
-    assert not _timing_complaint_open(m)
+    assert not _timing_owed(m)
 
     # timing re-verifies LAST.
     b = schedule.decide(m)
