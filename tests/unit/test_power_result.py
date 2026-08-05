@@ -828,7 +828,7 @@ def test_category_enum_is_exactly_what_the_parser_writes():
     # ever wrote it. The enum and the parser's literals are now one set.
     import re
 
-    from tests._skills_sot import load_stage_schema
+    from _skills_sot import load_stage_schema
 
     schema = load_stage_schema("power-analysis")
     enum = None
