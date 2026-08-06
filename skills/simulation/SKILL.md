@@ -143,8 +143,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize --workdir {workdir}
 
 Dispatch no verify wave after that. The envelope carries the phase and the reason; the findings
 stay in `conformance-review.md`, which is promoted beside it. The route from here is
-`failure_phase=conformance` into `simulation-triage`, which opens that record and supplies the
-confidence this stage does not try to.
+`failure_phase=conformance` into `simulation-triage`, which opens that record and reaches the
+attribution this stage does not try to.
 
 **No usable review** (`STATUS: BLOCKED`, or no file): do not gate on it, and do not let it
 disappear either. Write the record yourself and go to step 3:

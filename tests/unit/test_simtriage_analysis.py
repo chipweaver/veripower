@@ -50,7 +50,6 @@ def test_minimal_complete_accepted(tmp_path):
         tmp_path,
         {
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {
                 "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
             },
@@ -64,7 +63,6 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
         tmp_path,
         {
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {
                 "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
             },
@@ -77,7 +75,6 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
     assert env["artifacts"] == []
     assert env["stage_specific"] == {
         "analysis_state": "complete",
-        "confidence": "high",
         "advisory": {
             "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
         },
@@ -114,7 +111,7 @@ def test_valid_skipped_derives_status_fail(tmp_path):
 
 
 def test_missing_analysis_state_exits_nonzero_no_write(tmp_path):
-    r = _run(tmp_path, {"confidence": "high"})
+    r = _run(tmp_path, {"advisory": {"findings": []}})
     assert r.returncode == 1
     assert "analysis_state" in r.stderr
     assert not (tmp_path / "result.json").exists()
@@ -123,7 +120,7 @@ def test_missing_analysis_state_exits_nonzero_no_write(tmp_path):
 def test_complete_without_findings_exits_nonzero(tmp_path):
     """The attribution lives on the findings now, so a complete analysis with none has not
     said whose fault it is."""
-    r = _run(tmp_path, {"analysis_state": "complete", "confidence": "low"})
+    r = _run(tmp_path, {"analysis_state": "complete"})
     assert r.returncode == 1
     assert "advisory" in r.stderr or "findings" in r.stderr
 
@@ -133,7 +130,6 @@ def test_finding_without_root_cause_exits_nonzero(tmp_path):
         tmp_path,
         {
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {"findings": [{"anchor": "a.v:1"}]},
         },
     )
@@ -141,16 +137,18 @@ def test_finding_without_root_cause_exits_nonzero(tmp_path):
     assert "root_cause" in r.stderr
 
 
-def test_complete_without_confidence_exits_nonzero(tmp_path):
+def test_complete_finding_without_anchor_exits_nonzero(tmp_path):
+    """Every complete analysis routes on its own attribution, so its fix_locus — mapped
+    from findings[].anchor — must never be empty."""
     r = _run(
         tmp_path,
         {
             "analysis_state": "complete",
-            "advisory": {"findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}]},
+            "advisory": {"findings": [{"root_cause": "rtl-design"}]},
         },
     )
     assert r.returncode == 1
-    assert "confidence" in r.stderr
+    assert "anchor" in r.stderr
 
 
 def test_skipped_without_reason_exits_nonzero(tmp_path):
@@ -164,19 +162,7 @@ def test_root_cause_outside_enum_exits_nonzero(tmp_path):
         tmp_path,
         {
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {"findings": [{"anchor": "a.v:1", "root_cause": "synthesis"}]},
-        },
-    )
-    assert r.returncode == 1
-
-
-def test_confidence_outside_enum_rejected(tmp_path):
-    r = _run(
-        tmp_path,
-        {
-            "analysis_state": "complete",
-            "confidence": "very-high",
         },
     )
     assert r.returncode == 1
@@ -185,7 +171,6 @@ def test_confidence_outside_enum_rejected(tmp_path):
 def test_unknown_top_level_key_rejected_by_additional_properties_false(tmp_path):
     payload = {
         "analysis_state": "complete",
-        "confidence": "high",
         "groups": [{"fault_type": "x"}],
     }
     r = _run(tmp_path, payload)
@@ -201,7 +186,6 @@ def test_advisory_tier_label_rejected(tmp_path):
         tmp_path,
         {
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {
                 "level": "L2",
                 "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
@@ -243,7 +227,6 @@ def test_advisory_unknown_key_rejected(tmp_path):
         tmp_path,
         {
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {"bogus": 1},
         },
     )
@@ -255,7 +238,6 @@ def test_advisory_old_repro_key_rejected(tmp_path):
         tmp_path,
         {
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {"repro": {"tool": "verilator"}},
         },
     )
@@ -268,7 +250,6 @@ def test_advisory_findings_valid(tmp_path):
         tmp_path,
         {
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {
                 "findings": [
                     {
@@ -288,7 +269,6 @@ def test_advisory_waveform_valid(tmp_path):
         tmp_path,
         {
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {
                 "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
                 "waveform": {
@@ -308,7 +288,6 @@ def test_advisory_experiment_valid(tmp_path):
         tmp_path,
         {
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {
                 "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
                 "experiment": {
@@ -329,7 +308,6 @@ def test_json_file_input(tmp_path):
         json.dumps(
             {
                 "analysis_state": "complete",
-                "confidence": "high",
                 "advisory": {
                     "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
                 },

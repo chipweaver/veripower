@@ -503,7 +503,6 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {
                 "findings": [
                     {
@@ -545,7 +544,6 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
     assert diag["attribution"] == "rtl-design"
     assert diag["fix_owner"] == "rtl-design"
     assert diag["subject"] == {"proof": "simulation", "outcome_run": 7}
-    assert diag["confidence"] == "high"
     # D5: fix_locus mapped from advisory.findings[].anchor; evidence includes the triage
     # result.json plus the experiment artifacts (no longer structurally empty). Every
     # entry is anchored on THIS triage run's directory, which keeps the list module-relative
@@ -582,7 +580,6 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {
                 "findings": [
                     {
@@ -644,7 +641,6 @@ def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
         status="fail",  # schema-legal, but triage has no fail state
         stage_specific={
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {
                 "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
             },
@@ -719,7 +715,6 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {
                 "findings": [{"anchor": "a.v:1", "root_cause": "simulation"}],
             },
@@ -855,7 +850,6 @@ def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": {
                 "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
             },
@@ -890,7 +884,6 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": _adv,
         },
     )
@@ -913,7 +906,6 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "confidence": "high",
             "advisory": _adv,
         },
     )
@@ -1040,10 +1032,10 @@ def test_pin_zero_match_selector_rejected(tmp_path, monkeypatch):
     assert "unknown" in r["error"].lower() or "no content" in r["error"].lower()
 
 
-def test_triage_high_confidence_without_findings_blocked(tmp_path, monkeypatch):
-    # D4/§3.4: a high-confidence complete triage MUST carry non-empty advisory.findings[]
-    # each with an anchor (so the auto-routed diagnosis's fix_locus is never empty). A
-    # high verdict with no findings violates the schema -> reap derives blocked.
+def test_triage_complete_without_findings_blocked(tmp_path, monkeypatch):
+    # D4/§3.4: a complete triage MUST carry non-empty advisory.findings[] each with an
+    # anchor (so the routed diagnosis's fix_locus is never empty). A complete analysis
+    # with no findings violates the schema -> reap derives blocked.
     monkeypatch.chdir(tmp_path)
     module = "d4a"
     d = _dispatch_triage(tmp_path, module, sim_run=1)
@@ -1053,7 +1045,6 @@ def test_triage_high_confidence_without_findings_blocked(tmp_path, monkeypatch):
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "confidence": "high",
         },
     )  # no advisory.findings
     r = _run_json(

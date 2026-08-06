@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-triage/result.schema.json",
   "title": "simulation-triage result.json contract",
-  "description": "Complete contract for <module>/Verification/simulation-triage/result.json. stage_specific carries the analysis in two tiers. Routing tier: analysis_state discriminates ('complete' carries confidence + at least one finding, 'skipped' carries skipped_reason), and confidence is gating (high is acted on directly, low reaches a human first). Advisory tier: advisory.{findings[], waveform, experiment}, forwarded to the rework target as context. findings[].root_cause names the rule that must act on THAT finding — the reap mints one diagnosis per distinct value, so one analysis routes to as many owners as it found causes — findings[].anchor is its fix locus, and experiment.artifacts[] are the evidence paths — those are read; the rest is prose for whoever opens the record. An experiment block is present exactly when the run built one, so nothing labels the tier separately.",
+  "description": "Complete contract for <module>/Verification/simulation-triage/result.json. analysis_state discriminates ('complete' carries at least one anchored finding, 'skipped' carries skipped_reason). findings[].root_cause names the rule that must act on THAT finding — the reap mints one diagnosis per distinct value, so one analysis routes to as many owners as it found causes — findings[].anchor is its fix locus, and experiment.artifacts[] are the evidence paths — those are read; the rest is prose for whoever opens the record. An experiment block is present exactly when the run built one, so nothing labels the tier separately.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
@@ -14,7 +14,6 @@
           "properties": {
             "analysis_state": {"type": "string", "enum": ["complete", "skipped"]},
             "skipped_reason": {"type": "string", "minLength": 1},
-            "confidence":     {"type": "string", "enum": ["high", "low"]},
             "advisory": {
               "type": "object", "additionalProperties": false,
               "properties": {
@@ -51,21 +50,19 @@
           },
           "allOf": [
             {
+              "$comment": "a complete analysis must carry a concrete locus — non-empty advisory.findings[], each anchored. Enforced structurally so a diagnosis's fix_locus (mapped from findings[].anchor) is never empty, and every complete analysis is routable on its own attribution.",
               "if":   {"properties": {"analysis_state": {"const": "complete"}}, "required": ["analysis_state"]},
               "then": {
-                "required": ["confidence", "advisory"],
+                "required": ["advisory"],
                 "properties": {"advisory": {"required": ["findings"],
-                                            "properties": {"findings": {"minItems": 1}}}}
+                                            "properties": {"findings": {"type": "array", "minItems": 1,
+                                                                        "items": {"required": ["anchor"],
+                                                                                  "properties": {"anchor": {"type": "string", "minLength": 1}}}}}}}
               }
             },
             {
               "if":   {"properties": {"analysis_state": {"const": "skipped"}}, "required": ["analysis_state"]},
               "then": {"required": ["skipped_reason"]}
-            },
-            {
-              "$comment": "a high-confidence verdict must carry a concrete locus — non-empty advisory.findings[], each with an anchor. Enforced structurally so an auto-routed diagnosis's fix_locus (mapped from findings[].anchor) is never empty.",
-              "if":   {"properties": {"confidence": {"const": "high"}}, "required": ["confidence"]},
-              "then": {"required": ["advisory"], "properties": {"advisory": {"required": ["findings"], "properties": {"findings": {"type": "array", "minItems": 1, "items": {"required": ["anchor"], "properties": {"anchor": {"type": "string", "minLength": 1}}}}}}}}
             }
           ],
           "additionalProperties": false

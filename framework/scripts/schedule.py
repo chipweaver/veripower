@@ -88,7 +88,7 @@ def _active_diagnoses(events: list[dict], rule: str, outcome: dict) -> list[dict
     """ALL diagnoses effective for this failure (subject matches this outcome's run,
     not superseded), oldest first. NO fix_owner filter: a self-pointing diagnosis
     (fix_owner absent, attribution = the failed rule's own judge) is still a 现成归因 —
-    the reliability gate escalates it instead of auto-rebuilding (§3.3 bullet 4)."""
+    `_owner` escalates it instead of auto-rebuilding (§3.3 bullet 4)."""
     sup = {
         e["supersedes"]
         for e in events
@@ -102,22 +102,6 @@ def _active_diagnoses(events: list[dict], rule: str, outcome: dict) -> list[dict
         and e["subject"]["proof"] == rule
         and e["subject"]["outcome_run"] == outcome["run"]
     ]
-
-
-def _reliable(diag: dict) -> bool:
-    """§3.4: reliable iff it names a rebuild target at all, AND either a human authored it
-    (终审) or a triage run called it high-confidence.
-
-    An oracle-side attribution — the failed rule blaming its own judge — is caught by the
-    first clause and needs no separate test, because neither writer can produce one with a
-    `fix_owner`. `kernel.cmd_diagnose` rejects a `fix_owner` outside the subject's input
-    closure, `kernel._derive_triage` only writes one when the root cause is inside it, and
-    the graph is acyclic, so no rule is ever in its own closure."""
-    if not diag.get("fix_owner"):
-        return False
-    if diag["source"] == "human":
-        return True
-    return diag.get("confidence") == "high"
 
 
 def _declared_owner(module: str, rule: str) -> str | None:
@@ -177,8 +161,14 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
     """WHO must act on this failure — one veto, then three sources, most authoritative first.
 
     Returns `attribution` (what was written, verbatim), `owners` (its routable projection,
-    possibly empty) and `unreliable` (candidates to show a human). The four escalation
+    possibly empty) and `unroutable` (the diagnoses to show a human). The four escalation
     reasons are readings of the first two, so no branch has to raise its own.
+
+    A diagnosis routes iff it names a `fix_owner`. Both writers already enforce that the
+    name is legal — `kernel.cmd_diagnose` rejects one outside the subject's input closure,
+    `kernel._derive_triage` writes one only when the root cause is inside it, and the graph
+    is acyclic so no rule is in its own closure — so an oracle-side attribution arrives with
+    the field absent and is refused by the same clause.
 
     `owners` is a LIST: one failure can need more than one stage to move, and an analysis
     says so with one diagnosis per independent root cause (the log already permits several
@@ -190,27 +180,27 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
     unrelated reason — that round could not have acted on information that did not exist yet,
     so counting it would close the failure with nobody ever told about it.
 
-    The analysis source is TERMINAL, not a fallthrough: an analysis that came back unsure
-    has spoken, and its answer is "nobody". Letting it fall through would reach the
-    diagnostic rung again and re-run the same analyzer over the same evidence forever. One
-    unsure entry among several makes the whole failure unclear: part of it has no owner, and
-    a half-known attribution is what the early exit exists to keep out of scheduling."""
+    The analysis source is TERMINAL, not a fallthrough: an analysis that named nobody
+    schedulable has spoken, and its answer is "nobody". Letting it fall through would reach
+    the diagnostic rung again and re-run the same analyzer over the same evidence forever.
+    One such entry among several makes the whole failure unclear: part of it has no owner,
+    and a half-known attribution is what the early exit exists to keep out of scheduling."""
     if _oracle_retracted(events, rule, outcome):
         return {
             "attribution": None,
             "owners": [],
-            "unreliable": [],
+            "unroutable": [],
             "retracted": True,
         }
     base = {"retracted": False}
     diags = _active_diagnoses(events, rule, outcome)
     if diags:  # source 1: a later analysis outranks the stage's own self-report
-        if not all(_reliable(d) for d in diags):
+        if not all(d.get("fix_owner") for d in diags):
             return {
                 **base,
                 "attribution": diags[-1]["attribution"],
                 "owners": [],
-                "unreliable": [d for d in diags if not _reliable(d)],
+                "unroutable": [d for d in diags if not d.get("fix_owner")],
             }
         owners = {}
         for d in diags:
@@ -223,7 +213,7 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
             **base,
             "attribution": diags[-1]["attribution"],
             "owners": sorted(owners.values(), key=lambda o: o["since"]),
-            "unreliable": [],
+            "unroutable": [],
         }
     named = _declared_owner(module, rule)  # source 2: the failing stage's own envelope
     if named:
@@ -235,7 +225,7 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
                 if _legal(rule, named)
                 else []
             ),
-            "unreliable": [],
+            "unroutable": [],
         }
     # source 3: nobody named anyone, so the stage's declared diagnostic must find out
     triage = rules.RULES[rule].triage
@@ -243,7 +233,7 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
         **base,
         "attribution": None,
         "owners": [{"owner": triage, "since": idx, "diagnoses": []}] if triage else [],
-        "unreliable": [],
+        "unroutable": [],
     }
 
 
@@ -316,7 +306,7 @@ def owed(events: list[dict], fails: list[dict]) -> list[dict]:
 
 def _escalation(c: dict) -> dict:
     """Why a complaint cannot be routed, derived from `(attribution, owner)` rather than
-    raised where it was noticed — so the three namings and the unreliable diagnosis read as
+    raised where it was noticed — so the three namings and the unroutable diagnosis read as
     one classification instead of four scattered branches."""
     rule, named = c["rule"], c["attribution"]
     if c.get("retracted"):
@@ -324,17 +314,13 @@ def _escalation(c: dict) -> dict:
             "rule": rule,
             "reason": f"{rule}: the oracle that judged this failure was reopened",
         }
-    if c["unreliable"]:
+    if c["unroutable"]:
         return {
             "rule": rule,
-            "reason": f"unreliable diagnosis for {rule}",
+            "reason": f"{rule}: diagnosis named no fix_owner",
             "candidates": [
-                {
-                    "attribution": d["attribution"],
-                    "confidence": d.get("confidence"),
-                    "diagnosis": d["id"],
-                }
-                for d in c["unreliable"]
+                {"attribution": d["attribution"], "diagnosis": d["id"]}
+                for d in c["unroutable"]
             ],
         }
     if named is None:

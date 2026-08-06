@@ -303,7 +303,7 @@ def test_plan_sidecars_invalidate_only_their_own_consumer(tmp_path, monkeypatch)
 # ── Step 2 ──────────────────────────────────────────────────────────────────────
 
 
-def _triage(module, sim_run, root_cause, confidence):
+def _triage(module, sim_run, root_cause):
     """Real triage dispatch+reap: crafted schema-valid result.json -> a promoted
     canonical result.json + a minted diagnosis event (kernel _derive_triage)."""
     d = kernel.cmd_dispatch(module, "simulation-triage", None, {"sim_run": sim_run})
@@ -316,8 +316,7 @@ def _triage(module, sim_run, root_cause, confidence):
         "artifacts": [],
         "stage_specific": {
             "analysis_state": "complete",
-            "confidence": confidence,
-            # the attribution lives on the finding; high confidence also requires its anchor
+            # the attribution lives on the finding, and it must carry its anchor
             "advisory": {
                 "findings": [{"anchor": "matvec.v:1", "root_cause": root_cause}],
             },
@@ -340,7 +339,7 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
     rtl1 = facts.latest_outcome(facts.read_events(m), "rtl-design")["outputs"]
 
     _fail(m, "simulation", 1)  # smoke fail — records matvec.v@r1 as an input
-    _triage(m, sim_run=1, root_cause="rtl-design", confidence="high")
+    _triage(m, sim_run=1, root_cause="rtl-design")
 
     # fresh sim fail + reliable triage diagnosis -> DISPATCH the fix owner rtl-design.
     evs = facts.read_events(m)
@@ -485,7 +484,6 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
             "attribution": "simulation-plan",
             "fix_owner": "simulation-plan",
             "evidence": ["Verification/simulation-triage/runs/1/result.json"],
-            "confidence": "high",
             "source": "triage",
         },
         TS,
@@ -501,7 +499,6 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
             "attribution": "rtl-design",
             "fix_owner": "rtl-design",
             "evidence": ["Verification/simulation-triage/runs/2/result.json"],
-            "confidence": "high",
             "source": "triage",
         },
         TS,

@@ -6,9 +6,8 @@ description: Use when a simulation run fails and root-cause analysis is needed b
 # Simulation Triage
 
 A simulation run failed and the pipeline cannot tell whose fault it is. You produce one
-judgment: whose, how sure, where, and on what evidence. No tool checks that judgment and no
-downstream stage re-derives it, so the confidence you land is the only thing standing between a
-guess and somebody's rebuild.
+judgment: whose, where, and on what evidence. No tool checks that judgment and no downstream
+stage re-derives it, so what you land is what gets rebuilt.
 
 ## Iron Rule
 
@@ -87,7 +86,7 @@ Four things about `fsdbreport` are worth knowing before you trust what it prints
   the warning. Read it before concluding the waveform had nothing to say.
 - The returned time/value table is a direct observation of the real run; weigh it like a log line
   or a line of RTL. A dump that is genuinely absent or truncated (a run can stop at the `$fatal`
-  that ended it) is not by itself a reason to lower confidence.
+  that ended it) is not by itself a reason to doubt what you have.
 
 ## Building an experiment
 
@@ -120,31 +119,22 @@ attribution carrying its own anchors, and every named stage is dispatched. So do
 causes into whichever one is biggest and leave the rest in the prose: an anchor whose stage is
 never named is a fix nobody schedules.
 
-That is for genuinely separate causes. When two stages are implicated in **the same** cause and you
-cannot tell which is at fault, splitting is the wrong answer and so is picking one — that is what
-`confidence: low` is for.
+That is for genuinely separate causes. When two stages are implicated in **the same** cause and the
+evidence supports either, splitting is the wrong answer: name the one you find most likely. It is
+dispatched on your word, and a stage that disagrees says so in its own `result.json` rather than
+editing against you. There is no field in which to hedge — an attribution is acted on iff it names
+a rule inside `simulation`'s inputs, and `simulation` itself is not one, so naming it stops the
+round for a human.
 
-`confidence` is not a hedge on your prose; it decides what happens next, and it has two values
-because there are two things that can happen. A `high` verdict is acted on directly. `low` reaches
-a human instead, which is the honest answer whenever the evidence supports more than one
-explanation, and not a failure of the analysis. Do not reach for `high` to spare someone the
-interruption: the interruption is cheaper than a wrong rebuild.
-
-Note what `low` is not saying. It is about the attribution, not the location: you can be certain
-where the symptom is and still be unsure whose fault it is, which is why an anchored finding does
-not make a verdict `high` on its own.
-
-A `high` verdict also has to be anchored, and the schema enforces it — every finding carrying an
-`anchor`, because that `anchor` is the `file:line` the rework starts from. A `complete` analysis
-needs at least one finding either way: the findings are where the attribution lives, so an
-analysis with none has not said whose fault it is.
+Every finding must be anchored, and the schema enforces it — that `anchor` is the `file:line` the
+rework starts from. A `complete` analysis needs at least one finding: the findings are where the
+attribution lives, so an analysis with none has not said whose fault it is.
 
 ## Finalize
 
 ```jsonc
 {
   "analysis_state": "complete",
-  "confidence": "high",
   "advisory": {
     // one entry per finding; findings sharing a root_cause become one attribution
     "findings": [ { "anchor": "file:line", "cases": ["…"], "root_cause": "rtl-design" } ],

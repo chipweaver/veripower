@@ -151,9 +151,9 @@ def test_in_flight_no_result_yields(tmp_path, monkeypatch):
     assert a["in_flight"] == [{"rule": "specification", "run": 1}]
 
 
-def test_fresh_failure_with_reliable_triage_dispatches_fix_owner(tmp_path, monkeypatch):
+def test_fresh_failure_with_routable_triage_dispatches_fix_owner(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    # simulation fails fresh; a high-confidence triage diagnosis points at rtl-design.
+    # simulation fails fresh; a triage diagnosis points at rtl-design.
     _valid_chain_through_simulation("m")
     _sim_fail("m", run=1)
     facts.append_event(
@@ -165,7 +165,6 @@ def test_fresh_failure_with_reliable_triage_dispatches_fix_owner(tmp_path, monke
             "attribution": "rtl-design",
             "fix_owner": "rtl-design",
             "evidence": ["Verification/simulation-triage/runs/1/result.json"],
-            "confidence": "high",
             "source": "triage",
         },
         TS,
@@ -189,7 +188,6 @@ def _diagnosis(module, did, run, owner, locus):
             "fix_owner": owner,
             "fix_locus": [locus],
             "evidence": ["Verification/simulation-triage/runs/1/result.json"],
-            "confidence": "high",
             "source": "triage",
         },
         TS,
@@ -254,7 +252,6 @@ def test_an_unsure_second_opinion_makes_the_whole_failure_unclear(
             "subject": {"proof": "simulation", "outcome_run": 1},
             "attribution": "simulation",  # self-pointing: nothing to route to
             "evidence": ["Verification/simulation-triage/runs/1/result.json"],
-            "confidence": "high",
             "source": "triage",
         },
         TS,
@@ -283,7 +280,6 @@ def test_dispatch_args_carry_every_channel_the_action_names(tmp_path, monkeypatc
                 "attribution": "rtl-design",
                 "fix_owner": "rtl-design",
                 "evidence": ["Verification/simulation-triage/runs/1/result.json"],
-                "confidence": "high",
                 "source": "triage",
             },
             TS,
@@ -353,9 +349,8 @@ def test_neither_writer_can_mint_a_routable_self_pointing_diagnosis(
 
 def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
     # A3 regression: an oracle-side attribution (root_cause=simulation, so no fix_owner) is
-    # a 现成归因 that is UNRELIABLE -> ESCALATE citing it as a candidate. NOT re-dispatch
-    # triage, NOT auto-rebuild. `confidence: high` is present to show it does not rescue a
-    # diagnosis with nothing to route to.
+    # a 现成归因 with nothing to route to -> ESCALATE citing it as a candidate. NOT
+    # re-dispatch triage, NOT auto-rebuild.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")  # helper: spec/plan/rtl proofs valid on disk
     _sim_fail("m", run=1)  # helper: fresh simulation fail outcome
@@ -367,7 +362,6 @@ def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
             "subject": {"proof": "simulation", "outcome_run": 1},
             "attribution": "simulation",  # oracle side — no fix_owner
             "evidence": ["Verification/simulation-triage/runs/1/result.json"],
-            "confidence": "high",
             "source": "triage",
         },
         TS,
@@ -500,7 +494,7 @@ def test_fresh_failure_naming_outside_its_closure_escalates(tmp_path, monkeypatc
 
 def test_fresh_rtldesign_spec_locus_dispatches_specification(tmp_path, monkeypatch):
     # rtl-design's semantic gate finds a spec-rooted intent defect and its envelope says so
-    # in fix_owner. The gate's own loci/confidence stay in the envelope as the account behind
+    # in fix_owner. The gate's own loci stay in the envelope as the account behind
     # that naming; nothing outside the stage re-derives the target from them.
     monkeypatch.chdir(tmp_path)
     _mk("m", "brainstorm.md", "b1")
@@ -766,7 +760,7 @@ def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
 
 
 def test_human_supersede_restores_auto_rebuild(tmp_path, monkeypatch):
-    # §6: an unreliable (low-confidence) triage diagnosis escalates; after `diagnose
+    # §6: a triage diagnosis naming nobody schedulable escalates; after `diagnose
     # source=human` supersedes it, decide auto-rebuilds the human-named fix_owner.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
@@ -777,15 +771,13 @@ def test_human_supersede_restores_auto_rebuild(tmp_path, monkeypatch):
             "type": "diagnosis",
             "id": "d1",
             "subject": {"proof": "simulation", "outcome_run": 1},
-            "attribution": "rtl-design",
-            "fix_owner": "rtl-design",
+            "attribution": "simulation",  # self-pointing -> no fix_owner
             "evidence": ["Verification/simulation-triage/runs/1/result.json"],
-            "confidence": "low",
             "source": "triage",
         },
         TS,
     )
-    assert schedule.decide("m")["action"] == "ESCALATE"  # low confidence -> 叫人
+    assert schedule.decide("m")["action"] == "ESCALATE"  # 没点出可派的人 -> 叫人
     facts.append_event(
         "m",
         {
@@ -822,7 +814,6 @@ def test_new_outcome_deactivates_old_diagnosis(tmp_path, monkeypatch):
             "attribution": "rtl-design",
             "fix_owner": "rtl-design",
             "evidence": ["Verification/simulation-triage/runs/1/result.json"],
-            "confidence": "high",
             "source": "triage",
         },
         TS,
@@ -1150,7 +1141,6 @@ def test_fresh_fail_fix_owner_in_flight_yields(tmp_path, monkeypatch):
             "attribution": "rtl-design",
             "fix_owner": "rtl-design",
             "evidence": ["x"],
-            "confidence": "high",
             "source": "triage",
         },
         TS,
@@ -1200,7 +1190,6 @@ def test_option_c_defers_fix_owner_rebuild_step1(tmp_path, monkeypatch):
             "attribution": "rtl-design",
             "fix_owner": "rtl-design",
             "evidence": ["Verification/simulation-triage/runs/1/result.json"],
-            "confidence": "high",
             "source": "triage",
         },
         TS,

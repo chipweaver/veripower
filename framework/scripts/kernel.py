@@ -306,8 +306,7 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
 def _derive_triage(env, dispatch):
     """Triage reap (§2 triage contract): complete -> (verdict, None, [], diagnosis-events);
     skipped/crash -> blocked, no diagnosis (the sim failure stays ambiguous; next round
-    re-dispatches triage, §3.3). Confidence lands as-is (P4) — reliability is decide's
-    gate, not a reap branch. `root_cause` IS the rule name, so no map decodes it: it
+    re-dispatches triage, §3.3). `root_cause` IS the rule name, so no map decodes it: it
     becomes `fix_owner` when it is a legal auto-rebuild target, and a self-pointing
     attribution (root_cause == the failing rule) is outside simulation's input closure by
     construction, so it lands recorded-but-unroutable (A3).
@@ -363,7 +362,6 @@ def _derive_triage(env, dispatch):
             "attribution": cause,
             "fix_locus": loci,
             "evidence": evidence,
-            "confidence": ss.get("confidence"),
             "source": "triage",
         }
         if cause in rules.input_closure("simulation"):

@@ -231,7 +231,7 @@ for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 |---|---|---|
 | `dispatch` | 自动（`dispatch`） | 开启一个 run：`rule`、`run`、`workdir`、`params`（该规则声明的参数）、`diagnosis_refs`、`caused_by`（一次返修所回答的 `[rule, run]` 失败），以及——仅产证明规则——消费的 `inputs` 版本表（`proof.inputs` 的唯一来源）。 |
 | `outcome` | 自动（`reap`） | 关闭一个 run：`verdict ∈ {pass, fail, blocked}`、产出的 `outputs` 版本表（含规范 `result.json`）、`proofs[]`、`tool_versions`、可选 `reason`（blocked 子类）。 |
-| `diagnosis` | triage 自动（`reap`）；人工经 `diagnose` | 一条失败归因。必填（按 `diagnosis.schema.json`）：`id`、`subject {proof, outcome_run}`、`attribution`、`evidence`、`source ∈ {triage, human}`。可选：`fix_owner`、`fix_locus`、`confidence`、`supersedes`；`provenance`（背书者的裸身份）与 `reason`（推理本身，逐字带进 fix owner 的 `dispatch.json`）在 `source=human` 时均为必填，由 `diagnose` 强制。 |
+| `diagnosis` | triage 自动（`reap`）；人工经 `diagnose` | 一条失败归因。必填（按 `diagnosis.schema.json`）：`id`、`subject {proof, outcome_run}`、`attribution`、`evidence`、`source ∈ {triage, human}`。可选：`fix_owner`、`fix_locus`、`supersedes`；`provenance`（背书者的裸身份）与 `reason`（推理本身，逐字带进 fix owner 的 `dispatch.json`）在 `source=human` 时均为必填，由 `diagnose` 强制。 |
 | `pin` | `pin` | 把 `proposed` oracle 向 `human` 棘轮：`oracle_ref`、`content_fingerprint`（pin 时记录）、`provenance`、`reason`。 |
 | `reopen` | `reopen` | 撤销一个 pin：`pin_ref`、`reason`。使 oracle 在其落账后被 reopen 的证明失效（§4.4）。 |
 | `signoff` | `signoff` | 闭合签核：`provenance`、`reason`。仅在 `facts.signoff_gate` 干净时写入（§5.5）。不携带指纹，也从不被撤销——有效性由 `facts.signed_off` 实时重新推导。 |
@@ -349,11 +349,11 @@ flowchart TD
 对一个新鲜失败，`_disposition` 三择其一：
 
 1. **已有诊断附着。** `_active_diagnoses` 收集 `subject` 与该失败 `(proof, outcome_run)` 匹配、未被 supersede 的全部 `diagnosis`。若最新一条**可靠** → 自动重建：`DISPATCH` 其 `fix_owner`（在 `repair` 下），并把所有新鲜失败中共享该 `fix_owner` 的每条可靠诊断的 `id` 合并进 `diagnosis_refs`、其 `(rule, run)` 坐标合并进 `caused_by`（多因修复逐条引用——无一静默丢弃，而且这个合并是内核求并后解析的，不是给撰写派发者的一条指示）。若 `fix_owner` 输入不可用，顺延前向。若最新诊断**不**可靠 → `ESCALATE`，把各诊断作为候选呈给用户。
-   - **可靠性门**（`_reliable`）：一条诊断可靠，当且仅当它点名了 `fix_owner` **且** `source == human` 或 `confidence == high`。指向 oracle 一侧的归因——怪罪失败规则自己的裁判——到达时根本没有 `fix_owner`，被第一条挡下，所以这道门不再单独检查归因：两个写入方都已经强制它，`cmd_diagnose` 拒绝闭包之外的 `fix_owner`，`_derive_triage` 只在根因落在闭包内时才写，而没有任何规则在自己的闭包里。正是这道门拦住了低置信的猜测、以及无人能据以行动的判断去静默重建上游阶段。
+   - **是否可路由**：一条诊断被采信，当且仅当它点名了 `fix_owner`，再无别的要求。指向 oracle 一侧的归因——怪罪失败规则自己的裁判——到达时根本没有 `fix_owner`，被同一条挡下，所以归因不再单独检查：两个写入方都已经强制它，`cmd_diagnose` 拒绝闭包之外的 `fix_owner`，`_derive_triage` 只在根因落在闭包内时才写，而没有任何规则在自己的闭包里。
 2. **无诊断，且失败是 `simulation`。** 失败有歧义（仿真挂掉可能是 RTL、计划或 spec）→ `DISPATCH simulation-triage`，带 `params.sim_run = <失败 run>`（若 triage 已在途则 `YIELD`）。triage 运行，在*它的*收割时内核派生诊断（见下）；下一次 `decide` 看到诊断即重入处置分支 1。
 3. **无诊断，自描述失败。** 失败的信封自陈 `stage_specific.fix_owner`（无需诊断事件）。合法指名且其输入可用 → 自动重建 `DISPATCH`；输入不可用 → 顺延前向；谁都没指、指了自己、或指到输入闭包之外 → 升级（§5.4）。
 
-**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`skipped_reason`、`confidence`、`advisory`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（仿真失败保持歧义；下一轮重新派发 triage）。否则内核把 `advisory.findings[]` 按各自的 `root_cause` 分组，每组追加一条 `diagnosis`（`source: triage`）并带上该组的 anchor——`attribution` 取该根因，`fix_owner` 就取同一个名字，前提是它落在 `simulation` 的输入闭包内。自指归因（`root_cause == simulation`）按构造落在闭包之外，于是省略 `fix_owner`，由处置将它升级。`confidence` 原样落账；决定它能否自动路由的是可靠性门，不是收割分支。
+**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`skipped_reason`、`advisory`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（仿真失败保持歧义；下一轮重新派发 triage）。否则内核把 `advisory.findings[]` 按各自的 `root_cause` 分组，每组追加一条 `diagnosis`（`source: triage`）并带上该组的 anchor——`attribution` 取该根因，`fix_owner` 就取同一个名字，前提是它落在 `simulation` 的输入闭包内。自指归因（`root_cause == simulation`）按构造落在闭包之外，于是省略 `fix_owner`，由处置将它升级。
 
 ### 5.4 失败归因
 
@@ -367,7 +367,7 @@ flowchart TD
 
 指名同一个 owner 的每个新鲜失败会被并进同一次派发，因此同轮失败的另一个阶段绝不会被静默丢弃(§3.3)。
 
-**这么做的代价与理由。** 阶段自陈的归因不过置信度门，所以读诊断字段的 `schedule._reliable` 看不到它。替代它的有两条，都比一张表给的强:闭包校验是机器强制的，而原来那条无条件的 `ppa → rtl-design` 映射**没有任何校验**；以及支撑这次指名的 `fail_reason` 就在同一份信封里，归因因此有作者、可审计——一张表的默认值没有作者。
+**这么做的代价与理由。** 阶段自陈的归因只校验合法性，别无他求。替代一张表的有两条，都更强:闭包校验是机器强制的，而原来那条无条件的 `ppa → rtl-design` 映射**没有任何校验**；以及支撑这次指名的 `fail_reason` 就在同一份信封里，归因因此有作者、可审计——一张表的默认值没有作者。
 
 ### 5.5 签核闭合
 
@@ -440,8 +440,8 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 
 - **输入：** Orchestrator 把 `{module, sim_run}` 作为派发参数传入；派发时内核把 `sim_run` 与每个声明的输入（`design`、`rtl`、`plan`）解析为各自的绝对规范阶段根目录，写入 `{workdir}/dispatch.json`（`store.write_dispatch`）。triage 从这些注入的位置读一切——从不自行导航模块相对路径：失败仿真的 `result.json` 与完整 `runs/<sim_run>/`（UVM 日志、coverage/KDB、以及失败 test 的全层次 `<test_id>.fsdb`）、spec、RTL、simulation-plan 的 scaffold/refmodel。
 - **方法：** 在失败证据加 spec 与 refmodel 上推理，并查询失败 run 自己的 FSDB 波形（`fsdbreport`），二者同为事实。当这些定不了归因时，它可以在自己的 workdir 里建并跑一个*受控实验*——真实 run 从未驱动过的激励、隔离 harness、与 UVM refmodel 一致的黄金模型——绝不编辑规范 RTL。用哪一种、走多远，是这个子 Agent 自己的判断；框架不计量它。
-- **输出：** 一份 `result.json`，其 `stage_specific` 携带路由层（`analysis_state`、gating 的 `confidence`）与咨询层（`findings[]`、`waveform`、`experiment`）。收割时内核把 `findings[]` 按 `root_cause` 分组，每组派生一条 `diagnosis`：该组的 `anchor` 成为 `fix_locus`，`experiment.artifacts[]` 成为 `evidence`。
-- **权威性——置信度门控：** `confidence` 是门控字段，不是咨询散文。只有 `high` 置信的诊断经可靠性门自动路由（§5.3）；其余一律升级给操作者。这道门只对 triage 诊断读它：人工诊断仅凭 `source` 即为终审，所以 `kernel.py diagnose` 不接受置信度参数。
+- **输出：** 一份 `result.json`，其 `stage_specific` 携带 `analysis_state` 与 `advisory.{findings[]、waveform、experiment}`。收割时内核把 `findings[]` 按 `root_cause` 分组，每组派生一条 `diagnosis`：该组的 `anchor` 成为 `fix_locus`，`experiment.artifacts[]` 成为 `evidence`。
+- **权威性：** 一条归因被采信，当且仅当它点名的规则落在 `simulation` 的输入闭包内（§5.3）；自指归因升级给操作者。分析不在任何字段里自评把握——一个自评量的宽松档同时也是它的省事档，那就什么都没有门控住。
 - **副作用：** 只写自身 workdir；绝不编辑其它规则的 `result.json`、RTL、TB、spec 或计划。非只读（它可能建造实验）且非幂等（重复即重做一遍）；是叶子——无扇出。
 
 ## 7. 工作空间布局
