@@ -1,8 +1,8 @@
-# `tests/replay/` — 真实日志重放
+# `tests/measure/replay/` — 真实日志重放
 
 拿一次**真跑完的 veripower 运行**的事件日志,逐前缀还原成模块树,在每个决策点问一次 `decide`,与当时真实发生的下一步并排。
 
-不是 pytest 断言集,是**度量装置**:输出是"与真实编排者一致多少个决策点",要人读。`tests/README.md` 的三个桶按"回答哪一个问题"分类,这个目录回答的是**在一条真轨迹上,调度器会不会做出和人不同的动作**,所以单独放。
+不是 pytest 断言集,是**度量装置**:输出是"与真实编排者一致多少个决策点",要人读。`tests/README.md` 的三个桶按"回答哪一个问题"分类,这个目录回答的是**在一条真轨迹上,调度器会不会做出和人不同的动作**,所以和 `../scheduler/` 一起放在 `measure/` 而不是某个桶里。
 
 ## 为什么需要它
 
@@ -13,13 +13,13 @@
 **日志不在库里**,由 `--log` 传入:它是某一次运行的记录,不是插件的产物。任何一份 veripower 的 `events.jsonl` 都能重放;本文的数字取自 `Coral-NPU/submissions/cc-opus5-t1-v3-vp/events.jsonl`(CoreMiniAxi,8 个 child,75 个事件,2026-07-29 → 08-02,该仓唯一走完 `signoff` 的一轮)。
 
 ```bash
-cd tests/replay
+cd tests/measure/replay
 LOG=<某次真跑的 events.jsonl>
-python3 replay.py --scripts ../../framework/scripts --tag v4 --log $LOG      # 当前调度器
+python3 replay.py --scripts ../../../framework/scripts --tag v4 --log $LOG      # 当前调度器
 git archive main framework/scripts | tar -x -C /tmp --one-top-level=vp-v1
 python3 replay.py --scripts /tmp/vp-v1/framework/scripts --tag v1 --log $LOG # 对照组
 python3 summarize.py                                                         # -> out/replay.txt
-python3 probe.py --scripts ../../framework/scripts --log $LOG -k 19          # 某个决策点为什么是那个动作
+python3 probe.py --scripts ../../../framework/scripts --log $LOG -k 19          # 某个决策点为什么是那个动作
 ```
 
 输出落 `out/`,中间树落 `$VP_SCRATCH/vp-real-log-replay/`(默认 `/tmp`)。`summarize.py` 的 `TAGS` 决定对照哪两个 tag。`.gitignore` 挡掉 `out/` 与就地放的 `*.events.jsonl`。

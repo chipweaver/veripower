@@ -14,9 +14,10 @@ this file to decide where a new test goes.
 | **`contracts/`** | Do framework **artifacts** hold invariants & stay in sync? | a deterministic lint that **reads declarations and compares** them — incl. cross-refs where one side is a SKILL.md token | **no** |
 | **`scenarios/`** | Does the **agent** decide right under pressure? | tools-off LLM pressure tests, rebuilt RED-first and run via a **clean-isolation `claude -p` subprocess** (`scenarios/scenario-run.sh`); closed-form self-report a verdict tag, `open` ones human/meta-test judged (see `scenarios/README.md`) | n/a — LLM |
 
-**Not a bucket →** `replay/` is a **measurement harness**, not an assertion set: it replays a
-real run's event log against `decide` and reports how many decision points match what the real
-Orchestrator did. Nothing fails; a human reads the number. See `replay/README.md`.
+**Not a bucket →** `measure/` holds three **measurement harnesses**, not assertion sets: a
+1781-state grid and a 180-episode convergence replay, both synthesised from `rules.py`, plus a
+replay of one real run's event log against `decide`. Nothing fails; a human reads the numbers.
+See `measure/README.md`.
 
 **Not a test →** single-artifact **prose / authoring / structure quality** is *not* asserted by
 any script here. It is reviewed by the **`veripower-review`** skill. If
