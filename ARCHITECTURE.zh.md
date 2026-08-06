@@ -31,7 +31,7 @@
 | **证明有效性** | 一个*查询*——不是存下来的标志位。一个证明*此刻*有效，当且仅当其裁决为 `pass`、落账的输入/输出指纹仍与磁盘一致、且其 oracle 此后未被 reopen。陈旧与否在每次读取时重算（§4.4）。 |
 | **oracle 与 grade** | 裁决一个证明的裁判，`(ref, grade)`，`grade ∈ {tool, human, proposed}`。tool oracle 自身即权威；`proposed`（LLM 自撰）oracle 只能经人工 `pin` 棘轮升格为 `human`（§4.5）。 |
 | **目标集**（goal set） | 一次 `decide` 调用所调度的证明集合：当前正在失败的那些；一条都没失败时则是全部八条。每次调用从日志导出，调用方从不携带（§5.1）。 |
-| **disposition**（处置） | 调度器对单个*新鲜*失败的裁定：自动重建、triage 或升级——由附着诊断的可靠性把门（§5.3）。 |
+| **抱怨**（complaint） | 最新 outcome 为 `fail` 的证明，只要还有一件具体的事该做而未做。修复路径调度的单位：它带着谁必须动手，被交给那一方，并在那一方轮到过之后关闭。（§5.3） |
 | **reap**（收割） | 以 `kernel.py reap`（无裁决标志）结束一个在途 run：`cmd_reap` 读该 run 的 `result.json`，提升产物，追加 `outcome`（triage 则另追加 `diagnosis`）（§5.6）。 |
 | **promote**（提升） | 将 `runs/<N>/` 下的文件逐条目硬链接合并到规范阶段目录，`cmd_reap` 在 pass 和 fail 两种路径上均执行，幂等（§7.2）。 |
 | **projection**（投影） | `facts.projection` 纯粹从事件日志 + 磁盘算出的每规则状态格（`valid / stale / failed / blocked / in-flight / missing`）。取代任何存储的状态快照（§4.6）。 |
@@ -109,10 +109,10 @@ Orchestrator 的三条派发路径：
 | `kernel.py` | CLI，且是 `events.jsonl` 的**唯一写者**。九个动词：`decide`、`dispatch`、`reap`、`diagnose`、`pin`、`reopen`、`signoff`、`status`、`consequences`。每个动词打印一个 JSON 信封。 |
 | `rules.py` | 规则注册表（`RULES`）——内核调度对象的单一真相源，也是依赖图的*来源*（§3）。另有 `FORWARD_PRIORITY`、`PIPELINE_INPUTS`、`ADVISORY_ORDER`，以及派生助手 `producer_of` / `input_producers` / `input_closure`。依赖极轻的叶子模块。 |
 | `facts.py` | 事件日志 I/O（`read_events` / `append_event`，写入即校验 schema）、内容指纹（`fingerprint`），以及建立在其上的新鲜度查询——`proof_valid`、`input_available`、`projection`，外加其中最严的 `signoff_gate` / `signed_off`（§5.5）。不持有任何可变状态；一切从日志 + 磁盘计算。 |
-| `schedule.py` | 调度器：`decide() → 恰好一个动作`。对 (磁盘， 日志， 参数) 纯函数；组合 `facts.signoff_gate`。持有目标集、不超车门与新鲜失败处置，含对失败自陈的 `fix_owner` 的合法性校验。 |
+| `schedule.py` | 调度器：`decide() → 恰好一个动作`。对 (磁盘， 日志， 参数) 纯函数；组合 `facts.signoff_gate`。持有目标集、开着的抱怨集（谁必须对每条失败动手，以及动过没有）、反链门与不超车门，含对失败自陈的 `fix_owner` 的合法性校验。 |
 | `store.py` | 文件系统产物生命周期助手：派发时的 `write_dispatch`（写 `<workdir>/dispatch.json`）与 `carry_self`（把作者自己上一轮的规范产物拷进新 workdir）、收割时的 `promote`。由 `kernel.py` 导入；从不直接调用。 |
 
-事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（7 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
+事件 schema 位于 `framework/references/schemas/events/<type>.schema.json`（6 份，§4.2），结果信封位于 `framework/references/schemas/envelope.schema.json`，共同构成核心的全部。
 
 > **黑箱纪律。** Orchestrator 按文档化的命令行调用 `kernel.py`（标志经 `<verb> --help`，每个动词打印 JSON 信封），从不读框架脚本源码。遇到非零退出或 `ok:false` 信封，按文档化的失败协议处理（修正目标、升级该 `ok:false`），绝不绕过。
 
@@ -204,10 +204,10 @@ for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 `rules.py` 上的派生助手从同一份选择子算出两样不同的东西，保持两者互不混淆是一条承重不变式：
 
 - **`input_producers(rule)`** — 该规则输入 glob 的直接生产者（一跳，排除自身）。依赖图的边。
-- **`input_closure(rule)`** — 上述生产者的*传递*闭包（输入闭包）。用于两处新鲜度/合法性检查：一个失败只有在其输入闭包内的每个证明当前都有效时才算"新鲜"（§5.3）；人工诊断的 `fix_owner` 必须是主体证明输入闭包内的生产者（否则 `kernel diagnose` 拒绝，§5.3）。仅产物边——`ADVISORY_ORDER` 从构造上就被排除。
+- **`input_closure(rule)`** — 上述生产者的*传递*闭包（输入闭包）。三个消费方：一条失败的 `fix_owner` 必须是失败证明闭包内的生产者才可路由（`kernel diagnose` 拒绝闭包之外的人工归因，调度器拒绝信封的，§5.4）；在途集必须在这个序下保持**反链**（§5.2 第 2 步）；以及一轮所选的候选必须在候选中闭包极小。仅产物边——`ADVISORY_ORDER` 从构造上就被排除。
 `ADVISORY_ORDER` 是第三样东西，而它不是图查询：两条手写的*时序*边（`synthesis` 排在 `lint-cdc` 之后；`power-analysis` 排在 `timing-analysis` 之后），并非数据依赖。synthesis 不消费 lint 的报告，但 lint 一旦失败就会改写它脚下的 RTL，所以让便宜的检测器先说话，可以省下把昂贵阶段花在一轮马上要重做的工作上。它的消费者只有一处——`decide` 第 2 步的不超车门（§5.2）；那道门直接读它，因为紧挨其前的 `rule_available` 已经确立了每个输入生产者的证明。
 
-> **契约：** `ADVISORY_ORDER` 只影响*调度顺序*。`input_producers` / `input_closure`（产物边）是证明有效性、输入可用性、失败新鲜度的唯一依据。两者永不交叉。
+> **契约：** `ADVISORY_ORDER` 只影响*调度顺序*。`input_producers` / `input_closure`（产物边）是证明有效性、输入可用性、失败归因的唯一依据。两者永不交叉。
 
 ### 3.4 约束与 SGDC 时钟域声明
 
@@ -264,7 +264,7 @@ for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 
 ### 4.5 oracle 等级与 pin
 
-每条证明的 `oracle` 是 `(ref, grade)`。grade 由 `kernel._graded` *在收割时派生*：
+每条证明的 `oracle` 是 `(ref, grade)`。grade 由 `facts.oracle_grade` *实时派生*——基于当前日志而非收割时的快照，因此一次 `pin` 或 `reopen` 无需重新收割即刻生效：
 
 - 注册 oracle 等级为 `tool` 的规则（SpyGlass / DC / PT）始终落账 `tool`——EDA 工具即权威。
 - 注册等级为 `proposed` 的规则（LLM 自撰裁判）落账 `proposed`——**除非**存在一个*存活的* `pin`，其对该 `oracle_ref` 记录的 `content_fingerprint` 等于 oracle 内容*当前*的指纹，此时落账 `human`。
@@ -325,35 +325,44 @@ loop:
 flowchart TD
     W(["decide"]) --> S0{"第 0 步：有 run 可收割？"}
     S0 -- "wake 命中 / result.json 已就位" --> RP(["REAP"])
-    S0 -- 否 --> S1{"第 1 步：有新鲜失败？"}
-    S1 -- 有 --> DISP["处置 → DISPATCH / ESCALATE / YIELD / 顺延"]
-    S1 -- "无（或顺延）" --> S2{"第 2 步：有前向规则可派发？"}
-    S2 -- 有 --> DSP(["DISPATCH"])
+    S0 -- 否 --> S1{"第 1 步：每条失败都归因了？"}
+    S1 -- "有一条谁都没点名" --> ESC(["ESCALATE"])
+    S1 -- 是 --> S2{"第 2 步：有候选可启动？"}
+    S2 -- 有 --> DSP(["DISPATCH（附它所欠的失败）"])
     S2 -- 无 --> S3{"第 3 步"}
     S3 -- "仍有在途" --> Y(["YIELD"])
-    S3 -- "所需证明全部可复用" --> DONE(["DONE"])
-    S3 -- 其余 --> ESC(["ESCALATE"])
+    S3 -- "所需证明全部有效" --> DONE(["DONE"])
+    S3 -- "未完成且无可派发" --> ESC
 ```
 
 - **第 0 步——先收割。** 若 `--wake <rule>:<run>` 指名一个在途 run → `REAP` 之。否则，若任何在途 run 的 workdir 已有 `result.json`（已完成但未收割），按 `FORWARD_PRIORITY` 收割最早的一个。先收割再决策，保持日志与现实同步。
-- **第 1 步——新鲜失败处置。** 按 `FORWARD_PRIORITY` 找最新 outcome 为 `fail` *且*该失败*新鲜*（§5.3）的规则，运行 `_disposition`。最早的新鲜失败胜出；`_defer_to_forward` 的结果落到第 2 步。
+- **第 1 步——澄清归因。** 收集每一条失败连同谁必须动手（`_failures`，§5.3）。只要有一条谁都没点名，这一轮就停在这里问人——按 `FORWARD_PRIORITY` 取最早的一条。此点之前什么都不调度，所以下面每一步都不必再对一条 owner 未知的失败作推理。随后 `owed` 把剩下的摊平成「每（失败, owner）一条、且仍未被应答」，`_group` 再按 owner 分桶。
 - **第 2 步——前向派发。** 计算当前不可复用的所需证明，扩展到*重建闭包*（沿不可用输入的 `input_producers` 行走，让修复先重建正确的上游），然后按 `FORWARD_PRIORITY` 派发最早的、不在途且输入可用的候选。此外，只要某个候选的 `ADVISORY_ORDER` 前驱尚未有效**且正要说话**——本轮 work 集里有它，或它已经在途——该候选就被扣住：不超车门（§3.3）。问「谁正要来」而不是「调用方处在哪个模式」，正是同一条规则能同时服务收窄目标集与完整目标集的原因：一个既没被调度也没在跑的前驱永远不会有结果，扣着它只会把这一轮搁死。
 - **第 3 步——收束。** 有工作在途 → `YIELD`（返回 `in_flight[]` 视图）。否则所需证明全部可复用 → `DONE`。否则 → `ESCALATE`（"无可派发规则、无在途、未完成"）。
 
 `cmd_dispatch` 是可派发性真相的唯一来源：它在*写入时刻*复查在途前提与输入可用性，若可派发性在扫描与写入之间发生了漂移则返回 `ok:false`。签核门不在这些检查之列——签核不可派发，也就没有派发可把门。它的防绕过职责移交给 `cmd_signoff`：后者自己跑门，而不是信任先前的一次 `decide`——该动词是门的唯一界面，因此越过流程的 `kernel.py signoff` 无法铸造一个门已拒绝的签核（§5.5）。
 
-### 5.3 新鲜失败处置与可靠性门
+### 5.3 抱怨：什么还开着，以及谁必须动手
 
-一个失败只有在*新鲜*期间才可采取行动（`schedule._fail_is_fresh`）：其 fail 证明必须除裁决外样样新鲜——落账的输入输出仍与磁盘一致、oracle 未被 reopen、**且**其传递 `input_closure` 内的每个证明当前均有效。闭包里有陈旧或缺失证明 = 上游仍在传播，该失败即*陈旧*，顺延给前向重验而不做路由。（此处仅用产物边——`ADVISORY_ORDER` 永不进入。）
+最新 outcome 为 `fail` 的证明提出一条**抱怨**。`schedule._failures` 按 `FORWARD_PRIORITY` 顺序返回它们，每条都已带着谁必须动手；`schedule.owed` 留下仍然*开着*的那些。一个概念取代了新鲜度测试、处置树和合并规则，因为这三者问的是同一个对象。
 
-对一个新鲜失败，`_disposition` 三择其一：
+**一条抱怨开着，当且仅当还有一件具体的事该做而尚未做。**
 
-1. **已有诊断附着。** `_active_diagnoses` 收集 `subject` 与该失败 `(proof, outcome_run)` 匹配、未被 supersede 的全部 `diagnosis`。若最新一条**可靠** → 自动重建：`DISPATCH` 其 `fix_owner`（在 `repair` 下），并把所有新鲜失败中共享该 `fix_owner` 的每条可靠诊断的 `id` 合并进 `diagnosis_refs`、其 `(rule, run)` 坐标合并进 `caused_by`（多因修复逐条引用——无一静默丢弃，而且这个合并是内核求并后解析的，不是给撰写派发者的一条指示）。若 `fix_owner` 输入不可用，顺延前向。若最新诊断**不**可靠 → `ESCALATE`，把各诊断作为候选呈给用户。
-   - **是否可路由**：一条诊断被采信，当且仅当它点名了 `fix_owner`，再无别的要求。指向 oracle 一侧的归因——怪罪失败规则自己的裁判——到达时根本没有 `fix_owner`，被同一条挡下，所以归因不再单独检查：两个写入方都已经强制它，`cmd_diagnose` 拒绝闭包之外的 `fix_owner`，`_derive_triage` 只在根因落在闭包内时才写，而没有任何规则在自己的闭包里。
-2. **无诊断，且失败是 `simulation`。** 失败有歧义（仿真挂掉可能是 RTL、计划或 spec）→ `DISPATCH simulation-triage`，带 `params.sim_run = <失败 run>`（若 triage 已在途则 `YIELD`）。triage 运行，在*它的*收割时内核派生诊断（见下）；下一次 `decide` 看到诊断即重入处置分支 1。
-3. **无诊断，自描述失败。** 失败的信封自陈 `stage_specific.fix_owner`（无需诊断事件）。合法指名且其输入可用 → 自动重建 `DISPATCH`；输入不可用 → 顺延前向；谁都没指、指了自己、或指到输入闭包之外 → 升级（§5.4）。
+- **它的裁判必须仍然站得住**——`schedule._oracle_retracted`，即把 §4.4 的条件 3 问向一次失败。reopen 掉的 oracle 撤回一次失败，与它撤回一次通过一模一样：同样锚在 dispatch 时刻，同样有 live-pin 的例外。条件 4 刻意不问：一次失败自己的产物发生漂移，并不说明它对「哪里出了错」的陈述不再成立。
+- **有主**（归因点名了一个合法的 `fix_owner`）：开着，直到该 owner 在这次失败落地之后被**派发过**（`_answered`）。是派发而非交付——问的是该动手的一方有没有轮到过；一轮出于别的原因重建了该 owner，它同样有过机会，再问一次等于为同一个缺陷花掉这个阶段两次。收割为 `blocked` 的 run 是例外：什么都没落地，于是抱怨重新打开，而不是被一个死掉的执行器悄悄消费掉。
+- **无主**：根本不关闭——这一轮停下来问人（第 1 步）。归因在任何调度之前就被澄清，所以一条不清楚的失败绝不会一路随行，让后面每一步都得再问一遍画面完整了没有。
 
-**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`skipped_reason`、`advisory`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（仿真失败保持歧义；下一轮重新派发 triage）。否则内核把 `advisory.findings[]` 按各自的 `root_cause` 分组，每组追加一条 `diagnosis`（`source: triage`）并带上该组的 anchor——`attribution` 取该根因，`fix_owner` 就取同一个名字，前提是它落在 `simulation` 的输入闭包内。自指归因（`root_cause == simulation`）按构造落在闭包之外，于是省略 `fix_owner`，由处置将它升级。
+> **输入漂移不关闭一条有主的抱怨。** 这是承重的不对称。兄弟修复挪动了这次失败的输入，并不让 fix owner 的活儿消失——把它当成消失了，正是一条写下来的、合法的、无人应答的归因被丢弃，然后靠再花一次提出它的那个阶段重新发现的过程。§4.4 的条件 2 仍然让*证明*失效；它只是不再撤回那份关于「哪里错了」的*陈述*。老 `_fail_is_fresh` 在条件 3 之外做的一切——产出检查、输入检查、传递输入闭包检查——都没有了：仍在沉降的上游会让 owner 不可用或非极小，而候选过滤器已经这么说了，说两遍的代价是丢掉归因。
+
+**谁必须动手**出自一个函数（`schedule._owner`）：`attribution`，逐字写下来的东西；以及 `owners`，它可路由的投影——那些合法的名字（§5.4）。`owners` 是一个**列表**，因为一次回归可以因几个彼此独立的原因失败，而一条发现可以落在与它邻居不同的阶段文件里；一次分析用「每个根因一条诊断」来表达这件事，且每个条目自带 `since`，即从哪个位置起衡量「这个 owner 动过没有」。两条归因通道都归结为这一对，且later 的分析压过阶段自己的自陈：
+
+1. **已有诊断附着。** `_active_diagnoses` 收集 `subject` 与该失败 `(proof, outcome_run)` 匹配、未被 supersede 的全部 `diagnosis`；每条都点名一个 owner，其中只要有一条谁都没点名，整条失败就不清楚。**一条诊断可路由，当且仅当它点名了 `fix_owner`**，再无别的要求。指向 oracle 一侧的归因——怪罪失败规则自己的裁判——到达时根本没有 `fix_owner`，被同一条挡下，所以归因不再单独检查：两个写入方都已经强制它，`cmd_diagnose` 拒绝闭包之外的 `fix_owner`，`_derive_triage` 只在根因落在闭包内时才写，而没有任何规则在自己的闭包里。这样一条诊断让抱怨保持无主，`ESCALATE` 会把每个候选都列出来。
+2. **无诊断——信封的自陈。** 取失败规则规范 `result.json` 里的 `stage_specific.fix_owner`（§5.4）。读 canonical 是可靠的：一条抱怨只在那次 fail 仍是该规则*最新* outcome 期间存在，而 fail 会 promote。
+3. **无诊断，且谁都没点名**——抱怨无主。若其规则声明了 `triage`（`Rule.triage`，§3.1）就交给它：`DISPATCH simulation-triage`，带 `params.sim_run = <失败 run>`，其收割铸造出情形 1 随后读到的那条诊断。哪个阶段背后有分析器，是注册表的一个字段而不是调度器的一个分支。一条*已经*被分析过、且回来时谁都没点名的抱怨不会再次进入 triage——同一个分析器面对同一批证据只会复现它——所以它留给人来判。
+
+因为 owner 是一个字段而不是一个分支，升级的理由是从这一对*派生*的（`_escalation`），而不是在被注意到的地方各自抛出：谁都没点名 / 点了自己 / 点到闭包之外 / 一条谁都没点名的诊断，是两个值的四种读法。
+
+**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`skipped_reason`、`advisory`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（抱怨保持无主；下一轮重新派发 triage）。否则内核把 `advisory.findings[]` 按各自的 `root_cause` 分组，每组追加一条 `diagnosis`（`source: triage`）并带上该组的 anchor——`attribution` 取该根因，`fix_owner` 就取同一个名字，前提是它落在 `simulation` 的输入闭包内。自指归因（`root_cause == simulation`）按构造落在闭包之外，于是省略 `fix_owner`，抱怨随之升级。
 
 ### 5.4 失败归因
 
@@ -365,7 +374,7 @@ flowchart TD
 - **指了自己。** 阶段从这里能修的缺陷是在**本轮 run 之内**修掉的——`rtl-design` 重派子作者、`lint-cdc` 就地加 waiver——所以压根不会以失败抵达这里。指自己因而意味着站内补救已尽，而自动重建会把失败规则派给它自己。
 - **指了自己输入闭包内的规则**(`rules.input_closure`，那张派生出来的图——与 `kernel.py diagnose` 对人工归因所用的是同一条校验)。输入可用 → 自动重建 `DISPATCH`；不可用 → 顺延前向。指到闭包之外意味着阶段归咎了自己并不消费的东西，升级。
 
-指名同一个 owner 的每个新鲜失败会被并进同一次派发，因此同轮失败的另一个阶段绝不会被静默丢弃(§3.3)。
+指名同一个 owner 的每条开着的抱怨会在**一次**派发里抵达它——对开集做的一次 group-by（§5.2 第 1 步），因此同轮失败的另一个阶段绝不会被一条只实现了一半的合并规则静默丢弃（§3.3）。而且抱怨会在失败落地后该 owner 的*第一*轮抵达它，无论是什么调度了那一轮：上游漂移逼出的一次重建同样会带上它所拥有的抱怨，而不是盲跑一轮、把它们留到下一轮再花一次。
 
 **这么做的代价与理由。** 阶段自陈的归因只校验合法性，别无他求。替代一张表的有两条，都更强:闭包校验是机器强制的，而原来那条无条件的 `ppa → rtl-design` 映射**没有任何校验**；以及支撑这次指名的 `fail_reason` 就在同一份信封里，归因因此有作者、可审计——一张表的默认值没有作者。
 

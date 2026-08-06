@@ -112,7 +112,7 @@ The three dispatch paths from the Orchestrator:
 | `schedule.py` | The scheduler: `decide() → exactly one action`. Pure over (disk, log, args); composes `facts.signoff_gate`. Owns the goal set, the open-complaint set (who must act on each failure, and whether they have), the antichain and no-overtake gates, and the legality check on a failure's self-named `fix_owner`. |
 | `store.py` | Filesystem artifact-lifecycle helpers: dispatch-time `write_dispatch` (writes `<workdir>/dispatch.json`) and `carry_self` (copies the author's own previous canonical products into the fresh workdir), reap-time `promote`. Imported by `kernel.py`; never invoked directly. |
 
-The event schemas at `framework/references/schemas/events/<type>.schema.json` (7 of them, §4.2) and the result envelope at `framework/references/schemas/envelope.schema.json` complete the core.
+The event schemas at `framework/references/schemas/events/<type>.schema.json` (6 of them, §4.2) and the result envelope at `framework/references/schemas/envelope.schema.json` complete the core.
 
 > **Black-box discipline.** The Orchestrator invokes `kernel.py` by its documented command lines (flags via `<verb> --help`, each verb prints a JSON envelope) and never reads the framework scripts' source. On a non-zero exit or an `ok:false` envelope it follows the documented failure protocol (fix what the error names, surface the `ok:false` to the user), never patches around it.
 
@@ -264,7 +264,7 @@ The consequence: editing any file a proof touched — an input, an output, or th
 
 ### 4.5 Oracle grades and pins
 
-Each proof's `oracle` is `(ref, grade)`. The grade is *derived at reap* by `kernel._graded`:
+Each proof's `oracle` is `(ref, grade)`. The grade is *derived live* by `facts.oracle_grade`, over the current log rather than from a reap-time snapshot, so a `pin` or `reopen` takes effect without a re-reap:
 
 - A rule whose registered oracle grade is `tool` (SpyGlass / DC / PT) always records `tool` — the EDA tool is authoritative.
 - A rule whose registered grade is `proposed` (an LLM-authored judge) records `proposed` **unless** a *live* `pin` for its `oracle_ref` recorded a `content_fingerprint` equal to the oracle content's *current* fingerprint — in which case it records `human`.
@@ -325,17 +325,18 @@ Closing is not on this axis at all. `--closing` (§5.5) requires the same proofs
 flowchart TD
     W(["decide"]) --> S0{"Step 0: a run ready to reap?"}
     S0 -- "wake match / result.json present" --> RP(["REAP"])
-    S0 -- no --> S1["Step 1: group the OPEN complaints by who must act"]
-    S1 --> S2{"Step 2: a candidate that can start?"}
-    S2 -- yes --> DSP(["DISPATCH (+ the complaints it owns)"])
+    S0 -- no --> S1{"Step 1: every failure attributed?"}
+    S1 -- "one names nobody" --> ESC(["ESCALATE"])
+    S1 -- yes --> S2{"Step 2: a candidate that can start?"}
+    S2 -- yes --> DSP(["DISPATCH (+ the failures it owes)"])
     S2 -- no --> S3{"Step 3"}
     S3 -- "in-flight remains" --> Y(["YIELD"])
-    S3 -- "an unroutable complaint" --> ESC(["ESCALATE"])
-    S3 -- "all required reusable" --> DONE(["DONE"])
+    S3 -- "not done, nothing eligible" --> ESC
+    S3 -- "all required valid" --> DONE(["DONE"])
 ```
 
 - **Step 0 — reap first.** If `--wake <rule>:<run>` names an in-flight run → `REAP` it. Otherwise, if any in-flight run's workdir already holds a `result.json` (a completed but un-reaped run), reap the earliest by `FORWARD_PRIORITY`. Reaping before deciding keeps the log current.
-- **Step 1 — fresh-failure disposition.** For each rule in `FORWARD_PRIORITY` whose latest outcome is a `fail` *and* that failure is *fresh* (§5.3), run `_disposition`. The earliest fresh failure wins; a `_defer_to_forward` result falls through to step 2.
+- **Step 1 — clarify the attribution.** Collect every failure with who must act on it (`_failures`, §5.3). If any names nobody, the round STOPS there and asks a human — earliest first by `FORWARD_PRIORITY`. Nothing is scheduled before this point, so no step below has to reason about a failure whose owner is unknown. Then `owed` flattens what is left to one entry per (failure, owner) still unanswered, and `_group` buckets those by owner.
 - **Step 2 — forward dispatch.** Compute the required proofs not currently reusable, expand them to the *rebuild closure* (walk `input_producers` of any unavailable input so a repair rebuilds the right upstream first), and dispatch the earliest candidate by `FORWARD_PRIORITY` that is not in-flight and whose inputs are available. A candidate is additionally held back while an `ADVISORY_ORDER` predecessor of it is invalid *and* coming — scheduled in this round's work set, or already in flight — the no-overtake gate (§3.3). Asking who is coming, rather than which mode the caller is in, is what lets one rule serve both a narrowed and a full goal set: a predecessor that is neither scheduled nor running will never resolve, so holding for it would strand the round.
 - **Step 3 — settle.** If work is in flight → `YIELD` (returning the `in_flight[]` view). Else if every required proof is reusable → `DONE`. Else → `ESCALATE` ("no eligible rule, none in-flight, not done").
 
@@ -343,23 +344,23 @@ flowchart TD
 
 ### 5.3 Complaints: what is open, and who must act
 
-A proof whose latest outcome is a `fail` raises a **complaint**. `schedule.complaints` returns the ones still *open*, in `FORWARD_PRIORITY` order, each already carrying who must act. One concept replaces the freshness test, the disposition tree, and the merge rules, because all three were asking about the same object.
+A proof whose latest outcome is a `fail` raises a **complaint**. `schedule._failures` returns them in `FORWARD_PRIORITY` order, each already carrying who must act; `schedule.owed` keeps the ones still *open*. One concept replaces the freshness test, the disposition tree, and the merge rules, because all three were asking about the same object.
 
 **A complaint is open while there is a specific thing to do about it that has not been done.**
 
-- **Its verdict must still describe reality** — `facts.verdict_trustworthy`, conditions 3 and 4 of §4.4: the run's own products are still the ones it judged, and the judge that reached the verdict still stands. A reopened oracle retracts a failure exactly as it retracts a pass, on the same dispatch-time anchor and with the same live-pin exception.
+- **Its judge must still stand** — `schedule._oracle_retracted`, condition 3 of §4.4 asked of a fail. A reopened oracle retracts a failure exactly as it retracts a pass, on the same dispatch-time anchor and with the same live-pin exception. Condition 4 is deliberately not asked: a failure's own outputs drifting says nothing about whether its account of what went wrong still holds.
 - **Owned** (the attribution names a legal `fix_owner`): open until that owner has been **dispatched** since the failure landed (`_answered`). Dispatch, not delivery — the question is whether the party that must act has had its turn; a round that rebuilt the owner for another reason still had the chance, and asking again would spend the stage twice on one defect. A run reaped `blocked` is the exception: nothing landed, so the complaint re-opens rather than being consumed by a dead executor.
-- **Unowned**: closed by input drift instead, because the specific thing to do is triage or a human, and both would be reading evidence the drift has already moved. Re-verifying is then the cheapest well-defined act, and forward scheduling does it.
+- **Unowned**: not closed at all — the round stops and asks a human (step 1). Attribution is clarified before anything is scheduled, so an unclear failure never travels alongside a round that keeps having to ask whether the picture is complete.
 
-> **Input drift does not close an owned complaint.** This is the load-bearing asymmetry. A sibling repair moving a failure's inputs does not make the fix owner's job go away — and treating it as if it did is how an attribution that is written down, legal, and unanswered gets discarded, then rediscovered by spending the stage that raised it all over again. Condition 2 (§4.4) still invalidates the *proof*; it just no longer retracts the *account* of what went wrong. Everything the old `_fail_is_fresh` did beyond conditions 3/4 — the input check, and the transitive input-closure check — is gone: an upstream that is still settling makes the owner unavailable or non-minimal, which the candidate filters already say, and saying it twice cost the attribution.
+> **Input drift does not close an owned complaint.** This is the load-bearing asymmetry. A sibling repair moving a failure's inputs does not make the fix owner's job go away — and treating it as if it did is how an attribution that is written down, legal, and unanswered gets discarded, then rediscovered by spending the stage that raised it all over again. Condition 2 (§4.4) still invalidates the *proof*; it just no longer retracts the *account* of what went wrong. Everything the old `_fail_is_fresh` did beyond condition 3 — the output check, the input check, and the transitive input-closure check — is gone: an upstream that is still settling makes the owner unavailable or non-minimal, which the candidate filters already say, and saying it twice cost the attribution.
 
-**Who must act** comes from one function (`schedule._owner`): `attribution`, what was written verbatim, and `owners`, its routable projection — the names that are legal (§5.4) and, for a diagnosis, reliable. `owners` is a **set**, because one regression can fail for several independent reasons and a finding can sit in a different stage's files from its neighbour; an analysis says so with one diagnosis per root cause. Both attribution channels reduce to that pair, and a later analysis outranks the stage's own self-report:
+**Who must act** comes from one function (`schedule._owner`): `attribution`, what was written verbatim, and `owners`, its routable projection — the names that are legal (§5.4). `owners` is a **list**, because one regression can fail for several independent reasons and a finding can sit in a different stage's files from its neighbour; an analysis says so with one diagnosis per root cause, and each entry carries its own `since`, the position from which "has this owner acted" is measured. Both attribution channels reduce to that pair, and a later analysis outranks the stage's own self-report:
 
 1. **A diagnosis is attached.** `_active_diagnoses` collects every non-superseded `diagnosis` whose `subject` matches this failure's `(proof, outcome_run)`; each names an owner, and one naming nobody among them leaves the whole failure unclear. **A diagnosis routes iff it names a `fix_owner`**, and nothing else is asked of it. An oracle-side attribution — blaming the failed rule's own judge — arrives with no `fix_owner` and is refused by that clause, so the attribution is not tested separately: both writers already enforce it, `cmd_diagnose` by rejecting a `fix_owner` outside the subject's input closure and `_derive_triage` by writing one only when the root cause is inside it, and no rule is in its own closure. Such a diagnosis leaves the complaint unowned, and `ESCALATE` cites every candidate.
 2. **No diagnosis — the envelope's self-report.** `stage_specific.fix_owner` from the failed rule's canonical `result.json` (§5.4). Reading canonical is sound because a complaint exists only while that fail is the rule's *latest* outcome, and a fail promotes.
-3. **No diagnosis, and nobody named** — the complaint is unowned. If its rule declares a `triage` (`Rule.triage`, §3.1) it goes there: `DISPATCH simulation-triage` with `params.sim_run = <failed run>`, whose reap mints the diagnosis that case 1 then reads. Which stage has an analyzer behind it is a registry field rather than a scheduler branch. A complaint that has *already* been analysed and came back unreliable does not re-enter triage — the same analyzer over the same evidence would only reproduce it — so it stays a human's call.
+3. **No diagnosis, and nobody named** — the complaint is unowned. If its rule declares a `triage` (`Rule.triage`, §3.1) it goes there: `DISPATCH simulation-triage` with `params.sim_run = <failed run>`, whose reap mints the diagnosis that case 1 then reads. Which stage has an analyzer behind it is a registry field rather than a scheduler branch. A complaint that has *already* been analysed and came back naming nobody does not re-enter triage — the same analyzer over the same evidence would only reproduce it — so it stays a human's call.
 
-Because the owner is a field and not a branch, an escalation reason is *derived* from the pair (`_escalation`) rather than raised wherever it was noticed: named nobody / named itself / named outside the closure / unreliable diagnosis are four readings of two values.
+Because the owner is a field and not a branch, an escalation reason is *derived* from the pair (`_escalation`) rather than raised wherever it was noticed: named nobody / named itself / named outside the closure / a diagnosis that named nobody are four readings of two values.
 
 **Triage's diagnosis at reap** (`kernel._derive_triage`). `simulation-triage` has no proof; it writes a `result.json` whose `stage_specific` carries `analysis_state`, `skipped_reason`, `advisory`. At reap: `analysis_state != "complete"` → the outcome is `blocked` and no diagnosis is emitted (the complaint stays unowned; the next round re-dispatches triage). Otherwise the kernel groups `advisory.findings[]` by their `root_cause` and appends one `diagnosis` (`source: triage`) per group, carrying that group's anchors — `attribution` is the root cause and `fix_owner` is the same name when it is inside `simulation`'s input closure. A self-pointing attribution (`root_cause == simulation`) is outside that closure by construction, so `fix_owner` is omitted and the complaint escalates.
 
@@ -464,7 +465,7 @@ Each module's working state lives under the directory `--module` names — the k
 
 ```
 <module-dir>/            # e.g. asic/mychip, or ~/chips/mychip
-├── events.jsonl               # the ONLY durable state (append-only, 7 event types)
+├── events.jsonl               # the ONLY durable state (append-only, 6 event types)
 ├── .fingerprint-cache.json    # pure mtime/size speed cache — never a fact source
 ├── brainstorm.md              # pre-pipeline external input (module root; written by the brainstorm skill)
 ├── Design/
