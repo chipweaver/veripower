@@ -9,24 +9,18 @@ Anchor: 2026-05-10 review round, 3 same-class fixes in 5 days —
 synthesis 3250876, timing-analysis b0df23d, power-analysis 357a525.
 
 Locked invariant: every stage's schema accepts the smallest valid
-status=fail envelope (envelope-required fields + stage_specific.fail_reason,
-+ failure_phase for simulation).
+status=fail envelope (envelope-required fields + stage_specific.fail_reason).
+Uniformly: no stage asks for a second field on a failure.
 """
 
 import pytest
 
 from framework.scripts import facts, rules
 
-# simulation requires failure_phase (which sub-step tripped) alongside fail_reason;
-# the schema gates both under if:{status:fail} per skills/simulation/references/result.schema.json.
-_FAILURE_PHASE_STAGES = {"simulation"}
-
 
 @pytest.mark.parametrize("stage", rules.FORWARD_PRIORITY)
 def test_schema_validates_minimum_fail_envelope(stage):
     stage_specific = {"fail_reason": "test fail"}
-    if stage in _FAILURE_PHASE_STAGES:
-        stage_specific["failure_phase"] = "compile"
 
     result = {
         "stage": stage,

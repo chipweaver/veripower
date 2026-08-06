@@ -5,8 +5,8 @@ result.json's sole owner. --phase final re-derives the exit verdict in-process f
 the three gate primitives in sim._gate (earliest failing wave wins), folds the reaped verify verdict, and
 writes pass|fail; no gate's fail can be argued past it. The early-exit phases
 (env-blocked/smoke/conformance/regress/verify-blocked) write the status=fail envelope,
-with --failure-phase picking the schema failure_phase where the call-site spans several and the
-companion fields keyed off the resolved failure_phase. Exit 0 = result.json written (pass or fail);
+with --failure-phase picking the phase where the call-site spans several and the companion
+fields keyed off the resolved phase (the phase itself is internal — it selects, it is not written). Exit 0 = result.json written (pass or fail);
 exit 2 = BLOCKED (internal raise) — never conflated with status=fail.
 """
 
@@ -57,7 +57,7 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path, conformance_review):
     """Re-derive the exit verdict in-process from the three primitives in sim._gate.
-    Returns (ok, verdict, failure_phase, fail_reason); the earliest wave to fail wins, in the
+    Returns (ok, verdict, phase, fail_reason); the earliest wave to fail wins, in the
     order the waves ran: materialization, conformance review, coverage.
 
     The conformance leg is the one the orchestrator could otherwise walk past. The other two
@@ -107,8 +107,8 @@ def build_result(
     final -> re-derive compile/conformance/coverage from on-disk artifacts, fold the reaped
              verify verdict, write pass|fail.
     env-blocked|smoke|conformance|regress|verify-blocked -> write the early-exit
-             status=fail envelope (observed_phase picks the schema failure_phase where the
-             call-site spans several; companions keyed off the resolved failure_phase).
+             status=fail envelope (observed_phase picks the phase where the
+             call-site spans several; companions keyed off the resolved phase).
     Returns 0 (result.json written). A raise -> main() exit 2 (BLOCKED)."""
     workdir = Path(workdir)
     artifacts = enumerate_artifacts(workdir)
@@ -131,9 +131,9 @@ def build_result(
         workdir, scaffold, thresholds, conformance_review
     )
     if not ok:
-        # companions keyed off the resolved failure_phase, the same way _early_exit_ss keys
-        # them, so triage reads one shape per phase whichever call site wrote it.
-        ss = {"failure_phase": fphase, "fail_reason": freason}
+        # companions keyed off the resolved phase, the same way _early_exit_ss keys them,
+        # so triage reads one shape per phase whichever call site wrote it.
+        ss = {"fail_reason": freason}
         if fphase == "coverage":
             ss["coverage_extractable"] = gate["coverage_extractable"]
             ss["dims"] = gate["dims"]
@@ -154,7 +154,6 @@ def build_result(
         # Every test the plan declares is in a suite `make regress` selects, so this is the
         # runner having stopped partway rather than a selection gap.
         ss = {
-            "failure_phase": "regress",
             "fail_reason": (
                 f"{cases['not_run']} of {cases['not_run'] + cases['total']} declared tests "
                 f"produced no result; the suite did not finish"
@@ -237,8 +236,9 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
 
 
 def _early_exit_ss(phase, fail_reason, verify, observed_phase=None) -> dict:
-    # call-site -> default schema failure_phase (overridden by observed_phase where the
-    # call-site spans several).
+    # call-site -> the phase that decides which companions ride along (overridden by
+    # observed_phase where the call-site spans several). The phase itself stays internal:
+    # what it selects is on the envelope, the label it selected by is not.
     fp = (
         observed_phase
         or {
@@ -249,8 +249,8 @@ def _early_exit_ss(phase, fail_reason, verify, observed_phase=None) -> dict:
             "verify-blocked": "regress",
         }[phase]
     )
-    ss = {"failure_phase": fp, "fail_reason": fail_reason or ""}
-    # companions keyed off the RESOLVED failure_phase, not the call-site:
+    ss = {"fail_reason": fail_reason or ""}
+    # companions keyed off the RESOLVED phase, not the call-site:
     if fp in ("smoke", "regress") and "failing_cases" in verify:
         ss["failing_cases"] = verify["failing_cases"]
     if fp == "coverage":  # Rule-B verify route-out

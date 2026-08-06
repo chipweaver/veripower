@@ -126,7 +126,7 @@ def test_conformance_phase_writes_the_routing_envelope(tmp_path):
     )
     assert proc.returncode == 0, proc.stderr
     ss = json.loads((tmp_path / "result.json").read_text())["stage_specific"]
-    assert ss["failure_phase"] == "conformance" and "TP-01" in ss["fail_reason"]
+    assert "TP-01" in ss["fail_reason"]
     assert "conformance_findings" not in ss
 
 
@@ -136,9 +136,10 @@ def test_final_thin_fail_is_compile(tmp_path):
     proc = _finalize_final(wd)
     assert proc.returncode == 0
     env = json.loads((wd / "result.json").read_text())
-    assert (
-        env["status"] == "fail" and env["stage_specific"]["failure_phase"] == "compile"
-    )
+    ss = env["stage_specific"]
+    # a compile fail ran no test and measured no coverage, so neither companion rides
+    assert env["status"] == "fail"
+    assert "failing_cases" not in ss and "dims" not in ss
 
 
 def test_final_coverage_fail(tmp_path):
@@ -153,9 +154,7 @@ def test_final_coverage_fail(tmp_path):
         proc.returncode == 0
     )  # a coverage fail still writes result.json (exit 0, not BLOCKED)
     env = json.loads((wd / "result.json").read_text())
-    assert (
-        env["status"] == "fail" and env["stage_specific"]["failure_phase"] == "coverage"
-    )
+    assert env["status"] == "fail"
     assert env["stage_specific"]["dims"]["line"]["pass"] is False
 
 
@@ -172,7 +171,6 @@ def test_final_conformance_trip_is_fail_not_pass(tmp_path):
     proc = _finalize_final(wd)
     assert proc.returncode == 0, proc.stderr
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["failure_phase"] == "conformance"
     assert "TP-01" in ss["fail_reason"]
 
 
@@ -209,13 +207,12 @@ def test_a_suite_that_did_not_finish_is_not_a_pass(tmp_path):
     assert proc.returncode == 0, proc.stderr
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
-    assert env["stage_specific"]["failure_phase"] == "regress"
     assert "did not finish" in env["stage_specific"]["fail_reason"]
 
 
 def test_final_compile_fail_carries_no_coverage_companions(tmp_path):
-    # Companions follow the resolved failure_phase: a compile fail says nothing about
-    # coverage, and the failure_phase table in SKILL.md lists none for it.
+    # Companions follow the resolved phase: a compile fail says nothing about coverage,
+    # and the phase table in SKILL.md lists none for it.
     wd = _final_workdir(tmp_path)
     (wd / "tb/uvm/agent/m_drv_driver.sv").write_text("// TODO(driver)\n")
     proc = _finalize_final(wd)
@@ -237,7 +234,7 @@ def test_early_exit_smoke(tmp_path):
     )
     assert proc.returncode == 0
     env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "fail" and env["stage_specific"]["failure_phase"] == "smoke"
+    assert env["status"] == "fail"
     assert env["stage_specific"]["fail_reason"] == "case X failed"
 
 

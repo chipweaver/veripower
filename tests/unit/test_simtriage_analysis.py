@@ -101,7 +101,7 @@ def test_valid_skipped_derives_status_fail(tmp_path):
         tmp_path,
         {
             "analysis_state": "skipped",
-            "skipped_reason": "input incomplete: failure_phase",
+            "skipped_reason": "input incomplete: no fail_reason",
         },
     )
     assert r.returncode == 0, r.stderr

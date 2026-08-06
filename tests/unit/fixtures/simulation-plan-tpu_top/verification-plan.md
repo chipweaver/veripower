@@ -58,7 +58,7 @@ All nine standard rows are materialized; `power-scenarios.json` carries their `s
 
 **Rev 0.2 (rework round 1) — trigger: `simulation` conformance-gate trip.** Merged `apb`/`ctrl`/`status` into one active `core` observer; multi-observable RM/scoreboard now compares `o_prdata` + `done` + `counter` + `o_full` + `o_empty` (fixed unverified status observables on TP-CTRL-DONE/COUNTER, TP-FIFO-FLAGS).
 
-**Rev 0.3 (rework round 2) — trigger: `simulation` regress failure (`failure_phase=regress`).** Full regression failed 2/7: T-04 (fifo) and T-07 (rerun) read computed MAC results via `apb_result_read_seq` without loading weights first; the DUT weight regfile has no reset (spec-faithful → weights X until written) so the MACs produced X, while the RM (correctly) modeled unwritten weights as 0 → `o_prdata` X≠0. Root cause (triage): test-composition defect, NOT an RM/RTL bug (masking X in the RM would make those reads vacuous). Fix: added the weight-load precondition —
+**Rev 0.3 (rework round 2) — trigger: `simulation` regress failure.** Full regression failed 2/7: T-04 (fifo) and T-07 (rerun) read computed MAC results via `apb_result_read_seq` without loading weights first; the DUT weight regfile has no reset (spec-faithful → weights X until written) so the MACs produced X, while the RM (correctly) modeled unwritten weights as 0 → `o_prdata` X≠0. Root cause (triage): test-composition defect, NOT an RM/RTL bug (masking X in the RM would make those reads vacuous). Fix: added the weight-load precondition —
 - **T-04**: `[apb_weight_load, data_in_stream, fifo_boundary, start, apb_result_read]`.
 - **T-07 (SC-003)**: `[apb_weight_load, data_in_stream, start, rerun, apb_result_read]` (full first pass before the re-run).
 

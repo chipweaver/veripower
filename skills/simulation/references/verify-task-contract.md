@@ -29,7 +29,7 @@ it; a regress failure routes out with `failing_cases` and no check-mapping.
    summary. Otherwise take the named items from the same file's `uncovered[]`, classify each as a
    stimulus-layer or intent-layer gap per `coverage-iteration.md`, and either iterate stimulus
    within `defaults.yaml.stimulus_iterate_max_rounds` rounds or route out with
-   `failure_phase=coverage`.
+   the coverage route-out.
 3. **Summary**: `make summary` produces `case-results.json` and `case-results-summary.md`.
    The exit gates run at the orchestrator's finalize, not here.
 
@@ -37,7 +37,7 @@ it; a regress failure routes out with `failing_cases` and no check-mapping.
 
 - **Rule B stimulus iterate only**: seed / tighten existing seq constraint params / testlist append.
 - **A regress failure routes out; you do not repair it here.** Whether it is rooted in wiring or
-  in the checker's semantics makes no difference in this wave: write `failure_phase=regress` plus
+  in the checker's semantics makes no difference in this wave: write the `regress` verdict plus
   `failing_cases` and let the caller decide. That repair authority was the env wave's Rule A
   budget, and it closed when smoke passed.
 
@@ -63,7 +63,7 @@ wave: do not edit it, and route out a regress failure rooted there instead.
 
 | Excuse | Reality |
 |---|---|
-| "The uncovered items are outside the testpoints, but I'll iterate stimulus anyway and pass" | An item no testpoint claims is an intent gap: route out with `failure_phase=coverage` and `gaps_not_in_testpoints`. Stimulus cannot close a hole nobody planned to cover. |
+| "The uncovered items are outside the testpoints, but I'll iterate stimulus anyway and pass" | An item no testpoint claims is an intent gap: route out with `verdict: coverage` and `gaps_not_in_testpoints`. Stimulus cannot close a hole nobody planned to cover. |
 
 ## Output
 
@@ -75,7 +75,7 @@ wave: do not edit it, and route out a regress failure rooted there instead.
   finalize, so do not restate them here. On a route-out, carry the failure fields:
 
   ```json
-  {"failure_phase": "coverage", "coverage_gaps": ["..."], "gaps_not_in_testpoints": ["..."]}
+  {"verdict": "coverage", "coverage_gaps": ["..."], "gaps_not_in_testpoints": ["..."]}
   ```
 
   On a `regress` route-out each failing case is one `failing_cases[]` entry, and its shape is

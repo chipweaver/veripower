@@ -4,7 +4,7 @@
 That child gates its STATUS: DONE on this verb's exit code; it writes no result.json, and
 finalize's run remains the authoritative verdict. Exit 1 when a required scaffold SV file is
 missing or a TODO marker survives in tb/uvm/**, which the orchestrator records as
-failure_phase=compile. Presence only: whether a check verifies the right thing is the
+the compile route-out. Presence only: whether a check verifies the right thing is the
 conformance review's question, not this one.
 """
 
@@ -36,7 +36,7 @@ def run(workdir, plan_dir) -> int:
             "[sim check-materialization] incomplete:\n  - "
             + "\n  - ".join(errs)
             + "\nFill the scaffold (no TODO may survive; all required files present), then re-run. "
-            "Budget-exhausted-with-residue -> failure_phase=compile.",
+            "Budget-exhausted-with-residue -> the compile route-out.",
             file=sys.stderr,
         )
         return 1

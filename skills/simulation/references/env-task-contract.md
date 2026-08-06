@@ -83,7 +83,7 @@ the UVM scaffold, compile, and run the smoke suite.
    On a scaffold/wiring error within budget, error-driven repair is allowed (Rule A repairable list);
    on a semantic / expected-behavior error, do **not** retry: end with `STATUS: BLOCKED <one-line
    reason naming compile|smoke + the semantic locus>` so the orchestrator records
-   `failure_phase=compile|smoke`.
+   `--failure-phase compile|smoke`.
 4. **Env-exit completeness self-gate**: before reporting `STATUS: DONE`, run
 
    ```bash
@@ -151,18 +151,18 @@ smoke gate still decides smoke pass/fail.
   ```
 
   or `STATUS: BLOCKED <reason>` using exactly one of the two reason-string forms below, because the
-  orchestrator parses this line to classify `failure_phase`, so the wording must match:
+  orchestrator parses this line to pick `--failure-phase`, so the wording must match:
 
   - **Rule A unrepairable** (compile/smoke semantic error per `repair-boundaries.md`):
     `STATUS: BLOCKED <compile|smoke> <locus>`, naming the failing phase first, then the semantic
-    locus. Drives `failure_phase=compile|smoke`.
+    locus. Drives `--failure-phase compile|smoke`.
   - **Incomplete `inlined_check_hints[]`** (boundary-case fallback per `inlined-check-hints.md`):
     `STATUS: BLOCKED tb-scaffold.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`
-    verbatim. Drives `failure_phase=prerequisite` (rework routes back to simulation-plan).
+    verbatim. Drives `--failure-phase prerequisite` (rework routes back to simulation-plan).
 
   `STATUS: BLOCKED` is a **harness-level** signal, distinct from the `result.json.status` enum
   (`pass`/`fail` only); the orchestrator maps it to `status=fail` + `fail_reason` with the
-  `failure_phase` classified from the form above.
+  `--failure-phase` picked from the form above.
 
 ## `verify-handoff.json`
 

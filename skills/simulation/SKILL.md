@@ -141,10 +141,10 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize --workdir {workdir}
   --phase conformance --fail-reason "<the fixer's reason>"
 ```
 
-Dispatch no verify wave after that. The envelope carries the phase and the reason; the findings
-stay in `conformance-review.md`, which is promoted beside it. The route from here is
-`failure_phase=conformance` into `simulation-triage`, which opens that record and reaches the
-attribution this stage does not try to.
+Dispatch no verify wave after that. The envelope carries the reason; the findings stay in
+`conformance-review.md`, which is promoted beside it. The route from here is into
+`simulation-triage`, which opens that record and reaches the attribution this stage does not
+try to.
 
 **No usable review** (`STATUS: BLOCKED`, or no file): do not gate on it, and do not let it
 disappear either. Write the record yourself and go to step 3:
@@ -173,7 +173,7 @@ Reap its `STATUS:` line and its JSON line. Anything other than a clean verdict c
 here, without step 4:
 
 - a failing regress case: `finalize --phase regress --failure-phase regress --plan <scaffold>`;
-- Rule B gaps (`failure_phase=coverage` in its verdict): `finalize --phase regress
+- Rule B gaps (`coverage` in its verdict): `finalize --phase regress
   --failure-phase coverage --plan <scaffold>`;
 - `STATUS: BLOCKED`: `finalize --phase verify-blocked`.
 
@@ -197,15 +197,16 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize \
 
 `--phase final` re-runs three gates over the workdir before it will write a pass: materialization,
 the conformance verdict off the review file you hand it, and coverage against the thresholds. The
-earliest failing one wins and becomes `failure_phase`. So arriving here with an un-dispositioned
-`gate=trip` costs you the round rather than passing it: finalize writes the same
-`failure_phase=conformance` envelope step 2's own fail-out would have. The smoke and verify verdicts
+earliest failing one wins and decides which companions ride along. So arriving here with an
+un-dispositioned `gate=trip` costs you the round rather than passing it: finalize writes the same
+envelope step 2's own fail-out would have. The smoke and verify verdicts
 are the two it cannot re-derive, and each already wrote its own `status=fail` and skipped what
 followed, so what reaches this command is only ever the most-failing verdict you hold.
 
 Exit 0 means `result.json` was written, pass or fail. A non-zero exit is a program exception, not a
-`status=fail`. `failure_phase` and `fail_reason` ride on every fail and are absent on a pass;
-finalize derives both from the `--phase` you called.
+`status=fail`. `fail_reason` rides on every fail and is absent on a pass; finalize derives it,
+and the phase you called selects which companion fields ride with it — the phase itself is not a
+field, because what it selected is already on the envelope.
 
 **Naming the fix owner.** On a failure, add `--fix-owner <rule>`, the rule that must act. A
 functional or latency miss the reference model confirms is `rtl-design`; a testpoint or scenario

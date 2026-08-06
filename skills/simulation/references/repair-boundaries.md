@@ -11,7 +11,7 @@ Compile and smoke **share** one `defaults.yaml.scaffold_repair_max_rounds` count
 rounds each. When it runs out, stop the same way, naming the first phase that did not pass.
 
 Stopping means ending your response with `STATUS: BLOCKED <compile|smoke> <the semantic locus>`,
-which the orchestrator records as `failure_phase=compile|smoke`.
+which the orchestrator routes out as `--failure-phase compile|smoke`.
 
 ## Where the line falls
 

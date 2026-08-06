@@ -112,7 +112,8 @@ def build_parser() -> argparse.ArgumentParser:
             "coverage",
         ],
         default=None,
-        help="observed schema failure_phase when the call-site spans several; defaults per --phase",
+        help="the observed phase when the call-site spans several; defaults per --phase. It\n"
+        "selects which companion fields ride along and is not itself written.",
     )
     sp.add_argument(
         "--plan",

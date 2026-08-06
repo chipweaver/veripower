@@ -47,7 +47,7 @@ Only while every uncovered item is a stimulus-layer gap, and for at most
 
 You do not write `result.json`. You route out by returning your `STATUS` last line plus a JSON line
 carrying the failure fields, which the orchestrator maps into a `status=fail` envelope with
-`failure_phase=coverage`.
+the coverage route-out.
 
 - **Any intent-layer gap**, whether or not stimulus-layer gaps sit beside it: `coverage_gaps` +
   `gaps_not_in_testpoints`. The intent gap goes first; iterating stimulus in the same round would

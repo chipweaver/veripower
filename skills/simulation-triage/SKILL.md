@@ -35,29 +35,26 @@ You write `result.json` (schema: `references/result.schema.json`), and, if you b
 
 ## What the failing envelope carries
 
-`failure_phase` and `fail_reason` are always present. Every case list is optional, so branch on
-which one is actually there rather than on the phase:
+`fail_reason` is always present. Nothing labels which sub-step tripped, so read what is actually
+there — the shape of the envelope is the answer:
 
 - `failing_cases[]` — one case per entry, each with `error_message` and often a `log_snippet`.
   Read the full per-case log under `<sim_run>` when the snippet is cut short.
 - `coverage_gaps[]` — one case per gap bin, already split into `gaps_in_testpoints` and
-  `gaps_not_in_testpoints`.
-- **Neither.** A compile failure ran no test and a missing prerequisite never started, so there is
-  nothing to enumerate. A `smoke` failure also arrives with no case list: the verify child is the
-  only thing that produces one, and it has not run yet. And a `conformance` failure carries none by
-  design — see below. Take `fail_reason` plus whatever the run left on disk as a single case; it is
-  usually already a specific sentence about what went wrong.
+  `gaps_not_in_testpoints`. Regression passed, so there is no waveform to read.
+- `<sim_run>/conformance-review.md` carrying a `BLOCKING` heading — the check-adequacy review
+  stopped the round. Read it: the envelope deliberately carries none of it. Reaching you at all
+  means the simulation stage already tried to repair its own checks and judged the defect upstream
+  of them, so attributing it back to `simulation` returns it to the loop that just gave up.
+- **None of those.** A compile failure ran no test, a missing prerequisite never started, and a
+  smoke failure precedes the only child that produces a case list — so there is nothing to
+  enumerate. Take `fail_reason` plus whatever the run left on disk as a single case; it is usually
+  already a specific sentence about what went wrong.
 
-A `conformance` failure is the one phase where the envelope deliberately tells you almost nothing.
-The check-adequacy review is prose at `<sim_run>/conformance-review.md`, with `BLOCKING` on the
-heading of each finding that stopped the round; read it. That this phase reached you at all means
-the simulation stage already tried to repair its own checks and judged the defect to lie upstream
-of them, so attributing it back to `simulation` returns it to the loop that just gave up.
-
-If `<sim_run>/result.json` is unreadable or missing `failure_phase` / `fail_reason`, or the inputs
-show no failure at all, land `analysis_state: "skipped"` with a specific `skipped_reason`. That is
-the only way to say you cannot analyze this. `STATUS: BLOCKED` means the program crashed, never
-that you decided something.
+If `<sim_run>/result.json` is unreadable or missing `fail_reason`, or the inputs show no failure at
+all, land `analysis_state: "skipped"` with a specific `skipped_reason`. That is the only way to say
+you cannot analyze this. `STATUS: BLOCKED` means the program crashed, never that you decided
+something.
 
 ## Reading the failing run's waveform
 
