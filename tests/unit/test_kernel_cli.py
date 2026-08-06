@@ -544,17 +544,11 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
     assert diag["attribution"] == "rtl-design"
     assert diag["fix_owner"] == "rtl-design"
     assert diag["subject"] == {"proof": "simulation", "outcome_run": 7}
-    # D5: fix_locus mapped from advisory.findings[].anchor; evidence includes the triage
-    # result.json plus the experiment artifacts (no longer structurally empty). Every
-    # entry is anchored on THIS triage run's directory, which keeps the list module-relative
-    # throughout and immutable: canonical result.json is overwritten by the next triage,
-    # runs/<N>/ is not, and the artifacts are workdir-relative at the source.
+    # D5: fix_locus mapped from advisory.findings[].anchor. Nothing else is copied onto the
+    # record: what this analysis rests on is addressable from the `subject` it already
+    # carries, and the dispatch that acts on it derives those paths (_diagnosis_sources).
     assert diag["fix_locus"] == ["matvec.v:42"]
-    run_dir = f"Verification/simulation-triage/runs/{d['run']}"
-    assert diag["evidence"] == [
-        f"{run_dir}/result.json",
-        f"{run_dir}/experiment/harness.sv",
-    ]
+    assert "evidence" not in diag
 
     # non-blocked -> promoted to canonical
     canonical = (
@@ -569,8 +563,8 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
     """A regression fails for as many reasons as it fails for. A real analysis named
     `simulation-plan` while its loci reached into RTL and the testbench, and the record could
     hold only one owner, so a human had to notice and dispatch the second by hand. Per-finding
-    `root_cause` splits it: one diagnosis per distinct owner, each carrying its own anchors,
-    the shared evidence on all of them."""
+    `root_cause` splits it: one diagnosis per distinct owner, each carrying its own anchors
+    and all binding to the run that was analysed."""
     monkeypatch.chdir(tmp_path)
     module = "triage-split"
     d = _dispatch_triage(tmp_path, module, sim_run=4)
@@ -624,7 +618,6 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
     assert len({e["id"] for e in diagnoses}) == 2
     for e in diagnoses:
         assert e["subject"] == {"proof": "simulation", "outcome_run": 4}
-        assert e["evidence"][0].endswith("result.json")
 
 
 def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):

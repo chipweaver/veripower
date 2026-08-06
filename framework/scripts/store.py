@@ -74,7 +74,9 @@ def write_dispatch(
       (external, no producer) resolve to the module root. A rule declaring 'sim_run' gets
       an extra 'sim_run' key = <simulation-stage>/runs/<N> (triage).
     - `scope` — module-relative paths, or <file>:<line> anchors, that narrow this round.
-    - `caused_by` — module-relative per-run result.json of each failure this round answers.
+    - `caused_by` — module-relative record of whoever named this owner: the per-run
+      result.json of each failure whose own envelope did, or the evidence of the diagnoses
+      that did instead.
     - `reasons` — verbatim human diagnosis reasoning.
 
     The three narrowing keys are derived by the caller (cmd_dispatch); this function owns

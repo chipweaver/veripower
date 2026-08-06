@@ -33,6 +33,47 @@ def _resolve_inputs(module: str, rule_name: str) -> dict:
     return table
 
 
+def _run_envelope(rule_name, run) -> str:
+    return str(Path(*rules.workdir_root(rule_name), "runs", str(run), "result.json"))
+
+
+def _diagnosis_sources(events, diag) -> list[str]:
+    """The records this diagnosis rests on, DERIVED rather than stored: the run that
+    authored it, and the failing run it is about.
+
+    Both are addressable from the diagnosis's own `subject` plus the log — the failing run
+    directly, and the analysis as the latest dispatch of that proof's declared diagnostic
+    carrying `params.sim_run == outcome_run` — so neither is kept as a field. A stored copy
+    would be the same fact twice, and the analysis's own `experiment.artifacts[]` are a
+    third: they are listed inside the very envelope named here."""
+    subject = diag["subject"]
+    out = []
+    analyst = rules.RULES[subject["proof"]].triage
+    if diag["source"] == "triage" and analyst:
+        here = next(
+            (
+                i
+                for i, e in enumerate(events)
+                if e["type"] == "diagnosis" and e["id"] == diag["id"]
+            ),
+            len(events),
+        )
+        run = next(
+            (
+                e["run"]
+                for e in reversed(events[:here])
+                if e["type"] == "dispatch"
+                and e["rule"] == analyst
+                and e.get("params", {}).get("sim_run") == subject["outcome_run"]
+            ),
+            None,
+        )
+        if run is not None:
+            out.append(_run_envelope(analyst, run))
+    out.append(_run_envelope(subject["proof"], subject["outcome_run"]))
+    return out
+
+
 def cmd_dispatch(
     module,
     rule,
@@ -53,9 +94,9 @@ def cmd_dispatch(
     event).
 
     caused_by is the list of (rule, run) failures this dispatch answers, from --caused-by.
-    It is what makes a dispatch a rework: the kernel resolves each to that run's own
-    result.json and names it in dispatch.json, so the fix owner reads the failing envelope
-    at a kernel-given path rather than navigating to it."""
+    It is what makes a dispatch a rework, and it lands on the event as the record of which
+    failures were answered. dispatch.json's `caused_by` carries those envelopes plus, for
+    each referenced diagnosis, the record that named this owner (_diagnosis_sources)."""
     events = facts.read_events(module)
     if any(f["rule"] == rule for f in facts.in_flight(events)):
         return {"ok": False, "error": f"{rule} already in-flight"}
@@ -86,9 +127,14 @@ def cmd_dispatch(
                 "error": f"--caused-by {cb_rule}:{cb_run} has no result.json",
             }
         caused_by_paths.append(str(rel))
-    # A named diagnosis carries the two things no envelope holds: where its author says the
-    # fix lands, and (human-authored only) the reasoning behind it. An unknown ref would
-    # drop both silently, which is exactly the silent loss §3.3 forbids — reject instead.
+    # A named diagnosis carries the two things the failing envelope does not: where its
+    # author says the fix lands, and (human-authored only) the reasoning behind it. An
+    # unknown ref would drop both silently, which is exactly the silent loss §3.3 forbids —
+    # reject instead.
+    #
+    # It also puts the record that NAMED this owner into caused_by: for a triage-routed
+    # rework the fix owner is acting on an analysis, and a coordinate with no way to reach
+    # that analysis is the attribution arriving without its account.
     by_id = {e["id"]: e for e in events if e["type"] == "diagnosis"}
     scope = facts.stale_inputs(module, events, rule)
     reasons = []
@@ -97,6 +143,9 @@ def cmd_dispatch(
         if diag is None:
             return {"ok": False, "error": f"unknown diagnosis ref {ref!r}"}
         scope += [a for a in diag.get("fix_locus", []) if a not in scope]
+        for rel in _diagnosis_sources(events, diag):
+            if rel not in caused_by_paths and (root / rel).is_file():
+                caused_by_paths.append(rel)
         if diag["source"] == "human" and diag.get("reason"):
             reasons.append(diag["reason"])
     run = facts.runs_of(events, rule) + 1
@@ -326,26 +375,10 @@ def _derive_triage(env, dispatch):
     if ss.get("analysis_state") != "complete":
         return "blocked", "skipped_reason", [], []
     sim_hit = dispatch["params"].get("sim_run")
-    # Structural correlates live in the ADVISORY tier — stage_specific is
-    # additionalProperties:false with no evidence/fix_locus keys, so the old
-    # ss.get("evidence"/"fix_locus") reads were ALWAYS empty (D5). Map them: the
-    # experiment's artifacts -> diagnosis.evidence, and per-finding anchors -> fix_locus. The triage result.json is the always-present primary
-    # evidence record.
-    #
-    # Every entry is anchored on THIS triage run's own directory, which makes the list
-    # single-basis (module-relative throughout) and immutable: `advisory.experiment
-    # .artifacts[]` are workdir-relative by the triage skill's contract, and canonical
-    # result.json is overwritten by the next triage while runs/<N>/ persists. A later
-    # triage therefore cannot move the evidence a landed diagnosis rests on.
+    # No evidence list: what this analysis rests on is derivable from the `subject` it
+    # carries (_diagnosis_sources), and `advisory.experiment.artifacts[]` are listed inside
+    # the very envelope that derivation names — a stored copy would be the same paths twice.
     advisory = ss.get("advisory", {})
-    triage_run = (
-        Path(*rules.RULES["simulation-triage"].workdir_root)
-        / "runs"
-        / str(dispatch["run"])
-    )
-    evidence = [str(triage_run / "result.json")] + [
-        str(triage_run / a) for a in advisory.get("experiment", {}).get("artifacts", [])
-    ]
     # {root cause -> its loci}, insertion-ordered so the record reads in the order the
     # analysis wrote it.
     by_cause: dict[str, list] = {}
@@ -361,7 +394,6 @@ def _derive_triage(env, dispatch):
             "subject": {"proof": "simulation", "outcome_run": sim_hit},
             "attribution": cause,
             "fix_locus": loci,
-            "evidence": evidence,
             "source": "triage",
         }
         if cause in rules.input_closure("simulation"):
@@ -380,8 +412,8 @@ def _derive_triage(env, dispatch):
 
 def _module_relative(module, s):
     """An absolute path under the module root becomes module-relative. Anything else — an
-    already-relative path, or a `<file>:<line>` anchor — is left alone. Both fix_locus and
-    evidence reach dispatch.json, where a mixed-basis list would be unreadable."""
+    already-relative path, or a `<file>:<line>` anchor — is left alone. fix_locus reaches
+    dispatch.json's `scope`, where a mixed-basis list would be unreadable."""
     if not s.startswith("/"):
         return s
     try:
@@ -398,7 +430,6 @@ def cmd_diagnose(
     attribution,
     fix_owner,
     fix_locus,
-    evidence,
     provenance,
     reason,
     supersedes,
@@ -413,7 +444,11 @@ def cmd_diagnose(
     - provenance and reason are both required for source=human (the schema's `required`
       array cannot make a field conditionally required on another field's value).
       provenance is the bare identity that vouches; reason is the reasoning, and it is
-      what dispatch.json carries verbatim to the fix owner."""
+      what dispatch.json carries verbatim to the fix owner.
+
+    No evidence list: what a diagnosis rests on is the failing run its `subject` names,
+    which the dispatch that acts on it derives (_diagnosis_sources). Anything else the
+    author wants the fix owner to see belongs in `reason`, which travels verbatim."""
     if fix_owner and fix_owner not in rules.input_closure(subject_proof):
         return {
             "ok": False,
@@ -428,7 +463,6 @@ def cmd_diagnose(
         "id": diag_id,
         "subject": {"proof": subject_proof, "outcome_run": subject_run},
         "attribution": attribution,
-        "evidence": [_module_relative(module, e) for e in evidence or []],
         "source": "human",
         "provenance": provenance,
         "reason": reason,
@@ -601,7 +635,6 @@ def main():
     dg.add_argument("--attribution", required=True)
     dg.add_argument("--fix-owner", default=None, choices=rules.FORWARD_PRIORITY)
     dg.add_argument("--fix-locus", nargs="+", default=None)
-    dg.add_argument("--evidence", nargs="+", required=True)
     dg.add_argument("--provenance", required=True)
     dg.add_argument("--reason", required=True)
     dg.add_argument("--supersedes", default=None)
@@ -692,7 +725,6 @@ def main():
             args.attribution,
             args.fix_owner,
             args.fix_locus,
-            args.evidence,
             args.provenance,
             args.reason,
             args.supersedes,

@@ -350,8 +350,9 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
     assert a["caused_by"] == [["simulation", 1]]
 
     # (d) the triage analysis reaches rtl-design as data, not as a copy: `caused_by` names
-    # the failing run's own envelope and `scope` carries the diagnosis's anchors. Nothing is
-    # transcribed, and the fix owner never navigates to another stage itself.
+    # both the regression and the analysis that read it — the second derived from the
+    # diagnosis's own subject, not stored on it — and `scope` carries the diagnosis's
+    # anchors. Nothing is transcribed, and the fix owner never navigates to another stage.
     _mk(m, "Verification/simulation/runs/1/result.json", json.dumps({"status": "fail"}))
     dr = kernel.cmd_dispatch(
         m, "rtl-design", a["diagnosis_refs"], None, [("simulation", 1)]
@@ -360,7 +361,10 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
     doc = json.loads(
         (facts.module_root(m) / dr["workdir"] / "dispatch.json").read_text()
     )
-    assert doc["caused_by"] == ["Verification/simulation/runs/1/result.json"]
+    assert doc["caused_by"] == [
+        "Verification/simulation/runs/1/result.json",
+        "Verification/simulation-triage/runs/1/result.json",
+    ]
     assert doc["scope"] == ["matvec.v:1"]  # the triage finding's anchor
 
     # the fix lands (run 2): outcome changes ONLY matvec.v; filelist/README untouched.
@@ -483,7 +487,6 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
             "subject": {"proof": "simulation", "outcome_run": 1},
             "attribution": "simulation-plan",
             "fix_owner": "simulation-plan",
-            "evidence": ["Verification/simulation-triage/runs/1/result.json"],
             "source": "triage",
         },
         TS,
@@ -498,7 +501,6 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
             "subject": {"proof": "simulation", "outcome_run": 1},
             "attribution": "rtl-design",
             "fix_owner": "rtl-design",
-            "evidence": ["Verification/simulation-triage/runs/2/result.json"],
             "source": "triage",
         },
         TS,
@@ -776,12 +778,13 @@ def test_reverify_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
     assert (facts.module_root(m) / d["workdir"] / "design.md").is_file()
 
 
-def test_repair_dispatch_names_the_failure_and_the_human_reasoning(
+def test_repair_dispatch_names_what_named_the_owner_and_the_human_reasoning(
     tmp_path, monkeypatch
 ):
-    """Shape 3 — a repair: `caused_by` names the failing run's own envelope, `scope` carries
-    the diagnosis's fix_locus, and `reasons` carries a human author's reasoning verbatim.
-    The envelope path is per-run, so a later run of the same stage cannot move it."""
+    """Shape 3 — a repair: `caused_by` names the failing run the diagnosis is about,
+    derived from its `subject` rather than stored on it; `scope` carries that diagnosis's
+    fix_locus, and `reasons` carries the reasoning verbatim. Every path is per-run, so a
+    later run of the same stage cannot move it."""
     monkeypatch.chdir(tmp_path)
     m = "repair-shape"
     _mk(m, "brainstorm.md", "b1")
@@ -798,7 +801,6 @@ def test_repair_dispatch_names_the_failure_and_the_human_reasoning(
         "specification",
         "specification",
         [str(facts.module_root(m).resolve() / "Design/specification/ppa.json")],
-        ["Design/synthesis/runs/1/reports/area.rpt"],
         "operator",
         "the area target's unit is wrong, not the RTL",
         None,

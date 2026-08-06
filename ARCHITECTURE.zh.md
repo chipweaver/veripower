@@ -231,7 +231,7 @@ for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 |---|---|---|
 | `dispatch` | 自动（`dispatch`） | 开启一个 run：`rule`、`run`、`workdir`、`params`（该规则声明的参数）、`diagnosis_refs`、`caused_by`（一次返修所回答的 `[rule, run]` 失败），以及——仅产证明规则——消费的 `inputs` 版本表（`proof.inputs` 的唯一来源）。 |
 | `outcome` | 自动（`reap`） | 关闭一个 run：`verdict ∈ {pass, fail, blocked}`、产出的 `outputs` 版本表（含规范 `result.json`）、`proofs[]`、`tool_versions`、可选 `reason`（blocked 子类）。 |
-| `diagnosis` | triage 自动（`reap`）；人工经 `diagnose` | 一条失败归因。必填（按 `diagnosis.schema.json`）：`id`、`subject {proof, outcome_run}`、`attribution`、`evidence`、`source ∈ {triage, human}`。可选：`fix_owner`、`fix_locus`、`supersedes`；`provenance`（背书者的裸身份）与 `reason`（推理本身，逐字带进 fix owner 的 `dispatch.json`）在 `source=human` 时均为必填，由 `diagnose` 强制。 |
+| `diagnosis` | triage 自动（`reap`）；人工经 `diagnose` | 一条失败归因。必填（按 `diagnosis.schema.json`）：`id`、`subject {proof, outcome_run}`、`attribution`、`source ∈ {triage, human}`。可选：`fix_owner`、`fix_locus`、`supersedes`；`provenance`（背书者的裸身份）与 `reason`（推理本身，逐字带进 fix owner 的 `dispatch.json`）在 `source=human` 时均为必填，由 `diagnose` 强制。 |
 | `pin` | `pin` | 把 `proposed` oracle 向 `human` 棘轮：`oracle_ref`、`content_fingerprint`（pin 时记录）、`provenance`、`reason`。 |
 | `reopen` | `reopen` | 撤销一个 pin：`pin_ref`、`reason`。使 oracle 在其落账后被 reopen 的证明失效（§4.4）。 |
 | `signoff` | `signoff` | 闭合签核：`provenance`、`reason`。仅在 `facts.signoff_gate` 干净时写入（§5.5）。不携带指纹，也从不被撤销——有效性由 `facts.signed_off` 实时重新推导。 |
@@ -396,7 +396,7 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 
 - **`inputs`** = `{键: 生产者规范阶段根目录}`，绝对路径。每个声明输入解析到恰好一个生产者的阶段根（规则带 `sim_run` 参数时，解析到那个具体的目标 run 目录）;`PIPELINE_INPUTS` 解析到模块根。执行者在该位置直接读规范内容——只读，绝非暂存副本——且从不自行拼出跨阶段路径。
 - **`scope`** = 收窄本轮的模块相对路径，或 `<file>:<line>` 锚:`facts.stale_inputs`（哪些已记录的输入与磁盘漂移了——正是这份漂移让证明失效并触发了这次重新派发）与 `--diagnosis-refs` 每条诊断的 `fix_locus` 求并。两者都住在事件日志里，而 skill 不读日志。
-- **`caused_by`** = 本次返修所回答的每个失败的**逐 run** `result.json`，由 `--caused-by <rule>:<run>` 解析而来。用逐 run 而非 canonical:`runs/<N>/` 长存（§7.3），而 canonical 会被该阶段的下一次 run 覆盖，所以后来的 run 无法挪动一次返修所依据的证据。triage 的分析正是这样到达它的 fix owner 的——以信封本身、在内核给出的路径上，而不是一份副本。
+- **`caused_by`** = 本轮所回答的记录:每个 `--caused-by <rule>:<run>` 失败的**逐 run** `result.json`，加上每条 `--diagnosis-refs` 诊断的产出 run。两者都是逐 run 而非 canonical:`runs/<N>/` 长存（§7.3），而 canonical 会被该阶段的下一次 run 覆盖，所以后来的 run 无法挪动一次返修所依据的东西。triage 的分析正是这样到达它的 fix owner 的——以记录本身、在内核给出的路径上，而不是一份副本。这里没有一条是存在诊断上的:`kernel._diagnosis_sources` 从它的 `subject` 加日志现推（分析即该证明所声明的诊断器中、`params.sim_run == outcome_run` 的最近一次 dispatch），而分析自己的 `experiment.artifacts[]` 就列在由此点名的那份信封里面。
 - **`reasons`** = `--diagnosis-refs` 里每条 `source` 为 `human` 的诊断的 `reason`，逐字。人可能知道任何磁盘上都没有的事；这是这个文件里唯一一样"本来不是文件"的东西。
 
 悬空的 `--caused-by` 或不认识的 `--diagnosis-refs` 会在分配 run 之前被拒:前者会给执行者一条它打不开的路径，后者会静默丢掉那条诊断的位置与推理，而这正是 §3.3 禁止的丢失。
@@ -440,7 +440,7 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 
 - **输入：** Orchestrator 把 `{module, sim_run}` 作为派发参数传入；派发时内核把 `sim_run` 与每个声明的输入（`design`、`rtl`、`plan`）解析为各自的绝对规范阶段根目录，写入 `{workdir}/dispatch.json`（`store.write_dispatch`）。triage 从这些注入的位置读一切——从不自行导航模块相对路径：失败仿真的 `result.json` 与完整 `runs/<sim_run>/`（UVM 日志、coverage/KDB、以及失败 test 的全层次 `<test_id>.fsdb`）、spec、RTL、simulation-plan 的 scaffold/refmodel。
 - **方法：** 在失败证据加 spec 与 refmodel 上推理，并查询失败 run 自己的 FSDB 波形（`fsdbreport`），二者同为事实。当这些定不了归因时，它可以在自己的 workdir 里建并跑一个*受控实验*——真实 run 从未驱动过的激励、隔离 harness、与 UVM refmodel 一致的黄金模型——绝不编辑规范 RTL。用哪一种、走多远，是这个子 Agent 自己的判断；框架不计量它。
-- **输出：** 一份 `result.json`，其 `stage_specific` 携带 `analysis_state` 与 `advisory.{findings[]、waveform、experiment}`。收割时内核把 `findings[]` 按 `root_cause` 分组，每组派生一条 `diagnosis`：该组的 `anchor` 成为 `fix_locus`，`experiment.artifacts[]` 成为 `evidence`。
+- **输出：** 一份 `result.json`，其 `stage_specific` 携带 `analysis_state` 与 `advisory.{findings[]、waveform、experiment}`。收割时内核把 `findings[]` 按 `root_cause` 分组，每组派生一条 `diagnosis`：该组的 `anchor` 成为 `fix_locus`。此外不再往记录上抄任何东西——读者需要的路径都能从它的 `subject` 推出（§5.6）。
 - **权威性：** 一条归因被采信，当且仅当它点名的规则落在 `simulation` 的输入闭包内（§5.3）；自指归因升级给操作者。分析不在任何字段里自评把握——一个自评量的宽松档同时也是它的省事档，那就什么都没有门控住。
 - **副作用：** 只写自身 workdir；绝不编辑其它规则的 `result.json`、RTL、TB、spec 或计划。非只读（它可能建造实验）且非幂等（重复即重做一遍）；是叶子——无扇出。
 
