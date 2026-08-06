@@ -7,13 +7,13 @@
 
 ## How it runs, in one minute
 
-VeriPower turns an approved idea into a signed-off frontend design through a
+VeriPower turns a settled idea into a signed-off frontend design through a
 9-stage pipeline. Two things shape how you'll experience it:
 
 - **Brainstorm comes first, in its own session.** Before the pipeline, you run
   the `brainstorm` skill to settle requirements and architecture; it produces a
-  frozen `{module}/brainstorm.md`. The pipeline starts only once that file
-  reads `Status: approved`.
+  frozen `{module}/brainstorm.md`. You start the pipeline when that file says
+  what you mean — there is no approval field to set.
 - **One sentence starts the pipeline.** You tell the agent *"Run the design
   flow for {module}"* and the `design-flow` Orchestrator takes over — it
   bootstraps the module's state, then walks the stage graph, dispatching each
@@ -51,7 +51,7 @@ time.
 ## The pipeline
 
 ```
-[brainstorm] (pre-pipeline, own session) → approved brainstorm.md ↓
+[brainstorm] (pre-pipeline, own session) → brainstorm.md ↓
 
 [specification] → [simulation-plan] → [rtl-design]
                                             │
@@ -81,9 +81,10 @@ In its own session, ask the agent to brainstorm your module — this runs the
 > Brainstorm a new module called {module}
 
 It runs a structured D0–D7 dialogue (requirements, interfaces, architecture —
-one question at a time) and writes `{module}/brainstorm.md`. Review it and
-set its frontmatter to `Status: approved`. That frozen file is the pipeline's
-sole upstream input — the pipeline never re-opens the brainstorm conversation.
+one question at a time) and writes `{module}/brainstorm.md`. Review it, and
+re-invoke the skill if a dimension needs another pass. That file is the
+pipeline's sole upstream input — the pipeline never re-opens the brainstorm
+conversation, and it is frozen for the whole run once you start.
 
 > **[Captured run — coming soon]** A real brainstorm excerpt will be dropped in
 > here once the first benchmark sweep lands.
@@ -94,8 +95,8 @@ In a session with the plugin loaded, tell the agent:
 
 > Run the design flow for {module}
 
-The `design-flow` Orchestrator verifies the approved `brainstorm.md`, sets up
-the module's state, and begins walking the pipeline. From here you mostly
+The `design-flow` Orchestrator sets up the module's state and begins walking
+the pipeline. From here you mostly
 watch — stepping in only at the touchpoints below.
 
 > **[Captured run — coming soon]** Kickoff transcript here.
@@ -108,7 +109,7 @@ differ in how much they involve you:
 - **`specification` (autonomous).** Derives the frozen design source of truth
   from your brainstorm: `design.md`, the per-child sub-designs, `manifest.json`,
   and the constraint pair (`<TOP>.sdc` / `<TOP>.sgdc`). No dialogue — it reads
-  the approved brainstorm and produces the spec.
+  the brainstorm and produces the spec.
 - **`simulation-plan` (your review).** Drafts the verification plan (testpoints
   + power scenarios) and **presents `verification-plan.md` for your approval**.
   The stage passes only after you approve.

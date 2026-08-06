@@ -52,18 +52,6 @@ wait" looks like, and it names every run in flight.
 - Do not hand-edit `events.jsonl` or any stage `result.json` / artifact. A main-thread write to either is an isolation violation.
 - **Scripts are black boxes — never Read their source.** Invoke `kernel.py` per this skill's documented command lines (flags via `<verb> --help`). Sole exception: debugging a suspected bug in the script itself.
 
-## Session entry gate
-
-Before entering the loop, `grep` the frontmatter of `{module}/brainstorm.md`
-(frontmatter only — do NOT load the body; you hold no document content, and this is the
-largest thing upstream). If `Status` ≠ `approved`, reply "module {module} has no approved
-brainstorm.md — run `Skill(veripower:brainstorm)` for {module}, then re-invoke design-flow"
-and **stop without entering the loop**: this is a pre-pipeline user-input gate, not a
-pipeline failure.
-
-The kernel already refuses to dispatch `specification` while the file is absent. What it
-cannot see is an unapproved one, and that is the whole job of this gate.
-
 ## `DISPATCH` — start a run, then loop
 
 The action carries `dispatch_args`, the exact argv for this dispatch. Run `kernel.py` with

@@ -6,12 +6,12 @@
 
 ## 一分钟看懂它怎么跑
 
-VeriPower 通过一条 9 个阶段的流水线，把一个已批准的想法变成完成前端签核的设计。
+VeriPower 通过一条 9 个阶段的流水线，把一个敲定了的想法变成完成前端签核的设计。
 有两点决定了你的使用体验：
 
 - **头脑风暴（brainstorm）先行，且在独立会话中进行。** 进入流水线之前，你先运行
   `brainstorm` 技能来敲定需求与架构；它产出一份冻结的 `{module}/brainstorm.md`。
-  只有当该文件的 `Status: approved` 时，流水线才会启动。
+  当这份文件写出了你要表达的东西，你就启动流水线——没有批准字段要设。
 - **一句话启动流水线。** 你对 agent 说一句*「为 {module} 运行设计流程」*，
   `design-flow` 协调器（Orchestrator）就会接管——它会自举模块状态，然后沿着阶段图
   逐级推进，逐个派发各阶段并记录每一步。
@@ -46,7 +46,7 @@ VeriPower 通过一条 9 个阶段的流水线，把一个已批准的想法变�
 ## 流水线
 
 ```
-[brainstorm] (pre-pipeline, own session) → approved brainstorm.md ↓
+[brainstorm] (pre-pipeline, own session) → brainstorm.md ↓
 
 [specification] → [simulation-plan] → [rtl-design]
                                             │
@@ -75,8 +75,9 @@ VeriPower 通过一条 9 个阶段的流水线，把一个已批准的想法变�
 > 为新模块 {module} 做头脑风暴
 
 它会进行一套结构化的 D0–D7 对话（需求、接口、架构——每次问一个问题），并写出
-`{module}/brainstorm.md`。审阅它，并把 frontmatter 设为 `Status: approved`。
-这份冻结文件是流水线唯一的上游输入——流水线绝不会再回头去重开这段头脑风暴对话。
+`{module}/brainstorm.md`。审阅它，某个维度需要再过一遍就重新调用该技能。
+这份文件是流水线唯一的上游输入——流水线绝不会再回头去重开这段头脑风暴对话，
+且一旦启动就在整轮里冻结。
 
 > **【真实运行记录——即将补充】** 待第一次 benchmark 扫测完成后，这里会放入一段
 > 真实的头脑风暴节选。
@@ -87,7 +88,7 @@ VeriPower 通过一条 9 个阶段的流水线，把一个已批准的想法变�
 
 > 为 {module} 运行设计流程
 
-`design-flow` 协调器会校验已批准的 `brainstorm.md`，建立模块状态，并开始沿流水线
+`design-flow` 协调器会建立模块状态，并开始沿流水线
 推进。从这里开始你基本只是旁观——仅在下述介入点出手。
 
 > **【真实运行记录——即将补充】** 这里放启动时的对话记录。
@@ -98,7 +99,7 @@ VeriPower 通过一条 9 个阶段的流水线，把一个已批准的想法变�
 
 - **`specification`（自主）。** 从你的头脑风暴推导出冻结的设计真源：`design.md`、
   各子模块的子设计、`manifest.json`，以及约束文件对
-  （`<TOP>.sdc` / `<TOP>.sgdc`）。无对话——它读取已批准的头脑风暴并产出规格。
+  （`<TOP>.sdc` / `<TOP>.sgdc`）。无对话——它读取头脑风暴并产出规格。
 - **`simulation-plan`（你来审阅）。** 起草验证计划（testpoint + 功耗场景），并把
   `verification-plan.md` **呈现给你批准**。只有你批准后，该阶段才会通过。
 

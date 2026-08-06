@@ -124,14 +124,14 @@ Orchestrator 的三条派发路径：
 
 每条 `Rule` 上的 `execution` 字段（`"main-thread"` 或 `"task"`）就是 Orchestrator 分支的依据——从不依赖硬编码的阶段清单。各规则的触发条件：
 
-- **specification** — 消费已冻结、已批准的 `brainstorm.md`；内含一个扇出派发器（分解 + 围绕分区门的按 child 的 sub-Task 波次），外加其主线程 `spec` CLI 门控动词。不是因为头脑风暴对话才走主线程——那个对话已前移到流水线外的 `brainstorm` skill。
+- **specification** — 消费已冻结的 `brainstorm.md`；内含一个扇出派发器（分解 + 围绕分区门的按 child 的 sub-Task 波次），外加其主线程 `spec` CLI 门控动词。不是因为头脑风暴对话才走主线程——那个对话已前移到流水线外的 `brainstorm` skill。
 - **simulation-plan** — 与用户的多轮计划审查对话；另自派发一次一级 plan-adequacy 审查 sub-Task（Step 4 / §6.2.1）。
 - **rtl-design** — 只扇出，无对话：每个 child 派一个一级子 Task，一个有界的合规门自收敛循环，一个门控性语义审查波次，末尾再加一个 finalize 子 Task。
 - **simulation** — 只扇出，无对话：每一轮都是同质的（内核的 `carry_self` 在派发前就已把上一轮的 TB 携带进 workdir；若是真正的首跑则 workdir 为空——skill 从不据此分支）。Wave 1 派发 env-build child，随后跑 smoke gate、LLM conformance review-gate（每轮都重新评判，从不跳过）和 verify child（Wave 2）。
 
 > **警告：** 如果 `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis)` 出现在 Orchestrator 的工具历史中，这是个 bug——那四条规则必须走 `Task()` 派发。
 
-**流水线前的 `brainstorm` skill（不由内核派发）。** 重量级 D0–D7 需求对话在自己的独立会话中运行，是一个单独的 `brainstorm` skill——不属于上述四个主线程阶段，Orchestrator 永远不派发它。它产出流水线启动所需的已批准的模块根 `brainstorm.md`；不写 `result.json`，不调 `kernel.py`。`brainstorm.md` 是流水线唯一的外部输入——`rules.PIPELINE_INPUTS`——只需存在且为 `Status: approved`（Orchestrator 的会话启动门），`specification` 即可调度。
+**流水线前的 `brainstorm` skill（不由内核派发）。** 重量级 D0–D7 需求对话在自己的独立会话中运行，是一个单独的 `brainstorm` skill——不属于上述四个主线程阶段，Orchestrator 永远不派发它。它产出流水线启动所需的模块根 `brainstorm.md`；不写 `result.json`，不调 `kernel.py`。`brainstorm.md` 是流水线唯一的外部输入——`rules.PIPELINE_INPUTS`——**只需存在**，`specification` 即可调度。没有批准字段，也没有读它的门:人在文件说出他要说的话时启动流水线，这个动作本身就是批准。
 
 ### 2.4 角色职责
 

@@ -28,7 +28,7 @@ VeriPower's answer: the deterministic scheduling core is cleanly separated from 
 
 ## What a run looks like
 
-Settle the module's requirements with the pre-pipeline `brainstorm` skill (its own session) until `{module_dir}/brainstorm.md` reads `Status: approved`, then ask the agent:
+Settle the module's requirements with the pre-pipeline `brainstorm` skill (its own session) until `{module_dir}/brainstorm.md` says what you mean, then ask the agent:
 
 > Run the design flow for {module_dir}
 
@@ -47,7 +47,7 @@ Full step-by-step walkthrough: [`GETTING-STARTED.md`](GETTING-STARTED.md).
 VeriPower covers the full ASIC frontend — spec through signoff, no point-tool gaps.
 
 ```
-[brainstorm] (pre-pipeline, own session) → approved brainstorm.md ↓
+[brainstorm] (pre-pipeline, own session) → brainstorm.md ↓
 
 [specification] → [simulation-plan] → [rtl-design]
                                             │
@@ -68,7 +68,7 @@ VeriPower covers the full ASIC frontend — spec through signoff, no point-tool 
 
 | Stage | Purpose | Primary tool |
 |---|---|---|
-| `brainstorm` | Pre-pipeline D0–D7 requirements brainstorm → approved `brainstorm.md` (the pipeline's input) | (human + LLM dialogue) |
+| `brainstorm` | Pre-pipeline D0–D7 requirements brainstorm → `brainstorm.md` (the pipeline's input) | (human + LLM dialogue) |
 | `specification` | Design spec + SDC/SGDC constraints | (human + LLM dialogue) |
 | `simulation-plan` | Verification plan with testpoints + power scenarios | (LLM) |
 | `rtl-design` | Verilog/SystemVerilog RTL + filelist | (LLM) |

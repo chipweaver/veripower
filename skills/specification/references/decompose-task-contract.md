@@ -5,7 +5,7 @@ overview. Do not call the Task tool: a sub-Task writes no events, so anything yo
 work the kernel cannot see or audit.
 
 ## Read
-`<brainstorm>/brainstorm.md` (frozen, `Status: approved`) — the module set (**D4**) and the
+`<brainstorm>/brainstorm.md` (frozen for the run) — the module set (**D4**) and the
 inter-module wire list (**D2b** → `interconnects.json`) are the partition inputs.
 
 ## Partition strategy

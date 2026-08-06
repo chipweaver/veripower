@@ -5,7 +5,7 @@ description: Use when writing or reviewing design specification (design.md), def
 
 # Requirements and Specification Freeze
 
-Your sole responsibility: derive a frozen design source of truth from an approved
+Your sole responsibility: derive a frozen design source of truth from the delivered
 `<brainstorm>/brainstorm.md`. You dispatch and hold no document body: `brainstorm.md`,
 `design.md` and every `<child>.md` are read and written only inside sub-Task contexts. The
 brainstorm dialogue itself belongs to the pre-pipeline `brainstorm` skill.
@@ -16,7 +16,7 @@ Write only under `{workdir}`; never another module's artifacts. Reading template
 
 ## Artifacts
 
-Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key to a location, so `<key>/<subpath>` is how you address one. The only input is `<brainstorm>/brainstorm.md` (`brainstorm` is a PIPELINE_INPUT, so `<brainstorm>` is the module root) — frozen and approval-verified before you were dispatched, and read only inside the sub-Tasks that need it.
+Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key to a location, so `<key>/<subpath>` is how you address one. The only input is `<brainstorm>/brainstorm.md` (`brainstorm` is a PIPELINE_INPUT, so `<brainstorm>` is the module root) — frozen for the run, and read only inside the sub-Tasks that need it.
 
 Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `references/<name>.schema.json`.
 

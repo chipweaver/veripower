@@ -124,14 +124,14 @@ The event schemas at `framework/references/schemas/events/<type>.schema.json` (6
 
 The `execution` field on each `Rule` (`"main-thread"` or `"task"`) is what the Orchestrator branches on — never a hardcoded stage list. The per-rule trigger:
 
-- **specification** — consumes a frozen, approved `brainstorm.md`; a fan-out dispatcher (decompose + per-child sub-Task waves around a partition gate) plus its main-thread `spec` CLI gate verbs. NOT main-thread for brainstorm dialogue — that moved to the pre-pipeline `brainstorm` skill.
+- **specification** — consumes a frozen `brainstorm.md`; a fan-out dispatcher (decompose + per-child sub-Task waves around a partition gate) plus its main-thread `spec` CLI gate verbs. NOT main-thread for brainstorm dialogue — that moved to the pre-pipeline `brainstorm` skill.
 - **simulation-plan** — multi-turn plan-review dialogue with the user; also self-dispatches a single Level-1 plan-adequacy review sub-Task (§6.2.1).
 - **rtl-design** — fan-out only, no dialogue: one Level-1 sub-Task per child, an intent-review wave the stage acts on itself, then finalize.
 - **simulation** — fan-out only, no dialogue: every round is homogeneous (the kernel's `carry_self` has already carried the previous round's TB into the workdir before dispatch, or the workdir is genuinely empty on a first run — the skill never branches on which). Wave 1 dispatches the env-build child, then runs the smoke gate, the LLM conformance review-gate (re-judged every round, never skipped), and the verify child (Wave 2).
 
 > **Red Flag:** If `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis)` appears in the Orchestrator's tool history, it is a bug — those four rules must dispatch via `Task()`.
 
-**Pre-pipeline `brainstorm` skill (not kernel-dispatched).** The heavy D0–D7 requirements dialogue runs in a separate `brainstorm` skill in its own session — it is NOT one of the four main-thread stages above and is never dispatched by the Orchestrator. It produces the approved `brainstorm.md` at the module root that the pipeline starts from; it writes no `result.json` and calls no `kernel.py`. `brainstorm.md` is the pipeline's sole external input — `rules.PIPELINE_INPUTS` — needing only to exist and be `Status: approved` (the Orchestrator's session-start gate) for `specification` to become schedulable.
+**Pre-pipeline `brainstorm` skill (not kernel-dispatched).** The heavy D0–D7 requirements dialogue runs in a separate `brainstorm` skill in its own session — it is NOT one of the four main-thread stages above and is never dispatched by the Orchestrator. It produces the `brainstorm.md` at the module root that the pipeline starts from; it writes no `result.json` and calls no `kernel.py`. `brainstorm.md` is the pipeline's sole external input — `rules.PIPELINE_INPUTS` — needing only to **exist** for `specification` to become schedulable. There is no approval field and no gate reading one: the human starts the pipeline when the file says what they mean, and that act is the approval.
 
 ### 2.4 Role responsibilities
 
