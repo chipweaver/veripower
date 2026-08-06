@@ -105,14 +105,9 @@ yours to decide, and there is no flag through which to say so.
 
 ## `YIELD` — report what is running, end the turn
 
-The action returns `in_flight[]`, each entry `{rule, run, dispatched_at, executor_wrote}` —
-the only place a run *number* surfaces, and what you need to name one. Reply the list to the
-user and end the turn. (A triage-pending `YIELD` carries the triage run — say a triage
-subagent is running.)
-
-`executor_wrote: false` means nothing has landed in that workdir since the dispatch created
-it. Early on that is normal; next to a `dispatched_at` from hours ago it is the signature of a
-run that was opened and never actually started. Say so when you report it.
+The action returns `in_flight[]`, each entry `{rule, run}` — the only place a run *number*
+surfaces, and what you need to name one. Reply the list to the user and end the turn. (A
+triage-pending `YIELD` carries the triage run — say a triage subagent is running.)
 
 **Dead in-flight.** A run whose executor you confirm is **dead** (the Task subagent crashed,
 exited without writing `result.json`, or its wake was lost) gets an explicit `kernel.py reap
@@ -120,20 +115,18 @@ exited without writing `result.json`, or its wake was lost) gets an explicit `ke
 `blocked`, unblocking the ledger so the next `decide` can re-route. Without this a run whose
 wake never arrives holds the ledger open indefinitely.
 
-Only the harness can tell you an executor **died**; `executor_wrote` distinguishes "never
-started" from "started and still working", not "alive" from "dead". Never reap a run whose executor is still alive: it will write `result.json` into
+Only the harness can tell you an executor died; the kernel cannot see it, and a `YIELD` never
+implies it. Never reap a run whose executor is still alive: it will write `result.json` into
 a workdir whose outcome has already landed. The opposite mistake is harmless — `reap` reads
 the file at the moment you call it, so a run that finished in the meantime is reaped on its
 own envelope, not as `blocked`.
 
 ## `ESCALATE` — hand the decision to the user, end the turn
 
-`decide` returns a `reason`, a `remedy` (the argv that unblocks it, with the parts only a
-human can decide left as placeholders; a retracted oracle also gets `remedy_alt`), and, for an
-unreliable-diagnosis case, `candidates[]`. Give the user the reason **verbatim**, the remedy,
-any `candidates`, and — to show the blast radius of a proposed change — `kernel.py
-consequences --module {module} --paths <path…>` (the currently-valid proofs a path change
-would invalidate). Offer 2–3 concrete next steps. The same applies to a
+`decide` returns a `reason` (and, for an unreliable-diagnosis case, `candidates[]`). Give the
+user the reason **verbatim**, any `candidates`, and — to show the blast radius of a proposed
+change — `kernel.py consequences --module {module} --paths <path…>` (the currently-valid
+proofs a path change would invalidate). Offer 2–3 concrete next steps. The same applies to a
 subagent's own words: forward the text verbatim, because tidying it into a cleaner escalation
 is how a real hold gets read as a soft one.
 

@@ -353,7 +353,7 @@ flowchart TD
 2. **无诊断，且失败是 `simulation`。** 失败有歧义（仿真挂掉可能是 RTL、计划或 spec）→ `DISPATCH simulation-triage`，带 `params.sim_run = <失败 run>`（若 triage 已在途则 `YIELD`）。triage 运行，在*它的*收割时内核派生诊断（见下）；下一次 `decide` 看到诊断即重入处置分支 1。
 3. **无诊断，自描述失败。** 失败的信封自陈 `stage_specific.fix_owner`（无需诊断事件）。合法指名且其输入可用 → 自动重建 `DISPATCH`；输入不可用 → 顺延前向；谁都没指、指了自己、或指到输入闭包之外 → 升级（§5.4）。
 
-**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`skipped_reason`、`root_cause`、`confidence`、`advisory`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（仿真失败保持歧义；下一轮重新派发 triage）。否则内核按根因逐条追加 `diagnosis`（`source: triage`）——`advisory.findings[].root_cause` 覆盖该 finding 的顶层取值，每条诊断带自己那些 finding 的 anchor——`attribution` 取该根因，`fix_owner` 就取同一个名字，前提是它落在 `simulation` 的输入闭包内。自指归因（`root_cause == simulation`）按构造落在闭包之外，于是省略 `fix_owner`，由处置将它升级。`confidence` 原样落账；决定它能否自动路由的是可靠性门，不是收割分支。
+**triage 在收割时的诊断**（`kernel._derive_triage`）。`simulation-triage` 无证明；它写出的 `result.json` 其 `stage_specific` 携带 `analysis_state`、`skipped_reason`、`confidence`、`advisory`。收割时：`analysis_state != "complete"` → outcome 为 `blocked` 且不产生诊断（仿真失败保持歧义；下一轮重新派发 triage）。否则内核把 `advisory.findings[]` 按各自的 `root_cause` 分组，每组追加一条 `diagnosis`（`source: triage`）并带上该组的 anchor——`attribution` 取该根因，`fix_owner` 就取同一个名字，前提是它落在 `simulation` 的输入闭包内。自指归因（`root_cause == simulation`）按构造落在闭包之外，于是省略 `fix_owner`，由处置将它升级。`confidence` 原样落账；决定它能否自动路由的是可靠性门，不是收割分支。
 
 ### 5.4 失败归因
 
@@ -440,7 +440,7 @@ Orchestrator 按返回的 `execution` 分支：`main-thread` → `Skill(veripowe
 
 - **输入：** Orchestrator 把 `{module, sim_run}` 作为派发参数传入；派发时内核把 `sim_run` 与每个声明的输入（`design`、`rtl`、`plan`）解析为各自的绝对规范阶段根目录，写入 `{workdir}/dispatch.json`（`store.write_dispatch`）。triage 从这些注入的位置读一切——从不自行导航模块相对路径：失败仿真的 `result.json` 与完整 `runs/<sim_run>/`（UVM 日志、coverage/KDB、以及失败 test 的全层次 `<test_id>.fsdb`）、spec、RTL、simulation-plan 的 scaffold/refmodel。
 - **方法：** 在失败证据加 spec 与 refmodel 上推理，并查询失败 run 自己的 FSDB 波形（`fsdbreport`），二者同为事实。当这些定不了归因时，它可以在自己的 workdir 里建并跑一个*受控实验*——真实 run 从未驱动过的激励、隔离 harness、与 UVM refmodel 一致的黄金模型——绝不编辑规范 RTL。用哪一种、走多远，是这个子 Agent 自己的判断；框架不计量它。
-- **输出：** 一份 `result.json`，其 `stage_specific` 携带路由层（`analysis_state`、`root_cause`、gating 的 `confidence`）与咨询层（`findings[]`、`waveform`、`experiment`）。收割时内核从中派生 `diagnosis`：`findings[].anchor` 成为 `fix_locus`，`experiment.artifacts[]` 成为 `evidence`。
+- **输出：** 一份 `result.json`，其 `stage_specific` 携带路由层（`analysis_state`、gating 的 `confidence`）与咨询层（`findings[]`、`waveform`、`experiment`）。收割时内核把 `findings[]` 按 `root_cause` 分组，每组派生一条 `diagnosis`：该组的 `anchor` 成为 `fix_locus`，`experiment.artifacts[]` 成为 `evidence`。
 - **权威性——置信度门控：** `confidence` 是门控字段，不是咨询散文。只有 `high` 置信的诊断经可靠性门自动路由（§5.3）；其余一律升级给操作者。这道门只对 triage 诊断读它：人工诊断仅凭 `source` 即为终审，所以 `kernel.py diagnose` 不接受置信度参数。
 - **副作用：** 只写自身 workdir；绝不编辑其它规则的 `result.json`、RTL、TB、spec 或计划。非只读（它可能建造实验）且非幂等（重复即重做一遍）；是叶子——无扇出。
 

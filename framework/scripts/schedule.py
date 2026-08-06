@@ -314,41 +314,15 @@ def owed(events: list[dict], fails: list[dict]) -> list[dict]:
     return out
 
 
-def _attribute_args(module: str, c: dict, supersedes: str | None = None) -> list[str]:
-    """The `kernel.py diagnose` argv that answers this escalation. Only the fields the
-    scheduler knows — the rest the human fills from `--help`."""
-    legal = (
-        ", ".join(sorted(rules.input_closure(c["rule"]))) or "nothing: closure is empty"
-    )
-    args = [
-        "diagnose",
-        "--module",
-        module,
-        "--subject-proof",
-        c["rule"],
-        "--subject-run",
-        str(c["run"]),
-        "--fix-owner",
-        f"<{legal}>",
-    ]
-    return args + (["--supersedes", supersedes] if supersedes else [])
-
-
-def _escalation(module: str, c: dict) -> dict:
+def _escalation(c: dict) -> dict:
     """Why a complaint cannot be routed, derived from `(attribution, owner)` rather than
     raised where it was noticed — so the three namings and the unreliable diagnosis read as
-    one classification instead of four scattered branches.
-
-    Each carries `remedy`: the argv that unblocks it. A round that stops the whole pipeline
-    has to say what reopens it, or the reader reaches for a verb that does not."""
+    one classification instead of four scattered branches."""
     rule, named = c["rule"], c["attribution"]
     if c.get("retracted"):
         return {
             "rule": rule,
             "reason": f"{rule}: the oracle that judged this failure was reopened",
-            # re-endorsing the judge, not re-attributing: the retraction is checked ahead of
-            # any diagnosis (`_owner`), so a fresh one would not be consulted
-            "remedy": ["pin", "--module", module, "--rule", rule],
         }
     if c["unreliable"]:
         return {
@@ -362,24 +336,17 @@ def _escalation(module: str, c: dict) -> dict:
                 }
                 for d in c["unreliable"]
             ],
-            "remedy": _attribute_args(module, c, c["unreliable"][-1]["id"]),
         }
     if named is None:
-        return {
-            "rule": rule,
-            "reason": f"{rule}: envelope named no fix_owner",
-            "remedy": _attribute_args(module, c),
-        }
+        return {"rule": rule, "reason": f"{rule}: envelope named no fix_owner"}
     if named == rule:
         return {
             "rule": rule,
             "reason": f"{rule}: fix_owner is itself, in-stage remedy exhausted",
-            "remedy": _attribute_args(module, c),
         }
     return {
         "rule": rule,
         "reason": f"{rule}: fix_owner {named!r} is outside its input closure",
-        "remedy": _attribute_args(module, c),
     }
 
 
@@ -388,26 +355,6 @@ def _workdir_of(events, rule, run):
         if e["type"] == "dispatch" and e["rule"] == rule and e["run"] == run:
             return e["workdir"]
     return None
-
-
-def _executor_wrote(module: str, events: list[dict], rule: str, run: int) -> bool:
-    """Has anything landed in this run's workdir that the dispatch itself did not put there.
-
-    `dispatch` marks a run open; it does not prove a process is running, and a turn that never
-    launched its executor reads exactly like a stage still working. `dispatch.json` is the
-    newest thing a dispatch leaves behind (`store.carry_self` copies with copy2, keeping the
-    source mtimes), so anything newer came from an executor. Comparing inside one directory
-    rather than against the event's timestamp keeps `decide` free of the clock."""
-    root = facts.module_root(module) / (_workdir_of(events, rule, run) or "")
-    try:
-        opened = (root / "dispatch.json").stat().st_mtime_ns
-    except OSError:
-        return False
-    return any(
-        p.is_file() and not p.is_symlink() and p.stat().st_mtime_ns > opened
-        for p in root.rglob("*")
-        if p.name != "dispatch.json"
-    )
 
 
 def _unblocked(rule_name: str, pending: set[str], inflight: list[dict]) -> bool:
@@ -616,23 +563,7 @@ def _dispatch_action(module, rule, repair):
 def _settle(module, events, inflight, required, closing):
     """Nothing can start. Say why, in the order that makes the reason true."""
     if inflight:
-        # `dispatched_at` beside `executor_wrote` is the whole report: how long is too long
-        # is the reader's call, so no elapsed time is computed and `decide` stays pure.
-        return {
-            "action": "YIELD",
-            "in_flight": [
-                {
-                    **f,
-                    "dispatched_at": events[
-                        facts._dispatch_index(events, f["rule"], f["run"])
-                    ]["ts"],
-                    "executor_wrote": _executor_wrote(
-                        module, events, f["rule"], f["run"]
-                    ),
-                }
-                for f in inflight
-            ],
-        }
+        return {"action": "YIELD", "in_flight": facts.in_flight(events)}
     if all(facts.proof_valid(module, events, p) for p in required):
         if closing:
             # `closing` changes nothing about WHICH proofs are required — only what a clear
@@ -673,7 +604,7 @@ def decide(
         # Attribution is clarified BEFORE anything is scheduled. One at a time, earliest
         # first: a failure nobody can attribute only arises on a parallel branch, and
         # parallel runs do not land together, so a round discovers one of them at a time.
-        return {"action": "ESCALATE", **_escalation(module, unclear[0])}
+        return {"action": "ESCALATE", **_escalation(unclear[0])}
     # ↓ every failure below this line has an owner
     owed_ = owed(events, fails)
 

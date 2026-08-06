@@ -1,5 +1,4 @@
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -115,11 +114,9 @@ def test_wake_reaps_a_run_whose_executor_wrote_nothing(tmp_path, monkeypatch):
 
 def test_a_landed_result_is_reaped_not_yielded_over(tmp_path, monkeypatch):
     """Step 0 claims any in-flight run whose workdir holds a result.json, so a YIELD can only
-    ever list runs that have not written one. That is why `in_flight[]` carries no "did it
-    finish" flag: it would be constant false everywhere the Orchestrator can see it, and
-    reads as a filter while filtering nothing. `executor_wrote` is the different question —
-    did anything ever START — and that one is not constant (see
-    test_yield_says_whether_the_executor_ever_wrote)."""
+    ever list runs that have not written one. That is why `in_flight[]` carries coordinates
+    and nothing else: a per-run "did it finish" flag would be constant false everywhere the
+    Orchestrator can see it, and reads as a filter while filtering nothing."""
     monkeypatch.chdir(tmp_path)
     _mk("m", "brainstorm.md", "b1")
     _valid("m", "specification", 1)
@@ -136,12 +133,13 @@ def test_a_landed_result_is_reaped_not_yielded_over(tmp_path, monkeypatch):
     # take the envelope away and the same two runs YIELD instead — carrying coordinates and
     # nothing else, because "has it finished" is exactly what the branch above already used up.
     rj.unlink()
-    a = schedule.decide("m")
-    assert a["action"] == "YIELD"
-    assert [(f["rule"], f["run"]) for f in a["in_flight"]] == [
-        ("lint-cdc", 1),
-        ("simulation-plan", 1),
-    ]
+    assert schedule.decide("m") == {
+        "action": "YIELD",
+        "in_flight": [
+            {"rule": "lint-cdc", "run": 1},
+            {"rule": "simulation-plan", "run": 1},
+        ],
+    }
 
 
 def test_in_flight_no_result_yields(tmp_path, monkeypatch):
@@ -150,40 +148,7 @@ def test_in_flight_no_result_yields(tmp_path, monkeypatch):
     _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:x"})
     a = schedule.decide("m")
     assert a["action"] == "YIELD"
-    assert [(f["rule"], f["run"]) for f in a["in_flight"]] == [("specification", 1)]
-
-
-def test_yield_says_whether_the_executor_ever_wrote(tmp_path, monkeypatch):
-    """`dispatch` opening a run does not mean a process is running it. One real run idled
-    6h10m because the Orchestrator marked a stage in flight and never launched it, and the
-    ledger looked identical to a stage still working. The distinguishing fact is on disk —
-    something newer than the dispatch's own `dispatch.json` — so the YIELD carries it."""
-    monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
-    _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:x"})
-    wd = _workdir("specification", 1)
-    _mk("m", wd + "/dispatch.json", "{}")
-
-    a = schedule.decide("m")
-    assert a["in_flight"] == [
-        {
-            "rule": "specification",
-            "run": 1,
-            "dispatched_at": facts.read_events("m")[0]["ts"],
-            "executor_wrote": False,
-        }
-    ]
-
-    # anything the dispatch did not put there flips it — carried files do not, because
-    # store.carry_self copies with copy2 and keeps the source mtime.
-    p = facts.module_root("m") / wd / "draft.md"
-    p.write_text("working")
-    os.utime(
-        p, ns=(0, (facts.module_root("m") / wd / "dispatch.json").stat().st_mtime_ns)
-    )
-    assert schedule.decide("m")["in_flight"][0]["executor_wrote"] is False
-    p.write_text("working, and later than the dispatch")
-    assert schedule.decide("m")["in_flight"][0]["executor_wrote"] is True
+    assert a["in_flight"] == [{"rule": "specification", "run": 1}]
 
 
 def test_fresh_failure_with_reliable_triage_dispatches_fix_owner(tmp_path, monkeypatch):
@@ -412,65 +377,6 @@ def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
     assert a["candidates"][0]["diagnosis"] == "d1"
     # and it stays escalated (no triage re-dispatch loop) on the next call
     assert schedule.decide("m")["action"] == "ESCALATE"
-
-
-def test_escalation_names_the_verb_that_clears_it(tmp_path, monkeypatch):
-    """An ESCALATE stops the whole round, so it has to say what reopens it. `diagnose` for an
-    attribution nobody can act on, superseding the one that failed; `pin` for a retracted
-    oracle, because `_owner` checks the retraction ahead of any diagnosis and a fresh one
-    would not be consulted."""
-    monkeypatch.chdir(tmp_path)
-    _valid_chain_through_simulation("m")
-    _sim_fail("m", run=1)
-    facts.append_event(
-        "m",
-        {
-            "type": "diagnosis",
-            "id": "d1",
-            "subject": {"proof": "simulation", "outcome_run": 1},
-            "attribution": "simulation",
-            "evidence": ["Verification/simulation-triage/runs/1/result.json"],
-            "confidence": "high",
-            "source": "triage",
-        },
-        TS,
-    )
-    remedy = schedule.decide("m")["remedy"]
-    assert remedy[0] == "diagnose"
-    assert remedy[remedy.index("--subject-proof") + 1] == "simulation"
-    assert remedy[remedy.index("--subject-run") + 1] == "1"
-    assert remedy[remedy.index("--supersedes") + 1] == "d1"
-    # the choice it leaves open is bounded by what the kernel would accept
-    offered = remedy[remedy.index("--fix-owner") + 1]
-    assert set(rules.input_closure("simulation")) == set(
-        offered.strip("<>").removeprefix("one of: ").split(", ")
-    )
-
-    # and it is not one branch: every class says what unblocks it
-    for named in (
-        None,
-        "simulation",
-        "lint-cdc",
-    ):  # nobody / itself / outside the closure
-        c = {
-            "rule": "simulation",
-            "run": 2,
-            "attribution": named,
-            "unreliable": [],
-            "retracted": False,
-        }
-        assert schedule._escalation("m", c)["remedy"][0] == "diagnose"
-    retracted = schedule._escalation(
-        "m",
-        {
-            "rule": "simulation",
-            "run": 2,
-            "attribution": None,
-            "unreliable": [],
-            "retracted": True,
-        },
-    )
-    assert retracted["remedy"][:2] == ["pin", "--module"]
 
 
 def test_repair_after_fix_lands_redispatches_failed_rule_not_fix_owner(

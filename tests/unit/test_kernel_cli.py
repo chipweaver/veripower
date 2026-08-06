@@ -204,16 +204,7 @@ def test_dispatch_then_decide_yields(tmp_path, monkeypatch):
     assert d["ok"] is True
     a = _run_json(tmp_path, "decide", "--module", "m")
     assert a["action"] == "YIELD"
-    # a real dispatch leaves dispatch.json and nothing else, so the run reads as opened but
-    # not yet started — the state a forgotten executor stays in
-    assert a["in_flight"] == [
-        {
-            "rule": "specification",
-            "run": 1,
-            "dispatched_at": a["in_flight"][0]["dispatched_at"],
-            "executor_wrote": False,
-        }
-    ]
+    assert a["in_flight"] == [{"rule": "specification", "run": 1}]
 
 
 def test_full_mini_loop_dispatch_result_reap_decide(tmp_path, monkeypatch):
@@ -512,10 +503,15 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": {
-                "findings": [{"anchor": "matvec.v:42", "cases": ["t1"]}],
+                "findings": [
+                    {
+                        "anchor": "matvec.v:42",
+                        "cases": ["t1"],
+                        "root_cause": "rtl-design",
+                    }
+                ],
                 "experiment": {
                     "tool": "verilator",
                     "artifacts": ["experiment/harness.sv"],
@@ -586,17 +582,24 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "root_cause": "simulation-plan",
             "confidence": "high",
             "advisory": {
                 "findings": [
-                    {"anchor": "verification-plan.md:88", "cases": ["t1"]},
+                    {
+                        "anchor": "verification-plan.md:88",
+                        "cases": ["t1"],
+                        "root_cause": "simulation-plan",
+                    },
                     {
                         "anchor": "core_muldiv.v:129",
                         "cases": ["t2"],
                         "root_cause": "rtl-design",
                     },
-                    {"anchor": "sequences.json:12", "cases": ["t3"]},
+                    {
+                        "anchor": "sequences.json:12",
+                        "cases": ["t3"],
+                        "root_cause": "simulation-plan",
+                    },
                 ]
             },
         },
@@ -641,10 +644,9 @@ def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
         status="fail",  # schema-legal, but triage has no fail state
         stage_specific={
             "analysis_state": "complete",
-            "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": {
-                "findings": [{"anchor": "a.v:1"}],
+                "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
             },
         },
     )
@@ -717,10 +719,9 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "root_cause": "simulation",  # self-pointing: attribution recorded, no fix_owner
             "confidence": "high",
             "advisory": {
-                "findings": [{"anchor": "a.v:1"}],
+                "findings": [{"anchor": "a.v:1", "root_cause": "simulation"}],
             },
         },
     )
@@ -854,10 +855,9 @@ def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": {
-                "findings": [{"anchor": "a.v:1"}],
+                "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
             },
         },
     )
@@ -882,7 +882,7 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
     # diagnosis subject with the OLD run's sim_run (mirrors the proof path's per-run lookup).
     monkeypatch.chdir(tmp_path)
     module = "rereap"
-    _adv = {"findings": [{"anchor": "a.v:1"}]}
+    _adv = {"findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}]}
     d1 = _dispatch_triage(tmp_path, module, sim_run=5)
     _write_triage_result(
         module,
@@ -890,7 +890,6 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "root_cause": "rtl-design",
             "confidence": "high",
             "advisory": _adv,
         },
@@ -914,7 +913,6 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "root_cause": "simulation-plan",
             "confidence": "high",
             "advisory": _adv,
         },
@@ -1055,7 +1053,6 @@ def test_triage_high_confidence_without_findings_blocked(tmp_path, monkeypatch):
         status="pass",
         stage_specific={
             "analysis_state": "complete",
-            "root_cause": "rtl-design",
             "confidence": "high",
         },
     )  # no advisory.findings

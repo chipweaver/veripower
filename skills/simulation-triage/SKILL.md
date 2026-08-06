@@ -110,14 +110,15 @@ Those paths are what the next reader opens, so nothing there is cleaned up.
 
 ## Landing the verdict
 
-`root_cause` names the rule that must act — `rtl-design`, `simulation-plan`, `specification`, or
-`simulation` — and choosing between them is the judgment this stage exists to make.
+Every finding carries a `root_cause` — `rtl-design`, `simulation-plan`, `specification`, or
+`simulation` — naming the rule that must act on **that** finding. Choosing it is the judgment this
+stage exists to make.
 
-A regression fails for as many reasons as it fails for. When your findings have **separate root
-causes** — an RTL bug in one, a testbench check that was never written in another — say so per
-finding, with `findings[].root_cause`. Each distinct value becomes its own attribution carrying its
-own anchors, and every named stage is dispatched. Do not pick the biggest one and let the rest ride
-along in the prose: an anchor whose stage is never named is a fix nobody schedules.
+A regression fails for as many reasons as it fails for, and a finding can sit in a different
+stage's files from its neighbour. Findings are grouped by their cause, each group becomes its own
+attribution carrying its own anchors, and every named stage is dispatched. So do not fold several
+causes into whichever one is biggest and leave the rest in the prose: an anchor whose stage is
+never named is a fix nobody schedules.
 
 That is for genuinely separate causes. When two stages are implicated in **the same** cause and you
 cannot tell which is at fault, splitting is the wrong answer and so is picking one — that is what
@@ -133,19 +134,20 @@ Note what `low` is not saying. It is about the attribution, not the location: yo
 where the symptom is and still be unsure whose fault it is, which is why an anchored finding does
 not make a verdict `high` on its own.
 
-A `high` verdict also has to be anchored, and the schema enforces it — at least one finding
-carrying an `anchor`, because that `anchor` is the `file:line` the rework starts from.
+A `high` verdict also has to be anchored, and the schema enforces it — every finding carrying an
+`anchor`, because that `anchor` is the `file:line` the rework starts from. A `complete` analysis
+needs at least one finding either way: the findings are where the attribution lives, so an
+analysis with none has not said whose fault it is.
 
 ## Finalize
 
 ```jsonc
 {
   "analysis_state": "complete",
-  "root_cause": "rtl-design",
   "confidence": "high",
   "advisory": {
-    // root_cause per finding ONLY when it differs from the top-level one; omit otherwise
-    "findings": [ { "anchor": "file:line", "cases": ["…"], "root_cause": "simulation-plan" } ],
+    // one entry per finding; findings sharing a root_cause become one attribution
+    "findings": [ { "anchor": "file:line", "cases": ["…"], "root_cause": "rtl-design" } ],
     "waveform": {                    // when you queried a dump
       "commands": ["fsdbreport <sim_run>/<test_id>.fsdb -s /<dut_top>_tb_top/u_dut/<sig> -bt 40ns -et 80ns -of h -o w.txt"],
       "signals": ["/<dut_top>_tb_top/u_dut/<sig>"]

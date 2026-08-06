@@ -313,9 +313,10 @@ def _derive_triage(env, dispatch):
     construction, so it lands recorded-but-unroutable (A3).
 
     ONE DIAGNOSIS PER ROOT CAUSE: a regression fails for as many reasons as it fails for, and
-    a finding can sit in a different stage's files from its neighbour. `findings[].root_cause`
-    splits the analysis, each diagnosis carrying the loci of its own findings; a finding that
-    names nobody falls to the top-level `root_cause`.
+    a finding can sit in a different stage's files from its neighbour, so the cause is named
+    per finding and the findings are grouped by it — each diagnosis carrying the loci of its
+    own. An analysis that found one thing has one group and lands the one diagnosis it always
+    did.
 
     `dispatch` is THIS run's own dispatch event, located once in _derive_verdict (not
     the latest triage dispatch, which would mislabel subject.outcome_run when
@@ -347,11 +348,10 @@ def _derive_triage(env, dispatch):
         str(triage_run / a) for a in advisory.get("experiment", {}).get("artifacts", [])
     ]
     # {root cause -> its loci}, insertion-ordered so the record reads in the order the
-    # analysis wrote it. The top-level root_cause seeds it, so an analysis that found one
-    # thing lands exactly the one diagnosis it always did.
-    by_cause: dict[str, list] = {ss.get("root_cause"): []}
+    # analysis wrote it.
+    by_cause: dict[str, list] = {}
     for f in advisory.get("findings", []):
-        loci = by_cause.setdefault(f.get("root_cause") or ss.get("root_cause"), [])
+        loci = by_cause.setdefault(f["root_cause"], [])
         if f.get("anchor"):
             loci.append(f["anchor"])
     out = []

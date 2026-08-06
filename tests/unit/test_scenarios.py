@@ -316,11 +316,10 @@ def _triage(module, sim_run, root_cause, confidence):
         "artifacts": [],
         "stage_specific": {
             "analysis_state": "complete",
-            "root_cause": root_cause,
             "confidence": confidence,
-            # high confidence requires a non-empty finding with an anchor (D4/§3.4)
+            # the attribution lives on the finding; high confidence also requires its anchor
             "advisory": {
-                "findings": [{"anchor": "matvec.v:1"}],
+                "findings": [{"anchor": "matvec.v:1", "root_cause": root_cause}],
             },
         },
     }
