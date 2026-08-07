@@ -58,8 +58,8 @@ something**, so their presence is what tells you. Either way you run both phases
 decides how much of the plan you touch.
 
 - **`caused_by` present — failures are waiting on this stage.** Each entry is one failing run's own `result.json`, and a round scheduled for some other reason carries them too: answer them in this round. Scope is the union of `dispatch.json`'s `scope` — the
-  module-relative paths or `<file>:<line>` anchors whose change invalidated the plan — and what the
-  `caused_by` envelopes attribute; read each envelope once, and amend only the plan sections those
+  module-relative inputs whose change invalidated the plan — and what the
+  `caused_by` records attribute; read each envelope once, and amend only the plan sections those
   paths map to. It is a pointer, not a boundary: if the gap sits elsewhere, widen and record why in
   `result.json`. `reasons`, when present, is a human's judgment on this repair and outranks your own
   reading of the files.

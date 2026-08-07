@@ -50,7 +50,7 @@
           },
           "allOf": [
             {
-              "$comment": "a complete analysis must carry a concrete locus — non-empty advisory.findings[], each anchored. Enforced structurally so a diagnosis's fix_locus (mapped from findings[].anchor) is never empty, and every complete analysis is routable on its own attribution.",
+              "$comment": "a complete analysis must carry a concrete locus — non-empty advisory.findings[], each anchored. Enforced structurally because the anchor is what the fix owner opens this record for: the diagnosis derived from it names the rule, and this file names the line.",
               "if":   {"properties": {"analysis_state": {"const": "complete"}}, "required": ["analysis_state"]},
               "then": {
                 "required": ["advisory"],

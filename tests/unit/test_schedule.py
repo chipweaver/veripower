@@ -176,7 +176,7 @@ def test_fresh_failure_with_routable_triage_dispatches_fix_owner(tmp_path, monke
     assert a["diagnosis_refs"] == ["d1"]
 
 
-def _diagnosis(module, did, run, owner, locus):
+def _diagnosis(module, did, run, owner):
     facts.append_event(
         module,
         {
@@ -185,7 +185,6 @@ def _diagnosis(module, did, run, owner, locus):
             "subject": {"proof": "simulation", "outcome_run": run},
             "attribution": owner,
             "fix_owner": owner,
-            "fix_locus": [locus],
             "source": "triage",
         },
         TS,
@@ -203,8 +202,8 @@ def test_one_failure_with_two_root_causes_reaches_both_owners(tmp_path, monkeypa
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
     _sim_fail("m", run=1)
-    _diagnosis("m", "d-rtl", 1, "rtl-design", "core_muldiv.v:129")
-    _diagnosis("m", "d-plan", 1, "simulation-plan", "verification-plan.md:88")
+    _diagnosis("m", "d-rtl", 1, "rtl-design")
+    _diagnosis("m", "d-plan", 1, "simulation-plan")
 
     opened, runs = {}, {}
     for i in range(4):
@@ -241,7 +240,7 @@ def test_an_unsure_second_opinion_makes_the_whole_failure_unclear(
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
     _sim_fail("m", run=1)
-    _diagnosis("m", "d-rtl", 1, "rtl-design", "core_muldiv.v:129")
+    _diagnosis("m", "d-rtl", 1, "rtl-design")
     facts.append_event(
         "m",
         {
@@ -331,7 +330,6 @@ def test_neither_writer_can_mint_a_routable_self_pointing_diagnosis(
         1,
         "simulation",
         "simulation",
-        None,
         "op",
         "why",
         None,

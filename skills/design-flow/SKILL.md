@@ -70,7 +70,7 @@ about is in the kernel-written `{workdir}/dispatch.json`, never in the prompt.
 you could state is already a file on disk that the target reads for itself. The rework
 channels in `dispatch_args` are coordinates, not content: `--caused-by` makes the kernel
 write the failing run's own `result.json` path into `dispatch.json`, and `--diagnosis-refs`
-makes it copy that diagnosis's `fix_locus` into `scope` and a human author's `reason` into
+makes it name that diagnosis's own record in `caused_by` and copy a human author's `reason` into
 `reasons`, verbatim. Never restate a failure's numbers, root cause, or bottleneck yourself:
 a paraphrase of a machine-authored envelope can only lose or distort it, and the target
 reads the original.
@@ -120,7 +120,7 @@ kernel.py diagnose --module {module} --id <diag-id> \
   --subject-proof <failed proof> --subject-run <run> \
   --attribution <stage> --fix-owner <producer inside the subject's input closure> \
   --provenance "<the identity that vouches>" --reason "<the reasoning>" \
-  [--fix-locus <path…>] [--supersedes <prior diag-id>]
+  [--supersedes <prior diag-id>]
 ```
 
 `--provenance` and `--reason` are both required and are different things: the bare identity

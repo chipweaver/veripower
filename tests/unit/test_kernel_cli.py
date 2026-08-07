@@ -544,11 +544,10 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
     assert diag["attribution"] == "rtl-design"
     assert diag["fix_owner"] == "rtl-design"
     assert diag["subject"] == {"proof": "simulation", "outcome_run": 7}
-    # D5: fix_locus mapped from advisory.findings[].anchor. Nothing else is copied onto the
-    # record: what this analysis rests on is addressable from the `subject` it already
-    # carries, and the dispatch that acts on it derives those paths (_diagnosis_sources).
-    assert diag["fix_locus"] == ["matvec.v:42"]
-    assert "evidence" not in diag
+    # Nothing beyond the naming is copied onto the record: where the fix goes is in the
+    # analysis (advisory.findings[].anchor), and what it rests on is addressable from the
+    # `subject` it already carries — the dispatch derives both (_diagnosis_sources).
+    assert "fix_locus" not in diag and "evidence" not in diag
 
     # non-blocked -> promoted to canonical
     canonical = (
@@ -609,11 +608,6 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
     diagnoses = [e for e in facts.read_events(module) if e["type"] == "diagnosis"]
     by_owner = {e["fix_owner"]: e for e in diagnoses}
     assert set(by_owner) == {"simulation-plan", "rtl-design"}
-    assert by_owner["simulation-plan"]["fix_locus"] == [
-        "verification-plan.md:88",
-        "sequences.json:12",
-    ]
-    assert by_owner["rtl-design"]["fix_locus"] == ["core_muldiv.v:129"]
     # both rest on the same analysis, and both bind to the run that was analysed
     assert len({e["id"] for e in diagnoses}) == 2
     for e in diagnoses:
@@ -1027,7 +1021,7 @@ def test_pin_zero_match_selector_rejected(tmp_path, monkeypatch):
 
 def test_triage_complete_without_findings_blocked(tmp_path, monkeypatch):
     # D4/§3.4: a complete triage MUST carry non-empty advisory.findings[] each with an
-    # anchor (so the routed diagnosis's fix_locus is never empty). A complete analysis
+    # anchor (so the record the fix owner opens always says where). A complete analysis
     # with no findings violates the schema -> reap derives blocked.
     monkeypatch.chdir(tmp_path)
     module = "d4a"

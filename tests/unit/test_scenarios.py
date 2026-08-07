@@ -365,7 +365,9 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
         "Verification/simulation/runs/1/result.json",
         "Verification/simulation-triage/runs/1/result.json",
     ]
-    assert doc["scope"] == ["matvec.v:1"]  # the triage finding's anchor
+    # scope means one thing now — what drifted under this rule since its last run. The
+    # finding's anchor reaches it through the analysis named in caused_by, not through here.
+    assert "matvec.v:1" not in doc.get("scope", [])
 
     # the fix lands (run 2): outcome changes ONLY matvec.v; filelist/README untouched.
     _mk(m, "Design/rtl-design/matvec.v", "rtl-design:matvec.v:FIX")  # drift on disk
@@ -782,9 +784,10 @@ def test_repair_dispatch_names_what_named_the_owner_and_the_human_reasoning(
     tmp_path, monkeypatch
 ):
     """Shape 3 — a repair: `caused_by` names the failing run the diagnosis is about,
-    derived from its `subject` rather than stored on it; `scope` carries that diagnosis's
-    fix_locus, and `reasons` carries the reasoning verbatim. Every path is per-run, so a
-    later run of the same stage cannot move it."""
+    derived from its `subject` rather than stored on it, and `reasons` carries the
+    reasoning verbatim. `scope` is absent: nothing drifted under this rule, and where the
+    human thinks the fix goes is in their reasoning, not in a second list. The envelope
+    path is per-run, so a later run of the same stage cannot move it."""
     monkeypatch.chdir(tmp_path)
     m = "repair-shape"
     _mk(m, "brainstorm.md", "b1")
@@ -800,21 +803,17 @@ def test_repair_dispatch_names_what_named_the_owner_and_the_human_reasoning(
         1,
         "specification",
         "specification",
-        [str(facts.module_root(m).resolve() / "Design/specification/ppa.json")],
         "operator",
         "the area target's unit is wrong, not the RTL",
         None,
     )
     assert r["ok"], r
-    # an absolute fix_locus the operator typed is rebased, so dispatch.json stays single-basis
-    diag = [e for e in facts.read_events(m) if e["type"] == "diagnosis"][-1]
-    assert diag["fix_locus"] == ["Design/specification/ppa.json"]
 
     d = kernel.cmd_dispatch(m, "specification", ["diag-unit"], None, [("synthesis", 1)])
     assert d["ok"], d
     doc = _dispatch_doc(m, d["workdir"])
     assert doc["caused_by"] == ["Design/synthesis/runs/1/result.json"]
-    assert doc["scope"] == ["Design/specification/ppa.json"]
+    assert "scope" not in doc
     assert doc["reasons"] == ["the area target's unit is wrong, not the RTL"]
     ev = next(
         e
@@ -826,7 +825,7 @@ def test_repair_dispatch_names_what_named_the_owner_and_the_human_reasoning(
 
 def test_repair_dispatch_rejects_an_unresolvable_channel(tmp_path, monkeypatch):
     """Both rework channels fail closed. A dangling --caused-by would hand the worker a path
-    it cannot open; an unknown --diagnosis-refs would drop that diagnosis's fix_locus and
+    it cannot open; an unknown --diagnosis-refs would drop that diagnosis's own record and
     reasoning silently, which is the loss §3.3 forbids."""
     monkeypatch.chdir(tmp_path)
     m = "repair-guard"

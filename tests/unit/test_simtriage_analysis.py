@@ -138,8 +138,8 @@ def test_finding_without_root_cause_exits_nonzero(tmp_path):
 
 
 def test_complete_finding_without_anchor_exits_nonzero(tmp_path):
-    """Every complete analysis routes on its own attribution, so its fix_locus — mapped
-    from findings[].anchor — must never be empty."""
+    """The anchor is what the fix owner opens this record for — the diagnosis names the
+    rule, this file names the line — so a complete analysis must never be missing one."""
     r = _run(
         tmp_path,
         {

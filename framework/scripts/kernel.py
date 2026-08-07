@@ -142,7 +142,6 @@ def cmd_dispatch(
         diag = by_id.get(ref)
         if diag is None:
             return {"ok": False, "error": f"unknown diagnosis ref {ref!r}"}
-        scope += [a for a in diag.get("fix_locus", []) if a not in scope]
         for rel in _diagnosis_sources(events, diag):
             if rel not in caused_by_paths and (root / rel).is_file():
                 caused_by_paths.append(rel)
@@ -379,21 +378,17 @@ def _derive_triage(env, dispatch):
     # carries (_diagnosis_sources), and `advisory.experiment.artifacts[]` are listed inside
     # the very envelope that derivation names — a stored copy would be the same paths twice.
     advisory = ss.get("advisory", {})
-    # {root cause -> its loci}, insertion-ordered so the record reads in the order the
-    # analysis wrote it.
-    by_cause: dict[str, list] = {}
-    for f in advisory.get("findings", []):
-        loci = by_cause.setdefault(f["root_cause"], [])
-        if f.get("anchor"):
-            loci.append(f["anchor"])
+    # The distinct root causes, in the order the analysis wrote them. Where each one points
+    # is not copied out: `findings[].anchor` is read from the analysis itself, which the
+    # dispatch that acts on this diagnosis names in caused_by.
+    causes = list(dict.fromkeys(f["root_cause"] for f in advisory.get("findings", [])))
     out = []
-    for cause, loci in by_cause.items():
+    for cause in causes:
         diagnosis = {
             "type": "diagnosis",
             "id": f"diag-{uuid.uuid4().hex[:12]}",
             "subject": {"proof": "simulation", "outcome_run": sim_hit},
             "attribution": cause,
-            "fix_locus": loci,
             "source": "triage",
         }
         if cause in rules.input_closure("simulation"):
@@ -410,18 +405,6 @@ def _derive_triage(env, dispatch):
 # gate, so a post-reap pin/reopen takes effect without a re-reap.
 
 
-def _module_relative(module, s):
-    """An absolute path under the module root becomes module-relative. Anything else — an
-    already-relative path, or a `<file>:<line>` anchor — is left alone. fix_locus reaches
-    dispatch.json's `scope`, where a mixed-basis list would be unreadable."""
-    if not s.startswith("/"):
-        return s
-    try:
-        return str(Path(s).resolve().relative_to(facts.module_root(module).resolve()))
-    except ValueError:
-        return s
-
-
 def cmd_diagnose(
     module,
     diag_id,
@@ -429,7 +412,6 @@ def cmd_diagnose(
     subject_run,
     attribution,
     fix_owner,
-    fix_locus,
     provenance,
     reason,
     supersedes,
@@ -446,9 +428,10 @@ def cmd_diagnose(
       provenance is the bare identity that vouches; reason is the reasoning, and it is
       what dispatch.json carries verbatim to the fix owner.
 
-    No evidence list: what a diagnosis rests on is the failing run its `subject` names,
-    which the dispatch that acts on it derives (_diagnosis_sources). Anything else the
-    author wants the fix owner to see belongs in `reason`, which travels verbatim."""
+    No evidence or locus list: what a diagnosis rests on is the failing run its `subject`
+    names, which the dispatch that acts on it derives (_diagnosis_sources). Anything else
+    the author wants the fix owner to see — including where they think the fix goes —
+    belongs in `reason`, which travels verbatim."""
     if fix_owner and fix_owner not in rules.input_closure(subject_proof):
         return {
             "ok": False,
@@ -469,8 +452,6 @@ def cmd_diagnose(
     }
     if fix_owner:
         ev["fix_owner"] = fix_owner
-    if fix_locus:
-        ev["fix_locus"] = [_module_relative(module, a) for a in fix_locus]
     if supersedes:
         ev["supersedes"] = supersedes
     facts.append_event(module, ev, _now())
@@ -634,7 +615,6 @@ def main():
     dg.add_argument("--subject-run", required=True, type=int)
     dg.add_argument("--attribution", required=True)
     dg.add_argument("--fix-owner", default=None, choices=rules.FORWARD_PRIORITY)
-    dg.add_argument("--fix-locus", nargs="+", default=None)
     dg.add_argument("--provenance", required=True)
     dg.add_argument("--reason", required=True)
     dg.add_argument("--supersedes", default=None)
@@ -724,7 +704,6 @@ def main():
             args.subject_run,
             args.attribution,
             args.fix_owner,
-            args.fix_locus,
             args.provenance,
             args.reason,
             args.supersedes,

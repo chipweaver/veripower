@@ -42,9 +42,9 @@ each input's producer has recorded it and the fingerprint on disk still matches.
 
 `dispatch.json` also carries `caused_by`, `scope` or `reasons` when the kernel knows what this round
 is answering. Hand whichever is present to the env-build child as its edit scope, without reading
-into it: `caused_by` names the failing envelopes it reads itself, `scope` names the inputs that
-changed or the anchors a diagnosis pointed at, `reasons` is a human's judgment passed through
-unchanged. When none is present and `{workdir}` holds no prior TB, this is a first delivery and the
+into it: `caused_by` names the records it reads itself — the failing envelopes, and the analysis that
+attributed them — `scope` names the inputs that changed under you, `reasons` is a human's
+judgment passed through unchanged. When none is present and `{workdir}` holds no prior TB, this is a first delivery and the
 scope is the whole testbench.
 
 Every round is the same round. `{workdir}` arrives holding your previous round's canonical output,
