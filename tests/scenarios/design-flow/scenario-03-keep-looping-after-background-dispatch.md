@@ -10,7 +10,7 @@ baseline: fail
 green: pass
 activated: 2026-08-04
 model: opus
-provenance: "RED 5x = 5B (一致违规,理由都是'lint 可能让 RTL 变,先别起 simulation' —— 自行代替 advisory 门做省算力判断);GREEN 8x = 6A + 2 REVIEW_NEEDED(后者的 transcript 显示它直接去执行 decide 调用、被 --allowedTools \"\" 的权限门挡住,行为上就是 A),0 次 B/C。此不变量在 2026-08-04 前从未明写:并行只来自 `Task(run_in_background=True)` 立即返回这一副作用,契约里一个字都没提\"一个回合可以有多个 run 在途\"。"
+provenance: "RED 5x = 5B (一致违规,理由都是'lint 可能让 RTL 变,先别起 simulation' —— 自行代替 advisory 门做省算力判断);GREEN 8x = 6A + 2 REVIEW_NEEDED(后者的 transcript 显示它直接去执行 decide 调用、被 --allowedTools \"\" 的权限门挡住,行为上就是 A),0 次 B/C。此不变量在 2026-08-04 前从未明写:并行只来自 `Task(run_in_background=True)` 立即返回这一副作用,契约里一个字都没提\"一个回合可以有多个 run 在途\"。REFACTOR 2026-08-07:那 8 行散文删除,机制并入循环伪代码一行 '# non-blocking for execution: task' + Discipline 末尾一句;GREEN 5x = 3A + 2 REVIEW_NEEDED(同一权限门机制,transcript 行为上是 A),0 次 B/C —— 散文 toothless,形式化单独扛得住,其中一次直接引用了那行注释作为理由。注:RED 从不注入 SKILL.md,所以 2026-08-04 的 5/5 只证明裸 Opus 会提前收尾,从未隔离过\"有伪代码、无散文\"这一格;本次补上。"
 ---
 
 ## 背景

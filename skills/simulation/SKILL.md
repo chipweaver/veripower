@@ -197,7 +197,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize \
 
 `--phase final` re-runs three gates over the workdir before it will write a pass: materialization,
 the conformance verdict off the review file you hand it, and coverage against the thresholds. The
-earliest failing one wins and decides which companions ride along. So arriving here with an
+earliest failing one wins. So arriving here with an
 un-dispositioned `gate=trip` costs you the round rather than passing it: finalize writes the same
 envelope step 2's own fail-out would have. The smoke and verify verdicts
 are the two it cannot re-derive, and each already wrote its own `status=fail` and skipped what
@@ -205,8 +205,7 @@ followed, so what reaches this command is only ever the most-failing verdict you
 
 Exit 0 means `result.json` was written, pass or fail. A non-zero exit is a program exception, not a
 `status=fail`. `fail_reason` rides on every fail and is absent on a pass; finalize derives it,
-and the phase you called selects which companion fields ride with it — the phase itself is not a
-field, because what it selected is already on the envelope.
+and the `--phase` you called selects which companion fields ride with it.
 
 **Naming the fix owner.** On a failure, add `--fix-owner <rule>`, the rule that must act. A
 functional or latency miss the reference model confirms is `rtl-design`; a testpoint or scenario

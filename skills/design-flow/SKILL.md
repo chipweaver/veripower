@@ -12,6 +12,7 @@ kernel tool `python3 framework/scripts/kernel.py` (written `kernel.py` below):
 loop:
   a = kernel.py decide --module {module} [--wake <rule>:<run>] [--closing]
   execute(a)                       # a.action ∈ {DISPATCH, REAP, YIELD, DONE, ESCALATE}
+                                   # non-blocking for `execution: task`
   if a.action in {YIELD, DONE, ESCALATE}: end turn
 ```
 
@@ -35,16 +36,8 @@ is a read-only query for the user, outside the loop.
 
 **Discipline:** call `decide` before every action. Two consecutive state-mutating kernel
 calls (`dispatch` / `reap` / `diagnose` / `pin` / `reopen`) with no `decide` between them is
-a bug — each action's executor runs, then you loop back to `decide`.
-
-**A turn holds as many runs as the kernel gives it.** Only `YIELD` / `DONE` / `ESCALATE` end
-a turn. A `task` dispatch returns the moment the background subagent starts, and the very next
-`decide` may hand you a second rule that can run alongside it — stages with no dependency
-between them are dispatched in the same turn on purpose, and that overlap is the only
-parallelism the system has. So a background dispatch is **not** a stopping point: starting one
-and reporting "X is running, I'll check back" ends the turn one action early and silently
-serialises the round. Keep looping until an action tells you to stop; `YIELD` is what "now we
-wait" looks like, and it names every run in flight.
+a bug — each action's executor runs, then you loop back to `decide`. Execute the loop
+literally; its exit condition is the only one.
 
 ## Iron Rule
 

@@ -79,9 +79,7 @@ from the D3 clock list), or a two-way-ambiguous requirement. Then point the user
 on-disk path + a short orientation (the D-dimensions covered; revision mode: only the D
 sections changed this round). **Do not echo the brainstorm body** (sections / tables /
 mermaid / code). Then stop: the user reads it, and starting the pipeline is how they say
-it is right. Nothing in the file records that agreement, because nothing downstream reads
-such a record — an approval field would be a second place to look for a decision the user
-already made by acting on it.
+it is right.
 
 ### Step 5: Revision mode
 

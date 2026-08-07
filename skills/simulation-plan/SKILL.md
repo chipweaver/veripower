@@ -57,7 +57,7 @@ The kernel writes `scope` / `caused_by` / `reasons` into `dispatch.json` **only 
 something**, so their presence is what tells you. Either way you run both phases; the branch
 decides how much of the plan you touch.
 
-- **`caused_by` present — failures are waiting on this stage.** Each entry is one failing run's own `result.json`, handed to you the first time this stage runs after they landed — a round scheduled for some other reason (upstream drift) carries them too, and answering them here is what keeps them from costing a second round. Scope is the union of `dispatch.json`'s `scope` — the
+- **`caused_by` present — failures are waiting on this stage.** Each entry is one failing run's own `result.json`, and a round scheduled for some other reason carries them too: answer them in this round. Scope is the union of `dispatch.json`'s `scope` — the
   module-relative paths or `<file>:<line>` anchors whose change invalidated the plan — and what the
   `caused_by` envelopes attribute; read each envelope once, and amend only the plan sections those
   paths map to. It is a pointer, not a boundary: if the gap sits elsewhere, widen and record why in

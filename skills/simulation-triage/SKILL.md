@@ -35,8 +35,8 @@ You write `result.json` (schema: `references/result.schema.json`), and, if you b
 
 ## What the failing envelope carries
 
-`fail_reason` is always present. Nothing labels which sub-step tripped, so read what is actually
-there — the shape of the envelope is the answer:
+`fail_reason` is always present. The shape of the envelope says which sub-step tripped, so read
+what is actually there:
 
 - `failing_cases[]` — one case per entry, each with `error_message` and often a `log_snippet`.
   Read the full per-case log under `<sim_run>` when the snippet is cut short.
@@ -107,25 +107,15 @@ Those paths are what the next reader opens, so nothing there is cleaned up.
 ## Landing the verdict
 
 Every finding carries a `root_cause` — `rtl-design`, `simulation-plan`, `specification`, or
-`simulation` — naming the rule that must act on **that** finding. Choosing it is the judgment this
-stage exists to make.
+`simulation` — naming the rule that must act on **that** finding, and its `anchor` is the
+`file:line` that rework starts from. Choosing the `root_cause` is the judgment this stage exists
+to make.
 
-A regression fails for as many reasons as it fails for, and a finding can sit in a different
-stage's files from its neighbour. Findings are grouped by their cause, each group becomes its own
-attribution carrying its own anchors, and every named stage is dispatched. So do not fold several
-causes into whichever one is biggest and leave the rest in the prose: an anchor whose stage is
-never named is a fix nobody schedules.
-
-That is for genuinely separate causes. When two stages are implicated in **the same** cause and the
-evidence supports either, splitting is the wrong answer: name the one you find most likely. It is
-dispatched on your word, and a stage that disagrees says so in its own `result.json` rather than
-editing against you. There is no field in which to hedge — an attribution is acted on iff it names
-a rule inside `simulation`'s inputs, and `simulation` itself is not one, so naming it stops the
-round for a human.
-
-Every finding must be anchored, and the schema enforces it — that `anchor` is the `file:line` the
-rework starts from. A `complete` analysis needs at least one finding: the findings are where the
-attribution lives, so an analysis with none has not said whose fault it is.
+Do not fold several causes into whichever one is biggest and leave the rest in the prose. When two
+stages are implicated in **the same** cause and the evidence supports either, name the one you find
+most likely rather than splitting it. An attribution is acted on iff it names a rule inside
+`simulation`'s inputs, and `simulation` itself is not one, so naming it stops the round for a
+human.
 
 ## Finalize
 

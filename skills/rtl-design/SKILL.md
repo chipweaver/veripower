@@ -15,7 +15,7 @@ Your sole responsibility: turn `manifest.json`'s child roster into authored RTL.
 
 Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key to a location, so `<key>/<subpath>` is how you address one. Every key resolves to the specification stage root, so `<design>` reaches its sibling sidecars too.
 
-`caused_by` and `scope` name what this round is about, and they are independent: `scope` is what drifted under you, `caused_by` is the failing runs waiting on you (read each envelope). A round can carry both — a rebuild forced from above that also answers a downstream failure — and answering both is what keeps the second one from costing another round. `reasons` is a human's judgment on this repair. It outranks your own reading of the files. If you disagree, say so in `result.json` instead of acting against it.
+`caused_by` and `scope` name what this round is about, and they are independent: `scope` is what drifted under you, `caused_by` is the failing runs waiting on you (read each envelope). A round can carry both; answer both. `reasons` is a human's judgment on this repair. It outranks your own reading of the files. If you disagree, say so in `result.json` instead of acting against it.
 
 | Path | What it is |
 |---|---|
