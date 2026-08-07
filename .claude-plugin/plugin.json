@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "veripower",
   "description": "AI-assisted IC design flow skills — specification, RTL, lint/CDC, simulation, synthesis, timing analysis, and signoff",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "author": { "name": "chipweaver" },
   "homepage": "https://github.com/chipweaver/veripower",
   "repository": "https://github.com/chipweaver/veripower",
