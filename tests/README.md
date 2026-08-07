@@ -20,12 +20,11 @@ replay of one real run's event log against `decide`. Nothing fails; a human read
 See `measure/README.md`.
 
 **Not a test →** single-artifact **prose / authoring / structure quality** is *not* asserted by
-any script here. It is reviewed by the **`veripower-review`** skill. If
-your check is "the wording / sections / style of one document are right," it does not belong in
-`tests/` at all.
+any script here — it is on-demand review judgment. If your check is "the wording / sections /
+style of one document are right," it does not belong in `tests/` at all.
 
 **Mnemonic:** unit tests *code* · contracts tests *artifact sync/invariants* · scenarios tests
-*agent judgment* · veripower-review judges *prose quality*.
+*agent judgment* · *prose quality* is reviewed, never tested.
 
 ## Routing the two hard cases
 
@@ -40,14 +39,14 @@ This is the most error-prone call. Decide by **how many artifacts the assertion 
   Examples (live): `contracts/test_skill_path_references.py` (every backtick path in a SKILL.md
   `exists()` on disk); `contracts/test_schema_skill_reciprocity.py` (each schema-required field is
   named in the SKILL.md, both directions); `contracts/test_cross_stage_contracts.py`.
-- **One — just inspecting a single document's text → NOT a test; goes to `veripower-review`.**
+- **One — just inspecting a single document's text → NOT a test.**
   "This string/section appears", "the wording is X", "english-only", "frontmatter shape". A check
   that merely asserts a script's *filename string* appears in a SKILL.md is prose-presence, not a
   sync (it doesn't verify the file exists — that's the `contracts/` version above). Authoring
-  quality is judgment about one artifact → `veripower-review`, never a deterministic script.
+  quality is judgment about one artifact — reviewed by hand, never a deterministic script.
 
 > The single discriminator: **does the assertion compare two things, or inspect one thing's
-> prose?** Two → `contracts/`. One → `veripower-review`.
+> prose?** Two → `contracts/`. One → not a test.
 
 ### 2. A test that *calls code* AND asserts a cross-artifact property → `unit/`
 
