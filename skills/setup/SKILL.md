@@ -49,7 +49,8 @@ ask — then run one minimal job per row in a temp dir: write the DUT (one clock
 | SpyGlass CDC | `cdc/cdc_setup`, `cdc/cdc_setup_check`, `cdc/cdc_verify_struct`, each `run_goal` | each goal's `moresimple.rpt` | lint-cdc |
 
 Run rows 1 and 4 first: 2–3 read row 1's netlist, 5–6 reuse row 4's simv. Rows 1–3 need `LIB_DB`
-and 4–6 need `UVM_HOME`, so a presence failure there skips the row rather than failing it. The
+and 4–6 need `UVM_HOME`; a row whose tool or variable already failed §1 is skipped, not failed —
+§1 has said it, and a second verdict on it would only be a worse-sourced copy. The
 SDC and the SGDC belong to specification and to `bootstrap`, so write a bare `create_clock` and
 a two-line SGDC yourself.
 
