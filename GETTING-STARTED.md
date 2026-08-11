@@ -47,6 +47,8 @@ time.
   the `LIB_DB` / `LIB_V` / `UVM_HOME` variables. The other four stages
   (`brainstorm`, `specification`, `simulation-plan`, `rtl-design`) run on
   Claude Code + Python alone.
+- **Check the machine first:** the pre-pipeline `setup` skill reports which stages
+  this environment can run, smoke-running the tools the rest need.
 
 ## The pipeline
 

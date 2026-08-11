@@ -68,6 +68,7 @@ VeriPower covers the full ASIC frontend — spec through signoff, no point-tool 
 
 | Stage | Purpose | Primary tool |
 |---|---|---|
+| `setup` | Pre-pipeline environment check — tools, variables, and a smoke run per license checkout | (probes the installed tools) |
 | `brainstorm` | Pre-pipeline D0–D7 requirements brainstorm → `brainstorm.md` (the pipeline's input) | (human + LLM dialogue) |
 | `specification` | Design spec + SDC/SGDC constraints | (human + LLM dialogue) |
 | `simulation-plan` | Verification plan with testpoints + power scenarios | (LLM) |
