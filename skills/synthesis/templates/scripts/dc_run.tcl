@@ -55,8 +55,8 @@ source [file join [file dirname [info script]] rtl_load.tcl]
 
 # elaborate / link return 0 on failure, and neither failure is caught downstream:
 # DC classifies an unresolved reference as a Warning, so the check_design gate below
-# never fires on it, and `compile` succeeds on the reduced design. The result would be
-# a netlist missing a whole module, reported as a passing (smaller) QoR. Gate both.
+# never fires on it, and `compile_ultra` succeeds on the reduced design. The result would
+# be a netlist missing a whole module, reported as a passing (smaller) QoR. Gate both.
 if {![elaborate $top]} {
     puts stderr "ERROR: elaborate failed for $top"
     exit 1
@@ -84,10 +84,11 @@ if {[regexp -line {^Error:} $_check_content]} {
 source [file join [pwd] constraints.sdc]
 
 # --- Synthesis ---
-# compile_ultra requires a DC-Ultra license; we use compile and check its
-# Tcl return value (0 on failure).
-if {![compile]} {
-    puts stderr "ERROR: compile failed — design remains unmapped"
+# compile_ultra is this flow's mapping command: the PPA targets are judged against its
+# QoR, not plain compile's. It needs a DC-Ultra license, which env-precheck smoke-tests
+# before the pipeline runs. Return value is 0 on failure, as with elaborate / link.
+if {![compile_ultra]} {
+    puts stderr "ERROR: compile_ultra failed — design remains unmapped"
     exit 1
 }
 

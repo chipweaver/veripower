@@ -2,11 +2,11 @@
 
 Why the return value and not a cell-attribute query: DC classifies an unresolved
 reference as a Warning, not an Error, so dc_run.tcl's `check_design` gate (which
-aborts only on a `^Error:` line) does not fire on it, and `compile` then succeeds on
-the reduced design. The netlist that comes out is missing a whole module yet reports
+aborts only on a `^Error:` line) does not fire on it, and `compile_ultra` then succeeds
+on the reduced design. The netlist that comes out is missing a whole module yet reports
 a perfectly clean QoR — and a *smaller* one, so an area-ceiling PPA target cannot
 catch it either. `analyze` / `elaborate` / `link` each return 0 on failure and 1 on
-success, the same contract the `compile` gate already relies on, and that return
+success, the same contract the `compile_ultra` gate already relies on, and that return
 value is the only reliable signal here: the `is_unresolved` cell attribute matches
 nothing in this case, and `is_black_box` matches every inferred DesignWare cell, so
 neither is usable as a gate.
@@ -36,3 +36,19 @@ def test_no_ungated_elaborate_or_link_call():
     lines = [ln.strip() for ln in DC_RUN.read_text().splitlines()]
     assert "link" not in lines
     assert not [ln for ln in lines if re.fullmatch(r"elaborate \$?\w+", ln)]
+
+
+def test_mapping_is_compile_ultra_and_is_gated():
+    """The mapping command is compile_ultra, gated on its return value.
+
+    The ppa.json targets are judged against DC-Ultra QoR, so a silent plain-compile path
+    would grade a different design than the one the targets describe. A missing DC-Ultra
+    checkout is env-precheck's to report, not this script's to work around.
+    """
+    code = [
+        ln.strip()
+        for ln in DC_RUN.read_text().splitlines()
+        if not ln.strip().startswith("#")
+    ]
+    assert [ln for ln in code if re.search(r"if \{!\[compile_ultra\]\}", ln)]
+    assert not [ln for ln in code if re.search(r"(?<!_)\bcompile\b(?!_)", ln)]

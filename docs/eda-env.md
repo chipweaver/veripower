@@ -17,6 +17,7 @@ a deployment choice.
 | `dc_shell` / `pt_shell` / `vcs` / `spyglass` on `PATH` | Stage Makefiles and scripts invoke directly | `which dc_shell` |
 | `fsdbreport` / `fsdb2vcd` on `PATH` | simulation dumps FSDB (`vcs -debug_access+all -kdb -lca` + `-ucli` do-file `$fsdbDumpvars`); simulation-triage queries it (`fsdbreport`) | `which fsdbreport` |
 | `LM_LICENSE_FILE` and/or `SNPSLMD_LICENSE_FILE` | Synopsys license server checkout (tools read these at launch; VeriPower does not validate) | `lmstat -c "$LM_LICENSE_FILE"` |
+| A **DC-Ultra** entitlement on that server | `dc_run.tcl` maps with `compile_ultra` and has no plain-`compile` path — the PPA targets are judged against DC-Ultra QoR | run the `env-precheck` skill's Design Compiler smoke row |
 | `LIB_DB`, `LIB_V` | synthesis / power-analysis read std-cell libs | stage `env.sh` `:?` guard fires on miss |
 | `UVM_HOME` | simulation / power-analysis compile UVM DPI | same |
 | `python3` with `jsonschema` >= 4.18, `referencing`, `PyYAML` | framework state tool and stage gates validate result/review schemas (`registry=`-based `$ref` resolution needs the post-4.18 jsonschema API) | `python3 -c "import jsonschema, referencing, yaml"` |

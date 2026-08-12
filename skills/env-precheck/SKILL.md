@@ -23,7 +23,7 @@ What a missing row costs:
 | `python3`, `jsonschema` >= 4.18, `referencing`, `PyYAML` | all |
 | `/bin/sh` → bash, `make` | every EDA stage |
 | `vcs`, `urg`, `fsdbreport`, `fsdb2vcd`, `UVM_HOME` | simulation, power-analysis, simulation-triage |
-| `dc_shell`, `LIB_DB` | synthesis, timing-analysis, power-analysis |
+| `dc_shell`, a DC-Ultra checkout, `LIB_DB` | synthesis, timing-analysis, power-analysis |
 | `pt_shell` | timing-analysis, power-analysis |
 | `LIB_V` | power-analysis |
 | `spyglass` | lint-cdc |
@@ -39,7 +39,7 @@ ask — then run one minimal job per row in a temp dir: write the DUT (one clock
 
 | Checkout | Hinges on | Produces | Gates |
 |---|---|---|---|
-| Design Compiler | `compile`, then `write` | the netlist | synthesis |
+| Design Compiler | `compile_ultra` (the DC-Ultra checkout — the flow runs no plain `compile`), then `write` | the netlist | synthesis |
 | PrimeTime | `report_timing` on that netlist | the timing report | timing-analysis |
 | PrimeTime-PX | `set power_enable_analysis TRUE` + `report_power` | the power report | power-analysis |
 | VCS + UVM | compiling `uvm_pkg.sv` and `uvm_dpi.cc` from `UVM_HOME`, then running simv | whatever the TB writes | simulation, power-analysis |
@@ -60,7 +60,7 @@ Per row: pass or fail, and the stages it costs. Close with the stage list runnab
 
 - `lmstat` explains, the smoke decides — a feature the server lists can still fail to check out,
   and lmstat missing or timing out is not a failure.
-- DC-Ultra is advisory: the flow runs `compile`, not `compile_ultra`. Try `compile_ultra` on a
-  fresh elaborate and report it; never gate on it.
+- A `compile_ultra` that cannot check out DC-Ultra costs the whole row, not QoR: `dc_run.tcl` has
+  no plain-`compile` path, so report it as synthesis lost even where plain `compile` works.
 - An `urg -version` other than L-2016.06 is a warning — the coverage parser is layout-sensitive.
 - Print `export` lines for the user; never edit their shell config.

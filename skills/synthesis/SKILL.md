@@ -141,7 +141,8 @@ set is a `tooling` fail rather than a promoted synthesis the downstream stages c
 The flags carry what the reports cannot:
 
 - **`--fail-reason`**, which fills `stage_specific.fail_reason`, when dc_shell produced nothing
-  gradeable: no license, an `analyze` / `elaborate` / `link` / `check_design` / `compile` abort, or
+  gradeable: no license, an `analyze` / `elaborate` / `link` / `check_design` / `compile_ultra`
+  abort, or
   a crash after the reports landed. You are the one who read `run.log`. Supplying it is itself the
   declaration of failure, so it wins over the gate and forces `status=fail` even where the reports
   parse clean; write the cause you actually read rather than a category, since nothing parses it.
