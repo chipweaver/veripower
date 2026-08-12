@@ -42,7 +42,7 @@ VeriPower 通过一条 9 个阶段的流水线，把一个敲定了的想法变�
   服务器，以及 `LIB_DB` / `LIB_V` / `UVM_HOME` 变量。其余四个阶段（`brainstorm`、
   `specification`、`simulation-plan`、`rtl-design`）仅靠 Claude Code + Python
   即可运行。
-- **开跑前先查机器：** 前置的 `setup` skill 报告这台机器能跑哪些阶段，
+- **开跑前先查机器：** 前置的 `env-precheck` skill 报告这台机器能跑哪些阶段，
   并对其余阶段所需的工具做一次实跑。
 
 ## 流水线

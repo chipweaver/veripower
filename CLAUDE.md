@@ -43,7 +43,7 @@ Domain-specific coding rules live in each skill's references.
 - `framework/scripts/store.py` — artifact-lifecycle internals (promote, trace mirroring, dispatch-time `dispatch.json` authoring via `write_dispatch`, author self-carry via `carry_self`), imported by `kernel.py`; internal — never invoked directly.
 - Main-thread-loaded stages: `specification`, `simulation-plan`, `rtl-design`, and `simulation` — Orchestrator calls `Skill(veripower:...)` directly. The other 4 stages (`lint-cdc`, `synthesis`, `timing-analysis`, `power-analysis`) plus `simulation-triage` are strictly Task-dispatched subagents; branch on the `DISPATCH` action's `execution` field. See `skills/design-flow/SKILL.md` and `ARCHITECTURE.md §2`.
 - `brainstorm` is a separate **pre-pipeline** skill (own session, NOT in the orchestrator-dispatch list above): it runs the D0–D7 dialogue and produces the `brainstorm.md` the pipeline starts from. It writes no `result.json` and calls no `kernel.py`.
-- `setup` is likewise **pre-pipeline** (own session, NOT orchestrator-dispatched, no rule, no `result.json`, no `kernel.py`): it checks `docs/eda-env.md`'s requirements against the live machine and smoke-runs each license checkout, reporting which stages are runnable. Nothing in the pipeline depends on it having run — an unmet environment still surfaces as a stage `blocked`.
+- `env-precheck` is likewise **pre-pipeline** (own session, NOT orchestrator-dispatched, no rule, no `result.json`, no `kernel.py`): it checks `docs/eda-env.md`'s requirements against the live machine and smoke-runs each license checkout, reporting which stages are runnable. Nothing in the pipeline depends on it having run — an unmet environment still surfaces as a stage `blocked`.
 
 ## Reference Docs
 

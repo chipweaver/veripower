@@ -1,9 +1,9 @@
 ---
-name: setup
+name: env-precheck
 description: Use when checking whether this machine's Python, EDA tools and licenses can actually run VeriPower's stages; not for any pipeline stage, module state, or design work.
 ---
 
-# Environment Setup Check
+# Environment Pre-check
 
 Pre-pipeline, own session. Write no module file, append no event, call no `kernel.py` verb.
 Report only; nothing in the pipeline depends on this having run.

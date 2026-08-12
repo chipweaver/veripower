@@ -25,9 +25,9 @@ def test_nine_rules_eight_stages_plus_triage():
 
 def test_skill_dir_rule_bidirectional_coverage():
     # 缝五 measurable anchor: every stage skill dir <-> a rule, both directions.
-    # Excluded: brainstorm and setup (pre-pipeline, own session) and design-flow
+    # Excluded: brainstorm and env-precheck (pre-pipeline, own session) and design-flow
     # (the Orchestrator skill — it drives the kernel, it is not a scheduled rule).
-    NON_RULE_SKILLS = {"brainstorm", "setup", "design-flow"}
+    NON_RULE_SKILLS = {"brainstorm", "env-precheck", "design-flow"}
     skill_dirs = {
         p.name
         for p in SKILLS_DIR.iterdir()
