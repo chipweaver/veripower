@@ -1,504 +1,280 @@
 # VeriPower Architecture
 
-> Design rationale and contracts for VeriPower's stage-gated, event-sourced agent pipeline.
+> How VeriPower organizes agent-driven chip design, and why it's built this way.
 
 ---
 
-## Contents
+## 1. Overview
 
-- [Glossary](#glossary)
-- [1. Why VeriPower](#1-why-veripower)
-- [2. System model](#2-system-model)
-- [3. Rule registry and the derived dependency graph](#3-rule-registry-and-the-derived-dependency-graph)
-- [4. State model: the event log](#4-state-model-the-event-log)
-- [5. Scheduler decision loop](#5-scheduler-decision-loop)
-- [6. Subagent contracts](#6-subagent-contracts)
-- [7. Workspace layout](#7-workspace-layout)
+VeriPower is a chip front-end design and verification system that ships as a
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin. It takes
+an LLM coding agent through eight stages, from a natural-language spec all the
+way to power analysis, on commercial EDA tools (SpyGlass, Design Compiler,
+PrimeTime, VCS+UVM).
+
+The whole system is built around one idea. A deterministic kernel owns every
+fact about the design flow. It knows which verification conclusions still hold,
+what got invalidated by a change, what should run next, and who's responsible
+for fixing a failure. LLM agents and human engineers both sit outside this
+kernel. They can propose work and propose judgments, but they can't alter
+what's been recorded. The kernel is the only thing that writes to the event
+log, and no agent prompt can inject or change a record.
+
+<p align="center">
+  <img src="assets/architecture.png" alt="VeriPower architecture" width="460" />
+</p>
+
+The **Orchestrator** is the `design-flow` skill running in the main
+conversation. It asks the kernel for one action, carries it out, then asks
+again. It holds nothing between queries and makes no routing decisions on its
+own.
+
+The **Deterministic kernel** (`framework/scripts/`) records events, derives
+status, computes the dependency graph, schedules work, and checks whether an
+attribution is legal. Everything it does is pure computation over the event log
+and what's on disk.
+
+The **Filesystem** is the only persistence layer. An append-only event log
+(`events.jsonl`) plus whatever artifacts each stage produces. No database, no
+daemon, no HTTP.
+
+Stage agents don't talk to the orchestrator or to each other. Each one gets a
+structured handoff written to disk by the kernel, not a natural-language
+summary of the orchestrator's context, and writes its results back to disk.
 
 ---
 
-## Glossary
+## 2. The Pipeline
 
-Core coined terms, each defined once here and elaborated in the linked section. Localized contracts (per-stage `result.json` fields, CLI flags) are not duplicated in this document — they live in their owning schema / `--help`.
+Eight rules make up the flow. A ninth, simulation triage, is a diagnostic that
+analyzes simulation failures without recording a verification conclusion of its
+own.
 
-| **Term** | **One-line meaning** |
-|---|---|
-| **Orchestrator** | The `design-flow` agent in the main conversation; the only role that calls `kernel.py`, dispatches `Task()`s, and talks to the user. (§2.4) |
-| **kernel** | `python3 framework/scripts/kernel.py` — the sole writer of `events.jsonl` and the sole decider. Its verbs are the whole state/decision surface. (§2.2) |
-| **decide / scheduler** | `kernel.py decide` (implemented in `schedule.py`) — reads the event log + disk and returns exactly one action per call; the Orchestrator is its thin executor. (§5) |
-| **rule** | One kernel-scheduled unit of work, defined in `rules.py:RULES`. Eight pipeline rules plus `simulation-triage`. The dependency graph is *derived* from rules' input/output selectors, not declared separately. (§3) |
-| **proof** | The pass/fail assertion a proof-producing rule records at reap: `{name, verdict, inputs, oracle}`, embedded in its `outcome` event. (§4.4) |
-| **proof validity** | A *query* — not a stored flag. A proof is valid *now* iff its verdict is `pass`, its recorded input and output fingerprints still match disk, and its oracle was not reopened since. Staleness is recomputed on every read. (§4.4) |
-| **oracle & grade** | The judge that decided a proof, `(ref, grade)` with `grade ∈ {tool, human, proposed}`. A tool oracle is authoritative; a `proposed` (LLM-authored) oracle can be ratcheted to `human` only by a `pin`. (§4.5) |
-| **goal set** | The proofs a `decide` call is scheduling toward: the currently-failing ones, or all eight when none are failing. Derived from the log every call, never carried by the caller. (§5.1) |
-| **complaint** | A proof whose latest outcome is a `fail`, for as long as something specific remains to be done about it. The unit the repair path schedules on: it carries who must act, it is handed to that party, and it closes when they have had their turn. (§5.3) |
-| **reap** | Closing an in-flight run with `kernel.py reap` (no verdict flag): `cmd_reap` reads the run's `result.json`, promotes artifacts, and appends the `outcome` (and, for triage, a `diagnosis`). (§5.6) |
-| **promote** | The per-entry hardlink merge from `runs/<N>/` to the canonical stage dir, run by `cmd_reap` on pass *and* fail. Idempotent. (§7.2) |
-| **projection** | The per-rule status cell (`valid / stale / failed / blocked / in-flight / missing`) `facts.projection` computes purely from the event log + disk. Replaces any stored status snapshot. (§4.6) |
-
----
-
-## 1. Why VeriPower
-
-VeriPower separates a deterministic scheduling core from the LLM Orchestrator: a routing mistake cannot corrupt completed work, because the record of what happened is an append-only event log the LLM can never rewrite, and "is this result still good?" is recomputed from that log against disk every time it is asked. That separation is load-bearing, not incidental — every architectural decision in this document hangs off it.
-
-Three commitments make it work; each is elaborated where it lives:
-
-- **The event log is the only durable state.** `<module-dir>/events.jsonl` is the sole persisted state file. There is *no* status snapshot: whether a stage is done, stale, failed, or in-flight is *derived* on demand from the log by comparing recorded content fingerprints against disk (§4). `kernel.py` is the only writer of the log, and every event is schema-validated at write time, so the audit trail cannot be forged through an agent prompt.
-- **Validity is a query, not a stored bit.** A stage's output is trusted only while a *proof* it recorded still holds — its inputs and outputs unchanged, its oracle un-reopened (§4.4). Edit an upstream file and every proof whose fingerprints no longer match silently becomes invalid on the next query; nothing has to remember to mark it stale. Freshness therefore falls out of content, not out of bookkeeping.
-- **The dependency graph is derived, not declared.** A rule names the artifact globs it consumes and produces; the producer→consumer graph is computed from those selectors (`rules.producer_of`), so there is no second DAG structure to drift out of sync with what stages actually read and write (§3).
-
-VeriPower is not a service: no daemon, no DB, no HTTP — disk files are the database. It is not vendor-locked: skills are swappable at the `rules.RULES[...].skill` dispatch seam. It is not a one-shot agent: the flow tolerates multi-hour repair storms where stages fail, their fixes rebuild upstream producers, and dependent proofs re-verify across many Orchestrator turns.
-
-## 2. System model
-
-### 2.1 Three-layer architecture
-
-The Orchestrator agent decides; `kernel.py` and the skills execute; disk persists.
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────┐
-│             Orchestrator Agent  ( veripower:design-flow )                          │
-│  main conversation; forward dispatch / repair routing /                            │
-│  escalation / user collaboration                                                   │
-└──┬───────────────────────────┬────────────────────────────────┬────────────────────┘
-   │ Bash                      │ Skill()                        │ Task()
-   │ kernel.py CLI             │ veripower:specification        │ general-purpose
-   │                           │ veripower:simulation-plan      │ (the 4 task rules +
-   │                           │ veripower:rtl-design           │  simulation-triage)
-   │                           │ veripower:simulation           │
-   │                           │ (main-thread loaded)           │
-   ▼                           ▼                                ▼
-┌────────────────────┐  ┌──────────────────────────────┐  ┌───────────────────────────────┐
-│ Deterministic core │  │  Main-thread skill           │  │  Stage / Debug Subagent       │
-│ (Python)           │  │  (runs in Orchestrator's     │  │  (isolated context)           │
-│  kernel.py:        │  │   main thread)               │  │                               │
-│   9 verbs; sole    │  │                              │  │  Stage: executes rule         │
-│   writer of the    │  │  specification / sim-plan /  │  │    → writes result.json       │
-│   event log        │  │  rtl-design / simulation:    │  │  Debug (triage): canon. RO,   │
-│  schedule.py:      │  │    self-driven fan-out /     │  │    scratch RW builder         │
-│   decide → action  │  │    dialogue → result.json    │  │    → result.json (+ diag)     │
-│  facts / rules /   │  │                              │  │  Must NOT call kernel.py      │
-│  schedule / store  │  │                              │  │  or dispatch anything         │
-└──────────┬─────────┘  └──────────────────────────────┘  └───────────────────────────────┘
-           │ reads/writes
-           ▼
-┌────────────────────────────────────────────────────────────────────────────────────┐
-│                        <module-dir>  (the --module path)                           │
-│                                                                                    │
-│   events.jsonl                       the ONLY durable state (append-only log)      │
-│   Design/<rule>/result.json          specification / rtl-design / lint-cdc /       │
-│                                      synthesis / timing-analysis                   │
-│   Verification/<rule>/result.json    simulation-plan / simulation / power-analysis │
-│   (status is DERIVED from events.jsonl + disk fingerprints — never stored)         │
-└────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-The three dispatch paths from the Orchestrator:
-
-- **Bash** → the `kernel.py` CLI (verbs in §4.2 / §5). It composes the other framework scripts in-process; the Orchestrator never invokes them directly.
-- **Skill()** → the four main-thread skills (`specification`, `simulation-plan`, `rtl-design`, `simulation`).
-- **Task()** → the four task-dispatched stage subagents and the `simulation-triage` debug subagent.
-
-### 2.2 The kernel surface
-
-`framework/scripts/` is one deterministic core split into five bare-importable, single-responsibility modules plus the CLI. `kernel.py` is the only entry point the Orchestrator calls; it imports the rest.
-
-| Module | Responsibility |
-|---|---|
-| `kernel.py` | The CLI and the **sole writer** of `events.jsonl`. Nine verbs: `decide`, `dispatch`, `reap`, `diagnose`, `pin`, `reopen`, `signoff`, `status`, `consequences`. Every verb prints a JSON envelope. |
-| `rules.py` | The rule registry (`RULES`) — the SSoT for what the kernel schedules and the *source* of the dependency graph (§3). Also `FORWARD_PRIORITY`, `PIPELINE_INPUTS`, `ADVISORY_ORDER`, and the derivation helpers `producer_of` / `input_producers` / `input_closure`. Dependency-light leaf. |
-| `facts.py` | Event-log I/O (`read_events` / `append_event`, schema-validating), content fingerprints (`fingerprint`), and the freshness queries built on them — `proof_valid`, `input_available`, `projection`, plus the strictest of them, `signoff_gate` / `signed_off` (§5.5). Owns nothing mutable; everything is computed from the log + disk. |
-| `schedule.py` | The scheduler: `decide() → exactly one action`. Pure over (disk, log, args); composes `facts.signoff_gate`. Owns the goal set, the open-complaint set (who must act on each failure, and whether they have), the antichain and no-overtake gates, and the legality check on a failure's self-named `fix_owner`. |
-| `store.py` | Filesystem artifact-lifecycle helpers: dispatch-time `write_dispatch` (writes `<workdir>/dispatch.json`) and `carry_self` (copies the author's own previous canonical products into the fresh workdir), reap-time `promote`. Imported by `kernel.py`; never invoked directly. |
-
-The event schemas at `framework/references/schemas/events/<type>.schema.json` (6 of them, §4.2) and the result envelope at `framework/references/schemas/envelope.schema.json` complete the core.
-
-> **Black-box discipline.** The Orchestrator invokes `kernel.py` by its documented command lines (flags via `<verb> --help`, each verb prints a JSON envelope) and never reads the framework scripts' source. On a non-zero exit or an `ok:false` envelope it follows the documented failure protocol (fix what the error names, surface the `ok:false` to the user), never patches around it.
-
-### 2.3 Main-thread-loaded stages and the pre-pipeline brainstorm
-
-`veripower:specification`, `veripower:simulation-plan`, `veripower:rtl-design`, and `veripower:simulation` are the only four rules NOT dispatched via `Task()` — all four load in the Orchestrator's main thread via `Skill()`. A `Task()` subagent can neither interact with the user mid-run nor dispatch further `Task()`s, and each of these four needs one of those two capabilities.
-
-> **Contract:** A `Task()` subagent may not dispatch another `Task()` — Level-2 dispatch is forbidden (the audit boundary). A rule that must fan out Level-1 sub-Tasks therefore cannot run as a Task subagent; main-thread loading is the *only* way to hold fan-out dispatch authority while preserving that boundary. `specification` / `rtl-design` / `simulation` are main-thread for fan-out authority; `simulation-plan` is main-thread for multi-turn user dialogue, plus a single Level-1 plan-adequacy review dispatch.
-
-The `execution` field on each `Rule` (`"main-thread"` or `"task"`) is what the Orchestrator branches on — never a hardcoded stage list. The per-rule trigger:
-
-- **specification** — consumes a frozen `brainstorm.md`; a fan-out dispatcher (decompose + per-child sub-Task waves around a partition gate) plus its main-thread `spec` CLI gate verbs. NOT main-thread for brainstorm dialogue — that moved to the pre-pipeline `brainstorm` skill.
-- **simulation-plan** — multi-turn plan-review dialogue with the user; also self-dispatches a single Level-1 plan-adequacy review sub-Task (§6.2.1).
-- **rtl-design** — fan-out only, no dialogue: one Level-1 sub-Task per child, an intent-review wave the stage acts on itself, then finalize.
-- **simulation** — fan-out only, no dialogue: every round is homogeneous (the kernel's `carry_self` has already carried the previous round's TB into the workdir before dispatch, or the workdir is genuinely empty on a first run — the skill never branches on which). Wave 1 dispatches the env-build child, then runs the smoke gate, the LLM conformance review-gate (re-judged every round, never skipped), and the verify child (Wave 2).
-
-> **Red Flag:** If `Skill(veripower:lint-cdc|synthesis|timing-analysis|power-analysis)` appears in the Orchestrator's tool history, it is a bug — those four rules must dispatch via `Task()`.
-
-**Pre-pipeline `brainstorm` skill (not kernel-dispatched).** The heavy D0–D7 requirements dialogue runs in a separate `brainstorm` skill in its own session — it is NOT one of the four main-thread stages above and is never dispatched by the Orchestrator. It produces the `brainstorm.md` at the module root that the pipeline starts from; it writes no `result.json` and calls no `kernel.py`. `brainstorm.md` is the pipeline's sole external input — `rules.PIPELINE_INPUTS` — needing only to **exist** for `specification` to become schedulable. There is no approval field and no gate reading one: the human starts the pipeline when the file says what they mean, and that act is the approval.
-
-### 2.4 Role responsibilities
-
-| **Role** | **Carrier** | **Responsibilities** | **Capability boundaries** |
+| Rule | What it does | Oracle | Grade |
 |---|---|---|---|
-| **Orchestrator agent** | `design-flow` skill, main conversation | Execute the one action each `decide` returns; propose `pin` / `reopen` / human `diagnose` on explicit user intent; carry an `ESCALATE` to the user; collaborate with them. Authors no per-dispatch content: it passes the action's coordinates through and the kernel resolves them (§5.6). Also acts as the main-thread executor for the four main-thread rules. | The only role that may call `kernel.py`, use the Task tool, and interact with the user. Authors NO event by hand — every event is written by `kernel.py`. |
-| **Main-thread skill** | one of the four main-thread rules, loaded via `Skill()` | Self-driven work in the Orchestrator's thread: sub-Task fan-out (producers, simulation), multi-turn dialogue (simulation-plan), or a single review dispatch. Each writes its own artifacts + `result.json`. | May dispatch Level-1 sub-Tasks (producers / simulation) or interact with the user (simulation-plan; specification at its two path-handoff gates). No `kernel.py`, no routing. Held by SKILL.md prose discipline, not tool gating. |
-| **Stage subagent** | the four Task-dispatched rules (`lint-cdc` / `synthesis` / `timing-analysis` / `power-analysis`) | Execute one rule: read upstream → do the work → write `result.json` → return a STATUS line | Must NOT call `kernel.py` or make routing decisions (§6.1) |
-| **Debug subagent** | `simulation-triage`, dispatched via Task | Root-cause analysis on a simulation failure, reasoning over the run's own evidence and, where that cannot settle it, a controlled experiment it builds in scratch; its target run and upstream (spec/RTL/plan) are injected at dispatch via `dispatch.json` (`sim_run` names the target run directory), `proof=None` so it is dispatchable even when upstream proofs are invalid; writes a `result.json` whose `stage_specific` carries the attribution the kernel turns into a `diagnosis` at reap (§6.3) | Canonical read-only, scratch-writable under its own workdir; never edits any other rule's `result.json`, RTL, or tests; NOT idempotent (a repeat redoes the work) |
-| **`kernel.py`** | Python CLI | State transitions (as events), scheduling, proof derivation, promote | Contains the scheduling logic but makes no *judgment*: it never mints a human diagnosis. |
+| specification | Generates structured design docs, sub-designs, and timing constraints from a natural-language brainstorm | spec-review (LLM) | proposed |
+| simulation-plan | Maps every specified behavior to a testpoint, produces the verification plan and TB scaffold | plan-review (LLM) | proposed |
+| rtl-design | Generates RTL from the specification | semantic-review (LLM) | proposed |
+| lint-cdc | SpyGlass lint and CDC checks | spyglass ruleset | tool |
+| synthesis | Design Compiler synthesis | dc-shell | tool |
+| timing-analysis | PrimeTime timing analysis | pt-shell | tool |
+| simulation | Builds and runs UVM testbench against the RTL | tb-refmodel (LLM) | proposed |
+| power-analysis | PrimeTime power analysis | pt-shell | tool |
+| simulation-triage | Root-cause analysis for simulation failures | n/a | n/a |
 
-### 2.5 Core design principles
+### Dependency graph
 
-- **Judgment in the Orchestrator, state and scheduling in the kernel** — the determinism boundary. The Orchestrator makes exactly one kind of judgment call: whether to propose a `pin` / `reopen` / human `diagnose` (all on explicit user intent). Everything else — what to run next, whether a proof is valid, where a failure routes — is computed by `kernel.py decide`. The Orchestrator is a thin executor: it calls `decide`, executes the one returned action, and loops.
-- **Decision boundary = tool boundary.** Every scheduling decision is pushed down to `decide`. Its verifiable form: *two consecutive state-mutating kernel calls with no `decide` between them is a bug.*
-- **Files are the database.** `events.jsonl` is the durable log; `result.json` files are stage outputs; everything else (status, freshness, in-flight) is a pure function of those. No intermediate cache, no service-side store. The `.fingerprint-cache.json` under a module is a pure mtime/size speed cache — never a fact source.
-- **Compaction-safe resume.** Because files are the database and the Orchestrator holds *zero* durable control state between turns, a mid-session context compaction or process crash is survivable: every turn re-derives the next action from disk via `decide`. It holds no conversation-resident state at all: what to build next is derived from the log on every call (§5.1), and the one flag it may pass, `--closing`, expresses a live human intention rather than a position in a sequence.
-- **One-way communication + context isolation.** Orchestrator → prompt → subagent → `result.json` + STATUS. No subagent-initiated callback, no subagent-to-subagent communication; subagents inherit no parent history and receive all inputs as explicit file paths.
+The graph comes from each rule's declared input and output artifact globs in
+`rules.py`. If one rule's outputs match another's inputs, there's an edge.
+Nothing else maintains the graph, so it can't disagree with what rules actually
+read and write.
 
-**The trust boundary — proposed vs. authoritative oracles.** VeriPower runs LLM-authored judges (a spec-intent review, a plan-adequacy review, an RTL semantic review, a TB refmodel) alongside deterministic EDA-tool oracles. The two are not equally trustworthy, and the kernel encodes that: an oracle carries a `grade` (§4.5). A `tool`-graded oracle (SpyGlass, DC, PT) is authoritative on its own. A `proposed`-graded oracle is an LLM proposing its own correctness — trusted enough to gate a normal *delivery* build, but NOT enough to close *signoff*. The only way a proposed oracle earns authoritative (`human`) trust is a human `kernel.py pin`, which records the oracle content's current fingerprint; the grade upgrades to `human` only while that exact content is unchanged, and drops back to `proposed` the moment the content drifts or the pin is `reopen`ed (§4.5). `pin`, `reopen`, and `signoff` are therefore **ask-gated judgment verbs**: the Orchestrator proposes them only on explicit human intent, and the harness permission gate prompts the user on every call. This is the seam where a human, and only a human, converts an LLM's self-assessment into signoff-grade trust — per-oracle with `pin`, and for the module as a whole with `signoff` (§5.5).
+<p align="center">
+  <img src="assets/pipeline-dag.png" alt="Pipeline dependency graph" width="660" />
+</p>
 
-## 3. Rule registry and the derived dependency graph
+*\*Specification's outputs (constraints, PPA targets, interface declarations)
+are also consumed directly by lint-cdc, synthesis, simulation, and
+power-analysis. Simulation-plan's outputs (sequences, power scenarios) are
+consumed by power-analysis. These edges are omitted from the diagram for
+clarity.*
 
-`rules.py:RULES` is the single SSoT for what the kernel schedules. One `Rule` = one kernel-scheduled unit. There is no separately-maintained stage DAG: the producer→consumer graph is *derived* from each rule's artifact selectors.
-
-### 3.1 The `Rule` record
-
-Each rule is a frozen dataclass:
-
-| Field | Meaning |
-|---|---|
-| `name` / `stage` / `skill` | Identity and the `veripower:<skill>` dispatched to run it. |
-| `execution` | `"task"` or `"main-thread"` — the dispatch class (§2.3). |
-| `workdir_root` | Module-relative canonical directory (e.g. `Design/specification`); runs land in `<workdir_root>/runs/<N>/`. |
-| `inputs` | Named groups of module-relative canonical-path *globs* the rule consumes. |
-| `outputs` | Module-relative (workdir-root-prefixed) globs the rule produces — the source of the dependency graph. |
-| `proof` | The proof name a proof-producing rule records at reap (`None` for `simulation-triage`). |
-| `oracle` | `(ref, grade)` — the judge and its trust grade (§4.5). |
-| `oracle_selector` | For a `proposed` oracle, the workdir-relative glob whose content a `pin` fingerprints. |
-| `params` | Free params the rule expects (e.g. `simulation-triage`'s `sim_run`). |
-| `carry` | Self-product globs `store.carry_self` copies into a fresh workdir at dispatch (§5.6/§7.2), minus `no_carry`; empty for a rule with no self-carry (a pure transformer). |
-| `no_carry` | Globs excluded from `carry` — e.g. a per-round review record that must be re-derived fresh every round rather than carried forward. |
-
-### 3.2 The eight pipeline rules
-
-`FORWARD_PRIORITY` fixes the tie-break order when several rules are eligible: `specification → simulation-plan → rtl-design → lint-cdc → synthesis → timing-analysis → simulation → power-analysis`. `simulation-triage` is a ninth rule, not in that order — it is dispatched only as a failure disposition (§5.3).
-
-| **Rule** | **Consumes (input producers)** | **Skill** | **Oracle (grade)** | **Canonical dir** |
-|---|---|---|---|---|
-| specification | `brainstorm.md` (external) | `veripower:specification` (main-thread) | spec-review (proposed) | `Design/specification/` |
-| simulation-plan | specification | `veripower:simulation-plan` (main-thread) | plan-review (proposed) | `Verification/simulation-plan/` |
-| rtl-design | specification | `veripower:rtl-design` (main-thread) | semantic-review (proposed) | `Design/rtl-design/` |
-| lint-cdc | rtl-design, specification (SGDC seed) | `veripower:lint-cdc` | spyglass-ruleset (tool) | `Design/lint-cdc/` |
-| synthesis | rtl-design, specification (SDC + `ppa.json`) | `veripower:synthesis` | dc-shell (tool) | `Design/synthesis/` |
-| timing-analysis | synthesis | `veripower:timing-analysis` | pt-shell (tool) | `Design/timing-analysis/` |
-| simulation | rtl-design, simulation-plan | `veripower:simulation` (main-thread) | tb-refmodel (proposed) | `Verification/simulation/` |
-| power-analysis | synthesis, simulation, simulation-plan, specification (`ppa.json`) | `veripower:power-analysis` | pt-shell (tool) | `Verification/power-analysis/` |
-
-The "Consumes" column above is exactly `rules.input_producers(rule)` — computed by matching each input glob against every rule's output globs (`producer_of`). That column is the graph; there is deliberately no second drawing of it here, because a hand-drawn copy of a derived structure is the one thing that can disagree with the registry. To see it for the current registry:
+Concurrency falls out naturally. Rules with no artifact edge between them can
+run at the same time. Lint-cdc and simulation, for instance, share nothing and
+regularly run in parallel. You can inspect the live graph yourself:
 
 ```bash
 python3 -c "import sys; sys.path.insert(0,'framework/scripts'); import rules
 for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 ```
 
-Implicit parallelism falls out of those edges: `decide` dispatches one rule per call and re-queries, so any rules whose inputs are all available run concurrently. There is no concurrency cap anywhere in the Orchestrator or the kernel — how many run at once is entirely a function of where the derived edges do and do not exist, and three in flight is ordinary (`lint-cdc`, `timing-analysis` and `simulation` have no artifact edge between them).
+### The 4 + 4 symmetry
 
-### 3.3 Two graph queries, and one thing that is not a query
+Look at the Oracle column. The four tool-graded rules all deal with structural
+and physical correctness (lint, synthesis, timing, power). Their oracles, the
+EDA tool rulesets and constraint decks, existed before the design under test
+did. The tool can't share the design's mistakes.
 
-The derivation helpers on `rules.py` compute two different things from the same selectors, and keeping them distinct is a load-bearing invariant:
+The four proposed-graded rules all deal with intent and functional correctness
+(specification, verification plan, RTL, simulation). There's no independent
+oracle for these, because function *is* intent, and intent stays
+underdetermined until someone settles it. That's where human judgment comes in
+(§5).
 
-- **`input_producers(rule)`** — direct producers of the rule's input globs (one hop, self excluded). The dependency graph's edges.
-- **`input_closure(rule)`** — the *transitive* closure of those producers. Three consumers: a failure's `fix_owner` must be a producer inside the failed proof's closure to be routable at all (`kernel diagnose` rejects a human attribution outside it, and the scheduler refuses an envelope's, §5.4); the in-flight set must stay an **antichain** in this order (§5.2 step 2); and the candidate a round picks must be closure-minimal among the candidates. Artifact edges only — `ADVISORY_ORDER` is excluded by construction.
-`ADVISORY_ORDER` is the third structure, and it is not a graph query: two hand-declared *sequencing* edges (`synthesis` after `lint-cdc`; `power-analysis` after `timing-analysis`) that are not data dependencies. Synthesis does not consume lint's reports, but a lint failure rewrites the RTL under it, so letting the cheap detector answer first avoids spending the expensive stage on a round about to be redone. Its sole consumer is the no-overtake gate in `decide` step 2 (§5.2); the gate reads it directly, since `rule_available` — checked immediately before — already establishes every input producer's proof.
+---
 
-> **Contract:** `ADVISORY_ORDER` influences *scheduling order only*. `input_producers` / `input_closure` (artifact edges) are the sole basis of proof validity, input availability, and failure freshness. The two never cross.
+## 3. State and Proofs
 
-### 3.4 Constraints and the SGDC clock-domain declaration
+### The event log
 
-`specification`'s `derive-constraints` verb emits the complete constraint set the downstream tool stages read: `Design/specification/constraints/<TOP>.sdc` (consumed by `synthesis`) and `<TOP>.sgdc` (the seed `lint-cdc` consumes). Both are derived from the approved §1.4.1 clock tables and the §1.6 clock Relationship block, so the constraints are an authoritative projection of the spec rather than hand-maintained.
+A module's entire state lives in one append-only file, `events.jsonl`. There's
+no status snapshot. Whether a stage is done, stale, failed, or still running
+gets computed from the log against disk every time you ask. The kernel is the
+only writer, and every record is schema-validated before it lands.
 
-Asynchronous clock relationships are carried differently in each format because the tools accept different syntax. The SDC uses the standard `set_clock_groups -asynchronous` construct. The SGDC cannot: SpyGlass `vL-2016.06` rejects `set_clock_groups` outright (`SGDCSTX_002 Unknown SGDC command`). The SGDC-native form the generator emits instead is a per-clock domain declaration — `clock -name <c> -period <p> -edge {…} -domain <D>` — where all `primary`/`synchronous-related` clocks share one domain name and each `async` clock gets its own distinct domain. This declaration's role is to make the spec's §1.6 Relationship **explicit and authoritative** in the SGDC, rather than leaving domain partitioning to the tool's defaults. This behavior is empirically pinned by the manually-run EDA regression at `tests/eda/f1-sgdc-clock-group/`, which on `vL-2016.06` flags an unsynchronized single-flop crossing under rule id `Ac_unsync01` (policy `clock-reset`, goal `cdc/cdc_verify_struct`) — the rule id `lint-cdc`'s rule-family table records as a crossing-class defect. (On that version, separately-named clocks already default to separate domains, so the declaration's value is that the domain partition is *spec-driven and explicit*, not tool-inferred; see the fixture's README for the scoped measurement.)
+The orchestrator carries nothing between turns. If a context window gets
+compacted or the process crashes, the next `decide` call just re-derives the
+right action from disk. No recovery protocol needed.
 
-## 4. State model: the event log
+### Proofs
 
-### 4.1 `events.jsonl` is the only durable state
+When a rule completes, the kernel records a **proof**. That's a verdict (pass
+or fail) bound to content fingerprints of every input consumed, every output
+produced, and the oracle that judged the run.
 
-Everything under the module directory that matters to the kernel is derived from one append-only file: `events.jsonl`. There is no `task.json`, no status snapshot, no freshness field. `facts.read_events` parses it (tolerating a truncated final line); `facts.append_event` is the only writer, and it is reached only through `kernel.py`. Each append validates the record against the event's JSON Schema *before* writing, so a malformed event is a hard error, never a written line.
+Validity is not stored anywhere. It's recomputed as a query. A proof holds
+right now only if the verdict was pass, every recorded fingerprint for inputs
+and outputs still matches what's on disk, and the oracle hasn't been retracted.
+All three have to hold.
 
-Because the log is the state, in-flight is derived too: `facts.in_flight` = every `dispatch` with no matching `outcome` (keyed by `(rule, run)`). Crash recovery is thus intrinsic — a run whose executor died left a `dispatch` with no `outcome`, so it still shows in-flight and `decide` will reap it (§5.6).
+Say you edit one line of RTL. Next time anything checks the log, lint-cdc's,
+synthesis's, and simulation's input fingerprints won't match anymore. Three
+proofs go invalid at once. Nobody marks anything stale. Staleness is just the
+absence of a matching fingerprint. Meanwhile specification and simulation-plan
+are fine, because their inputs don't include RTL.
 
-### 4.2 The six event types
+You can also query impact before making a change. Ask the kernel which
+currently-valid proofs would break if a given file changed, so that when you
+skip a stage, the decision rests on a graph computation, not a guess.
 
-`events.jsonl` carries **6 event types**, each validated by `framework/references/schemas/events/<type>.schema.json`. `kernel.py` is the sole writer of all six — there is no channel by which an agent prompt can inject a raw event.
+---
 
-| **type** | **Written by (verb)** | **Purpose / key fields** |
-|---|---|---|
-| `dispatch` | auto (`dispatch`) | Opens a run: `rule`, `run`, `workdir`, `params` (the rule's declared params), `diagnosis_refs`, `caused_by` (the `[rule, run]` failures a rework answers), and — for proof-producing rules only — the consumed `inputs` version table (the sole source of `proof.inputs`). |
-| `outcome` | auto (`reap`) | Closes a run: `verdict ∈ {pass, fail, blocked}`, the produced `outputs` version table (incl. the canonical `result.json`), `proofs[]`, `tool_versions`, optional `reason` (the blocked sub-class). |
-| `diagnosis` | auto for triage (`reap`); human via `diagnose` | A failure attribution. Required (per `diagnosis.schema.json`): `id`, `subject {proof, outcome_run}`, `attribution`, `source ∈ {triage, human}`. Optional: `fix_owner`, `supersedes`; `provenance` (the bare identity that vouches) and `reason` (the reasoning, carried verbatim into the fix owner's `dispatch.json`) both required for `human`, enforced by `diagnose`. |
-| `pin` | `pin` | Ratchets a `proposed` oracle toward `human`: `oracle_ref`, `content_fingerprint` (recorded at pin time), `provenance`, `reason`. |
-| `reopen` | `reopen` | Retires a pin: `pin_ref`, `reason`. Invalidates any proof whose oracle was reopened after it landed (§4.4). |
-| `signoff` | `signoff` | Closes signoff: `provenance`, `reason`. Written only if `facts.signoff_gate` is clear (§5.5). Carries no fingerprint and is never retired — validity is re-derived live by `facts.signed_off`. |
+## 4. Failure and Repair
 
-`dispatch` / `outcome` are pure side-effects of running work. The triage `diagnosis` is derived at reap from the triage run's `result.json` (§5.3). The other four verbs (`diagnose`-human, `pin`, `reopen`, `signoff`) carry the Orchestrator's/user's judgment — but they still go through `kernel.py`, which validates and (for `diagnose`/`pin`) enforces structural correlates the schema alone cannot express (§5.3, §4.5). All events carry a UTC ISO8601 `ts` written first in the record.
+### A direct attribution
 
-### 4.3 Content fingerprints
+Synthesis reports a timing violation. It read Design Compiler's QoR report,
+decided the critical path is too long in the RTL, and names rtl-design as the
+rule that must fix it.
 
-Freshness is decided by comparing content, so the atom of the whole model is a content fingerprint. `facts.fingerprint(path)`:
+The kernel checks whether that's legal. Is rtl-design inside synthesis's
+transitive dependency closure? It is (rtl-design produces RTL, synthesis
+consumes it), so the attribution stands.
 
-- **file** → `sha256:<hex>` of its bytes;
-- **directory** → `merkle:<hex>` over a sorted walk (each entry's relpath + kind + file-hash / symlink-target);
-- **symlink** → hashed by its target *string*, not followed;
-- **missing / unreadable** → the sentinel `UNKNOWN`.
+Next round, the kernel dispatches rtl-design with the failed synthesis run as
+context. The RTL agent reads the timing report and shortens the critical path.
+Now the RTL outputs have different fingerprints, so lint-cdc, synthesis, and
+simulation all lose their proofs. The kernel re-verifies them in dependency
+order. Everything passes. Done.
 
-`facts.versions_match(recorded, current)` is true only when both are known and equal — `UNKNOWN` never matches anything, so an absent or unreadable artifact is *conservatively stale*, never falsely fresh. `fingerprint_cached` adds an mtime/size cache for speed only; it is never a fact source (a symlink or directory bypasses the cache to avoid a false-fresh hit).
+### A failure that needs investigation
 
-### 4.4 Proof validity is a query
+Simulation fails, but it can't tell whether the bug is in the RTL, the
+specification, or the testbench reference model. It doesn't name anyone.
 
-A proof-producing rule records a `proof` inside its `outcome` event at reap: `{name, verdict, inputs, oracle}`. `inputs` is the version table of everything the run consumed (from the `dispatch` event); `outputs` (on the outcome) is the version table of everything it produced — the canonical `result.json` and every `artifacts[]` path beside it, which is the evidence the verdict rests on and the reason the proof carries no separate path list. A proof is not a stored "valid" bit — `facts.proof_valid(module, proof)` recomputes it on every call. It is valid *now* iff **all four** conditions hold:
+The kernel sees an unattributed simulation failure. Simulation's rule points to
+`simulation-triage` as its diagnostic, so the kernel dispatches triage. The
+triage agent goes into the failed run's directory (UVM logs, FSDB waveforms,
+coverage data), reads the spec and reference model, and if the evidence isn't
+conclusive, builds a controlled experiment in its own workspace to nail down
+the cause.
 
-1. **Verdict** — the latest outcome carrying this proof has `verdict == pass`.
-2. **Inputs unchanged** — every recorded input fingerprint still matches disk.
-3. **Oracle un-reopened** — no `reopen` of this proof's `oracle.ref` appears at or after the proof's position in the log.
-4. **Outputs unchanged** — every recorded output fingerprint (including the canonical `result.json` itself) still matches disk.
+Triage finds that a clock-domain relationship was declared wrong in the spec.
+The kernel confirms specification is inside simulation's dependency closure,
+records the diagnosis, and routes the failure there.
 
-The consequence: editing any file a proof touched — an input, an output, or the result envelope — silently invalidates that proof on the next query, and transitively any downstream proof that consumed it. Nothing has to *mark* anything stale; staleness is the absence of a still-matching fingerprint. `kernel.py consequences --paths <p…>` makes this queryable ahead of time: a read-only what-if that reports, for each path, which currently-valid proofs would flip to invalid if that path's content changed.
+Specification fixes the declaration. Downstream constraints change with it. The
+kernel figures out which proofs are now invalid and re-verifies the affected
+chain.
 
-**Input availability** (`facts.input_available`) is the dispatch-time counterpart: a consumer's input glob is available iff it is the external `brainstorm.md` (need only exist), OR its producer never ran (true cold start — forward scheduling will run the producer first), OR the producer's latest outcome recorded a matching, still-fresh output AND that producer's proof is currently valid. A producer that has run but matches nothing (recorded or on disk) is genuinely absent → unavailable (the conservative direction — never dispatch a consumer against a silently missing input).
+### How attribution works
 
-### 4.5 Oracle grades and pins
+The failing stage names who needs to act. The kernel's only job is to check
+that the name is legal, meaning it sits inside the failing rule's transitive
+dependency closure. There's no fixed table of labels. A closed set could only
+cover failure modes someone thought of ahead of time, and where a symptom shows
+up is not necessarily where its cause lives.
 
-Each proof's `oracle` is `(ref, grade)`. The grade is *derived live* by `facts.oracle_grade`, over the current log rather than from a reap-time snapshot, so a `pin` or `reopen` takes effect without a re-reap:
+Three situations escalate to a human: the stage names nobody, names itself
+(meaning it's tried everything it can), or names something outside its closure.
+When that happens, the escalation comes with the candidates and the evidence,
+not just a request for help.
 
-- A rule whose registered oracle grade is `tool` (SpyGlass / DC / PT) always records `tool` — the EDA tool is authoritative.
-- A rule whose registered grade is `proposed` (an LLM-authored judge) records `proposed` **unless** a *live* `pin` for its `oracle_ref` recorded a `content_fingerprint` equal to the oracle content's *current* fingerprint — in which case it records `human`.
+If multiple failures point to the same rule, they get bundled into one
+dispatch. Lint-cdc and synthesis both blaming rtl-design won't make it run
+twice.
 
-A pin is **live** iff no `reopen` naming its `oracle_ref` appears after it in event order (membership tracked per-event, so `pin → reopen → pin` correctly yields a live pin again). The oracle content a pin fingerprints is the rule's `oracle_selector` glob (e.g. `simulation`'s `tb/uvm/refmodel/*` — the pin endorses the *judge* itself, which survives runs; when the LLM regenerates the refmodel, the content fingerprint diverges and the grade drops back to `proposed` at the next reap). An unreadable oracle content (`UNKNOWN`) never inherits trust.
+---
 
-This is the machinery behind the trust boundary (§2.5): `pin`/`reopen` are the only levers that move a judge across the proposed↔human line, they are ask-gated, and the ratchet is content-anchored so trust cannot silently outlive the thing it was granted for.
+## 5. The Trust Boundary
 
-### 4.6 The projection
+### Two kinds of oracle
 
-`facts.projection` renders the per-rule status the `kernel.py status` verb prints — computed entirely from the log + disk, replacing any stored snapshot. Each rule's cell is one of:
+A tool-graded oracle is independent of the design it judges. SpyGlass's lint
+rules existed before any RTL was written. The tool and the artifact can't share
+the same mistake, so the verdict is authoritative.
 
-| Cell | Meaning |
+A proposed-graded oracle is different. An LLM-authored review or reference
+model comes from the same information the artifact was built from. If the LLM
+misunderstands a spec requirement, it can produce RTL and a reference model
+that agree with each other while both being wrong. Tests pass, nothing gets
+flagged. This, silent false green, is worse than any explicit failure because
+nobody's attention gets called to it.
+
+### Verification independence
+
+Design and verification both start from the specification, then they split.
+The design path produces RTL. The verification path produces the test
+environment, and everything on that path (plan, scaffold, sequences, reference
+model) derives from the specification, not from the RTL. Simulation does
+consume RTL as a declared input, but only as the compiled DUT. The reference
+model that actually judges the simulation is built from the spec's behavioral
+requirements, not by reading RTL source.
+
+Every specified behavior gets mapped to a testpoint through structured artifact
+handoffs between simulation-plan and simulation, so nothing gets dropped by
+omission. After each simulation round, an independent conformance review checks
+what the tests actually exercised against what the specification asked for.
+This catches both missing checks and checks that test the wrong thing.
+
+### From proposed to human
+
+A human can endorse a proposed oracle through **pin**, which raises its grade
+to human. The endorsement is anchored to a fingerprint of the oracle's content
+at that moment. If the oracle gets regenerated and the content changes, the
+endorsement goes away on its own. Nobody has to remember to revoke it.
+**Reopen** is the explicit withdrawal, and it invalidates every proof that
+depended on the endorsed oracle.
+
+### Signoff
+
+Closing a module demands everything at once. Every proof currently valid. Every
+oracle at tool or human grade. No input file on disk that showed up after the
+proof was recorded without being verified. The pipeline can iterate just fine
+under proposed oracles, but it can't close under them.
+
+The human has four named acts: endorse an oracle (`pin`), withdraw one
+(`reopen`), state an attribution (`diagnose`), close the module (`signoff`).
+Everything else is computed.
+
+---
+
+## 6. Limits
+
+**Declared inputs aren't enforced.** A rule says what it reads, but nothing
+actually stops it from reading other files. If it does, the dependency graph is
+wrong in the dangerous direction, where a proof that should have gone invalid
+didn't. The signoff gate partially makes up for this by re-checking
+declarations against disk for new inputs, but it's not a full fix.
+
+**Signoff is not correctness.** It's closure over a declared set of
+obligations. That list is hand-written in the rule registry, not derived from
+language semantics. Signoff is only as credible as the list is complete.
+
+**The system lowers the cost of each human judgment, not the count.** How often
+someone needs to step in depends on what the LLM can handle. The architecture
+makes each judgment reusable and durable, but it can't replace the judgment
+itself.
+
+---
+
+## Key Terms
+
+| Term | Meaning |
 |---|---|
-| `in-flight` | a `dispatch` with no matching `outcome`. |
-| `missing` | no outcome yet. |
-| `blocked` | latest outcome `verdict == blocked`. |
-| `failed` | latest outcome `verdict == fail`. |
-| `valid` | latest outcome passed and `proof_valid` holds now. |
-| `stale` | latest outcome passed but `proof_valid` is false now (an input/output/oracle changed under it). |
-
-Signoff gets no cell — it is not a stage. `kernel.py status` renders it alongside the cells as a separate `signed_off` boolean, per the §5.5 predicate: a human `signoff` event exists **and** every stage proof is currently valid. A signoff is only as good as the proofs beneath it.
-
-### 4.7 Result envelope and schema validation
-
-Each `result.json` validates against the shared envelope (`framework/references/schemas/envelope.schema.json`: `stage` / `module` / `produced_at` / `status` / `artifacts` / `stage_specific`) plus the rule's per-stage schema at `skills/<skill>/references/result.schema.json` (which `$ref`s the envelope). `kernel._derive_verdict` runs this validation at reap: a well-formed `status ∈ {pass, fail}` becomes that verdict; a missing, unparseable, non-object, malformed-status, or schema-violating envelope becomes `blocked` (with the sub-class in the outcome's `reason`). It then checks **temporal integrity**: a `produced_at` predating this run's own `dispatch` event (compared against the dispatch `ts` floored to whole seconds — skill finalizers stamp second-resolution) means the envelope was carried in, not authored by this run's executor, and is derived `blocked` / `stale_result` (an unparseable `produced_at` is `blocked` / `produced_at_unparseable`); it never mints an outcome verdict, so a stale copy can never be whitewashed into the ledger by a bare reap. `facts.validate_result` is read-only and returns infrastructure failures (a missing/corrupt schema) as a violation message too — the conservative direction is always "not proven valid", never a silent pass.
-
-## 5. Scheduler decision loop
-
-The Orchestrator runs one deterministic step per turn:
-
-```
-loop:
-  a = kernel.py decide --module <M> [--wake <rule>:<run>] [--closing]
-  execute(a)                       # a.action ∈ {DISPATCH, REAP, YIELD, DONE, ESCALATE}
-  if a.action in {YIELD, DONE, ESCALATE}: end turn
-```
-
-`decide` is pure over (disk, log, args) and returns exactly one action as a JSON object. The Orchestrator executes it and re-queries; `DISPATCH` and `REAP` loop, the other three end the turn. The Claude Code harness re-enters when the next `<task-notification>` arrives, at which point the Orchestrator passes `--wake <rule>:<run>` (and re-passes it on every re-query that turn).
-
-### 5.1 The goal set is derived, not chosen
-
-`schedule.required_proofs` answers what this call is scheduling toward:
-
-> **all eight, whatever is failing.**
-
-A repair does not narrow it. What must not be built while one is running is already said by three filters, each naming a reason: the producer's proof is invalid (`facts.rule_available`, which covers everything genuinely downstream of the failure), nobody has answered for it yet (`owed_rules`), or its producer is in flight or is a co-candidate this round (`_unblocked`). Narrowing to the failing proofs added exactly one thing on top — holding back the **siblings**, a lint or a synthesis gone stale from the same edit with no artifact edge to the failure at all. Those are `task` executors running EDA tools, so holding them back trades machine time that was idle anyway for finding out what they have to say hours later.
-
-There is therefore **no transition to remember**: no switch into a repair episode, no switch back out, and no mode a caller could be left in. Step 2 expands the set to its rebuild closure, so the producer a re-verify needs still comes first.
-
-Closing is not on this axis at all. `--closing` (§5.5) requires the same proofs and changes only what a clear board means, so it is a flag on the terminal predicate rather than a third value on the thing that selects work.
-
-### 5.2 The five actions and the decision steps
-
-`decide` walks these steps and returns the first action that fires:
-
-```mermaid
-flowchart TD
-    W(["decide"]) --> S0{"Step 0: a run ready to reap?"}
-    S0 -- "wake match / result.json present" --> RP(["REAP"])
-    S0 -- no --> S1{"Step 1: every failure attributed?"}
-    S1 -- "one names nobody" --> ESC(["ESCALATE"])
-    S1 -- yes --> S2{"Step 2: a candidate that can start?"}
-    S2 -- yes --> DSP(["DISPATCH (+ the failures it owes)"])
-    S2 -- no --> S3{"Step 3"}
-    S3 -- "in-flight remains" --> Y(["YIELD"])
-    S3 -- "not done, nothing eligible" --> ESC
-    S3 -- "all required valid" --> DONE(["DONE"])
-```
-
-- **Step 0 — reap first.** If `--wake <rule>:<run>` names an in-flight run → `REAP` it. Otherwise, if any in-flight run's workdir already holds a `result.json` (a completed but un-reaped run), reap the earliest by `FORWARD_PRIORITY`. Reaping before deciding keeps the log current.
-- **Step 1 — clarify the attribution.** Collect every failure with who must act on it (`_failures`, §5.3). If any names nobody, the round STOPS there and asks a human — earliest first by `FORWARD_PRIORITY`. Nothing is scheduled before this point, so no step below has to reason about a failure whose owner is unknown. Then `owed` flattens what is left to one entry per (failure, owner) still unanswered, and `_group` buckets those by owner.
-- **Step 2 — forward dispatch.** Compute the required proofs not currently reusable, expand them to the *rebuild closure* (walk `input_producers` of any unavailable input so a repair rebuilds the right upstream first), and dispatch the earliest candidate by `FORWARD_PRIORITY` that is not in-flight and whose inputs are available. A candidate is additionally held back while an `ADVISORY_ORDER` predecessor of it is invalid *and* coming — scheduled in this round's work set, or already in flight — the no-overtake gate (§3.3). Asking who is coming, rather than which mode the caller is in, is what lets one rule serve both a narrowed and a full goal set: a predecessor that is neither scheduled nor running will never resolve, so holding for it would strand the round.
-- **Step 3 — settle.** If work is in flight → `YIELD` (returning the `in_flight[]` view). Else if every required proof is reusable → `DONE`. Else → `ESCALATE` ("no eligible rule, none in-flight, not done").
-
-`cmd_dispatch` is the single source of eligibility truth: it re-checks the in-flight premise and input availability *at write time*, returning `ok:false` if eligibility shifted between the scan and the write. The signoff gate is not among those checks — signoff is not dispatchable, so there is no dispatch to gate. Its anti-bypass duty moved to `cmd_signoff`, which runs the gate itself rather than trusting a prior `decide`: the verb is the gate's only surface, so an out-of-band `kernel.py signoff` cannot mint a signoff the gate refused (§5.5).
-
-### 5.3 Complaints: what is open, and who must act
-
-A proof whose latest outcome is a `fail` raises a **complaint**. `schedule._failures` returns them in `FORWARD_PRIORITY` order, each already carrying who must act; `schedule.owed` keeps the ones still *open*. One concept replaces the freshness test, the disposition tree, and the merge rules, because all three were asking about the same object.
-
-**A complaint is open while there is a specific thing to do about it that has not been done.**
-
-- **Its judge must still stand** — `schedule._oracle_retracted`, condition 3 of §4.4 asked of a fail. A reopened oracle retracts a failure exactly as it retracts a pass, on the same dispatch-time anchor and with the same live-pin exception. Condition 4 is deliberately not asked: a failure's own outputs drifting says nothing about whether its account of what went wrong still holds.
-- **Owned** (the attribution names a legal `fix_owner`): open until that owner has been **dispatched** since the failure landed (`_answered`). Dispatch, not delivery — the question is whether the party that must act has had its turn; a round that rebuilt the owner for another reason still had the chance, and asking again would spend the stage twice on one defect. A run reaped `blocked` is the exception: nothing landed, so the complaint re-opens rather than being consumed by a dead executor.
-- **Unowned**: not closed at all — the round stops and asks a human (step 1). Attribution is clarified before anything is scheduled, so an unclear failure never travels alongside a round that keeps having to ask whether the picture is complete.
-
-> **Input drift does not close an owned complaint.** This is the load-bearing asymmetry. A sibling repair moving a failure's inputs does not make the fix owner's job go away — and treating it as if it did is how an attribution that is written down, legal, and unanswered gets discarded, then rediscovered by spending the stage that raised it all over again. Condition 2 (§4.4) still invalidates the *proof*; it just no longer retracts the *account* of what went wrong. Everything the old `_fail_is_fresh` did beyond condition 3 — the output check, the input check, and the transitive input-closure check — is gone: an upstream that is still settling makes the owner unavailable or non-minimal, which the candidate filters already say, and saying it twice cost the attribution.
-
-**Who must act** comes from one function (`schedule._owner`): `attribution`, what was written verbatim, and `owners`, its routable projection — the names that are legal (§5.4). `owners` is a **list**, because one regression can fail for several independent reasons and a finding can sit in a different stage's files from its neighbour; an analysis says so with one diagnosis per root cause, and each entry carries its own `since`, the position from which "has this owner acted" is measured. Both attribution channels reduce to that pair, and a later analysis outranks the stage's own self-report:
-
-1. **A diagnosis is attached.** `_active_diagnoses` collects every non-superseded `diagnosis` whose `subject` matches this failure's `(proof, outcome_run)`; each names an owner, and one naming nobody among them leaves the whole failure unclear. **A diagnosis routes iff it names a `fix_owner`**, and nothing else is asked of it. An oracle-side attribution — blaming the failed rule's own judge — arrives with no `fix_owner` and is refused by that clause, so the attribution is not tested separately: both writers already enforce it, `cmd_diagnose` by rejecting a `fix_owner` outside the subject's input closure and `_derive_triage` by writing one only when the root cause is inside it, and no rule is in its own closure. Such a diagnosis leaves the complaint unowned, and `ESCALATE` cites every candidate.
-2. **No diagnosis — the envelope's self-report.** `stage_specific.fix_owner` from the failed rule's canonical `result.json` (§5.4). Reading canonical is sound because a complaint exists only while that fail is the rule's *latest* outcome, and a fail promotes.
-3. **No diagnosis, and nobody named** — the complaint is unowned. If its rule declares a `triage` (`Rule.triage`, §3.1) it goes there: `DISPATCH simulation-triage` with `params.sim_run = <failed run>`, whose reap mints the diagnosis that case 1 then reads. Which stage has an analyzer behind it is a registry field rather than a scheduler branch. A complaint that has *already* been analysed and came back naming nobody does not re-enter triage — the same analyzer over the same evidence would only reproduce it — so it stays a human's call.
-
-Because the owner is a field and not a branch, an escalation reason is *derived* from the pair (`_escalation`) rather than raised wherever it was noticed: named nobody / named itself / named outside the closure / a diagnosis that named nobody are four readings of two values.
-
-**Triage's diagnosis at reap** (`kernel._derive_triage`). `simulation-triage` has no proof; it writes a `result.json` whose `stage_specific` carries `analysis_state`, `skipped_reason`, `advisory`. At reap: `analysis_state != "complete"` → the outcome is `blocked` and no diagnosis is emitted (the complaint stays unowned; the next round re-dispatches triage). Otherwise the kernel groups `advisory.findings[]` by their `root_cause` and appends one `diagnosis` (`source: triage`) per group, carrying that group's anchors — `attribution` is the root cause and `fix_owner` is the same name when it is inside `simulation`'s input closure. A self-pointing attribution (`root_cause == simulation`) is outside that closure by construction, so `fix_owner` is omitted and the complaint escalates.
-
-### 5.4 Failure attribution
-
-**The failing stage names who must act; the kernel only checks that the naming is legal.** On `status == "fail"` an envelope may carry `stage_specific.fix_owner`: a rule name, written by the party that just read the raw tool output. There is no table, and deliberately no enum — a closed set of labels can only express what was enumerated before the failure existed, and the symptom's location is not the cause's (a missing SGDC declaration is reported at the RTL line that used the undeclared object while the fix belongs in the SGDC, which no rule-name lookup can adjudicate).
-
-The three readings are conditions over that one field, not a map:
-
-- **Named nobody.** The stage read its own failure and still cannot attribute it, so a human decides. The one exception is `simulation`, which has a deeper analyzer behind it: its unattributed failure dispatches `simulation-triage`, whose reap mints the diagnosis.
-- **Named itself.** A defect the stage could fix from here is fixed *within* its run — `rtl-design` re-dispatches a child, `lint-cdc` adds a waiver — so it never arrives as a failure at all. Naming itself therefore means the in-stage remedy is exhausted, and an auto-rebuild would dispatch the failing rule at itself.
-- **Named a rule in its input closure** (`rules.input_closure`, the derived graph — the same check `kernel.py diagnose` applies to a human attribution) → that name becomes the complaint's `fix_owner`. A name outside the closure means the stage blamed something it does not consume; that escalates.
-
-Every open complaint naming the same owner reaches it in **one** dispatch — a group-by over the open set (§5.2 step 1), so a co-failing stage cannot be silently dropped by a merge rule implemented half-way (§3.3). And a complaint reaches its owner at that owner's *first* round after the failure landed, whatever scheduled it: a rebuild forced by upstream drift carries the complaints it owns too, rather than running blind and leaving them to cost a second round.
-
-**What this costs and why.** A stage-authored attribution is checked for legality and nothing else. Two things replace what a table offered, both stronger: the closure check is machine-enforced, where an unconditional `ppa → rtl-design` mapping was checked by nothing at all; and the `fail_reason` justifying the naming sits in the same envelope, so an attribution has an author and an audit trail, which a table's default value does not.
-
-### 5.5 Signoff closure
-
-Closing signoff is the strictest gate in the system (`facts.signoff_gate`). **Every** stage proof must:
-
-1. be currently valid (§4.4) — which itself requires every recorded input and output fingerprint to be known and match disk, so no proof carrying an `UNKNOWN` recorded version can be valid,
-2. carry an oracle grade of `tool` or `human` — a `proposed` oracle blocks signoff ("pin it"), and
-3. have no out-of-band **added** input: a file on disk that matches the rule's input selectors but is absent from the proof's recorded inputs was never verified by any run. Edits and deletes of recorded files already invalidate the proof (§4.4); an add escapes the recorded-set checks, so the gate re-globs the selectors here — the daily delivery/repair path keeps the cheap recorded-set check.
-
-The gate iterates `FORWARD_PRIORITY` in order so the reason it returns is deterministic. Failure surfaces two ways, per caller: `decide --closing` wraps it as an `ESCALATE` naming the offending proof (typically "pin the proposed oracle" — a human `pin`, §2.5); `kernel.py signoff` wraps it as an `ok:false`. This is where the trust boundary bites: a pipeline can *deliver* on LLM-proposed oracles, but it cannot *sign off* until a human has pinned each proposed judge to `human` grade.
-
-**Signoff is an act, not a stage.** The gate decides only *admissibility*; closing signoff is a human calling `kernel.py signoff --provenance … --reason …`, the third ask-gated judgment verb beside `pin`/`reopen` (§2.5). It runs the gate itself rather than trusting a prior `decide`, because the verb is the gate's only bypass surface — no caller, in-loop or out, can mint a signoff the gate refused. A module is **signed off** iff that event exists *and* every stage proof is currently valid (`facts.signed_off`) — the second conjunct re-derived live, so a proof going stale afterwards drops the signoff with no ceremony. There is deliberately no `unsign` verb: `reopen` invalidates its proof (§4.4 condition 3), which drops the conjunct.
-
-`--closing` demands no additional proofs — it demands the same ones clear a higher bar. That bar is the gate, applied at `decide`'s `DONE` point (§5.2 step 3): the flag is a terminal predicate, not a scope, which is why it is a flag rather than a third value on something that selects work. `DONE` under `--closing` therefore means "the gate is clear, go stamp", and the Orchestrator proposes the verb. A blocked gate comes back as `ESCALATE` rather than as a field on `DONE`, because the pin it calls for is an action the Orchestrator must execute, not a value it might read.
-
-**The gate answers whether; `facts.signoff_basis` answers what.** Admissibility is not the same question as "which proposition am I taking on", and a transfer of responsibility only holds if the person can see the second one. So both surfaces that reach the human carry a **basis** — one row per proof, in `FORWARD_PRIORITY` order: its oracle `ref` and *live* `grade`, the `pinned_fingerprint` when that grade is `human` (a pin names a content fingerprint; "graded human" alone does not say endorsed *what*), the `tool_versions` recorded at reap, and the input paths the verdict was about. `decide --closing` attaches it to `DONE`, `kernel.py signoff` returns it with the landed act, and an `ESCALATE` carries none — nothing is being endorsed when the gate blocks. Every field is already in `events.jsonl`; this is a projection, not new state. Note the asymmetry it exposes: `tool_versions` is the reap-time *environment*, while the version the tool's own report states lives in that stage's `result.json` — two homes of unequal strength, and the basis shows the weaker one.
-
-### 5.6 Dispatch, reap, and `dispatch.json`
-
-**Dispatch.** `kernel.py dispatch --rule <r> [--caused-by <rule>:<run> …] [--diagnosis-refs …] [--params <json>]` re-checks dispatchability, records the `dispatch` event (allocating `run = prior runs + 1` and creating `runs/<N>/`), and returns `{ok, rule, run, workdir, skill, execution}`. For proof-producing rules it snapshots the consumed `inputs` version table into the event (the sole source of `proof.inputs`). Before returning, dispatch performs two workdir-population sub-steps — the dispatch-time dual of promote's place in reap:
-
-- **`store.carry_self`** — for a rule with a non-empty `Rule.carry` — copies the author's own previous canonical products (per `Rule.carry`, minus `Rule.no_carry`) into the fresh workdir, so a rework or incremental round starts from its own last output rather than empty. Copy (`copy2`), not hardlink: canonical shares inodes with the producing run, and a hardlink would let the author corrupt both. A no-op on a genuine first run (no canonical yet) or for a rule with no `Rule.carry` (pure transformers).
-- **`store.write_dispatch`** writes `<workdir>/dispatch.json`, the one thing the kernel tells a run about itself (below).
-
-The Orchestrator branches on the returned `execution`: `main-thread` → `Skill(veripower:<skill>)` (synchronous; the next `decide` reaps it); `task` → `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered template>)` (async; reaped on a later wake). Every dispatch renders the same prompt: what a round is about lives in `dispatch.json`, not in the prompt, which is why there is no per-dispatch template slot to fill and no "mode" a renderer could get wrong.
-
-**`dispatch.json`.** Four keys, and a key is written only when it carries something — `inputs` always, the other three when non-empty. The test for admitting a field is whether the executor could derive it itself; each of these it cannot.
-
-- **`inputs`** = `{key: producer-canonical-stage-root}`, absolute. Each declared input resolves to exactly one producer's stage root (or, for a rule with a `sim_run` param, that specific target run directory); `PIPELINE_INPUTS` resolve to the module root. The executor reads canonical directly at that location — read-only, never a staged copy — and never constructs a cross-stage path itself.
-- **`scope`** = the module-relative inputs that drifted under this rule since its own last run (`facts.stale_inputs`) — the drift that invalidated the proof and triggered this re-dispatch. One meaning, not two: where a fix goes is the analysis's to say, and it says it in the record `caused_by` names. The drift lives in the event log, which no skill reads.
-- **`caused_by`** = the records this round is answering: the *per-run* `result.json` of each `--caused-by <rule>:<run>` failure, plus, for each `--diagnosis-refs` diagnosis, the run that authored it. Both are per-run, not canonical: `runs/<N>/` persists (§7.3) while canonical is overwritten by the next run of that stage, so a later run cannot move what a rework was dispatched against. This is how a triage analysis reaches its fix owner — as the record itself at a kernel-given path, never as a copy. Nothing here is stored on the diagnosis: `kernel._diagnosis_sources` derives both paths from its `subject` plus the log (the analysis as the latest dispatch of that proof's declared diagnostic carrying `params.sim_run == outcome_run`), and the analysis's own `experiment.artifacts[]` are listed inside the envelope thereby named.
-- **`reasons`** = the `reason` of each `--diagnosis-refs` diagnosis whose `source` is `human`, verbatim. A human may know something that is on no disk; that is the one thing this file carries which is not already a file.
-
-A dangling `--caused-by` or an unknown `--diagnosis-refs` is rejected before a run is allocated: the first would hand the executor a path it cannot open, the second would drop that diagnosis's locus and reasoning silently, which is the loss §3.3 forbids.
-
-**The Orchestrator authors no per-dispatch content, and needs none.** At dispatch time every fact it could state is already a file on disk that the target reads — the failing envelope, the diagnoses, `ppa.json`. So it has no content channel: it passes coordinates (`--caused-by`, `--diagnosis-refs`) and the kernel resolves them to paths. A paraphrase of a machine-authored envelope could only lose or distort it, and `scope`'s completeness would become a matter of whoever wrote the prose rather than a union the kernel computes. PPA targets travel by file only: `specification` emits `Design/specification/ppa.json`, and `synthesis`, `power-analysis`, and `rtl-design` each read it at their own injected specification location. The kernel injects no PPA field into any prompt.
-
-**Reap.** `kernel.py reap --rule <r> --run <n>` takes no verdict flag — `cmd_reap` derives everything (§4.7), including the temporal-integrity check: a `result.json` whose `produced_at` predates this run's dispatch is a carried-in stale envelope and is derived `blocked` / `stale_result` (§4.7). It derives the `(verdict, reason, proofs, diagnosis)` 4-tuple, `store.promote`s the produced artifacts into canonical on `pass` *and* `fail` (never on `blocked`), fingerprints the actual promote set into the outcome's `outputs`, appends the `outcome`, and — for a completed triage — appends the derived `diagnosis`. Promote is idempotent (§7.2), so a crash mid-promote is repaired by the next reap.
-
-**Crash recovery folds into the loop.** There is no separate init or recovery phase: the first `dispatch` creates the log; a completed-but-unreaped run is picked up by `decide` step 0. A run whose executor died *without* writing `result.json` stays in-flight and surfaces in `YIELD`'s `in_flight[]`; the Orchestrator, after confirming the executor is dead — only the harness can tell it that, so the kernel offers no signal to read — issues an explicit `reap` that derives `blocked`, unblocking the ledger for re-routing (the Dead-in-flight rule in `skills/design-flow/SKILL.md`).
-
-## 6. Subagent contracts
-
-Subagents are dispatched via the Task tool with fresh context, a restricted prompt, and a per-dispatch workdir. Three contract families: (1) **Stage subagent** — the four Task-dispatched rules; (2) **Main-thread skill** — the four `Skill()`-loaded rules (§2.3); (3) **Debug subagent** — `simulation-triage`. The shared prompt template is `framework/references/prompts/stage-subagent.md.tpl`; its forbidden-actions prose is the enforcement mechanism — `allowed-tools` frontmatter is not used.
-
-### 6.1 Stage subagent
-
-**MUST:**
-
-1. Call `Skill(<veripower:rule-skill>)` and follow its guidance.
-2. Read any upstream input at the absolute location `{workdir}/dispatch.json`'s `inputs` table names for it (canonical, read-only) — never construct a module-relative path or otherwise self-navigate to another stage's output.
-3. Write all artifacts inside the prompt-injected `{workdir}` (i.e. `<workdir_root>/runs/<N>/`).
-4. End with a single line `STATUS: DONE` or `STATUS: BLOCKED <reason>`.
-   - **`STATUS: DONE`** — write an envelope-conformant `result.json` with `status ∈ {pass, fail}` and `artifacts[].path` relative to `{workdir}`; the Orchestrator's `reap` derives pass/fail from it.
-   - **`STATUS: BLOCKED <reason>`** — `result.json` not required; a missing/corrupt one is derived as `blocked` at reap.
-
-**MUST NOT:** call `kernel.py`; re-dispatch any subagent; write outside `{workdir}` (including the canonical dir — promotion is the kernel's job); touch other modules; make any routing decision.
-
-### 6.2 Main-thread skill
-
-The four `Skill()`-loaded rules share the stage-subagent contract — **no `kernel.py`, no routing, no DAG awareness** — plus two permissions: they may interact with the user across turns (`simulation-plan`'s plan loop; `specification`'s two path-handoff gates), and they may dispatch Level-1 sub-Tasks. The Orchestrator loads them via `Skill()` and calls `reap` exactly once when the skill exits; intermediate dialogue and intra-stage fan-out are skill-internal scratch and never enter the log.
-
-#### 6.2.1 Fan-out dispatch privilege
-
-`specification` / `rtl-design` / `simulation` fan out Level-1 sub-Tasks (one per child for the producers; the env-build and verify children for `simulation`); `simulation-plan` self-dispatches a single Level-1 plan-adequacy review sub-Task. Sub-Tasks MUST NOT dispatch further (Level-2 forbidden — the audit boundary). These sub-Tasks run inside the main-thread skill's window: they append no events and are invisible to the kernel's in-flight bookkeeping. A sub-Task may end `STATUS: BLOCKED` as a harness signal (distinct from the envelope's forbidden `status=blocked`); the dispatching skill turns that into a `result.json` `status=fail` listing the failed children, so a later repair can re-dispatch only those.
-
-`rtl-design` additionally runs an intent-review wave over the RTL it ships; the promoted `semantic-review/*.md` set is its proposed oracle. Nothing reduces those reviews to a verdict, counts their coverage, or checks that any landed: a wave that never ran surfaces at the trust boundary instead, where the selector matches nothing, `pin` refuses an unknown fingerprint, and the signoff gate holds while the grade is `proposed` (§5.5). What a review SAYS the stage acts on itself: an RTL defect is repaired by re-dispatching that child, and a defect in `design.md` or a `<child>.md` is named as `specification`'s in `fix_owner`. It has no deterministic spec↔RTL gate either: integration correctness is lint-cdc's elaboration, and the `.v`/`.vh` constraint the kernel's `rtl` selectors depend on is enforced declaratively by `rtl-files.schema.json` when `finalize` validates the sidecars.
-
-**Unified contract for proposed-oracle LLM reviews.** Four stages run a fresh skeptical reviewer over their own output — `specification` Step-7, `rtl-design`, `simulation` conformance, `simulation-plan` Step-4 adequacy — and in each the review is the stage's proposed oracle, promoted and fingerprinted rather than reduced to a stored verdict. What the review says is dispositioned by whether the stage has an in-stage user loop. Stages that do (`specification`, `simulation-plan`) hand it to the user. Stages that do not (`rtl-design`, `simulation` — fan-out only) act on it themselves: a self-locus defect drives a re-dispatch, an upstream-locus defect fails out naming that producer as the `fix_owner` its envelope carries. Either way the endorsement is held to account at `pin`, not at the stage: a script re-reducing a record its own author wrote would only be checking that author against itself.
-
-### 6.3 Debug subagent — `simulation-triage`
-
-`simulation-triage` is the sole debug-class rule and the pipeline's authoritative, graduated root-cause analyzer for simulation failures. It is an ordinary Task rule in the kernel: dispatched with `params.sim_run`, it flows through the same `dispatch → reap` path as any stage, and its `result.json` (the `stage_specific` analysis block) is the artifact the kernel turns into a `diagnosis` at reap (§5.3) — the attribution reaches the scheduler as an event, never as a side-channel file pointer.
-
-- **Input:** the Orchestrator passes `{module, sim_run}` as dispatch params; at dispatch the kernel resolves `sim_run` and every declared input (`design`, `rtl`, `plan`) to their absolute canonical stage roots and writes them to `{workdir}/dispatch.json` (`store.write_dispatch`). Triage reads everything from those injected locations — never self-navigates a module-relative path: the failed simulation's `result.json` and its full `runs/<sim_run>/` (UVM logs, coverage/KDB, and — for a failing test — the full-hierarchy `<test_id>.fsdb`), the spec, RTL, and the simulation-plan scaffold/refmodel.
-- **Method:** it reasons over the failure evidence plus spec and refmodel, and queries the failing run's own FSDB waveform (`fsdbreport`) as fact of the same class. Where that cannot settle the attribution it may build and run a *controlled experiment* in its own workdir — stimulus the real run never drove, an isolation harness, a golden model consistent with the UVM refmodel — never editing canonical RTL. Which of these it spends, and how far, is the subagent's judgment; nothing in the framework meters it.
-- **Output:** a `result.json` whose `stage_specific` carries `analysis_state` and `advisory.{findings[], waveform, experiment}`. At reap the kernel appends one `diagnosis` per distinct `root_cause` — the naming, and nothing else. Where each one points stays in `findings[].anchor`, read from this file by whoever the diagnosis routed to; the paths that reach them are derived from the diagnosis's `subject` (§5.6).
-- **Authority:** an attribution is acted on iff it names a rule inside `simulation`'s input closure (§5.3); a self-pointing one escalates to the operator. The analysis rates its own certainty in no field — a self-assessment whose permissive answer is also its cheaper one gates nothing.
-- **Side effects:** writes only under its own workdir; never edits any other rule's `result.json`, RTL, TB, spec, or plan. NOT read-only (it may build an experiment) and NOT idempotent (a repeat redoes the work); a leaf — no fan-out.
-
-## 7. Workspace layout
-
-Each module's working state lives under the directory `--module` names — the kernel layers no convention on that path, so a module can sit anywhere and the same command reaches it from any working directory. Each rule's canonical directory uses a **dual-layer structure**: a canonical view plus a `runs/<N>/` working area.
-
-### 7.1 Per-module workspace tree
-
-```
-<module-dir>/            # e.g. asic/mychip, or ~/chips/mychip
-├── events.jsonl               # the ONLY durable state (append-only, 6 event types)
-├── .fingerprint-cache.json    # pure mtime/size speed cache — never a fact source
-├── brainstorm.md              # pre-pipeline external input (module root; written by the brainstorm skill)
-├── Design/
-│   ├── specification/
-│   │   ├── result.json                     # canonical (post-promote)
-│   │   ├── design.md / manifest.json / ppa.json / <child>.md
-│   │   ├── spec-review/                    # promoted proposed-oracle artifact (per-child .md + decisions.md)
-│   │   ├── constraints/<TOP>.{sdc,sgdc}     # specification owns these; downstream reads here
-│   │   └── runs/<N>/                        # each dispatch writes here; promote merges into canonical
-│   ├── rtl-design/           { result.json + *.v / rtl-files.json / constraint-annotations.json / semantic-review/*.md + runs/<N>/ }
-│   ├── lint-cdc/             { result.json + reports / *-violations.json / scripts/{constraints.sgdc,waiver.tcl} + runs/<N>/ }
-│   ├── synthesis/            { result.json + out/*_syn.{v,sdc,sdf} / reports/qor.rpt + runs/<N>/ }
-│   └── timing-analysis/      { result.json + timing-report.txt + runs/<N>/ }
-└── Verification/
-│   ├── simulation-plan/      { result.json + verification-plan.md / tb-scaffold.json / sequences.json / power-scenarios.json / plan-review/*.md + runs/<N>/ }
-│   ├── simulation/           { result.json + env.sh / rtl_filelist.f / tb/uvm/* / case-results-summary.md /
-│   │                           conformance-review.md + runs/<N>/ (<test_id>.fsdb per failing test — gc-on-pass, §7.3) }
-│   ├── simulation-triage/    { result.json + runs/<sim_run>/ (analysis; experiment/ when it built one) — proof=None }
-│   └── power-analysis/       { result.json + reports_ptpx/*/power_hier.rpt + runs/<N>/ }
-```
-
-There is no `task.json` — status is derived from `events.jsonl` on demand (§4).
-
-### 7.2 Canonical view + `runs/<N>/` + promote
-
-Subagents always write to `runs/<N>/` (the workdir from `dispatch`); they never write canonical paths. After a run completes on `pass` OR `fail`, `cmd_reap` calls `store.promote`: it builds a `.promote-tmp/` view of `result.json` + every `artifacts[]` entry (all hardlinks; artifact paths are containment-checked so a bypassed-validation producer can never link outside `runs/<N>/`), then per-entry `rename`s each into the canonical directory (removing any stale same-name target first), then best-effort deletes canonical entries no longer in the new view. Canonical files therefore share an inode with the latest promoted run, and downstream rules reading canonical paths always see the freshest completed content.
-
-> **Contract:** Promote is idempotent. A crash mid-promote may leave a stale `.promote-tmp/`; the next reap that promotes this stage re-runs `promote()`, which clears any leftover `.promote-tmp/` before starting and rebuilds the same hardlinks (a no-op), landing exactly one `outcome`. This is what lets the append-only log survive a crash mid-promote.
-
-> **Contract (room-birth hygiene):** A run's workdir is born **without adjudication artifacts**: `result.json` and the judged review records are never seeded into a fresh room, so a workdir `result.json` exists iff this run's executor authored it — and reap enforces the temporal half mechanically (`produced_at` predating the run's dispatch → `blocked` / `stale_result`, §4.7). Carrying prior *products* forward (the minimal-edit baseline) is the kernel's act at dispatch, before the skill runs: `store.carry_self` copies the author's own previous canonical products (per `Rule.carry`, minus `Rule.no_carry`) into the fresh workdir (§5.6) — copy, not hardlink, so the author edits without touching canonical. Every producer rule's judged review record (`spec-review/*.md`, `plan-review/*.md`, `semantic-review/*.md`, `conformance-review.md`) sits in its own `no_carry` set: never carried, always re-derived fresh each round, uniformly across rules — there is no per-rule exception. What remains skill-internal, now that the kernel has already carried products in, is *scope* — which part of the carried-in products this round's edit touches: the union of `dispatch.json`'s `scope` and what its `caused_by` envelopes attribute, and with neither key present, a decision on the workdir itself. A workdir already holding the skill's own prior products is a re-verify, so it re-derives its gate and rewrites nothing; a bare one is a genuine first run, so it authors the full artifact. That last distinction is load-bearing: regenerating an LLM-authored artifact on a re-verify would change the oracle's content, drop its pin to `proposed`, and put a human's next pin on freshly generated text rather than the reviewed one (§5.5).
-
-### 7.3 Disk management
-
-`runs/<N>/` directories persist by default (each dispatch creates a new run, so disk usage grows monotonically); there is no prune verb — a user may manually `rm -rf <rule>/runs/<N>/` after signoff, and canonical files survive via hardlinks. One artifact class breaks default-persist: a failing test's `<test_id>.fsdb` is auto-deleted inline mid-regress the moment that test resolves `PASS`, bounding retained FSDBs to a run's failing minority. That bound is per-run only — a repair storm respinning the same failure across many runs accumulates one retained FSDB per failing run, pruned only by the same manual/run-level cleanup.
-
-Self-carry (`store.carry_self`, §5.6/§7.2) reads from canonical — the GC'd clean product set, parent of `runs/` — never from `runs/<N-1>/` directly, so this section's `runs/` retention policy is unaffected by it.
+| **proof** | A verification conclusion tied to exact input versions, output versions, and an oracle. Validity gets recomputed every time it's queried. |
+| **oracle** | What a proof was judged against. Could be an EDA tool's ruleset or an LLM-authored review or reference model. |
+| **grade** | How much you can trust an oracle. **tool** means authoritative. **proposed** means an LLM assessed its own work (good enough to iterate on, not enough for signoff). **human** means a person endorsed a proposed oracle via pin. |
+| **pin** / **reopen** | How humans grant and withdraw trust in a proposed oracle. A pin is anchored to the oracle content's fingerprint, so if the content changes, the pin lapses. |
+| **rule** | One unit of work the kernel schedules, with declared inputs, outputs, proof, and oracle. The dependency graph falls out of these declarations. |
+| **projection** | Per-rule status (valid, stale, failed, blocked, in-flight, or missing) computed from the event log and disk on demand. Never stored. |

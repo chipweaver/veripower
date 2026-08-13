@@ -100,8 +100,8 @@ standardization policy but is not part of the LLM runtime contract and
 does not fall under the Bilingual Invariant.
 
 **Committed bilingual mirrors.** A few human-facing docs carry a committed
-`.zh.md` mirror for Chinese readers (currently `ARCHITECTURE.zh.md` and
-`GETTING-STARTED.zh.md`). A mirror is a translation of its English source,
+`.zh.md` mirror for Chinese readers (currently `ARCHITECTURE.zh.md`).
+A mirror is a translation of its English source,
 not an independent document: the English source is authoritative and the
 mirror MUST be updated in the same change as that source, so the two never
 diverge on a load-bearing fact.
