@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 class Rule:
     name: str
     skill: str
+    # A rule that fans out into Level-1 sub-Tasks must be "main-thread": a task
+    # subagent may dispatch none (framework/references/prompts/stage-subagent.md.tpl).
     execution: str  # "task" | "main-thread"
     workdir_root: tuple[str, ...]
     inputs: dict[str, tuple[str, ...]] = field(default_factory=dict)

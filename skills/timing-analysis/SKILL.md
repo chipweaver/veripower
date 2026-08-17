@@ -20,6 +20,8 @@ or hold by eye — `finalize` classifies both off the report and writes the verd
 
 ## What you read, and what you produce
 
+`<skill>` is this skill's own base directory, named on the first line of this file.
+
 `{workdir}/dispatch.json` carries the `inputs` table, but you open none of what it points at:
 `bootstrap` resolves `<TOP>` from the single `out/<TOP>_syn.v` under the synthesis stage root and
 bakes absolute paths into the TCL, which reads that netlist and the SDC synthesis exported
@@ -40,7 +42,7 @@ Export `LIB_DB`, then run `bootstrap` to lay down the run scaffold:
 
 ```bash
 export LIB_DB=<path-to-slow.db>
-python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py bootstrap --workdir {workdir}
+python3 <skill>/scripts/timing/__main__.py bootstrap --workdir {workdir}
 ```
 
 It deploys `run_sta.tcl` + `config.tcl`, resolves `<TOP>`, verifies the netlist and SDC the TCL
@@ -69,7 +71,7 @@ Run `finalize` to write the envelope. Every run ends here, a `pt_shell` that nev
 report included, and you never hand-assemble it:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/timing/__main__.py finalize \
+python3 <skill>/scripts/timing/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] \
   [--fail-reason "<cause>"]
 ```

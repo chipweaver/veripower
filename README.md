@@ -51,12 +51,30 @@ Bare agents write correct RTL but can't catch their own blind spots when testing
 
 ## Quickstart
 
+**Claude Code**
+
 ```bash
 claude plugin marketplace add chipweaver/veripower
 claude plugin install veripower@chipweaver
 ```
 
 Or point at a working copy: `claude --plugin-dir /path/to/veripower`.
+
+**opencode** — add the plugin to `~/.config/opencode/opencode.json`, or to a project-level
+`opencode.json`:
+
+```json
+{ "plugin": ["veripower@git+https://github.com/chipweaver/veripower.git"] }
+```
+
+Stage dispatch runs subagents in the background, which opencode gates behind an environment
+variable, so start it with:
+
+```bash
+OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true opencode
+```
+
+Ask it to list its skills — the twelve VeriPower ones confirm the install.
 
 Run the `brainstorm` skill to settle requirements first, then tell the agent:
 

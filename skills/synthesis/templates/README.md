@@ -1,7 +1,7 @@
 # synthesis run directory
 
 Design Compiler synthesis for one module, deployed here by the `veripower:synthesis` stage's
-bootstrap verb. The stage SOP lives in `${CLAUDE_SKILL_DIR}/SKILL.md`.
+bootstrap verb. That skill's own `SKILL.md` is the stage SOP.
 
 `make help` lists the targets. `make synthesis` runs `dc_shell` and tees `run.log`; the netlist
 and post-synthesis constraints land in `out/`, the reports in `reports/`.

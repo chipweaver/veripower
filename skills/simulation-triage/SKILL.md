@@ -15,8 +15,9 @@ stage re-derives it, so what you land is what gets rebuilt.
   logs, plan) but never modify another stage's canonical output — RTL, TB, spec, plan, or any
   other stage's `result.json`. The only files you write live under your own `{workdir}`.
 - **Scripts are black boxes — never Read their source.** Invoke them per this skill's documented command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol (stderr / `FAIL=` token / stdout verdict), not the source. Sole exception: debugging a suspected bug in a script itself.
-
 ## Artifacts
+
+`<skill>` is this skill's own base directory, named on the first line of this file.
 
 Read `{workdir}/dispatch.json` first — the kernel writes it at dispatch. Its `inputs` table maps four keys to
 absolute cross-stage locations; read those directly and never construct a module-root-relative
@@ -146,7 +147,7 @@ carries `analysis_state` and `skipped_reason`, nothing else.
 Run `finalize` to schema-gate the judgment and atomically write `{workdir}/result.json`:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/simtriage/__main__.py finalize \
+python3 <skill>/scripts/simtriage/__main__.py finalize \
   --workdir {workdir} \
   --json-file <path to the analysis JSON you assembled>   # or --json-stdin
 ```

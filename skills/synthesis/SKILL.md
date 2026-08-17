@@ -19,6 +19,8 @@ Design Compiler against it, and close the run through the `synthesis` CLI.
 
 ## What you read, and what you edit
 
+`<skill>` is this skill's own base directory, named on the first line of this file.
+
 `{workdir}/dispatch.json` carries the `inputs` table below, so `<key>` denotes a location and you
 read `<key>/<subpath>`. It also carries `scope` and `caused_by` when the kernel knows what changed
 since your last run: those narrow which inherited exceptions you re-check and which violations you
@@ -53,7 +55,7 @@ re-synthesis per round. Everything else under `{workdir}` is produced by the too
 Run `bootstrap` to lay down the run scaffold:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
+python3 <skill>/scripts/synthesis/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
 ```
 
 It generates `scripts/rtl_load.tcl` and `scripts/config.tcl` from the rtl-design file layout, and
@@ -125,7 +127,7 @@ Run `finalize` to write the envelope. Every run ends here, a dc_shell that never
 reports included, and you never hand-assemble it:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/synthesis/__main__.py finalize \
+python3 <skill>/scripts/synthesis/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] \
   [--fail-reason "<cause>"]
 ```

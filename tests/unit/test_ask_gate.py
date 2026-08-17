@@ -63,11 +63,11 @@ def test_signoff_is_gated():
     assert gate.gated_verb(cmd) == "signoff"
 
 
-def test_plugin_root_invocation_is_gated():
-    """The form the skills actually emit once installed as a plugin."""
+def test_install_path_invocation_is_gated():
+    """The form the orchestrator emits: `<skill>` resolved against the install."""
     cmd = (
-        'python3 "${CLAUDE_PLUGIN_ROOT}"/framework/scripts/kernel.py pin '
-        "--module fifo --rule simulation --provenance mhc --reason x"
+        "python3 /plugins/veripower/skills/design-flow/../../framework/scripts/"
+        "kernel.py pin --module fifo --rule simulation --provenance mhc --reason x"
     )
     assert gate.gated_verb(cmd) == "pin"
 

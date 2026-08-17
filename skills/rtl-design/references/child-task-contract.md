@@ -1,19 +1,20 @@
 # Per-child RTL sub-Task contract
 
-The rtl-design main thread dispatches one Level-1 `Task(run_in_background=True)` per child in
+The rtl-design main thread dispatches one Level-1 sub-Task per child in
 `manifest.children[]` (including the top-integration child). Every child gets the identical contract
 below. Do not call the Task tool: a sub-Task of yours would append no event and sit outside the
 kernel's accounting, where nothing could audit it.
 
 ## Inputs (paths only — the main thread does not read these bodies)
 
+- `<skill>` — the rtl-design skill's own base directory, handed over by the main thread.
 - Child unit name + its `manifest.children[<self>].rtl_modules[]` list.
 - Your per-child design doc, at the path the main thread hands you from `manifest.children[<self>].doc`
   (the registry SSoT; nothing is copied into `{workdir}`, so never guess a workdir-local path). It is the
   full per-child sub-design and you are its sole consumer, self-contained:
   `frontmatter.ports` = injected `interconnects.json` cut-edges, `frontmatter.clocks` ⊆ `clocks.json`;
   the top-integration child's §3.1 instantiation map wires those same edges.
-- `${CLAUDE_SKILL_DIR}/references/coding-rules.md` — the RTL coding rules your files must follow.
+- `<skill>/references/coding-rules.md` — the RTL coding rules your files must follow.
 - `top-io.json` and `interconnects.json` paths — the boundary and the cut edges. Read them for
   `set_case_analysis` (← `top-io.json`), `quasi_static` (← `interconnects.json`) and top wiring.
 - `clocks.json` path (specification workdir) — the clock definitions. Read it for

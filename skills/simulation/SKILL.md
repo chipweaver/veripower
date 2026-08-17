@@ -10,9 +10,8 @@ testbench, establish that the checks in it verify what the plan asked for, and c
 through the `sim` CLI. You do that as a dispatcher over three sequential sub-Tasks, gating each
 time on what the wave left on disk rather than on what it says about itself.
 
-This skill runs on the main thread, invoked as `Skill(veripower:simulation)`. You never author TB
-inline, never read the TB body, and never re-run heavy EDA: what you read is status files,
-envelopes and paths.
+You never author TB inline, never read the TB body, and never re-run heavy EDA: what you read is
+status files, envelopes and paths.
 
 ## Iron Rule
 
@@ -28,6 +27,8 @@ envelopes and paths.
   stage through the compile filelist and nowhere else.
 
 ## What you read, and who writes the rest
+
+`<skill>` is this skill's own base directory, named on the first line of this file.
 
 `{workdir}/dispatch.json` carries the `inputs` table below, so `<key>` denotes a location and you
 read `<key>/<subpath>`. None of it needs an existence check: the kernel dispatches you only once
@@ -78,8 +79,8 @@ and leave the re-dispatch to a repair round.
 
 Dispatch one `Task(run_in_background=True)`, the env-build child, pointing its prompt at
 [`references/env-task-contract.md`](references/env-task-contract.md) and handing over paths only:
-`{workdir}`, `{module}`, the scaffold-spec path, the verification-plan path, and this round's edit
-scope. It bootstraps, fills every rendered `TODO(` within the Rule A repair boundary
+`{workdir}`, `{module}`, `<skill>`, the scaffold-spec path, the verification-plan path, and this
+round's edit scope. It bootstraps, fills every rendered `TODO(` within the Rule A repair boundary
 ([`references/repair-boundaries.md`](references/repair-boundaries.md)), compiles, runs smoke, and
 self-gates its own `STATUS: DONE` on `sim check-materialization` so a hollow TB cannot reach the
 verify run.
@@ -87,7 +88,7 @@ verify run.
 On `STATUS: BLOCKED <reason>`, close the round and dispatch nothing further:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize --workdir {workdir} \
+python3 <skill>/scripts/sim/__main__.py finalize --workdir {workdir} \
   --phase env-blocked --failure-phase <compile|smoke|prerequisite> \
   --fail-reason "<reason>"
 ```
@@ -137,7 +138,7 @@ whether the check can be made adequate at all.
   its word, without re-running the reviewer, since nothing changed to re-judge:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize --workdir {workdir} \
+python3 <skill>/scripts/sim/__main__.py finalize --workdir {workdir} \
   --phase conformance --fail-reason "<the fixer's reason>"
 ```
 
@@ -164,7 +165,7 @@ found. It carries no `BLOCKING`, so it does not gate: an absent judgment is not 
 Dispatch one `Task(run_in_background=True)`, the verify child, pointing its prompt at
 [`references/verify-task-contract.md`](references/verify-task-contract.md) and handing over the same
 `{workdir}` (now holding the built TB, a compiled `simv` and `verify-handoff.json`), the
-scaffold-spec path, and `{module}`. It runs the full regression and iterates stimulus against the
+scaffold-spec path, `{module}`, and `<skill>`. It runs the full regression and iterates stimulus against the
 coverage thresholds within the Rule B boundary
 ([`references/coverage-iteration.md`](references/coverage-iteration.md)). It repairs nothing: a
 regress failure routes out with `failing_cases` for the caller to attribute.
@@ -186,10 +187,10 @@ On a clean verify verdict, run finalize. Do not hand-assemble the envelope, re-d
 copy a gate verdict across by hand.
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py finalize \
+python3 <skill>/scripts/sim/__main__.py finalize \
   --workdir {workdir} --phase final \
   --plan <scaffold> \
-  --thresholds ${CLAUDE_SKILL_DIR}/defaults.yaml \
+  --thresholds <skill>/defaults.yaml \
   --conformance-review {workdir}/conformance-review.md \
   --verify-verdict {workdir}/<reaped-verify-verdict>.json \
   [--fix-owner <rule>]

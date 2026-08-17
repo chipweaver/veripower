@@ -10,8 +10,9 @@ Your sole responsibility: turn `manifest.json`'s child roster into authored RTL.
 ## Iron Rule
 
 - **`design.md` and the per-child `<child>.md` are the intent source.** Never modify either; no RTL-level adjustment overrides an architectural decision.
-
 ## Artifacts
+
+`<skill>` is this skill's own base directory, named on the first line of this file.
 
 Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key to a location, so `<key>/<subpath>` is how you address one. Every key resolves to the specification stage root, so `<design>` reaches its sibling sidecars too.
 
@@ -36,7 +37,7 @@ Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `re
 
 ## Task
 
-Dispatch one Level-1 `Task(run_in_background=True)` per child in `manifest.children[]`, prompt per [`references/child-task-contract.md`](references/child-task-contract.md). Then send a brief status and end the turn. Their reports are what you write `rtl-files.json` and `constraint-annotations.json` from, keyed by child name.
+Dispatch one Level-1 `Task(run_in_background=True)` per child in `manifest.children[]`, prompt per [`references/child-task-contract.md`](references/child-task-contract.md), handing each the paths that contract names, `<skill>` among them. Then send a brief status and end the turn. Their reports are what you write `rtl-files.json` and `constraint-annotations.json` from, keyed by child name.
 
 Both sidecars must end up carrying an entry for every child in the manifest: every downstream filelist is generated from `rtl-files.json`, so a child missing from it never reaches a tool. A round that re-authored only some children therefore overlays its reports onto the entries already in `{workdir}` instead of writing the file from scratch, and `finalize` stops the round while an entry is missing. A child that reports `STATUS: BLOCKED` has no entry to write: close the round with `--fail-reason` naming it.
 
@@ -49,7 +50,7 @@ Nothing reduces those reviews to a verdict. Read them and act: re-dispatch the c
 **Write the envelope.**
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/rtl/__main__.py finalize --workdir {workdir} --manifest <manifest>/manifest.json [--fail-reason "<one line>"] [--fix-owner <rule>]
+python3 <skill>/scripts/rtl/__main__.py finalize --workdir {workdir} --manifest <manifest>/manifest.json [--fail-reason "<one line>"] [--fix-owner <rule>]
 ```
 
 `finalize` derives the envelope from disk. It validates both sidecars against their schemas, and refuses to write a pass while a manifest child has no entry in them or a file they name is not in `{workdir}`.

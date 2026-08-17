@@ -1,8 +1,8 @@
 # power-analysis run directory
 
 Gate-level power simulation and PrimeTime PX averaged power analysis for one module, deployed
-here by the `veripower:power-analysis` stage's bootstrap verb. The stage SOP lives in
-`${CLAUDE_SKILL_DIR}/SKILL.md`.
+here by the `veripower:power-analysis` stage's bootstrap verb. That skill's own `SKILL.md` is the
+stage SOP.
 
 `make help` lists the targets. `make all` is the whole flow: it builds `simv` against the
 synthesis netlist and the simulation testbench, runs one simulation per power scenario into

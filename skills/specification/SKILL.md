@@ -16,6 +16,8 @@ Write only under `{workdir}`; never another module's artifacts. Reading template
 
 ## Artifacts
 
+`<skill>` is this skill's own base directory, named on the first line of this file.
+
 Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key to a location, so `<key>/<subpath>` is how you address one. The only input is `<brainstorm>/brainstorm.md` (`brainstorm` is a PIPELINE_INPUT, so `<brainstorm>` is the module root) — frozen for the run, and read only inside the sub-Tasks that need it.
 
 Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `references/<name>.schema.json`.
@@ -59,7 +61,7 @@ Dispatch one Level-1 sub-Task per `references/decompose-task-contract.md`. In it
 **Gate, script.** Run `derive-ports` to compute each child's inter-module ports, the `interconnects.json` wires whose producers or consumers include one of that child's `rtl_modules`:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py derive-ports --workdir {workdir}
+python3 <skill>/scripts/spec/__main__.py derive-ports --workdir {workdir}
 ```
 
 It also decides the top-partition purity rule, since this is the last moment the partition is still editable. On success the port map is on stdout, and Wave 2 injects it. A non-zero exit names the defect on stderr; every one of them routes a Wave-1 rework sub-Task.
@@ -73,7 +75,7 @@ Dispatch one sub-Task per child, each writing `{workdir}/<child>.md` per `refere
 **Gate, script.** Run `check-crossrefs`. N children authored their docs and check hints in parallel, so it reports what only a join can see: a name one of them wrote that resolves nowhere, or a target nobody claimed.
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py check-crossrefs --workdir {workdir}
+python3 <skill>/scripts/spec/__main__.py check-crossrefs --workdir {workdir}
 ```
 
 The verdict is structured on stdout and a non-clean one exits non-zero. **Fix nothing yourself.** Each disagreement names both sides, and which of the two is wrong is a judgment: the child may have mistyped a port, or the boundary may be missing it. Decide that, then route the rework to whoever authored that file, Wave 1 for a sidecar and the affected child for a `<child>.md` or its check hints.
@@ -81,7 +83,7 @@ The verdict is structured on stdout and a non-clean one exits non-zero. **Fix no
 On a clean gate, immediately derive the constraints:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py derive-constraints --workdir {workdir}
+python3 <skill>/scripts/spec/__main__.py derive-constraints --workdir {workdir}
 ```
 
 It generates `constraints/<TOP>.{sdc,sgdc}` from `clocks.json` + `top-io.json`. Running it here, before the human gate, surfaces defects no cross-file join can see (the exactly-one-`primary` rule, clock-name collisions) while a rework is still cheap. It reads only the Wave-1 sidecars, so a defect it reports on stderr routes to Wave 1.
@@ -109,7 +111,7 @@ On reject, re-run from wherever their feedback starts: a body change re-enters a
 Every run ends here, an unresolvable failure included:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/spec/__main__.py finalize \
+python3 <skill>/scripts/spec/__main__.py finalize \
   --workdir {workdir} --status <pass|fail> [--fail-reason "<one-line reason>"]
 ```
 
