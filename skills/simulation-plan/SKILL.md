@@ -14,8 +14,9 @@ only what it reads.
 - Write only under `{workdir}`; never another module's artifacts.
 - Do not read RTL source, do not invoke EDA tools. A plan written from the implementation verifies
   the implementation against itself.
-
 ## Artifacts
+
+`<skill>` is this skill's own base directory, named on the first line of this file.
 
 Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key
 to a location, so `<key>/<subpath>` is how you address one. `design` / `manifest` / `children` /
@@ -99,8 +100,8 @@ Coverage does not fall; a bin that could never be hit was never coverage.
 `check-scaffold` to validate the sidecars' structure, semantics, and coverage matrix:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py materialize-scaffold --plan {workdir} --spec <design>
-python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py check-scaffold --plan {workdir} --spec <design>
+python3 <skill>/scripts/simplan/__main__.py materialize-scaffold --plan {workdir} --spec <design>
+python3 <skill>/scripts/simplan/__main__.py check-scaffold --plan {workdir} --spec <design>
 ```
 
 Both run on every pass. Each names the defect on stderr; `materialize-scaffold` also names the
@@ -138,7 +139,7 @@ Then the user approves, requests changes, or rejects:
 Every run ends here, including one you could not carry to the human gate:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/simplan/__main__.py finalize \
+python3 <skill>/scripts/simplan/__main__.py finalize \
   --workdir {workdir} --spec <design> \
   [--status fail] [--fail-reason "<one-line reason>"] [--fix-owner <rule>] \
   [--revision '<one-line revision narrative>']

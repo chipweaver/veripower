@@ -1,6 +1,6 @@
 # Conformance-fix sub-Task contract (dispatched when the conformance gate trips)
 
-The simulation main thread dispatches this Level-1 `Task(run_in_background=True)` on every
+The simulation main thread dispatches this Level-1 sub-Task on every
 conformance trip. Do not call the Task tool (no Level-2 dispatch) and do not call `kernel.py`: the
 parent session owns state transitions.
 

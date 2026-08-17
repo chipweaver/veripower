@@ -14,6 +14,7 @@ smoke gate passes and the conformance gate clears. Your job: full regression, co
   `testpoints[].id` to cross-reference `verify-handoff.json`. (`agents` / `sequences` / `tests` are
   already materialized; do not re-materialize.)
 - `{module}`: the module name.
+- `<skill>`: the simulation skill's own base directory.
 
 `{workdir}/verify-handoff.json` maps each testpoint to the sequences env wired toward it, which
 is the second half of a Rule B classification: you place an uncovered item on a testpoint, and

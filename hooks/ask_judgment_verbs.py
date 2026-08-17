@@ -22,8 +22,8 @@ import sys
 GATED = ("pin", "reopen", "signoff")
 
 # The verb is the token right after kernel.py, whatever the path in front of it
-# ("${CLAUDE_PLUGIN_ROOT}"/framework/scripts/kernel.py, a bare relative path, a
-# `cd … && python3 …` compound).
+# (the install path the orchestrator resolves, `..` segments and all, a bare
+# relative path, a `cd … && python3 …` compound).
 _INVOCATION = re.compile(r"kernel\.py\s+([a-z]+)")
 _HELP = re.compile(r"(?<!\S)(--help|-h)(?!\S)")
 

@@ -8,9 +8,11 @@ description: Use when checking whether this machine's Python, EDA tools and lice
 Pre-pipeline, own session. Write no module file, append no event, call no `kernel.py` verb.
 Report only; nothing in the pipeline depends on this having run.
 
+`<skill>` is this skill's own base directory, named on the first line of this file.
+
 ## 1. Presence
 
-`${CLAUDE_SKILL_DIR}/../../docs/eda-env.md` is the requirement source — read it and run each
+`<skill>/../../docs/eda-env.md` is the requirement source — read it and run each
 row's sanity check rather than restating it here. Two exceptions: its check for `LIB_DB` /
 `LIB_V` / `UVM_HOME` is a stage `env.sh` guard that presupposes a deployed work tree, so here
 test that each is set and its path readable; and `make` / `urg` have no row there at all.
@@ -35,7 +37,7 @@ What a missing row costs:
 Presence is not a checkout. Ask which stages to cover — cover every row when there is nobody to
 ask — then run one minimal job per row in a temp dir: write the DUT (one clocked flop), the TB
 (`import uvm_pkg::*`) and each tcl yourself, mirroring how that stage invokes the tool in
-`${CLAUDE_SKILL_DIR}/../<stage>/templates/`. A row passes iff it produces the file below.
+`<skill>/../<stage>/templates/`. A row passes iff it produces the file below.
 
 | Checkout | Hinges on | Produces | Gates |
 |---|---|---|---|

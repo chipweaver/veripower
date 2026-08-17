@@ -31,7 +31,7 @@ from _skills_sot import PLUGIN_ROOT, SKILL_DIRS
 # The slash filters out bare-name runtime artifacts (design.md, brainstorm.md,
 # etc.) which legitimately live nowhere in the source tree.
 _PATH_RE = re.compile(
-    r"`(?:\$\{CLAUDE_SKILL_DIR\}/)?("
+    r"`(?:<skill>/)?("
     r"references/[a-zA-Z0-9_./-]+"
     r"|framework/[a-zA-Z0-9_./-]+"
     r"|skills/[a-zA-Z0-9_./-]+"
@@ -62,6 +62,30 @@ def test_path_references_resolve(skill_name: str) -> None:
     assert not missing, (
         f"SKILL.md {skill_name}: file-path references that do not resolve — "
         + "; ".join(f"`{cited}` → {tgt} (not found)" for cited, tgt in missing)
+    )
+
+
+@pytest.mark.parametrize("skill_name", SKILL_DIRS)
+def test_reference_md_path_references_resolve(skill_name: str) -> None:
+    """Same check over references/*.md — the Level-1 task contracts.
+
+    Kept separate from SKILL.md because nothing renders these: a sub-Task is
+    handed the file and reads it as-is, so a citation that only resolves after
+    substitution resolves for nobody.
+    """
+    ref_dir = PLUGIN_ROOT / "skills" / skill_name / "references"
+    if not ref_dir.is_dir():
+        pytest.skip("no references/ dir")
+    missing: list[tuple[str, str, str]] = []
+    for md in sorted(ref_dir.glob("*.md")):
+        for m in _PATH_RE.finditer(md.read_text(encoding="utf-8")):
+            cited = m.group(1)
+            target = _resolve(skill_name, cited)
+            if not target.exists():
+                missing.append((md.name, cited, str(target.relative_to(PLUGIN_ROOT))))
+    assert not missing, (
+        f"references markdown in {skill_name}: unresolved path refs — "
+        + "; ".join(f"{f}: `{c}` → {t}" for f, c, t in missing)
     )
 
 

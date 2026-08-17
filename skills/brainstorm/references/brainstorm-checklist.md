@@ -96,7 +96,7 @@ Cover at least the following decision dimensions; for each, present 2–3 candid
 - Centralized vs. distributed state machines.
 - FIFO / buffer size and placement.
 
-Rendering conventions (side-by-side mermaid) are documented in `${CLAUDE_PLUGIN_ROOT}/skills/specification/references/design-template.md` §Rendering Conventions. Side-by-side example:
+Rendering conventions (side-by-side mermaid) are documented in `../../specification/references/design-template.md` §Rendering Conventions. Side-by-side example:
 
 ### Candidate A: 2-stage pipeline
 
@@ -119,7 +119,7 @@ flowchart LR
 - Exception scenarios (timeout, illegal request, reset interrupting a transaction).
 - For each scenario: `trigger/stimulus → expected result → timing constraint`.
 
-Rendering conventions (hand-drawn ASCII preferred / wavedrom — note that GitHub does not render wavedrom) are documented in `${CLAUDE_PLUGIN_ROOT}/skills/specification/references/design-template.md` §Rendering Conventions; an ASCII timing example is in design-template.md §1.5.
+Rendering conventions (hand-drawn ASCII preferred / wavedrom — note that GitHub does not render wavedrom) are documented in `../../specification/references/design-template.md` §Rendering Conventions; an ASCII timing example is in design-template.md §1.5.
 
 ## D6. PPA Targets
 
@@ -130,7 +130,7 @@ Rendering conventions (hand-drawn ASCII preferred / wavedrom — note that GitHu
 
 ## D7. Verification Input Field Readiness
 
-Cross-check against the sidecar schemas the specification stage will have to fill: `${CLAUDE_PLUGIN_ROOT}/skills/specification/references/` holds `features` / `timing-scenarios` / `top-io` / `interconnects` / `check-hints` `.schema.json`, each field carrying its own description. The brainstorm only acts as a reminder; the actual fields land during the design.md authoring stage. Missing items are called out by name in the `Verification Inputs Readiness` section of brainstorm.md.
+Cross-check against the sidecar schemas the specification stage will have to fill: `../../specification/references/` holds `features` / `timing-scenarios` / `top-io` / `interconnects` / `check-hints` `.schema.json`, each field carrying its own description. The brainstorm only acts as a reminder; the actual fields land during the design.md authoring stage. Missing items are called out by name in the `Verification Inputs Readiness` section of brainstorm.md.
 
 ## Subsection IDs and Stable Anchors
 

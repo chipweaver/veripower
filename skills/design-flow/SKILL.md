@@ -6,7 +6,8 @@ description: Use when progressing IC design through stages, checking module stat
 # Design Flow Orchestrator
 
 You are the **Orchestrator**. Every turn you run one deterministic step against the
-kernel tool `python3 framework/scripts/kernel.py` (written `kernel.py` below):
+kernel tool `python3 <skill>/../../framework/scripts/kernel.py` (written `kernel.py` below).
+`<skill>` is this skill's own base directory, named on the first line of this file.
 
 ```text
 loop:
@@ -46,7 +47,7 @@ The action carries `dispatch_args`, the exact argv for this dispatch. Run `kerne
 it as-is:
 
 ```bash
-python3 framework/scripts/kernel.py <action.dispatch_args…>
+python3 <skill>/../../framework/scripts/kernel.py <action.dispatch_args…>
 ```
 
 It re-checks dispatchability at this instant, records the dispatch event, and returns
@@ -55,8 +56,8 @@ stage list you keep yourself:
 
 | `execution` | executor |
 |---|---|
-| `main-thread` | `Skill(veripower:<skill>)`, the skill from the dispatch return. |
-| `task` | Render `framework/references/prompts/stage-subagent.md.tpl`, filling **every** template slot: `{module}`; the stage and skill lines from the dispatch return's `rule` / `skill`; `{workdir}` from the dispatch return. Then `Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered template>)`. |
+| `main-thread` | `Skill()`, passing the dispatch return's `skill` verbatim. |
+| `task` | Render `<skill>/../../framework/references/prompts/stage-subagent.md.tpl`, filling **every** template slot: `{module}`; the stage and skill lines from the dispatch return's `rule` / `skill`; `{workdir}` from the dispatch return. Then `Task(run_in_background=True, prompt=<rendered template>)`. |
 
 Every task dispatch renders identically, including `simulation-triage`: what the round is
 about is in the kernel-written `{workdir}/dispatch.json`, never in the prompt.

@@ -58,5 +58,5 @@ the coverage route-out.
 
 ## Threshold source
 
-`${CLAUDE_SKILL_DIR}/defaults.yaml.coverage_thresholds`. Every dimension's threshold is fixed there;
+`coverage_thresholds` in `<skill>/defaults.yaml`. Every dimension's threshold is fixed there;
 per-module override is not supported.

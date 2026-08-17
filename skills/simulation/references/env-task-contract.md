@@ -1,6 +1,6 @@
 # env-build sub-Task contract (wave 1)
 
-The simulation main thread dispatches **one** Level-1 `Task(run_in_background=True)`, the
+The simulation main thread dispatches **one** Level-1 sub-Task, the
 env-build child, as the first of three sequential waves. Your job: bootstrap the stage workdir, fill
 the UVM scaffold, compile, and run the smoke suite.
 
@@ -10,6 +10,7 @@ the UVM scaffold, compile, and run the smoke suite.
   child runs in the same directory in wave 3. On a rework it already holds the previous round's
   TB; on a first run it is empty.
 - `{module}`: the module name.
+- `<skill>`: the simulation skill's own base directory.
 - plan-sidecar dir `<scaffold>/`: holds the two sidecars this stage declares,
   `tb-scaffold.json` (the TB scaffold contract: `agents` / `tests` are materialized into SV
   here, and `testpoints[].inlined_check_hints[]` triggers cycle-accurate refmodel / scoreboard
@@ -31,7 +32,7 @@ the UVM scaffold, compile, and run the smoke suite.
 1. **Bootstrap + scaffold**:
 
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} --plan <scaffold>
+   python3 <skill>/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} --plan <scaffold>
    ```
 
    Deploys the infrastructure and the scaffold into `{workdir}`, including functional sequence
@@ -87,7 +88,7 @@ the UVM scaffold, compile, and run the smoke suite.
 4. **Env-exit completeness self-gate**: before reporting `STATUS: DONE`, run
 
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/scripts/sim/__main__.py check-materialization --workdir {workdir} --plan <scaffold>
+   python3 <skill>/scripts/sim/__main__.py check-materialization --workdir {workdir} --plan <scaffold>
    ```
 
    This is a **presence** gate: it fails (non-zero) if any required scaffold SV file is missing

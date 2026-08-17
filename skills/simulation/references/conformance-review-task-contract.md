@@ -1,6 +1,6 @@
 # Conformance review sub-Task contract (gating)
 
-The simulation main thread dispatches one Level-1 `Task(run_in_background=True)` — the
+The simulation main thread dispatches one Level-1 sub-Task — the
 conformance reviewer — as Wave 2 (Step 4) AFTER the deterministic smoke gate passes
 and BEFORE the verify wave. This review is **gating**: a finding you mark blocking stops the round. Do not call the Task
 tool (no Level-2 dispatch) and do not call `kernel.py`.

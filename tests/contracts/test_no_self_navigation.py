@@ -109,7 +109,7 @@ def test_no_code_cross_stage_path_construction():
 # (file, 1-based line number) -> justification. Each entry inspected by hand.
 _SKILL_MD_ALLOWLIST = {
     # advisory prose FORBIDDING the anti-pattern, not an instance of it.
-    ("skills/simulation-triage/SKILL.md", 23): (
+    ("skills/simulation-triage/SKILL.md", 24): (
         "prose instructing the skill to NEVER construct such a path itself — "
         "the guard-rail statement, not a violation of it"
     ),

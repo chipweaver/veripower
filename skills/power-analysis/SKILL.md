@@ -21,6 +21,8 @@ over each of them, and close the run through the `power` CLI. You never grade `p
 
 ## What you read, and what you produce
 
+`<skill>` is this skill's own base directory, named on the first line of this file.
+
 `{workdir}/dispatch.json` carries the `inputs` table, and you open almost none of what it points
 at: `bootstrap` resolves `<TOP>` from the single `out/<TOP>_syn.v` under the synthesis stage root
 and writes every upstream location into `env.sh`, which the `make` targets read from there. The
@@ -56,7 +58,7 @@ Everything under `{workdir}` is produced by the tools you invoke, and `finalize`
 Export the three env vars, then run `bootstrap` to lay down the run scaffold:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
+python3 <skill>/scripts/power/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
 ```
 
 It copies the templates, resolves `<TOP>`, substitutes the upstream locations into `env.sh`,
@@ -84,7 +86,7 @@ Every run ends here, a non-zero `make` included. `finalize` is the only writer o
 and you never hand-assemble the envelope:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/power/__main__.py finalize \
+python3 <skill>/scripts/power/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] \
   [--fail-reason "<cause>"]
 ```

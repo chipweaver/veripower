@@ -1,6 +1,6 @@
 # Intent review sub-Task contract
 
-The rtl-design main thread dispatches fresh Level-1 `Task(run_in_background=True)` reviewers over
+The rtl-design main thread dispatches fresh Level-1 reviewers over
 `manifest.children[]`, on every round that reaches a written sidecar; you are assigned one or more
 of those children. You write your own review files. Nothing reduces them to a verdict and no script
 parses them, so write for the engineer who reads them before this RTL ships. Do not call the Task

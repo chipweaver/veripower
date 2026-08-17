@@ -19,6 +19,8 @@ this module's RTL, and close the run through the `lintcdc` CLI.
 
 ## What you read, and what you edit
 
+`<skill>` is this skill's own base directory, named on the first line of this file.
+
 `{workdir}/dispatch.json` carries the `inputs` table below, so `<key>` denotes a location and
 you read `<key>/<subpath>`. It also carries a `scope` list when the kernel knows which inputs
 changed since your last run: that narrows what you triage, never what the tool analyzes.
@@ -51,7 +53,7 @@ enumerates it into `artifacts[]` for you.
 Run `bootstrap` to lay down the run scaffold:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
+python3 <skill>/scripts/lintcdc/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
 ```
 
 It deploys NO-CLOBBER so your two files survive, substitutes the `MY_TOP` placeholder, and
@@ -112,7 +114,7 @@ Run `finalize` to write the envelope. Every run ends here, a failed `make` inclu
 never hand-assemble it:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/lintcdc/__main__.py finalize \
+python3 <skill>/scripts/lintcdc/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] [--fail-reason "<cause>"]
 ```
 
