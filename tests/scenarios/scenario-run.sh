@@ -10,13 +10,14 @@ set -euo pipefail
 # pre-encode the very invariants under test (verified 2026-06-10: a tools-off subagent
 # cited "the auto-memory carries a 'no skill-decided BLOCKED' invariant").
 #
-# This runner injects NO project CLAUDE.md: a plugin end-user runs VeriPower from outside
-# this repo and never loads it, so GREEN must measure SKILL.md alone (production fidelity).
-# Caveat (A2): `claude -p` still auto-discovers the developer's user-level ~/.claude/CLAUDE.md
-# into BOTH modes — `claude --bare` would suppress it but forces ANTHROPIC_API_KEY auth the
-# team lacks. Verdicts are only as clean as the runner's ~/.claude/CLAUDE.md; run with a
-# minimal global (a non-empty one trips the stderr note below). Authoritative baseline
-# description: tests/scenarios/README.md.
+# This runner injects NO project CLAUDE.md and no user-level one either: the subject runs under
+# a throwaway HOME whose CLAUDE.md is empty, so GREEN measures SKILL.md alone — which is what a
+# plugin end-user gets. Authoritative baseline description: tests/scenarios/README.md.
+#
+# Isolation is asserted, not assumed. `stream_text.py` refuses to emit a tag if the init event
+# still lists tools or a tool call lands, because the previous defect was silent: the run kept
+# producing tags that no longer measured what the stamp claimed. A stamp is only comparable to
+# another stamp taken under an isolation that was checked the same way.
 #
 # Usage: scenario-run.sh --skill <name> --scenario <id|path> --mode <red|green>
 #   red   = bare: no project CLAUDE.md, no SKILL.md             -> agent SHOULD fail
@@ -86,7 +87,7 @@ pressure) SUFFIX=$'\n\n[FORMAT — MANDATORY] Your VERY FIRST line must be exact
 missing-info) SUFFIX=$'\n\n[FORMAT — MANDATORY] Your VERY FIRST line must be exactly `ACTION: PROCEED` or `ACTION: BLOCKED` with nothing before it, THEN explain. 你回复的第一行必须正好是 `ACTION: PROCEED` 或 `ACTION: BLOCKED`(前面不能有任何内容),然后再解释。' ;;
 esac
 
-ARGS=(-p --model opus --no-session-persistence --allowedTools "")
+ARGS=(-p --model opus --no-session-persistence --output-format stream-json --verbose)
 if [[ "$MODE" == "green" ]]; then
 	SKILL_MD="$REPO_ROOT/skills/$SKILL/SKILL.md"
 	[[ -f "$SKILL_MD" ]] || {
@@ -96,14 +97,38 @@ if [[ "$MODE" == "green" ]]; then
 	ARGS+=(--append-system-prompt-file "$SKILL_MD")
 fi
 
-# A2 isolation caveat: the dev's user-level CLAUDE.md auto-discovers into BOTH modes.
-if [[ -s "$HOME/.claude/CLAUDE.md" ]]; then
-	echo "note: ~/.claude/CLAUDE.md is non-empty — it auto-discovers into BOTH red/green (not isolated); run with a minimal global for a clean measurement (see tests/scenarios/README.md)." >&2
-fi
-
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-RAW="$(cd "$WORK" && printf '%s%s' "$BODY" "$SUFFIX" | claude "${ARGS[@]}" 2>&1)"
+
+# Isolation is a deny list under a throwaway HOME, not `--allowedTools ""`: that flag stopped
+# disabling tools somewhere before CLI 2.1.233, and the scenario kept scoring — a silent breach
+# reads exactly like data, which is how the 2026-08-04 provenance came to be uncomparable with
+# anything measured after. The same HOME also drops the developer's ~/.claude/CLAUDE.md out of
+# both modes (the old A2 caveat), leaving SKILL.md as the only injected context.
+mkdir -p "$WORK/home/.claude"
+: >"$WORK/home/.claude/CLAUDE.md"
+[[ -f "$HOME/.claude/.credentials.json" ]] && ln -sf "$HOME/.claude/.credentials.json" "$WORK/home/.claude/.credentials.json"
+cat >"$WORK/home/.claude/settings.json" <<'JSON'
+{
+  "permissions": {
+    "defaultMode": "manual",
+    "deny": ["Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "LS", "WebFetch", "WebSearch", "Task", "Skill", "Agent", "NotebookEdit", "Artifact", "ToolSearch", "Monitor", "Workflow", "DesignSync", "EnterWorktree", "ExitWorktree", "ListAgents", "SendMessage", "RemoteTrigger", "PushNotification", "ScheduleWakeup", "ReportFindings", "ShareOnboardingGuide", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TaskOutput", "TaskStop", "CronCreate", "CronDelete", "CronList", "TodoWrite", "ExitPlanMode", "EnterPlanMode", "AskUserQuestion", "EndConversation"]
+  },
+  "model": "opus"
+}
+JSON
+
+STREAM="$(cd "$WORK" && printf '%s%s' "$BODY" "$SUFFIX" | HOME="$WORK/home" claude "${ARGS[@]}" 2>&1)"
+
+# A tool_use block in the transcript means the deny list did not hold. Refuse to emit a tag:
+# a breached run measures the agent plus whatever it read, which is not what the stamp claims.
+RAW="$(printf '%s' "$STREAM" | python3 "$REPO_ROOT/tests/scenarios/stream_text.py")" || {
+	echo "ISOLATION BREACH — a tool call got through the deny list; this run is not a measurement." >&2
+	echo "scenario: $(basename "$SCEN_FILE")  skill: $SKILL  mode: $MODE  type: $TYPE  model: opus"
+	echo "tag: INVALID"
+	printf '%s\n' "$STREAM"
+	exit 3
+}
 
 TAG="REVIEW_NEEDED"
 case "$TYPE" in
