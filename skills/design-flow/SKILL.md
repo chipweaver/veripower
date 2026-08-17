@@ -27,17 +27,12 @@ between turns: what to build is derived from the log every call, so a compaction
 costs you nothing but the turn.
 
 Every verb prints a JSON envelope. An `ok: false` is a contract signal, not an obstacle:
-hand the error to the user verbatim and stop that line of work. A non-zero exit means the
+hand the error to the user and stop that line of work. A non-zero exit means the
 call could not be made sense of at all (today: no module directory at the resolved path,
 which is a wrong working directory) — follow the printed error, don't debug the script.
 
 `kernel.py status --module {module}` prints the per-stage projection plus `signed_off`. It
 is a read-only query for the user, outside the loop.
-
-**Discipline:** call `decide` before every action. Two consecutive state-mutating kernel
-calls (`dispatch` / `reap` / `diagnose` / `pin` / `reopen`) with no `decide` between them is
-a bug — each action's executor runs, then you loop back to `decide`. Execute the loop
-literally; its exit condition is the only one.
 
 ## Iron Rule
 
@@ -90,12 +85,6 @@ The action returns `in_flight[]`, each entry `{rule, run}` — the only place a 
 surfaces, and what you need to name one. Reply the list to the user and end the turn. (A
 triage-pending `YIELD` carries the triage run — say a triage subagent is running.)
 
-**Dead in-flight.** A run whose executor you confirm is **dead** (the Task subagent crashed,
-exited without writing `result.json`, or its wake was lost) gets an explicit `kernel.py reap
---module {module} --rule <rule> --run <run>` — with no `result.json` present, `reap` derives
-`blocked`, unblocking the ledger so the next `decide` can re-route. Without this a run whose
-wake never arrives holds the ledger open indefinitely.
-
 Only the harness can tell you an executor died; the kernel cannot see it, and a `YIELD` never
 implies it. Never reap a run whose executor is still alive: it will write `result.json` into
 a workdir whose outcome has already landed. The opposite mistake is harmless — `reap` reads
@@ -105,11 +94,9 @@ own envelope, not as `blocked`.
 ## `ESCALATE` — hand the decision to the user, end the turn
 
 `decide` returns a `reason` (and, for an unreliable-diagnosis case, `candidates[]`). Give the
-user the reason **verbatim**, any `candidates`, and — to show the blast radius of a proposed
+user the reason, any `candidates`, and — to show the blast radius of a proposed
 change — `kernel.py consequences --module {module} --paths <path…>` (the currently-valid
-proofs a path change would invalidate). Offer 2–3 concrete next steps. The same applies to a
-subagent's own words: forward the text verbatim, because tidying it into a cleaner escalation
-is how a real hold gets read as a soft one.
+proofs a path change would invalidate). Offer 2–3 concrete next steps.
 
 Recovery is **exclusively a human `kernel.py diagnose`** (source=human) — there is no
 `resolve` verb, and you never auto-author a diagnosis (only triage mints one). Surface the
@@ -136,19 +123,12 @@ with the identity in `--provenance`, and reaches the fix owner from there.
 
 Every stage proof is valid. Reply a completion summary.
 
-Under `--closing` the action also carries `basis`, and it must reach the user before you
-propose anything — see below.
-
 ## Closing: pin, reopen, signoff
 
 Signoff is a deliberate act, not a stage. When the user asks to close the module, pass
 `--closing` on every `decide` for that episode. It changes nothing about which proofs are
 required; it arms the signoff gate at `DONE`: every proof valid, every oracle pinned
 (`grade ∈ {tool, human}`), no unknown recorded version, no out-of-band added input.
-
-**`pin` / `reopen` / `signoff` are ask-gated judgment verbs — never autonomous.** You propose
-them only on explicit human intent, and the harness permission gate prompts the user on every
-call.
 
 - `decide --closing` returning `ESCALATE` "signoff blocked: `<proof>` oracle is proposed (pin
   it)" means a proposed-oracle proof (specification / simulation-plan / rtl-design /
@@ -164,6 +144,4 @@ call.
   the recorded tool identities, and the input set.** The gate says a signature is admissible;
   `basis` is the proposition being signed, and a human cannot take on what they were not
   shown. Then, only with their approval, run `kernel.py signoff --module {module}
-  --provenance <user> --reason "<…>"`. Never propose it off a `DONE` you got without
-  `--closing`: that DONE handed you no `basis`, so the user would be approving a proposition
-  nobody put in front of them.
+  --provenance <user> --reason "<…>"`.
