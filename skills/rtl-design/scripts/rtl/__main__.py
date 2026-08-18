@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """rtl — rtl-design-stage CLI.
 
-One verb (see skills/rtl-design/SKILL.md for usage):
+One verb:
   finalize          write the lean result.json envelope                 (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: the subcommand parses its own flags and calls into the rtl.*

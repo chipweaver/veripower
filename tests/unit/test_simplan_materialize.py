@@ -158,7 +158,7 @@ def test_idempotent(tmp_path):
 
 
 def test_duplicate_signal_name_within_agent_fails_loud(tmp_path):
-    # A7: the same signal name appearing twice within one agent's groups would emit
+    # The same signal name appearing twice within one agent's groups would emit
     # duplicate SV declarations. Must fail loud.
     io = json.loads(json.dumps(TOP_IO))
     io.append(
@@ -174,7 +174,7 @@ def test_duplicate_signal_name_within_agent_fails_loud(tmp_path):
 
 
 def test_malformed_json_fails_loud(tmp_path):
-    # A6: a JSON syntax error in a sidecar (or the scaffold) must fail loud with a
+    # A JSON syntax error in a sidecar (or the scaffold) must fail loud with a
     # fix-oriented message, not a raw traceback.
     spec, sc = _write(tmp_path, HINTS, _scaffold([]))
     (spec / "clocks.json").write_text("{ not: valid json ]")

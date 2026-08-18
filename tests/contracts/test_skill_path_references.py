@@ -1,4 +1,4 @@
-"""Semantic skill lint (D6, scoped): file-path references in SKILL.md exist.
+"""Semantic skill lint (scoped): file-path references in SKILL.md exist.
 
 Catches the drift class where a SKILL.md cites a reference file that has
 been renamed, moved, or deleted. Three categories of paths are tested:

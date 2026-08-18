@@ -1,9 +1,9 @@
-"""End-to-end validation (Task 17, spec §10 #9): the kernel CLI drives real
+"""End-to-end validation: the kernel CLI drives real
 dispatch -> execute -> reap -> promote rounds under inject+carry for (1) the
 richest AUTHOR (rtl-design, which self-carries its own prior round into a
 fresh workdir) and (2) a TRANSFORMER spanning four upstream stages
-(power-analysis), plus (3) the "relocation invariance" behavioral proof (spec
-§10 #5 — the REAL criterion, not just token-absence): move the whole canonical
+(power-analysis), plus (3) the "relocation invariance" behavioral proof (the REAL
+criterion, not just token-absence): move the whole canonical
 tree wholesale and the consumer still re-anchors, because it re-reads
 `dispatch.json` every round instead of trusting a baked cross-stage path.
 
@@ -339,7 +339,7 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
 
 
 def test_relocation_invariance_consumer_reanchors(tmp_path):
-    # spec §10 #5 (the REAL criterion — not "no relpath token"): move canonical
+    # The REAL criterion — not "no relpath token": move canonical
     # wholesale and the consumer still resolves, because it re-reads
     # dispatch.json each round instead of trusting a baked cross-stage path.
     module = "m"

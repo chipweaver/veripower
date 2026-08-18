@@ -1,8 +1,8 @@
 # tests/unit/test_timing_bootstrap.py
 """timing bootstrap — deploy-into-workdir behavior.
 
-Two layers: in-process unit tests of infer_top (BP1), and subprocess "mirror"
-tests of full deploy behavior (BP2-BP10) that run the real shipped skill with cwd
+Two layers: in-process unit tests of infer_top, and subprocess "mirror"
+tests of full deploy behavior that run the real shipped skill with cwd
 set to a tmp design-tree root and build the synthesis output tree (netlist + SDC)
 under it. The
 bootstrap anchors the design tree on the CWD (matching kernel.py and the
@@ -27,7 +27,7 @@ sys.path.insert(0, str(REPO_ROOT / "skills" / "timing-analysis" / "scripts"))
 from timing import bootstrap  # noqa: E402
 
 
-# ── BP1: infer_top (in-process, precise) ──────────────────────────────────────
+# ── infer_top (in-process, precise) ───────────────────────────────────────────
 def test_infer_top_single_match(tmp_path):
     out = tmp_path / "Design" / "synthesis" / "out"
     out.mkdir(parents=True)
@@ -48,7 +48,7 @@ def test_infer_top_none_when_multiple(tmp_path):
     assert bootstrap.infer_top(tmp_path / "Design" / "synthesis") is None
 
 
-# ── BP2-BP10: full deploy (subprocess mirror) ─────────────────────────────────
+# ── full deploy (subprocess mirror) ───────────────────────────────────────────
 def _make_tree(
     tmp_path,
     *,
@@ -137,7 +137,7 @@ def test_run_sta_reads_absolute_netlist_from_dispatch_json(tmp_path):
     # dispatch.json "netlist" key — not by self-navigating
     # tree_root/asic/<module>/Design/synthesis. run_sta.tcl must bake the ABSOLUTE
     # netlist dir (NETLIST_DIR), never a MY_MODULE_ROOT placeholder or a baked
-    # "Design/synthesis" self-nav path. $WORKDIR (a same-stage self-ref, F2) must
+    # "Design/synthesis" self-nav path. $WORKDIR (a same-stage self-ref) must
     # survive.
     m, workdir, main = _make_tree(tmp_path)
     synth_root = tmp_path / "asic" / m / "Design" / "synthesis"
@@ -150,7 +150,7 @@ def test_run_sta_reads_absolute_netlist_from_dispatch_json(tmp_path):
         and "MY_NETLIST_DIR" not in sta
         and "$MODULE_ROOT/Design/synthesis" not in sta
     )
-    assert "set WORKDIR" in sta  # F2: same-stage $WORKDIR self-ref must survive
+    assert "set WORKDIR" in sta  # same-stage $WORKDIR self-ref must survive
 
 
 def test_lib_db_captured_when_exported(tmp_path):
@@ -189,7 +189,7 @@ def test_fail_closed_when_netlist_missing(tmp_path):
 
 
 def test_fail_closed_when_sdc_missing(tmp_path):
-    # BP3 is two-sided: the netlist alone is not enough; PT also reads the SDC.
+    # This is two-sided: the netlist alone is not enough; PT also reads the SDC.
     m, workdir, main = _make_tree(tmp_path, with_sdc=False)
     r = _run(workdir, main, extra=["--top", "sdc_controller"])
     assert r.returncode == 1
@@ -238,7 +238,7 @@ def test_missing_template_dir_fail_closed(tmp_path):
 
 
 def test_relative_workdir_with_trailing_slash(tmp_path):
-    # BP5: a relative --workdir resolves against the CWD (the design-tree root), and
+    # A relative --workdir resolves against the CWD (the design-tree root), and
     # the trailing slash is dropped (type=Path) before deploy.
     m, workdir, main = _make_tree(tmp_path)
     # Through _run, so this inherits the same hermetic environment as every other

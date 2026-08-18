@@ -1,10 +1,10 @@
 """No SKILL.md instructs its executing agent to gate on an upstream stage's
-`result.json` `status` field before proceeding (spec §4.3: "gate 读删除" — the
+`result.json` `status` field before proceeding ("gate 读删除" — the
 kernel's dispatchability check already guarantees prerequisites at dispatch
 time, so no stage executor may re-check them as a precondition).
 
 Grep-style regression guard, mirroring test_no_skill_decided_blocked.py's
-static-text idiom: locks the exact phrasing the C6 sweep removed (the `status
+static-text idiom: locks the exact phrasing the sweep removed (the `status
 ≠ pass` / `MUST be status=pass` / `fail fast when missing or not pass` gate
 patterns previously found in lint-cdc, synthesis, timing-analysis, simulation,
 simulation-plan, and power-analysis SKILL.md). A skill re-introducing the gate
@@ -33,6 +33,6 @@ def test_no_skill_gates_on_upstream_status():
                 offenders.append(f"{name}/SKILL.md: {pat.pattern!r}")
     assert offenders == [], (
         "SKILL.md instructs an upstream result.json status=pass gate read; "
-        "the kernel's dispatchability check already guarantees this (spec "
-        f"§4.3 — the deletion is total): {offenders}"
+        "the kernel's dispatchability check already guarantees this "
+        f"(the deletion is total): {offenders}"
     )

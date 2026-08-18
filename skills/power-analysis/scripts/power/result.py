@@ -324,7 +324,7 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
             )
             scenario_failed = True
 
-        # P1: a scenario with any deterministic failure has untrustworthy numbers → null them.
+        # A scenario with any deterministic failure has untrustworthy numbers → null them.
         ppa_actual.append(
             {
                 "dim": "power_mw",

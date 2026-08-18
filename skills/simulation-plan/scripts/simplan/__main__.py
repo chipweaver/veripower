@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """simplan — simulation-plan-stage CLI.
 
-Verbs (one stage = one tool; see skills/simulation-plan/SKILL.md for usage):
+Verbs (one stage = one tool):
   materialize-scaffold  fill scaffold signals/clock/reset/inline (writes scaffold; exit 0; fail-loud)
   check-scaffold        structural+semantic+coverage gate        (exit 0 OK / 1 fix-message)
   finalize              assemble the lean result.json            (exit 0 written / 2 BLOCKED)

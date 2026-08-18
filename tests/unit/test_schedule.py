@@ -341,7 +341,7 @@ def test_neither_writer_can_mint_a_routable_self_pointing_diagnosis(
 
 
 def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
-    # A3 regression: an oracle-side attribution (root_cause=simulation, so no fix_owner) is
+    # Regression: an oracle-side attribution (root_cause=simulation, so no fix_owner) is
     # a 现成归因 with nothing to route to -> ESCALATE citing it as a candidate. NOT
     # re-dispatch triage, NOT auto-rebuild.
     monkeypatch.chdir(tmp_path)
@@ -368,7 +368,7 @@ def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
 def test_repair_after_fix_lands_redispatches_failed_rule_not_fix_owner(
     tmp_path, monkeypatch
 ):
-    # spec §3.4 case: fix changes matvec.v -> simulation fail proof stale -> the turn
+    # Case: fix changes matvec.v -> simulation fail proof stale -> the turn
     # re-verifies simulation, and never rtl-design again.
     #
     # The same edit also staled lint-cdc, which has no artifact edge to the failure and is
@@ -690,18 +690,18 @@ def test_signoff_gate_reads_live_pin_without_rereap(tmp_path, monkeypatch):
     assert facts.signoff_gate("m", facts.read_events("m")) is None
 
 
-# --- §6-mandated coverage (each maps to a spec §6 bullet) ---
+# --- scheduler invariants ---
 
 
 def test_decide_is_pure_same_disk_same_ledger_same_action(tmp_path, monkeypatch):
-    # §6: decide 纯函数性 — same disk + ledger + args -> byte-identical action dict.
+    # decide 纯函数性 — same disk + ledger + args -> byte-identical action dict.
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")
     assert schedule.decide("m") == schedule.decide("m")
 
 
 def test_advisory_edge_never_enters_freshness(tmp_path, monkeypatch):
-    # §6/A1-①: the sort predicate stays out of validity paths. power←timing is ADVISORY
+    # The sort predicate stays out of validity paths. power←timing is ADVISORY
     # (not an input edge): a power failure must stay an OPEN complaint even while the
     # timing proof is invalid, because only ADVISORY_ORDER's own consumer may read it.
     monkeypatch.chdir(tmp_path)
@@ -716,7 +716,7 @@ def test_advisory_edge_never_enters_freshness(tmp_path, monkeypatch):
 def test_two_hop_upstream_invalidity_does_not_discard_the_failure(
     tmp_path, monkeypatch
 ):
-    # A1-② livelock regression, restated for v2. timing fails; rtl-design's proof (TWO hops
+    # Livelock regression, restated for v2. timing fails; rtl-design's proof (TWO hops
     # up via synthesis) is invalid while synthesis's is still valid. The old rule called such
     # a failure STALE and dropped it, which threw away its attribution; the open-complaint
     # rule keeps it and instead refuses to re-run the rule that raised it. Either way the
@@ -735,7 +735,7 @@ def test_two_hop_upstream_invalidity_does_not_discard_the_failure(
 
 
 def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
-    # A2 regression / §3.3 末句: repair on timing while the synthesis proof is invalid
+    # Regression: repair on timing while the synthesis proof is invalid
     # -> the round rebuilds the PRODUCER, never ESCALATE. With lint-cdc already valid its
     # advisory edge is satisfied, so synthesis is the first thing the turn opens; the
     # unsatisfied case is test_advisory_predecessor_is_scheduled_rather_than_waited_on.
@@ -752,7 +752,7 @@ def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
 
 
 def test_human_supersede_restores_auto_rebuild(tmp_path, monkeypatch):
-    # §6: a triage diagnosis naming nobody schedulable escalates; after `diagnose
+    # A triage diagnosis naming nobody schedulable escalates; after `diagnose
     # source=human` supersedes it, decide auto-rebuilds the human-named fix_owner.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
@@ -789,7 +789,7 @@ def test_human_supersede_restores_auto_rebuild(tmp_path, monkeypatch):
 
 
 def test_new_outcome_deactivates_old_diagnosis(tmp_path, monkeypatch):
-    # §6: subject outcome 被取代后旧归因失活 — after the failed rule re-runs (new fail
+    # subject outcome 被取代后旧归因失活 — after the failed rule re-runs (new fail
     # outcome run N+1), the run-N diagnosis no longer drives disposition: decide
     # dispatches triage anew instead of auto-rebuilding on the stale attribution.
     monkeypatch.chdir(tmp_path)
@@ -813,7 +813,7 @@ def test_new_outcome_deactivates_old_diagnosis(tmp_path, monkeypatch):
 
 
 def test_triage_blocked_redispatches_no_livelock(tmp_path, monkeypatch):
-    # §6: triage blocked (没查出结果) -> the sim failure is still ambiguous with no
+    # triage blocked (没查出结果) -> the sim failure is still ambiguous with no
     # ready attribution -> next decide re-dispatches simulation-triage (a fresh run
     # number), never YIELD-forever, never ESCALATE.
     monkeypatch.chdir(tmp_path)
@@ -1079,7 +1079,7 @@ def _build_all_valid(module, run, *, include=None, oracle_grades=None):
 
 
 def test_failing_proofs_only_targets_stage_proofs(tmp_path, monkeypatch):
-    # F3: only a PROOF can be re-verified, and simulation-triage produces none. Even if a
+    # Only a PROOF can be re-verified, and simulation-triage produces none. Even if a
     # triage outcome ever carries verdict=fail it must not narrow the goal set — else
     # step-2's sorted(work, key=FORWARD_PRIORITY.index) raises ValueError.
     monkeypatch.chdir(tmp_path)
@@ -1093,7 +1093,7 @@ def test_failing_proofs_only_targets_stage_proofs(tmp_path, monkeypatch):
 
 
 def test_decide_repair_survives_triage_fail_outcome(tmp_path, monkeypatch):
-    # F3 symptom: with the whole delivery chain valid and a (buggy) newest triage fail
+    # Symptom: with the whole delivery chain valid and a (buggy) newest triage fail
     # outcome, decide(repair) must not crash — before the fix, required_proofs returns
     # {"simulation-triage"} and step 2 hits FORWARD_PRIORITY.index("simulation-triage").
     monkeypatch.chdir(tmp_path)
@@ -1116,7 +1116,7 @@ def test_unregistered_rule_in_flight_is_not_reapable_forever(tmp_path, monkeypat
 
 
 def test_fresh_fail_fix_owner_in_flight_yields(tmp_path, monkeypatch):
-    # E5 / §6 in-flight public premise: when the disposition's fix_owner is already in flight,
+    # In-flight public premise: when the disposition's fix_owner is already in flight,
     # decide YIELDs — never a double-dispatch.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
@@ -1138,7 +1138,7 @@ def test_fresh_fail_fix_owner_in_flight_yields(tmp_path, monkeypatch):
 
 
 def test_sim_fail_triage_in_flight_is_not_dispatched_twice(tmp_path, monkeypatch):
-    # E5 / §6: ambiguous sim failure with simulation-triage already in flight -> no second
+    # Ambiguous sim failure with simulation-triage already in flight -> no second
     # triage dispatch. The turn is not idle — other stale work starts alongside the analysis.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
@@ -1163,7 +1163,7 @@ def test_option_c_defers_producer_with_inflight_consumer(tmp_path, monkeypatch):
 
 
 def test_option_c_defers_fix_owner_rebuild_step1(tmp_path, monkeypatch):
-    # step-1 disposition path (spec §4 typical torn-read): a fresh sim failure attributed to
+    # step-1 disposition path (typical torn-read): a fresh sim failure attributed to
     # rtl-design would DISPATCH the rtl rebuild via _disposition, but lint-cdc (a consumer of
     # rtl-design) is in-flight -> must YIELD, not rebuild rtl under the background read.
     monkeypatch.chdir(tmp_path)
@@ -1190,7 +1190,7 @@ def test_option_c_defers_fix_owner_rebuild_step1(tmp_path, monkeypatch):
 
 
 def test_signed_off_regresses_on_hand_edit(tmp_path, monkeypatch):
-    # E3: the reopen-named freshness test's fixture (empty outputs) structurally cannot
+    # The reopen-named freshness test's fixture (empty outputs) structurally cannot
     # exercise a hand-edit. Build a real signed-off chain (on-disk artifacts) and hand-edit
     # one -> its proof invalidates (cond 4) -> signed_off drops. This is the second conjunct
     # of the predicate: the signoff event stays, but a signoff is only as good as the proofs
@@ -1236,7 +1236,7 @@ def test_signoff_gate_blocks_on_out_of_band_added_input(tmp_path, monkeypatch):
     assert "new input" in gate.lower() and "sneaky.v" in gate
 
 
-# ── §F: the fail path shares the pass path's condition 3 ──────────────────────
+# ── the fail path shares the pass path's condition 3 ──────────────────────────
 # Condition 3 leans two ways when re-derived: anchored on the outcome instead of the dispatch
 # it is too loose, without the live-pin conjunct too tight. These pin the three scenarios that
 # separate them.
@@ -1275,7 +1275,7 @@ def _spec_fail_proof(module):
 
 
 def test_fail_stale_when_reopen_lands_during_the_run(tmp_path, monkeypatch):
-    # S1: the oracle is reopened between dispatch and outcome, so the verdict this run
+    # The oracle is reopened between dispatch and outcome, so the verdict this run
     # produced was judged by an oracle nobody stands behind by the time it lands.
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")
@@ -1290,7 +1290,7 @@ def test_fail_stale_when_reopen_lands_during_the_run(tmp_path, monkeypatch):
 
 
 def test_fail_stays_stale_after_a_bare_re_reap(tmp_path, monkeypatch):
-    # S2: F5 on the fail path. A re-reap appends a later outcome for the SAME run — it
+    # The re-reap case on the fail path. A re-reap appends a later outcome for the SAME run — it
     # re-executes nothing and re-pins nothing, so it must not launder the fail into a fresh
     # one. Anchoring condition 3 on the dispatch is what makes the second outcome irrelevant.
     monkeypatch.chdir(tmp_path)
@@ -1307,7 +1307,7 @@ def test_fail_stays_stale_after_a_bare_re_reap(tmp_path, monkeypatch):
 
 
 def test_fail_fresh_again_after_a_re_pin(tmp_path, monkeypatch):
-    # S3: the other direction. A human re-endorses the oracle after reopening it; the fail
+    # The other direction. A human re-endorses the oracle after reopening it; the fail
     # verdict is trustworthy again, so the repair path must come back rather than the fail
     # being written off as stale.
     monkeypatch.chdir(tmp_path)
@@ -1324,7 +1324,7 @@ def test_fail_fresh_again_after_a_re_pin(tmp_path, monkeypatch):
 
 
 def test_re_reap_does_not_dispatch_upstream_rework(tmp_path, monkeypatch):
-    # The harm S2 causes once the failed rule routes somewhere. simulation-plan's failures
+    # The harm that case causes once the failed rule routes somewhere. simulation-plan's failures
     # route to specification, so laundering a stale fail into a fresh one sent a directive-
     # carrying rework at the upstream design doc — on the authority of a simulation-plan
     # verdict whose judge had just been reopened. Stale re-verifies simulation-plan itself.
@@ -1355,7 +1355,7 @@ def test_re_reap_does_not_dispatch_upstream_rework(tmp_path, monkeypatch):
     assert "reopened" in a["reason"]
 
 
-# ── §O: the gate says whether; the basis says what ────────────────────────────
+# ── the gate says whether; the basis says what ────────────────────────────────
 def _all_valid_and_pinned(module):
     _build_all_valid(module, 1)
     for rule in rules.FORWARD_PRIORITY:

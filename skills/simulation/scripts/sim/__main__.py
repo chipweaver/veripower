@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """sim — simulation-stage CLI.
 
-Verbs (one stage = one tool; see skills/simulation/SKILL.md for usage):
+Verbs (one stage = one tool):
   bootstrap             deploy infra + optional scaffold into a run workdir   (exit 0 / 1 / 2)
   check-materialization presence gate over the materialized TB (env-exit self-gate) (stdout verdict; exit 0/1)
   finalize              write result.json at the exit phase                   (exit 0 written / 2 BLOCKED)

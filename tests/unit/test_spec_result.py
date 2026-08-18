@@ -145,7 +145,7 @@ def test_build_result_override_writes_ppa_sidecar(tmp_path):
     result.build_result(wd, ppa_targets=targets, status="pass")
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert "ppa_targets" not in ss  # the sidecar is the SSoT, not the envelope
-    # ppa.json is the stable sidecar synthesis/power-analysis read directly (spec §4.3)
+    # ppa.json is the stable sidecar synthesis/power-analysis read directly
     assert json.loads((wd / "ppa.json").read_text()) == targets
 
 
@@ -157,7 +157,7 @@ def test_build_result_reject_status_writes_fail(tmp_path):
     assert env["status"] == "fail" and env["stage_specific"]["fail_reason"]
 
 
-# ── artifacts[] enumeration tests (Task 3) ─────────────────────────────────
+# ── artifacts[] enumeration tests ──────────────────────────────────────────
 def test_enumerate_artifacts_present_only(tmp_path):
     wd = _spec_workdir(tmp_path)
     constraints.derive_constraints(
@@ -192,7 +192,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     wd = tmp_path / "specification"
     shutil.copytree(_FIX, wd)
     targets = [{"dim": "area_um2", "target": 70000.0}]
-    # γ-floor: agent relays the human-gate outcome (approve, no waivers, PPA from D6).
+    # γ-floor: agent relays the human-gate outcome (approve, no waivers, PPA targets).
     assert result.build_result(wd, ppa_targets=targets, status="pass") == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
@@ -341,7 +341,7 @@ def test_invalid_override_is_blocked(tmp_path):
 def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
     # a seeded rework workdir that fails early (e.g. unreadable trigger) must still
     # promote the FULL prior product set — an under-enumerated artifacts[] on a
-    # promoted fail would GC canonical down to a hollow view (W4).
+    # promoted fail would GC canonical down to a hollow view.
     wd = _spec_workdir(tmp_path)
     constraints.derive_constraints(
         wd

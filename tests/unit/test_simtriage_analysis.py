@@ -1,5 +1,5 @@
 """simtriage `finalize`: schema-gates the analysis judgment against the stage_specific
-subschema folded (Task C7) into references/result.schema.json, then atomically writes
+subschema folded into references/result.schema.json, then atomically writes
 result.json. Supersedes the old validate-analysis-against-analysis.schema.json test:
 analysis.schema.json is deleted, and there is no more analysis.json + top-level pointer —
 result.json is the single output surface."""
@@ -38,7 +38,7 @@ def _run(tmp_path, payload: dict, *, workdir=None):
 
 
 def test_result_schema_has_no_standalone_analysis_schema_file():
-    """Task C7 Step 1: the standalone analysis.schema.json is deleted; the merge is the
+    """Step 1: the standalone analysis.schema.json is deleted; the merge is the
     single source of truth from here on."""
     assert not (
         ROOT / "skills/simulation-triage/references/analysis.schema.json"

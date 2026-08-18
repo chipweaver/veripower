@@ -72,7 +72,7 @@ def test_load_ledger_raises_on_missing_annotation_category(tmp_path):
 
 
 def test_load_ledger_raises_on_null_annotation_block(tmp_path):
-    # M4: null-valued blocks pass a key-only check yet crash _agg downstream.
+    # Null-valued blocks pass a key-only check yet crash _agg downstream.
     wd = _write(tmp_path, {"a": {"files": ["a.v"]}}, {"a": {"sgdc": None, "sdc": None}})
     with pytest.raises(LedgerError, match="not of type 'object'"):
         load_ledger(wd)

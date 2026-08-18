@@ -1,5 +1,5 @@
 """Tests for hooks/ask_judgment_verbs.py — the shipped ask-gate over the three
-judgment verbs (ARCHITECTURE.md §2.5).
+judgment verbs.
 
 Two layers, mirroring test_kernel_cli.py: direct import for the classifier, and
 a subprocess round-trip for the PreToolUse stdin/stdout contract the harness

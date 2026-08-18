@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """synthesis — synthesis-stage CLI.
 
-Verbs (one stage = one tool; see skills/synthesis/SKILL.md for usage):
+Verbs (one stage = one tool):
   bootstrap   deploy templates into the run workdir + render rtl_load/config  (exit 0 / 1 / 2)
   finalize    parse DC reports, judge PPA, assemble the result.json           (exit 0 written / 2 BLOCKED)
 

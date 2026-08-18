@@ -3,7 +3,7 @@
 
 The state grid measures ONE action from ONE state. Waste is a multi-round quantity, so it
 needs an executor — and the executor's model is where the 2026-07 measurement went wrong
-(§8 of the retrospective: assuming any rtl-design round would incidentally fix what
+(assuming any rtl-design round would incidentally fix what
 simulation complained about invented a "free fix" tier that does not exist).
 
 The honest model, used here:
@@ -46,7 +46,7 @@ import kernel  # noqa: E402
 import rules  # noqa: E402
 import schedule  # noqa: E402
 
-# Per-stage median wall-clock from the one real run (retrospective §5.1), in minutes.
+# Per-stage median wall-clock from the one real run, in minutes.
 # Triage never appeared in it — counted separately rather than guessed.
 MINUTES = {
     "specification": 22,

@@ -1,8 +1,8 @@
 # tests/unit/test_lintcdc_bootstrap.py
 """lintcdc bootstrap verb — deploy-into-workdir behavior.
 
-Two layers: in-process unit tests of the inference helpers (BP3 — byte-for-byte the
-synthesis helpers), and subprocess "mirror" tests of full deploy behavior (BP2/BP4-BP11)
+Two layers: in-process unit tests of the inference helpers (byte-for-byte the
+synthesis helpers), and subprocess "mirror" tests of full deploy behavior
 that run the real shipped skill with cwd set to a tmp design-tree root and build the
 upstream asic/<module>/... references under it. The bootstrap anchors the design tree
 on the CWD (matching kernel.py and the stage-subagent contract), independent of where
@@ -27,7 +27,7 @@ _MAIN = REPO_ROOT / "skills" / "lint-cdc" / "scripts" / "lintcdc" / "__main__.py
 sys.path.insert(0, str(REPO_ROOT / "skills" / "lint-cdc" / "scripts"))
 
 
-# ── BP3: inference helpers (in-process, precise — copied from synthesis) ───────
+# ── inference helpers (in-process, precise — copied from synthesis) ────────────
 def _rtl_dir(workdir: Path) -> Path:
     """The rtl-design dir for a workdir built by _make_tree (.../Design/lint-cdc/runs/N)."""
     return workdir.parents[3] / "Design" / "rtl-design"
@@ -181,7 +181,7 @@ def test_filelist_synced_and_rebased(tmp_path):
 
 
 def test_filelist_reanchors_to_absolute_rtl(tmp_path):
-    # BP13: bootstrap reads the upstream rtl-design location from the injected
+    # Bootstrap reads the upstream rtl-design location from the injected
     # dispatch.json "rtl" key — not by self-navigating tree_root/asic/<module>/....
     # scripts/filelist.txt must bake the ABSOLUTE rtl root, never a relative climb.
     m, workdir, main = _make_tree(tmp_path, rtl_files={"c": {"files": ["rtl/dut.v"]}})
@@ -245,7 +245,7 @@ def test_missing_template_dir_fail_closed(tmp_path):
 
 
 def test_relative_workdir_with_trailing_slash(tmp_path):
-    # BP5: a relative --workdir resolves against the CWD (the design-tree root), and
+    # A relative --workdir resolves against the CWD (the design-tree root), and
     # the trailing slash is dropped before deploy.
     m, workdir, main = _make_tree(tmp_path)
     proc = subprocess.run(

@@ -1,4 +1,4 @@
-"""Structural completeness per stage / skill (D5).
+"""Structural completeness per stage / skill.
 
 When a stage is added to `rules.FORWARD_PRIORITY` (or a non-stage skill is
 added to `SKILL_DIRS`), the surrounding surfaces must come with it:

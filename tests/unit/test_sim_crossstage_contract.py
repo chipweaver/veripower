@@ -1,5 +1,5 @@
 # tests/unit/test_sim_crossstage_contract.py
-"""Lock the simulation-plan -> simulation scaffold-spec consumer contract (spec §5).
+"""Lock the simulation-plan -> simulation scaffold-spec consumer contract.
 
 Renders the COMMITTED producer-owned materialized fixture (simplan's real output shape) and asserts every field simulation CONSUMES, with expectations DERIVED FROM the
 fixture (agent names, RM file name, the RM-inport + env-connect + observer wiring, interface

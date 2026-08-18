@@ -67,7 +67,7 @@ def test_advisory_edges_reference_registered_rules_and_stay_acyclic():
 
 
 def test_proposed_oracle_declares_selector_within_inputs_union_outputs():
-    # spec §1.3 condition-3 structural premise: a proposed oracle's content selector
+    # Validity condition-3 structural premise: a proposed oracle's content selector
     # is covered by that rule's inputs ∪ outputs. The selector lives on the Rule
     # itself (oracle_selector); tool-grade oracles carry none.
     import fnmatch
@@ -129,7 +129,7 @@ def _assert_acyclic(graph):
 
 
 def test_simulation_does_not_bind_constraint_annotations():
-    # D6/G4: simulation consumes only the RTL file layout, so binding the annotations would
+    # Simulation consumes only the RTL file layout, so binding the annotations would
     # let an annotation-only edit falsely invalidate the simulation proof. lint-cdc and
     # synthesis DO bind them — their agents transcribe them into the constraint scripts.
     ann = "Design/rtl-design/constraint-annotations.json"

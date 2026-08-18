@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """timing — timing-analysis-stage CLI.
 
-Verbs (one stage = one tool; see skills/timing-analysis/SKILL.md for usage):
+Verbs (one stage = one tool):
   bootstrap   deploy run_sta.tcl/config.tcl into the run workdir + substitute   (exit 0 / 1 / 2)
   finalize    parse the PT STA report, judge setup/hold, assemble result.json   (exit 0 written / 2 BLOCKED)
 

@@ -1,4 +1,4 @@
-"""VeriPower kernel CLI. The ONLY writer of events.jsonl. Verbs in §4.2."""
+"""VeriPower kernel CLI. The ONLY writer of events.jsonl."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def _now() -> str:
 
 def _resolve_inputs(module: str, rule_name: str) -> dict:
     """Version table of every input selector match (module-relative path -> fingerprint).
-    Sole source of proof.inputs for proof-producing rules (§5.3)."""
+    Sole source of proof.inputs for proof-producing rules."""
     rule = rules.RULES[rule_name]
     root = facts.module_root(module)
     table: dict[str, str] = {}
@@ -81,15 +81,15 @@ def cmd_dispatch(
     extra_params=None,
     caused_by=None,
 ):
-    """Re-checks dispatchability AT THIS INSTANT (decide→dispatch drift guard, §4.2):
+    """Re-checks dispatchability AT THIS INSTANT (decide→dispatch drift guard):
     in-flight premise and input availability.
 
     The signoff gate is not among these checks — signoff is not dispatchable. `cmd_signoff`
-    runs it (§5.5).
+    runs it.
 
     extra_params (parsed --params JSON object, e.g. {"sim_run": 5} for simulation-triage
     per rules.RULES[rule].params) is merged into the recorded dispatch event's `params`
-    (Task C7 — the generic complement to schedule.py's disposition, which already computes
+    (the generic complement to schedule.py's disposition, which already computes
     {"sim_run": <run>} for triage but had no CLI path to land it on the actual dispatch
     event).
 
@@ -129,8 +129,7 @@ def cmd_dispatch(
         caused_by_paths.append(str(rel))
     # A named diagnosis carries the two things the failing envelope does not: where its
     # author says the fix lands, and (human-authored only) the reasoning behind it. An
-    # unknown ref would drop both silently, which is exactly the silent loss §3.3 forbids —
-    # reject instead.
+    # unknown ref would drop both silently — reject instead.
     #
     # It also puts the record that NAMED this owner into caused_by: for a triage-routed
     # rework the fix owner is acting on an analysis, and a coordinate with no way to reach
@@ -190,7 +189,7 @@ def cmd_reap(module, rule, run):
     # there is no workdir to derive a verdict from (the prior bug: TypeError on
     # `root / None`). Re-reaping an ALREADY-outcome'd run is deliberately still
     # allowed — it is the documented crash-mid-promote repair path and the pin/regrade
-    # mechanism (ARCHITECTURE.md §4.7/§7.2; test_pin_content_drift_regrades_...).
+    # mechanism (test_pin_content_drift_regrades_...).
     workdir = schedule._workdir_of(events, rule, run)
     if workdir is None:
         return {"ok": False, "error": f"no dispatch event for {rule} run {run}"}
@@ -216,13 +215,13 @@ def cmd_reap(module, rule, run):
     if reason:
         ev["reason"] = reason
     facts.append_event(module, ev, _now())
-    for diagnosis in diagnoses:  # triage complete -> land the attributions (Task C7)
+    for diagnosis in diagnoses:  # triage complete -> land the attributions
         facts.append_event(module, diagnosis, _now())
     return {"ok": True, "rule": rule, "run": run, "verdict": verdict}
 
 
 def _fingerprint_outputs(module, rule):
-    """Version table of the ACTUAL promote set (spec §2: 落账指纹按实际 promote 集记录,
+    """Version table of the ACTUAL promote set (落账指纹按实际 promote 集记录,
     declared outputs are its lower bound): the canonical result.json itself plus every
     artifacts[] entry it lists — exactly what store.promote just merged into canonical."""
     root = facts.module_root(module)
@@ -241,7 +240,7 @@ def _fingerprint_outputs(module, rule):
 
 
 def _tool_versions():
-    """Audit-only identity record (§1.2 — never enters validity/re-run decisions):
+    """Audit-only identity record (never enters validity/re-run decisions):
     tool/library env identities + the plugin's own version."""
     import os
     import subprocess
@@ -273,14 +272,14 @@ def _tool_versions():
 
 
 def _stale_result_reason(produced_at, dispatch_ts) -> str | None:
-    """Temporal integrity of a reaped verdict (§5.6): result.json must have been authored
+    """Temporal integrity of a reaped verdict: result.json must have been authored
     by THIS run's executor, so its produced_at must not predate the run's own dispatch —
     an older stamp means a carried-in stale envelope (e.g. a prior canonical result.json
     copied into the workdir), which must never mint an outcome. The dispatch ts is floored
     to whole seconds before comparing: skill finalizers stamp second-resolution UTC while
     the kernel stamps microseconds, and a sub-second run must not be misjudged stale.
     Unparseable produced_at blocks too (conservative — the envelope contract mandates
-    ISO-8601, stage-subagent.md.tpl); a naive timestamp is taken as UTC."""
+    ISO-8601); a naive timestamp is taken as UTC."""
 
     def parse(s):
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
@@ -304,7 +303,7 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
     whenever not applicable; the shape NEVER varies by rule kind. result.json status ->
     verdict; missing/unparseable/malformed/schema-violation/stale -> blocked (stale =
     produced_at predates this run's dispatch, _stale_result_reason). For simulation-triage
-    (proof=None) the triage branch (Task C7) derives the diagnosis events from
+    (proof=None) the triage branch derives the diagnosis events from
     stage_specific — or blocked when it skipped/crashed."""
     rule = rules.RULES[rule_name]
     if not rj.is_file():
@@ -332,12 +331,12 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
     if stale:
         return "blocked", stale, [], []
     if rule_name == "simulation-triage":
-        return _derive_triage(env, dispatch)  # Task C7 — same 4-tuple
+        return _derive_triage(env, dispatch)  # same 4-tuple
     if rule.proof is None:
         return status, None, [], []
-    # No `evidence` list here. The report-class products ARE the evidence (§5.3 "及其
-    # artifacts[]"), and `outcome.outputs` — written from the same artifacts[] one call
-    # later — already names every one of them, with its fingerprint. A bare path list
+    # No `evidence` list here. The report-class products ARE the evidence, and
+    # `outcome.outputs` — written from the same artifacts[] one call later — already
+    # names every one of them, with its fingerprint. A bare path list
     # beside it is the same fact twice in one event, and the weaker copy.
     proof = {
         "name": rule.proof,
@@ -352,12 +351,12 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
 
 
 def _derive_triage(env, dispatch):
-    """Triage reap (§2 triage contract): complete -> (verdict, None, [], diagnosis-events);
+    """Triage reap (the triage contract): complete -> (verdict, None, [], diagnosis-events);
     skipped/crash -> blocked, no diagnosis (the sim failure stays ambiguous; next round
-    re-dispatches triage, §3.3). `root_cause` IS the rule name, so no map decodes it: it
+    re-dispatches triage). `root_cause` IS the rule name, so no map decodes it: it
     becomes `fix_owner` when it is a legal auto-rebuild target, and a self-pointing
     attribution (root_cause == the failing rule) is outside simulation's input closure by
-    construction, so it lands recorded-but-unroutable (A3).
+    construction, so it lands recorded-but-unroutable.
 
     ONE DIAGNOSIS PER ROOT CAUSE: a regression fails for as many reasons as it fails for, and
     a finding can sit in a different stage's files from its neighbour, so the cause is named
@@ -394,7 +393,7 @@ def _derive_triage(env, dispatch):
         if cause in rules.input_closure("simulation"):
             diagnosis["fix_owner"] = cause
         out.append(diagnosis)
-    # A complete triage is never a fail (spec §2 triage 无独立 fail 态): it mints no proof,
+    # A complete triage is never a fail (triage 无独立 fail 态): it mints no proof,
     # so its verdict is a plain non-blocked "pass" regardless of env["status"] (the envelope
     # schema permits status=fail, but a triage fail outcome would crash repair's proof scan).
     return "pass", None, [], out
@@ -417,7 +416,7 @@ def cmd_diagnose(
     supersedes,
 ):
     """Human-authored diagnosis (source="human"). Structural correlates enforced here
-    at write time (§3.4), because the schema alone cannot express them:
+    at write time, because the schema alone cannot express them:
     - fix_owner, when present, must be a real auto-rebuild target: a producer inside
       the TRANSITIVE input closure of subject_proof (rules.input_closure) — replaces
       the old is_dag_ancestor. Omitting fix_owner (self-pointing attribution) is
@@ -468,7 +467,7 @@ def cmd_pin(module, rule, provenance, reason):
         }
     fp = facts.oracle_content_fp(module, r)
     if fp == facts.UNKNOWN:
-        # A pin must endorse REAL content (§5.4). A zero-match selector records
+        # A pin must endorse REAL content. A zero-match selector records
         # content_fingerprint="unknown" — an inert pin that can never grade human — yet
         # returns ok:true. Reject so the human learns nothing was pinned (conservative).
         return {
@@ -489,7 +488,7 @@ def cmd_pin(module, rule, provenance, reason):
 
 def cmd_reopen(module, pin_ref, reason):
     events = facts.read_events(module)
-    # A reopen must revoke a real pin: pin_ref names a pinned oracle_ref (§5.4). A typo'd
+    # A reopen must revoke a real pin: pin_ref names a pinned oracle_ref. A typo'd
     # ref would append a reopen that matches nothing — ok:true yet zero revocation, so the
     # human believes trust was withdrawn when it was not. Reject instead (conservative).
     if not any(e["type"] == "pin" and e["oracle_ref"] == pin_ref for e in events):
@@ -503,12 +502,11 @@ def cmd_reopen(module, pin_ref, reason):
 
 
 def cmd_signoff(module, provenance, reason):
-    """Close signoff: run the gate, and only if it is clear record the human act (§5.5).
+    """Close signoff: run the gate, and only if it is clear record the human act.
 
     The third ask-gated judgment verb, beside pin/reopen — and the only bypass surface the
     gate has, which is why the gate runs HERE rather than being trusted from a prior
-    `decide`. A caller that skips decide entirely still cannot mint a signoff (§6's
-    bypass-blocked test targets exactly this)."""
+    `decide`. A caller that skips decide entirely still cannot mint a signoff."""
     events = facts.read_events(module)
     reason_blocked = facts.signoff_gate(module, events)
     if reason_blocked is not None:
@@ -595,7 +593,7 @@ def main():
     di.add_argument(
         "--diagnosis-refs",
         default=None,
-        help="comma-separated diagnosis ids this auto-rebuild rests on (§1.4 audit)",
+        help="comma-separated diagnosis ids this auto-rebuild rests on (audit)",
     )
     di.add_argument(
         "--params",

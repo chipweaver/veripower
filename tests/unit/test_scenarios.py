@@ -1,4 +1,4 @@
-"""Code-level scenario replays (spec §6) against the REAL kernel.
+"""Code-level scenario replays against the REAL kernel.
 
 Template: test_state.py::TestFullLoop (multi-round dispatch/reap loop). Idioms are
 reused verbatim from the two landed kernel suites the brief names:
@@ -11,7 +11,7 @@ No mocks: every proof, fingerprint, scope, and diagnosis is produced by the
 landed facts/schedule/kernel code over a real asic/<module>/ tree.
 
 Each scenario replays a multi-step pipeline flow and asserts the BINDING per-step
-assertions from task-D1-brief.md. Scenario replays against already-landed semantics
+assertions. Scenario replays against already-landed semantics
 are GREEN-first by construction (the kernel is built + task-reviewed); where a step
 demands RED evidence that a change actually bit, the test pins a baseline BEFORE the
 mutation and asserts the flip (e.g. Step 1 checks the scaffold consumer really goes
@@ -420,7 +420,7 @@ def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
     """A design.md prose tweak expires the specification proof and forces a forward
     re-dispatch with NO directive; the producer carries its prior outputs forward:
     every untouched output's fingerprint in the new outcome is byte-identical to the
-    previous run's (§4.3 义务无条件 / §6 同式覆盖 — Step 2's minimal-edit invariant on a
+    previous run's (义务无条件 / 同式覆盖 — Step 2's minimal-edit invariant on a
     directive-LESS forward path)."""
     monkeypatch.chdir(tmp_path)
     m = "round2b"
@@ -664,7 +664,7 @@ def test_step5_cold_regenerated_seed_byte_identical(tmp_path, monkeypatch):
     """Cold-start equivalence (unit-testable slice): delete the warm SGDC/SDC seed and
     re-derive — derive-constraints is deterministic, so the cold-regenerated seed is
     byte-identical to the warm one. (SpyGlass verdict-equality is an EDA-gated
-    design-time obligation exercised via the F1 fixture, NOT asserted here.)"""
+    design-time obligation exercised via the fixture, NOT asserted here.)"""
     wd = _spec_workdir(tmp_path)
     _derive_constraints(wd)
     warm_sgdc = (wd / "constraints" / "m.sgdc").read_bytes()
@@ -826,7 +826,7 @@ def test_repair_dispatch_names_what_named_the_owner_and_the_human_reasoning(
 def test_repair_dispatch_rejects_an_unresolvable_channel(tmp_path, monkeypatch):
     """Both rework channels fail closed. A dangling --caused-by would hand the worker a path
     it cannot open; an unknown --diagnosis-refs would drop that diagnosis's own record and
-    reasoning silently, which is the loss §3.3 forbids."""
+    reasoning silently."""
     monkeypatch.chdir(tmp_path)
     m = "repair-guard"
     _mk(m, "brainstorm.md", "b1")

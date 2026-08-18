@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """simtriage — simulation-triage-stage CLI.
 
-Verbs (one stage = one tool; see skills/simulation-triage/SKILL.md for usage):
+Verbs (one stage = one tool):
   finalize   schema-gate the analysis judgment, then atomically write result.json
              (exit 0 written / 1 schema violation / 2 BLOCKED)
 

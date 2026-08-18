@@ -321,7 +321,7 @@ def test_signoff_close_end_to_end(tmp_path, monkeypatch):
 
 
 def test_reopen_drops_a_landed_signoff(tmp_path, monkeypatch):
-    # §3.6: a signoff is only as good as the proofs beneath it. The signoff event is
+    # A signoff is only as good as the proofs beneath it. The signoff event is
     # permanent and there is no unsign verb — reopening any pin invalidates that proof
     # (cond 3), which drops the predicate's second conjunct. No ceremony required.
     monkeypatch.chdir(tmp_path)
@@ -361,7 +361,7 @@ def test_unknown_rule_argparse_exits_cleanly(tmp_path, monkeypatch):
 
 
 def test_signoff_bypass_blocked_proposed_oracle(tmp_path, monkeypatch):
-    # §6: the gate must not be bypassable. The verb is now its ONLY surface, so calling
+    # The gate must not be bypassable. The verb is now its ONLY surface, so calling
     # `signoff` directly — never going near `decide` — must still hit the gate and refuse.
     # No signoff event may land behind a refusal.
     monkeypatch.chdir(tmp_path)
@@ -459,7 +459,7 @@ def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human(
     assert _latest_grade(module) == "human"
 
 
-# ── simulation-triage reap path (Task C7: proof=None -> diagnosis event, not a proof) ──
+# ── simulation-triage reap path (proof=None -> diagnosis event, not a proof) ───────────
 
 
 def _dispatch_triage(tmp_path, module, sim_run):
@@ -615,7 +615,7 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
 
 
 def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
-    # F3 / spec §2: triage 无独立 fail 态. A schema-legal result.json (the envelope allows
+    # triage 无独立 fail 态. A schema-legal result.json (the envelope allows
     # status ∈ {pass, fail}; the triage schema does not pin it) that carries status="fail"
     # with analysis_state="complete" must NOT produce an outcome verdict="fail" — a non-proof
     # rule's fail outcome later crashes required_proofs(repair)/step-2's FORWARD_PRIORITY.index.
@@ -731,8 +731,8 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
 # ── reap guard: never-dispatched run (defensive, no TypeError) ─────────────────
 #
 # NOTE: a re-reap of an ALREADY-outcome'd (rule, run) is deliberately NOT guarded
-# against here — ARCHITECTURE.md §4.7/§7.2 documents promote as idempotent so a
-# crash mid-promote is repaired by the next reap, and
+# against here — promote is idempotent, so a crash mid-promote is repaired by the
+# next reap, and
 # test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human above
 # reaps the same run 4 times in a row (post-pin regrade) and asserts ok:True each
 # time. Guarding on "already has an outcome" would break that documented, tested
@@ -756,7 +756,7 @@ def test_reap_never_dispatched_ok_false_no_event_appended(tmp_path, monkeypatch)
 
 
 def test_reopen_unknown_pin_ref_rejected(tmp_path, monkeypatch):
-    # F6: reopen must not silently no-op on a typo'd pin_ref — a reopen that matches no
+    # Reopen must not silently no-op on a typo'd pin_ref — a reopen that matches no
     # pinned oracle_ref revokes nothing yet returns ok:true, so the human believes trust
     # was withdrawn when it was not (not a conservative failure). It must error instead.
     monkeypatch.chdir(tmp_path)
@@ -923,7 +923,7 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
 
 
 def test_dispatch_consumer_in_virgin_module_rejected(tmp_path, monkeypatch):
-    # F7: spec §2 — an input whose producer never ran is UNAVAILABLE. A manual dispatch of a
+    # An input whose producer never ran is UNAVAILABLE. A manual dispatch of a
     # consumer (synthesis) in a virgin module (rtl-design/specification never ran) must be
     # rejected; else the run records an empty input table -> a vacuously-valid proof forever.
     monkeypatch.chdir(tmp_path)
@@ -938,7 +938,7 @@ def test_dispatch_consumer_in_virgin_module_rejected(tmp_path, monkeypatch):
 
 
 def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
-    # C2 / spec §5.4: reap compares the oracle's current content against the LATEST pin
+    # Reap compares the oracle's current content against the LATEST pin
     # record, not ANY live pin. Two live pins (A then B, no reopen between); oracle content
     # reverts to A -> the latest pin (B) does not match -> regrade to proposed, not human.
     monkeypatch.chdir(tmp_path)
@@ -981,7 +981,7 @@ def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
 
 
 def test_outputs_name_the_artifacts_that_are_the_evidence(tmp_path, monkeypatch):
-    # C9 / spec §5.3: the report-class products ARE the evidence, so the outcome must name
+    # The report-class products ARE the evidence, so the outcome must name
     # the canonical result.json AND every artifacts[] path — recording only result.json
     # truncates the audit trail. `outputs` carries them with their fingerprints, which is
     # why the proof no longer repeats the bare paths beside it.
@@ -998,7 +998,7 @@ def test_outputs_name_the_artifacts_that_are_the_evidence(tmp_path, monkeypatch)
 
 
 def test_pin_zero_match_selector_rejected(tmp_path, monkeypatch):
-    # C10: pinning an oracle whose content selector matches nothing records
+    # Pinning an oracle whose content selector matches nothing records
     # content_fingerprint="unknown" and returns ok:true — an inert pin that can never grade
     # human. A pin must endorse real content; reject when nothing matches (conservative).
     monkeypatch.chdir(tmp_path)
@@ -1020,7 +1020,7 @@ def test_pin_zero_match_selector_rejected(tmp_path, monkeypatch):
 
 
 def test_triage_complete_without_findings_blocked(tmp_path, monkeypatch):
-    # D4/§3.4: a complete triage MUST carry non-empty advisory.findings[] each with an
+    # A complete triage MUST carry non-empty advisory.findings[] each with an
     # anchor (so the record the fix owner opens always says where). A complete analysis
     # with no findings violates the schema -> reap derives blocked.
     monkeypatch.chdir(tmp_path)
@@ -1047,7 +1047,7 @@ def test_triage_complete_without_findings_blocked(tmp_path, monkeypatch):
     assert r["verdict"] == "blocked"
 
 
-# ── reap temporal-integrity check (room-birth hygiene, ARCHITECTURE §4.7/§7.2) ──
+# ── reap temporal-integrity check (room-birth hygiene) ────────────────────────
 #
 # The kernel's only trust input from a workdir is result.json; a produced_at predating
 # this run's own dispatch means the envelope was carried in (e.g. a canonical result.json
@@ -1188,7 +1188,7 @@ def test_dispatch_carries_author_previous_round(tmp_path, monkeypatch):
 
 
 def test_dispatch_injects_no_upstream_byte_copy(tmp_path, monkeypatch):
-    # §10 #2 (half a): a transformer dispatch writes ONLY dispatch.json — the upstream RTL is
+    # A transformer dispatch writes ONLY dispatch.json — the upstream RTL is
     # injected as a location, never copied into the workdir. (Half b — editing canonical
     # invalidates the proof — is covered by test_facts_freshness input-change tests.)
     monkeypatch.chdir(tmp_path)
@@ -1212,7 +1212,7 @@ def test_dispatch_injects_no_upstream_byte_copy(tmp_path, monkeypatch):
 
 
 def test_dispatch_proof_inputs_excludes_self_carry(tmp_path, monkeypatch):
-    # §10 #4: an author's carried self-products are NOT in Rule.inputs, so the dispatch event's
+    # An author's carried self-products are NOT in Rule.inputs, so the dispatch event's
     # recorded input table (proof.inputs source) never contains them — dropping/editing a
     # carried product cannot stale the author's fresh proof.
     monkeypatch.chdir(tmp_path)
