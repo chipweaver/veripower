@@ -193,7 +193,7 @@ def test_inport_and_observer_wiring(tmp_path):
 
 
 def test_driver_monitor_vif_key_matches_tb_top_set(tmp_path):
-    # M1 regression: tb_top registers each agent's vif under "<agent>_vif"; the
+    # Regression: tb_top registers each agent's vif under "<agent>_vif"; the
     # driver/monitor must `get` under the same key or build_phase uvm_fatals.
     out = _render(tmp_path)
     tb_top = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
@@ -213,7 +213,7 @@ def test_render_missing_scaffold_exits(tmp_path):
 
 
 def test_atomic_rollback_on_write_error(tmp_path, monkeypatch):
-    # A mid-loop OSError rolls back run_scaffold's own files; re-raises. (in-process; U1)
+    # A mid-loop OSError rolls back run_scaffold's own files; re-raises. (in-process)
     spec_path = _write_spec(tmp_path)
     boundary = _write_boundary(tmp_path / "spec")
     out = tmp_path / "out"

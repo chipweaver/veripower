@@ -38,7 +38,7 @@ def test_envelope_status_enum_is_pass_fail():
 def test_simulation_triage_analysis_state_enum_is_canonical():
     """simulation-triage's analysis_state discriminator is complete | skipped only.
 
-    Task C7 folded the standalone analysis.schema.json into
+    The standalone analysis.schema.json was folded into
     result.schema.json's stage_specific subschema — the invariant lives
     there now (same canonical enum)."""
     schema_path = (

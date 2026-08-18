@@ -1,7 +1,7 @@
 # tests/unit/test_sim_bootstrap.py
 """sim bootstrap verb — deploy-into-workdir behavior.
 
-Two layers: in-process unit tests of the TOP-inference helpers (B1 — byte-for-byte the
+Two layers: in-process unit tests of the TOP-inference helpers (byte-for-byte the
 lintcdc helpers), and subprocess "mirror" tests of full deploy behavior that run the real
 shipped skill with cwd set to a tmp design-tree root and build the upstream
 asic/<module>/Design/... references under it. The bootstrap anchors the design tree on the

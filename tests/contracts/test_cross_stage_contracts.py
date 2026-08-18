@@ -1,4 +1,4 @@
-"""Cross-stage producer/consumer contract checks (D3).
+"""Cross-stage producer/consumer contract checks.
 
 Invariants that prevent silent-transformation drift across stage boundaries:
 
@@ -139,7 +139,7 @@ def test_power_dut_path_matches_simulation_tb_top() -> None:
     # power test template's toggle scope must use the same {TOP}_tb_top.u_dut convention.
     tmpl = (pa / "scaffold" / "power_test.sv.tmpl").read_text(encoding="utf-8")
     assert "{{TOP}}_tb_top.u_dut" in tmpl
-    # ptpx.tcl must NOT hardcode the DUT path (S3: reads $STRIP_PATH, fail-loud if unset).
+    # ptpx.tcl must NOT hardcode the DUT path (reads $STRIP_PATH, fail-loud if unset).
     ptpx = (pa / "scripts" / "ptpx.tcl").read_text(encoding="utf-8")
     assert "_tb_top/u_dut" not in ptpx, (
         "ptpx.tcl still hardcodes the DUT strip_path (should read $STRIP_PATH)"

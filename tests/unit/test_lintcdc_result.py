@@ -1,7 +1,7 @@
 """Unit tests for lintcdc.result — thin combiner for lint-cdc result.json.
 
-TDD order: Task 1 (AND gate + shape), Task 2 (header derivations),
-Task 3 (artifacts[]), Task 4 (golden + schema).
+TDD order: AND gate + shape, header derivations,
+artifacts[], golden + schema.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def _clean_workdir(tmp_path, lint_err=0, cdc_err=0):
 
 
 # ---------------------------------------------------------------------------
-# Task 1: AND gate + lean shape
+# AND gate + lean shape
 # ---------------------------------------------------------------------------
 
 
@@ -158,7 +158,7 @@ def test_info_severity_does_not_gate(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Task 2: Reproducibility-header derivations
+# Reproducibility-header derivations
 # ---------------------------------------------------------------------------
 
 
@@ -173,7 +173,7 @@ def test_parse_tool_from_lint_report(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Task 3: artifacts[] enumeration
+# artifacts[] enumeration
 # ---------------------------------------------------------------------------
 
 
@@ -196,7 +196,7 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Task 4: Golden test against the real tpu_top run + schema validation
+# Golden test against the real tpu_top run + schema validation
 # ---------------------------------------------------------------------------
 
 FIX = Path(__file__).resolve().parent / "fixtures" / "lint-cdc-tpu_top"

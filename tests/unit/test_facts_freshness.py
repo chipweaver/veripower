@@ -68,7 +68,7 @@ def test_proof_valid_then_input_change_invalidates(tmp_path, monkeypatch):
 
 
 def test_proof_invalid_when_own_output_handedited(tmp_path, monkeypatch):
-    # spec §1.3 condition 4: hand-editing the rule's own output invalidates its proof.
+    # Validity condition 4: hand-editing the rule's own output invalidates its proof.
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "v1")
     dm = _write("m", "Design/specification/design.md", "d1")
@@ -244,7 +244,7 @@ def _sign_off_everything(module):
 
 
 def test_signed_off_regresses_on_reopen(tmp_path, monkeypatch):
-    # §3.6/§6: reopen of any pin flips signed_off back. (The hand-edit half of the §3.6
+    # Reopen of any pin flips signed_off back. (The hand-edit half of the same
     # invariant needs on-disk outputs this empty-outputs fixture cannot carry — it is
     # covered by test_schedule.py::test_signed_off_regresses_on_hand_edit.)
     monkeypatch.chdir(tmp_path)
@@ -258,7 +258,7 @@ def test_signed_off_regresses_on_reopen(tmp_path, monkeypatch):
 
 
 def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypatch):
-    # E4 / §5.3: the canonical result.json is in the rule's OWN output binding, so hand-
+    # The canonical result.json is in the rule's OWN output binding, so hand-
     # editing it (coverage-inflation / "灌水即作废") invalidates the proof via condition 4 —
     # exactly like tampering any other promoted output. End-to-end freshness assertion.
     monkeypatch.chdir(tmp_path)
@@ -344,7 +344,7 @@ def _spec_run(module, run, *, oracle_grade="human"):
 
 
 def test_re_reap_after_reopen_does_not_resurrect_proof(tmp_path, monkeypatch):
-    # F5: reopen withdraws trust; a bare RE-REAP (re-reading the same run, no re-execution,
+    # Reopen withdraws trust; a bare RE-REAP (re-reading the same run, no re-execution,
     # no re-pin) must NOT resurrect the proof. Condition 3 anchors on the run's DISPATCH.
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")
@@ -392,7 +392,7 @@ def test_re_reap_after_reopen_does_not_resurrect_proof(tmp_path, monkeypatch):
 
 
 def test_repin_after_reopen_restores_validity(tmp_path, monkeypatch):
-    # F5 companion: a genuine re-pin (human re-endorses) after reopen DOES restore validity —
+    # Companion: a genuine re-pin (human re-endorses) after reopen DOES restore validity —
     # the second conjunct (no live pin) is then false. The legitimate pin/regrade path lives.
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")
@@ -429,7 +429,7 @@ def test_repin_after_reopen_restores_validity(tmp_path, monkeypatch):
 
 
 def test_fresh_dispatch_after_reopen_is_valid(tmp_path, monkeypatch):
-    # F5 companion: a genuine re-execution (new dispatch AFTER the reopen, then reaped) is
+    # Companion: a genuine re-execution (new dispatch AFTER the reopen, then reaped) is
     # valid — its dispatch post-dates the reopen, so condition 3 does not fire.
     monkeypatch.chdir(tmp_path)
     _write("m", "brainstorm.md", "b1")

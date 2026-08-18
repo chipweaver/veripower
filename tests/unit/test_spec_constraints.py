@@ -367,7 +367,7 @@ def test_short_named_data_port_on_generated_clock_deferred(tmp_path):
 
 
 def test_sgdc_emits_async_clock_groups(tmp_path):
-    # F1: a primary + an async clock must produce a clock -domain declaration in the SGDC
+    # A primary + an async clock must produce a clock -domain declaration in the SGDC
     # too, not just set_clock_groups in the SDC. SpyGlass's SGDC parser rejects
     # set_clock_groups as an unknown command (confirmed on SpyGlass_vL-2016.06) — the
     # SGDC-native equivalent is `clock -domain <D>`, one shared domain per sync/primary
@@ -389,7 +389,7 @@ def test_sgdc_emits_async_clock_groups(tmp_path):
 
 
 def test_sgdc_domain_label_collision_fails_loudly():
-    # F1 guard: an async clock literally named "sync" would be assigned -domain sync and
+    # Guard: an async clock literally named "sync" would be assigned -domain sync and
     # silently merged into the synchronous group — a false-negative CDC hole. Must fail.
     clocks = [_clk("clk", 10.0), _clk("sync", 20.0, "async")]
     with pytest.raises(SystemExit):
@@ -397,7 +397,7 @@ def test_sgdc_domain_label_collision_fails_loudly():
 
 
 def test_sdc_sgdc_async_declaration_agrees_by_construction():
-    # F1: both emitters render the SAME _clock_partition, so their async declarations agree
+    # Both emitters render the SAME _clock_partition, so their async declarations agree
     # by construction. Asserted against the two functions, not by re-parsing their output.
     ports = [_port("din", "input", "data", width=8)]
     for clocks in (

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """lintcdc — lint-cdc-stage CLI.
 
-Verbs (one stage = one tool; see skills/lint-cdc/SKILL.md for usage):
+Verbs (one stage = one tool):
   bootstrap   deploy templates + seed SGDC (carried/cold/template) + sync filelist (exit 0 / 1 / 2)
   finalize    AND the two *-violations.json sidecars, assemble result.json; also the
               early-fail exit (with --fail-reason)                                (exit 0 written / 2 BLOCKED)

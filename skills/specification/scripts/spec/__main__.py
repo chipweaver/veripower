@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """spec — specification-stage CLI.
 
-Verbs (one stage = one tool; see skills/specification/SKILL.md for usage):
+Verbs (one stage = one tool):
   derive-ports        per-child ports from interconnects.json (stdout: JSON)
   check-crossrefs     cross-file name + orphan join         (stdout: verdict JSON; exit 0/1)
   derive-constraints  generate SDC/SGDC from clocks.json + top-io.json (stdout: JSON; fail-loud)

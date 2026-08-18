@@ -42,7 +42,7 @@ def failing_proofs(events: list[dict]) -> set[str]:
     Scan newest-first: the first outcome seen per rule IS that rule's latest. Position by
     scan order — never events.index (duplicate event lines collide, and it's O(n) per call).
     Restricted to the eight stage proofs: a non-proof rule (simulation-triage) has no proof
-    to re-verify and would crash the FORWARD_PRIORITY.index sort (spec §2/§3.2).
+    to re-verify and would crash the FORWARD_PRIORITY.index sort.
 
     ALL of them, not the newest one. A failure that is not in this set is not scheduled, so
     returning a single rule leaves every other failing rule out of the round — two stages
@@ -88,7 +88,7 @@ def _active_diagnoses(events: list[dict], rule: str, outcome: dict) -> list[dict
     """ALL diagnoses effective for this failure (subject matches this outcome's run,
     not superseded), oldest first. NO fix_owner filter: a self-pointing diagnosis
     (fix_owner absent, attribution = the failed rule's own judge) is still a 现成归因 —
-    `_owner` escalates it instead of auto-rebuilding (§3.3 bullet 4)."""
+    `_owner` escalates it instead of auto-rebuilding."""
     sup = {
         e["supersedes"]
         for e in events
@@ -140,7 +140,7 @@ def _event_index(events: list[dict], event: dict) -> int:
 
 def _oracle_retracted(events: list[dict], rule: str, outcome: dict) -> bool:
     """True iff the oracle that judged this failure was reopened after the run executed and
-    has not since been re-pinned — §4.4 condition 3, asked of a fail rather than a pass.
+    has not since been re-pinned — validity condition 3, asked of a fail rather than a pass.
 
     Reopening an oracle says "I no longer stand behind this judge". A pass loses its proof;
     a fail loses its AUTHORITY — it can no longer direct rework at an upstream stage on that
@@ -381,7 +381,7 @@ def _held_by_advisory(
     coming: set[str],
     inflight: list[dict],
 ) -> bool:
-    """No-overtake gate (§3.3): hold `rule` back while an `ADVISORY_ORDER` predecessor of it
+    """No-overtake gate: hold `rule` back while an `ADVISORY_ORDER` predecessor of it
     is not yet valid AND is going to speak — scheduled this round (`coming`) or already
     running. The sole consumer of advisory data.
 
@@ -401,7 +401,7 @@ def _held_by_advisory(
 
 def _forward_work(module: str, events: list[dict], required: set[str]) -> set[str]:
     """The required proofs that are not currently valid, expanded to the REBUILD CLOSURE.
-    §3.3 末句: a narrowed rebuild chain (timing -> rebuild synthesis FIRST) walks the
+    A narrowed rebuild chain (timing -> rebuild synthesis FIRST) walks the
     producers of unavailable inputs; when nothing is failing the required set already spans
     the DAG, so the expansion is usually a no-op."""
     work = {p for p in required if not facts.proof_valid(module, events, p)}

@@ -268,7 +268,7 @@ def test_run_returns_no_verdict_after_a_parse_failure(tmp_path):
 
 
 def test_run_wns_cross_check_contradiction_exit3(tmp_path):
-    # negative per-group slack but a clean design summary -> exit 3 (review S3)
+    # negative per-group slack but a clean design summary -> exit 3
     reports = _stage(tmp_path, qor=QOR_CONTRADICT)
     rc, payload = sp.run(reports, None, None)
     assert rc == 3 and payload is None  # no verdict on a parse surprise

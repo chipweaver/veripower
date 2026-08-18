@@ -16,7 +16,7 @@ class Rule:
     name: str
     skill: str
     # A rule that fans out into Level-1 sub-Tasks must be "main-thread": a task
-    # subagent may dispatch none (framework/references/prompts/stage-subagent.md.tpl).
+    # subagent may dispatch none.
     execution: str  # "task" | "main-thread"
     workdir_root: tuple[str, ...]
     inputs: dict[str, tuple[str, ...]] = field(default_factory=dict)
@@ -108,7 +108,7 @@ RULES: dict[str, Rule] = {
             "manifest": ("Design/specification/manifest.json",),
             "children": ("Design/specification/*.md",),
             # Read by the child sub-Tasks (create_generated_clock, set_case_analysis and
-            # quasi_static annotations per references/child-task-contract.md), not by any
+            # quasi_static annotations), not by any
             # script in this stage.
             "clocks": ("Design/specification/clocks.json",),
             "top_io": ("Design/specification/top-io.json",),
@@ -210,7 +210,7 @@ RULES: dict[str, Rule] = {
         inputs={
             "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/rtl-files.json"),
             # NOT constraint-annotations.json: simulation consumes only the file layout,
-            # so binding it would let an annotation-only edit falsely invalidate (D6/G4).
+            # so binding it would let an annotation-only edit falsely invalidate.
             "plan": ("Verification/simulation-plan/verification-plan.md",),
             # NOT power-scenarios.json: simulation builds no power test, so binding it
             # would let a scenario-only edit falsely invalidate a full compile + regress.
@@ -236,7 +236,7 @@ RULES: dict[str, Rule] = {
         # promoted products (sim/result.py enumerate_artifacts) — power-analysis consumes them
         proof="simulation",
         oracle=("tb-refmodel", "proposed"),
-        oracle_selector="tb/uvm/refmodel/*",  # pin endorses the JUDGE itself (spec §2) —
+        oracle_selector="tb/uvm/refmodel/*",  # pin endorses the JUDGE itself —
         # survives runs; content drift (LLM regenerates refmodel) drops the pin at reap
         triage="simulation-triage",  # the one stage with a deeper analyzer behind it
         carry=("**",),
@@ -346,7 +346,7 @@ def input_producers(rule_name: str) -> set[str]:
 
 
 def input_closure(rule_name: str) -> set[str]:
-    """TRANSITIVE closure of artifact-edge producers (§3.4 输入闭包). Excludes
+    """TRANSITIVE closure of artifact-edge producers (输入闭包). Excludes
     ADVISORY_ORDER by construction. Consumed by failure-freshness (schedule) and by
     fix_owner legality (kernel diagnose: fix_owner must produce an artifact inside the
     failed proof's input closure)."""

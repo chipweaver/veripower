@@ -169,7 +169,7 @@ def test_cached_unreadable_parent_returns_unknown(tmp_path):
     ],
 )
 def test_corrupt_shape_fingerprint_cache_recomputes_not_crashes(tmp_path, payload):
-    # F2 / spec §1.1 & §5.1: the fingerprint cache is a PURE speed cache — "损坏 → 删了重算",
+    # The fingerprint cache is a PURE speed cache — "损坏 → 删了重算",
     # "删除只影响速度，不影响任何结论". A cache file that is valid JSON but the WRONG SHAPE
     # (list/str/int root, or a non-[size,mtime,fp] entry) must be treated as corrupt and
     # recomputed, never crash a kernel verb with AttributeError/TypeError/IndexError.

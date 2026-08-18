@@ -89,7 +89,7 @@ def _load_cache(module_root: Path) -> dict:
             data = json.loads(_cache_path(module_root).read_text())
         except (OSError, json.JSONDecodeError):
             data = {}
-        # Pure speed cache (§1.1/§5.1): valid JSON of the wrong shape (list/scalar root) is
+        # Pure speed cache: valid JSON of the wrong shape (list/scalar root) is
         # corruption — recompute, never crash. Per-entry shape is checked at the hit site.
         _LOADED[key] = data if isinstance(data, dict) else {}
     return _LOADED[key]
@@ -119,7 +119,7 @@ def fingerprint_cached(path: Path, module_root: Path) -> str:
         return fingerprint(path)
     hit = cache.get(rel)
     # A well-formed entry is [size, mtime_ns, fp] (what we write below); anything else
-    # is corruption — fall through to recompute rather than IndexError/TypeError (§5.1).
+    # is corruption — fall through to recompute rather than IndexError/TypeError.
     if (
         isinstance(hit, list)
         and len(hit) == 3
@@ -169,12 +169,12 @@ def read_events(module: str) -> list[dict]:
             out.append(json.loads(line))
         except json.JSONDecodeError:
             if i == len(lines) - 1:
-                break  # tolerate ONLY a truncated LAST line (spec §5.1)
+                break  # tolerate ONLY a truncated LAST line
             # A corrupt line mid-log would silently drop events (e.g. a dispatch -> run-
             # number reuse). Fail loud instead — never proceed on a corrupt append-only log.
             sys.exit(
                 f"read_events: corrupt line {i + 1} of {p} "
-                "(only a truncated last line is tolerated, spec §5.1)"
+                "(only a truncated last line is tolerated)"
             )
     return out
 
@@ -337,7 +337,7 @@ def oracle_content_fp(module: str, rule) -> str:
 
 
 def oracle_grade(module: str, events: list[dict], rule) -> str:
-    """LIVE oracle grade (§5.4 ratchet): proposed unless the LATEST live pin's recorded
+    """LIVE oracle grade (the ratchet): proposed unless the LATEST live pin's recorded
     content fingerprint matches the oracle's CURRENT content. Derived live over the current
     event log (not a reap-time snapshot in the outcome event) so a pin/reopen takes effect
     immediately — the signoff gate reads this so an endorsement need not wait for a re-reap,
@@ -350,7 +350,7 @@ def oracle_grade(module: str, events: list[dict], rule) -> str:
     current = oracle_content_fp(module, rule)
     if current == UNKNOWN:
         return "proposed"  # unreadable oracle content never inherits trust
-    # Compare against the LATEST live pin only (spec §5.4 "与最新 pin 记录比对"). `live` is in
+    # Compare against the LATEST live pin only. `live` is in
     # event order, so live[-1] is the newest; an OLDER live pin matching current content must
     # not resurrect trust the newer endorsement moved on from.
     return "human" if live[-1]["content_fingerprint"] == current else "proposed"
@@ -359,7 +359,7 @@ def oracle_grade(module: str, events: list[dict], rule) -> str:
 def verdict_trustworthy(
     module: str, events: list[dict], proof_name: str, idx: int, outcome: dict
 ) -> bool:
-    """Conditions 3 and 4 of §1.3 — whether the recorded VERDICT still describes reality.
+    """Conditions 3 and 4 of proof validity — whether the recorded VERDICT still describes reality.
 
     Deliberately excludes condition 2 (inputs). The three conditions answer different
     questions, and only these two are about the verdict itself: condition 4 says the run's own
@@ -385,7 +385,7 @@ def verdict_trustworthy(
             return False
     # condition 3 (oracle trust): invalid iff the oracle was reopened after this RUN's
     # DISPATCH and has not since been re-pinned. Anchoring on the dispatch (execution time),
-    # not the outcome position, closes the re-reap whitewash (F5): a bare re-reap re-lands the
+    # not the outcome position, closes the re-reap whitewash: a bare re-reap re-lands the
     # outcome past a reopen but re-executes nothing and re-pins nothing, so it must not
     # resurrect the proof. Genuine recovery still validates — a fresh dispatch AFTER the reopen
     # post-dates it (reopened_after=False), and a re-pin leaves a live pin (second conjunct false).
@@ -413,7 +413,7 @@ def inputs_unchanged(module: str, proof_name: str, outcome: dict) -> bool:
 def proof_fresh_except_verdict(
     module: str, events: list[dict], proof_name: str, idx: int, outcome: dict
 ) -> bool:
-    """Conditions 2, 3 and 4 of §1.3 validity — everything except the verdict itself.
+    """Conditions 2, 3 and 4 of proof validity — everything except the verdict itself.
     proof_valid adds `verdict == pass`."""
     return inputs_unchanged(module, proof_name, outcome) and verdict_trustworthy(
         module, events, proof_name, idx, outcome
@@ -421,7 +421,7 @@ def proof_fresh_except_verdict(
 
 
 def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:
-    """spec §1.3: a proof is currently valid iff verdict==pass AND every recorded input
+    """A proof is currently valid iff verdict==pass AND every recorded input
     version matches disk AND its oracle ref was not reopened after the proof landed AND
     every recorded output version matches disk (condition 4)."""
     hit = _proof_outcome(events, proof_name)
@@ -476,11 +476,11 @@ def input_available(module: str, events: list[dict], glob: str) -> bool:
         return False
     outcome = latest_outcome(events, prod)
     if outcome is None:
-        # Producer never ran -> no output version exists -> input UNAVAILABLE (spec §2:
-        # 可用 iff 生产规则最新 outcome 的产出版本 == 当前磁盘指纹). Forward scheduling still
+        # Producer never ran -> no output version exists -> input UNAVAILABLE (可用 iff
+        # 生产规则最新 outcome 的产出版本 == 当前磁盘指纹). Forward scheduling still
         # reaches the producer via step-2's closure expansion; and this stops a manual
         # dispatch of a consumer in a virgin module from recording an empty input table —
-        # a vacuously-valid proof forever (F7).
+        # a vacuously-valid proof forever.
         return False
     root = module_root(module)
     matched = False
@@ -514,7 +514,7 @@ def rule_available(module: str, events: list[dict], rule_name: str) -> bool:
 
 
 def projection(module: str, events: list[dict]) -> dict[str, str]:
-    """Per-stage cell per §4.4: valid | stale | failed | blocked | in-flight | missing.
+    """Per-stage cell: valid | stale | failed | blocked | in-flight | missing.
     Stage cells only — signoff is not a stage and gets no cell; `signed_off` renders it."""
     flying = {f["rule"] for f in in_flight(events)}
     cells: dict[str, str] = {}
@@ -539,7 +539,7 @@ def projection(module: str, events: list[dict]) -> dict[str, str]:
 
 
 def signed_off(module: str, events: list[dict]) -> bool:
-    """§3.6 判定语: a human landed a `signoff` event AND every stage proof is CURRENTLY
+    """The signed-off predicate: a human landed a `signoff` event AND every stage proof is CURRENTLY
     valid. Both conjuncts are load-bearing — the event carries the human act, and validity
     is re-derived live so that a proof going stale afterwards drops the signoff on its own.
 
@@ -601,7 +601,7 @@ def signoff_basis(module: str, events: list[dict]) -> list[dict]:
     """What the human is endorsing, per proof — the projection the signoff gate never showed.
 
     The gate answers "may this be signed"; it says nothing about WHAT. Signoff is where a
-    human converts machine self-assessment into signoff-grade trust (ARCHITECTURE §2), and a
+    human converts machine self-assessment into signoff-grade trust, and a
     transfer of responsibility only holds if the person can see which proposition they are
     taking on. Every field below is here because it participates in DEFINING that proposition,
     and nothing is here merely because it was recorded:

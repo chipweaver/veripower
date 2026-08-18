@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """power — power-analysis-stage CLI.
 
-Verbs (one stage = one tool; see skills/power-analysis/SKILL.md for usage):
+Verbs (one stage = one tool):
   bootstrap   deploy templates + substitute env.sh + render power tests          (exit 0 / 1 / 2)
   finalize    parse PT-PX reports, judge power_mw PPA, assemble result.json       (exit 0 written / 2 BLOCKED)
 
@@ -37,7 +37,7 @@ def _inputs(workdir) -> dict:
 
 
 def _read_ppa_targets(inputs, dims: set[str]) -> list:
-    """PPA targets from the specification stage root's ppa.json sidecar (spec §4.3),
+    """PPA targets from the specification stage root's ppa.json sidecar,
     filtered to `dims` — power-analysis binds to this file as its acceptance standard."""
     p = Path(inputs["ppa"]) / "ppa.json"
     if not p.is_file():

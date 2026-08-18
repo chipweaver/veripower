@@ -151,7 +151,7 @@ def test_good_scaffold_passes(tmp_path):
 
 
 def test_malformed_scaffold_json_fails_loud(tmp_path):
-    # A6: a JSON syntax error in a sidecar must fail loud with a fix-oriented message,
+    # A JSON syntax error in a sidecar must fail loud with a fix-oriented message,
     # not a raw traceback.
     _split(tmp_path, GOOD)
     (tmp_path / "tb-scaffold.json").write_text("{ oops ]")

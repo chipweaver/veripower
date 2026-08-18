@@ -1,4 +1,4 @@
-"""Static no-self-navigation guard (Task 17, spec §10 #5) — permanent regression
+"""Static no-self-navigation guard — permanent regression
 lock for the inject+carry refactor's core invariant: no skill or framework
 script resolves a cross-stage location by constructing it itself. Every
 cross-stage reference must instead come from this round's injected
@@ -7,7 +7,7 @@ Orchestrator, which has no injected dispatch.json of its own and drives the
 whole tree directly via `kernel.py` CLI args — see the (d) allowlist below).
 
 Four checks, in increasing strength:
-  (a) the five self-navigation token classes (spec §8 table) are COMPLETELY
+  (a) the five self-navigation token classes are COMPLETELY
       gone from skills/ + framework/.
   (b) no cross-stage `parents[3]` climb remains in skills/ (same-stage
       self-location — a script resolving its OWN templates/ dir via

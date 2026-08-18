@@ -89,7 +89,7 @@ def test_final_pass_writes_result(tmp_path):
 
 
 def test_verify_handoff_promoted(tmp_path):
-    # TB-freeze §7 decision A: verify-handoff.json is promoted to artifacts[] so the
+    # verify-handoff.json is promoted to artifacts[] so the
     # freeze classifier can locate it via the canonical result's artifact list.
     wd = _final_workdir(tmp_path)
     (wd / "verify-handoff.json").write_text("{}\n")
@@ -103,7 +103,7 @@ def test_verify_handoff_promoted(tmp_path):
 
 
 def test_final_pass_missing_case_results_is_blocked(tmp_path):
-    # S4: a missing case-results.json on the pass path is a broken pipeline step;
+    # A missing case-results.json on the pass path is a broken pipeline step;
     # finalize must fail loud (exit 2 BLOCKED), not write null counts. Deleting only the
     # the rendering beside it would NOT block: nothing reads it.
     wd = _final_workdir(tmp_path)

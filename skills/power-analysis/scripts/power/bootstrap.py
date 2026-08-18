@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """power bootstrap — deploy the power-analysis templates into a run workdir.
 
-Behavior-preserving deploy built from focused, unit-testable steps (campaign design
-§3.3): shutil.copytree + str.replace do the `cp -R` + `sed -i` work (str.replace has
-no sed-delimiter hazard on '/'-containing paths).
+Behavior-preserving deploy built from focused, unit-testable steps: shutil.copytree +
+str.replace do the `cp -R` + `sed -i` work (str.replace has no sed-delimiter hazard on
+'/'-containing paths).
 
 Deploys templates/ into the caller-provided workdir
 (<module>/Verification/power-analysis/runs/<N>/). The upstream synthesis /
@@ -147,7 +147,7 @@ def run(module: str, workdir, top: str | None = None) -> int:
     # It enforces the sim-plan->power cross-stage contract (power_scenarios[].sequence_ref
     # must resolve to sequences[].name + a non-empty agent) and exits 1 on violation;
     # its stderr surfaces verbatim (NOT captured) and we propagate the failure as exit 1
-    # (fail closed). shell-out-to-deployed — allowed per design §3.3.
+    # (fail closed). The shell-out to the deployed copy is deliberate.
     rc = subprocess.run(
         [
             sys.executable,

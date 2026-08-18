@@ -1,8 +1,8 @@
 # tests/unit/test_power_bootstrap.py
 """power bootstrap verb — deploy-into-workdir behavior.
 
-Subprocess "mirror" tests of full deploy behavior (BP2-BP11 + the §8 cross-stage
-contract CS1). The mirror runs the real shipped skill with cwd set to a tmp
+Subprocess "mirror" tests of full deploy behavior plus the sim-plan->power
+cross-stage contract. The mirror runs the real shipped skill with cwd set to a tmp
 design-tree root and builds the upstream asic/<module>/... references under it,
 pre-populating workdir/dispatch.json (netlist/tb_env/scaffold/ppa keys) the way
 kernel.py dispatch injects it at dispatch time — bootstrap reads the upstream
@@ -10,7 +10,7 @@ stage-root locations from dispatch.json instead of self-navigating
 tree_root/asic/<module>/Design|Verification/<stage>. Power has no rtl key (it
 never consumes rtl-design; TOP is inferred from the injected netlist's
 out/*_syn.v, same mechanism as timing.infer_top). The bootstrap shells out to the
-DEPLOYED emit_power_tests.py (Tier-2) to render the initial power tests; a §8
+DEPLOYED emit_power_tests.py (Tier-2) to render the initial power tests; a contract
 violation there propagates as exit 1.
 """
 
@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 _MAIN = REPO_ROOT / "skills" / "power-analysis" / "scripts" / "power" / "__main__.py"
 
 
-# ── BP2-BP11 + CS1: full deploy (subprocess mirror) ───────────────────────────
+# ── full deploy + cross-stage contract (subprocess mirror) ───────────────────────────
 _VALID_SCAFFOLD = {
     "sequences": [{"name": "idle_seq", "agent": "cpu"}],
     "power_scenarios": [
@@ -143,7 +143,7 @@ def test_env_sh_uses_absolute_dirs_from_dispatch_json(tmp_path):
 
 def test_top_inferred_from_netlist_not_rtl_design(tmp_path):
     # no --top, no rtl key in dispatch.json → TOP comes from synthesis out/<TOP>_syn.v
-    # (F4/O2(b)): assert bootstrap succeeds and never touches Design/rtl-design.
+    # Assert bootstrap succeeds and never touches Design/rtl-design.
     m, workdir, main = _make_tree(tmp_path, top="dut")  # netlist -> dut_syn.v
     r = _run(m, workdir, main)  # no --top
     assert r.returncode == 0, r.stderr  # inferred TOP from the injected netlist
@@ -157,7 +157,7 @@ def test_top_inferred_from_netlist_not_rtl_design(tmp_path):
 
 
 def test_renders_power_tests(tmp_path):
-    # BP9 happy path: the deployed emit_power_tests.py renders one test per unique
+    # Happy path: the deployed emit_power_tests.py renders one test per unique
     # sequence_ref + the power_filelist.f. (idle_seq -> power_idle_seq_test.sv.)
     m, workdir, main = _make_tree(tmp_path)
     assert _run(m, workdir, main, extra=["--top", "dut"]).returncode == 0
@@ -166,9 +166,9 @@ def test_renders_power_tests(tmp_path):
 
 
 def test_emit_failure_propagates_exit1(tmp_path):
-    # CS1 / BP9 fail: a power_scenarios[].sequence_ref with no matching sequences[].name
+    # Fail: a power_scenarios[].sequence_ref with no matching sequences[].name
     # makes the (untouched, Tier-2) emit_power_tests.py fail closed (exit 1) on the
-    # §8 cross-stage contract; the bootstrap propagates it as exit 1 and surfaces stderr.
+    # Cross-stage contract; the bootstrap propagates it as exit 1 and surfaces stderr.
     bad = {
         "sequences": [],
         "power_scenarios": [{"id": "S1", "sequence_ref": "missing_seq"}],
@@ -268,7 +268,7 @@ def test_missing_template_dir_fail_closed(tmp_path):
 
 
 def test_relative_workdir_with_trailing_slash(tmp_path):
-    # BP4: a relative --workdir resolves against the CWD (the design-tree root), and the
+    # A relative --workdir resolves against the CWD (the design-tree root), and the
     # trailing slash is dropped (type=Path) before deploy.
     m, workdir, main = _make_tree(tmp_path)
     proc = subprocess.run(

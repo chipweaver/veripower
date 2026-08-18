@@ -68,7 +68,7 @@ Version: M-2016.12-SP1
 
 """
 
-# Real F1 case: displayed slack is 0.00 but the path is VIOLATED.
+# Real case: displayed slack is 0.00 but the path is VIOLATED.
 _HOLD_VIOLATED_ZERO = """\
 ****************************************
 Report : timing
@@ -151,7 +151,7 @@ def test_parse_direction_met():
 
 
 def test_parse_direction_violated_on_marker_despite_zero():
-    # THE F1 regression: marker says VIOLATED while the number reads 0.00.
+    # The regression: marker says VIOLATED while the number reads 0.00.
     d = sp.parse_direction(_SETUP_MET + _HOLD_VIOLATED_ZERO, "min")
     assert d["met"] is False
     assert d["worst_slack_ns"] == pytest.approx(0.00)
@@ -193,7 +193,7 @@ def test_run_clean_pass(tmp_path):
 
 
 def test_run_marker_keyed_fail_on_displayed_zero(tmp_path):
-    # F1: must FAIL despite hold slack displaying 0.00; actual ~ 0.00 here.
+    # Must FAIL despite hold slack displaying 0.00; actual ~ 0.00 here.
     rep = _write(tmp_path, _SETUP_MET + _HOLD_VIOLATED_ZERO + _CHECK_TIMING + _COV_FULL)
     rc, data = sp.run(rep)
     assert rc == 0
@@ -310,7 +310,7 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
     assert not (tmp_path / "result.json").exists()
 
 
-# ── Task 1: build_result + finalize subcommand ───────────────────────────────
+# ── build_result + finalize subcommand ───────────────────────────────────────
 
 
 def _workdir(tmp_path, report=None):

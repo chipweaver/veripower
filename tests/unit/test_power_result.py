@@ -325,7 +325,7 @@ def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
     assert (
         data["failures"][0]["phase"] == "run"
     )  # D: SAIF is a run product (no separate saif phase)
-    assert data["ppa_actual"][0]["value"] is None  # P1: nulled despite parseable flat
+    assert data["ppa_actual"][0]["value"] is None  # nulled despite parseable flat
     assert data["power_by_scenario"][0]["power_mw"] is None
     assert all(a["id"] != "S1" for a in data["saif_artifacts"])
 
@@ -379,7 +379,7 @@ def test_run_report_missing_token(tmp_path, capsys):
     )  # power_flat.rpt absent
     rc, data = p.run(plan, wd, "[]")
     assert rc != 0
-    assert "FAIL=report_missing:S1" in capsys.readouterr().err  # P5
+    assert "FAIL=report_missing:S1" in capsys.readouterr().err
     assert data["ppa_actual"][0]["value"] is None
 
 
@@ -423,7 +423,7 @@ def test_run_returns_a_payload_on_both_exit_paths(tmp_path):
     assert rc != 0 and data["failures"]  # the fold source exists on the failure path
 
 
-# ── Task 1: B3 invariant tolerance ────────────────────────────────────────────
+# ── invariant tolerance ───────────────────────────────────────────────────────
 
 
 def test_invariant_tolerates_4sigfig_rounding(tmp_path):
@@ -469,7 +469,7 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
     assert data["failures"] == []
 
 
-# ── Task 2: build_result + finalize subcommand ────────────────────────────────
+# ── build_result + finalize subcommand ────────────────────────────────────────
 
 
 def test_build_result_pass_lean_shape(tmp_path):
@@ -647,7 +647,7 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
     ]
 
 
-# ── Task 4: artifacts[] enumeration ───────────────────────────────────────────
+# ── artifacts[] enumeration ───────────────────────────────────────────────────
 
 
 def test_enumerate_artifacts_present_only_no_self(tmp_path):
@@ -694,7 +694,7 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
     assert all((wd / pth).exists() for pth in paths)  # only present paths (file OR dir)
 
 
-# ── Task 5: Golden test against the real tpu_top run ──────────────────────────
+# ── Golden test against the real tpu_top run ──────────────────────────────────
 
 
 def _copy_golden(tmp_path, root):
@@ -717,7 +717,7 @@ def test_golden_real_reports_lean_pass(tmp_path):
     assert rc == 0
     env = _json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
-    # With B3 fixed (Task 1), the gate parses the real 4-sig-fig reports clean -> pass.
+    # With the invariant tolerance in place, the gate parses the real 4-sig-fig reports clean -> pass.
     assert env["stage"] == "power-analysis"
     assert env["status"] == "pass"
     assert env["produced_at"].endswith("Z")
