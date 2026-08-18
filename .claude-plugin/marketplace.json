@@ -8,7 +8,7 @@
       "name": "veripower",
       "source": "./",
       "description": "AI-assisted IC design flow skills — specification, RTL, lint/CDC, simulation, synthesis, timing analysis, and signoff",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "author": { "name": "chipweaver" },
       "homepage": "https://github.com/chipweaver/veripower",
       "license": "MIT",
