@@ -8,7 +8,7 @@ A stage skill's job is to "write `result.json` correctly." DAG routing and state
 
 Checklist for a new stage skill:
 
-1. `skills/<stage-skill>/SKILL.md` — skill description + instructions. It must be **self-sufficient** — carry every mechanism, gate sequence, and threshold inline, since the plugin end-user has the `SKILL.md` but not veripower's `CLAUDE.md` (the full rule is the §Scope note under [Bulletproofing a skill](#bulletproofing-a-skill-red-green-refactor)). Frontmatter carries only `name` and `description` — no `allowed-tools`; subagent behavior is bound by the dispatch-time prose forbidden-actions list, not tool gating (see [ARCHITECTURE.md §6](ARCHITECTURE.md#6-subagent-contracts)).
+1. `skills/<stage-skill>/SKILL.md` — skill description + instructions. It must be **self-sufficient** — carry every mechanism, gate sequence, and threshold inline, since the plugin end-user has the `SKILL.md` but not veripower's `CLAUDE.md` (the full rule is the §Scope note under [Bulletproofing a skill](#bulletproofing-a-skill-red-green-refactor)). Frontmatter carries only `name` and `description` — no `allowed-tools`; subagent behavior is bound by the dispatch-time prose forbidden-actions list, not tool gating.
 2. If needed, `skills/<stage-skill>/references/` — tool manuals, checklists, prompt fragments.
 3. If the stage is a new rule (not a replacement of an existing one), add a `Rule` to `framework/scripts/rules.py:RULES` — declaring its `skill`, `execution`, `workdir_root`, and `inputs` / `outputs` artifact selectors (the producer→consumer dependency graph is *derived* from those selectors — there is no separate DAG to edit), plus `proof` and `oracle`. Register its name in `FORWARD_PRIORITY` (and in `ADVISORY_ORDER` only if it needs a non-data sequencing edge). `rules.py` is the SSoT — see the Cross-module SSoT identity note under Coding Conventions. Add unit tests (code-behavior); put any new cross-artifact sync/invariant check in `tests/contracts/`.
 4. Add scenario tests under `tests/scenarios/<stage>/` — bulletproof them RED-first via the subagent ritual (see **Bulletproofing a skill**).
@@ -26,7 +26,7 @@ Rules:
 
 ## Validating new structured outputs
 
-Which validation regime a new structured output needs depends on its class: kernel-enforced schema validation for verdict outputs ([ARCHITECTURE.md §4.7](ARCHITECTURE.md#47-result-envelope-and-schema-validation)), or a producer self-gate for advisory artifacts. The contributor obligation per class:
+Which validation regime a new structured output needs depends on its class: kernel-enforced schema validation for verdict outputs, or a producer self-gate for advisory artifacts. The contributor obligation per class:
 
 - **Verdict output** (`result.json`, event payloads): do not add a field without a schema update **and** a coverage test (`test_event_schemas.py` for an event field, the stage's `test_<stage>_result.py` for a `result.json` field). The kernel validates events at append time and `result.json` at reap, so an unschema'd field corrupts the deterministic core.
 - **Descriptive/advisory artifact** (e.g., triage ANALYSIS, verification scaffold): ship a `scripts/validate_*.py` producer self-gate (pattern: `skills/simulation-triage/scripts/simtriage/__main__.py`, `skills/simulation-plan/scripts/simplan/__main__.py`); the skill fixes-and-retries before emitting. Do **not** add a `kernel.py` verb for advisory validation — the kernel never validates the artifact's content.
@@ -118,4 +118,4 @@ Enforced by `pre-commit` (`ruff` + `shellcheck` + `shfmt`); run `pre-commit run 
 ## Further reading
 
 - **EDA tool environment** — PATH, `LIB_DB`, `UVM_HOME`, `/bin/sh→bash`, optional `VCS_CC`: [docs/eda-env.md](docs/eda-env.md).
-- **Repository layout** — plugin tree: [README.md § Repository layout](README.md#repository-layout); per-module workspace: [ARCHITECTURE.md §7](ARCHITECTURE.md#7-workspace-layout).
+- **Repository layout** — per-module workspace: [CLAUDE.md § Module Layout](CLAUDE.md#module-layout).

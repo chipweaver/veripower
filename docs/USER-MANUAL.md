@@ -465,6 +465,6 @@ The body of this manual uses familiar terms where possible. Below are the words 
 
 ## Further reading
 
-- [`../ARCHITECTURE.md`](../ARCHITECTURE.md): why it's built this way. Rule registry, how the dependency graph is derived, proof validity, scheduling, and the trust boundary.
+- [`../ARCHITECTURE.md`](../ARCHITECTURE.md): why it's built this way. The pipeline and how the dependency graph is derived, proof validity, how a failure gets attributed, the trust boundary, and what the system does not do.
 - [`eda-env.md`](eda-env.md): full EDA tool, license, and environment requirements.
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md): replacing a stage's implementation (e.g. Verilator for simulation, Yosys for synthesis).

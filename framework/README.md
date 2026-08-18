@@ -1,8 +1,8 @@
 # `framework/` — VeriPower Plugin Framework Layer
 
 A directory guide: what lives here, who consumes it, and what must not be put
-here. Protocol *semantics* (the kernel verb surface, the event types, proof
-validity, scheduling) are specified once in the project architecture document and
+here. Protocol *semantics* (proof validity, failure attribution, the trust
+boundary) are specified once in the project architecture document and
 deliberately not restated below, so that this file cannot drift from them.
 
 This directory is the **framework layer** of the VeriPower plugin: the protocol,
@@ -36,7 +36,7 @@ Invocation contract for the CLI: the command lines and flags come from
 - Per-stage logic, schemas, or templates. Those live in `skills/<stage>/`.
 - Skill-private constants. Those live in `skills/<stage>/references/`.
 - Project-wide documentation and design rationale. Those live at the top level and under `docs/`.
-- A second copy of protocol semantics the architecture document owns: verb inventories, event-type inventories, validity rules, module-internal behavior. Two copies of a volatile fact drift, and the copy that drifts is the one nobody tests.
+- A second copy of protocol semantics whose SSoT is elsewhere: verb inventories (`kernel.py <verb> --help`), event-type inventories (their schemas under `references/schemas/events/`), validity rules and module-internal behavior (the architecture document). Two copies of a volatile fact drift, and the copy that drifts is the one nobody tests.
 
 ## Relationship to `skills/`
 

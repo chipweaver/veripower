@@ -465,6 +465,6 @@ claude plugin uninstall veripower@chipweaver
 
 ## 还想看什么
 
-- [`../ARCHITECTURE.zh.md`](../ARCHITECTURE.zh.md)：为什么这样设计。规则注册表、依赖图怎么推出来的、结果有效性怎么判、调度与信任边界。
+- [`../ARCHITECTURE.zh.md`](../ARCHITECTURE.zh.md)：为什么这样设计。流水线与依赖图怎么推出来的、结果有效性怎么判、失败怎么归因、信任边界，以及它做不到什么。
 - [`eda-env.md`](eda-env.md)：EDA 工具 / license / 环境要求的完整原文。
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md)：替换某个阶段的实现（比如换成 Verilator 的 simulation、Yosys 的 synthesis）。
