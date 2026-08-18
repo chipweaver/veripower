@@ -71,8 +71,14 @@ Stage dispatch runs subagents in the background, which opencode gates behind an 
 variable, so start it with:
 
 ```bash
-OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true opencode
+OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true \
+OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
 ```
+
+Without the second flag, opencode (as of 1.18.x) caps every completion at 32,000 tokens
+regardless of the model's declared limit. Subagents authoring whole-module RTL think past
+that cap and die silently. 131072 matches the GLM-5.x declared limit, and models declaring
+less keep their own.
 
 Ask it to list its skills — the twelve VeriPower ones confirm the install.
 
