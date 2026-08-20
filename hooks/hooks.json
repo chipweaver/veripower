@@ -1,5 +1,5 @@
 {
-  "description": "Prompt the human on kernel.py pin / reopen / signoff — the three judgment verbs that move an oracle across the proposed→human trust line.",
+  "description": "Prompt the human on kernel.py pin / reopen / signoff — the three judgment verbs that move an oracle across the proposed→human trust line. Also re-presents the post-dispatch loop rule at the moment a `task` run goes in flight.",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,6 +8,17 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ask_judgment_verbs.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/loop_after_task_dispatch.py\""
           }
         ]
       }
