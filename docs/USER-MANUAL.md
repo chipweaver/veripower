@@ -18,12 +18,32 @@ VeriPower takes a finalized module requirement all the way to front-end signoff.
 
 **Install the plugin**
 
+Claude Code:
+
 ```bash
 claude plugin marketplace add chipweaver/veripower
 claude plugin install veripower@chipweaver
 ```
 
 Or clone the source and launch from the command line: `claude --plugin-dir /path/to/veripower`.
+
+opencode — add the plugin to `~/.config/opencode/opencode.json`, or to a project-level
+`opencode.json`:
+
+```json
+{ "plugin": ["veripower@git+https://github.com/chipweaver/veripower.git"] }
+```
+
+then start it with:
+
+```bash
+OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true \
+OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
+```
+
+The first flag enables the background subagents stage dispatch runs on. Without the second,
+opencode (as of 1.18.x) caps every completion at 32,000 tokens regardless of the model's
+declared limit, and a subagent authoring a whole module's RTL dies silently mid-thought.
 
 **Python**
 
@@ -55,7 +75,7 @@ If you're only running `specification` / `simulation-plan` / `rtl-design`, skip 
 
 Once the environment is ready, in a **separate session**:
 
-> /env-precheck
+> Run the env-precheck skill
 
 It checks each tool and variable, does a live checkout of each license, and reports which stages this machine can run. Read-only, it won't change your environment. When a variable is missing, it prints the `export` line for you to paste.
 
@@ -67,7 +87,7 @@ The entire pipeline reads one input document: `{module}/brainstorm.md`. Two ways
 
 **Option B: generate from scratch.** In a **separate session**:
 
-> /brainstorm {module}
+> Run the brainstorm skill for {module}
 
 It walks you through a structured D0–D7 dialogue, one question at a time, with options for you to pick:
 
@@ -92,7 +112,7 @@ Whichever route you take, `specification` needs all eight dimensions from this d
 
 In a **separate session**:
 
-> /design-flow {module}
+> Run the design-flow skill for {module}
 
 The Orchestrator takes over. Each round it asks the scheduler "what next?", and the scheduler returns **exactly one** action for it to carry out. From this point on, you only step in at intervention points.
 
@@ -380,8 +400,17 @@ Ignore: tool intermediates and run directories. `*.svf`, `*.pvl`, `command.log`,
 
 **Uninstall**
 
+Claude Code:
+
 ```bash
 claude plugin uninstall veripower@chipweaver
+```
+
+opencode: remove the plugin entry from `opencode.json`, then remove the skill link the
+plugin created at `~/.claude/skills/veripower` (nothing removes it on its own):
+
+```bash
+rm ~/.claude/skills/veripower
 ```
 
 **Can I use the artifacts without this tool?**
