@@ -18,14 +18,12 @@ const LINK = path.join(os.homedir(), ".claude", "skills", "veripower")
 // signature nobody gave.
 const GATED_GLOBS = ["*kernel.py*pin*", "*kernel.py*reopen*", "*kernel.py*signoff*"]
 
-// The permission prompt carries no message field (measured: the `permission.asked` payload
-// renders `metadata.command` only, and the `tui` plugin export receives the server-side
-// PluginInput, not TuiPluginApi — no toast channel in 1.18.x). The displayed command is
-// however the FULL text of `output.args.command` as mutated here, because permission is
-// evaluated after `tool.execute.before` (measured). So the sentence rides a no-op prefix:
-// what the human reads, approves, and what executes are the same string. Double-quoted on
-// purpose: the sentence carries apostrophes, and no `"`/`$`/backtick — quoting is
-// deterministic, not luck.
+// The permission prompt renders the command text and nothing else (measured: no message
+// field, and the `tui` export receives the server-side PluginInput — no toast channel in
+// 1.18.x), and the text it shows IS `output.args.command` as mutated here, because
+// permission is evaluated after `tool.execute.before` (measured). The sentence therefore
+// rides a no-op prefix: read, approved, and executed are the same string. Double quotes
+// because the sentence carries apostrophes and no `"`/`$`/backtick.
 const SENTENCE =
   "veripower trust boundary: judgment verb — it converts the agent's own " +
   "self-assessment into signoff-grade trust, so it is yours to make, not the " +
@@ -130,9 +128,9 @@ export default async () => {
       if (!JUDGMENT_VERB.test(cmd)) return
       if (!armed) {
         throw new Error(
-          "veripower: the judgment-verb gate is not installed, so this call is blocked " +
-            "rather than run ungated. Restart opencode (or reinstall the veripower plugin) " +
-            "and retry — a consent prompt must appear before this command runs.",
+          "veripower: judgment-verb gate not installed — this call is blocked rather " +
+            "than run ungated. Restart opencode and retry; the consent prompt must " +
+            "appear before this command runs.",
         )
       }
       output.args.command = `: "${SENTENCE}" ; ${cmd}`
