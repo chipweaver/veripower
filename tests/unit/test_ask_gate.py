@@ -91,6 +91,24 @@ def test_help_is_not_gated():
     assert gate.gated_verb("python3 framework/scripts/kernel.py pin --help") is None
 
 
+def test_help_exempts_only_itself():
+    """A help invocation is not a call, but it clears nothing beyond itself: the real
+    call later in the same command still asks, and a `--help` sitting inside an argument
+    was never an exemption. Both shapes let a signoff land unasked until 2026-08-20."""
+    assert (
+        gate.gated_verb(
+            "python3 kernel.py signoff --help; python3 kernel.py signoff --module m"
+        )
+        == "signoff"
+    )
+    assert (
+        gate.gated_verb(
+            'python3 kernel.py pin --module m --provenance u --reason "see --help"'
+        )
+        == "pin"
+    )
+
+
 def test_gated_word_as_an_argument_is_not_gated():
     """`pin` must be the verb — the token right after kernel.py — not any mention."""
     assert (
