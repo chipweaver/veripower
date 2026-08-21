@@ -18,12 +18,30 @@ VeriPower 把一份已经敲定的模块需求，一路推到前端签核。Spec
 
 **装本插件**
 
+Claude Code:
+
 ```bash
 claude plugin marketplace add chipweaver/veripower
 claude plugin install veripower@chipweaver
 ```
 
 或 clone 源码后从命令行启动：`claude --plugin-dir /path/to/veripower`。
+
+opencode —— 把插件加进 `~/.config/opencode/opencode.json` 或项目级 `opencode.json`:
+
+```json
+{ "plugin": ["veripower@git+https://github.com/chipweaver/veripower.git"] }
+```
+
+然后带两个环境变量启动：
+
+```bash
+OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true \
+OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
+```
+
+第一个开关放开后台子 agent，阶段派发跑在上面。第二个不能省：opencode（1.18.x）会把每次
+补全截到 32,000 token，无视模型自身声明上限，写整个模块 RTL 的子 agent 会在中途无声断掉。
 
 **Python**
 
@@ -55,7 +73,7 @@ pip install -r requirements.txt
 
 环境准备好之后，在一个独立会话里：
 
-> /env-precheck
+> 运行 env-precheck 技能
 
 它逐行核对工具与变量，再实跑一遍各工具命令确认能 checkout，最后报出这台机器能跑的阶段清单。只报告，不改环境。缺变量时打印 `export` 行给你自己贴。
 
@@ -67,7 +85,7 @@ pip install -r requirements.txt
 
 **二、从零生成**：在**独立会话**里：
 
-> /brainstorm {module}
+> 为 {module} 运行 brainstorm 技能
 
 它和你做一轮 D0–D7 的结构化对话，一次问一个问题，给选项由你选：
 
@@ -92,7 +110,7 @@ pip install -r requirements.txt
 
 在**独立会话**里：
 
-> /design-flow {module}
+> 为 {module} 运行 design-flow 技能
 
 Orchestrator 接管。它每一轮问一次调度器「下一步干什么」，调度器返回**恰好一个**动作，由它执行。从这里开始你只在介入点出手。
 
@@ -380,8 +398,16 @@ LLM 写的东西不能自己给自己作证。**所以签核的门槛是这四�
 
 **卸载**
 
+Claude Code:
+
 ```bash
 claude plugin uninstall veripower@chipweaver
+```
+
+opencode：从 `opencode.json` 删掉插件条目，再删掉插件建在 `~/.claude/skills/veripower` 的技能链接（它不会自行消失）：
+
+```bash
+rm ~/.claude/skills/veripower
 ```
 
 **脱离这个工具，产物还能用吗**
