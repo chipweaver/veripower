@@ -5,10 +5,9 @@ and `signoff`.
 These three are the judgment verbs: they are the only levers that move an
 LLM-authored oracle across the proposed -> human trust line, and the only way a
 module closes. The pipeline is allowed to *propose* them; only a human may let
-one land. That gate has to travel with the plugin, because a plugin cannot ship
-`permissions`: a plugin's own settings.json carries only `agent` and
-`subagentStatusLine`. Left in the veripower repo's .claude/settings.json, the
-gate would protect this repo and silently vanish for everyone who installs it.
+one land. That gate has to travel with the plugin: left in the veripower repo's
+.claude/settings.json it would protect this repo and silently vanish for
+everyone who installs it.
 
 Fail-ASK, not fail-open (the opposite of .claude/hooks/commit_selfcheck.py): a
 gate whose job is to stop silent trust escalation must not disappear on its own
@@ -25,7 +24,6 @@ GATED = ("pin", "reopen", "signoff")
 # (the install path the orchestrator resolves, `..` segments and all, a bare
 # relative path, a `cd … && python3 …` compound).
 _INVOCATION = re.compile(r"kernel\.py\s+([a-z]+)")
-_HELP = re.compile(r"(?<!\S)(--help|-h)(?!\S)")
 
 REASON = """\
 veripower trust boundary: `kernel.py {verb}` is a judgment verb. It is what \
@@ -35,13 +33,18 @@ yours to make, not the agent's. Approve only if you intended this call.\
 
 
 def gated_verb(command: str) -> str | None:
-    """The judgment verb `command` invokes, or None. `--help` is not a call."""
+    """The judgment verb `command` invokes, or None.
+
+    `--help` right after the verb is not a call, and it exempts only itself: the scan
+    continues, so a help invocation cannot clear a real call later in the same command,
+    and a `--help` inside an argument (a `--reason` string) is not an exemption at all."""
     for m in _INVOCATION.finditer(command):
         verb = m.group(1)
         if verb not in GATED:
             continue
-        tail = re.split(r"[;|&]", command[m.end() :], maxsplit=1)[0]
-        return None if _HELP.search(tail) else verb
+        nxt = command[m.end() :].split(maxsplit=1)
+        if not (nxt and nxt[0] in ("--help", "-h")):
+            return verb
     return None
 
 
