@@ -55,6 +55,9 @@ Claude Code harness. These translations apply here:
    resolving \`<skill>/../..\` yourself lands outside the install — address anything above a
    skill's own directory as \`${ROOT}/...\` instead (the kernel is
    \`${ROOT}/framework/scripts/kernel.py\`).
+4. A subagent never sees this block. In the stage template's \`Skill({skill})\` line, render
+   the child's call yourself: the \`skill\` tool with { name: <skill> }, stripping the
+   \`veripower:\` namespace the dispatch return carries — skills register under bare names.
 </EXTREMELY_IMPORTANT>`
 
 // A throw in the factory is swallowed by opencode (measured: exit 0, empty stderr), so the
