@@ -6,7 +6,7 @@
 
 ## 1. 概览
 
-VeriPower 是一个芯片前端设计与验证系统，以 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 插件的形式发布。它把一个 LLM 编码 agent 引导过八个阶段，从自然语言规格说明一路走到功耗分析，跑在商用 EDA 工具上（SpyGlass、Design Compiler、PrimeTime、VCS+UVM）。
+VeriPower 是一个芯片前端设计与验证系统。它把一个 LLM 编码 agent 引导过八个阶段，从自然语言规格说明一路走到功耗分析，跑在商用 EDA 工具上（SpyGlass、Design Compiler、PrimeTime、VCS+UVM）。
 
 整个系统围绕一个想法构建。一个确定性内核掌握设计流程的全部事实。哪些验证结论还成立，哪些被某次修改推翻了，下一步该跑什么，谁该负责修一个失败，全由它说了算。LLM agent 和人类工程师都站在内核外面。他们可以提交工作、提交判断，但改不了已经记录下来的东西。内核是事件日志的唯一写入者，agent 的提示词没有任何注入或篡改记录的通道。
 

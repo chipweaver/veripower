@@ -1,8 +1,8 @@
 # CLAUDE.md — VeriPower Plugin
 
-AI-assisted IC design flow for Claude Code. Provides a stage-gated pipeline
-from specification through power-analysis, with each stage as a standalone skill,
-closed by the ask-gated `kernel.py signoff` verb.
+AI-assisted IC design flow. Provides a stage-gated pipeline from specification
+through power-analysis, with each stage as a standalone skill, closed by the
+ask-gated `kernel.py signoff` verb.
 
 ## Pipeline
 
