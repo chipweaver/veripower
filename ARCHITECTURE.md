@@ -6,11 +6,10 @@
 
 ## 1. Overview
 
-VeriPower is a chip front-end design and verification system that ships as a
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin. It takes
-an LLM coding agent through eight stages, from a natural-language spec all the
-way to power analysis, on commercial EDA tools (SpyGlass, Design Compiler,
-PrimeTime, VCS+UVM).
+VeriPower is a chip front-end design and verification system. It takes an LLM
+coding agent through eight stages, from a natural-language spec all the way to
+power analysis, on commercial EDA tools (SpyGlass, Design Compiler, PrimeTime,
+VCS+UVM).
 
 The whole system is built around one idea. A deterministic kernel owns every
 fact about the design flow. It knows which verification conclusions still hold,

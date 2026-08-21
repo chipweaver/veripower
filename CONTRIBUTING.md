@@ -1,6 +1,6 @@
 # Contributing to VeriPower
 
-VeriPower is a stage-gated, event-sourced agent pipeline delivered as a Claude Code plugin. This guide covers the core contribution workflows. For architectural background, read [ARCHITECTURE.md](ARCHITECTURE.md) first.
+VeriPower is a stage-gated, event-sourced agent pipeline. This guide covers the core contribution workflows. For architectural background, read [ARCHITECTURE.md](ARCHITECTURE.md) first.
 
 ## Adding or modifying a stage skill
 
