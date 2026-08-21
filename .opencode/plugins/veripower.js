@@ -58,8 +58,10 @@ Claude Code harness. These translations apply here:
 </EXTREMELY_IMPORTANT>`
 
 // A throw in the factory is swallowed by opencode (measured: exit 0, empty stderr), so the
-// link is attempted and never forced. An occupied path keeps whatever is already there — the
-// visible consequence is that VeriPower's skills do not appear.
+// link is attempted and never forced. A live foreign target keeps whatever is already there
+// (hint printed below); a DANGLING link — the normal state after a cache/ref invalidation —
+// is removed, because leaving it makes symlinkSync throw EEXIST and kill the whole plugin,
+// gate included. A real directory never reaches the catch: realpath resolves it.
 function linkSkills() {
   try {
     if (fs.realpathSync(LINK) === fs.realpathSync(SKILLS_DIR)) return
@@ -69,6 +71,7 @@ function linkSkills() {
     )
   } catch {
     fs.mkdirSync(path.dirname(LINK), { recursive: true })
+    fs.rmSync(LINK, { force: true })
     fs.symlinkSync(SKILLS_DIR, LINK, "dir")
   }
 }
