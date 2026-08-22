@@ -13,7 +13,7 @@
 
 VeriPower is an open-source agent flow that takes a natural-language spec all the way to front-end signoff on commercial EDA tools. A deterministic engine sits underneath, recording every action in an append-only log. All pipeline status is derived from that log on demand, never stored as a flag or snapshot. The agent can iterate on its own, but every LLM-authored oracle needs a human sign-off.
 
-Ships as a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin.
+Ships as a plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [opencode](https://opencode.ai).
 
 ## How it works
 
