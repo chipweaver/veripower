@@ -35,6 +35,23 @@ const SENTENCE =
 // and path in different segments) matches nothing here, exactly as it matches no glob.
 const JUDGMENT_VERB = /kernel\.py[^;|&]*(pin|reopen|signoff)/
 
+// The post-dispatch loop rule, re-presented until the orchestrator's next kernel action
+// closes the window. SKILL.md states it once near position 0; deep in a session the
+// orchestrator stops running it and starts predicting what `decide` would have said,
+// silently costing parallel runs (loop-reminder-parity.md). Same matcher as the Claude
+// Code twin (hooks/loop_after_task_dispatch.py); the wording is the measured artifact,
+// kept byte-identical to its REMINDER.
+const DISPATCH = /kernel\.py\s+dispatch\b/
+// Any `kernel.py <verb>` shell call — the window-closer. Kept as a shape, not a verb
+// list: a list here would be one more thing that can disagree with the CLI. A grep
+// whose text mentions kernel.py closes the window too; that costs one window of the
+// reminder, never a wrong firing.
+const KERNEL_CALL = /kernel\.py\s+\w+/
+const LOOP_REMINDER = (rule, run) =>
+  `veripower loop: \`${rule}\` run ${run} is in flight and this turn is not over. ` +
+  "Your next call is `kernel.py decide` — now, before reaping it and before " +
+  "reporting. Make it even when you expect YIELD."
+
 // False until the config hook has written the gate into the effective config. A judgment
 // verb arriving while false means the gate is not installed (config threw, or its write was
 // lost): fail CLOSED — a throw here aborts the bash call (measured), so nothing lands ungated.
@@ -101,6 +118,44 @@ function gate(permission) {
   }
 }
 
+// Appends the loop reminder while the LAST kernel-verb call in the outbound messages is
+// still the `task` dispatch itself. Superseding on the next kernel action — not the next
+// tool call — is the fix this port needed: the subagent-launch `task` part used to end
+// the reminder, so the model's end-turn decision, the moment the reminder exists for,
+// happened with it absent (measured: the one in-episode miss). Non-kernel actions (the
+// task launch, reads) leave the window open. The guards on the dispatch itself mirror
+// the Claude Code hook; on opencode a non-zero exit needs no separate guard: the part is
+// still `completed` and stderr is concatenated into `output` (measured 1.18.19), so the
+// JSON-parse guard rejects it exactly as it rejects `--help` usage. A refusal
+// (`ok: false`) and a `main-thread` dispatch carry no `execution: "task"` and stay
+// silent. `rule`/`run` come from the envelope — no stage list lives here. The appended
+// part is ephemeral (measured: outbound request only, storage untouched), so the
+// reminder rides every LLM call in the window instead of attaching once — the failure
+// mode is silence, so repeating is strictly safer.
+function remindLoop(msgs) {
+  let host = null
+  let part = null
+  for (const m of msgs) {
+    for (const p of m.parts) {
+      const st = p.state
+      if (p.type !== "tool" || p.tool !== "bash" || st?.status !== "completed") continue
+      if (KERNEL_CALL.test(String(st.input?.command ?? ""))) {
+        host = m
+        part = p
+      }
+    }
+  }
+  if (!host || !DISPATCH.test(String(part.state.input.command))) return
+  let envelope
+  try {
+    envelope = JSON.parse(part.state.output)
+  } catch {
+    return
+  }
+  if (envelope?.execution !== "task") return
+  host.parts.push({ ...part, type: "text", text: LOOP_REMINDER(envelope.rule, envelope.run) })
+}
+
 export default async () => {
   linkSkills()
   return {
@@ -142,8 +197,10 @@ export default async () => {
       output.args.command = `: "${SENTENCE}" ; ${cmd}`
     },
     "experimental.chat.messages.transform": async (_input, output) => {
-      if (!output.messages.length) return
-      const firstUser = output.messages.find((m) => m.info.role === "user")
+      const msgs = output.messages
+      if (!msgs.length) return
+      remindLoop(msgs)
+      const firstUser = msgs.find((m) => m.info.role === "user")
       if (!firstUser || !firstUser.parts.length) return
       if (
         firstUser.parts.some(
