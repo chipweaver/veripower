@@ -1,6 +1,6 @@
 {
   "name": "veripower",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "AI-assisted IC design flow skills — specification, RTL, lint/CDC, simulation, synthesis, timing analysis, and signoff",
   "type": "module",
   "main": ".opencode/plugins/veripower.js",
