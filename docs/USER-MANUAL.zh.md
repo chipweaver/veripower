@@ -43,6 +43,16 @@ OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
 第一个开关放开后台子 agent，阶段派发跑在上面。第二个不能省：opencode（1.18.x）会把每次
 补全截到 32,000 token，无视模型自身声明上限，写整个模块 RTL 的子 agent 会在中途无声断掉。
 
+DeepSeek Harness —— 装进你要跑的 profile：
+
+```bash
+dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripower.git"
+dsh web
+```
+
+它以 profile 层的形式装入，并自己找到 `skills/`，无需任何配置。用 `web`，不要用一次性的
+`headless` —— 派发出去的阶段会活过派发它的那个回合，而 `headless` 回合一结束就退出。
+
 **Python**
 
 支持 **3.10 / 3.11 / 3.12**。

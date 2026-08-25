@@ -45,6 +45,17 @@ The first flag enables the background subagents stage dispatch runs on. Without 
 opencode (as of 1.18.x) caps every completion at 32,000 tokens regardless of the model's
 declared limit, and a subagent authoring a whole module's RTL dies silently mid-thought.
 
+DeepSeek Harness — install into the profile you run:
+
+```bash
+dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripower.git"
+dsh web
+```
+
+It installs as a profile layer and finds its own `skills/`, so there is nothing to
+configure. Use `web`, not the one-shot `headless` profile — a dispatched stage outlives the
+turn that started it, and `headless` exits when the turn ends.
+
 **Python**
 
 Supports **3.10 / 3.11 / 3.12**.
