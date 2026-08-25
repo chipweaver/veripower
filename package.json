@@ -4,5 +4,10 @@
   "description": "AI-assisted IC design flow skills — specification, RTL, lint/CDC, simulation, synthesis, timing analysis, and signoff",
   "type": "module",
   "main": ".opencode/plugins/veripower.js",
-  "license": "MIT"
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./.dsh/cordis.patch.yml"
+    }
+  }
 }

@@ -13,7 +13,7 @@
 
 VeriPower is an open-source agent flow that takes a natural-language spec all the way to front-end signoff on commercial EDA tools. A deterministic engine sits underneath, recording every action in an append-only log. All pipeline status is derived from that log on demand, never stored as a flag or snapshot. The agent can iterate on its own, but every LLM-authored oracle needs a human sign-off.
 
-Ships as a plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [opencode](https://opencode.ai).
+Ships as a plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [opencode](https://opencode.ai), and [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
 ## How it works
 
@@ -79,6 +79,14 @@ Without the second flag, opencode (as of 1.18.x) caps every completion at 32,000
 regardless of the model's declared limit. Subagents authoring whole-module RTL think past
 that cap and die silently. 131072 matches the GLM-5.x declared limit, and models declaring
 less keep their own.
+
+**DeepSeek Harness** — install into the profile you run:
+
+```bash
+dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripower.git"
+```
+
+Run the `web` profile (`dsh web`), not the one-shot `headless` profile.
 
 Ask it to list its skills — the twelve VeriPower ones confirm the install.
 
