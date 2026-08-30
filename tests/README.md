@@ -14,10 +14,11 @@ this file to decide where a new test goes.
 | **`contracts/`** | Do framework **artifacts** hold invariants & stay in sync? | a deterministic lint that **reads declarations and compares** them — incl. cross-refs where one side is a SKILL.md token | **no** |
 | **`scenarios/`** | Does the **agent** decide right under pressure? | tools-off LLM pressure tests, rebuilt RED-first and run via a **clean-isolation `claude -p` subprocess** (`scenarios/scenario-run.sh`); closed-form self-report a verdict tag, `open` ones human/meta-test judged (see `scenarios/README.md`) | n/a — LLM |
 
-**Not a bucket →** `measure/` holds three **measurement harnesses**, not assertion sets: a
-1781-state grid and a 180-episode convergence replay, both synthesised from `rules.py`, plus a
-replay of one real run's event log against `decide`. Nothing fails; a human reads the numbers.
-See `measure/README.md`.
+**Not a bucket →** `eda/` holds runnable EDA experiments, not assertion sets: each pins what a
+tool actually did on a minimal design, so a claim elsewhere can cite a result instead of an
+assumption — `skills/lint-cdc/references/attribution-rules.md` cites `eda/f1-sgdc-clock-group/`
+that way. They need the tools, so `pytest` does not collect them and CI does not run them; each
+records its own observed result, including when the hypothesis did not hold.
 
 **Not a test →** single-artifact **prose / authoring / structure quality** is *not* asserted by
 any script here — it is on-demand review judgment. If your check is "the wording / sections /

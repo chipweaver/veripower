@@ -435,11 +435,11 @@ def stale_inputs(module: str, events: list[dict], rule: str) -> list[str]:
     disk — the kernel-computed "what changed since the last run" set a forward re-run
     consumes for scope (it seeds `dispatch.json`'s `scope` at dispatch, see
     kernel.cmd_dispatch). Reuses proof_valid's per-input comparison but COLLECTS the
-    mismatches instead of short-circuiting on the first. PIPELINE_INPUTS are excluded
-    (mirrors schedule._added_inputs). Empty when the rule never produced an outcome (a first
-    delivery) — the caller then falls to full scope. Read-only; stores nothing (NOT the
-    retired per-skill classify-delta input_digest — this is a query over the input versions
-    already recorded in the log)."""
+    mismatches instead of short-circuiting on the first. PIPELINE_INPUTS are excluded: nothing
+    upstream produces them, so they cannot have changed since a run. Empty when the rule never
+    produced an outcome (a first delivery) — the caller then falls to full scope. Read-only;
+    stores nothing (NOT the retired per-skill classify-delta input_digest — this is a query over
+    the input versions already recorded in the log)."""
     hit = _proof_outcome(events, rule)
     if hit is None:
         return []
