@@ -551,7 +551,11 @@ def cmd_consequences(module, paths):
             _, outcome = hit
             proof = next(p for p in outcome["proofs"] if p["name"] == r.proof)
             touched = set(proof.get("inputs", {})) | set(outcome.get("outputs", {}))
-            if path in touched and facts.proof_valid(module, events, r.proof):
+            # A recorded entry may be a TREE, whose version is a merkle over everything under
+            # it; a path inside one is therefore covered by it. Exact matching alone would
+            # under-report every consumer of a directory artifact.
+            covered = any(path == t or path.startswith(t + "/") for t in touched)
+            if covered and facts.proof_valid(module, events, r.proof):
                 affected.append(r.proof)
         out[path] = affected
     return {"paths": out}

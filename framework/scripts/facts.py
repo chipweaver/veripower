@@ -320,20 +320,16 @@ def live_pins(events: list[dict], oracle_ref: str) -> list[dict]:
 
 
 def oracle_content_fp(module: str, rule) -> str:
-    """Current content fingerprint of a proposed oracle, per its Rule.oracle_selector
-    (workdir-root-relative glob). Multiple matches merge deterministically (sorted)."""
-    root = module_root(module)
-    base = root / Path(*rules.workdir_root(rule.name))
-    paths = sorted(base.glob(rule.oracle_selector))
-    if not paths:
-        return UNKNOWN
-    if len(paths) == 1 and paths[0].is_file():
-        return fingerprint(paths[0])
-    h = hashlib.sha256()
-    for p in paths:
-        h.update(str(p.relative_to(base)).encode() + b"\0")
-        h.update(fingerprint(p).encode() + b"\0")
-    return "merkle:" + h.hexdigest()
+    """Current content fingerprint of a proposed oracle: the version of what its
+    `Rule.oracle_selector` names, workdir-root-relative. A directory versions as a merkle over
+    everything under it, so what a human endorses is the set they read, not the subset a pattern
+    happened to match."""
+    p = (
+        module_root(module)
+        / Path(*rules.workdir_root(rule.name))
+        / rule.oracle_selector
+    )
+    return fingerprint(p) if p.exists() else UNKNOWN
 
 
 def oracle_grade(module: str, events: list[dict], rule) -> str:
@@ -550,24 +546,34 @@ def signed_off(module: str, events: list[dict]) -> bool:
     return all(proof_valid(module, events, r) for r in rules.FORWARD_PRIORITY)
 
 
-def _added_inputs(module: str, rule_name: str, proof: dict) -> list[str]:
-    """Files on disk matching rule_name's input selectors but NOT in the proof's recorded
-    inputs — i.e. added out-of-band AFTER the proof landed. proof_valid conditions 2/4 only
-    check RECORDED paths, so an out-of-band ADD (unlike an edit/delete) escapes them; the
-    signoff gate uses this so a smuggled-in source can't ship unverified. Gate-private:
-    `signoff_gate` is the sole caller."""
+def _unrecorded(module: str, rule_name: str, outcome: dict) -> list[str]:
+    """Files in `rule_name`'s canonical tree that its own latest outcome does not record.
+
+    store.promote makes canonical == artifacts[] plus result.json and runs/, so a file the
+    outcome does not name got there out of band. Conditions 2 and 4 only compare RECORDED
+    paths, so an ADD escapes them; the signoff gate uses this so a smuggled-in file cannot
+    ship unverified. A set difference against the record, never a pattern: what a stage
+    delivered is a fact the log holds exactly, and a glob could only re-derive it lossily.
+    Gate-private: `signoff_gate` is the sole caller."""
     root = module_root(module)
-    recorded = set(proof.get("inputs", {}))
-    extra: list[str] = []
-    for globs in rules.RULES[rule_name].inputs.values():
-        for g in globs:
-            if g in rules.PIPELINE_INPUTS:
-                continue
-            for p in sorted((root).glob(g)):
-                rel = str(p.relative_to(root))
-                if p.is_file() and rel not in recorded:
-                    extra.append(rel)
-    return extra
+    stage = root / Path(*rules.RULES[rule_name].workdir_root)
+    if not stage.is_dir():
+        return []
+    covered: set[Path] = set()
+    for rel in outcome.get("outputs", {}):
+        p = root / rel
+        if p.is_dir():
+            covered |= {q for q in p.rglob("*") if q.is_file()}
+        else:
+            covered.add(p)
+    return sorted(
+        str(q.relative_to(root))
+        for q in stage.rglob("*")
+        if q.is_file()
+        and q.relative_to(stage).parts[0]
+        != "runs"  # the run history, not a delivered product
+        and q not in covered
+    )
 
 
 def signoff_gate(module: str, events: list[dict]) -> str | None:
@@ -582,18 +588,17 @@ def signoff_gate(module: str, events: list[dict]) -> str | None:
         if not proof_valid(module, events, proof):
             return f"signoff blocked: {proof} not valid"
         _, outcome = _proof_outcome(events, proof)
-        p = next(x for x in outcome["proofs"] if x["name"] == proof)
-        # Live grade over the current event log — NOT the reap-time snapshot in
-        # p["oracle"]["grade"] — so a post-reap pin takes effect at the signoff gate at
-        # once (no re-reap) and a reopen blocks signoff immediately.
+        # Live grade over the current event log — NOT the reap-time snapshot the outcome
+        # carries — so a post-reap pin takes effect at the signoff gate at once (no re-reap)
+        # and a reopen blocks signoff immediately.
         if oracle_grade(module, events, rules.RULES[proof]) not in ("tool", "human"):
             return f"signoff blocked: {proof} oracle is proposed (pin it)"
-        added = _added_inputs(module, proof, p)
+        added = _unrecorded(module, proof, outcome)
         if added:
-            # A new file matching this rule's selectors appeared out-of-band after the
-            # proof landed — it was never verified. Only enforced here at the signoff
-            # trust boundary (the daily delivery/repair path keeps the cheap recorded-set check).
-            return f"signoff blocked: {proof} has unverified new input(s) {added}"
+            # A file appeared in this stage's canonical tree that its own outcome does
+            # not record — never verified. Only enforced here at the signoff trust
+            # boundary (the daily delivery/repair path keeps the cheap recorded-set check).
+            return f"signoff blocked: {proof} has unrecorded file(s) {added}"
     return None
 
 

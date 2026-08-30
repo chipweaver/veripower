@@ -63,10 +63,11 @@ own.
 
 ### Dependency graph
 
-The graph comes from each rule's declared input and output artifact globs in
-`rules.py`. If one rule's outputs match another's inputs, there's an edge.
-Nothing else maintains the graph, so it can't disagree with what rules actually
-read and write.
+The graph comes from each rule's declared inputs in `rules.py`. An input names
+a path under some stage's directory, and that stage is its producer — stage
+roots are disjoint, so the producer is exact and nothing declares its outputs
+twice. Nothing else maintains the graph, so it can't disagree with what rules
+actually read and write.
 
 <p align="center">
   <img src="assets/pipeline-dag.png" alt="Pipeline dependency graph" width="660" />
@@ -253,8 +254,11 @@ Everything else is computed.
 **Declared inputs aren't enforced.** A rule says what it reads, but nothing
 actually stops it from reading other files. If it does, the dependency graph is
 wrong in the dangerous direction, where a proof that should have gone invalid
-didn't. The signoff gate partially makes up for this by re-checking
-declarations against disk for new inputs, but it's not a full fix.
+didn't. What a stage delivers is bounded — an input names a tree, and the tree
+versions as a merkle over everything under it, so nothing inside one escapes by
+being named unexpectedly — and the signoff gate refuses a stage whose canonical
+directory holds a file its own outcome does not record. Neither reaches a tool
+that goes outside the trees it was given.
 
 **Signoff is not correctness.** It's closure over a declared set of
 obligations. That list is hand-written in the rule registry, not derived from

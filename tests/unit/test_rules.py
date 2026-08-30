@@ -67,27 +67,44 @@ def test_advisory_edges_reference_registered_rules_and_stay_acyclic():
 
 
 def test_proposed_oracle_declares_selector_within_inputs_union_outputs():
-    # Validity condition-3 structural premise: a proposed oracle's content selector
-    # is covered by that rule's inputs ∪ outputs. The selector lives on the Rule
-    # itself (oracle_selector); tool-grade oracles carry none.
-    import fnmatch
-
+    # Validity condition-3 structural premise: a proposed oracle's content selector names
+    # something the rule can actually reach — its own promoted tree, or a declared input.
     for rule in rules.RULES.values():
         if rule.oracle and rule.oracle[1] == "proposed":
             sel = rule.oracle_selector
             assert sel, f"{rule.name}: proposed oracle without oracle_selector"
-            sel_base = sel.rstrip("/*")  # dir-glob selector matches via its base path
-            covered = any(
-                o == sel
-                or fnmatch.fnmatch(sel_base, o.rstrip("/*"))
-                or fnmatch.fnmatch(sel_base, o)
-                for o in rule.outputs
-            ) or any(g.endswith(sel) for globs in rule.inputs.values() for g in globs)
-            assert covered, f"{rule.name}: oracle_selector {sel} not in inputs∪outputs"
+            own = (Path(*rule.workdir_root) / sel).as_posix()
+            covered = rules.producer_of(own) == rule.name or any(
+                g.endswith(sel) for globs in rule.inputs.values() for g in globs
+            )
+            assert covered, f"{rule.name}: oracle_selector {sel} unreachable"
         elif rule.oracle:
             assert rule.oracle_selector is None, (
                 f"{rule.name}: tool oracle must not carry a selector"
             )
+
+
+def test_no_selector_is_a_filename_pattern():
+    """An input or oracle selector names what its producer delivers as a unit — a file, or a
+    directory delivered whole. A pattern can only ever be a guess at what the producer will
+    call things, and what it guesses wrong at is what silently stops being tracked.
+
+    The two constraint seeds are the standing exception, recorded rather than waived: their
+    directory holds two consumable groups (lint reads the SGDC, synthesis the SDC) and telling
+    them apart by a tree needs the directory split first."""
+    EXCEPTIONS = {
+        ("lint-cdc", "sgdc_seed"),
+        ("synthesis", "sdc"),
+    }
+    for rule in rules.RULES.values():
+        for key, globs in rule.inputs.items():
+            if (rule.name, key) in EXCEPTIONS:
+                continue
+            for g in globs:
+                assert "*" not in g, f"{rule.name}.{key} selects by pattern: {g}"
+        assert "*" not in (rule.oracle_selector or ""), (
+            f"{rule.name}: an endorsement must cover a set, not a pattern's matches"
+        )
 
 
 def test_advisory_edges_are_sequencing_only():
@@ -145,11 +162,11 @@ def test_carry_no_carry_fields_and_values():
 
     # authors carry everything, drop their review record
     assert rules.RULES["specification"].carry == ("**",)
-    assert rules.RULES["specification"].no_carry == ("spec-review/*.md",)
+    assert rules.RULES["specification"].no_carry == ("spec-review/*",)
     assert rules.RULES["simulation-plan"].carry == ("**",)
-    assert rules.RULES["simulation-plan"].no_carry == ("plan-review/*.md",)
+    assert rules.RULES["simulation-plan"].no_carry == ("plan-review/*",)
     assert rules.RULES["rtl-design"].carry == ("**",)
-    assert rules.RULES["rtl-design"].no_carry == ("semantic-review/*.md",)
+    assert rules.RULES["rtl-design"].no_carry == ("semantic-review/*",)
     assert rules.RULES["simulation"].carry == ("**",)
     assert rules.RULES["simulation"].no_carry == ("conformance-review.md",)
     # Both constraint stages carry ONLY what they author. The file the tool reads is

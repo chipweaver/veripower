@@ -47,7 +47,7 @@ def _now_iso() -> str:
 _OUTPUTS = {
     "specification": [
         "Design/specification/design.md",
-        "Design/specification/child.md",
+        "Design/specification/children",
         "Design/specification/manifest.json",
         "Design/specification/ppa.json",
         "Design/specification/clocks.json",
@@ -65,7 +65,7 @@ _OUTPUTS = {
         "Verification/simulation-plan/power-scenarios.json",
     ],
     "rtl-design": [
-        "Design/rtl-design/matvec.v",
+        "Design/rtl-design/src",
         "Design/rtl-design/rtl-files.json",
         "Design/rtl-design/constraint-annotations.json",
     ],
@@ -97,6 +97,8 @@ def _fp(module, rel):
 
 
 def _mk(module, rel, content):
+    if not Path(rel).suffix:  # tree artifact (Design/rtl-design/src): one file inside
+        return _mk(module, rel + "/rtl.v", content)
     p = facts.module_root(module) / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
@@ -139,11 +141,19 @@ def _recorded_inputs(module, rule, extra=()):
             if rules.producer_of(g) == rule:
                 continue
             for p in sorted(root.glob(g)):
-                if p.is_file():
-                    rec[str(p.relative_to(root))] = facts.fingerprint(p)
+                rec[str(p.relative_to(root))] = facts.fingerprint(p)
     for rel in extra:
         rec[rel] = _fp(module, rel)
     return rec
+
+
+def _oracle_rel(rule):
+    """The concrete path the rule's oracle selector resolves to in these fixtures."""
+    sel = rules.RULES[rule].oracle_selector
+    if not sel:
+        return None
+    rel = sel.replace("*", "oracle_stub.sv") if "*" in sel else sel
+    return "/".join((*rules.workdir_root(rule), rel))
 
 
 def _valid(module, rule, run, *, tag=None, out_content=None):
@@ -370,7 +380,7 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
     assert "matvec.v:1" not in doc.get("scope", [])
 
     # the fix lands (run 2): outcome changes ONLY matvec.v; filelist/README untouched.
-    _mk(m, "Design/rtl-design/matvec.v", "rtl-design:matvec.v:FIX")  # drift on disk
+    _mk(m, "Design/rtl-design/src", "rtl-design:matvec.v:FIX")  # drift on disk
     outputs = {rel: _fp(m, rel) for rel in _OUTPUTS["rtl-design"]}
     inputs = _recorded_inputs(m, "rtl-design")
     _outcome(
@@ -397,7 +407,7 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
         "Design/rtl-design/constraint-annotations.json",
     ):
         assert rtl2[untouched] == rtl1[untouched]
-    assert rtl2["Design/rtl-design/matvec.v"] != rtl1["Design/rtl-design/matvec.v"]
+    assert rtl2["Design/rtl-design/src"] != rtl1["Design/rtl-design/src"]
 
     # (a) the round re-verifies simulation — the fix owner has had its turn, so what is left
     # is to find out whether the fix worked. (c) lint went stale under the same RTL edit and
@@ -689,7 +699,6 @@ def test_step5_lintcdc_dispatchable_and_waiver_never_cached(tmp_path, monkeypatc
     anymore, with no separate cache declaration (the old Rule.cache field had no
     machine consumer and was removed)."""
     lint = rules.RULES["lint-cdc"]
-    assert "scripts/waiver.tcl" in lint.outputs  # it IS a real promoted product
     input_globs = [g for gs in lint.inputs.values() for g in gs]
     assert rules.producer_of("Design/lint-cdc/scripts/waiver.tcl") == "lint-cdc"
     # the warm SGDC seed is NOT among lint-cdc's declared inputs — absence cannot gate.
@@ -739,7 +748,7 @@ def test_forward_redispatch_scope_names_the_drifted_inputs(tmp_path, monkeypatch
     assert d["ok"], d
     doc = _dispatch_doc(m, d["workdir"])
     assert "Design/specification/design.md" in doc["scope"]
-    assert "Design/specification/child.md" in doc["scope"]
+    assert "Design/specification/children" in doc["scope"]
     assert "caused_by" not in doc and "reasons" not in doc
 
 

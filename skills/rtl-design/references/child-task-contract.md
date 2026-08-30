@@ -36,18 +36,17 @@ kernel's accounting, where nothing could audit it.
 
 ## Output
 
-Write your `rtl_modules[]` into one or more `.v` files of your choosing (one file
-may hold multiple modules). **STRICT Verilog-2001** — no SystemVerilog: not the `.sv`/`.svh`
-extension (`rtl-files.schema.json` rejects it, because the kernel's `rtl`
-selectors match `*.v` alone), and not SV-only constructs (`logic`/`always_ff`/`always_comb`/
-`typedef`/`enum`/`struct`/`interface`/`package`/…) — that half is your discipline, per
-`references/coding-rules.md`; no gate decides it. End the response with `STATUS: DONE` + a single JSON line, or
+Write your `rtl_modules[]` into one or more files of your choosing under `src/` (one file
+may hold multiple modules). **STRICT Verilog-2001** — no SystemVerilog constructs
+(`logic`/`always_ff`/`always_comb`/`typedef`/`enum`/`struct`/`interface`/`package`/…).
+That is your discipline, per `references/coding-rules.md`; no gate decides it, and no
+extension stands in for it. End the response with `STATUS: DONE` + a single JSON line, or
 `STATUS: BLOCKED <reason>` (e.g. `<child>.md §2 Interface incomplete`).
 
 ```json
 {
-  "files":   ["<rel-path>.v", "<rel-path>.vh"],
-  "incdirs": ["<rel-dir>"],
+  "files":   ["src/<rel-path>"],
+  "incdirs": ["src", "src/<rel-dir>"],
   "annotations": {
     "sgdc": { "sync_cell": ["<mod>"], "reset_synchronizer": ["<mod>"],
               "set_case_analysis": [{"port": "<port>", "value": 0}], "quasi_static": ["<sig>"] },
@@ -71,14 +70,14 @@ selectors match `*.v` alone), and not SV-only constructs (`logic`/`always_ff`/`a
 - Which child reports what: a **leaf** child reports its internal synchronizers / generated clocks;
   the **top-integration** child reports cross-domain `quasi_static` + test-control `set_case_analysis`
   (it owns the interconnect). Empty lists `[]` when a category genuinely has none.
-- `incdirs`: list the include dirs your authored files `` `include `` from. You **author your own
-  file/include layout** (specification defines RTL modules, not file layout). Omit the field
-  (or `[]`) only when your files use no `` `include ``
-  — that is the genuine "no include dirs" case, not a guess. A child that uses includes but omits
-  `incdirs` is a contract violation (every downstream filelist is generated from `rtl-files.json`,
-  so a missing entry means a missing include path and the compile fails downstream — do not omit).
-- **A header you authored belongs in `files[]`, not only in `incdirs`.** The two carry different
-  things: `incdirs` names the directory to search, while `files[]` is the set that leaves your run.
-  A header left out of `files[]` stays behind in the run directory, so every downstream `` `include ``
-  of it resolves to nothing. The Verilog-2001 rule above governs which files may hold your
-  **modules**; it does not narrow what you list here.
+- `incdirs`: the include search paths your files `` `include `` through, relative to the stage
+  root — `src` when your headers sit at the top of your tree, plus any subdirectory you include
+  from. You **author your own file/include layout** (specification defines RTL modules, not file
+  layout). Omit the field (or `[]`) only when your files use no `` `include `` — that is the
+  genuine "no include dirs" case, not a guess. A child that uses includes but omits `incdirs` is a
+  contract violation: every downstream filelist is generated from `rtl-files.json`, so a missing
+  entry means a missing include path and the compile fails downstream — do not omit.
+- **`files[]` is the compile order, not the set that leaves your run.** Everything you write under
+  `src/` is delivered and versioned as one tree, listed or not. So list what the tool must compile,
+  in the order it must see it; a macro header your files reach through `incdirs` needs no entry of
+  its own.

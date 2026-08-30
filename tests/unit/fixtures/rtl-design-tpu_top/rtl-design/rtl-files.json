@@ -1,22 +1,22 @@
 {
   "mac": {
     "files": [
-      "mac.v"
+      "src/mac.v"
     ]
   },
   "systolic_reg": {
     "files": [
-      "systolic_reg.v"
+      "src/systolic_reg.v"
     ]
   },
   "fifo": {
     "files": [
-      "fifo.v"
+      "src/fifo.v"
     ]
   },
   "tpu_top": {
     "files": [
-      "tpu_top.v"
+      "src/tpu_top.v"
     ]
   }
 }

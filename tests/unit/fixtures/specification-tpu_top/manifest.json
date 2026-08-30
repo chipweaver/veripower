@@ -3,7 +3,7 @@
   "children": [
     {
       "name": "mac",
-      "doc": "mac.md",
+      "doc": "children/mac.md",
       "rtl_modules": [
         "mac"
       ],
@@ -11,7 +11,7 @@
     },
     {
       "name": "systolic_reg",
-      "doc": "systolic_reg.md",
+      "doc": "children/systolic_reg.md",
       "rtl_modules": [
         "systolic_reg"
       ],
@@ -19,7 +19,7 @@
     },
     {
       "name": "fifo",
-      "doc": "fifo.md",
+      "doc": "children/fifo.md",
       "rtl_modules": [
         "fifo"
       ],
@@ -27,7 +27,7 @@
     },
     {
       "name": "tpu_top",
-      "doc": "tpu_top.md",
+      "doc": "children/tpu_top.md",
       "rtl_modules": [
         "tpu_top"
       ],

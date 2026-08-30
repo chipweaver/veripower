@@ -118,6 +118,7 @@ def _dispatch_write_reap(tmp_path, module, rule, files):
 _STAGE_FILES = {
     "specification": {
         "design.md": "design v1",
+        "children/c.md": "child v1",
         "manifest.json": "{}",
         "ppa.json": "{}",
         "clocks.json": "[]",
@@ -136,8 +137,8 @@ _STAGE_FILES = {
         "power-scenarios.json": "[]",
     },
     "rtl-design": {
-        "top.v": "module top; endmodule",
-        "rtl-files.json": '{"c": {"files": ["top.v"]}}',
+        "src/top.v": "module top; endmodule",
+        "rtl-files.json": '{"c": {"files": ["src/top.v"]}}',
         "constraint-annotations.json": "{}",
     },
     "lint-cdc": {
@@ -316,7 +317,11 @@ def test_signoff_close_end_to_end(tmp_path, monkeypatch):
     for b in basis.values():
         assert b["oracle"]["grade"] in ("tool", "human")
         if b["oracle"]["grade"] == "human":
-            assert b["oracle"]["pinned_fingerprint"].startswith("sha256:")
+            # a review tree versions as a merkle; a single-file oracle as a sha256
+            assert b["oracle"]["pinned_fingerprint"].split(":")[0] in (
+                "sha256",
+                "merkle",
+            )
         assert b["inputs"] == sorted(b["inputs"])
 
 

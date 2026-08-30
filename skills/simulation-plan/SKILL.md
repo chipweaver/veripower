@@ -27,7 +27,7 @@ to a location, so `<key>/<subpath>` is how you address one. `design` / `manifest
 | `<design>/design.md` | §1 behavior, §1.4 boundary, and §1.5 timing scenarios with their waveforms — the only home for the scenarios you author sequences from, so you read it |
 | `<children>/<child>.md` | Per-child implementation constraints a testpoint may have to verify: register side effects, exceptions, concurrency, back-pressure, reset, state-machine boundaries |
 | `<design>/features.json` | The feature list you author testpoints and tests from |
-| `<design>/check-hints/<child>.json × N` | Per child, the checks that verify it — `check_id` is unique across all of them |
+| `<check_hints>/` (per child, one file) | Per child, the checks that verify it — `check_id` is unique across all of them |
 | `<design>/clocks.json`, `<design>/top-io.json` | The clock and the DUT boundary `materialize-scaffold` derives from |
 | `<manifest>/manifest.json` | `.module` is the Top field in plan §1; `children[]` is the roster the check hints are aggregated over |
 

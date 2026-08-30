@@ -306,6 +306,29 @@ def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypa
     assert not facts.proof_valid("m", facts.read_events("m"), "specification")
 
 
+def test_oracle_covers_the_whole_review_directory(tmp_path, monkeypatch):
+    """What a human endorses is the set they read. The selector names the review directory, so
+    a reviewer that writes a file the old `*.md` pattern would not have matched — a note, a
+    per-child subdirectory — is inside the version the pin is anchored to, and editing it drops
+    the endorsement like any other change."""
+    monkeypatch.chdir(tmp_path)
+    r = rules.RULES["rtl-design"]
+    base = facts.module_root("m") / Path(*rules.workdir_root("rtl-design"))
+    (base / r.oracle_selector / "per-child").mkdir(parents=True)
+    (base / r.oracle_selector / "review.md").write_text("holds\n")
+    (base / r.oracle_selector / "notes.txt").write_text("side notes\n")
+    (base / r.oracle_selector / "per-child" / "top.md").write_text("# top\n")
+    before = facts.oracle_content_fp("m", r)
+    assert before.startswith("merkle:")
+    for rel in ("notes.txt", "per-child/top.md"):
+        (base / r.oracle_selector / rel).write_text("edited\n")
+        assert facts.oracle_content_fp("m", r) != before, rel
+        (base / r.oracle_selector / rel).write_text(
+            "side notes\n" if rel == "notes.txt" else "# top\n"
+        )
+    assert facts.oracle_content_fp("m", r) == before
+
+
 def _spec_run(module, run, *, oracle_grade="human"):
     """Dispatch+pass specification run N with brainstorm on disk; returns nothing."""
     bm = _fp(module, "brainstorm.md")

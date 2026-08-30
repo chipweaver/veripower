@@ -1,6 +1,6 @@
 # child-design template
 
-Every sub-design file `{workdir}/<child>.md` follows this structure (Surface 1 contract, English canonical section headings; prose body is Surface 2, bilingual allowed).
+Every sub-design file `{workdir}/children/<child>.md` follows this structure (Surface 1 contract, English canonical section headings; prose body is Surface 2, bilingual allowed).
 
 ## Frontmatter (required)
 

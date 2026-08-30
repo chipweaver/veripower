@@ -7,7 +7,6 @@ import the bare way (`import rules`)."""
 
 from __future__ import annotations
 
-import fnmatch
 from dataclasses import dataclass, field
 
 
@@ -20,7 +19,6 @@ class Rule:
     execution: str  # "task" | "main-thread"
     workdir_root: tuple[str, ...]
     inputs: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    outputs: tuple[str, ...] = ()
     proof: str | None = None
     oracle: tuple[str, str] | None = None  # (ref, grade)
     oracle_selector: str | None = (
@@ -47,26 +45,11 @@ RULES: dict[str, Rule] = {
         execution="main-thread",
         workdir_root=("Design", "specification"),
         inputs={"brainstorm": ("brainstorm.md",)},
-        outputs=(
-            "design.md",
-            "*.md",  # *.md = the per-child <child>.md docs (N>=1) — real
-            # promoted products; sim-plan/rtl-design consume them as inputs
-            "manifest.json",
-            "ppa.json",
-            "clocks.json",
-            "features.json",
-            "check-hints/*.json",
-            "top-io.json",
-            "interconnects.json",
-            "spec-review/*.md",
-            "constraints/*.sdc",
-            "constraints/*.sgdc",
-        ),
         proof="specification",
         oracle=("spec-review", "proposed"),
-        oracle_selector="spec-review/*.md",
+        oracle_selector="spec-review",
         carry=("**",),
-        no_carry=("spec-review/*.md",),
+        no_carry=("spec-review/*",),
     ),
     "simulation-plan": Rule(
         name="simulation-plan",
@@ -76,27 +59,20 @@ RULES: dict[str, Rule] = {
         inputs={
             "design": ("Design/specification/design.md",),
             "manifest": ("Design/specification/manifest.json",),
-            "children": ("Design/specification/*.md",),
+            "children": ("Design/specification/children",),
             "clocks": ("Design/specification/clocks.json",),
             "features": ("Design/specification/features.json",),
-            "check_hints": ("Design/specification/check-hints/*.json",),
+            "check_hints": ("Design/specification/check-hints",),
             "top_io": ("Design/specification/top-io.json",),
             # NOT interconnects.json: cross-child wires are internal to the DUT, so no
             # plan field derives from them, and binding it would let a wire-only edit
             # invalidate the plan and its review.
         },
-        outputs=(
-            "verification-plan.md",
-            "tb-scaffold.json",
-            "sequences.json",
-            "power-scenarios.json",
-            "plan-review/*.md",  # review.md + the user's decisions.md
-        ),
         proof="simulation-plan",
         oracle=("plan-review", "proposed"),
-        oracle_selector="plan-review/*.md",
+        oracle_selector="plan-review",
         carry=("**",),
-        no_carry=("plan-review/*.md",),
+        no_carry=("plan-review/*",),
     ),
     "rtl-design": Rule(
         name="rtl-design",
@@ -106,7 +82,7 @@ RULES: dict[str, Rule] = {
         inputs={
             "design": ("Design/specification/design.md",),
             "manifest": ("Design/specification/manifest.json",),
-            "children": ("Design/specification/*.md",),
+            "children": ("Design/specification/children",),
             # Read by the child sub-Tasks (create_generated_clock, set_case_analysis and
             # quasi_static annotations), not by any
             # script in this stage.
@@ -114,17 +90,11 @@ RULES: dict[str, Rule] = {
             "top_io": ("Design/specification/top-io.json",),
             "interconnects": ("Design/specification/interconnects.json",),
         },
-        outputs=(
-            "*.v",
-            "rtl-files.json",
-            "constraint-annotations.json",
-            "semantic-review/*.md",
-        ),
         proof="rtl-design",
         oracle=("semantic-review", "proposed"),
-        oracle_selector="semantic-review/*.md",
+        oracle_selector="semantic-review",
         carry=("**",),
-        no_carry=("semantic-review/*.md",),
+        no_carry=("semantic-review/*",),
     ),
     "lint-cdc": Rule(
         name="lint-cdc",
@@ -132,7 +102,7 @@ RULES: dict[str, Rule] = {
         execution="task",
         workdir_root=("Design", "lint-cdc"),
         inputs={
-            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/rtl-files.json"),
+            "rtl": ("Design/rtl-design/src", "Design/rtl-design/rtl-files.json"),
             # The per-child SGDC/SDC annotations the agent transcribes into the
             # constraint scripts, in the child's real module names.
             "annotations": ("Design/rtl-design/constraint-annotations.json",),
@@ -142,15 +112,6 @@ RULES: dict[str, Rule] = {
             # fingerprinted — without this edge a module rename would not invalidate.
             "manifest": ("Design/specification/manifest.json",),
         },
-        outputs=(
-            "lint-report.txt",
-            "cdc-report.txt",
-            "lint-violations.json",
-            "cdc-violations.json",
-            "scripts/constraints.sgdc",
-            "scripts/local.sgdc",
-            "scripts/waiver.tcl",
-        ),
         proof="lint-cdc",
         oracle=("spyglass-ruleset", "tool"),
         carry=("scripts/waiver.tcl", "scripts/local.sgdc"),
@@ -161,7 +122,7 @@ RULES: dict[str, Rule] = {
         execution="task",
         workdir_root=("Design", "synthesis"),
         inputs={
-            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/rtl-files.json"),
+            "rtl": ("Design/rtl-design/src", "Design/rtl-design/rtl-files.json"),
             # The per-child SGDC/SDC annotations the agent transcribes into the
             # constraint scripts, in the child's real module names.
             "annotations": ("Design/rtl-design/constraint-annotations.json",),
@@ -172,14 +133,6 @@ RULES: dict[str, Rule] = {
             "manifest": ("Design/specification/manifest.json",),
             "ppa": ("Design/specification/ppa.json",),
         },
-        outputs=(
-            "out/*_syn.v",
-            "out/*_syn.sdc",
-            "out/*_syn.sdf",
-            "reports/qor.rpt",
-            "constraints.sdc",
-            "constraints.local.sdc",
-        ),
         proof="synthesis",
         oracle=("dc-shell", "tool"),
         carry=("constraints.local.sdc",),  # the timing exceptions the agent supplements
@@ -193,12 +146,8 @@ RULES: dict[str, Rule] = {
             # One key, because both resolve to the same producer stage root and the
             # run reads them as a pair: PT links the netlist and constrains it with
             # the SDC synthesis exported beside it.
-            "netlist": (
-                "Design/synthesis/out/*_syn.v",
-                "Design/synthesis/out/*_syn.sdc",
-            ),
+            "netlist": ("Design/synthesis/out",),
         },
-        outputs=("timing-report.txt",),
         proof="timing-analysis",
         oracle=("pt-shell", "tool"),
     ),
@@ -208,7 +157,7 @@ RULES: dict[str, Rule] = {
         execution="main-thread",
         workdir_root=("Verification", "simulation"),
         inputs={
-            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/rtl-files.json"),
+            "rtl": ("Design/rtl-design/src", "Design/rtl-design/rtl-files.json"),
             # NOT constraint-annotations.json: simulation consumes only the file layout,
             # so binding it would let an annotation-only edit falsely invalidate.
             "plan": ("Verification/simulation-plan/verification-plan.md",),
@@ -225,18 +174,10 @@ RULES: dict[str, Rule] = {
                 "Design/specification/clocks.json",
             ),
         },
-        outputs=(
-            "case-results-summary.md",
-            "conformance-review.md",
-            "env.sh",
-            "filelist.f",
-            "rtl_filelist.f",
-            "tb/uvm/*",
-        ),  # TB env: real
         # promoted products (sim/result.py enumerate_artifacts) — power-analysis consumes them
         proof="simulation",
         oracle=("tb-refmodel", "proposed"),
-        oracle_selector="tb/uvm/refmodel/*",  # pin endorses the JUDGE itself —
+        oracle_selector="tb/uvm/refmodel",  # pin endorses the JUDGE itself —
         # survives runs; content drift (LLM regenerates refmodel) drops the pin at reap
         triage="simulation-triage",  # the one stage with a deeper analyzer behind it
         carry=("**",),
@@ -248,16 +189,12 @@ RULES: dict[str, Rule] = {
         execution="task",
         workdir_root=("Verification", "power-analysis"),
         inputs={
-            "netlist": (
-                "Design/synthesis/out/*_syn.v",
-                "Design/synthesis/out/*_syn.sdc",
-                "Design/synthesis/out/*_syn.sdf",
-            ),
+            "netlist": ("Design/synthesis/out",),
             "tb_env": (
                 "Verification/simulation/env.sh",
                 "Verification/simulation/filelist.f",
                 "Verification/simulation/rtl_filelist.f",
-                "Verification/simulation/tb/uvm/*",
+                "Verification/simulation/tb/uvm",
             ),
             # sequences.json for the sequence_ref -> agent resolution, and the scenarios
             # themselves; NOT tb-scaffold.json, whose testpoints/agents this stage never reads.
@@ -267,7 +204,6 @@ RULES: dict[str, Rule] = {
             ),
             "ppa": ("Design/specification/ppa.json",),
         },
-        outputs=("reports_ptpx/*/power_hier.rpt",),
         proof="power-analysis",
         oracle=("pt-shell", "tool"),
     ),
@@ -278,7 +214,7 @@ RULES: dict[str, Rule] = {
         workdir_root=("Verification", "simulation-triage"),
         inputs={
             "design": ("Design/specification/design.md",),
-            "rtl": ("Design/rtl-design/*.v", "Design/rtl-design/rtl-files.json"),
+            "rtl": ("Design/rtl-design/src", "Design/rtl-design/rtl-files.json"),
             "plan": ("Verification/simulation-plan/verification-plan.md",),
             # The failed run itself — the waveform kept at its run-dir root, the failing
             # case list, the logs. Declaring what it already reads is what puts simulation
@@ -287,7 +223,6 @@ RULES: dict[str, Rule] = {
             # Availability is unaffected: a rule with no proof is always dispatchable.
             "sim": ("Verification/simulation/case-results-summary.md",),
         },
-        outputs=(),
         proof=None,
         oracle=None,
         params=("sim_run",),
@@ -318,18 +253,18 @@ ADVISORY_ORDER: dict[str, tuple[str, ...]] = {
 }
 
 
-def _canonical_output_globs(rule: Rule) -> list[str]:
-    """Rule outputs expressed as module-relative globs (prefixed by workdir_root)."""
-    base = "/".join(rule.workdir_root)
-    return [f"{base}/{o}" for o in rule.outputs]
-
-
 def producer_of(artifact_relpath: str) -> str | None:
-    """The rule that produces `artifact_relpath` (module-relative canonical path), or None."""
+    """The rule that produces `artifact_relpath` (module-relative canonical path), or None.
+
+    The stage root that contains the path IS the producer — workdir_roots are disjoint, so
+    this is exact. It replaces a match against declared output globs, which could only ever
+    be a lower bound on what a stage actually promotes (kernel._fingerprint_outputs records
+    the real set)."""
+    parts = tuple(artifact_relpath.split("/"))
     for rule in RULES.values():
-        for glob in _canonical_output_globs(rule):
-            if fnmatch.fnmatch(artifact_relpath, glob):
-                return rule.name
+        r = rule.workdir_root
+        if parts[: len(r)] == r:
+            return rule.name
     return None
 
 
