@@ -389,24 +389,23 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
         (tmp_path / rel).write_text("x")
     (tmp_path / "result.json").write_text("{}")  # must NOT self-list
     paths = [a["path"] for a in sp.enumerate_artifacts(tmp_path)]
-    assert "out/tpu_top_syn.v" in paths and "reports/area.rpt" in paths
+    assert "out" in paths and "reports/area.rpt" in paths
     assert "constraints.sdc" in paths
     assert "result.json" not in paths
-    assert all((tmp_path / p).is_file() for p in paths)  # only present files
+    assert all((tmp_path / p).exists() for p in paths)  # only what is there
 
 
-def test_enumerate_artifacts_matches_netlist_by_glob_not_by_a_passed_name(tmp_path):
+def test_enumerate_artifacts_delivers_the_out_tree_whatever_dc_named_inside_it(
+    tmp_path,
+):
     # The netlist trio is whatever dc_shell wrote, so no caller-supplied top name can
-    # drop it: an omitted out/*_syn.v is a pass promoted with no netlist, leaving
-    # timing-analysis and power-analysis undispatchable.
-    (tmp_path / "out").mkdir()
-    (tmp_path / "reports").mkdir()
+    # drop it: `out/` leaves as one tree, so whatever name dc_shell wrote inside it is
+    # delivered — the netlist cannot fall out of artifacts[] because a name was unexpected.
     for rel in ("out/whatever_dc_wrote_syn.v", "out/whatever_dc_wrote_syn.sdc"):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).write_text("x")
-    paths = [a["path"] for a in sp.enumerate_artifacts(tmp_path)]
-    assert "out/whatever_dc_wrote_syn.v" in paths
-    assert "out/whatever_dc_wrote_syn.sdc" in paths
-    assert "out/whatever_dc_wrote_syn.sdf" not in paths  # present-only, never invented
+    paths = {a["path"] for a in sp.enumerate_artifacts(tmp_path)}
+    assert paths == {"out"}
 
 
 # ── golden: lean shape against the real tpu_top run ───────────────────────────
@@ -434,7 +433,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     for k in ("rtl_filelist", "power_report", "timing_exceptions", "notes"):
         assert k not in ss
     paths = [a["path"] for a in env["artifacts"]]
-    assert "out/tpu_top_syn.v" in paths and "reports/area.rpt" in paths
+    assert "out" in paths and "reports/area.rpt" in paths
     assert "result.json" not in paths
     assert env["produced_at"].endswith("Z")
 

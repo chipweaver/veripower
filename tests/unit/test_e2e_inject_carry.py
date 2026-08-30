@@ -87,8 +87,8 @@ _STAGE_FILES = {
         "check-hints/child_a.json": "[]",
         "top-io.json": "[]",
         "interconnects.json": "[]",
-        "child_a.md": "child a design",  # a real per-child doc (N>=1), distinct
-        # from design.md, so the "children" selector has a genuine match of its own
+        "children/child_a.md": "child a design",  # the per-child design tree (N>=1),
+        # distinct from design.md, so the "children" selector has a genuine match
         "constraints/top.sdc": "# sdc",
         "constraints/top.sgdc": "# sgdc",
     },
@@ -99,8 +99,8 @@ _STAGE_FILES = {
         "power-scenarios.json": "[]",
     },
     "rtl-design": {
-        "top.v": "module top; endmodule",
-        "rtl-files.json": '{"child_a": {"files": ["top.v"]}}',
+        "src/top.v": "module top; endmodule",
+        "rtl-files.json": '{"child_a": {"files": ["src/top.v"]}}',
         "constraint-annotations.json": "{}",
     },
     "synthesis": {
@@ -114,7 +114,8 @@ _STAGE_FILES = {
         "env.sh": "#!/bin/sh",
         "filelist.f": "-f rtl_filelist.f",
         "rtl_filelist.f": "top.v",
-        "tb/uvm/dummy.sv": "// tb",
+        # the TB's package declaration: what the rendered power tests read their prefix from
+        "tb/uvm/pkg/tb_pkg.sv": "package top_tb_pkg;\nendpackage\n",
     },
     "power-analysis": {
         "reports_ptpx/run1/power_hier.rpt": "power ok",
@@ -204,7 +205,9 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     )
     assert r1 == {"ok": True, "rule": "rtl-design", "run": d1["run"], "verdict": "pass"}
     canonical = tmp_path / module / "Design" / "rtl-design"
-    assert (canonical / "top.v").read_text() == _STAGE_FILES["rtl-design"]["top.v"]
+    assert (canonical / "src/top.v").read_text() == _STAGE_FILES["rtl-design"][
+        "src/top.v"
+    ]
 
     # 4. re-dispatch rtl-design -> the previous *.v and both sidecars were
     # CARRIED into the new workdir (carry_self), not re-authored from scratch.
@@ -218,7 +221,7 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     )
     assert d2["ok"] is True and d2["run"] == d1["run"] + 1
     wd2 = tmp_path / module / d2["workdir"]
-    assert (wd2 / "top.v").read_text() == _STAGE_FILES["rtl-design"]["top.v"]
+    assert (wd2 / "src/top.v").read_text() == _STAGE_FILES["rtl-design"]["src/top.v"]
     assert (wd2 / "rtl-files.json").read_text() == _STAGE_FILES["rtl-design"][
         "rtl-files.json"
     ]
@@ -289,8 +292,6 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
             sys.executable,
             str(POWER_MAIN),
             "bootstrap",
-            "--module",
-            module,
             "--workdir",
             str(wd),
             "--top",

@@ -66,6 +66,11 @@ def _make_tree(
     sim.mkdir(parents=True)
     if with_sim_filelist:
         (sim / "filelist.f").write_text("// tb filelist\n")
+        # the TB's own package declaration — where the rendered power tests read their class
+        # prefix from, so a fixture without it is a TB power-analysis cannot render against
+        pkg = sim / "tb" / "uvm" / "pkg"
+        pkg.mkdir(parents=True, exist_ok=True)
+        (pkg / "tb_pkg.sv").write_text(f"package {top}_tb_pkg;\nendpackage\n")
     plan = base / "Verification" / "simulation-plan"
     plan.mkdir(parents=True)
     if with_scaffold:
@@ -101,8 +106,6 @@ def _run(module, workdir, main, extra=None, cwd=None):
         "python3",
         str(main),
         "bootstrap",
-        "--module",
-        module,
         "--workdir",
         str(workdir),
     ]
@@ -116,7 +119,7 @@ def test_deploys_and_substitutes(tmp_path):
     r = _run(m, workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     env_sh = (workdir / "env.sh").read_text()
-    assert "MY_TOP" not in env_sh and "MY_MODULE" not in env_sh
+    assert "MY_TOP" not in env_sh
     assert "MY_SYN_OUT" not in env_sh
     assert (workdir / "Makefile").is_file()
     # the contract-locked DUT_INST/TB_TOP lines (no MY_* token) survive untouched
@@ -276,8 +279,6 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
             "python3",
             str(main),
             "bootstrap",
-            "--module",
-            m,
             "--workdir",
             "asic/M/Verification/power-analysis/runs/1/",  # relative + trailing slash
             "--top",

@@ -12,21 +12,30 @@
     "additionalProperties": false,
     "properties": {
       "files": {
-        "description": "Paths relative to the rtl-design stage root, in dependency order. The child authors its own file layout — specification defines RTL modules, not files. The `.v`/`.vh` pattern is load-bearing rather than stylistic: the kernel's downstream `rtl` selectors match `*.v` alone, so a `.sv` artifact silently drops out of the derived dependency graph and its edits stop invalidating downstream proofs. Declared here rather than checked in Python, so finalize rejects a bad extension when it validates this sidecar.",
+        "description": "Paths under `src/`, relative to the rtl-design stage root, in the order the compiler is handed them. NOT the set that leaves your run: `src/` leaves as one tree, so a file inside it is delivered and versioned whether or not it is listed here — list what must be compiled, and a macro header your files reach through `incdirs` needs no entry. The child authors its own layout and its own file naming inside the tree; specification defines RTL modules, not files. No extension is required or refused here: what the kernel versions is the tree, and what a file may contain is the toolchain's and `references/coding-rules.md`'s business, neither of which a filename can decide.",
         "type": "array",
         "minItems": 1,
         "items": {
           "type": "string",
           "minLength": 1,
-          "pattern": "\\.(v|vh)$"
+          "pattern": "^src/"
         }
       },
       "incdirs": {
-        "description": "Include directories the child's files `include from, relative to the rtl-design stage root. Omitted or empty when the child uses no `include. Downstream emits these in each tool's own syntax; they are never joined into a text line for a reader to split apart again.",
+        "description": "Include search paths under the tree, relative to the stage root: `src` when your headers sit at the top of it, plus any subdirectory you include from. Every downstream filelist is generated from this sidecar, so an include dir you leave out is one the compiler will not have.",
         "type": "array",
         "items": {
           "type": "string",
           "minLength": 1
+        }
+      },
+      "sim_only": {
+        "description": "Sources this child delivers that ONLY the simulator compiles — the C or C++ implementing a DPI import its RTL declares, whose synthesis path is a different branch of the same file. They reach rtl_filelist.f and nothing else: lint-cdc and synthesis read files[] alone, and handing either of them a C source aborts the run before any rule is checked. Paths are relative to the rtl-design stage root, like files[], and are not ordered against it — a DPI implementation is linked, not elaborated.",
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^src/"
         }
       }
     }

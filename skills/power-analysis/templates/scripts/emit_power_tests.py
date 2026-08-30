@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -35,15 +36,39 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--plan", required=True, type=Path)
     p.add_argument(
-        "--module",
+        "--tb-dir",
         required=True,
-        help="Module name; matches simulation tb_pkg / class prefix.",
+        type=Path,
+        help="The simulation stage root. The UVM class prefix is read out of the TB's own "
+        "package declaration there — the thing these tests will be compiled against.",
     )
     p.add_argument("--out-dir", required=True, type=Path)
     p.add_argument("--filelist", required=True, type=Path)
     p.add_argument("--top", required=True)
     p.add_argument("--test-tmpl", required=True, type=Path)
     return p.parse_args()
+
+
+_PKG_RE = re.compile(r"^\s*package\s+(\w+)_tb_pkg\s*;", re.M)
+
+
+def tb_prefix(tb_dir: Path) -> str:
+    """The UVM class prefix, read from the TB's own `package <prefix>_tb_pkg;`.
+
+    That declaration IS what these rendered tests must import and extend, so nothing else can
+    be authoritative: a name passed in alongside is a second copy that can only ever disagree.
+    Fails closed on none or many — a TB with no single package is one this cannot render for."""
+    hits = {
+        m.group(1)
+        for f in sorted((tb_dir / "tb" / "uvm").rglob("*.sv"))
+        for m in _PKG_RE.finditer(f.read_text(encoding="utf-8", errors="replace"))
+    }
+    if len(hits) != 1:
+        raise SystemExit(
+            f"emit_power_tests: expected exactly one `package <prefix>_tb_pkg;` under "
+            f"{tb_dir / 'tb' / 'uvm'}, found {sorted(hits) or 'none'}"
+        )
+    return hits.pop()
 
 
 def render(template: str, mapping: dict[str, str]) -> str:
@@ -67,6 +92,7 @@ def write_if_changed(path: Path, content: str) -> bool:
 
 def main() -> int:
     args = parse_args()
+    prefix = tb_prefix(args.tb_dir)
 
     seq_path = args.plan / "sequences.json"
     scen_path = args.plan / "power-scenarios.json"
@@ -125,7 +151,7 @@ def main() -> int:
             return 1
         agent_name = seq_to_agent[seq]
         mapping = {
-            "MODULE": args.module,
+            "MODULE": prefix,
             "TOP": args.top,
             "SEQUENCE_REF": seq,
             "AGENT_NAME": agent_name,

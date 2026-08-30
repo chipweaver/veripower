@@ -53,6 +53,21 @@ def test_children_in_name_order_files_in_declared_order(tmp_path):
     ]
 
 
+def test_sim_only_sources_follow_the_files_that_import_them(tmp_path):
+    """The C behind a DPI import the RTL declares reaches this filelist and no other: lint-cdc
+    and synthesis build theirs from files[] alone, and a C source handed to either aborts the
+    run before a rule is checked."""
+    out = _run(
+        tmp_path,
+        {"c": {"files": ["src/Sram.v"], "sim_only": ["src/dpi/sram_backdoor.cc"]}},
+    )
+    body = [ln for ln in out.splitlines() if not ln.startswith("//")]
+    assert body == [
+        f"{_RTL_ROOT}/src/Sram.v",
+        f"{_RTL_ROOT}/src/dpi/sram_backdoor.cc",
+    ]
+
+
 def test_duplicate_file_across_children_emitted_once(tmp_path):
     out = _run(tmp_path, {"a": {"files": ["shared.vh"]}, "b": {"files": ["shared.vh"]}})
     assert out.count(f"{_RTL_ROOT}/shared.vh") == 1

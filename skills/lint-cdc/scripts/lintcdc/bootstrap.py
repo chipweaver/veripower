@@ -103,7 +103,7 @@ def _sync_filelist(dest: Path, rtl_dir: Path) -> int:
         "# ==============================================================================",
         "",
         "# Header search paths",
-        *([f"+incdir+{rtl_dir}"] + [f"+incdir+{rtl_dir}/{d}" for d in incdirs]),
+        *[f"+incdir+{rtl_dir}/{d}" for d in incdirs],
         "",
         "# RTL source files (in dependency order)",
     ]

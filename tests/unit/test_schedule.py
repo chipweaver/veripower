@@ -254,7 +254,11 @@ def test_an_unsure_second_opinion_makes_the_whole_failure_unclear(
     )
     a = schedule.decide("m")
     assert a["action"] == "ESCALATE"
-    assert [c["diagnosis"] for c in a["candidates"]] == ["d-unsure"]
+    # Both are named: the routable half is held with the unsure one rather than dispatched,
+    # and the human it is held for is the only one who will see it — the orchestrator carries
+    # nothing between turns, so what decide does not return is not read anywhere else.
+    assert [c["diagnosis"] for c in a["candidates"]] == ["d-rtl", "d-unsure"]
+    assert [c.get("fix_owner") for c in a["candidates"]] == ["rtl-design", None]
 
 
 def test_dispatch_args_carry_every_channel_the_action_names(tmp_path, monkeypatch):
@@ -844,7 +848,7 @@ def test_triage_blocked_redispatches_no_livelock(tmp_path, monkeypatch):
 _OUTPUTS = {
     "specification": [
         "Design/specification/design.md",
-        "Design/specification/child.md",
+        "Design/specification/children",
         "Design/specification/manifest.json",
         "Design/specification/ppa.json",
         "Design/specification/clocks.json",
@@ -862,7 +866,7 @@ _OUTPUTS = {
         "Verification/simulation-plan/power-scenarios.json",
     ],
     "rtl-design": [
-        "Design/rtl-design/matvec.v",
+        "Design/rtl-design/src",
         "Design/rtl-design/rtl-files.json",
         "Design/rtl-design/constraint-annotations.json",
     ],
@@ -898,6 +902,8 @@ def _fp(module, rel):
 
 
 def _mk(module, rel, content):
+    if not Path(rel).suffix:  # tree artifact (Design/rtl-design/src): one file inside
+        return _mk(module, rel + "/rtl.v", content)
     p = facts.module_root(module) / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
@@ -914,11 +920,19 @@ def _recorded_inputs(module, rule, extra=()):
             if rules.producer_of(g) == rule:
                 continue
             for p in sorted(root.glob(g)):
-                if p.is_file():
-                    rec[str(p.relative_to(root))] = facts.fingerprint(p)
+                rec[str(p.relative_to(root))] = facts.fingerprint(p)
     for rel in extra:
         rec[rel] = _fp(module, rel)
     return rec
+
+
+def _oracle_rel(rule):
+    """The concrete path the rule's oracle selector resolves to in these fixtures."""
+    sel = rules.RULES[rule].oracle_selector
+    if not sel:
+        return None
+    rel = sel.replace("*", "oracle_stub.sv") if "*" in sel else sel
+    return "/".join((*rules.workdir_root(rule), rel))
 
 
 def _valid(
@@ -935,10 +949,14 @@ def _valid(
     (grade optionally overridden)."""
     r = rules.RULES[rule]
     marker = tag if tag is not None else f"r{run}"
-    for rel in _OUTPUTS[rule]:
+    rels = list(_OUTPUTS[rule])
+    orel = _oracle_rel(rule)
+    if orel and r.oracle[1] == "proposed":  # the review IS a product of the round
+        rels.append(orel)
+    for rel in rels:
         _mk(module, rel, f"{rule}:{rel}:{marker}")
     inputs = _recorded_inputs(module, rule, extra_inputs)
-    outputs = {rel: _fp(module, rel) for rel in _OUTPUTS[rule]}
+    outputs = {rel: _fp(module, rel) for rel in rels}
     grade = oracle_grade or r.oracle[1]
     _dispatch(module, rule, run, inputs)
     _outcome(
@@ -967,9 +985,6 @@ def _pin(module, rule):
     """Materialise the oracle-selector content + emit a real live pin whose fingerprint
     matches, so facts.oracle_grade grades the proposed oracle human."""
     r = rules.RULES[rule]
-    sel = r.oracle_selector
-    rel = sel.replace("*", "oracle_stub.sv") if "*" in sel else sel
-    _mk(module, "/".join((*rules.workdir_root(rule), rel)), f"oracle:{rule}")
     facts.append_event(
         module,
         {
@@ -1221,19 +1236,31 @@ def test_signed_off_requires_the_human_act(tmp_path, monkeypatch):
     )  # ...but nobody signed
 
 
-def test_signoff_gate_blocks_on_out_of_band_added_input(tmp_path, monkeypatch):
-    # a file added out-of-band that matches a rule's input selector (but was not in
-    # the recorded inputs) escapes proof_valid conditions 2/4 (which only check recorded
-    # paths). The signoff gate rejects it so a smuggled-in source can't ship unverified —
-    # enforced ONLY at the signoff trust boundary (daily path keeps the cheap check).
+def test_signoff_gate_blocks_on_a_file_the_stage_never_delivered(tmp_path, monkeypatch):
+    # promote makes canonical == artifacts[], so a file the latest outcome does not record got
+    # there out of band. Conditions 2/4 compare RECORDED paths only, so an ADD escapes them at
+    # the stage root; the gate rejects it by set difference against the record — no pattern, so
+    # no extension or depth can slip past it.
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
     assert facts.signoff_gate("m", facts.read_events("m")) is None  # clean, gate passes
-    # a new .v appears in rtl-design/ out-of-band — matches lint/synth/sim `*.v` selectors
-    _mk("m", "Design/rtl-design/sneaky.v", "module sneaky; endmodule")
+    _mk("m", "Design/rtl-design/sneaky.vh", "`define SNEAKY 1")
     gate = facts.signoff_gate("m", facts.read_events("m"))
     assert gate is not None
-    assert "new input" in gate.lower() and "sneaky.v" in gate
+    assert "unrecorded file" in gate and "sneaky.vh" in gate
+
+
+def test_a_file_added_inside_the_delivered_tree_invalidates_at_once(
+    tmp_path, monkeypatch
+):
+    # Inside the tree the gate is not even reached: the tree's version is a merkle over every
+    # path under it, so the add breaks condition 4 the moment it lands and the daily repair
+    # path opens the producer — no waiting for someone to try to sign off.
+    monkeypatch.chdir(tmp_path)
+    _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
+    assert facts.proof_valid("m", facts.read_events("m"), "rtl-design")
+    _mk("m", "Design/rtl-design/src/sneaky.vh", "`define SNEAKY 1")
+    assert not facts.proof_valid("m", facts.read_events("m"), "rtl-design")
 
 
 # ── the fail path shares the pass path's condition 3 ──────────────────────────

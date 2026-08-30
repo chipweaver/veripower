@@ -42,6 +42,7 @@ def _sidecars(tmp_path, files, *, write_rtl=True):
     if write_rtl:
         for rec in files.values():
             for f in rec["files"]:
+                (tmp_path / f).parent.mkdir(parents=True, exist_ok=True)
                 (tmp_path / f).write_text("module m; endmodule\n")
 
 
@@ -57,7 +58,7 @@ def test_exit_artifacts_raises_when_a_sidecar_is_absent(tmp_path):
 def test_exit_artifacts_raises_when_the_ledger_is_short_of_the_roster(tmp_path):
     # promote treats artifacts[] as the new canonical view and deletes what it omits, so passing
     # over a ledger short of the manifest roster would drop `leaf`'s RTL out of canonical.
-    _sidecars(tmp_path, {"topc": {"files": ["top.v"]}})
+    _sidecars(tmp_path, {"topc": {"files": ["src/top.v"]}})
     with pytest.raises(LedgerError, match="leaf"):
         exit_artifacts(tmp_path / "manifest.json", tmp_path)
 
@@ -68,33 +69,39 @@ def test_exit_artifacts_raises_on_a_file_no_child_wrote(tmp_path):
     # Named here instead, where re-dispatching the owning child still fixes it.
     _sidecars(
         tmp_path,
-        {"leaf": {"files": ["leaf.v"]}, "topc": {"files": ["top.v"]}},
+        {"leaf": {"files": ["src/leaf.v"]}, "topc": {"files": ["src/top.v"]}},
         write_rtl=False,
     )
-    with pytest.raises(LedgerError, match="leaf.v"):
+    with pytest.raises(LedgerError, match="src/leaf.v"):
         exit_artifacts(tmp_path / "manifest.json", tmp_path)
 
 
-def test_exit_artifacts_enumerates_the_files_and_both_sidecars(tmp_path):
-    _sidecars(tmp_path, {"leaf": {"files": ["leaf.v"]}, "topc": {"files": ["top.v"]}})
+def test_exit_artifacts_is_the_tree_and_both_sidecars(tmp_path):
+    # The RTL leaves as ONE tree entry, never a file enumeration: the tree's version is a merkle
+    # over everything under it, so a header, a subdirectory and a file the sidecars do not name
+    # are all inside the version a consumer records.
+    _sidecars(
+        tmp_path, {"leaf": {"files": ["src/leaf.v"]}, "topc": {"files": ["src/top.v"]}}
+    )
     assert {
         a["path"] for a in exit_artifacts(tmp_path / "manifest.json", tmp_path)
     } == {
-        "leaf.v",
-        "top.v",
+        "src",
         "rtl-files.json",
         "constraint-annotations.json",
     }
 
 
-def test_ledger_artifacts_drops_a_file_that_is_not_on_disk(tmp_path):
-    # The caller-reported fail path enumerates best-effort: listing a file promote cannot find
-    # would raise there instead, and the whole point of that path is that an envelope still gets
-    # written over a workdir no verdict can be derived from.
-    _sidecars(tmp_path, {"leaf": {"files": ["leaf.v"]}, "topc": {"files": ["top.v"]}})
-    (tmp_path / "leaf.v").unlink()
+def test_ledger_artifacts_survives_a_file_the_sidecars_name_and_nobody_wrote(tmp_path):
+    # The caller-reported fail path must still write an envelope over a workdir no verdict can be
+    # derived from. It lists the tree, so a file the sidecars name and no child wrote cannot make
+    # promote raise — the entry promote hardlinks is the directory, whatever is inside it.
+    _sidecars(
+        tmp_path, {"leaf": {"files": ["src/leaf.v"]}, "topc": {"files": ["src/top.v"]}}
+    )
+    (tmp_path / "src/leaf.v").unlink()
     assert {a["path"] for a in ledger_artifacts(tmp_path)} == {
-        "top.v",
+        "src",
         "rtl-files.json",
         "constraint-annotations.json",
     }

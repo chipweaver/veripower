@@ -53,6 +53,7 @@ compile_simv() {
 		-timescale=1ns/1ps \
 		${VCS_CC:+-cc "$VCS_CC"} ${VCS_CPP:+-cpp "$VCS_CPP"} \
 		-LDFLAGS "-Wl,--no-as-needed -Wl,--allow-shlib-undefined" \
+		-CFLAGS -I"$ROOT/tb/uvm/refmodel" -CFLAGS -std=gnu99 \
 		-CFLAGS -DVCS +vpi "${UVM_HOME}/src/dpi/uvm_dpi.cc" \
 		-l "$COMPILE_LOG"
 }

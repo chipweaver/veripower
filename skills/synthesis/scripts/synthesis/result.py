@@ -275,19 +275,14 @@ def parse_tool(area_text: str) -> str:
 def enumerate_artifacts(workdir) -> list[dict]:
     """Every promotable file this run produced, present-only.
 
-    The DC outputs are matched by the same `out/*_syn.*` glob rules.py declares them
-    with, not by a caller-supplied top name: a name that disagreed with the one
-    dc_shell actually wrote would drop the netlist from artifacts[] silently, and
-    promote publishes exactly what artifacts[] lists — a status=pass canonical stage
-    root with no netlist, which the two downstream rules then cannot be dispatched on.
+    `out/` leaves as one tree rather than a matched file set: whatever dc_shell wrote
+    into it is delivered and versioned, so a name nobody anticipated cannot drop the
+    netlist out of artifacts[] — promote publishes exactly what artifacts[] lists, and a
+    status=pass canonical root with no netlist leaves the two downstream rules
+    undispatchable. Whether the netlist is actually there is `_missing_outputs`'s job.
     """
     workdir = Path(workdir)
-    out = sorted(
-        p.relative_to(workdir).as_posix()
-        for ext in ("v", "sdc", "sdf")
-        for p in workdir.glob(f"out/*_syn.{ext}")
-        if p.is_file()
-    )
+    out = ["out"] if (workdir / "out").is_dir() else []
     candidates = [
         *out,
         "reports/qor.rpt",
@@ -303,7 +298,7 @@ def enumerate_artifacts(workdir) -> list[dict]:
         "scripts/rtl_load.tcl",
         "scripts/config.tcl",
     ]  # envelope.schema forbids listing result.json itself; excluded by construction
-    return [{"path": p} for p in candidates if (workdir / p).is_file()]
+    return [{"path": p} for p in candidates if (workdir / p).exists()]
 
 
 def finalize(

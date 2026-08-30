@@ -32,7 +32,7 @@ the UVM scaffold, compile, and run the smoke suite.
 1. **Bootstrap + scaffold**:
 
    ```bash
-   python3 <skill>/scripts/sim/__main__.py bootstrap --module {module} --workdir {workdir} --plan <scaffold>
+   python3 <skill>/scripts/sim/__main__.py bootstrap --workdir {workdir} --plan <scaffold>
    ```
 
    Deploys the infrastructure and the scaffold into `{workdir}`, including functional sequence
@@ -41,19 +41,25 @@ the UVM scaffold, compile, and run the smoke suite.
    complete stub tree, and on a rework it adds whatever the plan gained since last round and leaves
    everything already on disk alone.
 
-   **What that leaves you, and nothing else will.** It adds what the plan gained; it does not
-   refresh what the plan changed. If an agent picked up a signal, the interface declaring the old
-   set and the `tb_top` port-mapping it are the ones still on disk, and **the compile will not tell
-   you.** A DUT port left unconnected is a `Too few instance port connections` warning that names
-   no port and no file, VCS builds the `simv` anyway, and the round then runs green against the old
-   shape with the new input floating. That is measured, not assumed.
+   **What that leaves you.** Every round it re-renders what the plan determines — the interface's
+   signal list, the transaction's fields, `tb_pkg.sv`, `tb_top.sv`, the filelist, the testlist —
+   and never touches what a round authored. A boundary that moved therefore lands on disk and
+   stops exactly where authorship begins, and the two ways it stops do not announce themselves
+   alike:
 
-   So the signal is upstream, not downstream: your resolved edit scope names the scaffold when the
-   scaffold moved. When it does, read the plan against what is on disk before you fill anything, and
-   reconcile the interface, transaction, package, env and `tb_top` yourself. All of them are on Rule
-   A's repairable list. This is the cost of the deploy not overwriting them, and it is the cheaper
-   side: a stale port map is one round of reconciliation, and a filled checker replaced by a stub is
-   a round of authored checks gone.
+   - **A signal the plan gained** is declared in the interface and connected in `tb_top`, and is
+     in none of the clocking blocks or modports you wrote. Nothing warns: the compile is green and
+     the new input is simply never driven.
+   - **An agent the plan gained** has its classes rendered and its interface instantiated, while
+     `<module>_env.sv` still neither builds nor connects it — the compile stops on
+     `Identifier not declared`.
+
+   *Both measured on three modules.* So your resolved edit scope names the scaffold when the
+   scaffold moved; when it does, read the plan against what is on disk before you fill anything,
+   and reconcile the clocking blocks, the driver and monitor that read them, and the env. All of
+   them are on Rule A's repairable list. This is the cost of the deploy not overwriting what a
+   round wrote, and it is the cheaper side: a stale clocking block is one round of reconciliation,
+   and a filled checker replaced by a stub is a round of authored checks gone.
 2. **Fill / reconcile scaffold** (bound by **Rule A**, see `repair-boundaries.md`): inside
    `{workdir}`, fill or reconcile every `TODO(` across driver / monitor / checker / RM / functional
    seq / top against the current plan (`verification-plan.md` + the plan sidecars).

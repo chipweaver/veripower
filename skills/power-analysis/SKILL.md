@@ -58,7 +58,7 @@ Everything under `{workdir}` is produced by the tools you invoke, and `finalize`
 Export the three env vars, then run `bootstrap` to lay down the run scaffold:
 
 ```bash
-python3 <skill>/scripts/power/__main__.py bootstrap --module {module} --workdir {workdir} [--top <TOP>]
+python3 <skill>/scripts/power/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
 ```
 
 It copies the templates, resolves `<TOP>`, substitutes the upstream locations into `env.sh`,

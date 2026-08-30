@@ -1,7 +1,7 @@
 # shellcheck shell=sh
 # ==============================================================================
 # env.sh — power-analysis stage environment variables.
-# Sourced by the Makefile and scripts/ entries. Do not edit MY_TOP / MY_MODULE
+# Sourced by the Makefile and scripts/ entries. Do not edit MY_TOP
 # placeholders post-deploy — the power bootstrap verb substitutes them.
 # ==============================================================================
 
@@ -10,7 +10,6 @@
 # {MODULE}_base_test / {MODULE}_<seq>_seq, etc.). MODULE and TOP are usually
 # identical but the contract allows them to diverge.
 export TOP="${TOP:-MY_TOP}"
-export MODULE="${MODULE:-MY_MODULE}"
 
 # External reference paths — MY_SYN_OUT / MY_SIM_DIR / MY_PLAN_DIR are
 # substituted at bootstrap with the absolute stage-root paths injected via

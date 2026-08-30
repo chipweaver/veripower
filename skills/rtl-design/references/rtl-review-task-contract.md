@@ -12,7 +12,7 @@ nothing could audit it.
 - The child units assigned to you + each one's `manifest.children[<name>].rtl_modules[]` list.
 - Each assigned child's authored RTL `files[]` (from `rtl-files.json`) — read these.
 - Each assigned child's design doc, located via `manifest.children[<name>].doc` (the registry SSoT —
-  the SAME path authoring uses; do NOT hardcode `Design/specification/<child>.md`, which can drift from
+  the SAME path authoring uses; do NOT hardcode `Design/specification/children/<child>.md`, which can drift from
   the deployed layout). **Read its §2 Interface (and, for the top-integration child, the §3.1
   instantiation map wires the `interconnects.json` edges)** as the statement of *intent* to check against.
 - `design.md` path, read-scope §1.4 only, for cross-checking integration **intent** (including §1.4.2.1's

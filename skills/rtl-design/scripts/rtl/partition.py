@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from rtl._ledger import ANNOTATIONS_NAME, FILES_NAME, LedgerError, load_ledger
+from rtl._ledger import ANNOTATIONS_NAME, FILES_NAME, SRC_DIR, LedgerError, load_ledger
 
 
 def _read_json(p: Path):
@@ -23,18 +23,23 @@ def _ledger_files(ledger: dict) -> list:
     return sorted({f for rec in ledger.values() for f in rec["files"]})
 
 
-def _artifacts(ledger: dict, workdir: Path) -> list:
-    """Every child's files plus the two sidecars, in the envelope shape. A file the sidecars
-    name and no child wrote is dropped rather than listed: promote hardlinks every entry and
-    raises on the first absent one, which happens BEFORE the outcome event is appended — so the
-    round would hang with nothing in the log to schedule a repair from."""
-    files = [f for f in _ledger_files(ledger) if (workdir / f).is_file()]
-    return [{"path": p} for p in files + [FILES_NAME, ANNOTATIONS_NAME]]
+def _artifacts(workdir: Path) -> list:
+    """The RTL tree as ONE directory artifact, plus the two sidecars, in the envelope shape.
+
+    `src/` is the unit a consumer depends on, not the files inside it: its version is a merkle
+    over every path under it, so a header, a file in a subdirectory and a file the sidecars do
+    not name are all covered without the kernel ever matching a filename. Omitted when the
+    round wrote no tree at all — promote raises on an absent entry, which happens BEFORE the
+    outcome event is appended, so the round would hang with nothing in the log to repair from."""
+    arts = [SRC_DIR] if (workdir / SRC_DIR).is_dir() else []
+    return [{"path": p} for p in arts + [FILES_NAME, ANNOTATIONS_NAME]]
 
 
 def ledger_artifacts(workdir: Path) -> list:
-    """The artifacts[] enumeration off disk. Raises LedgerError when a sidecar is unreadable."""
-    return _artifacts(load_ledger(workdir), Path(workdir))
+    """The artifacts[] enumeration off disk. Loads the sidecars for their validation — an
+    unreadable one is a LedgerError here, not a degraded envelope — and delivers the tree."""
+    load_ledger(workdir)
+    return _artifacts(Path(workdir))
 
 
 def exit_artifacts(manifest: Path, workdir: Path) -> list:
@@ -65,4 +70,4 @@ def exit_artifacts(manifest: Path, workdir: Path) -> list:
             + " — re-dispatch the child that owns them"
         )
 
-    return _artifacts(ledger, workdir)
+    return _artifacts(workdir)

@@ -1,10 +1,10 @@
 # RTL coding rules
 
-Applies to: `**/*.v` / `**/*.vh`
+Applies to every RTL file you write under `src/`
 
 ## General Constraints
 
-- **Strict Verilog-2001 only — no SystemVerilog.** RTL files are `.v` (headers `.vh`), never `.sv`/`.svh`: the kernel's downstream `rtl` selectors match `*.v` alone, so a `.sv` file silently drops out of the dependency graph, and `rtl-files.schema.json` rejects the extension for exactly that reason. The **content** being V2001 is on you — no gate decides it, and the downstream tools would happily compile SystemVerilog. The common substitutions are types (`logic`/`bit`/`byte`/`int` → `wire`/`reg`/`integer`), always-blocks (`always_ff`/`always_comb`/`always_latch` → `always @(posedge …)` / `always @*`), and constructs with no V2001 equivalent at all (`typedef`/`enum`/`struct`/`union`/`interface`/`package`/`modport`/`import`/`unique`/`priority`) — a cheat sheet for the common cases, not a complete list of what the language forbids you. Do not use non-standard extensions unsupported by the toolchain
+- **Strict Verilog-2001 only — no SystemVerilog.** This is a rule about **content**, and it is on you: no gate decides it, and the downstream tools would happily compile SystemVerilog. Nothing keys on the extension you choose — name your files whatever the file set you are writing or importing calls for. The common substitutions are types (`logic`/`bit`/`byte`/`int` → `wire`/`reg`/`integer`), always-blocks (`always_ff`/`always_comb`/`always_latch` → `always @(posedge …)` / `always @*`), and constructs with no V2001 equivalent at all (`typedef`/`enum`/`struct`/`union`/`interface`/`package`/`modport`/`import`/`unique`/`priority`) — a cheat sheet for the common cases, not a complete list of what the language forbids you. Do not use non-standard extensions unsupported by the toolchain
 - Do not use Verilog/VHDL/SV reserved words as signal, module, or parameter names
 - Code must be synthesizable: no `#delay`, `initial` blocks driving synthesizable logic, or simulation-only statements (`$display`, etc.) in synthesizable RTL
 
@@ -18,7 +18,7 @@ Applies to: `**/*.v` / `**/*.vh`
 
 - Single responsibility per module/interface; avoid deep nesting, break complex combinational logic into named intermediate signals
 - Separate sequential and combinational logic clearly; avoid mixing unrelated logic in the same `always` block
-- Header files (`*.vh`): centralize macros and parameters; avoid circular includes
+- Centralize macros and parameters in a header your files `` `include `` through a declared `incdirs` entry; avoid circular includes. A header is an ordinary RTL file in your tree — it needs no particular extension and no entry in `files[]`
 - Cross-clock domain synchronizers, tri-state drivers, and other special structures must be encapsulated as separate modules/files. This one is load-bearing, not style: lint-cdc writes `sync_cell -name <module>` into the SGDC from your reported annotation, so the name has to be a real module — a synchronizer inlined into surrounding logic cannot be annotated at all
 
 ## Coding Constraints
@@ -41,14 +41,19 @@ Applies to: `**/*.v` / `**/*.vh`
 
 ### Reset Signals
 
-- Default: asynchronous reset, active-low (`negedge rst_n`)
+- Polarity and kind are not yours to pick: `top-io.json` carries `reset_polarity` and
+  `reset_kind` for every reset port, and that is the boundary you build to. Async active-low
+  is the common case, not the required one
 - Reset signals must not be used as combinational logic inputs/outputs; no combinational logic on async reset/set paths (prevents glitches)
 - A register may use either async reset or async set, not both simultaneously
 
 ### `if-else` Statements
 
-- **No** parallel `if` statements (use `if-else if-else` chains to express mutual exclusion); parallel `if` implies multi-drive or priority ambiguity
-- `if-else if` chains have priority: place frequently-used or complex conditions first
+- Two `if`s in one block that can both reach the same signal are a priority you did not write
+  down — say it with `if` / `else if`. Separate `if`s guarding separate signals are neither
+  multi-drive nor ambiguous, and are how a register block is normally written
+- An `if` / `else if` chain **is** a priority, so its order is behaviour. Reorder only
+  conditions you already know to be mutually exclusive
 - **Combinational logic** must have an `else` branch to prevent latch inference
 - **Sequential logic** may omit `else` (register-hold semantics)
 - No high-impedance (`z`/`Z`) in conditional expressions
@@ -63,9 +68,14 @@ Applies to: `**/*.v` / `**/*.vh`
 ### Loop Statements
 
 - `for` loop iteration count must be a **constant** (parameter or `localparam`) — no dynamic loops
-- `generate/for` and regular `for` loop blocks must have **named labels**
+- `generate` blocks must have **named labels**: the label is what the elaborated hierarchy,
+  the SDC and every report call the instance. A plain `for` inside an `always` names nothing
+  and needs none
 
 ### Sequential Logic Template
+
+Async active-low, the common case. Read the polarity and kind off `top-io.json` and write what
+it says.
 
 ```verilog
 always @(posedge clk or negedge rst_n) begin
@@ -82,15 +92,19 @@ end
 
 ### FSM Coding
 
-- **Separate combinational and sequential logic**: next-state logic (`always @*`) and state register (`always @(posedge clk or negedge rst_n)`) in separate blocks
+- **Separate combinational and sequential logic**: next-state logic (`always @*`) and the state register in separate blocks, the register written to the boundary's own reset polarity and kind
 - Use `case` for state transitions; state encoding via `parameter`/`localparam` — no hardcoded numbers
 - FSM must have a `default` branch pointing to a safe state (prevent runaway)
-- Low-power encoding: prefer Gray code for frequently transitioning adjacent states; one-hot/one-cold for small FSMs; minimize encoding bits
+- Encoding is advisory, on the same terms as Low-Power Design below: Gray code for states that
+  mostly step to their neighbour, one-hot/one-cold for small ones, fewer bits where neither
+  applies — but never at the cost of behaviour `<child>.md §2` specifies
 - Avoid redundant states; avoid high bit-flip counts between frequently transitioning states
 
 ### RAM Coding
 
-- RAM input control signals, read/write addresses, and output data must be registered — avoid direct combinational drive
+- Register the RAM's control signals and its read/write addresses. The read data itself comes
+  combinationally off the registered address — that is what a synchronous-read RAM is, and it
+  is what a compiled macro gives you
 - Read latency is one cycle; if additional latching exists on inputs/outputs, document the delay in comments
 - Read/write addresses must not overflow; no simultaneous read/write conflict on the same address without explicit arbitration
 - Data read out over multiple consecutive cycles must be registered first
@@ -101,7 +115,9 @@ end
 
 - Signed/unsigned operations must be explicitly declared and annotated; watch for sign extension and width alignment when mixing
 - Add-then-multiply vs. multiply-then-add (MAC) differ in area/timing — choose per design requirements and comment the rationale
-- Multipliers, dividers, and other large operators must follow the project's cell library and constraints; no casual DesignWare (DW) component instantiation without project review
+- Write large operators as operators and let synthesis infer them; `ppa.json`'s targets are
+  what decides whether the inference was good enough. Naming a DesignWare component pins the
+  design to one vendor's library, so reach for it only against a target you can point at
 - Write RTL in a style friendly to synthesis tool data-path optimization (resource sharing, retiming)
 
 ## Comment Conventions

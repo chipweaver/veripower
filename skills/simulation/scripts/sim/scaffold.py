@@ -425,6 +425,13 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     dest = out_dir / "filelist.f"
     derived.append((dest, content))
 
+    # The list filelist.f pulls in for what this file cannot derive — a DPI implementation is
+    # C, so no plan describes it and no renderer emits it. A stub, therefore, not a derivation.
+    content = _render_template_file(
+        template_dir, "tb_sources.f", {"MODULE": module, "TOP": top}
+    )
+    pending.append((out_dir / "tb" / "uvm" / "tb_sources.f", content))
+
     # --- testlist.json ---
     # Field format must match run_vcs_regression.sh:
     #   "{test_id}|{uvm_testname}|{feature_id}".format(**test)
