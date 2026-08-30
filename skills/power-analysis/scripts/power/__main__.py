@@ -48,7 +48,7 @@ def _read_ppa_targets(inputs, dims: set[str]) -> list:
 def _cmd_bootstrap(a: argparse.Namespace) -> int:
     from power import bootstrap
 
-    return bootstrap.run(a.module, a.workdir, top=a.top)
+    return bootstrap.run(a.workdir, top=a.top)
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
@@ -72,7 +72,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser(
         "bootstrap", help="deploy templates + substitute env.sh + render power tests"
     )
-    sp.add_argument("--module", required=True)
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
         "--top",

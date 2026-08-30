@@ -35,7 +35,7 @@ refresh-tests:  ## Re-render UVM power test classes from current plan
 		[ -d "$$PLAN_DIR" ] || { echo "[refresh-tests] ERROR: PLAN_DIR not found: $$PLAN_DIR"; exit 1; }; \
 		python3 scripts/emit_power_tests.py \
 			--plan      "$$PLAN_DIR" \
-			--module    "$$MODULE" \
+			--tb-dir    "$$TB_DIR" \
 			--out-dir   "$$POWER_TESTS_DIR" \
 			--filelist  "$$POWER_FILELIST" \
 			--top       "$$TOP" \
