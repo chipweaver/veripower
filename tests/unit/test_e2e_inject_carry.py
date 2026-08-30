@@ -114,7 +114,8 @@ _STAGE_FILES = {
         "env.sh": "#!/bin/sh",
         "filelist.f": "-f rtl_filelist.f",
         "rtl_filelist.f": "top.v",
-        "tb/uvm/dummy.sv": "// tb",
+        # the TB's package declaration: what the rendered power tests read their prefix from
+        "tb/uvm/pkg/tb_pkg.sv": "package top_tb_pkg;\nendpackage\n",
     },
     "power-analysis": {
         "reports_ptpx/run1/power_hier.rpt": "power ok",
@@ -291,8 +292,6 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
             sys.executable,
             str(POWER_MAIN),
             "bootstrap",
-            "--module",
-            module,
             "--workdir",
             str(wd),
             "--top",

@@ -53,14 +53,17 @@ def _err(msg: str) -> None:
     print(f"[sim bootstrap] {msg}", file=sys.stderr)
 
 
-def read_top(scaffold_dir) -> str:
-    """The DUT top module name, indexed out of the `scaffold` input's tb-scaffold.json.
+def read_names(scaffold_dir) -> tuple[str, str]:
+    """(top, module) — both indexed out of the `scaffold` input's tb-scaffold.json.
 
-    Indexed rather than inferred: `top` is a required field of tb-scaffold.schema.json,
-    validated by simulation-plan when it writes the file, and sim.scaffold indexes the same
-    field a moment later to name <top>_tb_top.sv. A second source would let the MY_TOP
-    substituted across the deployed infra disagree with the top the renderer emitted."""
-    return json.loads((Path(scaffold_dir) / SCAFFOLD_NAME).read_text())["top"]
+    Indexed rather than taken from the caller: both are required fields of
+    tb-scaffold.schema.json, validated by simulation-plan when it writes the file, and
+    sim.scaffold indexes the same two a moment later to name <top>_tb_top.sv and the
+    <module>_* classes. A second source would let what is substituted across the deployed
+    infra disagree with what the renderer emitted — which is a TB that does not compile,
+    since base_test.sv names the env the renderer wrote."""
+    spec = json.loads((Path(scaffold_dir) / SCAFFOLD_NAME).read_text())
+    return spec["top"], spec["module"]
 
 
 def _deploy_no_clobber(src_root: Path, dest: Path) -> list[Path]:
@@ -80,7 +83,7 @@ def _deploy_no_clobber(src_root: Path, dest: Path) -> list[Path]:
     return written
 
 
-def run(module: str, workdir, scaffold=None) -> int:
+def run(workdir, scaffold=None) -> int:
     infra = _TEMPLATE_DIR / "infra"
     if not infra.is_dir():
         _err(f"missing infra template directory: {infra}")
@@ -99,13 +102,14 @@ def run(module: str, workdir, scaffold=None) -> int:
     inputs = json.loads((dest / "dispatch.json").read_text(encoding="utf-8"))["inputs"]
     rtl_dir = Path(inputs["rtl"])
 
-    top = read_top(inputs["scaffold"])
-    if not _IDENT_RE.match(top):
-        # The schema types `top` as a string without pinning its shape, so this is the one
-        # place a name that cannot be a module identifier is reported. Left through, it
-        # reaches VCS as a syntax error in generated code nobody wrote by hand.
-        _err(f"{SCAFFOLD_NAME} `top` is not a Verilog identifier: {top!r}")
-        return 1
+    top, prefix = read_names(inputs["scaffold"])
+    for field, name in (("top", top), ("module", prefix)):
+        if not _IDENT_RE.match(name):
+            # The schema types both as plain strings without pinning their shape, so this is
+            # the one place a name that cannot be a Verilog identifier is reported. Left
+            # through, it reaches VCS as a syntax error in generated code nobody wrote by hand.
+            _err(f"{SCAFFOLD_NAME} `{field}` is not a Verilog identifier: {name!r}")
+            return 1
 
     # A Makefile present means the prior round's TB was carried in before this verb ran:
     # a rework, not an abort. Absent means a first run.
@@ -125,7 +129,7 @@ def run(module: str, workdir, scaffold=None) -> int:
     # carried work. Scanning the whole workdir instead would also mean reading every file the
     # tools left behind: on a real run directory that is 311 files and 56 MB, 170 of them
     # binary, to reach the three template files that actually carry a placeholder.
-    repl = {"MY_TOP": top, "MY_MODULE": module}
+    repl = {"MY_TOP": top, "MY_MODULE": prefix}
     for path in deployed:
         text = path.read_text()
         if any(ph in text for ph in _PLACEHOLDERS):
@@ -162,5 +166,5 @@ def run(module: str, workdir, scaffold=None) -> int:
         print("[sim bootstrap] --plan not supplied; deployed infra only.")
 
     print(f"[sim bootstrap] done — {dest}")
-    print(f"  MODULE={module}  TOP={top}")
+    print(f"  MODULE={prefix}  TOP={top}")
     return 0

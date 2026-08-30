@@ -20,14 +20,15 @@ sys.path.insert(0, str(REPO_ROOT / "skills" / "simulation" / "scripts"))
 from sim import bootstrap  # noqa: E402
 
 
-# ── TOP: one source, indexed (in-process) ──────────────────────────────────────
-def test_top_comes_from_the_scaffold_input(tmp_path):
-    # The same field sim.scaffold indexes to name <top>_tb_top.sv, so the substituted
-    # MY_TOP and the rendered top cannot disagree.
+# ── both names: one source, indexed (in-process) ──────────────────────────────
+def test_names_come_from_the_scaffold_input(tmp_path):
+    # The same two fields sim.scaffold indexes to name <top>_tb_top.sv and the <module>_*
+    # classes, so what is substituted into the deployed infra cannot disagree with what the
+    # renderer emitted — a disagreement is a TB that does not compile.
     (tmp_path / "tb-scaffold.json").write_text(
-        json.dumps({"top": "my_top", "module": "m"})
+        json.dumps({"top": "my_top", "module": "my_mod"})
     )
-    assert bootstrap.read_top(tmp_path) == "my_top"
+    assert bootstrap.read_names(tmp_path) == ("my_top", "my_mod")
 
 
 def _mirror(
@@ -51,7 +52,9 @@ def _mirror(
     (rtl / "rtl-files.json").write_text(json.dumps(rtl_files))
     plan_root = tmp_path / "asic" / module / "Verification" / "simulation-plan"
     plan_root.mkdir(parents=True)
-    (plan_root / "tb-scaffold.json").write_text(json.dumps({"top": scaffold_top}))
+    (plan_root / "tb-scaffold.json").write_text(
+        json.dumps({"top": scaffold_top, "module": scaffold_top})
+    )
     spec_root = tmp_path / "asic" / module / "Design" / "specification"
     spec_root.mkdir(parents=True)
     (spec_root / "top-io.json").write_text(
@@ -116,8 +119,6 @@ def _run(main, module, workdir, *extra):
             "python3",
             str(main),
             "bootstrap",
-            "--module",
-            module,
             "--workdir",
             str(workdir),
             *extra,
