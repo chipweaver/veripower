@@ -254,7 +254,11 @@ def test_an_unsure_second_opinion_makes_the_whole_failure_unclear(
     )
     a = schedule.decide("m")
     assert a["action"] == "ESCALATE"
-    assert [c["diagnosis"] for c in a["candidates"]] == ["d-unsure"]
+    # Both are named: the routable half is held with the unsure one rather than dispatched,
+    # and the human it is held for is the only one who will see it — the orchestrator carries
+    # nothing between turns, so what decide does not return is not read anywhere else.
+    assert [c["diagnosis"] for c in a["candidates"]] == ["d-rtl", "d-unsure"]
+    assert [c.get("fix_owner") for c in a["candidates"]] == ["rtl-design", None]
 
 
 def test_dispatch_args_carry_every_channel_the_action_names(tmp_path, monkeypatch):

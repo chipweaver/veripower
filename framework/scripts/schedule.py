@@ -184,7 +184,10 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
     schedulable has spoken, and its answer is "nobody". Letting it fall through would reach
     the diagnostic rung again and re-run the same analyzer over the same evidence forever.
     One such entry among several makes the whole failure unclear: part of it has no owner,
-    and a half-known attribution is what the early exit exists to keep out of scheduling."""
+    and a half-known attribution is what the early exit exists to keep out of scheduling.
+    `unroutable` is then the WHOLE set, not the ownerless part of it: what stops is the
+    failure, and the human it stops for is deciding about all of it. Handing them only the
+    half nobody can act on would hide findings the analysis was told not to fold away."""
     if _oracle_retracted(events, rule, outcome):
         return {
             "attribution": None,
@@ -200,7 +203,7 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
                 **base,
                 "attribution": diags[-1]["attribution"],
                 "owners": [],
-                "unroutable": [d for d in diags if not d.get("fix_owner")],
+                "unroutable": diags,
             }
         owners = {}
         for d in diags:
@@ -319,7 +322,13 @@ def _escalation(c: dict) -> dict:
             "rule": rule,
             "reason": f"{rule}: diagnosis named no fix_owner",
             "candidates": [
-                {"attribution": d["attribution"], "diagnosis": d["id"]}
+                {
+                    "attribution": d["attribution"],
+                    "diagnosis": d["id"],
+                    # present on the entries that DID name someone: they are held with the
+                    # rest, and the human deciding needs to see what was already attributed.
+                    **({"fix_owner": d["fix_owner"]} if d.get("fix_owner") else {}),
+                }
                 for d in c["unroutable"]
             ],
         }
