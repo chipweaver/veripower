@@ -56,6 +56,7 @@ gls-compile: tb-shim refresh-tests  ## Compile GLS simv (synthesis netlist + SDF
 			$$VCS_TIMESCALE $$VCS_INIT_FLAGS \
 			$${VCS_CC:+-cc "$$VCS_CC"} $${VCS_CPP:+-cpp "$$VCS_CPP"} \
 			-LDFLAGS "-Wl,--no-as-needed -Wl,--allow-shlib-undefined" \
+			-CFLAGS -I"$$TB_DIR/tb/uvm/refmodel" -CFLAGS -std=gnu99 \
 			-CFLAGS -DVCS +vpi "$$UVM_HOME/src/dpi/uvm_dpi.cc" \
 			-o simv \
 			2>&1 | tee gls-compile-log.txt; \
