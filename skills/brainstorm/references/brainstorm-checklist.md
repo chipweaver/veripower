@@ -13,10 +13,10 @@ The dialogue walks dimensions D0–D7, but the **written artifact** uses **descr
 - `## Architecture Candidates` — D4
 - `## Timing Scenarios` — D5
 - `## PPA Targets` — D6
-- `## Verification Inputs Readiness` — D7
+- `## Readiness` — D7
 - `## Document Control` — revision notes (no dimension)
 
-Omit any dimension not reached. Headers stay descriptive, **never** literal `## D0.`; `Dx` survives only as the dialogue / cross-skill provenance label (specification cites e.g. "ppa_targets ← D6").
+Omit any dimension not reached. Headers stay descriptive, **never** literal `## D0.`; `Dx` is a dialogue label and does not appear in the artifact.
 
 ## Q&A Style: Options + Recommendation
 
@@ -67,18 +67,16 @@ Closure signal: you restate the module's intent accurately in 1–2 sentences an
 
 D2 covers two related but separate concerns:
 
-**D2a Top-Level IO**: DUT-boundary signals (signal name / direction / width /
-clock domain / protocol). Output: `top-io.json`.
+**D2a Top-Level IO**: DUT-boundary signals — name, direction, width, clock domain,
+protocol — settled here and written into brainstorm.md.
 
 - List of top-level interface groups (one name per group, e.g., `cfg_bus` / `data_in` / `status_out`).
 - Protocol type per group (AXI-lite / APB / valid-ready / streaming / custom).
 - Clock domain each group belongs to.
 - Backpressure strategy (blocking / drop / overwrite).
 
-**D2b Inter-module Interconnects** (fan-out mode only; can be empty for
-N=1 modules): wires between RTL modules (Producer / Consumer at RTL-module
-level / Protocol / Timing). Output: `interconnects.json`. Each cross-child wire is **declared once** there;
-sub-design `<child>.md §2 Interface` references but does not redefine.
+**D2b Inter-module Interconnects** (fan-out mode only; empty for an N=1 module): wires between
+RTL modules — producer, consumer at RTL-module level, protocol, timing.
 
 ## D3. Clocks and Reset
 
@@ -128,15 +126,19 @@ Rendering conventions (hand-drawn ASCII preferred / wavedrom — note that GitHu
 - Target value for each listed dimension.
 - If PPA optimization is not pursued: record explicitly as an empty list (`[]`), distinguishing from "never asked" (field missing).
 
-## D7. Verification Input Field Readiness
+## D7. Readiness
 
-Cross-check against the sidecar schemas the specification stage will have to fill: `../../specification/references/` holds `features` / `timing-scenarios` / `top-io` / `interconnects` / `check-hints` `.schema.json`, each field carrying its own description. The brainstorm only acts as a reminder; the actual fields land during the design.md authoring stage. Missing items are called out by name in the `Verification Inputs Readiness` section of brainstorm.md.
+Look back over what D0–D6 actually settled and ask whether the stage that authors from this
+document could do so without coming back with questions. Its own references say what it has to
+fill, field by field — read them there rather than from a list kept here, which is a copy that
+goes stale while nothing checks it. This dimension only reminds; nothing lands here. Name every
+gap you find, by name, in the `Readiness` section of brainstorm.md.
 
 ## Subsection IDs and Stable Anchors
 
 Downstream readers trace back to brainstorm.md at **subsection granularity** — the manifest's per-child `brainstorm_anchor`, and the specification gate's name-keyed cross-references — so brainstorm.md must carry stable, reusable names:
 
-- Each row of the D1 feature table carries a stable `ID` (recommended `F-NN`) — `features.json` reuses it directly as `id`, and the child frontmatter `features ⊆ features.json` subset check keys on it.
+- Each row of the D1 feature table carries a stable `ID` (recommended `F-NN`), reused verbatim downstream.
 - D2a top-level interface groups + D2b inter-module wire names, D4 candidates, D5 scenario table all use reusable named anchors (e.g., `cfg_bus` / `Candidate B` / `SC-001`).
 - D6 must explicitly write `ppa_targets: []` even when PPA optimization is not pursued, distinguishing "asked and decided none" from "forgot to ask."
 - Open questions use numbering like `OQ-NN` so they remain locatable.
