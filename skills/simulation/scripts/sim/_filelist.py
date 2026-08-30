@@ -26,7 +26,10 @@ def write_rtl_filelist(rtl_files: dict, dst, rtl_root: str) -> None:
     """One `+incdir+` line per include dir, then one path per RTL file.
 
     Children are emitted in name order and files in their declared order within a child, so
-    the compile order is deterministic.
+    the compile order is deterministic. A child's `sim_only` sources follow its `files`: they
+    are the DPI implementations behind imports the RTL declares, and this is the only filelist
+    that may carry them — lint-cdc's and synthesis's are built from `files` alone, and a C
+    source reaching either aborts the run.
     """
     incdirs: list[str] = []
     files: list[str] = []
@@ -36,7 +39,7 @@ def write_rtl_filelist(rtl_files: dict, dst, rtl_root: str) -> None:
             entry = d if d.startswith(("/", "$")) else f"{rtl_root}/{d}"
             if entry not in incdirs:
                 incdirs.append(entry)
-        for f in rec["files"]:
+        for f in rec["files"] + (rec.get("sim_only") or []):
             entry = f if f.startswith(("/", "$")) else f"{rtl_root}/{f}"
             if entry not in files:
                 files.append(entry)

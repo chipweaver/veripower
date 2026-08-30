@@ -39,16 +39,17 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 def enumerate_artifacts(workdir) -> list:
     """Fixed simulation-plan artifact set, present-only. Never lists result.json (self) —
-    the envelope schema forbids it. Present-only keeps a seeded rework workdir carrying the
-    full prior product set, so a promoted fail cannot GC canonical down to a hollow view."""
+    the envelope schema forbids it. The review leaves as one tree, whatever the reviewer
+    called the files in it, so the endorsement reads back the set that was delivered.
+    Present-only keeps a seeded rework workdir carrying the full prior product set, so a
+    promoted fail cannot GC canonical down to a hollow view."""
     workdir = Path(workdir)
     fixed = [
         "verification-plan.md",
         *SIDECAR_NAMES,
-        "plan-review/review.md",
-        "plan-review/decisions.md",
     ]
-    return [{"path": p} for p in fixed if (workdir / p).is_file()]
+    reviews = ["plan-review"] if (workdir / "plan-review").is_dir() else []
+    return [{"path": p} for p in fixed + reviews if (workdir / p).exists()]
 
 
 def build_result(

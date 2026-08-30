@@ -56,15 +56,15 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
     """Fixed specification artifact set, present-only. NEVER lists brainstorm.md
     (module-root, outside the workdir — would break promote()) or result.json (self).
 
-    Indexes the manifest rather than defaulting around it: a roster this could not read would
-    otherwise promote a fail whose artifacts[] omits every child doc, and promote GCs what the
-    envelope does not list. Raising instead makes that BLOCKED (finalize → exit 2)."""
+    The child designs, their check hints and the reviews each leave as one tree, so however
+    the decomposition lays them out inside those directories they are delivered and versioned
+    together — each is read downstream, or endorsed, as a set, so this needs no roster: <TOP>
+    is the caller's (build_result reads manifest.module, and an unreadable manifest is BLOCKED
+    there)."""
     workdir = Path(workdir)
-    manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
     fixed = [
         "design.md",
         "manifest.json",
-        "spec-review/decisions.md",
         f"constraints/{top}.sdc",
         f"constraints/{top}.sgdc",
         "ppa.json",
@@ -73,14 +73,13 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
         "top-io.json",
         "interconnects.json",
     ]
-    children = manifest["children"]
-    child_docs = [c["doc"] for c in children]
-    child_hints = [f"check-hints/{c['name']}.json" for c in children]
-    child_reviews = [f"spec-review/{c['name']}.md" for c in children]
+    child_docs = ["children"] if (workdir / "children").is_dir() else []
+    child_hints = ["check-hints"] if (workdir / "check-hints").is_dir() else []
+    reviews = ["spec-review"] if (workdir / "spec-review").is_dir() else []
     return [
         {"path": p}
-        for p in fixed + child_docs + child_hints + child_reviews
-        if (workdir / p).is_file()
+        for p in fixed + child_docs + child_hints + reviews
+        if (workdir / p).exists()
     ]
 
 

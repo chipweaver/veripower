@@ -93,7 +93,7 @@ def _sev(token: str) -> str | None:
     and run() fails loud rather than guessing.
     """
     t = token.lower()
-    if "fatal" in t or "error" in t:
+    if "fatal" in t or "error" in t or "mandatory" in t:
         return "error"
     if "warning" in t:
         return "warning"

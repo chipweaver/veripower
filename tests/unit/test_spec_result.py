@@ -54,14 +54,15 @@ def _spec_workdir(tmp_path):
                 "children": [
                     {
                         "name": "tpu_top",
-                        "doc": "tpu_top.md",
+                        "doc": "children/tpu_top.md",
                         "rtl_modules": ["tpu_top"],
                     }
                 ],
             }
         )
     )
-    (wd / "tpu_top.md").write_text(
+    (wd / "children").mkdir(exist_ok=True)
+    (wd / "children" / "tpu_top.md").write_text(
         "---\nports: []\nclocks: []\nfeatures:\n  - F-00\n---\n\n# child\n"
     )
     (wd / "features.json").write_text(
@@ -163,26 +164,27 @@ def test_enumerate_artifacts_present_only(tmp_path):
     constraints.derive_constraints(
         wd
     )  # generate constraints/tpu_top.{sdc,sgdc} so they are present
-    (wd / "fifo.md").write_text("# child\n")
+    (wd / "children" / "fifo.md").write_text("# child\n")
     m = json.loads((wd / "manifest.json").read_text())
-    m["children"].append({"name": "fifo", "doc": "fifo.md", "rtl_modules": ["fifo"]})
+    m["children"].append(
+        {"name": "fifo", "doc": "children/fifo.md", "rtl_modules": ["fifo"]}
+    )
     (wd / "manifest.json").write_text(json.dumps(m))
     arts = result.enumerate_artifacts(wd, top="tpu_top")
     paths = {a["path"] for a in arts}
     assert {
         "design.md",
+        "children",
+        "check-hints",
+        "spec-review",
         "manifest.json",
-        "spec-review/decisions.md",
-        "spec-review/tpu_top.md",
-        "tpu_top.md",
-        "fifo.md",
         "constraints/tpu_top.sdc",
         "constraints/tpu_top.sgdc",
         "clocks.json",
     } <= paths
     assert all(set(a) == {"path"} for a in arts)  # the path IS the identity
     assert "brainstorm.md" not in paths and "result.json" not in paths
-    assert all((wd / p).is_file() for p in paths)  # present-only
+    assert all((wd / p).exists() for p in paths)  # present-only
 
 
 # ── golden test against the real tpu_top run (lean shape + γ-floor + schema) ─
@@ -208,15 +210,9 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     assert paths == {
         "design.md",
         "manifest.json",
-        "spec-review/decisions.md",
-        "spec-review/mac.md",
-        "spec-review/systolic_reg.md",
-        "spec-review/fifo.md",
-        "spec-review/tpu_top.md",
-        "mac.md",
-        "systolic_reg.md",
-        "fifo.md",
-        "tpu_top.md",
+        "children",
+        "check-hints",
+        "spec-review",
         "constraints/tpu_top.sdc",
         "constraints/tpu_top.sgdc",
         "ppa.json",
@@ -224,10 +220,6 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "features.json",
         "top-io.json",
         "interconnects.json",
-        "check-hints/mac.json",
-        "check-hints/systolic_reg.json",
-        "check-hints/fifo.json",
-        "check-hints/tpu_top.json",
     }
     assert "brainstorm.md" not in paths and "result.json" not in paths
     assert "notes" not in ss
@@ -365,8 +357,6 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
     assert {
         "design.md",
         "manifest.json",
-        "spec-review/decisions.md",
-        "tpu_top.md",
         "ppa.json",
         "constraints/tpu_top.sdc",
         "constraints/tpu_top.sgdc",

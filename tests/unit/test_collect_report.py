@@ -112,6 +112,13 @@ def test_sev_substring_classifies_compound_tokens():
     assert cr._sev("Note") is None
 
 
+def test_sev_maps_the_starc_mandatory_token():
+    # STARC rules report their policy level in the severity column: a violation of a
+    # Mandatory rule reads "Mandatory", not "Error". Left unmapped it returns None and the
+    # whole report is rejected as unparseable, which blocks the stage on a clean run.
+    assert cr._sev("Mandatory") == "error"
+
+
 def test_parse_rows_alias_variants_and_native_id():
     rows = cr.parse_rows(MIXED)
     assert len(rows) == 4

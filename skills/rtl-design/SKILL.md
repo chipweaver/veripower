@@ -21,7 +21,7 @@ Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps 
 | Path | What it is |
 |---|---|
 | `<manifest>/manifest.json` | The child roster: `module` (= `<top_module>`) + `children[]` (`name` / `doc` / `rtl_modules[]`). Drives the fan-out |
-| `<children>/<child>.md × N` | Per-child sub-design — frontmatter + §2 Interface + §3 Internal Behavior are what each child derives its RTL from |
+| `<children>/` (the per-child designs) | Per-child sub-design — frontmatter + §2 Interface + §3 Internal Behavior are what each child derives its RTL from |
 | `<design>/top-io.json`, `interconnects.json`, `clocks.json` | The boundary, the cut edges, the clocks. Passed by path into the sub-Tasks |
 | `<design>/ppa.json` | The area / timing-slack / power targets this RTL is judged against. Passed by path into the sub-Tasks |
 
@@ -29,10 +29,10 @@ Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `re
 
 | Path | What it is |
 |---|---|
-| `*.v` (`*.vh` headers) | The authored RTL, `<top_module>.v` among it |
+| `src/` | The authored RTL, the `<top_module>` file among it — delivered as one tree |
 | `rtl-files.json` | Per-child `files[]` + `incdirs[]`, keys in manifest order. Every downstream filelist is generated from it — no stage parses a text file list |
 | `constraint-annotations.json` | Per-child SGDC/SDC annotations in real module names, read by lint-cdc and synthesis |
-| `semantic-review/*.md` | The intent reviews, written by their reviewers. Prose, not a verdict |
+| `semantic-review/` | The intent reviews, written by their reviewers. Prose, not a verdict — delivered as one tree, so what you call the files in it is yours |
 | `result.json` | The status envelope, written only by `finalize` |
 
 ## Task

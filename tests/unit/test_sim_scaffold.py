@@ -374,6 +374,43 @@ def test_rework_keeps_the_authored_stubs(tmp_path):
     assert sb.read_text() == "// a round's authored compare\n"
 
 
+def test_the_reset_schedule_is_authored_and_survives_a_rework(tmp_path):
+    """tb_top is derived, so a reset placed there is gone on the next round — and a reset exit
+    from a state the design only passes through is reachable no other way. The schedule is
+    therefore its own stub, included after the interfaces so it can be timed against them."""
+    out = _render(tmp_path)
+    tb = out / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
+    rst = out / "tb" / "uvm" / "top" / "m_reset.svh"
+    assert '`include "m_reset.svh"' in tb.read_text()
+    assert tb.read_text().index("m_drv_if drv_if") < tb.read_text().index("m_reset.svh")
+    assert "rst_n = 0;" in rst.read_text()
+
+    rst.write_text("// a round's own reset placement\n")
+    scaffold.render(
+        _write_spec(tmp_path), out, _write_boundary(tmp_path / "spec"), TEMPLATES
+    )
+    assert rst.read_text() == "// a round's own reset placement\n"
+
+
+def test_the_bench_can_name_sources_the_scaffold_cannot_derive(tmp_path):
+    """A DPI implementation is C, so no plan describes it and no renderer emits it — and the
+    only route into the compile is filelist.f, which is derived and rewritten every round. The
+    list it pulls in is therefore a stub, and what a round wrote there is still there next
+    round."""
+    out = _render(tmp_path)
+    fl = out / "filelist.f"
+    src = out / "tb" / "uvm" / "tb_sources.f"
+    assert "-f tb/uvm/tb_sources.f" in fl.read_text()
+    assert src.is_file()
+
+    src.write_text("tb/uvm/refmodel/m_ref.c\n")
+    scaffold.render(
+        _write_spec(tmp_path), out, _write_boundary(tmp_path / "spec"), TEMPLATES
+    )
+    assert src.read_text() == "tb/uvm/refmodel/m_ref.c\n"
+    assert "-f tb/uvm/tb_sources.f" in fl.read_text()
+
+
 def test_a_new_port_reaches_the_vif_and_the_txn_on_a_rework(tmp_path):
     out = _render(tmp_path)
     sig = out / "tb" / "uvm" / "interface" / "m_drv_signals.svh"

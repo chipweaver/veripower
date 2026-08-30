@@ -12,7 +12,7 @@ simulation / simulation-plan stage-root locations come from the injected
 self-navigating <module>/Design|Verification/<stage> — power has no
 "rtl" key (it never consumes rtl-design). TOP is inferred from the injected
 netlist's out/*_syn.v (suffix '_syn.v' stripped, same mechanism as
-timing.infer_top) when not given. Substitutes the MY_TOP / MY_MODULE / MY_SYN_OUT
+timing.infer_top) when not given. Substitutes the MY_TOP / MY_SYN_OUT
 / MY_SIM_DIR / MY_PLAN_DIR placeholders in env.sh (the three *_DIR values are now
 absolute — kernel dispatch injects absolute locations, so no relpath climb is
 needed), then renders the initial UVM power tests by shelling out to the
@@ -55,7 +55,7 @@ def _sub(path: Path, mapping: dict[str, str]) -> None:
     """In-place multi-placeholder substitution (str.replace — no sed-delimiter hazard
     on '/'-containing relpaths). One global pass over all keys; the five env.sh
     placeholders are mutually non-overlapping so replace order is irrelevant. The pass
-    is global, so it also rewrites the MY_TOP/MY_MODULE mention inside the line-4
+    is global, so it also rewrites the MY_TOP mention inside the line-4
     comment."""
     text = path.read_text()
     for k, v in mapping.items():
@@ -63,7 +63,7 @@ def _sub(path: Path, mapping: dict[str, str]) -> None:
     path.write_text(text)
 
 
-def run(module: str, workdir, top: str | None = None) -> int:
+def run(workdir, top: str | None = None) -> int:
     if not _TEMPLATE_DIR.is_dir():
         _err(f"missing {_TEMPLATE_DIR}")
         return 1
@@ -136,7 +136,6 @@ def run(module: str, workdir, top: str | None = None) -> int:
         dest / "env.sh",
         {
             "MY_TOP": top,
-            "MY_MODULE": module,
             "MY_SYN_OUT": str(syn_out_dir),
             "MY_SIM_DIR": str(sim_dir),
             "MY_PLAN_DIR": str(plan_dir),
@@ -154,8 +153,8 @@ def run(module: str, workdir, top: str | None = None) -> int:
             str(dest / "scripts" / "emit_power_tests.py"),
             "--plan",
             str(plan_dir),
-            "--module",
-            module,
+            "--tb-dir",
+            str(sim_dir),
             "--out-dir",
             str(dest / "scaffold" / "power_tests"),
             "--filelist",

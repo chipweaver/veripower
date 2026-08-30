@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def _cmd_bootstrap(a: argparse.Namespace) -> int:
     from sim import bootstrap
 
-    return bootstrap.run(a.module, a.workdir, scaffold=a.plan)
+    return bootstrap.run(a.workdir, scaffold=a.plan)
 
 
 def _cmd_check_materialization(a: argparse.Namespace) -> int:
@@ -69,7 +69,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser(
         "bootstrap", help="deploy infra + optional scaffold into a run workdir"
     )
-    sp.add_argument("--module", required=True)
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
         "--plan",

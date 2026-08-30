@@ -172,7 +172,8 @@ def test_filelist_synced_and_rebased(tmp_path):
     r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     gen = (workdir / "scripts" / "filelist.txt").read_text()
-    assert f"+incdir+{rtl_root}" in gen
+    # the search path is exactly what the child declared — nothing outside the tree
+    assert f"+incdir+{rtl_root}\n" not in gen
     assert f"{rtl_root}/rtl/dut.v" in gen
     assert f"{rtl_root}/rtl/sub/u.sv" in gen
     assert "../../../rtl-design" not in gen  # no relpath climb
