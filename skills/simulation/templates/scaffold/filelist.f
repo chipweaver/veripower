@@ -14,3 +14,5 @@ ${UVM_HOME}/src/uvm_pkg.sv
 {{INTERFACE_FILES}}
 tb/uvm/pkg/tb_pkg.sv
 tb/uvm/top/{{TOP}}_tb_top.sv
+// sources the scaffold does not generate — authored, and kept across rounds
+-f tb/uvm/tb_sources.f
