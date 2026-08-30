@@ -113,4 +113,4 @@ Paper forthcoming.
 ```
 -->
 
-**Status:** alpha (v0.1.9). [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).
+**Status:** alpha (v0.2.0). [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).
