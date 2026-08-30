@@ -200,19 +200,23 @@ def test_enumerate_artifacts_fixed_set_present_only(tmp_path):
         "tb-scaffold.json",
         "sequences.json",
         "power-scenarios.json",
-        "plan-review/review.md",
-        "plan-review/decisions.md",
+        "plan-review",
     ]
     assert all(set(a) == {"path"} for a in arts)  # the path IS the identity
-    assert all((wd / a["path"]).is_file() for a in arts)
+    assert all((wd / a["path"]).exists() for a in arts)
 
 
-def test_enumerate_artifacts_omits_absent_decisions(tmp_path):
-    # decisions.md exists only when the user accepted something a reviewer called blocking
+def test_review_leaves_as_one_tree_whatever_is_in_it(tmp_path):
+    # decisions.md exists only when the user accepted something a reviewer called blocking, and
+    # the reviewer names its own files — neither is enumerated: the directory is the artifact,
+    # so what is inside it is delivered and versioned without anything matching a name.
     wd = _finalize_workdir(tmp_path)
+    assert "plan-review" in [a["path"] for a in vs.enumerate_artifacts(wd)]
+    (wd / "plan-review" / "decisions.md").write_text("User accepted TP-1: ...\n")
+    (wd / "plan-review" / "notes.txt").write_text("side notes\n")
     paths = [a["path"] for a in vs.enumerate_artifacts(wd)]
-    assert "plan-review/review.md" in paths
-    assert "plan-review/decisions.md" not in paths
+    assert paths.count("plan-review") == 1
+    assert not [p for p in paths if p.startswith("plan-review/")]
 
 
 # ── golden: lean shape + schema, against the real tpu_top run ────────────────
@@ -255,7 +259,7 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "tb-scaffold.json",
         "sequences.json",
         "power-scenarios.json",
-        "plan-review/review.md",
+        "plan-review",
     }
     assert "result.json" not in paths
     assert env["produced_at"].endswith("Z")

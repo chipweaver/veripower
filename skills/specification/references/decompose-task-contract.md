@@ -24,7 +24,8 @@ Each sidecar's fields and which of them are required are in its own
 `references/<name>.schema.json`; read that rather than a list here.
 
 - `manifest.json` — `module`, plus `children[]` with `name` / `doc` / `rtl_modules[]` (≥1) /
-  `brainstorm_anchor`. The anchor is free text locating this child's primary passage in **this**
+  `brainstorm_anchor`. `doc` is the child's design under `children/`, which leaves this stage as
+  one tree — so how you lay the children out inside it is yours, and nothing is lost by it. The anchor is free text locating this child's primary passage in **this**
   brainstorm — a heading, a candidate name, a quoted phrase, a line range, whatever actually
   points there. No script parses it; its one reader is that child's spec reviewer, who reads the
   whole document anyway and uses the anchor only to know where to start.

@@ -53,15 +53,12 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 
 def _reviews(workdir: Path) -> list:
-    """Whatever the review wave landed, in artifacts[] shape. How the reviewers split the RTL
-    between them — and so how many files they write — is theirs to decide, so this reads the
-    directory instead of deriving names from the manifest roster. artifacts[] is the only route
-    to canonical, and canonical is where the oracle selector looks, so every file found has to
-    be listed there."""
+    """The review directory, as one tree entry. How the wave splits the RTL between reviewers —
+    and so how many files they write, and what they call them — is theirs to decide, so this
+    delivers the directory rather than a file list: everything they left in it is promoted and
+    versioned, and the oracle that reads it back sees the same set."""
     d = workdir / REVIEW_DIR
-    if not d.is_dir():
-        return []
-    return [{"path": f"{REVIEW_DIR}/{p.name}"} for p in sorted(d.glob("*.md"))]
+    return [{"path": REVIEW_DIR}] if d.is_dir() else []
 
 
 def _caller_reported_artifacts(workdir: Path) -> list:

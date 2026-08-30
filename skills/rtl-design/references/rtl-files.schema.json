@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/rtl-design/rtl-files.schema.json",
-  "title": "rtl-files.json — per-child RTL file layout (authored by the stage from the reaped child reports)",
-  "description": "Which files each child wrote and which include directories they `include from. Every downstream filelist is GENERATED from this: simulation's rtl_filelist.f, synthesis's rtl_load.tcl, lint-cdc's scripts/filelist.txt. Keys are manifest child names. files[] order within a child is the child's declared dependency order — the child authors it and owns that claim. The order ACROSS children carries no dependency claim: every generator emits children in NAME order (sorted), which is stable no matter which children a round re-dispatched and no matter how the manifest is later reordered. A macro `define'd in one child and used in another is therefore not ordered correctly by it: cross-file macros belong in a header reached through incdirs, which is order-independent. A child absent here is absent from every downstream filelist, so finalize refuses the round unless every manifest child has an entry.",
+  "title": "rtl-files.json \u2014 per-child RTL file layout (authored by the stage from the reaped child reports)",
+  "description": "Which files each child wrote and which include directories they `include from. Every downstream filelist is GENERATED from this: simulation's rtl_filelist.f, synthesis's rtl_load.tcl, lint-cdc's scripts/filelist.txt. Keys are manifest child names. files[] order within a child is the child's declared dependency order \u2014 the child authors it and owns that claim. The order ACROSS children carries no dependency claim: every generator emits children in NAME order (sorted), which is stable no matter which children a round re-dispatched and no matter how the manifest is later reordered. A macro `define'd in one child and used in another is therefore not ordered correctly by it: cross-file macros belong in a header reached through incdirs, which is order-independent. A child absent here is absent from every downstream filelist, so finalize refuses the round unless every manifest child has an entry.",
   "type": "object",
   "additionalProperties": {
     "type": "object",
@@ -12,17 +12,17 @@
     "additionalProperties": false,
     "properties": {
       "files": {
-        "description": "Paths relative to the rtl-design stage root, in dependency order. The child authors its own file layout — specification defines RTL modules, not files. The `.v`/`.vh` pattern is load-bearing rather than stylistic: the kernel's downstream `rtl` selectors match `*.v` alone, so a `.sv` artifact silently drops out of the derived dependency graph and its edits stop invalidating downstream proofs. Declared here rather than checked in Python, so finalize rejects a bad extension when it validates this sidecar.",
+        "description": "Paths under `src/`, relative to the rtl-design stage root, in the order the compiler is handed them. NOT the set that leaves your run: `src/` leaves as one tree, so a file inside it is delivered and versioned whether or not it is listed here \u2014 list what must be compiled, and a macro header your files reach through `incdirs` needs no entry. The child authors its own layout and its own file naming inside the tree; specification defines RTL modules, not files. No extension is required or refused here: what the kernel versions is the tree, and what a file may contain is the toolchain's and `references/coding-rules.md`'s business, neither of which a filename can decide.",
         "type": "array",
         "minItems": 1,
         "items": {
           "type": "string",
           "minLength": 1,
-          "pattern": "\\.(v|vh)$"
+          "pattern": "^src/"
         }
       },
       "incdirs": {
-        "description": "Include directories the child's files `include from, relative to the rtl-design stage root. Omitted or empty when the child uses no `include. Downstream emits these in each tool's own syntax; they are never joined into a text line for a reader to split apart again.",
+        "description": "Include search paths under the tree, relative to the stage root: `src` when your headers sit at the top of it, plus any subdirectory you include from. Every downstream filelist is generated from this sidecar, so an include dir you leave out is one the compiler will not have.",
         "type": "array",
         "items": {
           "type": "string",

@@ -10,7 +10,7 @@ you dispatch is work the kernel cannot see or audit.
 
 - `Design/specification/features.json` — the feature spine testpoints trace to.
 - `Design/specification/design.md` (§1 behavior, §1.4 IO/interconnects, §1.5 timing scenarios and
-  their waveforms), each `Design/specification/<child>.md`, and each
+  their waveforms), each `Design/specification/children/<child>.md`, and each
   `Design/specification/check-hints/<child>.json` — the authoritative statement of what must be
   verified.
 - The plan under review: `{workdir}/tb-scaffold.json` — `testpoints[]` (`id` / `intent` / `bins` /

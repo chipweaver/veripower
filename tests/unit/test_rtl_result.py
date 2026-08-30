@@ -33,10 +33,10 @@ def _workdir(
 ):
     """Build a minimal converged rtl-design workdir + a sibling spec manifest."""
     wd = tmp_path / "rtl-design"
-    wd.mkdir()
+    (wd / "src").mkdir(parents=True)
     for c in children:
-        (wd / f"{c}.v").write_text(f"module {c}; endmodule\n")
-    (wd / f"{top}.v").write_text(f"module {top}; endmodule\n")
+        (wd / f"src/{c}.v").write_text(f"module {c}; endmodule\n")
+    (wd / f"src/{top}.v").write_text(f"module {top}; endmodule\n")
 
     def _ann():
         return {
@@ -64,10 +64,11 @@ def _workdir(
     # The ledger is keyed by CHILD name, not by module name: the top-integration child is `topc`
     # and the file it authored is <top>.v.
     ledger = {
-        c: {"files": [f"{c}.v"], "annotations": _ann(), "incdirs": []} for c in children
+        c: {"files": [f"src/{c}.v"], "annotations": _ann(), "incdirs": []}
+        for c in children
     }
     ledger[man["children"][-1]["name"]] = {
-        "files": [f"{top}.v"],
+        "files": [f"src/{top}.v"],
         "annotations": _ann(),
         "incdirs": [],
     }
@@ -92,28 +93,26 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert env["stage_specific"] == {}
     paths = {a["path"] for a in env["artifacts"]}
     assert {
-        "mac.v",
-        "tpu_top.v",
+        "src",
         "rtl-files.json",
         "constraint-annotations.json",
-        "semantic-review/mac.md",
-        "semantic-review/topc.md",
+        "semantic-review",
     } <= paths
     assert "result.json" not in paths
 
 
 def test_reviews_are_enumerated_off_disk_not_off_the_roster(tmp_path):
     # How the wave splits the RTL between its reviewers is the stage's call, so nothing here
-    # counts coverage: one file covering two children passes, and artifacts[] carries what
-    # landed — which is the only route by which the oracle selector ever sees it.
+    # coverage counts, and the review directory is delivered whatever the wave called the files
+    # in it — the tree is the only route by which the oracle ever sees them.
     wd, manifest = _workdir(tmp_path)
     (wd / "semantic-review" / "mac.md").unlink()
     (wd / "semantic-review" / "topc.md").rename(wd / "semantic-review" / "mac+topc.md")
     assert ve.build_result(wd, manifest=manifest) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
-    reviews = {a["path"] for a in env["artifacts"] if a["path"].startswith("semantic-")}
-    assert reviews == {"semantic-review/mac+topc.md"}
+    assert "semantic-review" in {a["path"] for a in env["artifacts"]}
+    assert (wd / "semantic-review" / "mac+topc.md").is_file()
 
 
 def test_pass_over_an_unreviewed_workdir_is_the_kernels_call_not_this_gate(tmp_path):
@@ -131,9 +130,9 @@ def test_pass_refused_over_a_file_no_child_wrote(tmp_path, capsys):
     # artifacts[] is the new canonical view; promote hardlinks each entry and raises on the
     # first absent one, before any outcome event lands. Named here, where a re-dispatch fixes it.
     wd, manifest = _workdir(tmp_path)
-    (wd / "mac.v").unlink()
+    (wd / "src/mac.v").unlink()
     assert ve.finalize(wd, manifest) == 2
-    assert "mac.v" in capsys.readouterr().err
+    assert "src/mac.v" in capsys.readouterr().err
     assert not (wd / "result.json").exists()
 
 
@@ -172,19 +171,13 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
     ss = env["stage_specific"]
     assert env["status"] == "pass"
     assert ss == {}
-    # artifacts — 4 .v + the two sidecars + one review per manifest child
+    # artifacts — the RTL tree, the two sidecars, and the review tree
     paths = {a["path"] for a in env["artifacts"]}
     assert paths == {
-        "fifo.v",
-        "mac.v",
-        "systolic_reg.v",
-        "tpu_top.v",
+        "src",
         "rtl-files.json",
         "constraint-annotations.json",
-        "semantic-review/fifo.md",
-        "semantic-review/mac.md",
-        "semantic-review/systolic_reg.md",
-        "semantic-review/tpu_top.md",
+        "semantic-review",
     }
     assert "result.json" not in paths
     assert env["produced_at"].endswith("Z")
@@ -209,7 +202,7 @@ def test_finalize_on_an_empty_workdir_is_blocked(tmp_path, capsys):
     # Nothing authored yet: the sidecars are absent, so no verdict is derivable. That is a broken
     # run, not a routable fail — BLOCKED writes no envelope, so nothing promotes over canonical.
     wd = tmp_path / "rtl-design"
-    wd.mkdir()
+    (wd / "src").mkdir(parents=True)
     spec = tmp_path / "Design" / "specification"
     spec.mkdir(parents=True)
     manifest = spec / "manifest.json"
@@ -245,7 +238,7 @@ def test_artifacts_are_full_roster_on_a_subset_round(tmp_path):
     assert ve.build_result(wd, manifest=manifest) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
-    assert {"mac.v", "ctrl.v", "tpu_top.v"} <= {a["path"] for a in env["artifacts"]}
+    assert "src" in {a["path"] for a in env["artifacts"]}
 
 
 def test_fail_reason_writes_the_envelope_and_keeps_the_readable_baseline(tmp_path):
@@ -260,12 +253,10 @@ def test_fail_reason_writes_the_envelope_and_keeps_the_readable_baseline(tmp_pat
     assert env["status"] == "fail"
     assert env["stage_specific"] == {"fail_reason": "child mac blocked"}
     assert {
-        "mac.v",
-        "tpu_top.v",
+        "src",
         "rtl-files.json",
         "constraint-annotations.json",
-        "semantic-review/mac.md",
-        "semantic-review/topc.md",
+        "semantic-review",
     } == {a["path"] for a in env["artifacts"]}
     _validate_envelope(env)
 
@@ -279,8 +270,7 @@ def test_fail_reason_with_unreadable_sidecars_still_keeps_the_reviews(tmp_path):
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert {a["path"] for a in env["artifacts"]} == {
-        "semantic-review/mac.md",
-        "semantic-review/topc.md",
+        "semantic-review",
     }
 
 

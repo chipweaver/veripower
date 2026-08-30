@@ -23,6 +23,7 @@ from jsonschema import Draft202012Validator
 
 FILES_NAME = "rtl-files.json"
 ANNOTATIONS_NAME = "constraint-annotations.json"
+SRC_DIR = "src"
 
 _REFERENCES = Path(__file__).resolve().parent.parent.parent / "references"
 

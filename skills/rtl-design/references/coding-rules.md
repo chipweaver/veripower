@@ -1,10 +1,10 @@
 # RTL coding rules
 
-Applies to: `**/*.v` / `**/*.vh`
+Applies to every RTL file you write under `src/`
 
 ## General Constraints
 
-- **Strict Verilog-2001 only — no SystemVerilog.** RTL files are `.v` (headers `.vh`), never `.sv`/`.svh`: the kernel's downstream `rtl` selectors match `*.v` alone, so a `.sv` file silently drops out of the dependency graph, and `rtl-files.schema.json` rejects the extension for exactly that reason. The **content** being V2001 is on you — no gate decides it, and the downstream tools would happily compile SystemVerilog. The common substitutions are types (`logic`/`bit`/`byte`/`int` → `wire`/`reg`/`integer`), always-blocks (`always_ff`/`always_comb`/`always_latch` → `always @(posedge …)` / `always @*`), and constructs with no V2001 equivalent at all (`typedef`/`enum`/`struct`/`union`/`interface`/`package`/`modport`/`import`/`unique`/`priority`) — a cheat sheet for the common cases, not a complete list of what the language forbids you. Do not use non-standard extensions unsupported by the toolchain
+- **Strict Verilog-2001 only — no SystemVerilog.** This is a rule about **content**, and it is on you: no gate decides it, and the downstream tools would happily compile SystemVerilog. Nothing keys on the extension you choose — name your files whatever the file set you are writing or importing calls for. The common substitutions are types (`logic`/`bit`/`byte`/`int` → `wire`/`reg`/`integer`), always-blocks (`always_ff`/`always_comb`/`always_latch` → `always @(posedge …)` / `always @*`), and constructs with no V2001 equivalent at all (`typedef`/`enum`/`struct`/`union`/`interface`/`package`/`modport`/`import`/`unique`/`priority`) — a cheat sheet for the common cases, not a complete list of what the language forbids you. Do not use non-standard extensions unsupported by the toolchain
 - Do not use Verilog/VHDL/SV reserved words as signal, module, or parameter names
 - Code must be synthesizable: no `#delay`, `initial` blocks driving synthesizable logic, or simulation-only statements (`$display`, etc.) in synthesizable RTL
 
@@ -18,7 +18,7 @@ Applies to: `**/*.v` / `**/*.vh`
 
 - Single responsibility per module/interface; avoid deep nesting, break complex combinational logic into named intermediate signals
 - Separate sequential and combinational logic clearly; avoid mixing unrelated logic in the same `always` block
-- Header files (`*.vh`): centralize macros and parameters; avoid circular includes
+- Centralize macros and parameters in a header your files `` `include `` through a declared `incdirs` entry; avoid circular includes. A header is an ordinary RTL file in your tree — it needs no particular extension and no entry in `files[]`
 - Cross-clock domain synchronizers, tri-state drivers, and other special structures must be encapsulated as separate modules/files. This one is load-bearing, not style: lint-cdc writes `sync_cell -name <module>` into the SGDC from your reported annotation, so the name has to be a real module — a synchronizer inlined into surrounding logic cannot be annotated at all
 
 ## Coding Constraints
