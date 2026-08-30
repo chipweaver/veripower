@@ -1,5 +1,7 @@
 // Testbench top for {{TOP}}.
-// Generated from scaffold-spec.json. Fill domain-labeled stubs per verification-plan.md test strategy.
+// Generated from scaffold-spec.json and rewritten every round — everything here is derived
+// from the plan and the boundary. What this bench drives is authored elsewhere; the one
+// hand-written thing it reaches is the reset schedule it includes below.
 module {{TOP}}_tb_top;
   import uvm_pkg::*;
   `include "uvm_macros.svh"
@@ -17,16 +19,15 @@ module {{TOP}}_tb_top;
     forever #{{CLK_HALF_PERIOD}} clk = ~clk;
   end
 {{EXTRA_CLOCK_GENS}}
-  initial begin
-    rst_n = 0;
-    #20 rst_n = 1;
-  end
-
   // --- Interface instantiation ---
 {{IF_INSTANTIATIONS}}
 
-  // --- DUT instantiation (auto-rendered) ---
-  // Add hand-written port connections for any DUT ports not covered by agents.
+  // --- Reset schedule ---
+  // Authored, and the only part of this file that is. Included after the interfaces so a
+  // reset can be timed against what the bench is driving.
+  `include "{{MODULE}}_reset.svh"
+
+  // --- DUT instantiation ---
   {{TOP}} u_dut(
     .{{CLK_PORT_NAME}}(clk),
     .{{RST_PORT_NAME}}({{RST_DRIVE}}){{EXTRA_CLOCK_PORTS}}{{DUT_PORT_MAP}}

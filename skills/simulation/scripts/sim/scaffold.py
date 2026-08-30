@@ -368,6 +368,15 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     dest = out_dir / "tb" / "uvm" / "top" / f"{top}_tb_top.sv"
     derived.append((dest, content))
 
+    # The reset schedule, which tb_top includes. Authored, so it is a stub: tb_top is derived
+    # from the plan and rewritten every round, and a reset placed to reach a state the design
+    # only passes through has to outlive that.
+    content = _render_template_file(
+        template_dir, "reset.svh", {"MODULE": module, "TOP": top}
+    )
+    dest = out_dir / "tb" / "uvm" / "top" / f"{module}_reset.svh"
+    pending.append((dest, content))
+
     # --- tb_pkg.sv ---
     txn_includes: list[str] = []
     agent_includes: list[str] = []
