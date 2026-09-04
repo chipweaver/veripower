@@ -29,5 +29,18 @@
       }
     },
     "stage_specific": {"type": "object"}
+  },
+  "$defs": {
+    "requirement_verdict": {
+      "description": "One verdict on one requirements.json row, as carried by a stage envelope's stage_specific.requirements[]. Defined here because the four stages that judge ledger rows record them identically, and the reap-time validator already registers this resource.",
+      "type": "object",
+      "required": ["id", "met"],
+      "additionalProperties": false,
+      "properties": {
+        "id":     {"type": "string", "minLength": 1},
+        "met":    {"type": "boolean"},
+        "actual": {"description": "What was measured or observed, in whatever unit the row speaks."}
+      }
+    }
   }
 }

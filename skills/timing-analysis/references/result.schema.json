@@ -132,24 +132,7 @@
               "type": "array",
               "description": "One entry per requirements.json row this stage judges: the script's verdict for a row with a target, the agent's (finalize --requirements) for the rest. finalize refuses an envelope that leaves any such row out, so a row nobody read cannot pass as silence.",
               "items": {
-                "type": "object",
-                "required": [
-                  "id",
-                  "met"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "met": {
-                    "type": "boolean"
-                  },
-                  "actual": {
-                    "description": "What was measured or observed, in whatever unit the row speaks."
-                  }
-                }
+                "$ref": "https://veripower.local/schemas/envelope.schema.json#/$defs/requirement_verdict"
               }
             }
           },

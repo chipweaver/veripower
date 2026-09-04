@@ -1,19 +1,17 @@
 """The rows of requirements.json this stage establishes, and the envelope entry each one gets.
 
-A row with a target is judged by this stage's script against the number it parsed; a row without
-one is judged by the agent that ran the tool and declared through `finalize --requirements`.
-`merge` refuses an envelope that does not account for every row this stage judges, so a row the
-agent never read cannot pass as silence.
+No row this stage judges can carry a target — `check-ledger` refuses a dim timing-analysis does not
+compare — so every one of them is judged by the agent that ran the tool and declared through
+`finalize --requirements`. `merge` refuses an envelope that does not account for every row this
+stage judges, so a row the agent never read cannot pass as silence.
 """
 
 from __future__ import annotations
 
 import json
-import operator
 from pathlib import Path
 
 STAGE = "timing-analysis"
-_OPS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge}
 
 
 def load(workdir) -> list[dict]:
@@ -28,10 +26,6 @@ def load(workdir) -> list[dict]:
 
 def mine(rows: list[dict]) -> list[dict]:
     return [r for r in rows if r["judge"] == STAGE]
-
-
-def met(actual: float, target: dict) -> bool:
-    return _OPS[target["op"]](actual, target["value"])
 
 
 def parse_declared(text: str | None) -> list[dict]:
