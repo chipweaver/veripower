@@ -322,7 +322,7 @@ def _workdir(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR, netlist=True):
     if netlist:
         (tmp_path / "out").mkdir(exist_ok=True)
         for ext in ("v", "sdc", "sdf"):
-            (tmp_path / "out" / f"tpu_top_syn.{ext}").write_text(f"{ext} content")
+            (tmp_path / "out" / f"dut_top_syn.{ext}").write_text(f"{ext} content")
     return tmp_path
 
 
@@ -422,7 +422,7 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
     (tmp_path / "out").mkdir()
     (tmp_path / "reports").mkdir()
     (tmp_path / "scripts").mkdir()
-    for rel in ["out/tpu_top_syn.v", "reports/area.rpt", "constraints.sdc"]:
+    for rel in ["out/dut_top_syn.v", "reports/area.rpt", "constraints.sdc"]:
         (tmp_path / rel).write_text("x")
     (tmp_path / "result.json").write_text("{}")  # must NOT self-list
     paths = [a["path"] for a in sp.enumerate_artifacts(tmp_path)]

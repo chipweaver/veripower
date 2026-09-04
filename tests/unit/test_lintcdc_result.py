@@ -57,12 +57,12 @@ def _clean_workdir(tmp_path, lint_err=0, cdc_err=0):
     )
     (wd / "lint-report.txt").write_text(
         "=== IPD lint-report (SpyGlass) ===\n"
-        "top:  tpu_top\n"
+        "top:  dut_top\n"
         "#     SpyGlass Version : SpyGlass_vL-2016.06\n"
     )
     (wd / "cdc-report.txt").write_text("=== IPD cdc-report (SpyGlass) ===\n")
     (wd / "scripts").mkdir()
-    (wd / "scripts" / "constraints.sgdc").write_text("current_design tpu_top\n")
+    (wd / "scripts" / "constraints.sgdc").write_text("current_design dut_top\n")
     return wd
 
 
@@ -262,7 +262,7 @@ def test_golden_is_schema_valid(tmp_path):
     # on the produced result.json dict.
     from framework.scripts import facts
 
-    wd = tmp_path / "asic" / "tpu_top" / "Design" / "lint-cdc"
+    wd = tmp_path / "asic" / "dut_top" / "Design" / "lint-cdc"
     shutil.copytree(FIX, wd)
     _resolve_warnings(
         wd
@@ -279,7 +279,7 @@ def test_fail_envelope_is_schema_valid(tmp_path):
     # on fail). Guard the fail shape explicitly.
     from framework.scripts import facts
 
-    wd = tmp_path / "asic" / "tpu_top" / "Design" / "lint-cdc"
+    wd = tmp_path / "asic" / "dut_top" / "Design" / "lint-cdc"
     shutil.copytree(FIX, wd)
     # inject one error-severity lint violation -> status=fail with fail_reason + violations
     (wd / "lint-violations.json").write_text(

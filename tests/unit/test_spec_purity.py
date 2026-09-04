@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "specification" / "scripts"))
 from spec.ports import check_purity  # noqa: E402
 
-TOP = "tpu_top"
+TOP = "dut_top"
 
 
 def _child(name, rtl_modules):

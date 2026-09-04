@@ -35,7 +35,7 @@ def _spec_workdir(tmp_path, rows=None):
     """A workdir derive_constraints() can run over (valid clocks.json + top-io.json) plus
     the finalize inputs (manifest / ledger / per-child md / hints / spec-review)."""
     wd = tmp_path
-    (wd / "design.md").write_text("# tpu_top Design\n\nNarrative only.\n")
+    (wd / "design.md").write_text("# dut_top Design\n\nNarrative only.\n")
     (wd / "top-io.json").write_text(
         json.dumps(
             [
@@ -65,25 +65,25 @@ def _spec_workdir(tmp_path, rows=None):
     (wd / "manifest.json").write_text(
         json.dumps(
             {
-                "module": "tpu_top",
+                "module": "dut_top",
                 "children": [
                     {
-                        "name": "tpu_top",
-                        "doc": "children/tpu_top.md",
-                        "rtl_modules": ["tpu_top"],
+                        "name": "dut_top",
+                        "doc": "children/dut_top.md",
+                        "rtl_modules": ["dut_top"],
                     }
                 ],
             }
         )
     )
     (wd / "children").mkdir(exist_ok=True)
-    (wd / "children" / "tpu_top.md").write_text(
+    (wd / "children" / "dut_top.md").write_text(
         "---\nports: []\nclocks: []\n---\n\n# child\n"
     )
     (wd / "requirements.json").write_text(json.dumps(_ROWS if rows is None else rows))
     (wd / "interconnects.json").write_text(json.dumps([]))
     (wd / "check-hints").mkdir(exist_ok=True)
-    (wd / "check-hints" / "tpu_top.json").write_text(
+    (wd / "check-hints" / "dut_top.json").write_text(
         json.dumps(
             [
                 {
@@ -99,7 +99,7 @@ def _spec_workdir(tmp_path, rows=None):
     (wd / "spec-review" / "requirements.md").write_text(
         "# ledger review\n\nNo findings.\n"
     )
-    (wd / "spec-review" / "tpu_top.md").write_text("# spec review\n\nNo findings.\n")
+    (wd / "spec-review" / "dut_top.md").write_text("# spec review\n\nNo findings.\n")
     (wd / "spec-review" / "decisions.md").write_text(
         "# decisions\n\nNothing to resolve.\n"
     )
@@ -129,7 +129,7 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
     assert ss == {
-        "top_module": "tpu_top"
+        "top_module": "dut_top"
     }  # lean: the review is prose, the ledger a sidecar
     assert {"path": "requirements.json"} in env["artifacts"]
     assert (
@@ -153,7 +153,7 @@ def test_enumerate_artifacts_present_only(tmp_path):
         {"name": "fifo", "doc": "children/fifo.md", "rtl_modules": ["fifo"]}
     )
     (wd / "manifest.json").write_text(json.dumps(m))
-    arts = result.enumerate_artifacts(wd, top="tpu_top")
+    arts = result.enumerate_artifacts(wd, top="dut_top")
     paths = {a["path"] for a in arts}
     assert {
         "design.md",
@@ -162,8 +162,8 @@ def test_enumerate_artifacts_present_only(tmp_path):
         "spec-review",
         "manifest.json",
         "requirements.json",
-        "constraints/tpu_top.sdc",
-        "constraints/tpu_top.sgdc",
+        "constraints/dut_top.sdc",
+        "constraints/dut_top.sgdc",
         "clocks.json",
     } <= paths
     assert all(set(a) == {"path"} for a in arts)  # the path IS the identity
@@ -263,13 +263,13 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
     assert env["status"] == "fail"
     ss = env["stage_specific"]
     assert ss["fail_reason"] == "external reference missing: /x/design.md"
-    assert ss["top_module"] == "tpu_top"  # from manifest.module, no derivation run
+    assert ss["top_module"] == "dut_top"  # from manifest.module, no derivation run
     paths = {a["path"] for a in env["artifacts"]}
     assert {
         "design.md",
         "manifest.json",
         "requirements.json",
-        "constraints/tpu_top.sdc",
+        "constraints/dut_top.sdc",
     } <= paths
     _validate_envelope(env)
 

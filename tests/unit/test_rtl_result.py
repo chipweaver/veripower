@@ -29,7 +29,7 @@ def _write_state(d, ledger):
 
 
 def _workdir(
-    tmp_path, *, children=("mac",), top="tpu_top", reviews=True, manifest=None
+    tmp_path, *, children=("mac",), top="dut_top", reviews=True, manifest=None
 ):
     """Build a minimal converged rtl-design workdir + a sibling spec manifest."""
     wd = tmp_path / "rtl-design"
@@ -209,7 +209,7 @@ def test_finalize_on_an_empty_workdir_is_blocked(tmp_path, capsys):
     manifest.write_text(
         json.dumps(
             {
-                "module": "tpu_top",
+                "module": "dut_top",
                 "children": [{"name": "mac", "doc": "mac.md", "rtl_modules": ["mac"]}],
             }
         )

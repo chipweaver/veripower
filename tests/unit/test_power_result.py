@@ -606,7 +606,7 @@ def test_finalize_cli_happy_path(tmp_path):
 def test_finalize_cli_reads_the_ledger(tmp_path):
     # finalize reads the rows power-analysis judges straight from the specification
     # stage root's requirements.json, whose location comes from the injected dispatch.json.
-    module_root = tmp_path / "asic" / "tpu_top"
+    module_root = tmp_path / "asic" / "dut_top"
     wd, plan = _make_workdir(
         module_root / "Verification" / "power-analysis" / "runs",
         _SCEN[:1],
@@ -813,7 +813,7 @@ def test_declared_fail_writes_the_envelope_without_touching_the_reports(tmp_path
     # which would raise on the absent power-scenarios.json.
     rc, wd = _declared(
         tmp_path,
-        fail_reason="external reference missing: Design/synthesis/out/tpu_top_syn.sdf",
+        fail_reason="external reference missing: Design/synthesis/out/dut_top_syn.sdf",
         fix_owner="synthesis",
     )
     assert rc == 0
@@ -821,7 +821,7 @@ def test_declared_fail_writes_the_envelope_without_touching_the_reports(tmp_path
     ss = env["stage_specific"]
     assert env["status"] == "fail"
     assert ss["fix_owner"] == "synthesis"
-    assert "tpu_top_syn.sdf" in ss["fail_reason"]
+    assert "dut_top_syn.sdf" in ss["fail_reason"]
     # The pass-shape is not invented on a run that produced none of it.
     for absent in ("saif_artifacts", "power_by_scenario", "ppa_actual", "failures"):
         assert absent not in ss

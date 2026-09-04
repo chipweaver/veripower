@@ -46,7 +46,7 @@ def _mirror(
     cwd=tmp_path, so the bootstrap anchors the design tree (and a relative --workdir)
     on the CWD. bootstrap reads the rtl-design / scaffold stage roots from dispatch.json,
     not by self-navigating tree_root/asic/<module>/Design/... or .../specification."""
-    module = "tpu_top"
+    module = "dut_top"
     rtl = tmp_path / "asic" / module / "Design" / "rtl-design"
     rtl.mkdir(parents=True)
     (rtl / "rtl-files.json").write_text(json.dumps(rtl_files))
