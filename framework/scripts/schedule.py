@@ -573,9 +573,19 @@ def _settle(module, events, inflight, required, closing):
             # the permission (facts.signoff_basis).
             return {"action": "DONE", "basis": facts.signoff_basis(module, events)}
         return {"action": "DONE"}
+    # Nothing to reap, nothing owed, no candidate, not done — and that state has exactly one
+    # cause, so it is stated rather than tested for. `_forward_work` walks the producers of
+    # every unavailable input, the input graph is acyclic and terminates at `specification`,
+    # and specification is available whenever the intent document exists (its only input is the
+    # PIPELINE_INPUT), is never held by an advisory edge, has no producer to be blocked behind,
+    # and cannot sit in `owed_rules` without having escalated as its own fix owner first. So a
+    # complete intent tree always leaves a candidate: reaching here means the tree is not
+    # complete. Worth naming because `status` cannot say it — a module missing its intent
+    # document renders exactly like one ready to start, every stage `missing`.
     return {
         "action": "ESCALATE",
-        "reason": "no eligible rule, none in-flight, not done",
+        "reason": f"intent tree incomplete: {rules.INTENT_DOC} is not there, "
+        "and no stage produces it",
     }
 
 

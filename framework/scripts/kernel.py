@@ -643,8 +643,9 @@ def main():
     # intent/brainstorm.md is a PIPELINE_INPUT that must already exist for `specification` to
     # be dispatchable at all, so a module with no directory can never become schedulable.
     # Without this, a mistyped or misresolved path produced two answers that both looked
-    # real — `status` inventing an all-`missing` projection at exit 0, and `decide`
-    # returning the same "no eligible rule" ESCALATE a genuinely deadlocked module returns.
+    # real — `status` inventing an all-`missing` projection at exit 0, and `decide` reporting
+    # an incomplete intent tree, which is what a module that merely has not been handed one
+    # gets. Only the resolved path separates the two.
     # Name the resolved absolute path, so a relative one that landed somewhere unintended
     # says so.
     root = facts.module_root(args.module)

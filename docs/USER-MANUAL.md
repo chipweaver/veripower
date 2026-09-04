@@ -480,7 +480,7 @@ The body of this manual uses familiar terms where possible. Below are the words 
 | `<stage>: fix_owner '<x>' is outside its input closure` | The failing stage doesn't actually consume anything from the stage you named | Re-attribute. You can only name stages it actually reads from (including transitively) |
 | `<stage>: diagnosis named no fix_owner` | Triage ran but didn't identify who should fix it | It lists the candidates for you. Pick one and explain why |
 | `<stage>: the oracle that judged this failure was reopened` | You withdrew your endorsement of the judgment that found this failure | Let it rerun the stage |
-| `no eligible rule, none in-flight, not done` | Nothing to run, nothing running, nothing done | Shouldn't happen. File an issue with `events.jsonl` attached |
+| `intent tree incomplete: intent/brainstorm.md is not there…` | The pipeline has no intent document to start from | Put your document at `{module}/intent/brainstorm.md`, with anything it names as authoritative beside it |
 
 **Signoff gate**
 

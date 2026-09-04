@@ -817,8 +817,8 @@ def test_unknown_module_directory_is_a_hard_error(tmp_path, monkeypatch):
     """Module paths resolve against cwd, so an absent module directory is a wrong-cwd
     mistake, never a starting state — intent/brainstorm.md must already exist for anything to be
     dispatchable. Both verbs used to answer as if the module were merely empty: `status`
-    invented an all-`missing` projection at exit 0, and `decide` returned the same
-    "no eligible rule" ESCALATE a genuinely deadlocked module returns."""
+    invented an all-`missing` projection at exit 0, and `decide` reported an incomplete intent
+    tree — which is exactly what a real module still waiting for its document reports."""
     monkeypatch.chdir(tmp_path)
     for verb in ("status", "decide"):
         r = _run(tmp_path, verb, "--module", "nosuch")

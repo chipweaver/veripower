@@ -82,6 +82,24 @@ def test_cold_start_dispatches_specification(tmp_path, monkeypatch):
     assert a["execution"] == "main-thread"
 
 
+def test_missing_intent_document_escalates_by_name(tmp_path, monkeypatch):
+    # The one unavailability nothing in the pipeline can resolve, and the one `status` cannot
+    # show: a module with no intent document renders exactly like one ready to start (every
+    # stage `missing`), so the escalation is where a human learns which file to put there.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "m").mkdir()
+    bare = schedule.decide("m")
+    (tmp_path / "m" / "intent" / "refs").mkdir(
+        parents=True
+    )  # delivery, no entry document
+    doc_missing = schedule.decide("m")
+    for a in (bare, doc_missing):
+        assert a["action"] == "ESCALATE"
+        assert rules.INTENT_DOC in a["reason"], a
+    _write("m", "intent/brainstorm.md", "b1")
+    assert schedule.decide("m")["action"] == "DISPATCH"
+
+
 def test_wake_reap(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write("m", "intent/brainstorm.md", "b1")

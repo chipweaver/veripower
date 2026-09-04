@@ -476,7 +476,7 @@ rm ~/.claude/skills/veripower
 | `<阶段>: fix_owner '<x>' is outside its input closure` | 出错的那个阶段并没有读到你指的这个阶段的产物 | 重新指认，只能指向它真正读过的上游（含间接） |
 | `<阶段>: diagnosis named no fix_owner` | 分析做了，但没指出该谁修 | 它会把候选列给你，你挑一个并说明理由 |
 | `<阶段>: the oracle that judged this failure was reopened` | 判它失败的那份判据，认可被你撤回了 | 让它重跑这个阶段 |
-| `no eligible rule, none in-flight, not done` | 没有可跑的、没在跑的、也没完成 | 不该出现，请报 issue 并附 `events.jsonl` |
+| `intent tree incomplete: intent/brainstorm.md is not there…` | 流水线没有可开工的意图文档 | 把你的文档放到 `{module}/intent/brainstorm.md`，它指为权威的文件放在旁边 |
 
 **签核门**
 
