@@ -15,7 +15,7 @@ if {[file exists [file join [file dirname [info script]] config.tcl]]} {
 }
 
 # --- Env-var validation ---
-foreach _var {TOP LIB_DB} {
+foreach _var {TOP LIB_DB WIRE_LOAD_MODEL} {
     if {![info exists ::env($_var)] || $::env($_var) eq ""} {
         puts stderr "ERROR: environment variable $_var not set (source env.sh)"
         exit 1
@@ -28,6 +28,7 @@ if {![file isfile $::env(LIB_DB)]} {
 
 set top    $::env(TOP)
 set lib_db $::env(LIB_DB)
+set wlm    $::env(WIRE_LOAD_MODEL)
 
 set reports_dir [file join [pwd] reports]
 set results_dir [file join [pwd] out]
@@ -36,6 +37,7 @@ file mkdir $results_dir
 
 puts "INFO: top         = $top"
 puts "INFO: lib_db      = $lib_db"
+puts "INFO: wire_load   = $wlm"
 puts "INFO: reports_dir = $reports_dir"
 puts "INFO: results_dir = $results_dir"
 
@@ -83,6 +85,18 @@ if {[regexp -line {^Error:} $_check_content]} {
 # --- Timing constraints ---
 source [file join [pwd] constraints.sdc]
 
+# --- Interconnect estimate ---
+# A library carries several wire load models and typically declares neither a default nor a
+# selection group, so nothing selects one unless this does. With none selected DC reports
+# `Net Interconnect area: undefined (No wire load specified)` and no net capacitance, which
+# reaches PT-PX as zero net switching power — a power number that silently excludes
+# interconnect. Which model is a per-block judgment (they differ by the block size they were
+# calibrated for), so it is required with no default and comes from the environment.
+# `write_sdc` below emits the selection, and both PT flows read that SDC, so this is the one
+# place it is chosen.
+set_wire_load_model -name $wlm
+set_wire_load_mode top
+
 # --- Synthesis ---
 # compile_ultra is this flow's mapping command: the PPA targets are judged against its
 # QoR, not plain compile's. It needs a DC-Ultra license, which env-precheck smoke-tests
@@ -94,7 +108,20 @@ if {![compile_ultra]} {
 
 # --- Reports ---
 report_qor                                       > [file join $reports_dir "qor.rpt"]
-report_area   -hierarchy                         > [file join $reports_dir "area.rpt"]
+set _area_rpt [file join $reports_dir "area.rpt"]
+report_area   -hierarchy                         > $_area_rpt
+
+# The area report is the only reliable signal that the model took. `set_wire_load_model`
+# returns success for a name the library does not have — it prints `Error: Wire load ... not
+# found` without raising — and the design attribute stays unset either way, so neither the
+# return value nor the attribute distinguishes the cases.
+set _fh [open $_area_rpt r]
+set _area_content [read $_fh]
+close $_fh
+if {[regexp {No wire load specified} $_area_content]} {
+    puts stderr "ERROR: wire load model '$wlm' is not in $lib_db (report_lib lists what is)"
+    exit 1
+}
 report_timing -max_paths 20 -nworst 1            > [file join $reports_dir "timing_setup.rpt"]
 report_timing -delay min -max_paths 20 -nworst 1 > [file join $reports_dir "timing_hold.rpt"]
 report_power                                     > [file join $reports_dir "power.rpt"]

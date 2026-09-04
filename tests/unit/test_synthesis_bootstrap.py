@@ -139,6 +139,7 @@ def test_happy_path_substitutes_my_top(tmp_path):
     cfg = (workdir / "scripts" / "config.tcl").read_text()
     assert 'set ::env(TOP)    "top"' in cfg
     assert "set ::env(LIB_DB)" in cfg  # dc_shell inherits no shell env vars
+    assert "set ::env(WIRE_LOAD_MODEL)" in cfg  # required too, and equally uninherited
     assert "MY_RTL_DIR" not in (workdir / "scripts" / "dc_run.tcl").read_text()
 
 
@@ -252,6 +253,7 @@ def test_config_tcl_lib_db_does_not_override_the_environment(tmp_path):
     assert _run(skill_dst, workdir, "--top", "top").returncode == 0
     cfg = (workdir / "scripts" / "config.tcl").read_text()
     assert "info exists ::env(LIB_DB)" in cfg  # conditional, whatever value it recorded
+    assert "info exists ::env(WIRE_LOAD_MODEL)" in cfg
 
     probe = workdir / "probe.tcl"
     probe.write_text('source scripts/config.tcl\nputs "seen: $::env(LIB_DB)"\n')

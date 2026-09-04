@@ -35,9 +35,13 @@ SDC dc_shell reads is rebuilt every round.
 | `<requirements>/requirements.json` | The engineer's requirements, one row each with the stage that judges it. The rows judged by `synthesis` are yours: a row with a `target` in `area_um2` or `timing_slack_ns` is compared by `finalize` itself; a row without one — a budget in NAND2-equivalent gates, a rule the reports show but no number compares — is yours to judge from the reports and your library, and to declare. Schema: `skills/specification/references/requirements.schema.json`. |
 | `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |
 
-`LIB_DB` must be in the environment before `make`: `env.sh` refuses to run without it, and the
-placeholder in `scripts/config.tcl` is a fallback for a `dc_shell` started outside the Makefile,
-not a second way to set it. Exporting it after step 1 is fine.
+`LIB_DB` and `WIRE_LOAD_MODEL` must be in the environment before `make`: `env.sh` refuses to run
+without either, and the placeholders in `scripts/config.tcl` are a fallback for a `dc_shell`
+started outside the Makefile, not a second way to set them. Exporting them after step 1 is fine.
+`WIRE_LOAD_MODEL` names the interconnect estimate this block gets — `report_lib` lists what the
+library has, and the models differ by the block size they were calibrated for, so it is a judgment
+with no default: without one DC reports no net interconnect and PT-PX reports zero net switching
+power, so the power number would silently exclude interconnect.
 
 One file under `{workdir}` is yours to edit, and it reaches you holding the previous round's work
 rather than the specification SDC:

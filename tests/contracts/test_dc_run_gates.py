@@ -52,3 +52,29 @@ def test_mapping_is_compile_ultra_and_is_gated():
     ]
     assert [ln for ln in code if re.search(r"if \{!\[compile_ultra\]\}", ln)]
     assert not [ln for ln in code if re.search(r"(?<!_)\bcompile\b(?!_)", ln)]
+
+
+def test_wire_load_is_selected_and_verified():
+    """The interconnect estimate is chosen here or nowhere, and the choice is verified.
+
+    A library carries several wire load models and typically declares neither a default nor a
+    selection group (checked on TSMC 90 and SMIC 180: five models each, zero
+    `default_wire_load` / `wire_load_selection` keys), so nothing selects one unless dc_run
+    does. With none selected DC reports `Net Interconnect area: undefined` and no net
+    capacitance, and PT-PX — which reads the SDC written here — then reports zero net
+    switching power. Measured on a real block with one activity assumption: selecting the
+    library's smallest model raised net switching power 6.2x and total power 24%.
+
+    The verification cannot use the command's return value or the design attribute:
+    `set_wire_load_model` returns success for a name the library does not have (printing
+    `Error: Wire load ... not found` without raising), and the attribute is unset in both the
+    accepted and the rejected case. The area report is the signal that distinguishes them.
+    """
+    code = DC_RUN.read_text()
+    assert re.search(r"set_wire_load_model -name \$wlm", code)
+    assert re.search(r"WIRE_LOAD_MODEL", code)
+    # the post-set verification, anchored on the regexp rather than the comment above it
+    # that quotes the same report line
+    m = re.search(r"regexp \{No wire load specified\}", code)
+    assert m
+    assert re.search(r"exit 1", code[m.end() : m.end() + 300])

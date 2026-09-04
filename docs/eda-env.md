@@ -19,6 +19,7 @@ a deployment choice.
 | `LM_LICENSE_FILE` and/or `SNPSLMD_LICENSE_FILE` | Synopsys license server checkout (tools read these at launch; VeriPower does not validate) | `lmstat -c "$LM_LICENSE_FILE"` |
 | A **DC-Ultra** entitlement on that server | `dc_run.tcl` maps with `compile_ultra` and has no plain-`compile` path — the PPA targets are judged against DC-Ultra QoR | run the `env-precheck` skill's Design Compiler smoke row |
 | `LIB_DB`, `LIB_V` | synthesis / power-analysis read std-cell libs | stage `env.sh` `:?` guard fires on miss |
+| `WIRE_LOAD_MODEL` | synthesis selects the interconnect estimate; a library declares no default, and without one PT-PX reports zero net switching power | `env.sh` `:?` guard fires on miss; `dc_run.tcl` aborts when the name is not in the library |
 | `UVM_HOME` | simulation / power-analysis compile UVM DPI | same |
 | `python3` with `jsonschema` >= 4.18, `referencing`, `PyYAML` | framework state tool and stage gates validate result/review schemas (`registry=`-based `$ref` resolution needs the post-4.18 jsonschema API) | `python3 -c "import jsonschema, referencing, yaml"` |
 | `/bin/sh` → `bash` | The VCS launcher uses `#!/bin/sh -h` and relies on bash semantics | `readlink /bin/sh` should resolve to `bash` |
