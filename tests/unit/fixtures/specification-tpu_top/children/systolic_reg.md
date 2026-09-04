@@ -10,8 +10,6 @@ ports:
   - i_rstn
 clocks:
   - { name: i_clk, domain: i_clk }
-features:
-  - F-02
 ---
 
 # systolic_reg — Systolic Input Skew Alignment (F-02)

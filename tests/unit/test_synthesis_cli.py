@@ -24,26 +24,49 @@ def test_cli_no_verb_exits_2():
     assert _run().returncode == 2
 
 
-def test_read_ppa_targets_keeps_only_the_dims_this_stage_gates(tmp_path):
+def test_requirements_helper_keeps_only_the_rows_this_stage_judges(tmp_path):
     import json
     import sys
 
-    sys.path.insert(0, str(ROOT / "skills" / "synthesis" / "scripts"))
-    from synthesis.__main__ import read_ppa_targets
+    import pytest
 
+    sys.path.insert(0, str(ROOT / "skills" / "synthesis" / "scripts"))
+    from synthesis import requirements as rq
+
+    rows = [
+        {
+            "id": "R-1",
+            "verbatim": "area",
+            "judge": "synthesis",
+            "target": {"dim": "area_um2", "op": "<=", "value": 450000},
+        },
+        {
+            "id": "R-2",
+            "verbatim": "power",
+            "judge": "power-analysis",
+            "target": {"dim": "power_mw", "op": "<=", "value": 5},
+        },
+        {"id": "R-3", "verbatim": "synthesizable", "judge": "synthesis"},
+    ]
     spec = tmp_path / "spec"
     spec.mkdir()
-    (spec / "ppa.json").write_text(
-        json.dumps(
-            [
-                {"dim": "area_um2", "target": 450000},
-                {"dim": "timing_slack_ns", "target": 0.0},
-                {"dim": "power_mw", "target": 5.0},  # power-analysis judges this one
-            ]
-        )
+    (spec / "requirements.json").write_text(json.dumps(rows))
+    (tmp_path / "dispatch.json").write_text(
+        json.dumps({"inputs": {"requirements": str(spec)}})
     )
-    (tmp_path / "dispatch.json").write_text(json.dumps({"inputs": {"ppa": str(spec)}}))
-    assert read_ppa_targets(tmp_path) == {"area_um2": 450000, "timing_slack_ns": 0.0}
-
-    (spec / "ppa.json").unlink()  # specification declared none -> nothing gated
-    assert read_ppa_targets(tmp_path) == {}
+    mine = rq.mine(rq.load(tmp_path))
+    assert [r["id"] for r in mine] == ["R-1", "R-3"]
+    assert rq.met(400000, rows[0]["target"]) and not rq.met(450001, rows[0]["target"])
+    # merge: one entry per row, in ledger order; a missing or foreign verdict is refused
+    computed = [{"id": "R-1", "met": True, "actual": 400000}]
+    declared = rq.parse_declared(
+        '[{"id": "R-3", "met": true, "actual": "elaborates clean"}]'
+    )
+    assert [e["id"] for e in rq.merge(mine, computed, declared)] == ["R-1", "R-3"]
+    with pytest.raises(ValueError, match="R-3"):
+        rq.merge(mine, computed, [])
+    with pytest.raises(ValueError, match="R-2"):
+        rq.merge(mine, computed, declared + [{"id": "R-2", "met": True}])
+    with pytest.raises(ValueError):
+        rq.parse_declared('[{"id": "R-3", "met": "yes"}]')
+    assert rq.parse_declared(None) == []

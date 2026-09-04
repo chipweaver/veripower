@@ -1,19 +1,18 @@
 """Read the authored JSON sidecars this stage emits — validating on the way in.
 
-Wave 1 authors clocks.json / features.json / top-io.json / interconnects.json, and each
-wave-2 child authors check-hints/<child>.json. Every read goes through `read_sidecar`, so a
+Wave 1a authors requirements.json; Wave 1b authors clocks.json / top-io.json / interconnects.json;
+each wave-2 child authors check-hints/<child>.json. Every read goes through `read_sidecar`, so a
 malformed sidecar is reported by **whichever verb needed it, at the moment it needed it**.
 That placement is the point: a file's own shape is not a cross-file property, so it has no
-business waiting for a gate that runs after every author has finished. (It used to: the same
-file was validated twice by two verbs and a third was validated by neither.)
+business waiting for a gate that runs after every author has finished.
 
 The error names every violation at once, not the first — whoever is fixing the sidecar wants
 the whole list.
 
 Schemas are LOADED from references/, never restated in Python. The rules JSON Schema cannot
-carry — cross-field arithmetic, and the finiteness of a number `json.loads` already accepted —
-are registered below against the files they belong to, so a file's content rules stay in one
-place whether or not the schema language can express them.
+carry — cross-field arithmetic, uniqueness, the finiteness of a number `json.loads` already
+accepted — are registered below against the files they belong to, so a file's content rules
+stay in one place whether or not the schema language can express them.
 """
 
 import json
@@ -97,19 +96,60 @@ def _base_name_rule(doc) -> list[dict]:
     return out
 
 
-def _finite_rule(doc) -> list[dict]:
-    """A PPA target must be a finite number. `json.loads` accepts the NaN / Infinity tokens
-    and `type: number` admits them, and a NaN target makes power-analysis' `actual > target`
-    false for every input — silently disarming that gate. Nothing downstream catches it:
-    synthesis filters an unrecognized dim away and power-analysis skips a target whose
-    scenario_id does not match, so both fail OPEN."""
+# The dims a judging stage's script compares; every other judge takes no target.
+TARGET_DIMS = {
+    "synthesis": {"area_um2", "timing_slack_ns"},
+    "power-analysis": {"power_mw"},
+    "simulation": {"coverage_line", "coverage_cond", "coverage_fsm", "coverage_toggle"},
+}
+
+
+def _requirements_rule(doc) -> list[dict]:
+    """What the ledger's schema cannot say: ids are unique; a target's dim belongs to the judge
+    that compares it, and no other judge takes one; a scenario only qualifies power_mw; a value
+    is finite (`json.loads` accepts NaN / Infinity and `type: number` admits them, and a NaN
+    bound makes every comparison false — a gate silently disarmed)."""
     out: list[dict] = []
     if not isinstance(doc, list):
         return out
-    for i, e in enumerate(doc):
-        t = e.get("target") if isinstance(e, dict) else None
-        if isinstance(t, float) and not math.isfinite(t):
-            out.append({"at": f"$[{i}].target", "error": f"must be finite (got {t!r})"})
+    seen: dict[str, int] = {}
+    for i, r in enumerate(doc):
+        if not isinstance(r, dict):
+            continue
+        rid = r.get("id")
+        if rid in seen:
+            out.append(
+                {"at": f"$[{i}].id", "error": f"{rid!r} already used at $[{seen[rid]}]"}
+            )
+        seen.setdefault(rid, i)
+        t, j = r.get("target"), r.get("judge")
+        if not isinstance(t, dict):
+            continue
+        allowed = TARGET_DIMS.get(j, set())
+        if t.get("dim") not in allowed:
+            out.append(
+                {
+                    "at": f"$[{i}].target.dim",
+                    "error": f"{t.get('dim')!r} is not a dim {j!r} compares"
+                    + (
+                        f" (one of {sorted(allowed)})"
+                        if allowed
+                        else " — that judge takes no target"
+                    ),
+                }
+            )
+        if "scenario" in t and t.get("dim") != "power_mw":
+            out.append(
+                {
+                    "at": f"$[{i}].target.scenario",
+                    "error": "only a power_mw bound names a scenario",
+                }
+            )
+        v = t.get("value")
+        if isinstance(v, float) and not math.isfinite(v):
+            out.append(
+                {"at": f"$[{i}].target.value", "error": f"must be finite (got {v!r})"}
+            )
     return out
 
 
@@ -119,15 +159,13 @@ _CONTENT_RULES = {
     # rtl-design children as prose — so there the cross-check still applies.
     "top-io.json": _base_name_rule,
     "interconnects.json": _width_rule,
-    "ppa.json": _finite_rule,
+    "requirements.json": _requirements_rule,
 }
 
 
 def validate_doc(name: str, doc, schema: str | None = None) -> list[dict]:
     """Every violation in an already-parsed sidecar doc — schema first, then the content
-    rules JSON Schema cannot carry. Separate from `read_sidecar` for the one caller that
-    validates a doc it has in hand before writing it (finalize's --ppa-targets override): a
-    malformed override must not reach disk.
+    rules JSON Schema cannot carry.
 
     An unreadable schema is itself a violation, so a caller can never wave a doc through
     because the schema went missing."""

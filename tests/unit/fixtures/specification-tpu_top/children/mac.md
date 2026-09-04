@@ -19,8 +19,6 @@ ports:
   - out2
 clocks:
   - { name: i_clk, domain: i_clk }
-features:
-  - F-01
 ---
 
 # §1 Purpose

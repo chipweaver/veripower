@@ -2,67 +2,152 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/timing-analysis/result.schema.json",
   "title": "timing-analysis result.json contract",
-  "description": "Complete contract for <module>/Design/timing-analysis/result.json. On status=pass, and on any fail carrying violations[], stage_specific.timing carries setup/hold worst-slack + met flag (classified on the report MET/VIOLATED marker) and the boundary-coverage counts; stage_specific.violations[] lists the binding violator per failing direction. A pass requires both directions MET and every output bit timed — an STA that reached only part of the boundary is not a pass, because the markers describe only the paths it did analyze. On status=fail, stage_specific.fail_reason is required: the one-line cause, which on a run that produced nothing gradeable is all there is. An early fail carries no violations[] and therefore no timing{}, because PT never ran.",
+  "description": "Complete contract for <module>/Design/timing-analysis/result.json. On status=pass, and on any fail carrying violations[], stage_specific.timing carries setup/hold worst-slack + met flag (classified on the report MET/VIOLATED marker) and the boundary-coverage counts; stage_specific.violations[] lists the binding violator per failing direction. A pass requires both directions MET and every output bit timed — an STA that reached only part of the boundary is not a pass, because the markers describe only the paths it did analyze. On status=fail, stage_specific.fail_reason is required: the one-line cause, which on a run that produced nothing gradeable is all there is. An early fail carries no violations[] and therefore no timing{}, because PT never ran. stage_specific.requirements[] is one verdict per requirements.json row timing-analysis judges, required on pass.",
   "allOf": [
-    {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
+    {
+      "$ref": "https://veripower.local/schemas/envelope.schema.json"
+    },
     {
       "properties": {
-        "stage": {"const": "timing-analysis"},
+        "stage": {
+          "const": "timing-analysis"
+        },
         "stage_specific": {
           "type": "object",
-          "dependentRequired": {"violations": ["timing"]},
+          "dependentRequired": {
+            "violations": [
+              "timing"
+            ]
+          },
           "properties": {
-            "fix_owner": {"type": "string", "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."},
-            "fail_reason":  {"type": "string", "minLength": 1},
+            "fix_owner": {
+              "type": "string",
+              "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."
+            },
+            "fail_reason": {
+              "type": "string",
+              "minLength": 1
+            },
             "violations": {
               "type": "array",
               "description": "Timing violations (setup/hold/other). Empty on pass, non-empty on rule-based fail.",
               "items": {
                 "type": "object",
-                "required": ["dim", "target", "actual"],
+                "required": [
+                  "dim",
+                  "target",
+                  "actual"
+                ],
                 "additionalProperties": false,
                 "properties": {
-                  "dim":      {"type": "string", "pattern": "^timing_[a-z0-9_]+$"},
-                  "target":   {"type": "number"},
-                  "actual":   {"type": "number"},
-                  "path_id": {"type": "string", "description": "Identifier for the violating timing path (e.g., 'u_ctrl/q_reg/CK -> u_ctrl/d_reg/D')."}
+                  "dim": {
+                    "type": "string",
+                    "pattern": "^timing_[a-z0-9_]+$"
+                  },
+                  "target": {
+                    "type": "number"
+                  },
+                  "actual": {
+                    "type": "number"
+                  },
+                  "path_id": {
+                    "type": "string",
+                    "description": "Identifier for the violating timing path (e.g., 'u_ctrl/q_reg/CK -> u_ctrl/d_reg/D')."
+                  }
                 }
               }
             },
             "timing": {
               "type": "object",
               "description": "Structured STA result (required on pass, and on any fail that carries violations[]). Worst slack + met flag per direction (classified on the report's MET/VIOLATED marker), plus the boundary-coverage counts, which are equal on any pass.",
-              "required": ["setup", "hold", "coverage"],
+              "required": [
+                "setup",
+                "hold",
+                "coverage"
+              ],
               "additionalProperties": false,
               "properties": {
                 "setup": {
                   "type": "object",
-                  "required": ["worst_slack_ns", "met", "worst_path"],
+                  "required": [
+                    "worst_slack_ns",
+                    "met",
+                    "worst_path"
+                  ],
                   "additionalProperties": false,
                   "properties": {
-                    "worst_slack_ns": {"type": "number"},
-                    "met":            {"type": "boolean"},
-                    "worst_path":     {"type": "string"}
+                    "worst_slack_ns": {
+                      "type": "number"
+                    },
+                    "met": {
+                      "type": "boolean"
+                    },
+                    "worst_path": {
+                      "type": "string"
+                    }
                   }
                 },
                 "hold": {
                   "type": "object",
-                  "required": ["worst_slack_ns", "met", "worst_path"],
+                  "required": [
+                    "worst_slack_ns",
+                    "met",
+                    "worst_path"
+                  ],
                   "additionalProperties": false,
                   "properties": {
-                    "worst_slack_ns": {"type": "number"},
-                    "met":            {"type": "boolean"},
-                    "worst_path":     {"type": "string"}
+                    "worst_slack_ns": {
+                      "type": "number"
+                    },
+                    "met": {
+                      "type": "boolean"
+                    },
+                    "worst_path": {
+                      "type": "string"
+                    }
                   }
                 },
                 "coverage": {
                   "description": "How much of the design boundary the run timed. output_bits is every output port bit; output_bits_timed is how many PrimeTime performed an out_setup check for. Equal on a pass. Outputs only: a reset port carries no input delay by construction, so the input side has no determined expectation this stage could compare against.",
                   "type": "object",
-                  "required": ["output_bits", "output_bits_timed"],
+                  "required": [
+                    "output_bits",
+                    "output_bits_timed"
+                  ],
                   "additionalProperties": false,
                   "properties": {
-                    "output_bits":       {"type": "integer", "minimum": 0},
-                    "output_bits_timed": {"type": "integer", "minimum": 0}
+                    "output_bits": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "output_bits_timed": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            },
+            "requirements": {
+              "type": "array",
+              "description": "One entry per requirements.json row this stage judges: the script's verdict for a row with a target, the agent's (finalize --requirements) for the rest. finalize refuses an envelope that leaves any such row out, so a row nobody read cannot pass as silence.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "met"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "met": {
+                    "type": "boolean"
+                  },
+                  "actual": {
+                    "description": "What was measured or observed, in whatever unit the row speaks."
                   }
                 }
               }
@@ -71,15 +156,53 @@
           "additionalProperties": true
         }
       },
-      "required": ["stage_specific"]
+      "required": [
+        "stage_specific"
+      ]
     },
     {
-      "if":   {"properties": {"status": {"const": "pass"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["violations", "timing"]}}}
+      "if": {
+        "properties": {
+          "status": {
+            "const": "pass"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stage_specific": {
+            "required": [
+              "violations",
+              "timing",
+              "requirements"
+            ]
+          }
+        }
+      }
     },
     {
-      "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["fail_reason"]}}}
+      "if": {
+        "properties": {
+          "status": {
+            "const": "fail"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stage_specific": {
+            "required": [
+              "fail_reason"
+            ]
+          }
+        }
+      }
     }
   ]
 }

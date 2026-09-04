@@ -1,9 +1,9 @@
 # tests/unit/test_sim_gate.py
+import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULTS = ROOT / "skills/simulation/defaults.yaml"
 sys.path.insert(0, str(ROOT / "skills" / "simulation" / "scripts"))
 from sim import _gate  # noqa: E402
 
@@ -53,39 +53,72 @@ def test_materialization_active_needs_driver(tmp_path):
     assert any("m_drv_driver.sv" in e for e in errs)
 
 
+def _rows(tmp_path, *dims, op=">", value=90):
+    rows = [
+        {
+            "id": f"R-{i}",
+            "verbatim": f"{d} coverage {op} {value}%",
+            "judge": "simulation",
+            "target": {"dim": f"coverage_{d}", "op": op, "value": value},
+        }
+        for i, d in enumerate(dims)
+    ]
+    rows.append({"id": "R-x", "verbatim": "unrelated", "judge": "rtl-design"})
+    p = tmp_path / "requirements.json"
+    p.write_text(json.dumps(rows))
+    return _gate.coverage_rows(p)
+
+
+def test_coverage_rows_are_the_simulation_rows_with_a_coverage_bound(tmp_path):
+    rows = _rows(tmp_path, "line", "fsm")
+    assert [r["id"] for r in rows] == ["R-0", "R-1"]
+
+
 def test_coverage_gate_pass(tmp_path):
-    thr = _gate._load_thresholds(DEFAULTS)
+    rows = _rows(tmp_path, "line", "cond", "fsm", "toggle")
     cov = {"aggregate": {"line": 92.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0}}
-    errs, dims = _gate.coverage_gate(cov, thr)
-    assert errs == [] and dims["line"]["pass"] is True
+    errs, judged = _gate.coverage_gate(cov, rows)
+    assert errs == [] and all(j["met"] for j in judged) and judged[0]["actual"] == 92.0
+
+
+def test_coverage_gate_uses_the_engineers_operator(tmp_path):
+    # "> 90" is strict: exactly 90.0 does not pass. ">= 90" would.
+    cov = {"aggregate": {"line": 90.0}}
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line"))
+    assert judged[0]["met"] is False and "not > 90" in errs[0]
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line", op=">="))
+    assert errs == [] and judged[0]["met"] is True
 
 
 def test_coverage_gate_below_threshold(tmp_path):
-    thr = _gate._load_thresholds(DEFAULTS)
     cov = {"aggregate": {"line": 10.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0}}
-    errs, _ = _gate.coverage_gate(cov, thr)
-    assert any("line coverage 10.0 <" in e for e in errs)
+    errs, _ = _gate.coverage_gate(cov, _rows(tmp_path, "line"))
+    assert any("R-0: line coverage 10.0 is not > 90" in e for e in errs)
 
 
 def test_coverage_gate_null_dim_skipped(tmp_path):
-    thr = _gate._load_thresholds(DEFAULTS)
     cov = {"aggregate": {"line": 92.0, "cond": 91.0, "fsm": None, "toggle": 93.0}}
-    errs, dims = _gate.coverage_gate(cov, thr)
-    assert errs == [] and dims["fsm"]["skipped"] is True
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "fsm"))
+    assert errs == [] and judged[0] == {"id": "R-0", "met": True, "actual": None}
 
 
 def test_coverage_gate_absent_dim_fails(tmp_path):
-    thr = _gate._load_thresholds(DEFAULTS)
     cov = {"aggregate": {"line": 92.0, "cond": 91.0, "toggle": 93.0}}  # fsm absent
-    errs, dims = _gate.coverage_gate(cov, thr)
-    assert any("fsm threshold configured but absent" in e for e in errs)
-    assert dims["fsm"]["value"] == "absent"
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "fsm"))
+    assert any("fsm coverage is bounded but absent" in e for e in errs)
+    assert judged[0]["met"] is False
+
+
+def test_coverage_gate_unbounded_dim_is_not_gated(tmp_path):
+    # No row for fsm: it is reported, not judged.
+    cov = {"aggregate": {"line": 92.0, "fsm": 3.0}}
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line"))
+    assert errs == [] and [j["id"] for j in judged] == ["R-0"]
 
 
 def test_coverage_gate_not_extractable(tmp_path):
-    thr = _gate._load_thresholds(DEFAULTS)
-    errs, dims = _gate.coverage_gate(None, thr)
-    assert any("not extractable" in e for e in errs) and dims == {}
+    errs, judged = _gate.coverage_gate(None, _rows(tmp_path, "line"))
+    assert any("not extractable" in e for e in errs) and judged == []
 
 
 # ── conformance: the reviewer's own mark ──────────────────────────────────────

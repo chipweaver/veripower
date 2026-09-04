@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
 """check-crossrefs — the one check the specification stage's fan-out makes necessary.
 
-Wave 1 authors the sidecars; N wave-2 children each author their own doc and check hints, in
-parallel, none able to see another's context. So two things can be wrong that no single author
-is in a position to notice: a name one file writes that the owning file does not have, and a
-target nothing anywhere refers to. Both are set operations over identifiers that exist for a
+Wave 1 authors the ledger and the sidecars; N wave-2 children each author their own doc and check
+hints, in parallel, none able to see another's context. So two things can be wrong that no single
+author is in a position to notice: a name one file writes that the owning file does not have, and
+a requirement nothing anywhere verifies. Both are set operations over identifiers that exist for a
 downstream consumer anyway, so the whole verb is a join. It runs after the last wave-2 author
 finishes, because that is when the question first has an answer.
 
 Each violation names both sides in words — which file wrote the name, and which file was
-supposed to have it. There is no violation taxonomy to learn and no key-to-owner table: WHICH
-side is wrong is a judgment (the child may have mistyped the port, or the boundary may be
-missing it), so the verdict states the disagreement and leaves that call to whoever reads the
-two files.
+supposed to have it. WHICH side is wrong is a judgment (the child may have mistyped the port, or
+the boundary may be missing it), so the verdict states the disagreement and leaves that call to
+whoever reads the two files.
 
 Deliberately NOT here: a sidecar's own shape (validated by whoever reads it — see sidecar.py),
 the top-partition purity rule (decided at the partition gate — see ports.py), and anything
-needing a reference frame, such as whether a doc realizes the brainstorm or whether an encoding
-is adequate. Those are a reader's job.
+needing a reference frame, such as whether a doc realizes a requirement. Those are a reader's job.
 
 Usage: ``python3 scripts/spec/__main__.py check-crossrefs --workdir {workdir}``
 Exit: 0 if `status == "pass"`, 1 if `status == "fail"`.
@@ -29,11 +27,12 @@ from pathlib import Path
 
 import yaml
 
+from spec import ledger
 from spec.sidecar import read_sidecar
 
 # Every child .md must declare these frontmatter keys (presence check; empty value is OK) —
 # an absent key would make its subset check below vacuously true.
-_REQUIRED_FM_KEYS = ("ports", "clocks", "features")
+_REQUIRED_FM_KEYS = ("ports", "clocks")
 
 
 def parse_frontmatter(sub_text: str) -> dict:
@@ -54,7 +53,9 @@ def violations(workdir: Path, manifest: dict, child_texts: dict) -> list[dict]:
     ports = read_sidecar(workdir, "top-io.json")
     wires = read_sidecar(workdir, "interconnects.json")
     clock_names = _names(read_sidecar(workdir, "clocks.json"), "name")
-    feature_ids = _names(read_sidecar(workdir, "features.json"), "id")
+    rows = ledger.load(workdir)
+    row_ids = {r["id"] for r in rows}
+    hintable = ledger.hintable_ids(rows)
     port_names = _names(ports, "name") | _names(wires, "wire")
 
     out: list[dict] = []
@@ -64,8 +65,9 @@ def violations(workdir: Path, manifest: dict, child_texts: dict) -> list[dict]:
 
     # A child's frontmatter is its claim about which of the shared boundary is its own. The
     # sidecars are Wave 1's claim about what the boundary is. Two authors, two facts.
-    referenced: set[str] = set()
+    named: set[str] = set()
     claimed: set[str] = set()
+    check_ids: dict[str, str] = {}
     for child in manifest["children"]:
         cname = child["name"]
         doc = child["doc"]
@@ -87,16 +89,30 @@ def violations(workdir: Path, manifest: dict, child_texts: dict) -> list[dict]:
             cn = c.get("name") if isinstance(c, dict) else c
             if cn and cn not in clock_names:
                 say(f"{doc} frontmatter clocks", f"{cn!r} is not in clocks.json")
-        for f in fm.get("features") or []:
-            if f not in feature_ids:
-                say(f"{doc} frontmatter features", f"{f!r} is not in features.json")
         claimed |= set(fm.get("ports") or [])
-        referenced |= _names(
-            read_sidecar(
-                workdir, f"check-hints/{cname}.json", schema="check-hints.schema.json"
-            ),
-            "source_feature",
-        )
+
+        # A hint says how simulation observes a requirement. It may name only rows simulation
+        # judges without a coverage target: any other row is established elsewhere, and a hint
+        # for it would turn a requirement the engineer kept out of the testbench into a gate.
+        hints_file = f"check-hints/{cname}.json"
+        for h in read_sidecar(workdir, hints_file, schema="check-hints.schema.json"):
+            cid = h["check_id"]
+            if cid in check_ids:
+                say(f"{hints_file} {cid}", f"check_id already used in {check_ids[cid]}")
+            check_ids.setdefault(cid, hints_file)
+            for rid in h["requirements"]:
+                if rid not in row_ids:
+                    say(
+                        f"{hints_file} {cid}",
+                        f"names {rid!r}, which requirements.json does not have",
+                    )
+                elif rid not in hintable:
+                    say(
+                        f"{hints_file} {cid}",
+                        f"names {rid!r}, which is not a simulation row without a target; "
+                        f"only those take hints",
+                    )
+                named.add(rid)
 
     # A phantom clock domain would render `abstract_port -clock <phantom>` and hide a CDC path.
     for e in ports:
@@ -112,12 +128,12 @@ def violations(workdir: Path, manifest: dict, child_texts: dict) -> list[dict]:
                 f"clock_domain {w['clock_domain']!r} is not in clocks.json",
             )
 
-    # Orphans. The referring side is authored decentrally by the N children, so no one author
-    # can see that a target went unclaimed.
-    for fid in sorted(feature_ids - referenced):
+    # Orphans. The naming side is authored decentrally by the N children, so no one author
+    # can see that a requirement went unclaimed.
+    for rid in sorted(hintable - named):
         say(
-            f"features.json {fid}",
-            "no check-hints entry names it as source_feature, so nothing verifies it",
+            f"requirements.json {rid}",
+            "no check-hints entry names it, so nothing verifies it",
         )
     # WHICH child drives an output, when several claim it, is not asked: a top mux of N leaf
     # sources and N leaves conflicting are indistinguishable from the claims alone.
@@ -133,7 +149,7 @@ def violations(workdir: Path, manifest: dict, child_texts: dict) -> list[dict]:
 def verdict(workdir) -> dict:
     """The verdict as data (no printing, no exit). finalize re-runs this in-process as the
     divergence-proof invariant: every check is a join over the workdir's own files, so a clean
-    Step-5 verdict stays true unless an artifact was edited after the gate."""
+    gate verdict stays true unless an artifact was edited after the gate."""
     workdir_p = Path(workdir)
     manifest = json.loads((workdir_p / "manifest.json").read_text(encoding="utf-8"))
     child_texts = {

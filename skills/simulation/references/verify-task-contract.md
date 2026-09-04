@@ -25,9 +25,10 @@ it; a regress failure routes out with `failing_cases` and no check-mapping.
 
 1. **Regression**: `make regress`.
 2. **Coverage iteration** (Rule B, see `coverage-iteration.md`): compare
-   `structural-coverage.json`'s `aggregate` dims (`line`/`cond`/`fsm`/`toggle`) against
-   `defaults.yaml.coverage_thresholds`. Every dimension at or above threshold goes straight to
-   summary. Otherwise take the named items from the same file's `uncovered[]`, classify each as a
+   `structural-coverage.json`'s `aggregate` dims (`line`/`cond`/`fsm`/`toggle`) against the
+   coverage bounds `<requirements>/requirements.json` assigns to simulation (rows whose `target.dim`
+   is `coverage_*`; a dim with no row is reported, not gated). Every bounded dimension satisfied
+   goes straight to summary. Otherwise take the named items from the same file's `uncovered[]`, classify each as a
    stimulus-layer or intent-layer gap per `coverage-iteration.md`, and either iterate stimulus
    within `defaults.yaml.stimulus_iterate_max_rounds` rounds or route out with
    the coverage route-out.
@@ -47,10 +48,8 @@ it; a regress failure routes out with `failing_cases` and no check-mapping.
 Writes are confined to `tb/uvm/seq/*` + `tests/testlist.json` (Rule B). This is **not**
 pure append-only: Rule B may tune the constraint params of an **existing** seq, and testlist entries
 are appended (do not change the semantics of existing testlist entries). An appended entry carries
-the same six fields the scaffold emits (`test_id`, `uvm_testname`, `feature_id`, `feature_name`,
-`suites`, `seqs`), copying `feature_id` / `feature_name` verbatim from the entry whose coverage gap
-it is closing; `write_summary.py` reads all six unconditionally, so an entry missing one aborts the
-summary. The env child's checker, RM and scaffold structure is **read-only reference** in this
+the same four fields the scaffold emits (`test_id`, `uvm_testname`, `suites`, `seqs`);
+`write_summary.py` reads them unconditionally, so an entry missing one aborts the summary. The env child's checker, RM and scaffold structure is **read-only reference** in this
 wave: do not edit it, and route out a regress failure rooted there instead.
 
 ## Prohibitions

@@ -10,17 +10,18 @@ ports:                # required (may be empty). Cross-out ports only; each must
   - <port_name>
 clocks:               # required (may be empty). Each must appear in clocks.json
   - <clock_name>
-features:             # required (may be empty). Each must appear in features.json
-  - <feature_id>
 ---
 ```
 
-Three keys, all of them claims about which shared thing is yours. Your name and your parent's
-are in `manifest.json` already — do not restate them here.
+Two keys, both claims about which shared boundary is yours; the rtl-design child author reads them
+to know which ports it declares. Your name and your parent's are in `manifest.json` already — do
+not restate them here.
 
 ## §1 Purpose
 
-≤30 lines. Child role + context + implementation-strategy choice.
+≤30 lines. Child role + context + implementation-strategy choice, citing the `requirements.json`
+rows this child realizes by id. A requirement is stated once, in the ledger; here you decide, and
+point at what you decided for.
 
 ## §2 Interface
 
@@ -50,11 +51,7 @@ Async interaction / back-pressure / error handling / exception paths (prose).
 ## §5 Verification Hints
 
 The hints live in `check-hints/<child>.json`, one file per child because children are authored
-in parallel. Keep this section as a pointer to it; narrative about *why* a check exists belongs
-in §3 / §4.
-
-Its shape — every field and which are required — is `references/check-hints.schema.json`. Two
-things the schema cannot tell you: `check_id` must be unique across **every** child, not just
-yours, and `source_feature` must be an id that exists in `features.json`.
-
-**Critical**: `implementation_detail_verbatim` is the **only** source of cycle-accurate refmodel formulas for downstream simulation-plan / simulation. It must preserve the brainstorm's own wording, not a summary of it; when the brainstorm states no formula for a check, say so plainly rather than inventing one. No shape is prescribed — a formula looks however the brainstorm wrote it. What holds this is the spec-review reviewer reading your `<child>.md` against the whole brainstorm: it is the only reader that can tell a compressed paraphrase from the original, and the only one that can tell whether a formula landed in the right child's hint.
+in parallel; the contract is `wave2-check-hints-contract.md` and the shape
+`check-hints.schema.json`. Keep this section as a pointer to it; narrative about *why* a check
+exists belongs in §3 / §4, and a hint that has to observe an internal signal says here why the
+boundary does not suffice.

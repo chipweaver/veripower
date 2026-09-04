@@ -62,7 +62,7 @@ All nine standard rows are materialized; `power-scenarios.json` carries their `s
 - **T-04**: `[apb_weight_load, data_in_stream, fifo_boundary, start, apb_result_read]`.
 - **T-07 (SC-003)**: `[apb_weight_load, data_in_stream, start, rerun, apb_result_read]` (full first pass before the re-run).
 
-**Unchanged (stable anchors):** the rev-0.2 agent architecture (`data_in` + `core`), RM/scoreboard, all 18 testpoint IDs + covers/inlined_check_hints, the 9 sequences (names + agents), the 9 power scenarios, and the other 5 tests (T-01/02/03/05/06). RTL and the design spec are untouched.
+**Unchanged (stable anchors):** the rev-0.2 agent architecture (`data_in` + `core`), RM/scoreboard, all 18 testpoint IDs + covers, the 9 sequences (names + agents), the 9 power scenarios, and the other 5 tests (T-01/02/03/05/06). RTL and the design spec are untouched.
 
 ## Document Control
 

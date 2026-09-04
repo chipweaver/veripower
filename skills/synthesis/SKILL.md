@@ -32,7 +32,8 @@ SDC dc_shell reads is rebuilt every round.
 | `<annotations>/constraint-annotations.json` | The `sdc` block per child: every timing exception and generated clock this RTL implies, in real module names. Its authors declared it and this stage is its only consumer. Schema: `skills/rtl-design/references/constraint-annotations.schema.json`. |
 | `<rtl>/rtl-files.json` | Per-child file layout, which `bootstrap` turns into `scripts/rtl_load.tcl`. The RTL itself is under `<rtl>` too, and step 2 reads it for divider ratios. Schema: `skills/rtl-design/references/rtl-files.schema.json`. |
 | `<sdc>/constraints/<TOP>.sdc` | Clocks and IO delays from specification. `bootstrap` reads it every round, so a correction here arrives on its own; it is not yours to restate or override. |
-| `<ppa>/ppa.json` | The area and slack targets this run is judged against. `finalize` reads them itself; you read them when deciding which side of a PPA miss is wrong. Schema: `skills/specification/references/ppa.schema.json`. |
+| `<requirements>/requirements.json` | The engineer's requirements, one row each with the stage that judges it. The rows judged by `synthesis` are yours: a row with a `target` in `area_um2` or `timing_slack_ns` is compared by `finalize` itself; a row without one — a budget in NAND2-equivalent gates, a rule the reports show but no number compares — is yours to judge from the reports and your library, and to declare. Schema: `skills/specification/references/requirements.schema.json`. |
+| `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |
 
 `LIB_DB` must be in the environment before `make`: `env.sh` refuses to run without it, and the
 placeholder in `scripts/config.tcl` is a fallback for a `dc_shell` started outside the Makefile,
@@ -129,18 +130,25 @@ reports included, and you never hand-assemble it:
 ```bash
 python3 <skill>/scripts/synthesis/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] \
-  [--fail-reason "<cause>"]
+  [--fail-reason "<cause>"] \
+  [--requirements '[{"id": "R-083", "met": false, "actual": "0.48M NAND2-eq"}]']
 ```
 
-It judges the PPA gate (worst setup slack = `min` of `Critical Path Slack` across every
-clock-group block; area = `Total cell area`) against the targets it reads from `<ppa>/ppa.json`
-itself — `area_um2` and `timing_slack_ns` only, an absent file or dim leaving that dimension
-ungated — records both measurements as `stage_specific.ppa_actual[]`, reads the DC version off the
-report header, and enumerates `artifacts[]`. A clean gate
-is not enough for a pass: all three of `out/*_syn.{v,sdc,sdf}` must be on disk, and an incomplete
-set is a `tooling` fail rather than a promoted synthesis the downstream stages cannot read.
+It compares every `synthesis` row with a target (worst setup slack = `min` of `Critical Path
+Slack` across every clock-group block; area = `Total cell area`) using the row's own operator,
+records both measurements as `stage_specific.ppa_actual[]`, folds your verdicts on the rows with
+no target in beside them as `stage_specific.requirements[]`, reads the DC version off the report
+header, and enumerates `artifacts[]`. It refuses to write an envelope that leaves any `synthesis`
+row unjudged: a row you did not read cannot pass as silence. A clean set of verdicts is not
+enough for a pass: all three of `out/*_syn.{v,sdc,sdf}` must be on disk, and an incomplete set is
+a `tooling` fail rather than a promoted synthesis the downstream stages cannot read.
 
 The flags carry what the reports cannot:
+
+- **`--requirements`**, your verdict on each `synthesis` row that carries no target, in the
+  engineer's own unit. A budget in NAND2-equivalent gates is `Total cell area` divided by your
+  library's NAND2 cell area, compared with the row's wording; write the number you computed in
+  `actual` so the verdict can be re-checked.
 
 - **`--fail-reason`**, which fills `stage_specific.fail_reason`, when dc_shell produced nothing
   gradeable: no license, an `analyze` / `elaborate` / `link` / `check_design` / `compile_ultra`
@@ -151,15 +159,13 @@ The flags carry what the reports cannot:
 - **`--fix-owner`** on every failure, tool and license failures included, since it is what fills
   `stage_specific.fix_owner`. A `fail_reason` naming the guilty stage in prose while the flag was
   omitted reads to the caller as "this stage could not tell", and brings a human in to re-derive
-  an answer you already had. A PPA gate compares a measured value against a target and either side
-  can be wrong, so before naming `rtl-design`, read `<ppa>/ppa.json`: a `dim` whose unit disagrees
-  with the number stored in it — an `area_um2` target holding a NAND2 gate count, say — makes a
-  conforming design look over-budget, and no rebuild converges against it. Name `specification`
-  when the target is what is malformed, and omit the flag only when you have read both sides and
-  still cannot name an owner.
+  an answer you already had. A missed row compares a measured value against the engineer's words,
+  and either side can be wrong: read the row's `verbatim` before naming `rtl-design`, and name
+  `specification` when the row itself is what is malformed. Omit the flag only when you have read
+  both sides and still cannot name an owner.
 
 Exit 0 means written, pass or fail. Exit 2 is BLOCKED and never a `status=fail`: an empty
-`--fail-reason`, or a program exception. stderr names which.
+`--fail-reason`, a `synthesis` row nobody judged, or a program exception. stderr names which.
 
 ## Return Contract
 

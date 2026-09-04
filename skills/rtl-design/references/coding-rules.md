@@ -115,8 +115,8 @@ end
 
 - Signed/unsigned operations must be explicitly declared and annotated; watch for sign extension and width alignment when mixing
 - Add-then-multiply vs. multiply-then-add (MAC) differ in area/timing — choose per design requirements and comment the rationale
-- Write large operators as operators and let synthesis infer them; `ppa.json`'s targets are
-  what decides whether the inference was good enough. Naming a DesignWare component pins the
+- Write large operators as operators and let synthesis infer them; the requirements rows
+  synthesis judges are what decides whether the inference was good enough. Naming a DesignWare component pins the
   design to one vendor's library, so reach for it only against a target you can point at
 - Write RTL in a style friendly to synthesis tool data-path optimization (resource sharing, retiming)
 
@@ -129,7 +129,7 @@ end
 
 ## Low-Power Design
 
-**Advisory, this section and Low-Cost Design below.** No gate checks either one: `synthesis` and `power-analysis` only measure the outcome against `ppa.json`'s targets. So never trade away behavior your `<child>.md §2` specifies in order to satisfy one of these: a deviation from §2 intent is what the intent reviewer is looking for, while a missed power or area optimization is not.
+**Advisory, this section and Low-Cost Design below.** No gate checks either one: `synthesis` and `power-analysis` only measure the outcome against the requirements rows they judge. So never trade away behavior a requirement row or your `<child>.md` specifies in order to satisfy one of these: a deviation from that intent is what the intent reviewer is looking for, while a missed power or area optimization is not.
 
 - **Clock gating**: use module-level ICG; support automatic gating for sub-modules inside complex modules; minimize clock-gating cascade depth; RTL style must be friendly to synthesis tool auto-inference of clock gating
 - **Memory**: gate clock, chip-select, and address for memories; encode address buses (e.g., Gray code) to reduce toggle power; bank large memories with high-bit address decode, shutting inactive banks; use the deployed library's low-power memory cells (FSM encoding and RAM sizing are covered under FSM Coding and RAM Coding above)

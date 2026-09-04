@@ -3,8 +3,9 @@
 ## What you read
 
 `structural-coverage.json` carries two things you need. `aggregate` holds the per-dimension
-percentages the coverage gate scores against `defaults.yaml.coverage_thresholds`, which is what
-decides pass or fail. `uncovered[]` holds the named items behind those percentages, one entry per
+percentages the coverage gate scores against the bounds the engineer wrote, the
+`<requirements>/requirements.json` rows simulation judges with a `coverage_*` target, which is
+what decides pass or fail. `uncovered[]` holds the named items behind those percentages, one entry per
 branch, condition or FSM transition urg saw and never exercised:
 
 ```json
@@ -40,8 +41,8 @@ Only while every uncovered item is a stimulus-layer gap, and for at most
    a testcase to `tests/testlist.json` (append only: do not change the semantics of existing
    entries).
 3. Re-run `make regress` and read the new `structural-coverage.json`.
-4. Every dimension at or above threshold means coverage converged.
-5. Gaps remaining means repeat, until the thresholds are met or the budget is spent.
+4. Every bounded dimension satisfying its row means coverage converged.
+5. Gaps remaining means repeat, until the bounds are met or the budget is spent.
 
 ## Routing out
 
@@ -58,5 +59,6 @@ the coverage route-out.
 
 ## Threshold source
 
-`coverage_thresholds` in `<skill>/defaults.yaml`. Every dimension's threshold is fixed there;
-per-module override is not supported.
+The engineer's own rows in `<requirements>/requirements.json`: `judge` simulation, `target.dim`
+one of `coverage_line` / `coverage_cond` / `coverage_fsm` / `coverage_toggle`, compared with the
+row's own `op`. A dimension no row bounds is reported and not gated.

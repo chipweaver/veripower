@@ -32,10 +32,12 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
-    from timing import result
+    from timing import requirements, result
 
     return result.finalize(
         a.workdir,
+        requirements.mine(requirements.load(a.workdir)),
+        requirements.parse_declared(a.requirements),
         a.fix_owner,
         a.fail_reason,
     )
@@ -71,6 +73,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="cause of a run that produced no gradeable report (license, a link_design "
         "or read_sdc abort, a crash after reporting); supplying it declares the failure "
         "and wins over the gate.",
+    )
+    sp.add_argument(
+        "--requirements",
+        default=None,
+        help="your verdict on each requirements.json row judged by timing-analysis, as a JSON "
+        'array of {"id", "met", "actual"}',
     )
     sp.set_defaults(func=_cmd_finalize)
 

@@ -76,7 +76,7 @@ def _turn(module, limit=6):
 
 def test_cold_start_dispatches_specification(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "specification"
     assert a["execution"] == "main-thread"
@@ -84,12 +84,12 @@ def test_cold_start_dispatches_specification(tmp_path, monkeypatch):
 
 def test_wake_reap(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     _dispatch(
         "m",
         "specification",
         1,
-        {"brainstorm.md": facts.fingerprint(facts.module_root("m") / "brainstorm.md")},
+        {"intent": facts.fingerprint(facts.module_root("m") / "intent")},
     )
     # workdir result.json present -> REAP even without wake (收口 branch)
     _mk("m", _workdir("specification", 1) + "/result.json", "{}")
@@ -105,8 +105,8 @@ def test_wake_reaps_a_run_whose_executor_wrote_nothing(tmp_path, monkeypatch):
     result.json, so the scan sees nothing and the ledger would YIELD forever. reap then
     derives blocked and the next decide re-routes."""
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
-    _dispatch("m", "specification", 1, {"brainstorm.md": _fp("m", "brainstorm.md")})
+    _write("m", "intent/brainstorm.md", "b1")
+    _dispatch("m", "specification", 1, {"intent": _fp("m", "intent")})
     assert schedule.decide("m")["action"] == "YIELD"
     a = schedule.decide("m", wake="specification:1")
     assert a["action"] == "REAP" and a["rule"] == "specification" and a["run"] == 1
@@ -118,7 +118,7 @@ def test_a_landed_result_is_reaped_not_yielded_over(tmp_path, monkeypatch):
     and nothing else: a per-run "did it finish" flag would be constant false everywhere the
     Orchestrator can see it, and reads as a filter while filtering nothing."""
     monkeypatch.chdir(tmp_path)
-    _mk("m", "brainstorm.md", "b1")
+    _mk("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
     _dispatch("m", "lint-cdc", 1, _recorded_inputs("m", "lint-cdc"))
@@ -144,8 +144,8 @@ def test_a_landed_result_is_reaped_not_yielded_over(tmp_path, monkeypatch):
 
 def test_in_flight_no_result_yields(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
-    _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:x"})
+    _write("m", "intent/brainstorm.md", "b1")
+    _dispatch("m", "specification", 1, {"intent": "sha256:x"})
     a = schedule.decide("m")
     assert a["action"] == "YIELD"
     assert a["in_flight"] == [{"rule": "specification", "run": 1}]
@@ -319,7 +319,7 @@ def test_neither_writer_can_mint_a_routable_self_pointing_diagnosis(
     alone, so it needs no separate attribution test — and could not use one, because neither
     writer can produce a self-pointing diagnosis that carries a `fix_owner`."""
     monkeypatch.chdir(tmp_path)
-    _mk("m", "brainstorm.md", "b1")
+    _mk("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "simulation-plan", 1)
     _valid("m", "rtl-design", 1)
@@ -396,8 +396,8 @@ def test_repair_after_fix_lands_redispatches_failed_rule_not_fix_owner(
 def test_blocked_goes_forward_no_escalate(tmp_path, monkeypatch):
     # blocked outcome -> no proof -> step 2 re-dispatches the rule; never step 1, never ESCALATE.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
-    _dispatch("m", "specification", 1, {"brainstorm.md": _fp("m", "brainstorm.md")})
+    _write("m", "intent/brainstorm.md", "b1")
+    _dispatch("m", "specification", 1, {"intent": _fp("m", "intent")})
     _outcome("m", "specification", 1, "blocked", {}, [], reason="crash")
     a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "specification"
@@ -410,7 +410,7 @@ def test_fresh_selfdescribing_failure_dispatches_the_owner_its_envelope_named(
     # result.json: the party that read the raw tool output names who must act, and nothing
     # re-derives that from a classification. Naming nobody is the stage saying it cannot tell.
     monkeypatch.chdir(tmp_path)
-    _mk("m", "brainstorm.md", "b1")
+    _mk("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
     _fail("m", "lint-cdc", 1, owner=None)  # the envelope names nobody
@@ -441,7 +441,7 @@ def test_fresh_failure_naming_itself_escalates(tmp_path, monkeypatch):
     a failure. Naming itself therefore means the in-stage remedy is exhausted, and an
     auto-rebuild would dispatch the failing rule at itself."""
     monkeypatch.chdir(tmp_path)
-    _mk("m", "brainstorm.md", "b1")
+    _mk("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
     _fail("m", "lint-cdc", 1)
@@ -467,7 +467,7 @@ def test_fresh_failure_naming_outside_its_closure_escalates(tmp_path, monkeypatc
     derived input closure is the sole authority, so a stage cannot blame something it does
     not consume."""
     monkeypatch.chdir(tmp_path)
-    _mk("m", "brainstorm.md", "b1")
+    _mk("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
     _fail("m", "lint-cdc", 1)
@@ -493,7 +493,7 @@ def test_fresh_rtldesign_spec_locus_dispatches_specification(tmp_path, monkeypat
     # in fix_owner. The gate's own loci stay in the envelope as the account behind
     # that naming; nothing outside the stage re-derives the target from them.
     monkeypatch.chdir(tmp_path)
-    _mk("m", "brainstorm.md", "b1")
+    _mk("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _fail("m", "rtl-design", 1, owner=None)  # the envelope names nobody
     # nobody named and no diagnostic declared for this rule -> ESCALATE
@@ -521,7 +521,7 @@ def _timing_fail_over_stale_synthesis(module):
     """spec/plan/rtl valid; synthesis built then its oracle reopened (proof invalid, RTL
     bytes untouched); timing-analysis a stale fail. The repair runs through synthesis, whose
     advisory predecessor lint-cdc has never run."""
-    _write(module, "brainstorm.md", "b1")
+    _write(module, "intent/brainstorm.md", "b1")
     _valid(module, "specification", 1)
     _valid(module, "simulation-plan", 1)
     _valid(module, "rtl-design", 1)
@@ -571,7 +571,7 @@ def test_advisory_orders_two_stages_that_failed_together(tmp_path, monkeypatch):
     detector runs first instead of racing the expensive stage. A gate keyed on a caller-held
     mode took the opposite bet here from the one it takes when nothing is failing."""
     monkeypatch.chdir(tmp_path)
-    _mk("m", "brainstorm.md", "b1")
+    _mk("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "simulation-plan", 1)
     _valid("m", "rtl-design", 1)
@@ -620,7 +620,7 @@ def test_goal_widens_once_nothing_is_failing(tmp_path, monkeypatch):
     re-verifies, and the same loop then builds the rest of the DAG — where a caller-held
     mode reported DONE with five proofs still unbuilt."""
     monkeypatch.chdir(tmp_path)
-    _mk("m", "brainstorm.md", "b1")
+    _mk("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
     _fail("m", "lint-cdc", 1)
@@ -700,7 +700,7 @@ def test_signoff_gate_reads_live_pin_without_rereap(tmp_path, monkeypatch):
 def test_decide_is_pure_same_disk_same_ledger_same_action(tmp_path, monkeypatch):
     # decide 纯函数性 — same disk + ledger + args -> byte-identical action dict.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     assert schedule.decide("m") == schedule.decide("m")
 
 
@@ -726,7 +726,7 @@ def test_two_hop_upstream_invalidity_does_not_discard_the_failure(
     # rule keeps it and instead refuses to re-run the rule that raised it. Either way the
     # round must not spin: this envelope names nobody, so it is a human's call.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
     _valid("m", "synthesis", 1)
@@ -744,7 +744,7 @@ def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
     # advisory edge is satisfied, so synthesis is the first thing the turn opens; the
     # unsatisfied case is test_advisory_predecessor_is_scheduled_rather_than_waited_on.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
     _valid("m", "lint-cdc", 1)
@@ -850,9 +850,8 @@ _OUTPUTS = {
         "Design/specification/design.md",
         "Design/specification/children",
         "Design/specification/manifest.json",
-        "Design/specification/ppa.json",
+        "Design/specification/requirements.json",
         "Design/specification/clocks.json",
-        "Design/specification/features.json",
         "Design/specification/check-hints/c.json",
         "Design/specification/top-io.json",
         "Design/specification/interconnects.json",
@@ -1055,7 +1054,7 @@ def _reopen(module, pin_ref):
 
 def _valid_chain_through_simulation(module):
     """spec/plan/rtl proofs valid on disk — simulation's whole input closure."""
-    _mk(module, "brainstorm.md", "b1")
+    _mk(module, "intent/brainstorm.md", "b1")
     _valid(module, "specification", 1)
     _valid(module, "simulation-plan", 1)
     _valid(module, "rtl-design", 1)
@@ -1064,7 +1063,7 @@ def _valid_chain_through_simulation(module):
 def _valid_chain_through_power(module):
     """power's ARTIFACT closure (spec/plan/rtl/synthesis/simulation) valid — NOT timing,
     which reaches power only through the ADVISORY edge."""
-    _mk(module, "brainstorm.md", "b1")
+    _mk(module, "intent/brainstorm.md", "b1")
     _valid(module, "specification", 1)
     _valid(module, "simulation-plan", 1)
     _valid(module, "rtl-design", 1)
@@ -1084,7 +1083,7 @@ def _invalidate_proof(module, rule):
 def _build_all_valid(module, run, *, include=None, oracle_grades=None):
     """Dispatch+pass every rule in `include` (default all 8), FORWARD order so each
     rule's upstream outputs already exist on disk when its inputs are recorded."""
-    _mk(module, "brainstorm.md", "b1")
+    _mk(module, "intent/brainstorm.md", "b1")
     include = include if include is not None else rules.FORWARD_PRIORITY
     grades = oracle_grades or {}
     for rule in rules.FORWARD_PRIORITY:
@@ -1167,7 +1166,7 @@ def test_option_c_defers_producer_with_inflight_consumer(tmp_path, monkeypatch):
     has failed here — rtl-design is simply due a rebuild — so the guard under test is the
     candidate filter alone, with no attribution in the picture."""
     monkeypatch.chdir(tmp_path)
-    _mk("m", "brainstorm.md", "b1")
+    _mk("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
     _mk("m", "Design/rtl-design/semantic-review/child.md", "drift")  # rtl proof invalid
@@ -1295,7 +1294,7 @@ def _spec_fail_proof(module):
         {
             "name": "specification",
             "verdict": "fail",
-            "inputs": {"brainstorm.md": facts.fingerprint(root / "brainstorm.md")},
+            "inputs": {"intent": facts.fingerprint(root / "intent")},
             "oracle": {"ref": "spec-review", "grade": "proposed"},
         }
     ]
@@ -1305,9 +1304,9 @@ def test_fail_stale_when_reopen_lands_during_the_run(tmp_path, monkeypatch):
     # The oracle is reopened between dispatch and outcome, so the verdict this run
     # produced was judged by an oracle nobody stands behind by the time it lands.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     _pin_oracle("m", "spec-review")
-    _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:ignored"})
+    _dispatch("m", "specification", 1, {"intent": "sha256:ignored"})
     _reopen_oracle("m", "spec-review")
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
     events = facts.read_events("m")
@@ -1321,9 +1320,9 @@ def test_fail_stays_stale_after_a_bare_re_reap(tmp_path, monkeypatch):
     # re-executes nothing and re-pins nothing, so it must not launder the fail into a fresh
     # one. Anchoring condition 3 on the dispatch is what makes the second outcome irrelevant.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     _pin_oracle("m", "spec-review")
-    _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:ignored"})
+    _dispatch("m", "specification", 1, {"intent": "sha256:ignored"})
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
     _reopen_oracle("m", "spec-review")
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))  # bare re-reap
@@ -1338,9 +1337,9 @@ def test_fail_fresh_again_after_a_re_pin(tmp_path, monkeypatch):
     # verdict is trustworthy again, so the repair path must come back rather than the fail
     # being written off as stale.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     _pin_oracle("m", "spec-review")
-    _dispatch("m", "specification", 1, {"brainstorm.md": "sha256:ignored"})
+    _dispatch("m", "specification", 1, {"intent": "sha256:ignored"})
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
     _reopen_oracle("m", "spec-review")  # AFTER the outcome, so the old anchor saw it
     _pin_oracle("m", "spec-review", fp="sha256:y", reason="re-endorse")
@@ -1446,7 +1445,7 @@ def test_basis_names_the_input_set_each_verdict_was_about(tmp_path, monkeypatch)
     events = facts.read_events("m")
     by_proof = {b["proof"]: b for b in facts.signoff_basis("m", events)}
     spec = by_proof["specification"]
-    assert spec["inputs"] == ["brainstorm.md"]
+    assert spec["inputs"] == ["intent"]
     # and it matches what the proof actually recorded, not a re-derivation from rules.py
     _, outcome = facts._proof_outcome(events, "specification")
     proof = next(p for p in outcome["proofs"] if p["name"] == "specification")

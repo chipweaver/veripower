@@ -35,26 +35,21 @@ def test_schema_validates_minimum_fail_envelope(stage):
     assert err is None, f"stage {stage}: minimum status=fail envelope rejected: {err}"
 
 
-# A fail that reports a PPA miss must carry the numbers behind it. The claim used to be
-# keyed on a label — a failure-category value triggered a required[] — which meant the schema was
-# checking a description of the data against the data's absence. It is now keyed on the
-# data: carrying violations[] obliges you to carry the measurements it was judged from.
-# That is strictly more than the label caught, because it also fires on the case the label
-# never described — a gate that ran clean and still omitted the measurements.
-# timing-analysis locks its own variant in test_timing_schema.py; synthesis +
+# A fail that reports a missed requirement must carry the numbers behind it. The claim is
+# keyed on the data: carrying requirements[] obliges you to carry the measurements the verdicts
+# were judged from. That also fires on a run that judged every row met and still omitted the
+# measurements. timing-analysis locks its own variant in test_timing_schema.py; synthesis +
 # power-analysis are gated here.
 _PPA_FAIL_NUMBERS = {
     "synthesis": {
         "ppa_actual": [{"dim": "area_um2", "value": 1234.0}],
-        "violations": [{"dim": "area_um2", "target": 1000.0, "actual": 1234.0}],
+        "requirements": [{"id": "R-1", "met": False, "actual": 1234.0}],
     },
     "power-analysis": {
         "ppa_actual": [
             {"dim": "power_mw", "value": 12.0, "scenario_id": "s1", "source": "pt"}
         ],
-        "violations": [
-            {"dim": "power_mw", "target": 10.0, "actual": 12.0, "scenario_id": "s1"}
-        ],
+        "requirements": [{"id": "R-1", "met": False, "actual": 12.0}],
     },
 }
 
@@ -74,43 +69,34 @@ def _fail_result(stage, stage_specific):
 def test_ppa_fail_requires_numbers(stage):
     numbers = _PPA_FAIL_NUMBERS[stage]
 
-    # violations[] without the measurements it was judged from is rejected.
+    # requirements[] without the measurements they were judged from is rejected.
     err = facts.validate_result(
         stage,
         _fail_result(
             stage,
             {
-                "fail_reason": "PPA gate exceeded",
-                "violations": numbers["violations"],
+                "fail_reason": "requirement(s) not met: R-1",
+                "requirements": numbers["requirements"],
             },
         ),
     )
     assert err is not None, (
-        f"stage {stage}: violations[] accepted without the measurements behind it"
+        f"stage {stage}: requirements[] accepted without the measurements behind it"
     )
 
-    # An empty violations[] obliges them just the same: the gate ran either way.
+    # An empty requirements[] obliges them just the same: the gate ran either way.
     err = facts.validate_result(
         stage,
-        _fail_result(
-            stage,
-            {
-                "fail_reason": "netlist incomplete",
-                "violations": [],
-            },
-        ),
+        _fail_result(stage, {"fail_reason": "netlist incomplete", "requirements": []}),
     )
     assert err is not None, (
-        f"stage {stage}: an empty violations[] escaped the obligation"
+        f"stage {stage}: an empty requirements[] escaped the obligation"
     )
 
     # Together they validate.
     err = facts.validate_result(
         stage,
-        _fail_result(
-            stage,
-            {"fail_reason": "PPA gate exceeded", **numbers},
-        ),
+        _fail_result(stage, {"fail_reason": "requirement(s) not met: R-1", **numbers}),
     )
     assert err is None, f"stage {stage}: a fail carrying both rejected: {err}"
 

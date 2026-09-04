@@ -6,32 +6,28 @@
       "doc": "children/mac.md",
       "rtl_modules": [
         "mac"
-      ],
-      "brainstorm_anchor": "lines 44-57"
+      ]
     },
     {
       "name": "systolic_reg",
       "doc": "children/systolic_reg.md",
       "rtl_modules": [
         "systolic_reg"
-      ],
-      "brainstorm_anchor": "lines 59-64"
+      ]
     },
     {
       "name": "fifo",
       "doc": "children/fifo.md",
       "rtl_modules": [
         "fifo"
-      ],
-      "brainstorm_anchor": "lines 66-80"
+      ]
     },
     {
       "name": "tpu_top",
       "doc": "children/tpu_top.md",
       "rtl_modules": [
         "tpu_top"
-      ],
-      "brainstorm_anchor": "lines 82-160"
+      ]
     }
   ]
 }

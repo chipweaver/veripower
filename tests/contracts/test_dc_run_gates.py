@@ -41,7 +41,7 @@ def test_no_ungated_elaborate_or_link_call():
 def test_mapping_is_compile_ultra_and_is_gated():
     """The mapping command is compile_ultra, gated on its return value.
 
-    The ppa.json targets are judged against DC-Ultra QoR, so a silent plain-compile path
+    The area and slack bounds are judged against DC-Ultra QoR, so a silent plain-compile path
     would grade a different design than the one the targets describe. A missing DC-Ultra
     checkout is env-precheck's to report, not this script's to work around.
     """

@@ -24,10 +24,8 @@ GOOD = {
     "tests": [
         {
             "name": "t_smoke",
-            "feature": "F1",
             "test_id": "T1",
             "suites": ["smoke", "regress"],
-            "feature_name": "Register write path",
             "seqs": ["smoke"],
         }
     ],
@@ -39,9 +37,6 @@ GOOD = {
             "intent": "drive a write and observe the read-back",
             "bins": ["a"],
             "covers": ["CHK-0"],
-            "inlined_check_hints": [
-                {"check_id": "CHK-0", "implementation_detail": "x"}
-            ],
         }
     ],
     "power_scenarios": [
@@ -114,6 +109,11 @@ def _spec(tmp_path, hints=("CHK-0",)):
     )
     (sd / "check-hints" / "c.json").write_text(
         json.dumps([{"check_id": c} for c in hints])
+    )
+    (sd / "requirements.json").write_text(
+        json.dumps(
+            [{"id": "R-0", "verbatim": "reads back writes", "judge": "simulation"}]
+        )
     )
     return sd
 

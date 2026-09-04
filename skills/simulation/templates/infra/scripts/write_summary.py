@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate case-results.json and the summary a human reads off a run.
 
-Goal: stable PASS / FAIL / NOT_RUN per testcase.
-Coverage closure and full traceability are preserved in the output but are NOT
-blocking gates.
+Goal: stable PASS / FAIL / NOT_RUN per testcase. Which requirement a test serves is not on this
+page: a testpoint's covers[] names the check hints, and each hint names the requirements.json
+rows it establishes, so the trace runs plan -> hint -> row and this page adds nothing to it.
 """
 
 import argparse
@@ -11,7 +11,6 @@ import json
 import os
 import re
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 
@@ -30,9 +29,6 @@ def load_results(log_path):
 
     Stable RESULT line format (see run_vcs_regression.sh):
         RESULT <test_id> <PASS|FAIL> [...]
-
-    The feature a test traces to is NOT on this line: it is in testlist.json, keyed by the same
-    test_id, and carrying it through bash would be a second copy nothing compares.
     """
     if not log_path.is_file():
         sys.exit(
@@ -73,29 +69,11 @@ def main():
     result_by_test = {item["test_id"]: item for item in results}
 
     tests = testlist.get("tests", [])
-    # test_by_id is how a RESULT line reaches its feature: the log carries only test_id.
-    test_by_id = {}
-    feature_to_tests = defaultdict(list)
-    for test in tests:
-        test_by_id[test["test_id"]] = test
-        feature_to_tests[test["feature_id"]].append(test)
 
     total = len(results)
     passed = sum(1 for r in results if r["status"] == "PASS")
     failed = sum(1 for r in results if r["status"] == "FAIL")
     not_run = sum(1 for t in tests if t["test_id"] not in result_by_test)
-
-    executed_pass_features = {
-        test_by_id[r["test_id"]]["feature_id"]
-        for r in results
-        if r["status"] == "PASS" and r["test_id"] in test_by_id
-    }
-    total_features = len(feature_to_tests)
-    feature_coverage = (
-        0.0
-        if total_features == 0
-        else 100.0 * len(executed_pass_features) / total_features
-    )
     testcase_pass_rate = 0.0 if total == 0 else 100.0 * passed / total
 
     counts = {
@@ -103,7 +81,6 @@ def main():
         "passed_tests": passed,
         "failed_tests": failed,
         "not_run_tests": not_run,
-        "feature_coverage_percent": round(feature_coverage, 1),
         "testcase_pass_rate_percent": round(testcase_pass_rate, 1),
     }
     # The structured home. `sim finalize` reads its counts here rather than re-parsing the
@@ -112,36 +89,29 @@ def main():
         json.dumps(counts, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
-    # Core traceability table (minimum: testcase + feature + result).
+    # Per-test table.
     trace_rows = []
     for test in tests:
         result = result_by_test.get(test["test_id"])
-        if result:
-            status = result["status"]
-        else:
-            status = "NOT_RUN"
+        status = result["status"] if result else "NOT_RUN"
         trace_rows.append(
-            f"| {test['feature_id']} | {test['feature_name']} "
             f"| {test['test_id']} | {','.join(test['suites'])} | **{status}** |"
         )
-    trace_table = "\n".join(trace_rows) or "| n/a | n/a | n/a | n/a | n/a |"
+    trace_table = "\n".join(trace_rows) or "| n/a | n/a | n/a |"
 
     # Failed-case detail table.
     action_rows = []
     for item in results:
         if item["status"] == "FAIL":
-            fid = test_by_id.get(item["test_id"], {}).get("feature_id", "-")
             action_rows.append(
-                f"| {item['test_id']} | {fid} | FAIL "
-                f"| Fix; see {log_dir}/{item['test_id']}.log |"
+                f"| {item['test_id']} | FAIL | Fix; see {log_dir}/{item['test_id']}.log |"
             )
     for test in tests:
         if test["test_id"] not in result_by_test:
             action_rows.append(
-                f"| {test['test_id']} | {test['feature_id']} | NOT_RUN "
-                f"| Recompile and re-run |"
+                f"| {test['test_id']} | NOT_RUN | Recompile and re-run |"
             )
-    action_table = "\n".join(action_rows) or "| - | - | - | - |"
+    action_table = "\n".join(action_rows) or "| - | - | - |"
 
     # Overall verdict line.
     if failed == 0 and not_run == 0:
@@ -172,19 +142,18 @@ def main():
 | PASS | {passed} |
 | FAIL | {failed} |
 | NOT_RUN | {not_run} |
-| Feature coverage | {feature_coverage:.1f}% |
 | Testcase pass rate | {testcase_pass_rate:.1f}% |
 
-## Feature Traceability
+## Results
 
-| FeatureID | Feature | Testcase | Suites | Result |
-|-----------|---------|----------|--------|--------|
+| Testcase | Suites | Result |
+|----------|--------|--------|
 {trace_table}
 
 ## Action Items
 
-| Testcase | FeatureID | Status | Action |
-|----------|-----------|--------|--------|
+| Testcase | Status | Action |
+|----------|--------|--------|
 {action_table}
 
 ## Status Legend

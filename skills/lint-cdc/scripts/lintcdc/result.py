@@ -21,6 +21,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from lintcdc import requirements
+
 STAGE = "lint-cdc"
 
 
@@ -87,7 +89,7 @@ def _gated_count(doc: dict) -> int:
     return sum(counts.get(sev) or 0 for sev in GATED)
 
 
-def run(workdir, *, fix_owner=None, fail_reason=None) -> int:
+def run(workdir, rows, declared, *, fix_owner=None, fail_reason=None) -> int:
     workdir = Path(workdir)
     lint = _load_violations(workdir / "lint-violations.json")
     cdc = _load_violations(workdir / "cdc-violations.json")
@@ -121,13 +123,24 @@ def run(workdir, *, fix_owner=None, fail_reason=None) -> int:
             _envelope(status="fail", stage_specific=ss, artifacts=artifacts),
         )
         return 0
+    # The tool gate is clean; now the rows requirements.json says lint-cdc establishes. None
+    # carries a number SpyGlass reports, so every verdict is the agent's, and merge refuses a
+    # row it did not judge.
+    judged = requirements.merge(rows, [], declared)
+    unmet = requirements.unmet(judged)
     # No per-severity counts here: they are a reduction of the two promoted, fingerprinted
     # *-violations.json, and nothing in the tree reads them. violations[] stays because
     # synthesis reads it out of this envelope when a round routes off a lint-cdc failure.
-    ss = {"tool": tool, "violations": violations}
+    ss = {"tool": tool, "violations": violations, "requirements": judged}
+    if unmet:
+        ss["fail_reason"] = f"requirement(s) not met: {', '.join(unmet)}"
+        if fix_owner:
+            ss["fix_owner"] = fix_owner
     _write(
         workdir,
-        _envelope(status="pass", stage_specific=ss, artifacts=artifacts),
+        _envelope(
+            status="fail" if unmet else "pass", stage_specific=ss, artifacts=artifacts
+        ),
     )
     return 0
 
@@ -233,10 +246,11 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def finalize(workdir, fix_owner=None, fail_reason=None) -> int:
-    """Assemble the lean lint-cdc result.json from the two *-violations.json + headers.
-    exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (an unreasoned
-    waiver, an empty --fail-reason, or any internal raise), never a status=fail."""
+def finalize(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
+    """Assemble the lean lint-cdc result.json from the two *-violations.json + headers, then
+    judge the rows requirements.json assigns to this stage. exit 0 = result.json written
+    (status pass or fail); exit 2 = BLOCKED (an unreasoned waiver, an empty --fail-reason, a
+    row nobody judged, or any internal raise), never a status=fail."""
     if fail_reason is not None and not fail_reason.strip():
         print(
             "[lintcdc finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",
@@ -254,7 +268,9 @@ def finalize(workdir, fix_owner=None, fail_reason=None) -> int:
             for d in defects:
                 print(f"  {d}", file=sys.stderr)
             return 2
-        return run(workdir, fix_owner=fix_owner, fail_reason=fail_reason)
+        return run(
+            workdir, rows, declared, fix_owner=fix_owner, fail_reason=fail_reason
+        )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[lintcdc finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

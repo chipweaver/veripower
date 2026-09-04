@@ -88,7 +88,7 @@ def _make_tree(
                     "netlist": str(syn),
                     "tb_env": str(sim),
                     "scaffold": str(plan),
-                    "ppa": str(base / "Design" / "specification"),
+                    "requirements": str(base / "Design" / "specification"),
                 }
             }
         )

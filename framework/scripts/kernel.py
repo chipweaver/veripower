@@ -569,7 +569,7 @@ def main():
     # nowhere else to ask: the one real run reached for the source, was correctly stopped by
     # that rule, and found this flag undocumented.
     module_help = (
-        "path to the module directory — the one holding events.jsonl, brainstorm.md, "
+        "path to the module directory — the one holding intent/, events.jsonl, "
         "Design/ and Verification/. Relative paths resolve against the current directory, "
         "so an absolute path works from anywhere (e.g. --module ~/chips/mydesign, or "
         "--module . inside it)."
@@ -640,8 +640,8 @@ def main():
     co.add_argument("--paths", nargs="+", required=True)
     args = p.parse_args()
     # A missing module directory is always an error and never a legitimate starting state:
-    # brainstorm.md is a PIPELINE_INPUT that must already exist for `specification` to be
-    # dispatchable at all, so a module with no directory can never become schedulable.
+    # intent/brainstorm.md is a PIPELINE_INPUT that must already exist for `specification` to
+    # be dispatchable at all, so a module with no directory can never become schedulable.
     # Without this, a mistyped or misresolved path produced two answers that both looked
     # real — `status` inventing an all-`missing` projection at exit 0, and `decide`
     # returning the same "no eligible rule" ESCALATE a genuinely deadlocked module returns.

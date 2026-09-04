@@ -13,8 +13,8 @@ the UVM scaffold, compile, and run the smoke suite.
 - `<skill>`: the simulation skill's own base directory.
 - plan-sidecar dir `<scaffold>/`: holds the two sidecars this stage declares,
   `tb-scaffold.json` (the TB scaffold contract: `agents` / `tests` are materialized into SV
-  here, and `testpoints[].inlined_check_hints[]` triggers cycle-accurate refmodel / scoreboard
-  checks; see `inlined-check-hints.md`) and `sequences.json` (one seq class per entry).
+  here, and `testpoints[].covers[]` names the check hints your refmodel / scoreboard implement;
+  see `check-hints.md`) and `sequences.json` (one seq class per entry).
   `testpoints[].bins[]` is not consumed in this wave, and `power-scenarios.json` is not
   declared here at all: it is power-analysis's.
 - verification-plan path `<plan>/verification-plan.md`: the human-readable
@@ -78,11 +78,11 @@ the UVM scaffold, compile, and run the smoke suite.
    **Reading discipline.** Do not whole-read `tb-scaffold.json` (it is large and the
    first read gets truncated by the token cap, forcing a costly re-read). Instead: take **structural
    facts** (interface signals, txn fields) from the **rendered includes** (`*_signals.svh` / `*_fields.svh`, regenerated from top-io.json every round);
-   read **check semantics per-testpoint** via `testpoints[].inlined_check_hints[]` (not the whole
-   `check_hints` block at once); and read the small top-level arrays
-   (`sequences[].agent` / `tests[].seqs` / `rm` / `scoreboard`) for the testpoint→component mapping.
-   `testpoints[]` itself carries only `id` / `intent` / `bins` / `covers` / `inlined_check_hints`,
-   never agent/seq/rm, so
+   read **check semantics per-testpoint** through `testpoints[].covers[]`: each check_id is in
+   `<check_hints>/<child>.json`, and the rows it names in `<requirements>/requirements.json`; and
+   read the small top-level arrays (`sequences[].agent` / `tests[].seqs` / `rm` / `scoreboard`)
+   for the testpoint→component mapping. `testpoints[]` itself carries only `id` / `intent` /
+   `bins` / `covers`, never agent/seq/rm, so
    the cross-array join is over small arrays. (`verify-handoff.json` is your *output*, not an
    input, and does not exist at fill time.)
 3. **Compile + smoke**: `make simv` → `make smoke`. The two steps **share** one
@@ -118,10 +118,9 @@ smoke gate still decides smoke pass/fail.
 
 ## Anti-gaming (cycle-accurate checks)
 
-- Author cycle-accurate checks per `inlined-check-hints.md`: every testpoint with non-empty
-  `inlined_check_hints[]` gets a cycle-accurate refmodel / scoreboard check matched to its
-  `implementation_detail` shape; mismatches use `` `uvm_error `` with counters that actually
-  increment.
+- Author cycle-accurate checks per `check-hints.md`: every check a testpoint covers gets a
+  cycle-accurate refmodel / scoreboard check matched to its `reference_rule`; mismatches use
+  `` `uvm_error `` with counters that actually increment.
 
 ## Prohibitions
 
@@ -132,8 +131,8 @@ smoke gate still decides smoke pass/fail.
   the RTL source (see the no-RTL-source-read prohibition below; RTL enters only mechanically via the
   compile filelist). RTL-class issues belong to the RTL editing stage; do not exceed your authority.
 - **No RTL-source reads for authoring.** The behavioral reference for every refmodel / scoreboard /
-  checker is the sim-plan exit docs (`tb-scaffold.json` `inlined_check_hints[]` +
-  the testpoint's `intent`) -- the DUT RTL is NOT in this child's input set and MUST NOT be opened to
+  checker is the check hints a testpoint covers, the requirements rows they name, and the
+  testpoint's `intent` -- the DUT RTL is NOT in this child's input set and MUST NOT be opened to
   understand a signal or derive an expected value. RTL participates only mechanically, through the
   compile filelist. A golden model reverse-engineered from the DUT mirrors the implementation (bugs
   included) and can never disagree -- circular verification. Reading RTL to author a check is a Rule A
@@ -163,9 +162,9 @@ smoke gate still decides smoke pass/fail.
   - **Rule A unrepairable** (compile/smoke semantic error per `repair-boundaries.md`):
     `STATUS: BLOCKED <compile|smoke> <locus>`, naming the failing phase first, then the semantic
     locus. Drives `--failure-phase compile|smoke`.
-  - **Incomplete `inlined_check_hints[]`** (boundary-case fallback per `inlined-check-hints.md`):
-    `STATUS: BLOCKED tb-scaffold.json testpoints[].inlined_check_hints[] incomplete: <TP-ID list>`
-    verbatim. Drives `--failure-phase prerequisite` (rework routes back to simulation-plan).
+  - **A check hint whose rule cannot be authored from** (per `check-hints.md`):
+    `STATUS: BLOCKED check-hints incomplete: <check_id list>` verbatim. Drives
+    `--failure-phase prerequisite`; the hint is specification's artifact.
 
   `STATUS: BLOCKED` is a **harness-level** signal, distinct from the `result.json.status` enum
   (`pass`/`fail` only); the orchestrator maps it to `status=fail` + `fail_reason` with the
@@ -181,8 +180,8 @@ that edge. Write it down:
 {"testpoints": [{"tp_id": "TP-07", "seqs": ["attn_prefix_seq", "attn_scale_seq"]}]}
 ```
 
-One entry per testpoint you materialized a check for, including the ones whose
-`inlined_check_hints[]` was empty. The verify child reads it for Rule B: an uncovered item it
+One entry per testpoint you materialized a check for, including the ones whose `covers[]` was
+empty. The verify child reads it for Rule B: an uncovered item it
 places on a testpoint leads to the sequence whose stimulus it then iterates.
 
 Nothing else about your checks belongs here. What a check verifies is in the check, the reviewer

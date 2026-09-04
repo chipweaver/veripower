@@ -23,7 +23,8 @@ Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps 
 | `<manifest>/manifest.json` | The child roster: `module` (= `<top_module>`) + `children[]` (`name` / `doc` / `rtl_modules[]`). Drives the fan-out |
 | `<children>/` (the per-child designs) | Per-child sub-design — frontmatter + §2 Interface + §3 Internal Behavior are what each child derives its RTL from |
 | `<design>/top-io.json`, `interconnects.json`, `clocks.json` | The boundary, the cut edges, the clocks. Passed by path into the sub-Tasks |
-| `<design>/ppa.json` | The area / timing-slack / power targets this RTL is judged against. Passed by path into the sub-Tasks |
+| `<requirements>/requirements.json` | The engineer's requirements, one row each with the stage that judges it. The child authors read whatever rows bear on their RTL, the numeric bounds synthesis and power-analysis will compare included; the intent reviewers hold the RTL to the rows judged by rtl-design. Passed by path into the sub-Tasks |
+| `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |
 
 Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `references/<name>.schema.json`.
 

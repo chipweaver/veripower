@@ -22,10 +22,8 @@ SPEC = {
         {
             "name": "t_smoke",
             "seqs": ["smoke"],
-            "feature": "F-1",
             "test_id": "T-1",
             "suites": ["smoke", "regress"],
-            "feature_name": "Register write path",
         }
     ],
     "scoreboard": {"observer": "obs"},
@@ -146,25 +144,15 @@ def test_render_scaffold_full_tree(tmp_path):
     assert (out / "tests/testlist.json").is_file()
 
 
-def test_testlist_carries_the_authored_suites_and_feature_name(tmp_path):
-    # Nothing here is invented: suites is the plan author's judgment and feature_name is
-    # injected by materialize-scaffold from features.json. This verb only copies them.
+def test_testlist_carries_the_authored_suites(tmp_path):
+    # Nothing here is invented: suites is the plan author's judgment. This verb only copies it.
     out = _render(tmp_path)
     tl = json.loads((out / "tests/testlist.json").read_text())
     assert tl["module"] == "m" and tl["top"] == "m_top"
     entry = tl["tests"][0]
-    assert set(entry) == {
-        "test_id",
-        "uvm_testname",
-        "feature_id",
-        "feature_name",
-        "suites",
-        "seqs",
-    }
+    assert set(entry) == {"test_id", "uvm_testname", "suites", "seqs"}
     assert entry["uvm_testname"] == "m_t_smoke_test"
     assert entry["suites"] == SPEC["tests"][0]["suites"]
-    assert entry["feature_name"] == SPEC["tests"][0]["feature_name"]
-    assert entry["feature_name"] != entry["feature_id"]
 
 
 def test_testlist_missing_authored_field_fails_loud(tmp_path):

@@ -1,0 +1,187 @@
+[
+  {
+    "id": "R-001",
+    "verbatim": "every clock (async active-low reset → 0): `o_result <= (i_data * i_weight) + i_pre_result` (registered)",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-002",
+    "verbatim": "`o_data_next <= i_data` (registered, forwards data to the next cell)",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-003",
+    "verbatim": "The product `i_data * i_weight` is a 32-bit multiply truncated to 32 bits; the accumulate is 32-bit and **wraps** (no saturation).",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-004",
+    "verbatim": "`i_pre_result = 0` (top-row cells `mac_00`/`mac_01`) → cell acts as a pure multiply into the partial-sum chain.",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-005",
+    "verbatim": "`o_result <= (i_data * i_weight) + i_pre_result` (registered) — column chain `mac00_out`→`mac_10.i_pre_result`, `mac01_out`→`mac_11.i_pre_result`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-006",
+    "verbatim": "Negative case: product/sum exceeding 32 bits wraps — accepted by design.",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-007",
+    "verbatim": "`o_data_next <= i_data` (registered) — `mac_01.o_data_next` / `mac_11.o_data_next` intentionally unconnected",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-008",
+    "verbatim": "`out1` = `in1` delayed **1** cycle (one register `delay10`); `delay10 <= in1`; `out1 = delay10`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-009",
+    "verbatim": "`out2` = `in2` delayed **2** cycles (two registers `delay20` → `delay21`); `delay20 <= in2`; `delay21 <= delay20`; `out2 = delay21`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-010",
+    "verbatim": "Async active-low reset clears all skew registers to 0; `delay10`/`delay20`/`delay21` <= 0 on `negedge i_rstn`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-011",
+    "verbatim": "`out1` = `in1` delayed **1** cycle (one register `delay10`); `out2` = `in2` delayed **2** cycles (two registers `delay20` → `delay21`)",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-012",
+    "verbatim": "Write on `i_wr & !o_full` → `mem[wr_addr]`; `wr_addr` advances on the same",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-013",
+    "verbatim": "`rd_addr` advances on `i_rd & !o_empty`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-014",
+    "verbatim": "Read is **combinational**: `o_data = mem[rd_addr]`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-015",
+    "verbatim": "`o_empty = (wr_addr == rd_addr)`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-016",
+    "verbatim": "`o_full  = ((wr_addr + 1) == rd_addr)`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-017",
+    "verbatim": "Async active-low reset clears memory and both pointers to 0",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-018",
+    "verbatim": "Happy path: write then read returns the written word in FIFO order",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-019",
+    "verbatim": "`o_full`/`o_empty` use 3-bit pointer wrap (modulo-8); the `(wr_addr+1)==rd_addr` full condition is part of the contract",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-020",
+    "verbatim": "Write while `o_full` (or read while `o_empty`) is ignored (pointer does not advance)",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-021",
+    "verbatim": "`write_enb = i_psel & i_penable & i_pwrite` → `mem[i_paddr] <= i_pwdata` (clocked, **no reset** on this block — faithful to the reference)",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-022",
+    "verbatim": "`read_enb  = i_psel & i_penable & !i_pwrite` → `o_prdata = fifo_result.o_data` (combinational); otherwise `o_prdata = 0`. The result FIFO read pointer advances on `read_enb` (`fifo_result.i_rd = read_enb`).",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-023",
+    "verbatim": "APB address map: `W00 = 0`, `W01 = 1`, `W10 = 2`, `W11 = 3`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-024",
+    "verbatim": "`counter` (4-bit): async reset → 0; while `start` asserted, increments each clock; when `start` deasserted, resets to 0",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-025",
+    "verbatim": "`fifo_en = start & (counter < 2)` (drives `i_rd` of both input FIFOs — pops two elements at the start of a pass)",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-026",
+    "verbatim": "`result_fifo_wr = (counter ∈ {2,3,4,5})`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-027",
+    "verbatim": "`result_fifo_i_data = out1` when `counter ∈ {2,4}`, `= out2` when `counter ∈ {3,5}`, else `0`, where `out1 = mac_10.o_result` and `out2 = mac_11.o_result`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-028",
+    "verbatim": "`done = (counter >= 5)`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-029",
+    "verbatim": "`32'h0` → `mac_00.i_pre_result`, `mac_01.i_pre_result`; `out1 = mac_10.o_result`; `out2 = mac_11.o_result`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-030",
+    "verbatim": "`counter` (4-bit): async reset → 0; while `start` asserted, increments each clock; when `start` deasserted, resets to 0; `done = (counter >= 5)`",
+    "judge": "simulation"
+  },
+  {
+    "id": "R-031",
+    "verbatim": "`tpu_top` is the top module; all four children are Verilog-2001, synthesizable",
+    "judge": "rtl-design"
+  },
+  {
+    "id": "R-032",
+    "verbatim": "single clock `i_clk`, async active-low reset `i_rstn`",
+    "judge": "specification"
+  },
+  {
+    "id": "R-033",
+    "verbatim": "line coverage above 90%",
+    "judge": "simulation",
+    "target": {
+      "dim": "coverage_line",
+      "op": ">",
+      "value": 90
+    }
+  },
+  {
+    "id": "R-034",
+    "verbatim": "worst setup slack after synthesis at least 0 ns",
+    "judge": "synthesis",
+    "target": {
+      "dim": "timing_slack_ns",
+      "op": ">=",
+      "value": 0
+    }
+  },
+  {
+    "id": "R-035",
+    "verbatim": "the reference model's arithmetic is the only oracle; no golden vectors are supplied",
+    "judge": "none"
+  }
+]

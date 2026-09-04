@@ -22,18 +22,25 @@ def _validate(stage_specific, status="pass"):
     return err is None, err
 
 
-def test_pass_with_timing_and_violations_validates():
-    valid, err = _validate({"violations": [], "timing": _TIMING_OK})
+def test_pass_with_timing_violations_and_requirements_validates():
+    valid, err = _validate({"violations": [], "timing": _TIMING_OK, "requirements": []})
     assert valid, err
 
 
 def test_pass_without_timing_rejected():
-    valid, _ = _validate({"violations": []})
+    valid, _ = _validate({"violations": [], "requirements": []})
     assert not valid
 
 
 def test_pass_without_violations_rejected():
-    valid, _ = _validate({"timing": _TIMING_OK})
+    valid, _ = _validate({"timing": _TIMING_OK, "requirements": []})
+    assert not valid
+
+
+def test_pass_without_requirements_rejected():
+    # A pass that judged no row is not a pass: the rows timing-analysis judges are its
+    # obligations, and an empty list is the explicit statement that there were none.
+    valid, _ = _validate({"violations": [], "timing": _TIMING_OK})
     assert not valid
 
 

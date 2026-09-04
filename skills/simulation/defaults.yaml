@@ -1,16 +1,6 @@
-# Global default thresholds, shared by all modules; per-module override is not supported (YAGNI).
-# A dim below its threshold makes sim finalize write status=fail with the coverage gaps; there
-# is no waiver path, so a threshold set too high routes real rework rather than warning anyone.
-
-# Structural coverage gate dims (VCS -cm, no covergroup needed). functional removed:
-# no covergroup substrate exists. One bar across all four dims, set above what the 2026-06-04
-# eval traces reached — toggle 50 and fsm 40 were fitted to those runs, and a bar fitted to what
-# a TB happened to achieve cannot tell an adequate TB from the one it was measured on.
-coverage_thresholds:
-  line:    90
-  cond:    90
-  fsm:     90
-  toggle:  90
+# Global default round budgets, shared by all modules; per-module override is not supported
+# (YAGNI). Coverage thresholds are not here: they are the engineer's own, read by the coverage
+# gate from the requirements.json rows simulation judges.
 
 # Round budget for stimulus iterate (when coverage gaps all map to testpoints)
 stimulus_iterate_max_rounds: 3

@@ -32,9 +32,15 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
-    from lintcdc import result
+    from lintcdc import requirements, result
 
-    return result.finalize(a.workdir, a.fix_owner, a.fail_reason)
+    return result.finalize(
+        a.workdir,
+        requirements.mine(requirements.load(a.workdir)),
+        requirements.parse_declared(a.requirements),
+        a.fix_owner,
+        a.fail_reason,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -68,6 +74,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="force status=fail with this reason; use it when `make` died before the "
         "parser wrote its sidecar, so the reason on its stderr is the precise one",
+    )
+    sp.add_argument(
+        "--requirements",
+        default=None,
+        help="your verdict on each requirements.json row judged by lint-cdc, as a JSON array "
+        'of {"id", "met", "actual"}',
     )
     sp.set_defaults(func=_cmd_finalize)
 

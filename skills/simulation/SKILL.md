@@ -36,7 +36,9 @@ each input's producer has recorded it and the fingerprint on disk still matches.
 
 | Path | Use |
 |---|---|
-| `<scaffold>/tb-scaffold.json` + `<scaffold>/sequences.json` | The plan's judgment: which agent owns which `interface_group`, and what to run. `agents` / `sequences` / `tests` are what gets materialized into SV; `testpoints[]` carry the check semantics (`inlined_check_hints[]`), what each testpoint drives (`intent`) and what it should reach (`bins`). `top` names the DUT. A sub-Task input: you hand over the path. |
+| `<scaffold>/tb-scaffold.json` + `<scaffold>/sequences.json` | The plan's judgment: which agent owns which `interface_group`, and what to run. `agents` / `sequences` / `tests` are what gets materialized into SV; `testpoints[]` carry which checks each one covers (`covers[]`), what it drives (`intent`) and what it should reach (`bins`). `top` names the DUT. A sub-Task input: you hand over the path. |
+| `<check_hints>/<child>.json` + `<requirements>/requirements.json` | What every covered check observes and against what rule, and the requirement rows each check establishes; the env child reads both by id. The coverage gate reads its bounds from the requirements rows simulation judges. Sub-Task inputs: you hand over the paths. |
+| `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |
 | `<plan>/verification-plan.md` | The human-readable plan the env-build child fills intent against. A sub-Task input; you hand over the path. |
 | `<rtl>/rtl-files.json` | Per-child DUT file layout, which `bootstrap` turns into `rtl_filelist.f`. Schema: `skills/rtl-design/references/rtl-files.schema.json`. |
 | `<spec>/top-io.json` + `<spec>/clocks.json` | The DUT boundary. `bootstrap` derives every vif signal, every clock generator and the reset polarity from these at render time — the scaffold does not restate them, so nothing you see in the TB can disagree with what specification declared. |
@@ -94,8 +96,8 @@ python3 <skill>/scripts/sim/__main__.py finalize --workdir {workdir} \
 ```
 
 The child's reason string picks `--failure-phase`: `compile` or `smoke` for a Rule A semantic
-block, `prerequisite` for an incomplete `inlined_check_hints[]`, which is a plan defect rather than
-one of yours.
+block, `prerequisite` for a check hint whose rule cannot be authored from, which is
+specification's defect rather than one of yours.
 
 Otherwise gate on the smoke run's own output, never on the child's prose about it. Read
 `regression-log.txt`'s `RESULT <test> <PASS|FAIL>` lines, or the per-test `logs/<test>.status`
@@ -166,7 +168,7 @@ Dispatch one `Task(run_in_background=True)`, the verify child, pointing its prom
 [`references/verify-task-contract.md`](references/verify-task-contract.md) and handing over the same
 `{workdir}` (now holding the built TB, a compiled `simv` and `verify-handoff.json`), the
 scaffold-spec path, `{module}`, and `<skill>`. It runs the full regression and iterates stimulus against the
-coverage thresholds within the Rule B boundary
+coverage bounds the requirements set, within the Rule B boundary
 ([`references/coverage-iteration.md`](references/coverage-iteration.md)). It repairs nothing: a
 regress failure routes out with `failing_cases` for the caller to attribute.
 
@@ -190,14 +192,15 @@ copy a gate verdict across by hand.
 python3 <skill>/scripts/sim/__main__.py finalize \
   --workdir {workdir} --phase final \
   --plan <scaffold> \
-  --thresholds <skill>/defaults.yaml \
+  --requirements <requirements>/requirements.json \
   --conformance-review {workdir}/conformance-review.md \
   --verify-verdict {workdir}/<reaped-verify-verdict>.json \
   [--fix-owner <rule>]
 ```
 
 `--phase final` re-runs three gates over the workdir before it will write a pass: materialization,
-the conformance verdict off the review file you hand it, and coverage against the thresholds. The
+the conformance verdict off the review file you hand it, and coverage against the bounds the
+requirements rows set. The
 earliest failing one wins. So arriving here with an
 un-dispositioned `gate=trip` costs you the round rather than passing it: finalize writes the same
 envelope step 2's own fail-out would have. The smoke and verify verdicts

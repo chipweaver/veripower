@@ -60,17 +60,17 @@ def _write_file(tree_root, module, rel, content):
 # schema's status=pass conditional requirements (skills/<stage>/references/
 # result.schema.json), so reap-time schema validation genuinely passes.
 _STAGE_SPECIFIC = {
-    "specification": {"top_module": "top", "ppa_targets": []},
+    "specification": {"top_module": "top"},
     "simulation-plan": {},
     "rtl-design": {},
-    "synthesis": {"ppa_actual": []},
+    "synthesis": {"ppa_actual": [], "requirements": []},
     "simulation": {},
     "power-analysis": {
         "saif_artifacts": [],
         "compile_info": {"vcs_version": "test"},
         "failures": [],
         "ppa_actual": [],
-        "violations": [],
+        "requirements": [],
         "power_by_scenario": [],
     },
 }
@@ -81,9 +81,8 @@ _STAGE_FILES = {
     "specification": {
         "design.md": "design v1",
         "manifest.json": "{}",
-        "ppa.json": "{}",
+        "requirements.json": "[]",
         "clocks.json": "[]",
-        "features.json": "[]",
         "check-hints/child_a.json": "[]",
         "top-io.json": "[]",
         "interconnects.json": "[]",
@@ -155,8 +154,8 @@ def _dispatch_write_reap(tree_root, module, rule, files):
 
 def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     module = "m"
-    # 1. seed upstream canonical (specification products) + brainstorm
-    _write_file(tmp_path, module, "brainstorm.md", "b1")
+    # 1. seed upstream canonical (specification products) + the intent tree
+    _write_file(tmp_path, module, "intent/brainstorm.md", "b1")
     spec = _dispatch_write_reap(
         tmp_path, module, "specification", _STAGE_FILES["specification"]
     )
@@ -232,7 +231,7 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
 
 def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     module = "m"
-    _write_file(tmp_path, module, "brainstorm.md", "b1")
+    _write_file(tmp_path, module, "intent/brainstorm.md", "b1")
     # Real sidecar content — the deployed emit_power_tests.py (shelled out to by the real
     # power bootstrap below) enforces the sim-plan -> power cross-stage contract (a
     # scenario's sequence_ref must resolve to a sequences.json name), which is now a
@@ -280,8 +279,8 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     assert table["netlist"] == base + "/Design/synthesis"
     assert table["tb_env"] == base + "/Verification/simulation"
     assert table["scaffold"] == base + "/Verification/simulation-plan"
-    assert table["ppa"] == base + "/Design/specification"
-    for key in ("netlist", "tb_env", "scaffold", "ppa"):
+    assert table["requirements"] == base + "/Design/specification"
+    for key in ("netlist", "tb_env", "scaffold", "requirements"):
         assert Path(table[key]).is_absolute()
 
     # EXECUTE: the real power bootstrap script, reading the kernel-injected
@@ -346,7 +345,7 @@ def test_relocation_invariance_consumer_reanchors(tmp_path):
     module = "m"
     tree_a = tmp_path / "a"
     tree_a.mkdir()
-    _write_file(tree_a, module, "brainstorm.md", "b1")
+    _write_file(tree_a, module, "intent/brainstorm.md", "b1")
     for rule in ("specification", "rtl-design"):
         outcome = _dispatch_write_reap(tree_a, module, rule, _STAGE_FILES[rule])
         assert outcome["ok"] is True and outcome["verdict"] == "pass", outcome

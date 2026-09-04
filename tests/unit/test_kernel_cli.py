@@ -54,13 +54,14 @@ def _write_file(module, rel, content):
 # status=pass conditional requirements (skills/<stage>/references/result.schema.json),
 # so the reap-time schema validation genuinely passes, not vacuously.
 _STAGE_SPECIFIC = {
-    "specification": {"top_module": "top", "ppa_targets": []},
+    "specification": {"top_module": "top"},
     "simulation-plan": {},
     "rtl-design": {},
-    "lint-cdc": {"violations": []},
-    "synthesis": {"ppa_actual": []},
+    "lint-cdc": {"violations": [], "requirements": []},
+    "synthesis": {"ppa_actual": [], "requirements": []},
     "timing-analysis": {
         "violations": [],
+        "requirements": [],
         "timing": {
             "setup": {"worst_slack_ns": 0.1, "met": True, "worst_path": "p"},
             "hold": {"worst_slack_ns": 0.1, "met": True, "worst_path": "p"},
@@ -76,7 +77,7 @@ _STAGE_SPECIFIC = {
         "compile_info": {"vcs_version": "test"},
         "failures": [],
         "ppa_actual": [],
-        "violations": [],
+        "requirements": [],
         "power_by_scenario": [],
     },
 }
@@ -120,10 +121,8 @@ _STAGE_FILES = {
         "design.md": "design v1",
         "children/c.md": "child v1",
         "manifest.json": "{}",
-        "ppa.json": "{}",
+        "requirements.json": "[]",
         "clocks.json": "[]",
-        "features.json": "[]",
-        "timing-scenarios.json": "[]",
         "check-hints/c.json": "[]",
         "top-io.json": "[]",
         "interconnects.json": "[]",
@@ -182,7 +181,7 @@ _ORACLE_CONTENT = {
 def _build_full_chain(tmp_path, module):
     """Dispatch+write+reap every stage, in FORWARD_PRIORITY order, leaving every
     oracle unpinned (proposed) but pinnable."""
-    _write_file(module, "brainstorm.md", "b1")
+    _write_file(module, "intent/brainstorm.md", "b1")
     for rule in rules.FORWARD_PRIORITY:
         files = {**_STAGE_FILES[rule], **_ORACLE_CONTENT.get(rule, {})}
         outcome = _dispatch_write_reap(tmp_path, module, rule, files)
@@ -191,7 +190,7 @@ def _build_full_chain(tmp_path, module):
 
 def test_cold_start_decide_dispatches_specification(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "brainstorm.md", "b1")
+    _write_file("m", "intent/brainstorm.md", "b1")
     a = _run_json(tmp_path, "decide", "--module", "m")
     assert a["action"] == "DISPATCH"
     assert a["rule"] == "specification"
@@ -200,7 +199,7 @@ def test_cold_start_decide_dispatches_specification(tmp_path, monkeypatch):
 
 def test_dispatch_then_decide_yields(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "brainstorm.md", "b1")
+    _write_file("m", "intent/brainstorm.md", "b1")
     d = _run_json(tmp_path, "dispatch", "--module", "m", "--rule", "specification")
     assert d["ok"] is True
     a = _run_json(tmp_path, "decide", "--module", "m")
@@ -210,7 +209,7 @@ def test_dispatch_then_decide_yields(tmp_path, monkeypatch):
 
 def test_full_mini_loop_dispatch_result_reap_decide(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "brainstorm.md", "b1")
+    _write_file("m", "intent/brainstorm.md", "b1")
     outcome = _dispatch_write_reap(
         tmp_path, "m", "specification", _STAGE_FILES["specification"]
     )
@@ -231,11 +230,11 @@ def test_full_mini_loop_dispatch_result_reap_decide(tmp_path, monkeypatch):
 def test_reap_schema_violation_blocks_and_skips_promote(tmp_path, monkeypatch):
     # result.json parses and carries status=pass, but violates the stage schema
     # (missing the required envelope fields stage/module/produced_at
-    # and the pass-path stage_specific.top_module/ppa_targets) -> the reap records
+    # and the pass-path stage_specific.top_module) -> the reap records
     # a blocked outcome with reason schema_violation and promote is NOT called: a
     # malformed-but-status-bearing result.json must never mint a valid proof.
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "brainstorm.md", "b1")
+    _write_file("m", "intent/brainstorm.md", "b1")
     d = _run_json(tmp_path, "dispatch", "--module", "m", "--rule", "specification")
     workdir = d["workdir"]
     _write_file("m", f"{workdir}/design.md", "d1")
@@ -398,7 +397,7 @@ def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human(
 ):
     monkeypatch.chdir(tmp_path)
     module = "pintest"
-    _write_file(module, "brainstorm.md", "b1")
+    _write_file(module, "intent/brainstorm.md", "b1")
     files = dict(_STAGE_FILES["specification"])
     files["spec-review/core.md"] = "review-v1"
     outcome = _dispatch_write_reap(tmp_path, module, "specification", files)
@@ -471,7 +470,7 @@ def _dispatch_triage(tmp_path, module, sim_run):
     # Triage only ever fires as a disposition on a simulation failure, so its module
     # directory always exists by then. Seed it: the CLI refuses a module with no directory,
     # since module paths resolve against cwd and an absent one is a wrong-cwd mistake.
-    _write_file(module, "brainstorm.md", "b1")
+    _write_file(module, "intent/brainstorm.md", "b1")
     d = _run_json(
         tmp_path,
         "dispatch",
@@ -748,7 +747,7 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
 def test_reap_never_dispatched_ok_false_no_event_appended(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "reapguard1"
-    _write_file(module, "brainstorm.md", "b1")
+    _write_file(module, "intent/brainstorm.md", "b1")
     before = facts.read_events(module)
     r = _run_json(
         tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
@@ -808,7 +807,7 @@ def test_dispatch_triage_without_sim_run_rejected(tmp_path, monkeypatch):
     # sim_run, the triage reap builds a diagnosis with subject.outcome_run=None -> schema
     # violation AFTER the outcome already landed -> half-reap. Reject the dispatch up front.
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "brainstorm.md", "b1")
+    _write_file("m", "intent/brainstorm.md", "b1")
     r = _run_json(tmp_path, "dispatch", "--module", "m", "--rule", "simulation-triage")
     assert r["ok"] is False
     assert "sim_run" in r["error"]
@@ -816,7 +815,7 @@ def test_dispatch_triage_without_sim_run_rejected(tmp_path, monkeypatch):
 
 def test_unknown_module_directory_is_a_hard_error(tmp_path, monkeypatch):
     """Module paths resolve against cwd, so an absent module directory is a wrong-cwd
-    mistake, never a starting state — brainstorm.md must already exist for anything to be
+    mistake, never a starting state — intent/brainstorm.md must already exist for anything to be
     dispatchable. Both verbs used to answer as if the module were merely empty: `status`
     invented an all-`missing` projection at exit 0, and `decide` returned the same
     "no eligible rule" ESCALATE a genuinely deadlocked module returns."""
@@ -933,7 +932,7 @@ def test_dispatch_consumer_in_virgin_module_rejected(tmp_path, monkeypatch):
     # rejected; else the run records an empty input table -> a vacuously-valid proof forever.
     monkeypatch.chdir(tmp_path)
     module = "virgin"
-    _write_file(module, "brainstorm.md", "b1")
+    _write_file(module, "intent/brainstorm.md", "b1")
     r = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "synthesis")
     assert r["ok"] is False
     assert "not available" in r["error"]
@@ -991,7 +990,7 @@ def test_outputs_name_the_artifacts_that_are_the_evidence(tmp_path, monkeypatch)
     # truncates the audit trail. `outputs` carries them with their fingerprints, which is
     # why the proof no longer repeats the bare paths beside it.
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "brainstorm.md", "b1")
+    _write_file("m", "intent/brainstorm.md", "b1")
     _dispatch_write_reap(tmp_path, "m", "specification", _STAGE_FILES["specification"])
     _, outcome = facts._proof_outcome(facts.read_events("m"), "specification")
     outs = outcome["outputs"]
@@ -1007,7 +1006,7 @@ def test_pin_zero_match_selector_rejected(tmp_path, monkeypatch):
     # content_fingerprint="unknown" and returns ok:true — an inert pin that can never grade
     # human. A pin must endorse real content; reject when nothing matches (conservative).
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "brainstorm.md", "b1")
+    _write_file("m", "intent/brainstorm.md", "b1")
     r = _run_json(
         tmp_path,
         "pin",
@@ -1065,7 +1064,7 @@ def test_triage_complete_without_findings_blocked(tmp_path, monkeypatch):
 def test_reap_stale_produced_at_blocked_no_promote(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "stale1"
-    _write_file(module, "brainstorm.md", "b1")
+    _write_file(module, "intent/brainstorm.md", "b1")
     d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
     workdir = d["workdir"]
     for rel, content in _STAGE_FILES["specification"].items():
@@ -1096,7 +1095,7 @@ def test_reap_same_second_produced_at_not_misjudged(tmp_path, monkeypatch):
     # The check floors the dispatch ts, so the boundary case must reap pass, not stale.
     monkeypatch.chdir(tmp_path)
     module = "boundary1"
-    _write_file(module, "brainstorm.md", "b1")
+    _write_file(module, "intent/brainstorm.md", "b1")
     d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
     dispatch_ts = facts.read_events(module)[-1]["ts"]  # %Y-%m-%dT%H:%M:%S.%fZ
     workdir = d["workdir"]
@@ -1120,7 +1119,7 @@ def test_reap_same_second_produced_at_not_misjudged(tmp_path, monkeypatch):
 def test_reap_unparseable_produced_at_blocked(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "stale2"
-    _write_file(module, "brainstorm.md", "b1")
+    _write_file(module, "intent/brainstorm.md", "b1")
     d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
     workdir = d["workdir"]
     for rel, content in _STAGE_FILES["specification"].items():
@@ -1156,10 +1155,11 @@ def test_stale_result_reason_boundaries():
 
 
 def test_dispatch_writes_dispatch_json(tmp_path, monkeypatch):
-    # cold specification dispatch → workdir has dispatch.json with the brainstorm location
+    # cold specification dispatch → workdir has dispatch.json with the intent location
     monkeypatch.chdir(tmp_path)
     (tmp_path / "m").mkdir(parents=True)
-    (tmp_path / "m" / "brainstorm.md").write_text("bs")
+    (tmp_path / "m" / "intent").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "m" / "intent" / "brainstorm.md").write_text("bs")
     r = _run_json(
         tmp_path,
         "dispatch",
@@ -1170,7 +1170,7 @@ def test_dispatch_writes_dispatch_json(tmp_path, monkeypatch):
     )
     wd = tmp_path / "m" / r["workdir"]
     table = json.loads((wd / "dispatch.json").read_text())["inputs"]
-    assert table["brainstorm"] == str((tmp_path / "m").resolve())
+    assert table["intent"] == str((tmp_path / "m" / "intent").resolve())
 
 
 def test_dispatch_carries_author_previous_round(tmp_path, monkeypatch):
@@ -1179,7 +1179,8 @@ def test_dispatch_carries_author_previous_round(tmp_path, monkeypatch):
     canon = tmp_path / "m" / "Design" / "specification"
     canon.mkdir(parents=True)
     (canon / "design.md").write_text("prev")
-    (tmp_path / "m" / "brainstorm.md").write_text("bs")
+    (tmp_path / "m" / "intent").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "m" / "intent" / "brainstorm.md").write_text("bs")
     r = _run_json(
         tmp_path,
         "dispatch",
@@ -1200,7 +1201,7 @@ def test_dispatch_injects_no_upstream_byte_copy(tmp_path, monkeypatch):
     # seed enough upstream so synthesis is dispatchable: specification then rtl-design,
     # each taken through a real dispatch+result+reap (mirrors _dispatch_write_reap /
     # _build_full_chain) so their outcomes are recorded and rule_available sees them.
-    _write_file("m", "brainstorm.md", "bs")
+    _write_file("m", "intent/brainstorm.md", "bs")
     _dispatch_write_reap(tmp_path, "m", "specification", _STAGE_FILES["specification"])
     _dispatch_write_reap(tmp_path, "m", "rtl-design", _STAGE_FILES["rtl-design"])
     r = _run_json(
@@ -1226,7 +1227,8 @@ def test_dispatch_proof_inputs_excludes_self_carry(tmp_path, monkeypatch):
     (canon / "design.md").write_text(
         "prev"
     )  # a self-PRODUCT (output), carried, not an input
-    (tmp_path / "m" / "brainstorm.md").write_text("bs")
+    (tmp_path / "m" / "intent").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "m" / "intent" / "brainstorm.md").write_text("bs")
     _run_json(
         tmp_path,
         "dispatch",
@@ -1240,7 +1242,7 @@ def test_dispatch_proof_inputs_excludes_self_carry(tmp_path, monkeypatch):
         for ln in (tmp_path / "m" / "events.jsonl").read_text().splitlines()
     ]
     disp = [e for e in events if e["type"] == "dispatch"][-1]
-    assert set(disp["inputs"]) == {"brainstorm.md"}  # design.md (self-product) absent
+    assert set(disp["inputs"]) == {"intent"}  # design.md (self-product) absent
 
 
 def test_bare_import_single_module_identity():

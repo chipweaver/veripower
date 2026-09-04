@@ -20,12 +20,13 @@ readable and the rest is yours to write.
   the drive path; the rendered `tb_top` carries the actual `.{{RST}}(...)`/`.{{CLK}}(...)`
   wiring.
 - Immutable plan, all of it in `<scaffold>/tb-scaffold.json`'s `testpoints[]`:
-  - `inlined_check_hints[]` carries the cycle-accurate check semantics (see
-    `inlined-check-hints.md`).
+  - `covers[]` names the check hints in `<check_hints>/<child>.json`; each hint's
+    `reference_rule` is the check semantics, and the `<requirements>/requirements.json` rows it
+    names are what the check establishes (see `check-hints.md`).
   - `intent` states what the testpoint drives and why. It is a required field of
     `tb-scaffold.schema.json`, and it is the authoritative intent source for a testpoint
-    whose `inlined_check_hints[]` is empty.
-  - `bins` / `covers` name what it is meant to hit and which authored checks it answers.
+    whose `covers[]` is empty.
+  - `bins` names what it is meant to hit.
 - DUT RTL filelist (read-only, to cross-check intent).
 - **Excluded:** `verify-handoff.json` — it is env's own self-report (env output, not input);
   reading it would be self-evaluation.
@@ -36,15 +37,14 @@ You are a fresh, skeptical reviewer. **Do not trust that a check is adequate bec
 exists.** For each testpoint, hold the check that was written against what the testpoint set
 out to verify, and say whether the first would catch the second going wrong.
 
-- **Non-empty `inlined_check_hints[]`:** the refmodel and scoreboard must implement a
-  cycle-accurate check matched to the hint's `implementation_detail` shape (assignment
-  formula, behavioral model, reference algorithm, or time-domain trigger monitoring; see
-  `inlined-check-hints.md`). The anti-gaming lines are there too: a mismatch raises
-  `` `uvm_error `` rather than `uvm_info`, the mismatch counter actually increments, and the
-  check reads the `observable` it claims to.
-- **Empty `inlined_check_hints[]`** (scenario testpoints the plan author added, e.g. TP-IRQ /
-  TP-RESET): a functional model is fine and cycle accuracy is not required, but the check
-  must not be a no-op.
+- **Non-empty `covers[]`:** the refmodel and scoreboard must implement a cycle-accurate check
+  matched to each covered hint's `reference_rule` (assignment formula, behavioral model,
+  reference algorithm, or time-domain trigger monitoring; see `check-hints.md`). The
+  anti-gaming lines are there too: a mismatch raises `` `uvm_error `` rather than `uvm_info`,
+  the mismatch counter actually increments, and the check reads the `observable` it claims to.
+- **Empty `covers[]`** (scenario testpoints the plan author added, e.g. TP-IRQ / TP-RESET): a
+  functional model is fine and cycle accuracy is not required, but the check must not be a
+  no-op.
 
   **The no-op test is the one piece of this worth stating precisely,** because a no-op reads
   as a real check to anyone skimming. A check is a no-op when its expected value comes solely
@@ -61,8 +61,8 @@ the wrong thing. The second is the one that survives a skim.
 **Out of scope, do not report:** materialization presence (the env-exit self-gate covers it);
 coverage sufficiency (the verify phase covers it); lint, CDC, timing, synthesizability or
 syntax (other stages and the compiler); whether the DUT RTL has a bug (you judge the check,
-not the design); over-engineering. A testpoint with a non-empty `covers[]` and no
-`inlined_check_hints[]` is also not yours: env-build blocks on that upstream.
+not the design); over-engineering. A hint whose rule cannot be authored from is also not
+yours: env-build blocks on that upstream.
 
 ## Blocking
 

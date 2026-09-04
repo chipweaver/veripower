@@ -20,14 +20,15 @@ only what it reads.
 
 Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key
 to a location, so `<key>/<subpath>` is how you address one. `design` / `manifest` / `children` /
-`clocks` / `features` / `check_hints` / `top_io` all resolve to the specification stage root.
+`clocks` / `requirements` / `check_hints` / `top_io` all resolve to the specification stage root.
 
 | Path | What it is |
 |---|---|
 | `<design>/design.md` | §1 behavior, §1.4 boundary, and §1.5 timing scenarios with their waveforms — the only home for the scenarios you author sequences from, so you read it |
 | `<children>/<child>.md` | Per-child implementation constraints a testpoint may have to verify: register side effects, exceptions, concurrency, back-pressure, reset, state-machine boundaries |
-| `<design>/features.json` | The feature list you author testpoints and tests from |
-| `<check_hints>/` (per child, one file) | Per child, the checks that verify it — `check_id` is unique across all of them |
+| `<requirements>/requirements.json` | The engineer's requirements, one row each with the stage that judges it. The rows judged by simulation are what the testpoints exist to establish; the rows judged by simulation-plan are requirements on this plan itself: a stimulus distribution, a seed, a scope |
+| `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |
+| `<check_hints>/` (per child, one file) | Per child, how simulation observes each requirement row it realizes — `check_id` is unique across all of them, and each names the rows it establishes |
 | `<design>/clocks.json`, `<design>/top-io.json` | The clock and the DUT boundary `materialize-scaffold` derives from |
 | `<manifest>/manifest.json` | `.module` is the Top field in plan §1; `children[]` is the roster the check hints are aggregated over |
 
@@ -79,7 +80,7 @@ work is yours to continue or redo, and artifacts on disk are not a gate you alre
 Author the judgment fields into the three sidecars and write `verification-plan.md` per
 [`references/verification-plan-template.md`](references/verification-plan-template.md). How the spec
 fields map to the scaffold objects — agents from interface groups, sequences from §1.5 scenarios,
-tests from features, RM / scoreboard from the check hints — is
+tests from the requirements, RM / scoreboard from the check hints — is
 [`references/spec-input-contract.md`](references/spec-input-contract.md).
 
 Every `check_hints[]` check_id must end up in some `testpoints[].covers[]` or in `skipped_checks[]`

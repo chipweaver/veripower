@@ -18,9 +18,9 @@ import sys
 from pathlib import Path
 
 from sim._gate import (
-    _load_thresholds,
     conformance_flagged,
     coverage_gate,
+    coverage_rows,
     materialization_errors,
 )
 from sim._plan import load_plan
@@ -55,7 +55,7 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path, conformance_review):
+def _final_gate(workdir: Path, plan_dir: Path, requirements: Path, conformance_review):
     """Re-derive the exit verdict in-process from the three primitives in sim._gate.
     Returns (ok, verdict, phase, fail_reason); the earliest wave to fail wins, in the
     order the waves ran: materialization, conformance review, coverage.
@@ -66,15 +66,15 @@ def _final_gate(workdir: Path, plan_dir: Path, thresholds: Path, conformance_rev
     the overriding party checks it."""
     scaffold_doc = load_plan(plan_dir)
     d1_errs = materialization_errors(Path(workdir), scaffold_doc)
-    thr = _load_thresholds(Path(thresholds))
+    rows = coverage_rows(Path(requirements))
     cov_path = Path(workdir) / "structural-coverage.json"
     cov = (
         json.loads(cov_path.read_text(encoding="utf-8")) if cov_path.is_file() else None
     )
-    cov_errs, dims = coverage_gate(cov, thr)
+    cov_errs, judged = coverage_gate(cov, rows)
     verdict = {
         "coverage_extractable": cov is not None and bool((cov or {}).get("aggregate")),
-        "dims": dims,
+        "requirements": judged,
     }
     if d1_errs:
         return (False, verdict, "compile", "; ".join(d1_errs)[:300])
@@ -96,7 +96,7 @@ def build_result(
     *,
     phase,
     scaffold=None,
-    thresholds=None,
+    requirements=None,
     conformance_review=None,
     verify_verdict=None,
     fail_reason=None,
@@ -128,7 +128,7 @@ def build_result(
         return 0
 
     ok, gate, fphase, freason = _final_gate(
-        workdir, scaffold, thresholds, conformance_review
+        workdir, scaffold, requirements, conformance_review
     )
     if not ok:
         # companions keyed off the resolved phase, the same way _early_exit_ss keys them,
@@ -136,7 +136,7 @@ def build_result(
         ss = {"fail_reason": freason}
         if fphase == "coverage":
             ss["coverage_extractable"] = gate["coverage_extractable"]
-            ss["dims"] = gate["dims"]
+            ss["requirements"] = gate["requirements"]
         _write_result(
             workdir,
             _envelope(
@@ -175,6 +175,7 @@ def build_result(
         "failed": cases["failed"],
         "stimulus_iterations": verify.get("stimulus_iterations"),
         "coverage_summary": read_coverage_summary(workdir),
+        "requirements": gate["requirements"],
     }
     _write_result(
         workdir,
@@ -265,7 +266,7 @@ def finalize(
     *,
     phase,
     scaffold=None,
-    thresholds=None,
+    requirements=None,
     conformance_review=None,
     verify_verdict=None,
     fail_reason=None,
@@ -281,7 +282,7 @@ def finalize(
             workdir,
             phase=phase,
             scaffold=scaffold,
-            thresholds=thresholds,
+            requirements=requirements,
             conformance_review=conformance_review,
             verify_verdict=verify_verdict,
             fail_reason=fail_reason,

@@ -1,12 +1,11 @@
-"""synthesis.result — extract the two PPA scalars from DC reports and judge the gate.
+"""synthesis.result — extract the two PPA scalars from DC reports and judge the requirements.
 
 Single owner of the synthesis "PPA self-check" step. run() returns (rc, payload); a
 non-zero rc yields no payload, so a parse failure can never fold a half-read number
 into a verdict. Each non-zero rc also prints a greppable FAIL=<token> on stderr for
 the human reading the log:
 
-  0  extracted + judged (incl. a vacuous no-targets pass and a legitimate
-     PPA-miss verdict="fail")
+  0  extracted + judged (incl. a run with no targeted rows and a legitimate miss)
   1  a required report (area.rpt / qor.rpt) absent          -> FAIL=missing
   3  report present but an anchor absent (no 'Total cell area', no 'Critical Path
      Slack'), or the WNS summary contradicts the per-group slack -> FAIL=unparseable
@@ -28,6 +27,8 @@ import json
 import re
 import sys
 from pathlib import Path
+
+from synthesis import requirements
 
 # ── Anchors (grounded, DC L-2016.03-SP1) ─────────────────────────────────────
 # area.rpt: "Total cell area:                 65018.219263" (NOT "Total area: undefined").
@@ -62,8 +63,9 @@ def parse_wns_summary(text: str) -> dict | None:
     return {"wns": float(m.group(1)), "violating_paths": int(m.group(3))}
 
 
-def run(reports_dir, area_target, slack_target) -> tuple[int, dict | None]:
-    """Parse + judge. Returns (rc, payload); payload is None on any non-zero rc."""
+def run(reports_dir, target_rows) -> tuple[int, dict | None]:
+    """Parse + judge every row with a target. Returns (rc, payload); payload is None on any
+    non-zero rc."""
     reports_dir = Path(reports_dir)
 
     area_rpt = reports_dir / "area.rpt"
@@ -108,18 +110,18 @@ def run(reports_dir, area_target, slack_target) -> tuple[int, dict | None]:
             )
             return 3, None
 
-    # Judge — each target is optional; a missing target is not gated.
-    violations: list[dict] = []
-    if area_target is not None and area > area_target:
-        violations.append({"dim": "area_um2", "target": area_target, "actual": area})
-    if slack_target is not None and worst < slack_target:
-        violations.append(
-            {"dim": "timing_slack_ns", "target": slack_target, "actual": worst}
-        )
-    verdict = "fail" if violations else "pass"
+    # Judge — one entry per targeted row, compared with the engineer's own operator.
+    actual = {"area_um2": area, "timing_slack_ns": worst}
+    judged = [
+        {
+            "id": r["id"],
+            "met": requirements.met(actual[r["target"]["dim"]], r["target"]),
+            "actual": actual[r["target"]["dim"]],
+        }
+        for r in target_rows
+    ]
 
     payload = {
-        "verdict": verdict,
         "ppa_actual": [
             {"dim": "area_um2", "value": area, "source": "area.rpt Total cell area"},
             {
@@ -128,7 +130,7 @@ def run(reports_dir, area_target, slack_target) -> tuple[int, dict | None]:
                 "source": f"qor.rpt worst Critical Path Slack across {n_groups} group(s) (min)",
             },
         ],
-        "violations": violations,
+        "requirements": judged,
     }
     return 0, payload
 
@@ -166,20 +168,24 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 def build_result(
     workdir,
-    area_target,
-    slack_target,
+    rows,
+    declared,
     fix_owner=None,
     fail_reason=None,
 ) -> int:
-    """Assemble the synthesis result.json. Reuses run() for the PPA gate (in-process),
-    then derives the header + artifacts + writes the envelope. Returns 0 (result.json
-    written, pass or fail). A raise -> finalize() exit 2 (BLOCKED).
+    """Assemble the synthesis result.json. Reuses run() for the targeted rows (in-process),
+    merges the caller's verdicts on the rest, then derives the header + artifacts + writes
+    the envelope. Returns 0 (result.json written, pass or fail). A raise -> finalize()
+    exit 2 (BLOCKED) — including a row judged by this stage that nobody judged.
 
     Three things this verb cannot derive, so the caller states them:
 
+    declared — the verdict on each row with no target: a bound in a unit DC does not
+    report, a rule the reports show but no number compares.
+
     fix_owner — which rule must act. The reports say what missed and by how much;
-    whether that means the RTL is wrong or the target is malformed is read off the
-    targets themselves.
+    whether that means the RTL is wrong or the requirement is malformed is read off the
+    rows themselves.
 
     fail_reason — the cause of a run that produced no gradeable reports, or died after
     writing them. Supplying it IS the declaration of failure: it wins over the gate,
@@ -201,7 +207,9 @@ def build_result(
         )
         return 0
 
-    rc, actual = run(reports, area_target, slack_target)  # reuse the gate verbatim
+    rc, actual = run(
+        reports, [r for r in rows if "target" in r]
+    )  # reuse the gate verbatim
     if rc != 0:
         token = (
             "missing" if rc == 1 else "unparseable"
@@ -219,12 +227,14 @@ def build_result(
         )
         return 0
 
-    status = "pass" if actual["verdict"] == "pass" else "fail"
+    judged = requirements.merge(rows, actual["requirements"], declared)
+    unmet = requirements.unmet(judged)
+    status = "fail" if unmet else "pass"
     area_text = (reports / "area.rpt").read_text(errors="replace")
     ss = {
         "tool": parse_tool(area_text),
         "ppa_actual": actual["ppa_actual"],
-        "violations": actual["violations"],
+        "requirements": judged,
     }
     missing = _missing_netlist(workdir)
     if missing:
@@ -238,7 +248,7 @@ def build_result(
             f"netlist incomplete: dc_shell wrote no {', '.join(missing)}"
         )
     elif status == "fail":
-        ss["fail_reason"] = "PPA target(s) not met"
+        ss["fail_reason"] = f"requirement(s) not met: {', '.join(unmet)}"
     if status == "fail" and fix_owner:
         ss["fix_owner"] = fix_owner
     _write_result(
@@ -303,13 +313,14 @@ def enumerate_artifacts(workdir) -> list[dict]:
 
 def finalize(
     workdir,
-    area_target,
-    slack_target,
+    rows,
+    declared,
     fix_owner=None,
     fail_reason=None,
 ) -> int:
-    """Parse DC reports, judge PPA, write result.json. exit 0 = written (pass or fail);
-    exit 2 = BLOCKED (an empty --fail-reason, or any internal raise) — never conflated with status=fail."""
+    """Parse DC reports, judge the rows synthesis establishes, write result.json. exit 0 =
+    written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason, a row nobody judged, or
+    any internal raise) — never conflated with status=fail."""
     if fail_reason is not None:
         if not fail_reason.strip():
             print(
@@ -319,13 +330,7 @@ def finalize(
             )
             return 2
     try:
-        return build_result(
-            workdir,
-            area_target,
-            slack_target,
-            fix_owner,
-            fail_reason,
-        )
+        return build_result(workdir, rows, declared, fix_owner, fail_reason)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[synthesis finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

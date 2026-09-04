@@ -7,6 +7,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "framework" / "scripts"))
 import facts  # noqa: E402
+import rules  # noqa: E402
 import store  # noqa: E402
 
 
@@ -23,15 +24,35 @@ def test_inject_upstream_keys_are_producer_stage_roots(tmp_path, monkeypatch):
     base = str((tmp_path / "m").resolve())
     assert table["rtl"] == base + "/Design/rtl-design"
     assert table["sdc"] == base + "/Design/specification"
-    assert table["ppa"] == base + "/Design/specification"
+    assert table["requirements"] == base + "/Design/specification"
 
 
-def test_inject_pipeline_input_resolves_to_module_root(tmp_path, monkeypatch):
+def test_every_rule_reaches_the_intent_tree(tmp_path, monkeypatch):
+    # The intent document and whatever the engineer delivered with it are read by whoever a
+    # requirement row points at; every rule binds the container by the same key so none of
+    # them has to navigate to it undeclared.
+    monkeypatch.chdir(tmp_path)
+    intent = str((tmp_path / "m" / "intent").resolve())
+    for rule, r in rules.RULES.items():
+        wd = tmp_path / "m" / Path(*r.workdir_root) / "runs" / "1"
+        wd.mkdir(parents=True, exist_ok=True)
+        store.write_dispatch(facts.module_root("m"), rule, wd)
+        assert _read(wd)["inputs"]["intent"] == intent, rule
+
+
+def test_inject_pipeline_input_resolves_to_the_container_not_the_module_root(
+    tmp_path, monkeypatch
+):
+    # What the stage is handed is exactly what its proof records: the container, not the
+    # module root around it (which holds Design/, Verification/, the log, and anything an
+    # agent wrote there — none of it versioned, none of it intent).
     monkeypatch.chdir(tmp_path)
     wd = tmp_path / "m" / "Design" / "specification" / "runs" / "1"
     wd.mkdir(parents=True)
     store.write_dispatch(facts.module_root("m"), "specification", wd)
-    assert _read(wd)["inputs"]["brainstorm"] == str((tmp_path / "m").resolve())
+    table = _read(wd)["inputs"]
+    assert table["intent"] == str((tmp_path / "m" / "intent").resolve())
+    assert table["intent"] != str((tmp_path / "m").resolve())
 
 
 def test_inject_sim_run_key_and_guard(tmp_path, monkeypatch):

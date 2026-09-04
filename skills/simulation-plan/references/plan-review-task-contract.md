@@ -8,13 +8,14 @@ you dispatch is work the kernel cannot see or audit.
 
 ## Inputs (paths only)
 
-- `Design/specification/features.json` — the feature spine testpoints trace to.
+- `Design/specification/requirements.json` — the engineer's requirements; the rows judged by
+  simulation are what the testpoints, through the hints they cover, must establish.
 - `Design/specification/design.md` (§1 behavior, §1.4 IO/interconnects, §1.5 timing scenarios and
   their waveforms), each `Design/specification/children/<child>.md`, and each
   `Design/specification/check-hints/<child>.json` — the authoritative statement of what must be
   verified.
 - The plan under review: `{workdir}/tb-scaffold.json` — `testpoints[]` (`id` / `intent` / `bins` /
-  `covers[]` / `inlined_check_hints[]`) and `skipped_checks[]` — plus `{workdir}/sequences.json`,
+  `covers[]`) and `skipped_checks[]` — plus `{workdir}/sequences.json`,
   `{workdir}/power-scenarios.json`, and `{workdir}/verification-plan.md` for the strategy behind
   them. The testpoints themselves are in the JSON; the plan md restates none of them.
 
@@ -43,7 +44,7 @@ one of those, say so — but as an observation, not as your finding.
 Write the file yourself. Free prose, one section per finding, in whatever order serves the reader.
 Each finding states three things:
 
-- **What you compared against** — a named `design.md` §ref, a `features.json` id, a `check_id`, or
+- **What you compared against** — a named `design.md` §ref, a `requirements.json` id, a `check_id`, or
   nothing (your own judgment). This is the single most useful thing you can tell the human: a
   finding with a frame can be re-checked by anyone; one without it is your opinion, and is
   resolved as such.

@@ -2,12 +2,16 @@
 
 Invariants that prevent silent-transformation drift across stage boundaries:
 
-1. **PPA dim namespace consistency.** Every `dim` value that any stage's
-   `ppa_actual[]` schema allows (via const or enum) must appear in
-   specification's `ppa.schema.json` `dim` enum. specification authors the
-   targets; downstream stages MEASURE against them. A stage that reports
-   a dim specification can't express has no target — rework routing
-   loses signal silently.
+1. **Target dim namespace consistency.** Every `dim` value that any stage's
+   `ppa_actual[]` schema allows (via const or enum) must appear in the
+   requirements ledger's `target.dim` enum (specification's
+   `requirements.schema.json`). The ledger authors the bounds; downstream
+   stages MEASURE against them. A stage that reports a dim the ledger can't
+   express has no bound — rework routing loses signal silently.
+
+3. **Judge namespace.** The ledger's `judge` enum is the rule registry's
+   FORWARD_PRIORITY plus the three non-stage judges and the transient
+   `unassignable`; a stage added to rules.py without the enum is caught here.
 
 2. **result.json path consistency.** Every `(Design|Verification)/<stage>/
    result.json` reference in any SKILL.md must match the stage's canonical
@@ -36,7 +40,7 @@ def _collect_dim_values_from_array_schema(array_schema: dict) -> set[str]:
     Returns an empty set for pattern-based dim definitions (e.g.
     timing-analysis violations use `pattern: ^timing_…$` which is a
     different namespace from PPA gate dims and shouldn't be checked
-    against specification.ppa_targets).
+    against the ledger's bounds).
     """
     dim_schema = array_schema.get("items", {}).get("properties", {}).get("dim", {})
     if "const" in dim_schema:
@@ -56,19 +60,31 @@ def _ppa_actual_dims_for_stage(stage: str) -> set[str]:
     return dims
 
 
-def _spec_ppa_target_dims() -> set[str]:
-    # spec's PPA-target dim enum lives on the ppa.json sidecar schema (the SSoT downstream
-    # reads); it is no longer copied into the result.json envelope.
-    ppa_schema = json.loads(
+def _ledger_schema() -> dict:
+    return json.loads(
         (
-            PLUGIN_ROOT / "skills" / "specification" / "references" / "ppa.schema.json"
+            PLUGIN_ROOT
+            / "skills"
+            / "specification"
+            / "references"
+            / "requirements.schema.json"
         ).read_text(encoding="utf-8")
     )
-    return _collect_dim_values_from_array_schema(ppa_schema)
+
+
+def _spec_ppa_target_dims() -> set[str]:
+    return set(
+        _ledger_schema()["items"]["properties"]["target"]["properties"]["dim"]["enum"]
+    )
+
+
+def test_judge_enum_is_the_rule_registry_plus_the_non_stage_judges() -> None:
+    judges = _ledger_schema()["items"]["properties"]["judge"]["enum"]
+    assert judges == [*FORWARD_PRIORITY, "human", "outside", "none", "unassignable"]
 
 
 def test_ppa_dim_union_subset_of_spec_targets() -> None:
-    """Every measured PPA dim must be a target dim specification can author."""
+    """Every measured PPA dim must be a bound dim the ledger can author."""
     measured: dict[str, set[str]] = {}
     for stage in FORWARD_PRIORITY:
         if stage == "specification":
@@ -81,11 +97,11 @@ def test_ppa_dim_union_subset_of_spec_targets() -> None:
     spec_targets = _spec_ppa_target_dims()
     missing = measured_union - spec_targets
     assert not missing, (
-        f"Stages report ppa_actual dims {sorted(missing)} that specification's "
-        f"ppa.schema.json dim enum doesn't list. Per-stage measured dims: "
+        f"Stages report ppa_actual dims {sorted(missing)} that the ledger's "
+        f"target.dim enum doesn't list. Per-stage measured dims: "
         f"{ {s: sorted(d) for s, d in measured.items()} }; "
-        f"spec target dims: {sorted(spec_targets)}. Add the missing dim(s) to "
-        f"specification's ppa.schema.json, or stop reporting them downstream."
+        f"ledger dims: {sorted(spec_targets)}. Add the missing dim(s) to "
+        f"requirements.schema.json, or stop reporting them downstream."
     )
 
 

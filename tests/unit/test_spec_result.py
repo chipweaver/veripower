@@ -14,11 +14,26 @@ from spec import constraints, result  # noqa: E402
 
 _ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
 _FIX = Path(__file__).resolve().parent / "fixtures" / "specification-tpu_top"
+MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
+
+_ROWS = [
+    {
+        "id": "R-001",
+        "verbatim": "done pulses one cycle after start",
+        "judge": "simulation",
+    },
+    {
+        "id": "R-002",
+        "verbatim": "area at most 70000 um2",
+        "judge": "synthesis",
+        "target": {"dim": "area_um2", "op": "<=", "value": 70000.0},
+    },
+]
 
 
-def _spec_workdir(tmp_path):
+def _spec_workdir(tmp_path, rows=None):
     """A workdir derive_constraints() can run over (valid clocks.json + top-io.json) plus
-    the finalize inputs (manifest/coverage/per-child md/spec-review)."""
+    the finalize inputs (manifest / ledger / per-child md / hints / spec-review)."""
     wd = tmp_path
     (wd / "design.md").write_text("# tpu_top Design\n\nNarrative only.\n")
     (wd / "top-io.json").write_text(
@@ -63,23 +78,9 @@ def _spec_workdir(tmp_path):
     )
     (wd / "children").mkdir(exist_ok=True)
     (wd / "children" / "tpu_top.md").write_text(
-        "---\nports: []\nclocks: []\nfeatures:\n  - F-00\n---\n\n# child\n"
+        "---\nports: []\nclocks: []\n---\n\n# child\n"
     )
-    (wd / "features.json").write_text(
-        json.dumps([{"id": "F-00", "name": "n", "description": "d"}])
-    )
-    (wd / "timing-scenarios.json").write_text(
-        json.dumps(
-            [
-                {
-                    "id": "SC-001",
-                    "stimulus": "s",
-                    "expected": "e",
-                    "timing_constraint": "t",
-                }
-            ]
-        )
-    )
+    (wd / "requirements.json").write_text(json.dumps(_ROWS if rows is None else rows))
     (wd / "interconnects.json").write_text(json.dumps([]))
     (wd / "check-hints").mkdir(exist_ok=True)
     (wd / "check-hints" / "tpu_top.json").write_text(
@@ -87,8 +88,7 @@ def _spec_workdir(tmp_path):
             [
                 {
                     "check_id": "CHK-00",
-                    "source_feature": "F-00",
-                    "implementation_detail": "d",
+                    "requirements": ["R-001"],
                     "observable": "o",
                     "reference_rule": "r",
                 }
@@ -96,6 +96,9 @@ def _spec_workdir(tmp_path):
         )
     )
     (wd / "spec-review").mkdir(exist_ok=True)
+    (wd / "spec-review" / "requirements.md").write_text(
+        "# ledger review\n\nNo findings.\n"
+    )
     (wd / "spec-review" / "tpu_top.md").write_text("# spec review\n\nNo findings.\n")
     (wd / "spec-review" / "decisions.md").write_text(
         "# decisions\n\nNothing to resolve.\n"
@@ -120,50 +123,30 @@ def _validate_envelope(env: dict) -> None:
 
 def test_build_result_pass_lean_shape(tmp_path):
     wd = _spec_workdir(tmp_path)
-    assert result.build_result(wd, ppa_targets=[], status="pass") == 0
+    assert result.build_result(wd, status="pass") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["stage"] == "specification"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
-    assert ss["top_module"] == "tpu_top"
+    assert ss == {
+        "top_module": "tpu_top"
+    }  # lean: the review is prose, the ledger a sidecar
+    assert {"path": "requirements.json"} in env["artifacts"]
     assert (
-        "spec_gate" not in ss
-    )  # the review is prose under spec-review/, not a verdict field
-    assert (
-        "ppa_targets" not in ss
-    )  # PPA lives in the ppa.json sidecar, not the envelope
-    assert "notes" not in ss and "fail_reason" not in ss  # lean shape
-    assert json.loads((wd / "ppa.json").read_text()) == []  # sidecar written on pass
-    assert {"path": "ppa.json"} in env["artifacts"]
-
-
-def test_build_result_override_writes_ppa_sidecar(tmp_path):
-    wd = _spec_workdir(tmp_path)
-    targets = [
-        {"dim": "area_um2", "target": 70000.0},
-        {"dim": "power_mw", "target": 12.5},
-    ]
-    result.build_result(wd, ppa_targets=targets, status="pass")
-    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert "ppa_targets" not in ss  # the sidecar is the SSoT, not the envelope
-    # ppa.json is the stable sidecar synthesis/power-analysis read directly
-    assert json.loads((wd / "ppa.json").read_text()) == targets
+        json.loads((wd / "requirements.json").read_text()) == _ROWS
+    )  # re-validated, untouched
 
 
 def test_build_result_reject_status_writes_fail(tmp_path):
-    # the human REJECTED at the Step-8 gate -> --status fail, gate still clear.
     wd = _spec_workdir(tmp_path)
-    assert result.build_result(wd, ppa_targets=[], status="fail") == 0
+    assert result.build_result(wd, status="fail") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail" and env["stage_specific"]["fail_reason"]
 
 
-# ── artifacts[] enumeration tests ──────────────────────────────────────────
 def test_enumerate_artifacts_present_only(tmp_path):
     wd = _spec_workdir(tmp_path)
-    constraints.derive_constraints(
-        wd
-    )  # generate constraints/tpu_top.{sdc,sgdc} so they are present
+    constraints.derive_constraints(wd)
     (wd / "children" / "fifo.md").write_text("# child\n")
     m = json.loads((wd / "manifest.json").read_text())
     m["children"].append(
@@ -178,34 +161,23 @@ def test_enumerate_artifacts_present_only(tmp_path):
         "check-hints",
         "spec-review",
         "manifest.json",
+        "requirements.json",
         "constraints/tpu_top.sdc",
         "constraints/tpu_top.sgdc",
         "clocks.json",
     } <= paths
     assert all(set(a) == {"path"} for a in arts)  # the path IS the identity
-    assert "brainstorm.md" not in paths and "result.json" not in paths
+    assert "intent/brainstorm.md" not in paths and "result.json" not in paths
     assert all((wd / p).exists() for p in paths)  # present-only
-
-
-# ── golden test against the real tpu_top run (lean shape + γ-floor + schema) ─
 
 
 def test_golden_lean_against_real_tpu_top(tmp_path):
     wd = tmp_path / "specification"
     shutil.copytree(_FIX, wd)
-    targets = [{"dim": "area_um2", "target": 70000.0}]
-    # γ-floor: agent relays the human-gate outcome (approve, no waivers, PPA targets).
-    assert result.build_result(wd, ppa_targets=targets, status="pass") == 0
+    assert result.build_result(wd, status="pass") == 0
     env = json.loads((wd / "result.json").read_text())
-    ss = env["stage_specific"]
     assert env["status"] == "pass"
-    assert ss["top_module"] == "tpu_top"  # == manifest.module
-    assert (
-        "ppa_targets" not in ss
-    )  # PPA lives in the ppa.json sidecar, not the envelope
-    assert (
-        "spec_gate" not in ss
-    )  # the review is prose under spec-review/, not a verdict field
+    assert env["stage_specific"] == {"top_module": "tpu_top"}
     paths = {a["path"] for a in env["artifacts"]}
     assert paths == {
         "design.md",
@@ -215,136 +187,71 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "spec-review",
         "constraints/tpu_top.sdc",
         "constraints/tpu_top.sgdc",
-        "ppa.json",
+        "requirements.json",
         "clocks.json",
-        "features.json",
         "top-io.json",
         "interconnects.json",
     }
-    assert "brainstorm.md" not in paths and "result.json" not in paths
-    assert "notes" not in ss
-    assert env["produced_at"].endswith("Z")
-    assert json.loads((wd / "ppa.json").read_text()) == targets
     _validate_envelope(env)
 
 
-# ── waiver trust boundary: finalize rejects an unreasoned / malformed waiver (exit 2) ──
-# The stderr message is asserted so the exit-2 is attributable to the waiver check, not to a
-# downstream failure on the bare tmp_path (which would also exit 2, for a different reason).
+# ── the ledger at finalize ────────────────────────────────────────────────────
 
 
-def test_finalize_bad_ppa_targets_json_is_blocked(tmp_path):
-    MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
-    r = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "finalize",
-            "--workdir",
-            str(tmp_path),
-            "--status",
-            "pass",
-            "--ppa-targets",
-            "{not json",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert r.returncode == 2
-    assert "not valid JSON" in r.stderr
-
-
-def test_finalize_missing_required_flag_is_blocked(tmp_path):
-    MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
-    r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--workdir", str(tmp_path)],
-        capture_output=True,
-        text=True,
-    )
-    assert r.returncode == 2  # argparse: missing --module/--status
-
-
-# ── ppa.json disk-read path (wave-1 product; --ppa-targets is an override) ──
-
-
-def test_pass_reads_ppa_from_disk_when_no_override(tmp_path):
+def test_missing_ledger_is_blocked(tmp_path):
     wd = _spec_workdir(tmp_path)
-    targets = [{"dim": "area_um2", "target": 70000.0}]
-    (wd / "ppa.json").write_text(json.dumps(targets))
-    assert result.build_result(wd, ppa_targets=None, status="pass") == 0
-    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert "ppa_targets" not in ss
-    # the wave-1 disk copy IS the source — untouched, not rewritten
-    assert json.loads((wd / "ppa.json").read_text()) == targets
-
-
-def test_forgotten_override_no_longer_wipes_ppa_json(tmp_path):
-    # regression: finalize WITHOUT --ppa-targets used to default to "[]" and
-    # unconditionally rewrite ppa.json — silently disarming the downstream PPA gates.
-    wd = _spec_workdir(tmp_path)
-    targets = [{"dim": "power_mw", "target": 12.5}]
-    (wd / "ppa.json").write_text(json.dumps(targets))
-    MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
-    r = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "finalize",
-            "--workdir",
-            str(wd),
-            "--status",
-            "pass",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert r.returncode == 0
-    assert json.loads((wd / "ppa.json").read_text()) == targets  # NOT wiped
-    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert "ppa_targets" not in ss
-
-
-def test_pass_missing_ppa_json_is_blocked(tmp_path):
-    wd = _spec_workdir(tmp_path)  # no ppa.json on disk
-    rc = result.finalize(wd, status="pass")
-    assert rc == 2  # BLOCKED: wave-1 must emit ppa.json (or caller overrides)
+    (wd / "requirements.json").unlink()
+    assert result.finalize(wd, status="pass") == 2
     assert not (wd / "result.json").exists()
 
 
-def test_pass_invalid_disk_ppa_is_blocked(tmp_path):
-    wd = _spec_workdir(tmp_path)
-    (wd / "ppa.json").write_text(json.dumps([{"dim": "bogus", "target": 1}]))
+def test_invalid_ledger_is_blocked(tmp_path):
+    wd = _spec_workdir(tmp_path, rows=[{**_ROWS[0], "judge": "bogus"}])
     assert result.finalize(wd, status="pass") == 2
 
 
-def test_invalid_override_is_blocked(tmp_path):
+def test_unassignable_row_is_blocked_with_its_id(tmp_path, capsys):
+    # The gate resolves these; finalize never carries one forward.
+    rows = [
+        *_ROWS,
+        {
+            "id": "R-003",
+            "verbatim": "storage ≤ 16 Kbit",
+            "judge": "unassignable",
+            "note": "no measurand",
+        },
+    ]
+    wd = _spec_workdir(tmp_path, rows=rows)
+    assert result.finalize(wd, status="pass") == 2
+    assert "R-003" in capsys.readouterr().err
+    assert not (wd / "result.json").exists()
+
+
+def test_nan_target_is_blocked(tmp_path):
     wd = _spec_workdir(tmp_path)
-    rc = result.finalize(
-        wd,
-        status="pass",
-        ppa_targets_json='[{"dim": "bogus", "target": 1}]',
+    (wd / "requirements.json").write_text(
+        '[{"id":"R-001","verbatim":"v","judge":"synthesis","target":{"dim":"area_um2","op":"<=","value":NaN}}]'
     )
-    assert rc == 2
+    assert result.finalize(wd, status="pass") == 2
+
+
+def test_crossrefs_regression_after_the_gate_is_blocked(tmp_path):
+    # A hint pointing at a row nobody has any more: clean at the Wave 2 gate, so a failure now
+    # means an artifact was edited afterwards.
+    wd = _spec_workdir(tmp_path)
+    (wd / "requirements.json").write_text(json.dumps([_ROWS[1]]))
+    assert result.finalize(wd, status="pass") == 2
 
 
 # ── early-fail entry (--fail-reason): routable fail, full artifact carry ──
 
 
 def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
-    # a seeded rework workdir that fails early (e.g. unreadable trigger) must still
-    # promote the FULL prior product set — an under-enumerated artifacts[] on a
-    # promoted fail would GC canonical down to a hollow view.
     wd = _spec_workdir(tmp_path)
-    constraints.derive_constraints(
-        wd
-    )  # constraints present, as a seeded workdir would have
-    (wd / "ppa.json").write_text("[]")
+    constraints.derive_constraints(wd)
     assert (
         result.build_result(
-            wd,
-            ppa_targets=None,
-            status="fail",
-            fail_reason="external reference missing: /x/design.md",
+            wd, status="fail", fail_reason="external reference missing: /x/design.md"
         )
         == 0
     )
@@ -357,28 +264,20 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
     assert {
         "design.md",
         "manifest.json",
-        "ppa.json",
+        "requirements.json",
         "constraints/tpu_top.sdc",
-        "constraints/tpu_top.sgdc",
-    } <= paths  # nothing dropped
+    } <= paths
     _validate_envelope(env)
 
 
 def test_reject_default_reason_unchanged(tmp_path):
-    # the human-reject path (no --fail-reason) keeps its established wording
     wd = _spec_workdir(tmp_path)
-    result.build_result(wd, ppa_targets=[], status="fail")
+    result.build_result(wd, status="fail")
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "design.md gate rejected at human review"
 
 
-# ── adversarial-review follow-ups: fail-path edges ──────────────────────────
-
-
 def test_fail_without_manifest_is_blocked(tmp_path):
-    # first-run wave-1 BLOCKED before manifest.json exists: finalize must exit 2
-    # (fail-closed — a blocked run never promotes, so canonical cannot be GC'd
-    # against a hollow view). Documented in the Fan-out carve-out edge note.
     rc = result.finalize(tmp_path, status="fail", fail_reason="wave-1 BLOCKED: x")
     assert rc == 2
     assert not (tmp_path / "result.json").exists()
@@ -386,7 +285,6 @@ def test_fail_without_manifest_is_blocked(tmp_path):
 
 def test_pass_ignores_fail_reason(tmp_path):
     wd = _spec_workdir(tmp_path)
-    (wd / "ppa.json").write_text("[]")
     rc = result.finalize(wd, status="pass", fail_reason="should be ignored")
     assert rc == 0
     env = json.loads((wd / "result.json").read_text())
@@ -394,79 +292,105 @@ def test_pass_ignores_fail_reason(tmp_path):
     assert "fail_reason" not in env["stage_specific"]
 
 
-# ── code-review round: B-group fixes ─────────────────────────────────────────
-
-
-def test_nan_ppa_is_blocked_on_both_paths(tmp_path):
-    # Python's json.loads accepts the NaN token; the shape check must reject it
-    # before it corrupts the ppa.json SSoT for strict downstream parsers.
-    wd = _spec_workdir(tmp_path)
-    rc = result.finalize(
-        wd,
-        status="pass",
-        ppa_targets_json='[{"dim": "power_mw", "target": NaN}]',
-    )
-    assert rc == 2
-    (wd / "ppa.json").write_text('[{"dim": "power_mw", "target": NaN}]')
-    assert result.finalize(wd, status="pass") == 2
-
-
 def test_derivation_failure_on_pass_is_blocked_exit2(tmp_path):
-    # derive_constraints fail-louds via sys.exit (SystemExit, a BaseException);
-    # finalize must keep its documented 0/2 contract instead of leaking exit 1.
     wd = _spec_workdir(tmp_path)
-    (wd / "ppa.json").write_text("[]")
-    # a non-numeric period now fails at clocks.json schema validation, not at a float()
-    # of a table cell — the defect is caught by `type: number` before any rendering.
     (wd / "clocks.json").write_text(
         json.dumps(
-            [
-                {
-                    "name": "i_clk",
-                    "period_ns": "banana",
-                    "relationship": "primary",
-                }
-            ]
+            [{"name": "i_clk", "period_ns": "banana", "relationship": "primary"}]
         )
     )
     assert result.finalize(wd, status="pass") == 2
 
 
 def test_empty_fail_reason_is_blocked(tmp_path):
-    # an empty --fail-reason must never be silently replaced by the human-reject
-    # wording (that would fabricate a human-gate record for a run that had none).
     wd = _spec_workdir(tmp_path)
     rc = result.finalize(wd, status="fail", fail_reason="   ")
     assert rc == 2
     assert not (wd / "result.json").exists()
 
 
-def test_pass_non_string_scenario_id_is_blocked(tmp_path):
-    # power-analysis matches a target to a scenario by string equality, so a non-string
-    # scenario_id matches nothing and that target is silently never enforced.
-    # ppa.schema.json already types the field; the hand-written check did not.
-    wd = _spec_workdir(tmp_path)
-    (wd / "ppa.json").write_text(
-        json.dumps([{"dim": "power_mw", "target": 1, "scenario_id": 5}])
-    )
-    assert result.finalize(wd, status="pass") == 2
-
-
-def test_pass_non_finite_ppa_target_is_blocked(tmp_path):
-    # Regression guard, green before and after the schema swap: NaN survives json.loads and
-    # satisfies the schema's `type: number`, yet it makes power-analysis' `actual > target`
-    # false for every input, disarming that gate. The explicit finite check must survive.
-    wd = _spec_workdir(tmp_path)
-    (wd / "ppa.json").write_text('[{"dim": "power_mw", "target": NaN}]')
-    assert result.finalize(wd, status="pass") == 2
-
-
 def test_unreadable_schema_blocks_instead_of_waving_a_doc_through(
     tmp_path, monkeypatch
 ):
-    # Sidecar validation is the only place ppa.json is checked, so a schema it cannot read
-    # must fail closed rather than report a clean doc.
     from spec import sidecar
 
     monkeypatch.setattr(sidecar, "_REFERENCES", tmp_path)
-    assert sidecar.validate_doc("ppa.json", [{"dim": "power_mw", "target": 1}])
+    assert sidecar.validate_doc("requirements.json", _ROWS)
+
+
+# ── the verbs ───────────────────────────────────────────────────────────────
+
+
+def test_finalize_cli_happy_path(tmp_path):
+    wd = _spec_workdir(tmp_path)
+    r = subprocess.run(
+        ["python3", str(MAIN), "finalize", "--workdir", str(wd), "--status", "pass"],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    assert json.loads((wd / "result.json").read_text())["status"] == "pass"
+
+
+def test_finalize_missing_required_flag_is_blocked(tmp_path):
+    r = subprocess.run(
+        ["python3", str(MAIN), "finalize", "--workdir", str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 2  # argparse: missing --status
+
+
+def test_check_ledger_prints_the_gate_view(tmp_path):
+    rows = [
+        *_ROWS,
+        {"id": "R-003", "verbatim": "hidden tests all pass", "judge": "outside"},
+        {
+            "id": "R-004",
+            "verbatim": "storage ≤ 16 Kbit",
+            "judge": "unassignable",
+            "note": "no measurand",
+        },
+        {
+            "id": "R-005",
+            "verbatim": "the reference model is authoritative",
+            "judge": "human",
+        },
+    ]
+    wd = _spec_workdir(tmp_path, rows=rows)
+    r = subprocess.run(
+        ["python3", str(MAIN), "check-ledger", "--workdir", str(wd)],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    view = json.loads(r.stdout)
+    assert view["rows"] == 5
+    assert view["by_judge"] == {
+        "simulation": 1,
+        "synthesis": 1,
+        "outside": 1,
+        "unassignable": 1,
+        "human": 1,
+    }
+    groups = {k: [x["id"] for x in v] for k, v in view["verbatim"].items()}
+    assert groups == {
+        "unassignable": ["R-004"],
+        "outside": ["R-003"],
+        "human": ["R-005"],
+        "target": ["R-002"],
+    }
+    assert (
+        view["verbatim"]["unassignable"][0]["note"] == "no measurand"
+    )  # the human reads the reason
+
+
+def test_check_ledger_fails_loud_on_a_bad_ledger(tmp_path):
+    wd = _spec_workdir(tmp_path, rows=[{**_ROWS[0], "judge": "bogus"}])
+    r = subprocess.run(
+        ["python3", str(MAIN), "check-ledger", "--workdir", str(wd)],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode != 0
+    assert "bogus" in (r.stdout + r.stderr)

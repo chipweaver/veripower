@@ -49,6 +49,8 @@ import re
 import sys
 from pathlib import Path
 
+from timing import requirements
+
 _EPS = 1e-4
 
 # Each report_timing block carries a header line '-delay_type max|min'.
@@ -260,7 +262,7 @@ def enumerate_artifacts(workdir: Path) -> list:
     return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
-def build_result(workdir, fix_owner=None, fail_reason=None) -> int:
+def build_result(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
     """Assemble the lean timing-analysis result.json. Reuses run() for the timing gate
     (in-process), then derives the header + artifacts + writes the envelope.
     Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED).
@@ -310,10 +312,16 @@ def build_result(workdir, fix_owner=None, fail_reason=None) -> int:
 
     status = "pass" if actual["verdict"] == "pass" else "fail"
     report_text = report.read_text(errors="replace")
+    # PrimeTime's own verdict is the markers above; the rows requirements.json assigns to this
+    # stage carry no number it reports, so each verdict is the agent's, and merge refuses a row
+    # it did not judge.
+    judged = requirements.merge(rows, [], declared)
+    unmet = requirements.unmet(judged)
     ss = {
         "tool": parse_tool(report_text),
         "timing": actual["timing"],
         "violations": actual["violations"],
+        "requirements": judged,
     }
     left_out = uncovered(actual["timing"]["coverage"])
     if left_out:
@@ -326,6 +334,9 @@ def build_result(workdir, fix_owner=None, fail_reason=None) -> int:
         ss["fail_reason"] = f"STA did not cover the boundary: {left_out}"
     elif status == "fail":
         ss["fail_reason"] = "setup/hold timing not met"
+    elif unmet:
+        status = "fail"
+        ss["fail_reason"] = f"requirement(s) not met: {', '.join(unmet)}"
     if status == "fail" and fix_owner:
         ss["fix_owner"] = fix_owner
     _write_result(
@@ -339,11 +350,11 @@ def build_result(workdir, fix_owner=None, fail_reason=None) -> int:
     return 0
 
 
-def finalize(workdir, fix_owner=None, fail_reason=None) -> int:
-    """Parse the PT report, judge the timing gate, write the lean result.json.
-    exit 0 = written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason, one
-    or any internal raise) — never conflated with
-    status=fail."""
+def finalize(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
+    """Parse the PT report, judge the timing gate and the rows requirements.json assigns to
+    this stage, write the lean result.json. exit 0 = written (pass or fail); exit 2 = BLOCKED
+    (an empty --fail-reason, a row nobody judged, or any internal raise) — never conflated
+    with status=fail."""
     if fail_reason is not None:
         if not fail_reason.strip():
             print(
@@ -353,7 +364,7 @@ def finalize(workdir, fix_owner=None, fail_reason=None) -> int:
             )
             return 2
     try:
-        return build_result(workdir, fix_owner, fail_reason)
+        return build_result(workdir, rows, declared, fix_owner, fail_reason)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[timing finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2

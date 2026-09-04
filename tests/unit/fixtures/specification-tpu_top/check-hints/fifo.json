@@ -1,92 +1,74 @@
 [
   {
     "check_id": "CHK-FIFO-01",
-    "source_feature": "F-03",
-    "implementation_detail": "Synchronous write into mem at wr_addr, gated by not-full",
-    "implementation_detail_verbatim": "Write on `i_wr & !o_full` → `mem[wr_addr]`; `wr_addr` advances on the same",
+    "requirements": [
+      "R-012"
+    ],
     "observable": "`mem[wr_addr]`, `wr_addr`",
-    "reference_rule": "FIFO write/order contract",
-    "latency": "1 cycle (registered write)",
-    "reset_behavior": "`mem`, `wr_addr` cleared to 0 on async active-low reset"
+    "reference_rule": "FIFO write/order contract"
   },
   {
     "check_id": "CHK-FIFO-02",
-    "source_feature": "F-03",
-    "implementation_detail": "Read pointer advances on read gated by not-empty",
-    "implementation_detail_verbatim": "`rd_addr` advances on `i_rd & !o_empty`",
+    "requirements": [
+      "R-013"
+    ],
     "observable": "`rd_addr`",
-    "reference_rule": "FIFO pop contract",
-    "latency": "1 cycle (registered pointer)",
-    "reset_behavior": "`rd_addr` cleared to 0 on async active-low reset"
+    "reference_rule": "FIFO pop contract"
   },
   {
     "check_id": "CHK-FIFO-03",
-    "source_feature": "F-03",
-    "implementation_detail": "Combinational read of current entry",
-    "implementation_detail_verbatim": "Read is **combinational**: `o_data = mem[rd_addr]`",
+    "requirements": [
+      "R-014"
+    ],
     "observable": "`o_data`",
-    "reference_rule": "combinational read",
-    "latency": "0 cycle (combinational)",
-    "reset_behavior": "After reset `o_data = mem[rd_addr]` with `rd_addr=0`"
+    "reference_rule": "combinational read"
   },
   {
     "check_id": "CHK-FIFO-04",
-    "source_feature": "F-03",
-    "implementation_detail": "Empty when pointers equal",
-    "implementation_detail_verbatim": "`o_empty = (wr_addr == rd_addr)`",
+    "requirements": [
+      "R-015"
+    ],
     "observable": "`o_empty`",
-    "reference_rule": "empty-flag contract",
-    "latency": "0 cycle (combinational)",
-    "reset_behavior": "`o_empty` high after reset (`wr_addr==rd_addr==0`)"
+    "reference_rule": "empty-flag contract"
   },
   {
     "check_id": "CHK-FIFO-05",
-    "source_feature": "F-03",
-    "implementation_detail": "Full when next write pointer meets read pointer",
-    "implementation_detail_verbatim": "`o_full  = ((wr_addr + 1) == rd_addr)`",
+    "requirements": [
+      "R-016"
+    ],
     "observable": "`o_full`",
-    "reference_rule": "full-flag contract (one slot reserved)",
-    "latency": "0 cycle (combinational)",
-    "reset_behavior": "`o_full` low after reset"
+    "reference_rule": "full-flag contract (one slot reserved)"
   },
   {
     "check_id": "CHK-FIFO-06",
-    "source_feature": "F-03",
-    "implementation_detail": "Async active-low reset clears memory and pointers",
-    "implementation_detail_verbatim": "Async active-low reset clears memory and both pointers to 0",
+    "requirements": [
+      "R-017"
+    ],
     "observable": "`mem`, `wr_addr`, `rd_addr`",
-    "reference_rule": "reset contract",
-    "latency": "async (`negedge i_rstn`)",
-    "reset_behavior": "memory + both pointers = 0"
+    "reference_rule": "reset contract"
   },
   {
     "check_id": "CHK-FIFO-07",
-    "source_feature": "F-03",
-    "implementation_detail": "Write then read returns word in FIFO order",
-    "implementation_detail_verbatim": "Happy path: write then read returns the written word in FIFO order",
+    "requirements": [
+      "R-018"
+    ],
     "observable": "`o_data` sequence",
-    "reference_rule": "FIFO ordering",
-    "latency": "per pop (combinational `o_data`)",
-    "reset_behavior": "sequence restarts from 0 after reset"
+    "reference_rule": "FIFO ordering"
   },
   {
     "check_id": "CHK-FIFO-08",
-    "source_feature": "F-03",
-    "implementation_detail": "3-bit modulo-8 pointer wrap; full uses next==rd",
-    "implementation_detail_verbatim": "`o_full`/`o_empty` use 3-bit pointer wrap (modulo-8); the `(wr_addr+1)==rd_addr` full condition is part of the contract",
+    "requirements": [
+      "R-019"
+    ],
     "observable": "`wr_addr`, `rd_addr`, `o_full`, `o_empty`",
-    "reference_rule": "modulo-8 wrap contract",
-    "latency": "0 cycle (flags combinational)",
-    "reset_behavior": "pointers wrap from 0 after reset"
+    "reference_rule": "modulo-8 wrap contract"
   },
   {
     "check_id": "CHK-FIFO-09",
-    "source_feature": "F-03",
-    "implementation_detail": "Write-while-full / read-while-empty ignored",
-    "implementation_detail_verbatim": "Write while `o_full` (or read while `o_empty`) is ignored (pointer does not advance)",
+    "requirements": [
+      "R-020"
+    ],
     "observable": "`wr_addr`, `rd_addr`",
-    "reference_rule": "back-pressure / underflow guard",
-    "latency": "0 cycle (no pointer advance)",
-    "reset_behavior": "pointers held at reset value until first valid op"
+    "reference_rule": "back-pressure / underflow guard"
   }
 ]

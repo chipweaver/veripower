@@ -13,7 +13,6 @@ this thin dispatcher defers.)
 """
 
 import argparse
-import json
 import os
 import sys
 from pathlib import Path
@@ -26,27 +25,6 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-GATED_DIMS = ("area_um2", "timing_slack_ns")  # power_mw is judged in power-analysis
-
-
-def read_ppa_targets(workdir) -> dict:
-    """{dim: target} for the two dims this stage gates, from the specification ppa.json
-    it binds to as its acceptance standard. The stage root comes from the injected
-    `<workdir>/dispatch.json` `inputs."ppa"`, not self-navigation. An absent file or dim
-    leaves that dimension ungated."""
-    inputs = json.loads((Path(workdir) / "dispatch.json").read_text(encoding="utf-8"))[
-        "inputs"
-    ]
-    p = Path(inputs["ppa"]) / "ppa.json"
-    if not p.is_file():
-        return {}
-    return {
-        t["dim"]: t["target"]
-        for t in json.loads(p.read_text())
-        if t.get("dim") in GATED_DIMS
-    }
-
-
 def _cmd_bootstrap(a: argparse.Namespace) -> int:
     from synthesis import bootstrap
 
@@ -54,13 +32,12 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
-    from synthesis import result
+    from synthesis import requirements, result
 
-    targets = read_ppa_targets(a.workdir)
     return result.finalize(
         a.workdir,
-        targets.get("area_um2"),
-        targets.get("timing_slack_ns"),
+        requirements.mine(requirements.load(a.workdir)),
+        requirements.parse_declared(a.requirements),
         a.fix_owner,
         a.fail_reason,
     )
@@ -96,6 +73,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="cause of a run with no gradeable reports (license, elaborate/compile "
         "abort, crash after reporting); supplying it declares the failure and wins "
         "over the gate.",
+    )
+    sp.add_argument(
+        "--requirements",
+        default=None,
+        help="your verdict on each requirements.json row judged by synthesis that carries no "
+        'target, as a JSON array of {"id", "met", "actual"}; rows with a target are compared here',
     )
     sp.set_defaults(func=_cmd_finalize)
 

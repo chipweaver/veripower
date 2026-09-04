@@ -26,16 +26,12 @@ _TESTS = [
     {
         "test_id": "T-01",
         "uvm_testname": "m_smoke_test",
-        "feature_id": "F-01",
-        "feature_name": "Register write path",
         "suites": ["smoke", "regress"],
         "seqs": [],
     },
     {
         "test_id": "T-02",
         "uvm_testname": "m_corner_test",
-        "feature_id": "F-02",
-        "feature_name": "FIFO occupancy flags",
         "suites": ["regress"],
         "seqs": [],
     },
@@ -83,13 +79,10 @@ def test_select_regress_picks_both(tmp_path):
     ]
 
 
-def test_select_row_carries_no_feature(tmp_path):
-    # The feature is in testlist.json keyed by the same test_id; carrying it through the pipe
-    # and back out of a RESULT line would be a second copy nothing compares.
+def test_select_row_is_test_id_and_testname_only(tmp_path):
     wd = _workdir(tmp_path, [])
     for row in _select(wd, "regress").stdout.splitlines():
         assert row.count("|") == 1
-        assert "F-0" not in row
 
 
 def test_select_no_match_exits_2(tmp_path):
@@ -109,7 +102,7 @@ def test_counts_land_in_case_results_json(tmp_path):
     assert counts["total_tests"] == 1
     assert counts["passed_tests"] == 1
     assert counts["not_run_tests"] == 1  # T-02 never ran
-    assert counts["feature_coverage_percent"] == 50.0  # 1 of 2 features passed
+    assert counts["testcase_pass_rate_percent"] == 100.0
 
 
 def test_the_rendering_agrees_with_the_json(tmp_path):
@@ -141,24 +134,25 @@ def test_failure_rows_point_at_the_directory_the_runner_wrote(tmp_path):
     assert "logs/T-02.log" in md and "run_logs" not in md
 
 
-def test_traceability_shows_the_real_feature_name(tmp_path):
-    # The Feature column must not be the FeatureID column again: feature_name comes from
-    # features.json via materialize-scaffold, and this is where a human reads it.
+def test_results_table_is_per_test(tmp_path):
+    # Which requirement a test serves is not on this page: covers[] -> hint -> row carries it.
     wd = _workdir(
         tmp_path, ["RESULT T-01 PASS uvm_testname=m_smoke_test log=logs/T-01.log"]
     )
     assert _run_summary(wd).returncode == 0
     md = (wd / "case-results-summary.md").read_text()
-    assert "| F-01 | Register write path | T-01 | smoke,regress | **PASS** |" in md
+    assert "| T-01 | smoke,regress | **PASS** |" in md
+    assert "| T-02 | regress | **NOT_RUN** |" in md
+    assert "Feature" not in md
 
 
-def test_action_table_resolves_feature_by_joining_test_id(tmp_path):
+def test_action_table_names_the_failing_test(tmp_path):
     wd = _workdir(
         tmp_path, ["RESULT T-02 FAIL uvm_testname=m_corner_test log=logs/T-02.log"]
     )
     assert _run_summary(wd).returncode == 0
     md = (wd / "case-results-summary.md").read_text()
-    assert "| T-02 | F-02 | FAIL |" in md  # feature came from the testlist, not the log
+    assert "| T-02 | FAIL |" in md
 
 
 def test_result_line_for_unknown_test_id_does_not_crash(tmp_path):
@@ -169,7 +163,7 @@ def test_result_line_for_unknown_test_id_does_not_crash(tmp_path):
     )
     r = _run_summary(wd)
     assert r.returncode == 0, r.stderr
-    assert "| T-GHOST | - | FAIL |" in (wd / "case-results-summary.md").read_text()
+    assert "| T-GHOST | FAIL |" in (wd / "case-results-summary.md").read_text()
 
 
 def test_one_invocation_writes_both(tmp_path):

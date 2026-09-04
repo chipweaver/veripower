@@ -1,12 +1,12 @@
 ---
 name: brainstorm
-description: Use when brainstorming a new module's requirements and architecture to produce the brainstorm.md the pipeline starts from; not for design.md, RTL, constraints, or any in-pipeline stage.
+description: Use when brainstorming a new module's requirements and architecture into a brainstorm.md, one way to write the intent document the pipeline starts from; not for design.md, RTL, constraints, or any in-pipeline stage.
 ---
 
 # Pre-Pipeline Requirements Brainstorm
 
 Own the interactive D0–D7 brainstorm dialogue and produce a frozen
-`{module}/brainstorm.md`. Run **in your own session, before** the design
+`{module}/intent/brainstorm.md`. Run **in your own session, before** the design
 pipeline: the brainstorm conversation never enters the pipeline's context. The pipeline
 starts when the user starts it and reads that file solely inside its sub-agent contexts
 (it is the pipeline's input, not a pipeline stage).
@@ -19,8 +19,8 @@ starts when the user starts it and reads that file solely inside its sub-agent c
 
 ## Iron Rule
 
-- You are **pre-pipeline**: write exactly one artifact, `{module}/brainstorm.md`
-  (creating `{module}` if absent, before the module enters the pipeline). Write
+- You are **pre-pipeline**: write exactly one artifact, `{module}/intent/brainstorm.md`
+  (creating `{module}/intent/` if absent, before the module enters the pipeline). Write
   **no** `result.json`, and you are **not** a pipeline stage — you run before any pipeline state exists.
 - **Do not author design.md / RTL / constraints / any downstream artifact.** Your
   output is the brainstorm only; `design.md` is derived from it downstream.
@@ -36,7 +36,7 @@ starts when the user starts it and reads that file solely inside its sub-agent c
 | User-provided material (optional) | Public spec / reference docs the user pastes or points to. |
 
 No fixed external inputs. Revision mode additionally reads the existing
-`{module}/brainstorm.md`.
+`{module}/intent/brainstorm.md`.
 
 Ask for the directory if the user named only a module. Do not invent a parent for them:
 nothing downstream imposes one, and a guess sends them looking for a tree they did not ask for.
@@ -45,11 +45,15 @@ nothing downstream imposes one, and a guess sends them looking for a tree they d
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `{module}/brainstorm.md` | Custom markdown; descriptive ATX sections per the checklist's Section Layout | The pipeline's frozen input. |
+| `{module}/intent/brainstorm.md` | Custom markdown; descriptive ATX sections per the checklist's Section Layout | The pipeline's frozen input. The pipeline assumes nothing about its shape: an engineer's own document in any form serves the same, and this skill is one way to write one. |
 
-`brainstorm.md` lives at the **module root**, NOT under any stage workdir. There
-is **no** `version` frontmatter field (re-derivation after a revision is given naturally
-by the fresh run's empty workdir).
+`brainstorm.md` lives in `{module}/intent/`, the intent container, NOT under any stage
+workdir. That directory is the whole of what the pipeline treats as intent: anything the
+engineer delivers with the document — a reference model, a register map, a standard the
+document names as authoritative — belongs in it, and one fingerprint over the directory is
+what every downstream proof records. A file left at the module root instead is not intent;
+no stage is handed it and no proof records it. There is **no** `version` frontmatter field
+(re-derivation after a revision is given naturally by the fresh run's empty workdir).
 
 ## Workflow
 
@@ -61,10 +65,10 @@ by the fresh run's empty workdir).
 preferred; D0 first; D4 presents 2–3 candidate architectures with side-by-side
 mermaid): see `references/brainstorm-checklist.md`.
 
-### Step 3: Write `{module}/brainstorm.md`
+### Step 3: Write `{module}/intent/brainstorm.md`
 
 with descriptive section headers per the
-checklist's Section Layout (create `{module}` if it does not exist):
+checklist's Section Layout (create `{module}/intent/` if it does not exist):
 ```markdown
 # <module> Brainstorm
 ...
@@ -95,7 +99,7 @@ whole doc, so a changed dimension contradicting an untouched one is caught).
 
 ## Completion Gate
 
-- `{module}/brainstorm.md` exists.
+- `{module}/intent/brainstorm.md` exists, and any file the document names as authoritative sits beside it in `{module}/intent/`.
 - The brainstorm covers the D0–D7 dimensions reached (D0 intent settled; D4 had 2–3
   candidates; feature IDs / interface-group names / scenario IDs are stable named
   anchors per the checklist's "Subsection IDs" section).
@@ -104,8 +108,8 @@ whole doc, so a changed dimension contradicting an untouched one is caught).
 
 ## Return Contract
 
-Control returns to the user. Produce only `{module}/brainstorm.md` (no `result.json`, no
-state files — per the Iron Rule). The user starts the pipeline with `--module {module}`
+Control returns to the user. Produce only `{module}/intent/brainstorm.md` (no `result.json`,
+no state files — per the Iron Rule). The user starts the pipeline with `--module {module}`
 when they are satisfied with what is on disk; the kernel will not dispatch `specification`
 until that file exists.
 

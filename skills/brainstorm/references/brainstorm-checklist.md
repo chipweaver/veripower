@@ -134,16 +134,14 @@ fill, field by field — read them there rather than from a list kept here, whic
 goes stale while nothing checks it. This dimension only reminds; nothing lands here. Name every
 gap you find, by name, in the `Readiness` section of brainstorm.md.
 
-## Subsection IDs and Stable Anchors
+## Stable Names
 
-Downstream readers trace back to brainstorm.md at **subsection granularity** — the manifest's per-child `brainstorm_anchor`, and the specification gate's name-keyed cross-references — so brainstorm.md must carry stable, reusable names:
-
-- Each row of the D1 feature table carries a stable `ID` (recommended `F-NN`), reused verbatim downstream.
-- D2a top-level interface groups + D2b inter-module wire names, D4 candidates, D5 scenario table all use reusable named anchors (e.g., `cfg_bus` / `Candidate B` / `SC-001`).
-- D6 must explicitly write `ppa_targets: []` even when PPA optimization is not pursued, distinguishing "asked and decided none" from "forgot to ask."
-- Open questions use numbering like `OQ-NN` so they remain locatable.
-
-Stable IDs keep the feature/clock/port subset checks cross-referenceable — those key on names (`F-NN`, a clock name, a port name), never on position. `brainstorm_anchor` is free text pointing at the passage primarily a child's, read by that child's reviewer as a starting point and by nothing else — no script parses it, no shape is imposed on this document, and a passage no child claims is not a defect.
+The specification stage transcribes this document into a requirements ledger, one row per
+proposition in your words, so nothing downstream depends on its shape. What helps the reader is
+stable names to refer to: an `ID` on each D1 feature row (recommended `F-NN`), named interface
+groups and wires, named D4 candidates, `SC-NNN` scenario ids, `OQ-NN` open questions. State a PPA
+dimension you deliberately leave unbounded as such, so "asked and decided none" is distinguishable
+from "forgot to ask".
 
 ## Open-Question Usage Rules
 

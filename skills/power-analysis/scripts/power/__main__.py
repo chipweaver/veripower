@@ -3,7 +3,7 @@
 
 Verbs (one stage = one tool):
   bootstrap   deploy templates + substitute env.sh + render power tests          (exit 0 / 1 / 2)
-  finalize    parse PT-PX reports, judge power_mw PPA, assemble result.json       (exit 0 written / 2 BLOCKED)
+  finalize    parse PT-PX reports, judge the power requirements, assemble result.json (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the
 power.* library. Library imports are deferred into each handler (NOT top-level)
@@ -36,15 +36,6 @@ def _inputs(workdir) -> dict:
     ]
 
 
-def _read_ppa_targets(inputs, dims: set[str]) -> list:
-    """PPA targets from the specification stage root's ppa.json sidecar,
-    filtered to `dims` — power-analysis binds to this file as its acceptance standard."""
-    p = Path(inputs["ppa"]) / "ppa.json"
-    if not p.is_file():
-        return []
-    return [t for t in json.loads(p.read_text()) if t.get("dim") in dims]
-
-
 def _cmd_bootstrap(a: argparse.Namespace) -> int:
     from power import bootstrap
 
@@ -52,14 +43,13 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
-    from power import result
+    from power import requirements, result
 
-    inputs = _inputs(a.workdir)
-    targets = _read_ppa_targets(inputs, {"power_mw"})
     return result.finalize(
         a.workdir,
-        inputs["scaffold"],
-        json.dumps(targets),
+        _inputs(a.workdir)["scaffold"],
+        requirements.mine(requirements.load(a.workdir)),
+        requirements.parse_declared(a.requirements),
         a.fix_owner,
         a.fail_reason,
     )
@@ -95,6 +85,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="cause of a run with no gradeable reports (missing external reference, "
         "license, a non-zero make); supplying it declares the failure and skips the "
         "gate.",
+    )
+    sp.add_argument(
+        "--requirements",
+        default=None,
+        help="your verdict on each requirements.json row judged by power-analysis that carries "
+        'no target, as a JSON array of {"id", "met", "actual"}; rows with a target are compared here',
     )
     sp.set_defaults(func=_cmd_finalize)
 

@@ -16,7 +16,8 @@ guess this in advance, because guessing it is worth less than trying.
 
 - `{workdir}` — already populated with `tb/uvm/**`.
 - `conformance-review.md` — the findings. The ones marked `BLOCKING` are your scope.
-- The scaffold-spec `testpoints[].inlined_check_hints[]` (the check-intent source) — **read-only**.
+- The check hints each testpoint covers and the requirements rows they name (the check-intent
+  source) — **read-only**.
 - `tb-scaffold.json`'s `testpoints[].intent` (the intent source) — **read-only**.
 
 ## May change

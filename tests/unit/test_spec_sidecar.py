@@ -1,8 +1,9 @@
 """Sidecar reads validate on the way in — the file's own shape, reported by whoever read it.
 
 Placement is the point being tested here: these defects are NOT cross-file, so they must not
-wait for check-crossrefs. `read_sidecar` raising is what lets every verb (derive-ports,
-derive-constraints, check-crossrefs) report the same defect the moment it needs the file.
+wait for check-crossrefs. `read_sidecar` raising is what lets every verb (check-ledger,
+derive-ports, derive-constraints, check-crossrefs) report the same defect the moment it needs
+the file.
 """
 
 import json
@@ -15,7 +16,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills/specification/scripts"))
 from spec.sidecar import SidecarError, read_sidecar  # noqa: E402
 
-_FEATURE = {"id": "F-00", "name": "f", "description": "d"}
+_ROW = {
+    "id": "R-001",
+    "verbatim": "done pulses one cycle after start",
+    "judge": "simulation",
+}
 _PORT = {
     "name": "din",
     "direction": "input",
@@ -23,6 +28,12 @@ _PORT = {
     "clock_domain": "clk",
     "interface_group": "cfg",
     "role": "data",
+}
+_HINT = {
+    "check_id": "CHK-0",
+    "requirements": ["R-001"],
+    "observable": "y",
+    "reference_rule": "rm",
 }
 
 
@@ -33,109 +44,152 @@ def _write(tmp_path, name, doc):
     return tmp_path
 
 
+def _bad(tmp_path, doc, name="requirements.json", schema=None):
+    _write(tmp_path, name, doc)
+    with pytest.raises(SidecarError) as e:
+        read_sidecar(tmp_path, name, schema=schema)
+    return str(e.value), e.value.violations
+
+
 def test_missing_file_names_itself(tmp_path):
     with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "features.json")
-    assert "features.json" in str(e.value) and "missing" in str(e.value)
+        read_sidecar(tmp_path, "requirements.json")
+    assert "requirements.json" in str(e.value) and "missing" in str(e.value)
 
 
 def test_unparseable_file_names_itself(tmp_path):
-    (tmp_path / "features.json").write_text("{not json", encoding="utf-8")
+    (tmp_path / "requirements.json").write_text("{not json", encoding="utf-8")
     with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "features.json")
+        read_sidecar(tmp_path, "requirements.json")
     assert "unreadable" in str(e.value)
 
 
-def test_clean_sidecar_returns_its_entries(tmp_path):
-    _write(tmp_path, "features.json", [_FEATURE])
-    assert read_sidecar(tmp_path, "features.json") == [_FEATURE]
+def test_clean_ledger_returns_its_rows(tmp_path):
+    _write(tmp_path, "requirements.json", [_ROW])
+    assert read_sidecar(tmp_path, "requirements.json") == [_ROW]
 
 
 def test_misspelled_key_names_itself(tmp_path):
-    _write(tmp_path, "features.json", [{**_FEATURE, "happy_pat": "h"}])
-    with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "features.json")
-    assert "happy_pat" in str(e.value)
+    msg, _ = _bad(tmp_path, [{**_ROW, "verbatm": "x"}])
+    assert "verbatm" in msg
 
 
 def test_missing_required_field_is_rejected(tmp_path):
-    _write(
-        tmp_path, "features.json", [{k: v for k, v in _FEATURE.items() if k != "id"}]
-    )
-    with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "features.json")
-    assert "id" in str(e.value)
-
-
-def test_narrative_fields_are_optional(tmp_path):
-    # id/name/description carry the record; the rest describe the shape a feature record
-    # usually takes. A required-non-empty box buys a filled box, not a real answer.
-    _write(tmp_path, "features.json", [_FEATURE])
-    assert read_sidecar(tmp_path, "features.json") == [_FEATURE]
+    msg, _ = _bad(tmp_path, [{k: v for k, v in _ROW.items() if k != "verbatim"}])
+    assert "verbatim" in msg
 
 
 def test_present_but_blank_is_rejected(tmp_path):
-    # minLength 1 everywhere, optional fields included.
-    _write(tmp_path, "features.json", [{**_FEATURE, "happy_path": ""}])
-    with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "features.json")
-    assert "happy_path" in str(e.value)
+    msg, _ = _bad(tmp_path, [{**_ROW, "note": ""}])
+    assert "note" in msg
 
 
-def test_empty_array_is_rejected_for_a_minitems_sidecar(tmp_path):
-    _write(tmp_path, "features.json", [])
-    with pytest.raises(SidecarError):
-        read_sidecar(tmp_path, "features.json")
+def test_empty_ledger_is_rejected(tmp_path):
+    _bad(tmp_path, [])
+
+
+def test_unknown_judge_is_rejected(tmp_path):
+    msg, _ = _bad(tmp_path, [{**_ROW, "judge": "verification"}])
+    assert "verification" in msg
 
 
 def test_error_names_every_violation_not_the_first(tmp_path):
     # Whoever is fixing the sidecar wants the whole list, not one round-trip per defect.
-    _write(
+    _, violations = _bad(
         tmp_path,
-        "features.json",
-        [{**_FEATURE, "id": ""}, {k: v for k, v in _FEATURE.items() if k != "name"}],
+        [{**_ROW, "id": ""}, {k: v for k, v in _ROW.items() if k != "judge"}],
     )
-    with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "features.json")
-    assert len(e.value.violations) == 2
-
-
-def test_schema_override_for_a_subject_named_file(tmp_path):
-    hint = {
-        "check_id": "CHK-0",
-        "source_feature": "F-00",
-        "implementation_detail": "sum",
-        "observable": "y",
-        "reference_rule": "rm",
-    }
-    _write(tmp_path, "check-hints/c.json", [hint])
-    got = read_sidecar(tmp_path, "check-hints/c.json", schema="check-hints.schema.json")
-    assert got == [hint]
-
-
-def test_hint_missing_required_field_is_rejected(tmp_path):
-    lean = {"check_id": "CHK-0", "source_feature": "F-00", "observable": "y"}
-    _write(tmp_path, "check-hints/c.json", [lean])
-    with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "check-hints/c.json", schema="check-hints.schema.json")
-    assert "reference_rule" in str(e.value)
-
-
-def test_source_feature_alias_is_rejected_not_reinterpreted(tmp_path):
-    aliased = {
-        "check_id": "CHK-0",
-        "SourceFeature": "F-00",
-        "implementation_detail": "sum",
-        "observable": "y",
-        "reference_rule": "rm",
-    }
-    _write(tmp_path, "check-hints/c.json", [aliased])
-    with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "check-hints/c.json", schema="check-hints.schema.json")
-    assert "SourceFeature" in str(e.value) or "source_feature" in str(e.value)
+    assert len(violations) == 2
 
 
 # ---------- the rules JSON Schema cannot carry ----------
+
+
+def test_duplicate_id_is_rejected(tmp_path):
+    msg, _ = _bad(tmp_path, [_ROW, {**_ROW, "verbatim": "again"}])
+    assert "already used" in msg
+
+
+def test_unassignable_needs_a_note(tmp_path):
+    msg, _ = _bad(tmp_path, [{**_ROW, "judge": "unassignable"}])
+    assert "note" in msg
+    _write(
+        tmp_path,
+        "requirements.json",
+        [{**_ROW, "judge": "unassignable", "note": "no measurand named"}],
+    )
+    assert read_sidecar(tmp_path, "requirements.json")[0]["judge"] == "unassignable"
+
+
+def test_target_dim_must_belong_to_the_judge(tmp_path):
+    target = {"dim": "power_mw", "op": "<=", "value": 5}
+    msg, _ = _bad(tmp_path, [{**_ROW, "judge": "synthesis", "target": target}])
+    assert "power_mw" in msg and "synthesis" in msg
+    msg, _ = _bad(tmp_path, [{**_ROW, "judge": "rtl-design", "target": target}])
+    assert "takes no target" in msg
+
+
+def test_a_matching_target_is_accepted(tmp_path):
+    row = {
+        **_ROW,
+        "judge": "synthesis",
+        "target": {"dim": "area_um2", "op": "<=", "value": 7e5},
+    }
+    _write(tmp_path, "requirements.json", [row])
+    assert read_sidecar(tmp_path, "requirements.json") == [row]
+
+
+def test_scenario_only_qualifies_a_power_bound(tmp_path):
+    t = {"dim": "coverage_line", "op": ">", "value": 90, "scenario": "idle"}
+    msg, _ = _bad(tmp_path, [{**_ROW, "target": t}])
+    assert "scenario" in msg
+
+
+def test_non_finite_target_value_is_rejected(tmp_path):
+    # json.loads accepts the NaN token and `type: number` admits it; a NaN bound makes every
+    # comparison false and disarms the gate that reads it.
+    (tmp_path / "requirements.json").write_text(
+        '[{"id":"R-001","verbatim":"v","judge":"synthesis",'
+        '"target":{"dim":"area_um2","op":"<=","value":NaN}}]'
+    )
+    with pytest.raises(SidecarError) as e:
+        read_sidecar(tmp_path, "requirements.json")
+    assert "finite" in str(e.value)
+
+
+def test_schema_override_for_a_subject_named_file(tmp_path):
+    _write(tmp_path, "check-hints/c.json", [_HINT])
+    got = read_sidecar(tmp_path, "check-hints/c.json", schema="check-hints.schema.json")
+    assert got == [_HINT]
+
+
+def test_hint_missing_required_field_is_rejected(tmp_path):
+    lean = {k: v for k, v in _HINT.items() if k != "reference_rule"}
+    msg, _ = _bad(
+        tmp_path, [lean], name="check-hints/c.json", schema="check-hints.schema.json"
+    )
+    assert "reference_rule" in msg
+
+
+def test_hint_naming_no_row_is_rejected(tmp_path):
+    msg, _ = _bad(
+        tmp_path,
+        [{**_HINT, "requirements": []}],
+        name="check-hints/c.json",
+        schema="check-hints.schema.json",
+    )
+    assert "requirements" in msg
+
+
+def test_hint_alias_field_is_rejected_not_reinterpreted(tmp_path):
+    aliased = {
+        **{k: v for k, v in _HINT.items() if k != "requirements"},
+        "rows": ["R-001"],
+    }
+    msg, _ = _bad(
+        tmp_path, [aliased], name="check-hints/c.json", schema="check-hints.schema.json"
+    )
+    assert "rows" in msg or "requirements" in msg
 
 
 def test_a_top_io_name_is_the_base_identifier(tmp_path):
@@ -146,28 +200,24 @@ def test_a_top_io_name_is_the_base_identifier(tmp_path):
 def test_a_bit_range_in_a_top_io_name_is_rejected(tmp_path):
     # It reaches get_ports verbatim, where DC and PrimeTime match zero ports for it —
     # the port silently loses its IO constraint. Agreeing with `width` does not save it.
-    _write(tmp_path, "top-io.json", [{**_PORT, "name": "tok[4:0]", "width": 5}])
-    with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "top-io.json")
-    assert "bit range" in str(e.value) and "tok[4:0]" in str(e.value)
+    msg, _ = _bad(
+        tmp_path, [{**_PORT, "name": "tok[4:0]", "width": 5}], name="top-io.json"
+    )
+    assert "bit range" in msg and "tok[4:0]" in msg
 
 
 def test_a_parameterized_range_in_a_top_io_name_is_rejected(tmp_path):
-    # The case a numeric width-vs-range cross-check cannot see at all: no `[h:l]` to
-    # compare against, so any width passed. Real designs declare ports this way.
-    _write(tmp_path, "top-io.json", [{**_PORT, "name": "dataIn[DATA_WIDTH-1:0]"}])
-    with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "top-io.json")
-    assert "bit range" in str(e.value)
+    msg, _ = _bad(
+        tmp_path, [{**_PORT, "name": "dataIn[DATA_WIDTH-1:0]"}], name="top-io.json"
+    )
+    assert "bit range" in msg
 
 
 def test_a_bit_select_in_a_top_io_name_is_rejected(tmp_path):
-    # A port is declared once with a width; a single-bit name is a category error here
-    # whatever `width` claims.
-    _write(tmp_path, "top-io.json", [{**_PORT, "name": "tok[3]", "width": 32}])
-    with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "top-io.json")
-    assert "bit range" in str(e.value)
+    msg, _ = _bad(
+        tmp_path, [{**_PORT, "name": "tok[3]", "width": 32}], name="top-io.json"
+    )
+    assert "bit range" in msg
 
 
 def test_an_interconnect_index_makes_no_width_claim(tmp_path):
@@ -190,9 +240,8 @@ def test_an_interconnect_index_makes_no_width_claim(tmp_path):
 
 
 def test_the_width_rule_applies_to_interconnects_too(tmp_path):
-    _write(
+    msg, _ = _bad(
         tmp_path,
-        "interconnects.json",
         [
             {
                 "wire": "score_S[7:0]",
@@ -202,16 +251,14 @@ def test_the_width_rule_applies_to_interconnects_too(tmp_path):
                 "clock_domain": "clk",
             }
         ],
+        name="interconnects.json",
     )
-    with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "interconnects.json")
-    assert "implies 8" in str(e.value)
+    assert "implies 8" in msg
 
 
 def test_a_wire_without_width_is_a_schema_violation(tmp_path):
-    _write(
+    msg, _ = _bad(
         tmp_path,
-        "interconnects.json",
         [
             {
                 "wire": "score_S",
@@ -220,7 +267,6 @@ def test_a_wire_without_width_is_a_schema_violation(tmp_path):
                 "clock_domain": "clk",
             }
         ],
+        name="interconnects.json",
     )
-    with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, "interconnects.json")
-    assert "width" in str(e.value)
+    assert "width" in msg

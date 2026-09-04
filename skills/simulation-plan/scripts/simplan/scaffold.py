@@ -107,18 +107,9 @@ def semantic_errors(scaffold: dict) -> list:
 def coverage_errors(scaffold: dict, check_hints: list) -> list:
     """Bidirectional coverage matrix: every authored check_id is covered (in some
     testpoints[].covers[]) or skipped (in skipped_checks[]); every non-empty covers[] entry
-    resolves to a real check_id. The inline existence/non-emptiness is guaranteed by
-    construction (the materialize-scaffold verb), so it is not re-checked here.
-
-    The dangling-covers half reads as redundant with materialize's own guard and is not.
-    That guard is a build-time precondition; this is the gate, and the documented fix loop
-    re-runs the gate alone. The uncovered-check_hints message below steers the author into
-    hand-adding a check_id to covers[], an edit made after materialize already wrote the
-    file, so a typo in that id is caught here or nowhere. The hints are re-read on every run,
-    leaving a scaffold materialized against an earlier set free
-    to dangle against the current. references/plan-review-task-contract.md then puts this
-    defect class out of scope for the LLM reviewer on the strength of this check, so
-    dropping it would leave the class owned by nobody."""
+    resolves to a real check_id. references/plan-review-task-contract.md puts this defect
+    class out of scope for the LLM reviewer on the strength of this check, so dropping it
+    would leave the class owned by nobody."""
     check_ids = {h["check_id"] for h in check_hints if h.get("check_id")}
     covered, errs = set(), []
     for tp in scaffold.get("testpoints", []):
@@ -155,8 +146,33 @@ def verdict(plan_dir, spec_workdir) -> list:
     return (
         semantic_errors(plan)
         or boundary_errors(plan, spec_workdir)
+        or scenario_errors(plan, spec_workdir)
         or coverage_errors(plan, check_hints)
     )
+
+
+def scenario_errors(scaffold: dict, spec_workdir) -> list:
+    """Every power scenario a requirements.json bound names must be one this plan defines.
+
+    The engineer's power bound may name the scenario it applies to; power-analysis compares
+    against that scenario's measurement, seven stages from here. Catching the missing scenario
+    here, where the scenarios are authored, is the difference between a plan round and a whole
+    pipeline round."""
+    try:
+        rows = json.loads(
+            (Path(spec_workdir) / "requirements.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as e:
+        return [f"requirements.json unreadable: {e}"]
+    defined = {ps.get("id") for ps in scaffold.get("power_scenarios", [])}
+    return [
+        f"requirements.json {r['id']} bounds power in scenario {r['target']['scenario']!r}, "
+        f"which power-scenarios.json does not define (defined: {sorted(d for d in defined if d)})."
+        for r in rows
+        if r.get("judge") == "power-analysis"
+        and "scenario" in (r.get("target") or {})
+        and r["target"]["scenario"] not in defined
+    ]
 
 
 def boundary_errors(scaffold: dict, spec_workdir) -> list:

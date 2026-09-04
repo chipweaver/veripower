@@ -134,9 +134,19 @@ def test_skill_module_symbol_refs_resolve() -> None:
     assert not bad, "Dead module.symbol references:\n  " + "\n  ".join(bad)
 
 
+def test_section_lint_still_works() -> None:
+    """Canary against a literal: the corpus may legitimately carry zero doc-prefixed section
+    refs (reviewers now read whole documents rather than a section), so counting hits would
+    assert something nobody wants guaranteed."""
+    assert _SEC_RE.findall("`design.md` §1.2 holds the diagram") == [
+        ("design.md", "1.2")
+    ]
+    headings = _heading_lines(_resolve_doc_source("design.md"))
+    assert _section_present(headings, "1.2") and not _section_present(headings, "9.9")
+
+
 def test_skill_section_refs_resolve() -> None:
     bad: list[str] = []
-    checked = 0
     for skill in SKILL_DIRS:
         skill_md = PLUGIN_ROOT / "skills" / skill / "SKILL.md"
         if not skill_md.is_file():
@@ -145,13 +155,11 @@ def test_skill_section_refs_resolve() -> None:
             src = _resolve_doc_source(doc)
             if src is None:
                 continue  # not deterministically resolvable — skipped by design
-            checked += 1
             if not _section_present(_heading_lines(src), sec):
                 bad.append(
                     f"{skill}/SKILL.md: `{doc} §{sec}` — no matching heading in "
                     f"{src.relative_to(PLUGIN_ROOT)}"
                 )
-    assert checked, "regex matched no resolvable doc-prefixed §section refs"
     assert not bad, "Dead §section references:\n  " + "\n  ".join(bad)
 
 

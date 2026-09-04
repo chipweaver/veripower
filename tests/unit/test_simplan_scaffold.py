@@ -29,10 +29,8 @@ GOOD = {
     "tests": [
         {
             "name": "t_smoke",
-            "feature": "F1",
             "test_id": "T1",
             "suites": ["smoke", "regress"],
-            "feature_name": "Register write path",
             "seqs": ["smoke"],
         }
     ],
@@ -44,9 +42,6 @@ GOOD = {
             "intent": "drive TP-1 and observe it",
             "bins": ["a"],
             "covers": ["CHK-0"],
-            "inlined_check_hints": [
-                {"check_id": "CHK-0", "implementation_detail": "x"}
-            ],
         }
     ],
     "power_scenarios": [
@@ -97,10 +92,22 @@ _TOP_IO = [
 ]
 
 
-def _spec(tmp_path, hints=None, top_io=None):
-    """tmp_path doubles as the spec workdir: manifest + check-hints/ + top-io.json."""
+_ROWS = [
+    {
+        "id": "R-0",
+        "verbatim": "the register reads back what was written",
+        "judge": "simulation",
+    }
+]
+
+
+def _spec(tmp_path, hints=None, top_io=None, rows=None):
+    """tmp_path doubles as the spec workdir: manifest + check-hints/ + top-io.json + ledger."""
     (tmp_path / "top-io.json").write_text(
         json.dumps(_TOP_IO if top_io is None else top_io)
+    )
+    (tmp_path / "requirements.json").write_text(
+        json.dumps(_ROWS if rows is None else rows)
     )
     (tmp_path / "manifest.json").write_text(
         json.dumps({"module": "m", "children": [{"name": "c", "doc": "c.md"}]})
@@ -126,9 +133,9 @@ def _split(tmp_path, scaffold):
     (tmp_path / "tb-scaffold.json").write_text(json.dumps(doc))
 
 
-def _run(tmp_path, scaffold, check=True, hints=None, top_io=None):
+def _run(tmp_path, scaffold, check=True, hints=None, top_io=None, rows=None):
     _split(tmp_path, scaffold)
-    _spec(tmp_path, hints, top_io)
+    _spec(tmp_path, hints, top_io, rows)
     return subprocess.run(
         [
             "python3",
@@ -344,18 +351,39 @@ def test_skipped_checks_shape_validated(tmp_path):
     assert proc.returncode != 0 and "reason" in proc.stderr
 
 
+# ---- power scenarios the requirements name ----
+def test_power_bound_naming_an_undefined_scenario_fails(tmp_path):
+    rows = [
+        *_ROWS,
+        {
+            "id": "R-9",
+            "verbatim": "idle power below 2 mW",
+            "judge": "power-analysis",
+            "target": {"dim": "power_mw", "op": "<", "value": 2, "scenario": "idle"},
+        },
+    ]
+    proc = _run(tmp_path, GOOD, check=False, rows=rows)
+    assert proc.returncode != 0 and "R-9" in proc.stderr and "'idle'" in proc.stderr
+
+
+def test_power_bound_naming_a_defined_scenario_passes(tmp_path):
+    rows = [
+        *_ROWS,
+        {
+            "id": "R-9",
+            "verbatim": "S1 power below 2 mW",
+            "judge": "power-analysis",
+            "target": {"dim": "power_mw", "op": "<", "value": 2, "scenario": "S1"},
+        },
+    ]
+    assert _run(tmp_path, GOOD, rows=rows).returncode == 0
+
+
 # ---- coverage matrix ----
 def test_coverage_uncovered_check_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["testpoints"] = [
-        {
-            "id": "TP-0",
-            "intent": "drive TP-0 and observe it",
-            "covers": ["CHK-00"],
-            "inlined_check_hints": [
-                {"check_id": "CHK-00", "implementation_detail": "x"}
-            ],
-        }
+        {"id": "TP-0", "intent": "drive TP-0 and observe it", "covers": ["CHK-00"]}
     ]
     proc = _run(
         tmp_path,
@@ -371,14 +399,7 @@ def test_coverage_uncovered_check_fails(tmp_path):
 def test_coverage_skip_passes(tmp_path):
     s = copy.deepcopy(GOOD)
     s["testpoints"] = [
-        {
-            "id": "TP-0",
-            "intent": "drive TP-0 and observe it",
-            "covers": ["CHK-00"],
-            "inlined_check_hints": [
-                {"check_id": "CHK-00", "implementation_detail": "x"}
-            ],
-        }
+        {"id": "TP-0", "intent": "drive TP-0 and observe it", "covers": ["CHK-00"]}
     ]
     s["skipped_checks"] = [{"check_id": "CHK-01", "reason": "lint-only gate"}]
     proc = _run(
@@ -396,9 +417,6 @@ def test_coverage_dangling_covers_fails(tmp_path):
             "id": "TP-0",
             "intent": "drive TP-0 and observe it",
             "covers": ["CHK-00", "CHK-99"],
-            "inlined_check_hints": [
-                {"check_id": "CHK-00", "implementation_detail": "x"}
-            ],
         }
     ]
     proc = _run(tmp_path, s, check=False, hints=[{"check_id": "CHK-00"}])
@@ -416,10 +434,6 @@ def test_coverage_fully_covered_passes(tmp_path):
             "id": "TP-0",
             "intent": "drive TP-0 and observe it",
             "covers": ["CHK-00", "CHK-01"],
-            "inlined_check_hints": [
-                {"check_id": "CHK-00", "implementation_detail": "x"},
-                {"check_id": "CHK-01", "implementation_detail": "y"},
-            ],
         }
     ]
     proc = _run(

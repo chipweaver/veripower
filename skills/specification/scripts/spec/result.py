@@ -3,9 +3,9 @@ import json
 import sys
 from pathlib import Path
 
+from spec import ledger
 from spec.constraints import derive_constraints
 from spec.crossrefs import verdict as crossrefs_verdict
-from spec.sidecar import SidecarError, read_sidecar, validate_doc
 
 STAGE = "specification"
 
@@ -33,15 +33,6 @@ def _write_result(workdir: Path, env: dict) -> None:
     print(f"[spec finalize] wrote {workdir / 'result.json'} (status={env['status']})")
 
 
-def _write_ppa_json(workdir: Path, ppa_targets: list) -> None:
-    """The stable PPA-targets sidecar synthesis/power-analysis read directly — same
-    atomic temp+rename as result.json. Written only on an explicit --ppa-targets
-    override; otherwise the Wave-1-authored disk copy IS the source and stays untouched."""
-    tmp = workdir / "ppa.json.tmp"
-    tmp.write_text(json.dumps(ppa_targets, indent=2) + "\n")
-    tmp.replace(workdir / "ppa.json")
-
-
 def _top_from_manifest(workdir: Path) -> str:
     """<TOP> = manifest.module — the same source derive_constraints reads; needed on the fail
     path, which never runs the derivation. Indexed, not defaulted: <TOP> names the two
@@ -67,9 +58,8 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
         "manifest.json",
         f"constraints/{top}.sdc",
         f"constraints/{top}.sgdc",
-        "ppa.json",
+        "requirements.json",
         "clocks.json",
-        "features.json",
         "top-io.json",
         "interconnects.json",
     ]
@@ -83,7 +73,7 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
     ]
 
 
-def build_result(workdir, ppa_targets, status, fail_reason=None) -> int:
+def build_result(workdir, status, fail_reason=None) -> int:
     """Assemble the lean specification result.json. Returns 0 (written, pass or fail); a
     raise becomes finalize exit 2 (BLOCKED).
 
@@ -123,16 +113,15 @@ def build_result(workdir, ppa_targets, status, fail_reason=None) -> int:
     )  # reuse: resolves <TOP> + regenerates SDC/SGDC + self-checks
     top = info["top"]  # == manifest.module (the single <TOP> source)
 
-    if ppa_targets is not None:
-        # Validate before writing: a malformed override must not clobber the sidecar.
-        violations = validate_doc("ppa.json", ppa_targets)
-        if violations:
-            raise SidecarError("--ppa-targets override", violations)
-        _write_ppa_json(workdir, ppa_targets)
-    else:
-        # The Wave-1 sidecar IS the PPA SSoT synthesis / power-analysis read directly, so it
-        # is re-validated in place and never copied into this envelope.
-        read_sidecar(workdir, "ppa.json")
+    rows = ledger.load(
+        workdir
+    )  # re-validated in place; it is the SSoT every stage binds
+    open_rows = ledger.unassignable(rows)
+    if open_rows:
+        raise ValueError(
+            f"requirements.json still has unassignable rows {open_rows}: the Wave 1 gate resolves "
+            "them before finalize."
+        )
 
     ss = {"top_module": top}
     artifacts = enumerate_artifacts(workdir, top)
@@ -143,18 +132,11 @@ def build_result(workdir, ppa_targets, status, fail_reason=None) -> int:
     return 0
 
 
-def finalize(
-    workdir,
-    *,
-    status,
-    ppa_targets_json=None,
-    fail_reason=None,
-) -> int:
-    """Parse the human-gate outcome args, then build_result. --ppa-targets is an optional
-    override — by default the Wave-1-authored {workdir}/ppa.json is read from disk. exit
-    0 = result.json written (pass or fail); exit 2 = BLOCKED (bad --ppa-targets JSON, empty
-    --fail-reason, missing/invalid ppa.json, unreadable manifest, a derivation fail-loud, or
-    any internal raise) — never conflated with status=fail."""
+def finalize(workdir, *, status, fail_reason=None) -> int:
+    """Parse the human-gate outcome args, then build_result. exit 0 = result.json written (pass
+    or fail); exit 2 = BLOCKED (empty --fail-reason, an invalid or unresolved requirements.json,
+    unreadable manifest, a derivation fail-loud, or any internal raise) — never conflated with
+    status=fail."""
     if fail_reason is not None and not fail_reason.strip():
         print(
             "[spec finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",
@@ -162,15 +144,7 @@ def finalize(
         )
         return 2
     try:
-        ppa = json.loads(ppa_targets_json) if ppa_targets_json is not None else None
-    except json.JSONDecodeError as exc:
-        print(
-            f"[spec finalize] BLOCKED: --ppa-targets not valid JSON: {exc}",
-            file=sys.stderr,
-        )
-        return 2
-    try:
-        return build_result(workdir, ppa, status, fail_reason=fail_reason)
+        return build_result(workdir, status, fail_reason=fail_reason)
     except SystemExit as exc:
         # derive_constraints' fail-loud sys.exit is a BaseException; keep the
         # documented exit-code contract (2 = BLOCKED) instead of leaking exit 1.

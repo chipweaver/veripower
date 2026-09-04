@@ -30,9 +30,6 @@ ports:
   - counter
 clocks:
   - { name: i_clk, domain: i_clk }
-features:
-  - F-04
-  - F-05
 ---
 
 # tpu_top — Top Integration: APB Register File + Start/Counter Control + Done (F-04, F-05)

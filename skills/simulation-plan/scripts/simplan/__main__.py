@@ -2,7 +2,7 @@
 """simplan — simulation-plan-stage CLI.
 
 Verbs (one stage = one tool):
-  materialize-scaffold  fill scaffold signals/clock/reset/inline (writes scaffold; exit 0; fail-loud)
+  materialize-scaffold  resolve the agents against top-io.json          (exit 0; fail-loud)
   check-scaffold        structural+semantic+coverage gate        (exit 0 OK / 1 fix-message)
   finalize              assemble the lean result.json            (exit 0 written / 2 BLOCKED)
 
@@ -59,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "materialize-scaffold",
-        help="fill scaffold agent signals / clock / reset / inline hints",
+        help="resolve the agents' interface_groups against top-io.json",
     )
     sp.add_argument(
         "--plan",
@@ -71,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--spec",
         required=True,
         type=Path,
-        help="the specification workdir: clocks.json / top-io.json / check-hints/ are read from it",
+        help="the specification workdir: top-io.json is read from it",
     )
     sp.set_defaults(func=_cmd_materialize_scaffold)
 
@@ -86,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--spec",
         required=True,
         type=Path,
-        help="the specification workdir: the check hints for the coverage matrix are read from it",
+        help="the specification workdir: check-hints/ and requirements.json are read from it",
     )
     sp.set_defaults(func=_cmd_check_scaffold)
 

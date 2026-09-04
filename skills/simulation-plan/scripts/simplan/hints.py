@@ -5,8 +5,7 @@ global because check_id uniqueness and the coverage matrix are. It is a function
 a file: the result is a pure concatenation of authored JSON, so persisting it would leave a
 derived copy on disk for the next reader to pick up instead of the source.
 
-Both consumers — materialize-scaffold (inlined_check_hints[]) and check-scaffold (the
-coverage matrix) — call this, so the uniqueness check runs once per invocation either way.
+check-scaffold's coverage matrix is its consumer; simulation reads the same files by check_id.
 """
 
 from __future__ import annotations

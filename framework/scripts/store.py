@@ -68,11 +68,14 @@ def write_dispatch(
     kernel tells a run about itself. Four keys, and a key is written only when it carries
     something:
 
-    - `inputs` = {key: producer-canonical-stage-root (absolute)} — always present. Each
-      key resolves to exactly one producer's canonical stage root; the consumer keeps the
-      producer-output subpath literal (out/, tb/uvm/, constraints/). PIPELINE_INPUTS
-      (external, no producer) resolve to the module root. A rule declaring 'sim_run' gets
-      an extra 'sim_run' key = <simulation-stage>/runs/<N> (triage).
+    - `inputs` = {key: location (absolute)} — always present. A produced key resolves to
+      exactly one producer's canonical stage root; the consumer keeps the producer-output
+      subpath literal (out/, tb/uvm/, constraints/). A PIPELINE_INPUT (external, no producer)
+      resolves to its own selector path, so what the stage is handed is exactly what its
+      proof records — the module root around it, pipeline directories and anything an agent
+      wrote there included, is neither reachable through the table nor part of any version.
+      A rule declaring 'sim_run' gets an extra 'sim_run' key = <simulation-stage>/runs/<N>
+      (triage).
     - `scope` — module-relative paths, or <file>:<line> anchors, that narrow this round.
     - `caused_by` — module-relative record of whoever named this owner: the per-run
       result.json of each failure whose own envelope did, or the evidence of the diagnoses
@@ -82,12 +85,11 @@ def write_dispatch(
     The three narrowing keys are derived by the caller (cmd_dispatch); this function owns
     only the file's shape."""
     r = rules.RULES[rule]
-    module_root_abs = str(root.resolve())
     table: dict[str, str] = {}
     for key, globs in r.inputs.items():
         g0 = globs[0]
         if g0 in rules.PIPELINE_INPUTS:
-            table[key] = module_root_abs
+            table[key] = str((root / g0).resolve())
             continue
         # Every glob under one input key shares a single producer, so globs[0]'s
         # producer represents the whole key.

@@ -283,7 +283,6 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     test_lines = ["// Auto-generated from tb-scaffold.json."]
     for test in tests:
         tname = test["name"]
-        feature = test.get("feature", "")
         test_id = test.get("test_id", tname)
         # Build sequence start calls
         seq_calls: list[str] = []
@@ -312,7 +311,6 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
                 "MODULE": module,
                 "TOP": top,
                 "TEST_NAME": tname,
-                "FEATURE": feature,
                 "TEST_ID": test_id,
                 "SEQ_START_CALLS": seq_start_text,
             },
@@ -433,28 +431,19 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     pending.append((out_dir / "tb" / "uvm" / "tb_sources.f", content))
 
     # --- testlist.json ---
-    # Field format must match run_vcs_regression.sh:
-    #   "{test_id}|{uvm_testname}|{feature_id}".format(**test)
     testlist_entries: list[dict] = []
     for test in tests:
         tname = test["name"]
-        missing = [
-            k
-            for k in ("test_id", "feature", "feature_name", "suites")
-            if not test.get(k)
-        ]
+        missing = [k for k in ("test_id", "suites") if not test.get(k)]
         if missing:
             sys.exit(
                 f"[sim bootstrap] test {tname!r} is missing {missing}. Rerun simulation-plan: "
-                f"suites is authored there and feature_name is injected by "
-                f"materialize-scaffold; simplan check-scaffold requires all four."
+                f"both are authored there and simplan check-scaffold requires them."
             )
         testlist_entries.append(
             {
                 "test_id": test["test_id"],
                 "uvm_testname": f"{module}_{tname}_test",
-                "feature_id": test["feature"],
-                "feature_name": test["feature_name"],
                 "suites": test["suites"],
                 "seqs": test.get("seqs", []),
             }

@@ -29,8 +29,10 @@ and writes every upstream location into `env.sh`, which the `make` targets read 
 netlist, the SDC and the SDF are consumed by the tools; VCS back-annotates delays out of the SDF,
 which is what makes the SAIF a gate-level one rather than an RTL toggle count.
 
-The one file you open yourself is `<ppa>/ppa.json`, and only when a `power_mw` miss makes you
-decide which side of it is wrong. `finalize` reads it for the gate on its own.
+The one file you open yourself is `<requirements>/requirements.json`: the rows judged by
+`power-analysis` are yours; a row that points at a file under `<intent>/` is read there. A row with a `power_mw` target is compared by `finalize` itself, per
+scenario when the row names one; a row without a target is yours to judge from the reports and
+declare through `finalize --requirements`.
 
 Three env vars are yours to supply before `make`:
 
@@ -88,20 +90,25 @@ and you never hand-assemble the envelope:
 ```bash
 python3 <skill>/scripts/power/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] \
-  [--fail-reason "<cause>"]
+  [--fail-reason "<cause>"] \
+  [--requirements '[{"id": "R-252", "met": true, "actual": "reported only"}]']
 ```
 
 After a clean `make` it judges: it parses each `reports_ptpx/<id>/power_flat.rpt`, reconciles the
-total against internal + switching + leakage, and compares `power_mw` against the targets it reads
-from `<ppa>/ppa.json` itself — an absent file or dim leaves the dimension ungated, and says so in
-`stage_specific.ppa_gate_skipped`, because a pass with nothing to pass against is a different
-claim. It records the measurements as `stage_specific.power_by_scenario[]` and
-`stage_specific.ppa_actual[]`, a missed target as `stage_specific.violations[]`, the SAIF set as
-`stage_specific.saif_artifacts[]`, the VCS identity as `stage_specific.compile_info`, and the data
-faults it detected itself — an empty SAIF, a gate-level run that did not report `PASS`, an
-unreadable or irreconcilable report — as `stage_specific.failures[]`.
+total against internal + switching + leakage, and compares every `power-analysis` row with a
+`power_mw` target using the row's own operator — against the named scenario's measurement when the
+row names one, against every scenario's otherwise. It records the measurements as
+`stage_specific.power_by_scenario[]` and `stage_specific.ppa_actual[]`, one verdict per row as
+`stage_specific.requirements[]` (your `--requirements` verdicts folded in for the rows with no
+target), the SAIF set as `stage_specific.saif_artifacts[]`, the VCS identity as
+`stage_specific.compile_info`, and the data faults it detected itself — an empty SAIF, a gate-level
+run that did not report `PASS`, an unreadable or irreconcilable report — as
+`stage_specific.failures[]`. It refuses to write an envelope that leaves a `power-analysis` row
+unjudged. No row at all means nothing was gated, and the empty `requirements[]` says so.
 
 The flags carry what the reports cannot:
+
+- **`--requirements`**, your verdict on each `power-analysis` row that carries no target.
 
 - **`--fail-reason`**, which fills `stage_specific.fail_reason`, when `make` exited non-zero and
   there is nothing gradeable. Read a **bounded** slice of the failing step's log
@@ -113,16 +120,15 @@ The flags carry what the reports cannot:
   the log, so you are the only party that can say whose artifact is at fault, and nothing
   downstream re-derives it. Go by the file the error names: the synthesized netlist or SDF is
   `synthesis`; a TB source under `<tb_env>` is `simulation`; an unresolvable `sequence_ref` or a
-  bogus scenario in `<scaffold>/power-scenarios.json` is `simulation-plan`. A `power_mw` miss
-  compares a measured value against a target and either side can be wrong, so before naming
-  `rtl-design`, read `<ppa>/ppa.json`: a target whose unit disagrees with the number stored in it
-  makes a conforming design look over-budget, and no rebuild converges against it — name
-  `specification` when the target is what is malformed. Omit the flag when your own environment
+  bogus scenario in `<scaffold>/power-scenarios.json` is `simulation-plan`. A missed row
+  compares a measured value against the engineer's words and either side can be wrong, so before
+  naming `rtl-design`, read the row's `verbatim`: name `specification` when the row itself is what
+  is malformed. Omit the flag when your own environment
   broke, or when you have read both sides and still cannot name an owner: an unnamed owner is how
   a human gets called in, and a guess spends a full rework round on a stage that cannot fix it.
 
 Exit 0 means written, pass or fail. Exit 2 is BLOCKED and never a `status=fail`: an empty
-`--fail-reason`, or a program exception. stderr names which.
+`--fail-reason`, a `power-analysis` row nobody judged, or a program exception. stderr names which.
 
 ## Return Contract
 

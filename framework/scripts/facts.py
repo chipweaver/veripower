@@ -435,8 +435,11 @@ def stale_inputs(module: str, events: list[dict], rule: str) -> list[str]:
     disk — the kernel-computed "what changed since the last run" set a forward re-run
     consumes for scope (it seeds `dispatch.json`'s `scope` at dispatch, see
     kernel.cmd_dispatch). Reuses proof_valid's per-input comparison but COLLECTS the
-    mismatches instead of short-circuiting on the first. PIPELINE_INPUTS are excluded: nothing
-    upstream produces them, so they cannot have changed since a run. Empty when the rule never
+    mismatches instead of short-circuiting on the first. PIPELINE_INPUTS are excluded — not
+    because the intent tree cannot change (changing it invalidates all eight proofs), but
+    because a change to it is not a narrowing: it sends `decide` back to specification, which
+    re-transcribes the document whole, and the stages after it are scoped by the drift of the
+    produced inputs between them and it. Empty when the rule never
     produced an outcome (a first delivery) — the caller then falls to full scope. Read-only;
     stores nothing (NOT the retired per-skill classify-delta input_digest — this is a query over
     the input versions already recorded in the log)."""
@@ -465,8 +468,12 @@ def _selector_paths(root: Path, glob: str) -> list[Path]:
 def input_available(module: str, events: list[dict], glob: str) -> bool:
     import fnmatch
 
-    if glob in rules.PIPELINE_INPUTS:  # external whitelist — need only exist
-        return (module_root(module) / glob).exists()
+    if glob in rules.PIPELINE_INPUTS:
+        # No producer — a human put it there. What must exist is the ENTRY DOCUMENT, not the
+        # container: an empty intent/ would otherwise dispatch specification only for it to
+        # find no document and land blocked, moving a judgment the kernel can already make
+        # to a later and more expensive place.
+        return (module_root(module) / rules.INTENT_DOC).exists()
     prod = rules.producer_of(glob)
     if prod is None:
         return False

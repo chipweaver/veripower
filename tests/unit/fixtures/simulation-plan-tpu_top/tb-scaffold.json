@@ -22,7 +22,6 @@
   "tests": [
     {
       "name": "tpu_top_mac_smoke_test",
-      "feature": "F-01",
       "test_id": "T-01",
       "seqs": [
         "tpu_top_apb_weight_load_seq",
@@ -33,12 +32,10 @@
       "suites": [
         "smoke",
         "regress"
-      ],
-      "feature_name": "2\u00d72 weight-stationary MAC array"
+      ]
     },
     {
       "name": "tpu_top_full_compute_test",
-      "feature": "F-01",
       "test_id": "T-02",
       "seqs": [
         "tpu_top_apb_weight_load_seq",
@@ -48,12 +45,10 @@
       ],
       "suites": [
         "regress"
-      ],
-      "feature_name": "2\u00d72 weight-stationary MAC array"
+      ]
     },
     {
       "name": "tpu_top_skew_align_test",
-      "feature": "F-02",
       "test_id": "T-03",
       "seqs": [
         "tpu_top_data_in_stream_seq",
@@ -61,12 +56,10 @@
       ],
       "suites": [
         "regress"
-      ],
-      "feature_name": "Systolic input skew alignment"
+      ]
     },
     {
       "name": "tpu_top_fifo_test",
-      "feature": "F-03",
       "test_id": "T-04",
       "seqs": [
         "tpu_top_apb_weight_load_seq",
@@ -77,12 +70,10 @@
       ],
       "suites": [
         "regress"
-      ],
-      "feature_name": "8-entry input/result FIFOs"
+      ]
     },
     {
       "name": "tpu_top_apb_regfile_test",
-      "feature": "F-04",
       "test_id": "T-05",
       "seqs": [
         "tpu_top_apb_weight_load_seq",
@@ -91,12 +82,10 @@
       "suites": [
         "smoke",
         "regress"
-      ],
-      "feature_name": "APB-style register file (weight load + result read-back)"
+      ]
     },
     {
       "name": "tpu_top_counter_ctrl_test",
-      "feature": "F-05",
       "test_id": "T-06",
       "seqs": [
         "tpu_top_apb_weight_load_seq",
@@ -106,12 +95,10 @@
       ],
       "suites": [
         "regress"
-      ],
-      "feature_name": "`start`/counter control sequence and `done` generation (critical timing lock)"
+      ]
     },
     {
       "name": "tpu_top_rerun_test",
-      "feature": "F-05",
       "test_id": "T-07",
       "seqs": [
         "tpu_top_apb_weight_load_seq",
@@ -122,8 +109,7 @@
       ],
       "suites": [
         "regress"
-      ],
-      "feature_name": "`start`/counter control sequence and `done` generation (critical timing lock)"
+      ]
     }
   ],
   "rm": {
@@ -152,32 +138,6 @@
         "CHK-MAC-01",
         "CHK-MAC-02",
         "CHK-MAC-05"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-MAC-01",
-          "implementation_detail": "every clock (async active-low reset \u2192 0): `o_result <= (i_data * i_weight) + i_pre_result` (registered)",
-          "observable": "`o_result` (`mac00_out`/`mac01_out`/`out1`/`out2`)",
-          "reference_rule": "`o_result_next = (i_data * i_weight) + i_pre_result`, truncated/wrapped to 32 bits",
-          "latency": "1 cycle",
-          "reset_behavior": "`o_result <= 0` on `negedge i_rstn`"
-        },
-        {
-          "check_id": "CHK-MAC-02",
-          "implementation_detail": "`o_data_next <= i_data` (registered, forwards data to the next cell)",
-          "observable": "`o_data_next` (`mac01_in`/`mac11_in`)",
-          "reference_rule": "`o_data_next_next = i_data`",
-          "latency": "1 cycle",
-          "reset_behavior": "`o_data_next <= 0` on `negedge i_rstn`"
-        },
-        {
-          "check_id": "CHK-MAC-05",
-          "implementation_detail": "`o_result <= (i_data * i_weight) + i_pre_result` (registered) \u2014 column chain `mac00_out`\u2192`mac_10.i_pre_result`, `mac01_out`\u2192`mac_11.i_pre_result`",
-          "observable": "`out1` (`mac_10.o_result`), `out2` (`mac_11.o_result`)",
-          "reference_rule": "`out1 = (mac10.i_data * mem[2]) + mac00_out`; `out2 = (mac11.i_data * mem[3]) + mac01_out`",
-          "latency": "1 cycle per cell",
-          "reset_behavior": "`o_result <= 0` on `negedge i_rstn`"
-        }
       ]
     },
     {
@@ -190,24 +150,6 @@
       "covers": [
         "CHK-MAC-03",
         "CHK-MAC-04"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-MAC-03",
-          "implementation_detail": "The product `i_data * i_weight` is a 32-bit multiply truncated to 32 bits; the accumulate is 32-bit and **wraps** (no saturation).",
-          "observable": "`o_result` MSBs",
-          "reference_rule": "`o_result = ((i_data * i_weight) + i_pre_result) mod 2^32`",
-          "latency": "1 cycle",
-          "reset_behavior": "`o_result <= 0` on `negedge i_rstn`"
-        },
-        {
-          "check_id": "CHK-MAC-04",
-          "implementation_detail": "`i_pre_result = 0` (top-row cells `mac_00`/`mac_01`) \u2192 cell acts as a pure multiply into the partial-sum chain.",
-          "observable": "`mac00_out`/`mac01_out` with `32'h0` tie",
-          "reference_rule": "for `mac_00`/`mac_01`: `o_result = (i_data * i_weight) + 0` (i_pre_result tied `32'h0`)",
-          "latency": "1 cycle",
-          "reset_behavior": "`o_result <= 0` on `negedge i_rstn`"
-        }
       ]
     },
     {
@@ -218,16 +160,6 @@
       ],
       "covers": [
         "CHK-MAC-06"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-MAC-06",
-          "implementation_detail": "Negative case: product/sum exceeding 32 bits wraps \u2014 accepted by design.",
-          "observable": "`o_result` on overflow stimulus",
-          "reference_rule": "result wraps modulo 2^32; no saturation, no error flag",
-          "latency": "1 cycle",
-          "reset_behavior": "`o_result <= 0` on `negedge i_rstn`"
-        }
       ]
     },
     {
@@ -238,16 +170,6 @@
       ],
       "covers": [
         "CHK-MAC-07"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-MAC-07",
-          "implementation_detail": "`o_data_next <= i_data` (registered) \u2014 `mac_01.o_data_next` / `mac_11.o_data_next` intentionally unconnected",
-          "observable": "`mac_01.o_data_next`, `mac_11.o_data_next` (no consumer)",
-          "reference_rule": "output left dangling by design; not a connectivity error",
-          "latency": "1 cycle",
-          "reset_behavior": "`o_data_next <= 0` on `negedge i_rstn`"
-        }
       ]
     },
     {
@@ -262,32 +184,6 @@
         "CHK-SREG-01",
         "CHK-SREG-02",
         "CHK-SREG-04"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-SREG-01",
-          "implementation_detail": "`out1` = `in1` delayed **1** cycle (one register `delay10`); `delay10 <= in1`; `out1 = delay10`",
-          "observable": "`out1` (`mac00_in`)",
-          "reference_rule": "out1[t] == in1[t-1]",
-          "latency": "1 cycle",
-          "reset_behavior": "`delay10` cleared to 0 on async active-low reset (`negedge i_rstn`)"
-        },
-        {
-          "check_id": "CHK-SREG-02",
-          "implementation_detail": "`out2` = `in2` delayed **2** cycles (two registers `delay20` \u2192 `delay21`); `delay20 <= in2`; `delay21 <= delay20`; `out2 = delay21`",
-          "observable": "`out2` (`mac10_in`)",
-          "reference_rule": "out2[t] == in2[t-2]",
-          "latency": "2 cycle",
-          "reset_behavior": "`delay20` and `delay21` cleared to 0 on async active-low reset (`negedge i_rstn`)"
-        },
-        {
-          "check_id": "CHK-SREG-04",
-          "implementation_detail": "`out1` = `in1` delayed **1** cycle (one register `delay10`); `out2` = `in2` delayed **2** cycles (two registers `delay20` \u2192 `delay21`)",
-          "observable": "`out1` (`mac00_in`), `out2` (`mac10_in`)",
-          "reference_rule": "for pair presented at t: out1 valid at t+1, out2 valid at t+2 (out1 leads out2 by 1)",
-          "latency": "1 cycle (lead)",
-          "reset_behavior": "both lines restart latency from reset-release edge after `delay10`/`delay20`/`delay21` cleared to 0"
-        }
       ]
     },
     {
@@ -298,16 +194,6 @@
       ],
       "covers": [
         "CHK-SREG-03"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-SREG-03",
-          "implementation_detail": "Async active-low reset clears all skew registers to 0; `delay10`/`delay20`/`delay21` <= 0 on `negedge i_rstn`",
-          "observable": "`delay10`, `delay20`, `delay21`, `out1`, `out2`",
-          "reference_rule": "on i_rstn==0: delay10==delay20==delay21==0 \u2192 out1==out2==0",
-          "latency": "0 cycle (async)",
-          "reset_behavior": "all skew registers (`delay10`, `delay20`, `delay21`) = 0"
-        }
       ]
     },
     {
@@ -318,16 +204,6 @@
       ],
       "covers": [
         "CHK-FIFO-01"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-FIFO-01",
-          "implementation_detail": "Write on `i_wr & !o_full` \u2192 `mem[wr_addr]`; `wr_addr` advances on the same",
-          "observable": "`mem[wr_addr]`, `wr_addr`",
-          "reference_rule": "FIFO write/order contract",
-          "latency": "1 cycle (registered write)",
-          "reset_behavior": "`mem`, `wr_addr` cleared to 0 on async active-low reset"
-        }
       ]
     },
     {
@@ -341,32 +217,6 @@
         "CHK-FIFO-02",
         "CHK-FIFO-03",
         "CHK-FIFO-07"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-FIFO-02",
-          "implementation_detail": "`rd_addr` advances on `i_rd & !o_empty`",
-          "observable": "`rd_addr`",
-          "reference_rule": "FIFO pop contract",
-          "latency": "1 cycle (registered pointer)",
-          "reset_behavior": "`rd_addr` cleared to 0 on async active-low reset"
-        },
-        {
-          "check_id": "CHK-FIFO-03",
-          "implementation_detail": "Read is **combinational**: `o_data = mem[rd_addr]`",
-          "observable": "`o_data`",
-          "reference_rule": "combinational read",
-          "latency": "0 cycle (combinational)",
-          "reset_behavior": "After reset `o_data = mem[rd_addr]` with `rd_addr=0`"
-        },
-        {
-          "check_id": "CHK-FIFO-07",
-          "implementation_detail": "Happy path: write then read returns the written word in FIFO order",
-          "observable": "`o_data` sequence",
-          "reference_rule": "FIFO ordering",
-          "latency": "per pop (combinational `o_data`)",
-          "reset_behavior": "sequence restarts from 0 after reset"
-        }
       ]
     },
     {
@@ -379,24 +229,6 @@
       "covers": [
         "CHK-FIFO-04",
         "CHK-FIFO-05"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-FIFO-04",
-          "implementation_detail": "`o_empty = (wr_addr == rd_addr)`",
-          "observable": "`o_empty`",
-          "reference_rule": "empty-flag contract",
-          "latency": "0 cycle (combinational)",
-          "reset_behavior": "`o_empty` high after reset (`wr_addr==rd_addr==0`)"
-        },
-        {
-          "check_id": "CHK-FIFO-05",
-          "implementation_detail": "`o_full  = ((wr_addr + 1) == rd_addr)`",
-          "observable": "`o_full`",
-          "reference_rule": "full-flag contract (one slot reserved)",
-          "latency": "0 cycle (combinational)",
-          "reset_behavior": "`o_full` low after reset"
-        }
       ]
     },
     {
@@ -408,16 +240,6 @@
       ],
       "covers": [
         "CHK-FIFO-08"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-FIFO-08",
-          "implementation_detail": "`o_full`/`o_empty` use 3-bit pointer wrap (modulo-8); the `(wr_addr+1)==rd_addr` full condition is part of the contract",
-          "observable": "`wr_addr`, `rd_addr`, `o_full`, `o_empty`",
-          "reference_rule": "modulo-8 wrap contract",
-          "latency": "0 cycle (flags combinational)",
-          "reset_behavior": "pointers wrap from 0 after reset"
-        }
       ]
     },
     {
@@ -428,16 +250,6 @@
       ],
       "covers": [
         "CHK-FIFO-09"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-FIFO-09",
-          "implementation_detail": "Write while `o_full` (or read while `o_empty`) is ignored (pointer does not advance)",
-          "observable": "`wr_addr`, `rd_addr`",
-          "reference_rule": "back-pressure / underflow guard",
-          "latency": "0 cycle (no pointer advance)",
-          "reset_behavior": "pointers held at reset value until first valid op"
-        }
       ]
     },
     {
@@ -448,16 +260,6 @@
       ],
       "covers": [
         "CHK-FIFO-06"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-FIFO-06",
-          "implementation_detail": "Async active-low reset clears memory and both pointers to 0",
-          "observable": "`mem`, `wr_addr`, `rd_addr`",
-          "reference_rule": "reset contract",
-          "latency": "async (`negedge i_rstn`)",
-          "reset_behavior": "memory + both pointers = 0"
-        }
       ]
     },
     {
@@ -472,24 +274,6 @@
       "covers": [
         "CHK-TOP-01",
         "CHK-TOP-03"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-TOP-01",
-          "implementation_detail": "`write_enb = i_psel & i_penable & i_pwrite` \u2192 `mem[i_paddr] <= i_pwdata` (clocked, **no reset** on this block \u2014 faithful to the reference)",
-          "observable": "`mem[i_paddr]` (`mem[0]`/`mem[1]`/`mem[2]`/`mem[3]`) \u2192 MAC `i_weight`",
-          "reference_rule": "on write_enb: mem[i_paddr][t+1] == i_pwdata[t]",
-          "latency": "1 cycle",
-          "reset_behavior": "NOT reset by `i_rstn`; clocked-only, retains last value"
-        },
-        {
-          "check_id": "CHK-TOP-03",
-          "implementation_detail": "APB address map: `W00 = 0`, `W01 = 1`, `W10 = 2`, `W11 = 3`",
-          "observable": "`mem[0]`, `mem[1]`, `mem[2]`, `mem[3]`",
-          "reference_rule": "i_paddr\u2208{0,1,2,3} maps to mem[0..3] = W00/W01/W10/W11",
-          "latency": "1 cycle (write)",
-          "reset_behavior": "mem not reset (clocked-only)"
-        }
       ]
     },
     {
@@ -501,16 +285,6 @@
       ],
       "covers": [
         "CHK-TOP-02"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-TOP-02",
-          "implementation_detail": "`read_enb  = i_psel & i_penable & !i_pwrite` \u2192 `o_prdata = fifo_result.o_data` (combinational); otherwise `o_prdata = 0`. The result FIFO read pointer advances on `read_enb` (`fifo_result.i_rd = read_enb`).",
-          "observable": "`o_prdata`, `fifo_result.i_rd` (`result_fifo_o_data`)",
-          "reference_rule": "read_enb=1 \u2192 o_prdata==fifo_result.o_data & i_rd advances rd_addr; read_enb=0 \u2192 o_prdata==0",
-          "latency": "0 cycle (comb read)",
-          "reset_behavior": "regfile block no reset; result-FIFO rd_addr=0 on async reset"
-        }
       ]
     },
     {
@@ -523,24 +297,6 @@
       "covers": [
         "CHK-TOP-04",
         "CHK-TOP-10"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-TOP-04",
-          "implementation_detail": "`counter` (4-bit): async reset \u2192 0; while `start` asserted, increments each clock; when `start` deasserted, resets to 0",
-          "observable": "`counter`",
-          "reference_rule": "start=1 \u2192 counter[t+1]==counter[t]+1; start=0 \u2192 counter[t+1]==0",
-          "latency": "1 cycle",
-          "reset_behavior": "`counter` cleared to 0 on async active-low reset (`negedge i_rstn`)"
-        },
-        {
-          "check_id": "CHK-TOP-10",
-          "implementation_detail": "`counter` (4-bit): async reset \u2192 0; while `start` asserted, increments each clock; when `start` deasserted, resets to 0; `done = (counter >= 5)`",
-          "observable": "`counter`, `done`",
-          "reference_rule": "re-assert start \u2192 counter 0\u21925, done rises again; drop start mid-pass \u2192 counter\u21920, done==0",
-          "latency": "per-cycle",
-          "reset_behavior": "`counter`=0 on async reset (and on start deassert)"
-        }
       ]
     },
     {
@@ -551,16 +307,6 @@
       ],
       "covers": [
         "CHK-TOP-05"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-TOP-05",
-          "implementation_detail": "`fifo_en = start & (counter < 2)` (drives `i_rd` of both input FIFOs \u2014 pops two elements at the start of a pass)",
-          "observable": "`fifo_en` \u2192 `fifo_00.i_rd`, `fifo_01.i_rd`",
-          "reference_rule": "fifo_en == (start & (counter<2)); high at counter 0,1 only",
-          "latency": "0 cycle (comb)",
-          "reset_behavior": "counter=0 on async reset \u2192 fifo_en follows start gate"
-        }
       ]
     },
     {
@@ -575,32 +321,6 @@
         "CHK-TOP-06",
         "CHK-TOP-07",
         "CHK-TOP-09"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-TOP-06",
-          "implementation_detail": "`result_fifo_wr = (counter \u2208 {2,3,4,5})`",
-          "observable": "`result_fifo_wr` \u2192 `fifo_result.i_wr`",
-          "reference_rule": "result_fifo_wr==1 iff counter\u2208{2,3,4,5}",
-          "latency": "0 cycle (comb)",
-          "reset_behavior": "counter=0 on async reset \u2192 result_fifo_wr=0"
-        },
-        {
-          "check_id": "CHK-TOP-07",
-          "implementation_detail": "`result_fifo_i_data = out1` when `counter \u2208 {2,4}`, `= out2` when `counter \u2208 {3,5}`, else `0`, where `out1 = mac_10.o_result` and `out2 = mac_11.o_result`",
-          "observable": "`result_fifo_i_data`, `out1`, `out2`",
-          "reference_rule": "counter\u2208{2,4}\u2192out1; counter\u2208{3,5}\u2192out2; else 0",
-          "latency": "0 cycle (comb mux)",
-          "reset_behavior": "undriven outside window \u2192 0"
-        },
-        {
-          "check_id": "CHK-TOP-09",
-          "implementation_detail": "`32'h0` \u2192 `mac_00.i_pre_result`, `mac_01.i_pre_result`; `out1 = mac_10.o_result`; `out2 = mac_11.o_result`",
-          "observable": "`out1`, `out2`, `result_fifo_i_data`",
-          "reference_rule": "top-row pre_result==32'h0; out1==mac_10.o_result; out2==mac_11.o_result",
-          "latency": "registered (MAC)",
-          "reset_behavior": "MAC results 0 on async reset"
-        }
       ]
     },
     {
@@ -612,16 +332,6 @@
       ],
       "covers": [
         "CHK-TOP-08"
-      ],
-      "inlined_check_hints": [
-        {
-          "check_id": "CHK-TOP-08",
-          "implementation_detail": "`done = (counter >= 5)`",
-          "observable": "`done`",
-          "reference_rule": "done == (counter >= 5)",
-          "latency": "0 cycle (comb)",
-          "reset_behavior": "counter=0 on async reset \u2192 done=0"
-        }
       ]
     }
   ],

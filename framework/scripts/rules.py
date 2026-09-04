@@ -44,7 +44,7 @@ RULES: dict[str, Rule] = {
         skill="veripower:specification",
         execution="main-thread",
         workdir_root=("Design", "specification"),
-        inputs={"brainstorm": ("brainstorm.md",)},
+        inputs={"intent": ("intent",)},
         proof="specification",
         oracle=("spec-review", "proposed"),
         oracle_selector="spec-review",
@@ -57,11 +57,12 @@ RULES: dict[str, Rule] = {
         execution="main-thread",
         workdir_root=("Verification", "simulation-plan"),
         inputs={
+            "intent": ("intent",),
             "design": ("Design/specification/design.md",),
             "manifest": ("Design/specification/manifest.json",),
             "children": ("Design/specification/children",),
             "clocks": ("Design/specification/clocks.json",),
-            "features": ("Design/specification/features.json",),
+            "requirements": ("Design/specification/requirements.json",),
             "check_hints": ("Design/specification/check-hints",),
             "top_io": ("Design/specification/top-io.json",),
             # NOT interconnects.json: cross-child wires are internal to the DUT, so no
@@ -80,6 +81,7 @@ RULES: dict[str, Rule] = {
         execution="main-thread",
         workdir_root=("Design", "rtl-design"),
         inputs={
+            "intent": ("intent",),
             "design": ("Design/specification/design.md",),
             "manifest": ("Design/specification/manifest.json",),
             "children": ("Design/specification/children",),
@@ -89,6 +91,10 @@ RULES: dict[str, Rule] = {
             "clocks": ("Design/specification/clocks.json",),
             "top_io": ("Design/specification/top-io.json",),
             "interconnects": ("Design/specification/interconnects.json",),
+            # The engineer's requirements, one row each with the judge that establishes it.
+            # The child authors read the rows that bear on their RTL; the intent reviewers
+            # read the rows judged by this stage.
+            "requirements": ("Design/specification/requirements.json",),
         },
         proof="rtl-design",
         oracle=("semantic-review", "proposed"),
@@ -102,6 +108,7 @@ RULES: dict[str, Rule] = {
         execution="task",
         workdir_root=("Design", "lint-cdc"),
         inputs={
+            "intent": ("intent",),
             "rtl": ("Design/rtl-design/src", "Design/rtl-design/rtl-files.json"),
             # The per-child SGDC/SDC annotations the agent transcribes into the
             # constraint scripts, in the child's real module names.
@@ -111,6 +118,7 @@ RULES: dict[str, Rule] = {
             # reachable through the constraints key, but only the declared globs are
             # fingerprinted — without this edge a module rename would not invalidate.
             "manifest": ("Design/specification/manifest.json",),
+            "requirements": ("Design/specification/requirements.json",),
         },
         proof="lint-cdc",
         oracle=("spyglass-ruleset", "tool"),
@@ -122,6 +130,7 @@ RULES: dict[str, Rule] = {
         execution="task",
         workdir_root=("Design", "synthesis"),
         inputs={
+            "intent": ("intent",),
             "rtl": ("Design/rtl-design/src", "Design/rtl-design/rtl-files.json"),
             # The per-child SGDC/SDC annotations the agent transcribes into the
             # constraint scripts, in the child's real module names.
@@ -131,7 +140,7 @@ RULES: dict[str, Rule] = {
             # reachable through the constraints key, but only the declared globs are
             # fingerprinted — without this edge a module rename would not invalidate.
             "manifest": ("Design/specification/manifest.json",),
-            "ppa": ("Design/specification/ppa.json",),
+            "requirements": ("Design/specification/requirements.json",),
         },
         proof="synthesis",
         oracle=("dc-shell", "tool"),
@@ -143,10 +152,12 @@ RULES: dict[str, Rule] = {
         execution="task",
         workdir_root=("Design", "timing-analysis"),
         inputs={
+            "intent": ("intent",),
             # One key, because both resolve to the same producer stage root and the
             # run reads them as a pair: PT links the netlist and constrains it with
             # the SDC synthesis exported beside it.
             "netlist": ("Design/synthesis/out",),
+            "requirements": ("Design/specification/requirements.json",),
         },
         proof="timing-analysis",
         oracle=("pt-shell", "tool"),
@@ -157,6 +168,7 @@ RULES: dict[str, Rule] = {
         execution="main-thread",
         workdir_root=("Verification", "simulation"),
         inputs={
+            "intent": ("intent",),
             "rtl": ("Design/rtl-design/src", "Design/rtl-design/rtl-files.json"),
             # NOT constraint-annotations.json: simulation consumes only the file layout,
             # so binding it would let an annotation-only edit falsely invalidate.
@@ -173,6 +185,10 @@ RULES: dict[str, Rule] = {
                 "Design/specification/top-io.json",
                 "Design/specification/clocks.json",
             ),
+            # The requirements the coverage gate reads its thresholds from, and the hints the
+            # testpoints cover — read by id, never copied into the scaffold.
+            "requirements": ("Design/specification/requirements.json",),
+            "check_hints": ("Design/specification/check-hints",),
         },
         # promoted products (sim/result.py enumerate_artifacts) — power-analysis consumes them
         proof="simulation",
@@ -189,6 +205,7 @@ RULES: dict[str, Rule] = {
         execution="task",
         workdir_root=("Verification", "power-analysis"),
         inputs={
+            "intent": ("intent",),
             "netlist": ("Design/synthesis/out",),
             "tb_env": (
                 "Verification/simulation/env.sh",
@@ -202,7 +219,7 @@ RULES: dict[str, Rule] = {
                 "Verification/simulation-plan/sequences.json",
                 "Verification/simulation-plan/power-scenarios.json",
             ),
-            "ppa": ("Design/specification/ppa.json",),
+            "requirements": ("Design/specification/requirements.json",),
         },
         proof="power-analysis",
         oracle=("pt-shell", "tool"),
@@ -213,6 +230,7 @@ RULES: dict[str, Rule] = {
         execution="task",
         workdir_root=("Verification", "simulation-triage"),
         inputs={
+            "intent": ("intent",),
             "design": ("Design/specification/design.md",),
             "rtl": ("Design/rtl-design/src", "Design/rtl-design/rtl-files.json"),
             "plan": ("Verification/simulation-plan/verification-plan.md",),
@@ -222,6 +240,7 @@ RULES: dict[str, Rule] = {
             # while the analysis is open instead of spending it on the run being analysed.
             # Availability is unaffected: a rule with no proof is always dispatchable.
             "sim": ("Verification/simulation/case-results-summary.md",),
+            "requirements": ("Design/specification/requirements.json",),
         },
         proof=None,
         oracle=None,
@@ -240,7 +259,18 @@ FORWARD_PRIORITY: list[str] = [
     "power-analysis",
 ]
 
-PIPELINE_INPUTS: tuple[str, ...] = ("brainstorm.md",)
+# The intent tree: the engineer's container at the module root, holding the intent document
+# and whatever they delivered with it that the document names as authoritative (a reference
+# model, a register map, a standard). It has no producer — a human puts it there — so every
+# rule binds it as a PIPELINE_INPUT, whose key resolves to the container itself and whose
+# version is one merkle over all of it. A row pointing at a file inside is read there by
+# whoever judges it.
+PIPELINE_INPUTS: tuple[str, ...] = ("intent",)
+
+# The entry document inside the container. `input_available` requires THIS rather than the
+# container, so an empty intent/ blocks at the kernel instead of dispatching a stage that
+# would find no document and land blocked.
+INTENT_DOC: str = "intent/brainstorm.md"
 
 # Sequencing edges that are NOT data dependencies: synthesis does not consume lint's
 # reports, but a lint failure changes the RTL under it, so letting the cheap detector speak

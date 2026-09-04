@@ -3,9 +3,9 @@
 
   materialization_errors  every sequences[]/agents[] SV file present; no TODO residue.
   conformance_flagged     the testpoints the reviewer marked BLOCKING in its own record.
-  coverage_gate           structural-coverage.json has an aggregate block, and each dim
-                          defaults.yaml configures is at or above its threshold (a null
-                          or '--' dim is skipped; an absent-but-configured dim fails).
+  coverage_gate           structural-coverage.json has an aggregate block, and each coverage
+                          bound requirements.json assigns to simulation holds (a null or '--'
+                          dim is skipped; a bounded dim urg did not measure fails).
 
 check-materialization calls the first as the env child's own early exit, which saves a
 regression run on a hollow TB. The other two have no caller but finalize: reading them is
@@ -15,10 +15,12 @@ Status truth is the caller's exit code, not narration.
 
 from __future__ import annotations
 
+import json
+import operator
 import re
 from pathlib import Path
 
-import yaml
+_OPS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge}
 
 # A finding heading in conformance-review.md. The testpoint is the first token after the
 # hashes and the marker is the last, so a locus carrying spaces still parses.
@@ -33,10 +35,17 @@ _FINDING = re.compile(r"^##\s+(?P<tp_id>\S+)\s+(?P<rest>.*?)\s*$")
 _TODO_RE = re.compile(r"TODO")
 
 
-def _load_thresholds(path: Path) -> dict:
-    """Read the coverage_thresholds block from defaults.yaml (dim -> float)."""
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return {k: float(v) for k, v in (data.get("coverage_thresholds") or {}).items()}
+def coverage_rows(requirements_path: Path) -> list[dict]:
+    """The requirements.json rows simulation judges with a coverage bound: the engineer's own
+    thresholds, in the engineer's own comparison. No row for a dim means that dim is reported,
+    not gated."""
+    rows = json.loads(Path(requirements_path).read_text(encoding="utf-8"))
+    return [
+        r
+        for r in rows
+        if r["judge"] == "simulation"
+        and r.get("target", {}).get("dim", "").startswith("coverage_")
+    ]
 
 
 def materialization_errors(workdir: Path, scaffold: dict) -> list[str]:
@@ -73,9 +82,9 @@ def materialization_errors(workdir: Path, scaffold: dict) -> list[str]:
     return errs
 
 
-def coverage_gate(cov: dict | None, thresholds: dict) -> tuple[list[str], dict]:
-    """Extractable, and every configured dim at or above threshold (a null dim is skipped).
-    Returns (errors, dims_report)."""
+def coverage_gate(cov: dict | None, rows: list[dict]) -> tuple[list[str], list[dict]]:
+    """Extractable, and every bounded dim satisfies its row (a null dim is skipped).
+    Returns (errors, one {id, met, actual} entry per row)."""
     if (
         cov is None
         or not isinstance(cov.get("aggregate"), dict)
@@ -86,18 +95,20 @@ def coverage_gate(cov: dict | None, thresholds: dict) -> tuple[list[str], dict]:
                 "coverage not extractable: structural-coverage.json missing or empty "
                 "(urg did not produce a parseable report; cannot gate -> fail, never claim met)"
             ],
-            {},
+            [],
         )
     agg = cov["aggregate"]
     errs: list[str] = []
-    dims: dict = {}
-    for dim, thr in thresholds.items():
+    judged: list[dict] = []
+    for r in rows:
+        t = r["target"]
+        dim = t["dim"].removeprefix("coverage_")
         if (
             dim not in agg
         ):  # urg never measured this dim -> cannot gate it -> fail (not silent skip)
-            dims[dim] = {"value": "absent", "threshold": thr, "pass": False}
+            judged.append({"id": r["id"], "met": False, "actual": None})
             errs.append(
-                f"{dim} threshold configured but absent from the coverage report "
+                f"{r['id']}: {dim} coverage is bounded but absent from the coverage report "
                 f"(urg did not measure it; cannot gate)"
             )
             continue
@@ -105,13 +116,15 @@ def coverage_gate(cov: dict | None, thresholds: dict) -> tuple[list[str], dict]:
         if (
             val is None
         ):  # measured as N/A ('--', e.g. a DUT with no FSM) -> skip, do not fail
-            dims[dim] = {"value": None, "threshold": thr, "pass": True, "skipped": True}
+            judged.append({"id": r["id"], "met": True, "actual": None})
             continue
-        ok = val >= thr
-        dims[dim] = {"value": val, "threshold": thr, "pass": ok}
+        ok = _OPS[t["op"]](val, t["value"])
+        judged.append({"id": r["id"], "met": ok, "actual": val})
         if not ok:
-            errs.append(f"{dim} coverage {val} < threshold {thr}")
-    return errs, dims
+            errs.append(
+                f"{r['id']}: {dim} coverage {val} is not {t['op']} {t['value']}"
+            )
+    return errs, judged
 
 
 def conformance_flagged(review_path: Path) -> list[str]:

@@ -51,7 +51,7 @@ own.
 
 | Rule | What it does | Oracle | Grade |
 |---|---|---|---|
-| specification | Generates structured design docs, sub-designs, and timing constraints from a natural-language brainstorm | spec-review (LLM) | proposed |
+| specification | Transcribes the engineer's intent document into a requirements ledger, one row per proposition with the stage that judges it, then derives the partition, design docs and timing constraints from it | spec-review (LLM) | proposed |
 | simulation-plan | Maps every specified behavior to a testpoint, produces the verification plan and TB scaffold | plan-review (LLM) | proposed |
 | rtl-design | Generates RTL from the specification | semantic-review (LLM) | proposed |
 | lint-cdc | SpyGlass lint and CDC checks | spyglass ruleset | tool |
@@ -260,9 +260,25 @@ being named unexpectedly — and the signoff gate refuses a stage whose canonica
 directory holds a file its own outcome does not record. Neither reaches a tool
 that goes outside the trees it was given.
 
+**Versioning of the intent stops at the container's edge.** The intent tree is
+one directory, `intent/`, holding `brainstorm.md` and whatever the engineer
+delivered with it; every proof records one merkle over all of it, so editing the
+document, editing an authority, or delivering the first one invalidates all eight
+proofs and sends the flow back to `specification`. What that does not cover is
+anything the document points at from outside: a path above the container is
+neither handed to a stage nor versioned, and a symlink inside it is recorded by
+its target path, not its target's content, so a shared spec that moves under the
+link moves invisibly. Such a reference becomes a ledger row like any other
+sentence, and whoever the row names has to establish it by reading it where it
+lives.
+
 **Signoff is not correctness.** It's closure over a declared set of
-obligations. That list is hand-written in the rule registry, not derived from
-language semantics. Signoff is only as credible as the list is complete.
+obligations: the eight proofs the rule registry lists, each held to the
+requirements-ledger rows that name it as judge. The ledger is a transcription of
+the engineer's document that a second reader checks against it, not a derivation
+from language semantics; a row judged `outside` is one the pipeline never
+establishes, and signoff closes over it in silence. Signoff is only as credible
+as the ledger is complete and its judges honest.
 
 **The system lowers the cost of each human judgment, not the count.** How often
 someone needs to step in depends on what the LLM can handle. The architecture

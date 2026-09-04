@@ -45,7 +45,7 @@ The top module `tpu_top` instantiates four MAC cells, one skew register, and thr
 
 ### 1.3 Feature Table
 
-The feature list lives in `features.json` (the spine child §5 `SourceFeature` rows and testpoints refer to).
+The requirements live in `requirements.json`; the check hints name the rows they establish.
 
 ### 1.4 Module Interface and Interconnects
 
@@ -102,7 +102,7 @@ Single clock domain; no CDC. Reset `i_rstn` is asynchronous, active-low (`negedg
 
 ### 1.7 Submodule Index
 
-The child registry is `manifest.json` in this same directory — one entry per child, carrying `name` / `doc` / `rtl_modules` / `brainstorm_anchor`.
+The child registry is `manifest.json` in this same directory — one entry per child, carrying `name` / `doc` / `rtl_modules`.
 
 ## 2. Document Control
 

@@ -59,7 +59,6 @@
         "type": "object",
         "required": [
           "name",
-          "feature",
           "test_id",
           "suites"
         ],
@@ -67,11 +66,6 @@
         "properties": {
           "name": {
             "type": "string"
-          },
-          "feature": {
-            "description": "The features.json id this test exercises. Required, and it must resolve: it is the key materialize-scaffold reads feature_name through (an id that resolves to nothing fails it loud), and the only thing that makes a result traceable.",
-            "type": "string",
-            "minLength": 1
           },
           "test_id": {
             "description": "Stable per-test identifier; the regression log keys results by it.",
@@ -89,11 +83,6 @@
                 "regress"
               ]
             }
-          },
-          "feature_name": {
-            "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the matching features.json entry's `name`, verbatim. It is what the Feature column of case-results-summary.md prints, so a human reads this rather than a bare id.",
-            "type": "string",
-            "minLength": 1
           },
           "seqs": {
             "type": "array",
@@ -151,7 +140,7 @@
             "minLength": 1
           },
           "intent": {
-            "description": "What this testpoint drives and why — the stimulus/intent the env and conformance-fix children read as the intent source. Write the situation being created, not the check: `inlined_check_hints` already says how each covered check is verified.",
+            "description": "What this testpoint drives and why — the stimulus/intent the env and conformance-fix children read as the intent source. Write the situation being created, not the check: the covered hints already say how each check is verified.",
             "type": "string",
             "minLength": 1
           },
@@ -160,24 +149,8 @@
             "type": "array"
           },
           "covers": {
-            "description": "The `check-hints/<child>.json` check_ids this testpoint verifies — YOUR clustering (one-to-one, one-to-many, or many-to-one). The clustering is also what makes a testpoint traceable: present with an explicit empty array on a scenario testpoint you invented, since omitted and `[]` are not the same claim, and an empty one verifies no authored check and so traces to no feature. Say that deliberately; it is not a default.",
+            "description": "The `check-hints/<child>.json` check_ids this testpoint verifies — YOUR clustering (one-to-one, one-to-many, or many-to-one). Present with an explicit empty array on a scenario testpoint you invented, since omitted and `[]` are not the same claim; an empty one verifies no authored check. Simulation reads each covered hint, and the requirements.json rows it names, by id.",
             "type": "array"
-          },
-          "inlined_check_hints": {
-            "description": "Script-injected by `simplan materialize-scaffold` (never hand-authored): the precise check semantics from the authored `check-hints/<child>.json`, materialized into this testpoint via its `covers[]`. `implementation_detail` is verbatim-if-present-else-summary. The feature a testpoint traces to is NOT copied in: the plan-review reviewer resolves it from covers[] + the authored check hints, both of which it already reads.",
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "check_id"
-              ],
-              "additionalProperties": true,
-              "properties": {
-                "check_id": {
-                  "type": "string"
-                }
-              }
-            }
           }
         }
       }

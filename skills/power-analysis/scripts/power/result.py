@@ -26,6 +26,8 @@ import re
 import sys
 from pathlib import Path
 
+from power import requirements
+
 # ── Unit handling ──────────────────────────────────────────────
 
 _UNIT_TO_MW = {"mW": 1.0, "uW": 1e-3, "W": 1e3, "nW": 1e-6}
@@ -217,8 +219,8 @@ def _read_gls_status(workdir: Path, sid: str) -> str | None:
     return p.read_text(errors="replace").strip() if p.is_file() else None
 
 
-def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
-    """Assemble + judge. Returns (rc, payload): rc 0 = parsed+judged (incl ppa-miss), non-zero =
+def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
+    """Assemble + judge. Returns (rc, payload): rc 0 = parsed+judged (incl a missed bound), non-zero =
     deterministic data failure (FAIL=<token> on stderr). The payload is returned on BOTH paths —
     build_result folds it either way — and never written to a sidecar, because result.json
     already carries every field of it. Never writes result.json."""
@@ -227,7 +229,6 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
     scenarios = json.loads(
         (Path(plan_path) / "power-scenarios.json").read_text(encoding="utf-8")
     )
-    targets = json.loads(targets_json) if targets_json else []
 
     failures: list[dict] = []
     saif_artifacts: list[dict] = []
@@ -376,51 +377,49 @@ def run(plan_path, workdir, targets_json) -> tuple[int, dict]:
         )
         return 1, payload
 
-    violations: list[dict] = []
-    for entry in ppa_actual:
-        sid, actual = entry["scenario_id"], entry["value"]
-        for t in targets:
-            if t.get("dim") != "power_mw":
-                continue
-            tsid = t.get("scenario_id")
-            if tsid is not None and tsid != sid:
-                continue
-            if actual > t["target"]:
-                violations.append(
-                    {
-                        "dim": "power_mw",
-                        "target": t["target"],
-                        "actual": actual,
-                        "scenario_id": sid,
-                    }
-                )
+    # Judge — one entry per targeted row, with the engineer's own operator. A row naming a
+    # scenario this run did not measure, or any row when nothing was measured, cannot be judged.
+    judged: list[dict] = []
+    for r in target_rows:
+        t = r["target"]
+        sc = t.get("scenario")
+        values = [
+            e["value"] for e in ppa_actual if sc is None or e["scenario_id"] == sc
+        ]
+        if not values:
+            raise ValueError(
+                f"{r['id']} needs a measured power_mw"
+                + (f" for scenario {sc!r}" if sc else "")
+                + "; this run measured none"
+            )
+        judged.append(
+            {
+                "id": r["id"],
+                "met": all(requirements.met(v, t) for v in values),
+                "actual": max(values),
+            }
+        )
 
-    verdict = "fail" if violations else "pass"
     payload = {
-        "verdict": verdict,
         "saif_artifacts": saif_artifacts,
         "compile_info": compile_info,
         "failures": [],
         "ppa_actual": ppa_actual,
-        "violations": violations,
+        "requirements": judged,
         "power_by_scenario": power_by_scenario,
     }
-    if not targets:
-        payload["ppa_gate_skipped"] = True
     return 0, payload
 
 
 STAGE = "power-analysis"
 
-# Everything the payload carries except `verdict` folds straight through.
+# Everything the payload carries folds straight through.
 _FOLD_KEYS = (
     "saif_artifacts",
     "compile_info",
     "failures",
     "ppa_actual",
-    "violations",
     "power_by_scenario",
-    "ppa_gate_skipped",
 )
 
 
@@ -448,8 +447,7 @@ def _write_result(workdir: Path, env: dict) -> None:
 
 
 def _fold(payload: dict) -> dict:
-    """Copy through the keys the payload actually carries (ppa_gate_skipped only
-    appears when targets=[]); never invent absent keys."""
+    """Copy through the keys the payload actually carries; never invent absent keys."""
     return {k: payload[k] for k in _FOLD_KEYS if k in payload}
 
 
@@ -494,13 +492,14 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
 def build_result(
     workdir,
     plan_path,
-    targets,
+    rows,
+    declared,
     fix_owner=None,
     fail_reason=None,
 ) -> int:
     """Assemble the lean power-analysis result.json. Reuses run() for the PT-PX gate
     (in-process, per-scenario assembly verbatim); its payload ALREADY carries the
-    stage_specific fields + verdict, so this is thin — fold the fields through, set
+    stage_specific fields, so this is thin — fold the fields through, set
     status and fail_reason, enumerate artifacts, write the envelope.
     Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED).
 
@@ -529,19 +528,20 @@ def build_result(
         )
         return 0
 
-    rc, data = run(plan_path, workdir, targets)  # reuse the gate verbatim
+    rc, data = run(plan_path, workdir, [r for r in rows if "target" in r])
     ss = _fold(data)
 
     if rc != 0:
-        # Parser exit 1: failures[] populated, verdict=fail.
+        # Parser exit 1: failures[] populated.
         ss["fail_reason"] = _data_failure_reason(data)
         status = "fail"
-    elif data["verdict"] == "fail":
-        # PPA-gate miss: power_mw exceeded target.
-        status = "fail"
-        ss["fail_reason"] = "power_mw exceeds target"
     else:
-        status = "pass"
+        judged = requirements.merge(rows, data["requirements"], declared)
+        ss["requirements"] = judged
+        unmet = requirements.unmet(judged)
+        status = "fail" if unmet else "pass"
+        if unmet:
+            ss["fail_reason"] = f"requirement(s) not met: {', '.join(unmet)}"
 
     if status == "fail" and fix_owner:
         ss["fix_owner"] = fix_owner
@@ -560,15 +560,15 @@ def build_result(
 def finalize(
     workdir,
     scaffold,
-    ppa_targets,
+    rows,
+    declared,
     fix_owner=None,
     fail_reason=None,
 ) -> int:
-    """Parse PT-PX reports, judge the power_mw PPA gate, write the lean result.json.
-    exit 0 = written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason or any
-    internal raise) — never conflated with status=fail.
-    `scaffold` is the simulation-plan workdir (build_result's `plan_path`);
-    `ppa_targets` is the ppa_targets JSON (build_result's `targets`)."""
+    """Parse PT-PX reports, judge the rows power-analysis establishes, write the lean
+    result.json. exit 0 = written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason, a
+    row nobody judged, or any internal raise) — never conflated with status=fail.
+    `scaffold` is the simulation-plan workdir (build_result's `plan_path`)."""
     if fail_reason is not None:
         if not fail_reason.strip():
             print(
@@ -578,13 +578,7 @@ def finalize(
             )
             return 2
     try:
-        return build_result(
-            workdir,
-            scaffold,
-            ppa_targets,
-            fix_owner,
-            fail_reason,
-        )
+        return build_result(workdir, scaffold, rows, declared, fix_owner, fail_reason)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[power finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

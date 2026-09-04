@@ -13,14 +13,9 @@ from simplan.hints import HintsError, load_check_hints  # noqa: E402
 CHECK_HINTS = [
     {
         "check_id": "CHK-00",
-        "source_feature": "F-00",
-        "implementation_detail": "write reg",
-        "implementation_detail_verbatim": "reg[addr] <= wdata",
-        "brainstorm_anchor": "L12",
+        "requirements": ["R-001"],
         "observable": "rdata",
         "reference_rule": "reg[addr]=wdata",
-        "latency": "1",
-        "reset_behavior": "0",
     }
 ]
 
@@ -43,16 +38,13 @@ def _spec(tmp_path, hints=None, children=None):
 
 def test_hints_are_carried_verbatim(tmp_path):
     # A pure concatenation of what the children authored — no field selection, no tagging.
-    # Selecting which fields reach the scaffold is materialize-scaffold's job.
     assert load_check_hints(_spec(tmp_path)) == CHECK_HINTS
 
 
-def test_pipes_in_a_verbatim_value_need_no_escaping(tmp_path):
-    hints = [
-        {**CHECK_HINTS[0], "implementation_detail_verbatim": "`sel | in | 3 | bank`"}
-    ]
+def test_pipes_in_a_rule_need_no_escaping(tmp_path):
+    hints = [{**CHECK_HINTS[0], "reference_rule": "`sel | in | 3 | bank`"}]
     got = load_check_hints(_spec(tmp_path, hints))
-    assert got[0]["implementation_detail_verbatim"] == "`sel | in | 3 | bank`"
+    assert got[0]["reference_rule"] == "`sel | in | 3 | bank`"
 
 
 def test_aggregates_across_children_in_manifest_order(tmp_path):

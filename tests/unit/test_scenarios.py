@@ -49,9 +49,8 @@ _OUTPUTS = {
         "Design/specification/design.md",
         "Design/specification/children",
         "Design/specification/manifest.json",
-        "Design/specification/ppa.json",
+        "Design/specification/requirements.json",
         "Design/specification/clocks.json",
-        "Design/specification/features.json",
         "Design/specification/check-hints/c.json",
         "Design/specification/top-io.json",
         "Design/specification/interconnects.json",
@@ -225,7 +224,7 @@ def _fail(module, rule, run, owner="auto"):
 
 def _chain_through_simulation(module):
     """spec/plan/rtl proofs valid on disk — simulation's whole input closure."""
-    _mk(module, "brainstorm.md", "b1")
+    _mk(module, "intent/brainstorm.md", "b1")
     _valid(module, "specification", 1)
     _valid(module, "simulation-plan", 1)
     _valid(module, "rtl-design", 1)
@@ -240,7 +239,7 @@ def test_step1_scaffold_fix_keeps_upstream_proofs_valid(tmp_path, monkeypatch):
     because none of them consume the plan sidecars."""
     monkeypatch.chdir(tmp_path)
     m = "round1"
-    _mk(m, "brainstorm.md", "b1")
+    _mk(m, "intent/brainstorm.md", "b1")
     for rule in (
         "specification",
         "simulation-plan",
@@ -280,7 +279,7 @@ def test_plan_sidecars_invalidate_only_their_own_consumer(tmp_path, monkeypatch)
     """
     monkeypatch.chdir(tmp_path)
     m = "granularity"
-    _mk(m, "brainstorm.md", "b1")
+    _mk(m, "intent/brainstorm.md", "b1")
     for rule in (
         "specification",
         "simulation-plan",
@@ -434,7 +433,7 @@ def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
     directive-LESS forward path)."""
     monkeypatch.chdir(tmp_path)
     m = "round2b"
-    _mk(m, "brainstorm.md", "b1")
+    _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)
     spec1 = facts.latest_outcome(facts.read_events(m), "specification")["outputs"]
     assert facts.proof_valid(m, facts.read_events(m), "specification")
@@ -552,7 +551,7 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
     fail-freshness + condition 2 (no rework counter); never ESCALATE."""
     monkeypatch.chdir(tmp_path)
     m = "multihop"
-    _mk(m, "brainstorm.md", "b1")
+    _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)
     _valid(m, "rtl-design", 1)
     _valid(m, "synthesis", 1)
@@ -706,7 +705,7 @@ def test_step5_lintcdc_dispatchable_and_waiver_never_cached(tmp_path, monkeypatc
 
     monkeypatch.chdir(tmp_path)
     m = "cold"
-    _mk(m, "brainstorm.md", "b1")
+    _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)  # writes the SGDC seed constraints/top.sgdc
     _valid(m, "rtl-design", 1)
     evs = facts.read_events(m)
@@ -734,7 +733,7 @@ def test_forward_redispatch_scope_names_the_drifted_inputs(tmp_path, monkeypatch
     the kernel can compute it (the fingerprint table lives in the log)."""
     monkeypatch.chdir(tmp_path)
     m = "fwd-scope"
-    _mk(m, "brainstorm.md", "b1")
+    _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)
     _valid(m, "rtl-design", 1)  # records design.md/child/manifest at r1 fingerprints
     assert facts.proof_valid(m, facts.read_events(m), "rtl-design")
@@ -758,7 +757,7 @@ def test_first_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
     re-verify by whether the workdir already holds its own prior products."""
     monkeypatch.chdir(tmp_path)
     m = "fwd-first"
-    _mk(m, "brainstorm.md", "b1")
+    _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)  # spec present so rtl-design's inputs are available
     d = kernel.cmd_dispatch(m, "rtl-design", None)
     assert d["ok"], d
@@ -772,7 +771,7 @@ def test_reverify_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
     nothing."""
     monkeypatch.chdir(tmp_path)
     m = "reverify"
-    _mk(m, "brainstorm.md", "b1")
+    _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)
     oref = rules.RULES["specification"].oracle[0]
     facts.append_event(
@@ -799,7 +798,7 @@ def test_repair_dispatch_names_what_named_the_owner_and_the_human_reasoning(
     path is per-run, so a later run of the same stage cannot move it."""
     monkeypatch.chdir(tmp_path)
     m = "repair-shape"
-    _mk(m, "brainstorm.md", "b1")
+    _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)
     _valid(m, "rtl-design", 1)
     _fail(m, "synthesis", 1)
@@ -838,7 +837,7 @@ def test_repair_dispatch_rejects_an_unresolvable_channel(tmp_path, monkeypatch):
     reasoning silently."""
     monkeypatch.chdir(tmp_path)
     m = "repair-guard"
-    _mk(m, "brainstorm.md", "b1")
+    _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)
     r = kernel.cmd_dispatch(m, "rtl-design", None, None, [("synthesis", 9)])
     assert not r["ok"] and "no result.json" in r["error"]

@@ -22,8 +22,11 @@ or hold by eye — `finalize` classifies both off the report and writes the verd
 
 `<skill>` is this skill's own base directory, named on the first line of this file.
 
-`{workdir}/dispatch.json` carries the `inputs` table, but you open none of what it points at:
-`bootstrap` resolves `<TOP>` from the single `out/<TOP>_syn.v` under the synthesis stage root and
+`{workdir}/dispatch.json` carries the `inputs` table. You open one thing it points at:
+`<requirements>/requirements.json`, whose rows judged by `timing-analysis` are yours — the report
+is the evidence, and you declare a verdict on each through `finalize`; a row that points at a file
+under `<intent>/` is read there. The rest `bootstrap`
+handles: it resolves `<TOP>` from the single `out/<TOP>_syn.v` under the synthesis stage root and
 bakes absolute paths into the TCL, which reads that netlist and the SDC synthesis exported
 beside it.
 
@@ -73,14 +76,17 @@ report included, and you never hand-assemble it:
 ```bash
 python3 <skill>/scripts/timing/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] \
-  [--fail-reason "<cause>"]
+  [--fail-reason "<cause>"] \
+  [--requirements '[{"id": "R-249", "met": true, "actual": "setup +0.31 ns, hold +0.12 ns"}]']
 ```
 
 It classifies each direction on the report's `(MET)` / `(VIOLATED)` marker — never the displayed
 number, which prints `0.00` for a violation smaller than the reported precision — records the
 worst slack and worst path per direction into `stage_specific.timing`, lists the binding violator
-per failing direction into `stage_specific.violations[]`, reads the PrimeTime version off the
-report header, and enumerates `artifacts[]`.
+per failing direction into `stage_specific.violations[]`, folds your `--requirements` verdicts in
+as `stage_specific.requirements[]` — refusing an envelope that leaves any `timing-analysis` row
+unjudged, and failing the run on any `met: false` — reads the PrimeTime version off the report
+header, and enumerates `artifacts[]`.
 
 Two MET markers are not enough for a pass. The markers describe the paths PrimeTime analyzed and
 say nothing about the ones it was never asked to, so `finalize` also compares how many output

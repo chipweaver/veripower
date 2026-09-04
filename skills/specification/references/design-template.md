@@ -1,32 +1,38 @@
 # design.md Section Template
 
-`{workdir}/design.md` is the **design source of truth** produced by this skill: §1.1–1.6 describe the module as a whole (function, interfaces, timing, frequencies, architecture partitioning), and §1.7 points at `manifest.json`, whose `doc` field locates each child's design under `children/`, where the per-submodule implementation detail lives. `rtl-design`, `simulation-plan` and `simulation-triage` declare `design.md` as an input, and the first two read the child docs as well. No other stage reads either: synthesis and power-analysis bind `ppa.json`, synthesis reads the generated SDC, timing-analysis reads only the netlist. That is what the sidecar discipline below is for — a fact a stage needs has to live in a file that stage declares.
+`{workdir}/design.md` records the **decisions** made around the requirements ledger: how the module
+is structured, why the partition falls where it does, what the children must jointly keep at their
+boundaries, and the timing scenarios the interfaces are held to. §1.7 points at `manifest.json`,
+whose `doc` field locates each child's design under `children/`. `rtl-design`, `simulation-plan`
+and `simulation-triage` declare `design.md` as an input; the first two read the child docs as well.
 
-> **`design.md` self-containment principle**: all critical invariants from brainstorm (RTL formulas / interface timing / numeric parameters / implementation constraints / overlay explicit spec supplement sections) must be inlined verbatim into `design.md`. **By-reference jumps are forbidden** (such as "see brainstorm §sd_clock_divider IO Ports" / "see spec D2" / "refer to brainstorm section sd_controller_wb"). `brainstorm.md` is `specification`'s input and no other stage's — the children and the spec reviewer read it here, and nothing after this stage can — so a jump out of this document is a pointer the stage implementing from it cannot follow. Judged by the spec-review reviewer, not by a deterministic check — no phrasing blacklist can cover the ways a jump can be worded.
+> **Cite, never restate.** What the engineer requires is in `requirements.json`, one row each, in
+> their words, and every stage reads that file. Mention a requirement here by its row id with at
+> most a short gloss; a paragraph that says again what a row says is a second home for one fact,
+> and the two diverge invisibly. The requirements reviewer reads this document against the ledger
+> for exactly that.
 
 > **Single home**: every per-field fact lives in exactly one place — its sidecar. Each §1.x below
 > points at its sidecar and carries only the narrative no field can hold: why the boundary is
 > what it is, how the children divide the datapath, what is out of scope. Never restate a field
-> value in prose or in a second table. Two hand-written homes for one fact diverge, and the
-> divergence is invisible until a reader trusts the wrong one. (Brainstorm content is still
-> inlined verbatim per the principle above — that is content, not fields.)
+> value in prose or in a second table.
 
 ## Document Position
 
 | Section range | Responsibility |
 |---|---|
-| 1.1–1.6 Overview sections | Function, interfaces, timing, frequencies, architecture partitioning. On conflict with brainstorm.md, these sections are the upper-layer authority. |
-| 1.7 Submodule Index | A pointer to `manifest.json`, the child registry (`name` / `doc` / `rtl_modules` / `brainstorm_anchor`). The per-submodule implementation detail (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.) lives in the child docs. |
-| 2 Document control | Version, revision notes, the corresponding (frozen / approved) brainstorm.md. |
+| 1.1–1.6 Overview sections | Function, interfaces, timing, frequencies, architecture partitioning: the decisions, citing requirement rows by id. |
+| 1.7 Submodule Index | A pointer to `manifest.json`, the child registry (`name` / `doc` / `rtl_modules`). The per-submodule implementation detail (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.) lives in the child docs. |
+| 2 Document control | Version, revision notes. |
 
 ## Rendering Conventions
 
 | Content type | Recommended format | Notes |
 |----------|----------|------|
-| Architecture diagrams (§1.2 / submodule `<child>.md` bodies / brainstorm D4 candidates) | mermaid code block | GitHub / VSCode preview / mkdocs all render natively; for multiple side-by-side candidates use one code block each. |
-| Timing diagrams (§1.5 interface timing / brainstorm D5 scenarios) | Hand-drawn ASCII (preferred) or wavedrom | wavedrom does **not** render on GitHub — if wavedrom is used, attach an ASCII equivalent or export a PNG when reviewing the PR; otherwise stick with ASCII. |
+| Architecture diagrams (§1.2 / submodule `<child>.md` bodies) | mermaid code block | GitHub / VSCode preview / mkdocs all render natively; for multiple side-by-side candidates use one code block each. |
+| Timing diagrams (§1.5 interface timing) | Hand-drawn ASCII (preferred) or wavedrom | wavedrom does **not** render on GitHub — if wavedrom is used, attach an ASCII equivalent or export a PNG when reviewing the PR; otherwise stick with ASCII. |
 
-Each timing diagram must be paired with a textual description that **maps one-to-one onto each phase of the waveform** (setup/hold, handshake meaning, typical/boundary cycles, etc.). This convention applies to both `brainstorm.md` and `design.md`.
+Each timing diagram must be paired with a textual description that **maps one-to-one onto each phase of the waveform** (setup/hold, handshake meaning, typical/boundary cycles, etc.).
 
 ## Overview Section Template (1.1–1.6)
 
@@ -36,9 +42,8 @@ Each timing diagram must be paired with a textual description that **maps one-to
 ## 1. Module Overview
 
 ### 1.1 Overview
-(Module description: role in the system, core problem solved, scope boundaries.)
-
-PPA targets: see `ppa.json` (synthesis / power-analysis bind to that file directly).
+(Module description: role in the system, core problem solved, scope boundaries, citing the
+requirement rows that set them.)
 
 ### 1.2 Module Structure
 
@@ -51,11 +56,10 @@ flowchart LR
   A[Sub-A] --> B[Sub-B] --> C[Sub-C]
 ```
 
-### 1.3 Feature Table
+### 1.3 Requirements Coverage
 
-The feature list lives in `features.json` (the spine `check-hints/<child>.json`
-`source_feature` values and testpoints refer to). Here: how the features partition the module,
-which are out of scope.
+The requirements live in `requirements.json`. Here: how the children divide them (which child
+realizes which rows), and which rows are out of scope for this module and why.
 
 ### 1.4 Module Interface and Interconnects
 
@@ -152,7 +156,7 @@ scheme, release-ordering constraints.
 ### 1.7 Submodule Index
 
 The child registry is `manifest.json` in this same directory — one entry per child, carrying
-`name` / `doc` / `rtl_modules` / `brainstorm_anchor`.
+`name` / `doc` / `rtl_modules`.
 ```
 
 Point at the manifest and write nothing else here. Each child's own detail lives in its
@@ -169,7 +173,7 @@ no schema can express, and that is `check-crossrefs`. Neither is restated here.
 ```markdown
 ## 2. Document Control
 
-| Version | Date | Notes | brainstorm.md |
-|------|------|------|---------------------|
-| 0.1 | YYYY-MM-DD | Initial draft | approved |
+| Version | Date | Notes |
+|------|------|------|
+| 0.1 | YYYY-MM-DD | Initial draft |
 ```

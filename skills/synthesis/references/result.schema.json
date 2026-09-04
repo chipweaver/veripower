@@ -2,41 +2,79 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/synthesis/result.schema.json",
   "title": "synthesis result.json contract",
-  "description": "Complete contract for <module>/Design/synthesis/result.json. On status=pass, stage_specific.ppa_actual carries area and timing_slack (one record each; power_mw lives in power-analysis, not synthesis). On status=fail, stage_specific.fail_reason is required (if/then below): the one-line cause, which on a run that produced nothing gradeable is all there is. Carrying violations[] obliges ppa_actual with it (dependentRequired), so the gate's judgement never travels without the measurements behind it; an early fail carries neither, because no gate ran.",
+  "description": "Complete contract for <module>/Design/synthesis/result.json. On status=pass, stage_specific.ppa_actual carries area and timing_slack (one record each; power_mw lives in power-analysis) and stage_specific.requirements[] one verdict per requirements.json row synthesis judges. On status=fail, stage_specific.fail_reason is required (if/then below): the one-line cause, which on a run that produced nothing gradeable is all there is. Carrying requirements[] obliges ppa_actual with it (dependentRequired), so a verdict never travels without the measurements behind it; an early fail carries neither, because no gate ran.",
   "allOf": [
-    {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
+    {
+      "$ref": "https://veripower.local/schemas/envelope.schema.json"
+    },
     {
       "properties": {
-        "stage": {"const": "synthesis"},
+        "stage": {
+          "const": "synthesis"
+        },
         "stage_specific": {
           "type": "object",
-          "dependentRequired": {"violations": ["ppa_actual"]},
+          "dependentRequired": {
+            "requirements": [
+              "ppa_actual"
+            ]
+          },
           "properties": {
-            "fix_owner": {"type": "string", "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."},
-            "fail_reason":  {"type": "string", "minLength": 1},
+            "fix_owner": {
+              "type": "string",
+              "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."
+            },
+            "fail_reason": {
+              "type": "string",
+              "minLength": 1
+            },
             "ppa_actual": {
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["dim", "value"],
+                "required": [
+                  "dim",
+                  "value"
+                ],
                 "properties": {
-                  "dim":   {"type": "string", "enum": ["area_um2", "timing_slack_ns"]},
-                  "value": {"type": ["number", "null"]}
+                  "dim": {
+                    "type": "string",
+                    "enum": [
+                      "area_um2",
+                      "timing_slack_ns"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
                 },
                 "additionalProperties": true
               }
             },
-            "violations": {
+            "requirements": {
               "type": "array",
-              "description": "PPA violations when status=fail. Lists each target not met.",
+              "description": "One entry per requirements.json row this stage judges: the script's verdict for a row with a target, the agent's (finalize --requirements) for the rest. finalize refuses an envelope that leaves any such row out, so a row nobody read cannot pass as silence.",
               "items": {
                 "type": "object",
-                "required": ["dim", "target", "actual"],
+                "required": [
+                  "id",
+                  "met"
+                ],
                 "additionalProperties": false,
                 "properties": {
-                  "dim":    {"type": "string", "enum": ["area_um2", "timing_slack_ns"]},
-                  "target": {"type": "number"},
-                  "actual": {"type": "number"}
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "met": {
+                    "type": "boolean"
+                  },
+                  "actual": {
+                    "description": "What was measured or observed, in whatever unit the row speaks."
+                  }
                 }
               }
             }
@@ -44,15 +82,52 @@
           "additionalProperties": true
         }
       },
-      "required": ["stage_specific"]
+      "required": [
+        "stage_specific"
+      ]
     },
     {
-      "if":   {"properties": {"status": {"const": "pass"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["ppa_actual"]}}}
+      "if": {
+        "properties": {
+          "status": {
+            "const": "pass"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stage_specific": {
+            "required": [
+              "ppa_actual",
+              "requirements"
+            ]
+          }
+        }
+      }
     },
     {
-      "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["fail_reason"]}}}
+      "if": {
+        "properties": {
+          "status": {
+            "const": "fail"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stage_specific": {
+            "required": [
+              "fail_reason"
+            ]
+          }
+        }
+      }
     }
   ]
 }

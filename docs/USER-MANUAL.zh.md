@@ -89,9 +89,9 @@ pip install -r requirements.txt
 
 ### 1.2 输入件
 
-整条流水线只认一个输入文档：`{module}/brainstorm.md`。它怎么来有两条路。
+整条流水线只认一个目录：`{module}/intent/`。文档以 `brainstorm.md` 的名字放进去，文档依赖的东西一起放进去，里面怎么组织随你。怎么来有两条路。
 
-**一、你已经有详细规格文档**：直接存成这个路径和文件名，不用再跑 brainstorm。
+**一、你已经有规格文档**：直接存成 `{module}/intent/brainstorm.md`，什么形状都行，它引用的东西也放进这个目录：参考模型、寄存器表、标准原文。你的文档指为权威的文件，会由需要它的阶段在原地读取。有两件事要知道。放在 `intent/` 之外的文件不属于意图——没有阶段拿得到它，它变了也没有阶段察觉；你的文档若指着这样一个路径，需要它的阶段会在你的第一道门上说出来。符号链接按它指向哪里记账，不按那里有什么，所以共享规格在链接背后变了是看不见的——请直接拷进来。不用再跑 brainstorm：`specification` 会把文档里每一条要求转录进 `requirements.json`，一行一条，用你的原话，对文档怎么组织不做任何假设。
 
 **二、从零生成**：在**独立会话**里：
 
@@ -112,7 +112,7 @@ pip install -r requirements.txt
 
 跑完它**只把路径交给你**，不回显正文。你读磁盘上那份文件，**确认内容没问题即可启动流水线**。
 
-不管走哪条路，`specification` 都要从这份文档里读出上面八个维度。**走第一条路时对着这张表自查一遍**。D6 的 PPA 目标缺了，综合和功耗就没有数值门槛可判。D3 的时钟表和 D2 的顶层接口缺了或对不上，约束派生会失败，退回去重做。
+不管走哪条路，文档里写了什么，流水线就按什么判，多一条也没有：你没写的界限不会被判，你写的每一条要么由某个阶段判，要么在账本门上由你判，要么作为流水线判不了的东西明示给你。文档里漏掉的时钟和顶层接口，会在账本门上以 specification 无法实现的行的形式冒出来。
 
 > **目前不支持**：把已有的 RTL、testbench 作为工程件导入。它们只能作为对话素材喂进 brainstorm，RTL 和 TB 仍由流水线重新生成。
 
@@ -129,7 +129,7 @@ Orchestrator 接管。它每一轮问一次调度器「下一步干什么」，�
 ```
 [brainstorm]  (流水线之前，独立会话)
      ↓
-brainstorm.md
+intent/brainstorm.md
      ↓
 [specification] → [simulation-plan] → [rtl-design]
                                             │
@@ -167,17 +167,17 @@ brainstorm.md
 |---|---|---|
 | `design.md` | 模块总览 §1.1–1.6，§1.7 指向 manifest | **必看** |
 | `<child>.md × N` | 每个子模块的子设计 | **必看** |
+| `requirements.json` | 你的意图文档里每一条要求，一行一条，用你的原话，写明由哪个阶段判。门上逐字给你看四组：没人能派的（`unassignable`）、流水线之外判的、留给你判的、工具将要比数的数值界限 | **这四组必看** |
 | `manifest.json` | 子模块划分：`module` + `children[]` | **必看**，在分区门 |
-| `ppa.json` | PPA 目标，逐字来自 brainstorm D6 | **必看，逐字** |
-| `spec-review/<child>.md` / `decisions.md` | 各子模块评审，以及你对 blocking 项的裁决 | **必看** |
-| `features.json` / `check-hints/<child>.json` | 特性清单，以及每个特性由哪些检查覆盖 | 选看 |
+| `spec-review/requirements.md` / `<child>.md` / `decisions.md` | 账本对你文档的核对、各子设计对账本的核对、以及你的裁决 | **必看** |
+| `check-hints/<child>.json` | 仿真将怎样观测它判的每一条要求 | 选看 |
 | `clocks.json` / `top-io.json` / `interconnects.json` | 边界信息：时钟、顶层端口、切开的连线 | `design.md` §1.4 是它们的人读版本 |
 | `constraints/<TOP>.sdc` / `.sgdc` | 由 clocks + top-io 生成的约束对 | 生成物，不是决策 |
 
 **你的动作：两道门**
 
-- **分区门**（第一步之后）：去看 `design.md` §1.4，确认这个划分，或给合并意见让它重划。
-- **规格门**（第三步之后）：重点看 `design.md` 和各 `<child>.md` 的内容细节是否符合你的设计，`ppa.json` 那几个数字是不是你要的（综合和功耗后面按它判定），以及 `spec-review/<child>.md` / `decisions.md` 发现的问题和决策你是否认同。
+- **账本与分区门**（转录和分解之后）：处理每一条 `unassignable`（定义怎么量、指派裁判、或宣布它不是要求），看流水线之外判的和留给你判的那几行，核对数值界限，确认划分或给合并意见让它重划。
+- **规格门**（子设计之后）：重点看 `design.md` 和各 `<child>.md` 是否实现了它们引用的账本行，以及 `spec-review/` 里的发现和决策你是否认同。
 
 > 流水线越靠前的决策影响越大，spec 阶段是后面一切开发验证的来源，需认真确认。
 
@@ -246,7 +246,7 @@ brainstorm.md
 
 #### synthesis
 
-**干什么**：后台用 `compile_ultra` 综合，按 `ppa.json` 自判 PPA。
+**干什么**：后台用 `compile_ultra` 综合，逐条判定 `requirements.json` 里派给综合的行。
 
 **产物**（`{module}/Design/synthesis/`）
 
@@ -257,7 +257,7 @@ brainstorm.md
 | `out/<TOP>_syn.v` / `_syn.sdc` / `_syn.sdf` | 综合后 netlist、导出 SDC、延时标注 | 下游 timing / power 消费 |
 | `constraints.sdc` | 实际用的约束，由 spec 的 SDC + `constraints.local.sdc` 装配而成 | 装配产物 |
 
-**你的动作：无。** 要复核就看 `reports/qor.rpt`。判定由 dc_shell 的 QoR 报告给出，基准是你在规格门批过的 `ppa.json`。它不会自己发明时序例外。SDC 里的例外只能转写自 rtl-design 声明的 `constraint-annotations.json`，一条路径真收不进来就返工回上游，不会加一条 false path 蒙过去。
+**你的动作：无。** 要复核就看 `reports/qor.rpt` 和 `result.json` 里的 `requirements[]`。判定由 dc_shell 的 QoR 报告给出，基准是你在账本门批过的那几行。它不会自己发明时序例外。SDC 里的例外只能转写自 rtl-design 声明的 `constraint-annotations.json`，一条路径真收不进来就返工回上游，不会加一条 false path 蒙过去。
 
 ---
 
@@ -297,7 +297,7 @@ brainstorm.md
 
 #### power-analysis
 
-**干什么**：两条链在这里汇合。后台用综合的 netlist + SDF 和仿真的 TB 环境跑门级仿真，出 SAIF，再用 PT-PX 算平均功耗，按 `ppa.json` 自判。
+**干什么**：两条链在这里汇合。后台用综合的 netlist + SDF 和仿真的 TB 环境跑门级仿真，出 SAIF，再用 PT-PX 算平均功耗，逐条判定 `requirements.json` 里派给功耗分析的行。
 
 **产物**（`{module}/Verification/power-analysis/`，`<id>` = 功耗场景）
 
@@ -342,7 +342,7 @@ brainstorm.md
 
 流程会停下来，把原因**原文**给你，必要时附上候选归因。恢复的唯一通道是**人来做一次归因**，指明该由哪个阶段去修、以及为什么。
 
-常见的一类是规格自己修不动了，通常意味着**需求本身要改**。用 brainstorm 的修订模式重跑，改完 `brainstorm.md`，规格阶段的结果就自动失效了，重新跑流程即可。
+常见的一类是规格自己修不动了，通常意味着**需求本身要改**。用 brainstorm 的修订模式重跑，改完 `intent/brainstorm.md`，规格阶段的结果就自动失效了，重新跑流程即可。
 
 更多报错见[附录 B](#附录-b-报错速查)。
 
@@ -383,7 +383,7 @@ LLM 写的东西不能自己给自己作证。**所以签核的门槛是这四�
 
 ```
 {module}/
-├── brainstorm.md                  # 流水线的唯一输入（你的，pipeline 只读）
+├── intent/                        # 流水线的唯一输入：brainstorm.md 与它依赖的文件（你的，pipeline 只读）
 ├── events.jsonl                   # 审计日志，唯一的持久状态文件
 ├── Design/
 │   ├── specification/             # design.md / <child>.md / *.json / constraints/ / spec-review/
@@ -402,7 +402,7 @@ LLM 写的东西不能自己给自己作证。**所以签核的门槛是这四�
 
 **哪些进 git**（建议，工具不强制）
 
-入库：`brainstorm.md`、`events.jsonl`（审计轨迹）、`Design/specification/`、`Design/rtl-design/*.v` + `rtl-files.json`、`Verification/simulation-plan/`、`Verification/simulation/tb/`、各阶段最终报告。
+入库：`intent/`、`events.jsonl`（审计轨迹）、`Design/specification/`、`Design/rtl-design/*.v` + `rtl-files.json`、`Verification/simulation-plan/`、`Verification/simulation/tb/`、各阶段最终报告。
 
 忽略：工具中间产物和运行目录。`*.svf`、`*.pvl`、`command.log`、`pt_shell_command.log`、`simv*`、`csrc/`、综合与 PT 的 work 目录、波形（FSDB 通常很大）。
 
@@ -455,8 +455,8 @@ rm ~/.claude/skills/veripower
 | # | 时机 | 阶段 | 你要决定什么 | 能跳过吗 | 详见 |
 |---|---|---|---|---|---|
 | 1 | D0–D7 对话 | brainstorm（流水线之前） | 需求与架构，含 PPA 目标 | 否 | §1.2 |
-| 2 | 分区门 | specification 第一步后 | 确认子模块划分 | 否，且是**最后一次能改分区** | §1.4 |
-| 3 | 规格门 | specification 第三步后 | design.md / 各子设计 / 评审 / **ppa.json 数字** | 否 | §1.4 |
+| 2 | 账本与分区门 | specification 分解后 | 处理 `unassignable` 行，看流水线之外和留给你的行，核对数值界限，确认划分 | 否，且是**最后一次能改分区** | §1.4 |
+| 3 | 规格门 | specification 子设计后 | design.md / 各子设计 / 评审 | 否 | §1.4 |
 | 4 | 计划门 | simulation-plan | approve / request changes / reject | 否 | §1.4 |
 | 5 | ESCALATE | 任意阶段 | 指认该由哪个阶段去修，并给出理由 | 否 | §1.5 |
 | 6 | 认可判据 | 四份 LLM 写的判据 | 读过之后确认，并给一句理由 | 签核前必做 | §1.6 |

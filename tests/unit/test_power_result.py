@@ -229,6 +229,25 @@ def _make_workdir(tmp_path, scenarios, sizes, flats, statuses=None):
     return wd, plan
 
 
+def _bound(rid, op, value, scenario=None, judge="power-analysis"):
+    t = {"dim": "power_mw", "op": op, "value": value}
+    if scenario:
+        t["scenario"] = scenario
+    return {
+        "id": rid,
+        "verbatim": f"power {op} {value} mW",
+        "judge": judge,
+        "target": t,
+    }
+
+
+def _spec(tmp_path, rows):
+    sd = tmp_path / "spec"
+    sd.mkdir(exist_ok=True)
+    (sd / "requirements.json").write_text(_json.dumps(rows))
+    return sd
+
+
 _SCEN = [
     {
         "id": "S1",
@@ -253,10 +272,12 @@ def test_run_pass_within_targets(tmp_path):
             "S2": _flat_rpt(1.10, 0.45, 0.55, 0.10),
         },
     )
-    rc, data = p.run(plan, wd, _json.dumps([{"dim": "power_mw", "target": 1.2}]))
+    rc, data = p.run(plan, wd, [_bound("R-P", "<=", 1.2)])
     assert rc == 0
-    assert data["verdict"] == "pass"
-    assert data["violations"] == []
+    # no scenario named: the bound holds for every scenario, and actual is the worst of them
+    assert data["requirements"] == [
+        {"id": "R-P", "met": True, "actual": pytest.approx(1.10)}
+    ]
     assert (
         len(data["saif_artifacts"])
         == len(data["ppa_actual"])
@@ -281,33 +302,34 @@ def test_run_ppa_miss_is_exit0_fail(tmp_path):
             "S2": _flat_rpt(1.85, 0.62, 0.95, 0.28),
         },
     )
-    rc, data = p.run(
-        plan,
-        wd,
-        _json.dumps([{"dim": "power_mw", "target": 1.2, "scenario_id": "S2"}]),
-    )
-    assert rc == 0
-    assert data["verdict"] == "fail"
-    assert data["violations"] == [
-        {
-            "dim": "power_mw",
-            "target": 1.2,
-            "actual": pytest.approx(1.85),
-            "scenario_id": "S2",
-        }
+    rc, data = p.run(plan, wd, [_bound("R-P", "<=", 1.2, scenario="S2")])
+    assert rc == 0  # a miss is a verdict, not a tooling failure
+    assert data["requirements"] == [
+        {"id": "R-P", "met": False, "actual": pytest.approx(1.85)}
     ]
 
 
-def test_run_empty_targets_sets_gate_skipped(tmp_path):
+def test_run_a_bound_naming_an_unmeasured_scenario_cannot_be_judged(tmp_path):
     wd, plan = _make_workdir(
         tmp_path,
         _SCEN[:1],
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
-    rc, data = p.run(plan, wd, "[]")
+    with pytest.raises(ValueError, match="S9"):
+        p.run(plan, wd, [_bound("R-P", "<=", 1.2, scenario="S9")])
+
+
+def test_run_no_targeted_rows_judges_nothing_but_still_measures(tmp_path):
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN[:1],
+        sizes={"S1": 2000},
+        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+    )
+    rc, data = p.run(plan, wd, [])
     assert rc == 0
-    assert data["verdict"] == "pass" and data["ppa_gate_skipped"] is True
+    assert data["requirements"] == []
     assert data["ppa_actual"][0]["value"] == pytest.approx(0.42)
 
 
@@ -318,7 +340,7 @@ def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
         sizes={"S1": 0},  # no saif file
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )  # flat parses fine
-    rc, data = p.run(plan, wd, "[]")
+    rc, data = p.run(plan, wd, [])
     assert rc != 0
     assert "FAIL=saif_empty:S1" in capsys.readouterr().err
     assert data["failures"][0]["category"] == "saif_dump"
@@ -344,7 +366,7 @@ def test_run_gls_uvm_failure_nulls_the_power_number(tmp_path, capsys):
         },
         statuses={"S1": "FAIL"},  # S2 passes
     )
-    rc, data = p.run(plan, wd, _json.dumps([{"dim": "power_mw", "target": 1.2}]))
+    rc, data = p.run(plan, wd, [_bound("R-P", "<=", 1.2)])
     assert rc != 0
     assert "FAIL=gls_uvm:S1" in capsys.readouterr().err
     f0 = data["failures"][0]
@@ -366,7 +388,7 @@ def test_run_missing_gls_status_is_not_a_pass(tmp_path):
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
         statuses={"S1": None},  # never written
     )
-    rc, data = p.run(plan, wd, "[]")
+    rc, data = p.run(plan, wd, [])
     assert rc != 0
     assert data["failures"][0]["category"] == "gls_uvm"
     assert "absent" in data["failures"][0]["error_summary"]
@@ -377,7 +399,7 @@ def test_run_report_missing_token(tmp_path, capsys):
     wd, plan = _make_workdir(
         tmp_path, _SCEN[:1], sizes={"S1": 2000}, flats={"S1": None}
     )  # power_flat.rpt absent
-    rc, data = p.run(plan, wd, "[]")
+    rc, data = p.run(plan, wd, [])
     assert rc != 0
     assert "FAIL=report_missing:S1" in capsys.readouterr().err
     assert data["ppa_actual"][0]["value"] is None
@@ -387,7 +409,7 @@ def test_run_unparseable_total_token(tmp_path, capsys):
     wd, plan = _make_workdir(
         tmp_path, _SCEN[:1], sizes={"S1": 2000}, flats={"S1": "no power numbers here\n"}
     )
-    rc, data = p.run(plan, wd, "[]")
+    rc, data = p.run(plan, wd, [])
     assert rc != 0
     assert "FAIL=unparseable:S1" in capsys.readouterr().err
     assert data["ppa_actual"][0]["value"] is None
@@ -400,7 +422,7 @@ def test_run_three_component_invariant_break(tmp_path, capsys):
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(9.99, 0.05, 0.02, 0.35)},
     )  # total != sum
-    rc, data = p.run(plan, wd, "[]")
+    rc, data = p.run(plan, wd, [])
     assert rc != 0
     assert "FAIL=invariant" in capsys.readouterr().err
 
@@ -414,8 +436,8 @@ def test_run_returns_a_payload_on_both_exit_paths(tmp_path):
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
-    rc, data = p.run(plan, wd, "[]")
-    assert rc == 0 and data["verdict"] == "pass"
+    rc, data = p.run(plan, wd, [])
+    assert rc == 0 and data["requirements"] == []
     wd_bad, plan_bad = _make_workdir(
         tmp_path / "bad", _SCEN[:1], sizes={"S1": 0}, flats={}
     )
@@ -460,12 +482,12 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
             ]
         )
     )
-    rc, data = p.run(plan, wd, "[]")
+    rc, data = p.run(plan, wd, [])
     # Before the fix: rc==1, failures[0].category=="ptpx_data" (invariant). After: clean pass.
     assert rc == 0, (
         f"4-sig-fig rounding must not trip the invariant; failures={data.get('failures')}"
     )
-    assert data["verdict"] == "pass"
+    assert data["requirements"] == []
     assert data["failures"] == []
 
 
@@ -479,17 +501,17 @@ def test_build_result_pass_lean_shape(tmp_path):
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
-    assert p.build_result(wd, plan_path=str(plan), targets="[]") == 0
+    assert p.build_result(wd, str(plan), [], []) == 0
     env = _json.loads((wd / "result.json").read_text())
     assert env["stage"] == "power-analysis"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
-    # the 7 fields the sidecar carries fold straight through (minus verdict)
-    assert "verdict" not in ss
-    assert ss["ppa_gate_skipped"] is True  # targets="[]"
+    assert "verdict" not in ss and "violations" not in ss
+    assert (
+        ss["requirements"] == []
+    )  # no row judged by this stage; the empty list says so
     assert ss["ppa_actual"][0]["value"] == pytest.approx(0.42)
     assert ss["compile_info"]["vcs_version"] == "L-2016.06_Full64"
-    assert ss["violations"] == []
     assert "notes" not in ss  # lean shape: dropped field absent
 
 
@@ -502,15 +524,14 @@ def test_build_result_tooling_fail_on_invariant(tmp_path):
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(9.99, 0.05, 0.02, 0.35)},
     )  # deliberately off
-    assert p.build_result(wd, plan_path=str(plan), targets="[]") == 0
+    assert p.build_result(wd, str(plan), [], []) == 0
     ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["failures"] and ss["failures"][0]["category"] == "ptpx_data"
     assert isinstance(ss["fail_reason"], str) and ss["fail_reason"]
 
 
-def test_build_result_ppa_miss(tmp_path):
-    # the PPA-miss branch of build_result: a scenario over target ->
-    # status=fail + violations + ppa_actual (the schema's ppa-fail if/then).
+def test_build_result_missed_row(tmp_path):
+    # a scenario over the engineer's bound -> status=fail + requirements + ppa_actual
     wd, plan = _make_workdir(
         tmp_path,
         _SCEN,
@@ -520,19 +541,16 @@ def test_build_result_ppa_miss(tmp_path):
             "S2": _flat_rpt(1.85, 0.62, 0.95, 0.28),
         },
     )
-    targets = _json.dumps([{"dim": "power_mw", "target": 1.2, "scenario_id": "S2"}])
-    assert p.build_result(wd, plan_path=str(plan), targets=targets) == 0
+    assert (
+        p.build_result(wd, str(plan), [_bound("R-P", "<=", 1.2, scenario="S2")], [])
+        == 0
+    )
     ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["violations"] == [
-        {
-            "dim": "power_mw",
-            "target": 1.2,
-            "actual": pytest.approx(1.85),
-            "scenario_id": "S2",
-        }
+    assert ss["requirements"] == [
+        {"id": "R-P", "met": False, "actual": pytest.approx(1.85)}
     ]
-    assert ss["ppa_actual"]  # required alongside violations on a ppa-fail
-    assert isinstance(ss["fail_reason"], str) and ss["fail_reason"]
+    assert ss["ppa_actual"]  # required alongside the verdicts
+    assert ss["fail_reason"] == "requirement(s) not met: R-P"
 
 
 def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
@@ -542,7 +560,7 @@ def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
         raise RuntimeError("synthetic")
 
     monkeypatch.setattr(p, "build_result", boom)
-    assert p.finalize(tmp_path, "scaffold.json", "[]") == 2
+    assert p.finalize(tmp_path, "scaffold.json", [], []) == 2
 
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):
@@ -560,30 +578,22 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
 
 def test_finalize_cli_happy_path(tmp_path):
     # End-to-end through _cmd_finalize (lazy handler import + the dispatch.json read
-    # + the ppa.json sidecar read), not just in-process build_result. A handler typo
+    # + the ledger read), not just in-process build_result. A handler typo
     # would pass every other test (which call build_result directly) but fail here.
-    # finalize reads PPA targets via the injected dispatch.json "ppa" key (no sibling
-    # ppa.json here -> vacuous empty targets, same as the old absent-file default).
+    # finalize reads the ledger via the injected dispatch.json "requirements" key.
     wd, plan = _make_workdir(
         tmp_path,
         _SCEN[:1],
         sizes={"S1": 2000},
         flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
+    spec = _spec(tmp_path, [])
     (wd / "dispatch.json").write_text(
-        _json.dumps(
-            {"inputs": {"ppa": str(tmp_path / "no-ppa"), "scaffold": str(plan)}}
-        )
+        _json.dumps({"inputs": {"requirements": str(spec), "scaffold": str(plan)}})
     )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
     r = subprocess.run(
-        [
-            "python3",
-            str(MAIN),
-            "finalize",
-            "--workdir",
-            str(wd),
-        ],
+        ["python3", str(MAIN), "finalize", "--workdir", str(wd)],
         capture_output=True,
         text=True,
     )
@@ -592,11 +602,10 @@ def test_finalize_cli_happy_path(tmp_path):
     assert (env["stage"], env["status"]) == ("power-analysis", "pass")
 
 
-# ── PPA targets read from the injected dispatch.json "ppa" stage root ──────────
-def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
-    # No --ppa-targets flag exists anymore: finalize reads the power_mw gate
-    # straight from the specification stage root's ppa.json, whose location comes
-    # from the injected dispatch.json "ppa" key (not self-nav via parents[3]).
+# ── the ledger, read from the injected dispatch.json "requirements" stage root ──
+def test_finalize_cli_reads_the_ledger(tmp_path):
+    # finalize reads the rows power-analysis judges straight from the specification
+    # stage root's requirements.json, whose location comes from the injected dispatch.json.
     module_root = tmp_path / "asic" / "tpu_top"
     wd, plan = _make_workdir(
         module_root / "Verification" / "power-analysis" / "runs",
@@ -606,22 +615,29 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
     )
     spec_dir = module_root / "Design" / "specification"
     spec_dir.mkdir(parents=True)
-    (spec_dir / "ppa.json").write_text(
+    (spec_dir / "requirements.json").write_text(
         _json.dumps(
             [
+                _bound("R-P", "<", 0.1, scenario="S1"),  # unreachable -> forces a fail
+                {  # synthesis judges this one -> not ours
+                    "id": "R-A",
+                    "verbatim": "area",
+                    "judge": "synthesis",
+                    "target": {"dim": "area_um2", "op": "<=", "value": 999.0},
+                },
                 {
-                    "dim": "power_mw",
-                    "target": 0.1,
-                    "scenario_id": "S1",
-                },  # unreachable -> forces a fail
-                {"dim": "area_um2", "target": 999.0},  # not power's dim -> ignored
+                    "id": "R-R",
+                    "verbatim": "power reported only",
+                    "judge": "power-analysis",
+                },
             ]
         )
     )
     (wd / "dispatch.json").write_text(
-        _json.dumps({"inputs": {"ppa": str(spec_dir), "scaffold": str(plan)}})
+        _json.dumps({"inputs": {"requirements": str(spec_dir), "scaffold": str(plan)}})
     )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
+    declared = _json.dumps([{"id": "R-R", "met": True, "actual": "0.42 mW reported"}])
     r = subprocess.run(
         [
             "python3",
@@ -629,6 +645,8 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
             "finalize",
             "--workdir",
             str(wd),
+            "--requirements",
+            declared,
         ],
         capture_output=True,
         text=True,
@@ -637,14 +655,19 @@ def test_finalize_cli_reads_ppa_json_sibling(tmp_path):
     env = _json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
-    assert ss["violations"] == [
-        {
-            "dim": "power_mw",
-            "target": 0.1,
-            "actual": pytest.approx(0.42),
-            "scenario_id": "S1",
-        }
+    assert ss["requirements"] == [
+        {"id": "R-P", "met": False, "actual": pytest.approx(0.42)},
+        {"id": "R-R", "met": True, "actual": "0.42 mW reported"},
     ]
+    assert ss["fail_reason"] == "requirement(s) not met: R-P"
+
+    # the undeclared row blocks: a verdict nobody gave cannot pass as silence
+    r = subprocess.run(
+        ["python3", str(MAIN), "finalize", "--workdir", str(wd)],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 2 and "R-R" in r.stderr
 
 
 # ── artifacts[] enumeration ───────────────────────────────────────────────────
@@ -713,7 +736,7 @@ def _copy_golden(tmp_path, root):
 def test_golden_real_reports_lean_pass(tmp_path):
     ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
     wd = _copy_golden(tmp_path, ROOT)
-    rc = p.build_result(wd, plan_path=str(ROOT / "plan"), targets="[]")
+    rc = p.build_result(wd, str(ROOT / "plan"), [], [])
     assert rc == 0
     env = _json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
@@ -727,14 +750,12 @@ def test_golden_real_reports_lean_pass(tmp_path):
         "compile_info",
         "failures",
         "ppa_actual",
-        "violations",
+        "requirements",
         "power_by_scenario",
-        "ppa_gate_skipped",
     }
-    assert "verdict" not in ss
+    assert "verdict" not in ss and "violations" not in ss
     assert ss["failures"] == []  # clean parse — no ptpx_data failures
-    assert ss["violations"] == []  # targets="[]" -> ppa gate skipped
-    assert ss["ppa_gate_skipped"] is True
+    assert ss["requirements"] == []  # no row judged by this stage
     assert ss["compile_info"]["vcs_version"] == "L-2016.06_Full64"
     assert all(
         e["value"] is not None for e in ss["ppa_actual"]
@@ -753,7 +774,7 @@ def test_golden_is_schema_valid(tmp_path):
 
     ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
     wd = _copy_golden(tmp_path, ROOT)
-    p.build_result(wd, plan_path=str(ROOT / "plan"), targets="[]")
+    p.build_result(wd, str(ROOT / "plan"), [], [])
     env = _json.loads((wd / "result.json").read_text())
     env_schema = _json.loads(
         (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()
@@ -782,7 +803,7 @@ def test_golden_is_schema_valid(tmp_path):
 def _declared(tmp_path, **kw):
     wd = tmp_path / "wd"
     wd.mkdir()
-    rc = p.build_result(wd, tmp_path / "nonexistent-plan", "[]", **kw)
+    rc = p.build_result(wd, tmp_path / "nonexistent-plan", [], [], **kw)
     return rc, wd
 
 
@@ -831,7 +852,7 @@ def test_finalize_blocked_on_an_empty_declaration(tmp_path):
     # writes nothing, so the retry is not looking at a half-declared envelope.
     wd = tmp_path / "wd"
     wd.mkdir()
-    assert p.finalize(wd, tmp_path / "plan", "[]", None, "   ") == 2
+    assert p.finalize(wd, tmp_path / "plan", [], [], None, "   ") == 2
     assert not (wd / "result.json").exists()
 
 
@@ -844,7 +865,7 @@ def test_declared_fail_through_the_cli(tmp_path):
         _json.dumps(
             {
                 "inputs": {
-                    "ppa": str(tmp_path / "no-ppa"),
+                    "requirements": str(_spec(tmp_path, [])),
                     "scaffold": str(tmp_path / "plan"),
                 }
             }

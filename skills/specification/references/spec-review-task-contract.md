@@ -9,24 +9,23 @@ dispatch is work the kernel cannot see or audit.
 ## Per-child reviewer (one per `manifest.children[]`)
 
 ### Inputs (paths only)
-- The child's per-child design doc, located via `manifest.children[<self>].doc`.
-- `<brainstorm>/brainstorm.md`, **read all of it** — the frozen statement of *intent*. Your
-  child's `brainstorm_anchor` says which passage is primarily yours: start there, but a formula
-  or constraint stated anywhere in the document is in scope. (Slices do not cover the document —
-  on a real module 53% of the lines fell in no child's anchor — and slicing would presume a shape
-  a human-authored dialogue does not owe us.)
-- `design.md`, read-scope §1.4 only (top IO / interconnects, **including the §1.4.x Encoding
-  field and the §1.4.2.1 Inter-module Behavior Contract companion when present**) — integration
-  context, and the frame for anything encoding-related.
+- The child's per-child design doc, located via `manifest.children[<self>].doc`, and its
+  `check-hints/<child>.json`.
+- `requirements.json`, **read all of it** — the engineer's requirements, one row each with the
+  judge that establishes it. The rows your child realizes are not marked; you recognize them.
+- `design.md` — the integration decisions the child sits inside: the wiring, the inter-module
+  behaviour contract siblings must jointly keep, the timing scenarios.
 
-### Your job: skeptical intent review of the SPEC (NOT RTL / lint / PPA)
-You are a fresh reviewer. **Do not trust that the spec is correct because it is written.** Read
-the `<child>.md` against the brainstorm intent and against `design.md` §1.4, and report what is
-wrong with it.
+### Your job: skeptical review of the child design against the requirements (NOT RTL / lint / PPA)
+You are a fresh reviewer. **Do not trust that the design is correct because it is written.** Read
+the `<child>.md` and its hints against the requirement rows and against `design.md`, and report
+what is wrong with them.
 
 What is worth reporting, in descending order of what it costs to find later:
 
-- The doc omits, contradicts, or silently adds to something the brainstorm requires.
+- The doc omits, contradicts, silently adds to, or restates instead of citing a requirement row.
+- A hint observes an internal signal without the child design saying why the boundary does not
+  suffice, or a hint's rule cannot establish the rows it names.
 - A **control/status** §1.4.x row this child consumes or drives pins an Encoding too thin for the
   consumer to implement its decode with no guessing — or this child's §2/§3 decode contradicts
   the row it claims to follow.
@@ -45,8 +44,8 @@ as an observation, not as your finding.
 Write the file yourself. Free prose, one section per finding, in whatever order serves the
 reader. Each finding states three things:
 
-- **What you compared against** — the brainstorm, a named `design.md` §1.4.x row, or nothing
-  (your own judgment). This is the single most useful thing you can tell the human: a finding
+- **What you compared against** — a requirement row id, a `design.md` decision, or nothing (your
+  own judgment). This is the single most useful thing you can tell the human: a finding
   with a frame can be re-checked by anyone; one without it is your opinion, and is resolved as
   such.
 - **Blocks or not** — would shipping this spec downstream as-is be a defect? Say it plainly.

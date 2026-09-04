@@ -2,44 +2,135 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/lint-cdc/result.schema.json",
   "title": "lint-cdc result.json contract",
-  "description": "Complete contract for <module>/Design/lint-cdc/result.json. stage_specific.violations[] carries the gated rows, severity=error and severity=warning alike (one record per id+rule+severity+reason), so it is required but empty on status=pass, and populated on a rule-based fail; it is not required on an infra/license early-fail, where no report was parsed at all. On status=fail, stage_specific.fail_reason is required (if/then below): the failure narrative, read by the stage this round routes to and parsed by nothing.",
+  "description": "Complete contract for <module>/Design/lint-cdc/result.json. stage_specific.violations[] carries the gated rows, severity=error and severity=warning alike (one record per id+rule+severity+reason), so it is required but empty on status=pass, and populated on a rule-based fail; it is not required on an infra/license early-fail, where no report was parsed at all. On status=fail, stage_specific.fail_reason is required (if/then below): the failure narrative, read by the stage this round routes to and parsed by nothing. stage_specific.requirements[] is one verdict per requirements.json row lint-cdc judges, required on pass.",
   "allOf": [
-    {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
+    {
+      "$ref": "https://veripower.local/schemas/envelope.schema.json"
+    },
     {
       "properties": {
-        "stage": {"const": "lint-cdc"},
+        "stage": {
+          "const": "lint-cdc"
+        },
         "stage_specific": {
           "type": "object",
           "properties": {
-            "fix_owner": {"type": "string", "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."},
-            "fail_reason": {"type": "string", "minLength": 1},
+            "fix_owner": {
+              "type": "string",
+              "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."
+            },
+            "fail_reason": {
+              "type": "string",
+              "minLength": 1
+            },
             "violations": {
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["id", "rule", "severity", "reason"],
+                "required": [
+                  "id",
+                  "rule",
+                  "severity",
+                  "reason"
+                ],
                 "properties": {
-                  "id":       {"type": "string", "minLength": 1},
-                  "rule":     {"type": "string", "minLength": 1},
-                  "severity": {"type": "string", "enum": ["error", "warning", "info"]},
-                  "reason":   {"type": "string"}
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "rule": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "error",
+                      "warning",
+                      "info"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
                 },
                 "additionalProperties": true
+              }
+            },
+            "requirements": {
+              "type": "array",
+              "description": "One entry per requirements.json row this stage judges: the script's verdict for a row with a target, the agent's (finalize --requirements) for the rest. finalize refuses an envelope that leaves any such row out, so a row nobody read cannot pass as silence.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "met"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "met": {
+                    "type": "boolean"
+                  },
+                  "actual": {
+                    "description": "What was measured or observed, in whatever unit the row speaks."
+                  }
+                }
               }
             }
           },
           "additionalProperties": true
         }
       },
-      "required": ["stage_specific"]
+      "required": [
+        "stage_specific"
+      ]
     },
     {
-      "if":   {"properties": {"status": {"const": "pass"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["violations"]}}}
+      "if": {
+        "properties": {
+          "status": {
+            "const": "pass"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stage_specific": {
+            "required": [
+              "violations",
+              "requirements"
+            ]
+          }
+        }
+      }
     },
     {
-      "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["fail_reason"]}}}
+      "if": {
+        "properties": {
+          "status": {
+            "const": "fail"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stage_specific": {
+            "required": [
+              "fail_reason"
+            ]
+          }
+        }
+      }
     }
   ]
 }

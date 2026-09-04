@@ -27,7 +27,9 @@ for the failed-run directory named by that key (and likewise `<design>` / `<rtl>
 | Key | What it names | What you read there |
 |---|---|---|
 | `<sim_run>` | The failed `simulation` **run** directory (not that stage's root) | `result.json`, the failing envelope. Read this copy, not the simulation stage root's: the stage root holds whichever run finished last, so a later passing run overwrites it. The run's whole working area is here too — regression log, per-case UVM logs, coverage DB, the TB it compiled, and any retained waveform. |
-| `<design>` | The `specification` stage root | `design.md` and the per-child `<child>.md` it indexes, via `manifest.json`. Read these to judge whether the observed behavior is an RTL defect or an under-specified requirement. |
+| `<design>` | The `specification` stage root | `design.md` and the per-child `<child>.md` it indexes, via `manifest.json`: the decisions the RTL was to realize. |
+| `<requirements>` | The `specification` stage root | `requirements.json`, the engineer's requirements in the engineer's words. Read the rows the failing behaviour bears on to judge whether it is an RTL defect or an under-specified requirement. |
+| `<intent>` | The intent container | The intent tree: `brainstorm.md` plus whatever the engineer delivered with it. A requirement row that points at a file here is read there. |
 | `<rtl>` | The `rtl-design` stage root | The sources listed in `rtl-files.json`: the DUT under test, and the instance hierarchy inside it. |
 | `<plan>` | The `simulation-plan` stage root | `verification-plan.md` — what the refmodel and scoreboard are supposed to enforce — and `tb-scaffold.json`, which owns the testpoint list a coverage hole is measured against. |
 

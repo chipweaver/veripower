@@ -6,7 +6,7 @@ class {{MODULE}}_{{RM_NAME}} extends uvm_component;
 
 {{RM_ANALYSIS_IMPS}}
 
-  // TODO(rm): Add internal state mirrors from this testpoint's inlined_check_hints[].reference_rule
+  // TODO(rm): Add internal state mirrors from this testpoint's the covered check hints' reference_rule
   // in scaffold-specification.json — materialize-scaffold already put the value there.
 
   function new(string name = "{{MODULE}}_{{RM_NAME}}", uvm_component parent = null);
@@ -35,7 +35,7 @@ class {{MODULE}}_{{RM_NAME}} extends uvm_component;
   endfunction
 
   // TODO(rm): Reset internal state to power-on values from this testpoint's
-  // inlined_check_hints[].reset_behavior in scaffold-specification.json.
+  // the covered check hints' reference_rule where it states a reset value.
   virtual function void reset();
     // ← Initialize all internal state mirrors.
   endfunction

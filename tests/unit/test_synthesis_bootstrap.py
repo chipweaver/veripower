@@ -45,7 +45,7 @@ def _mirror(tmp_path):
                 "inputs": {
                     "rtl": str(rtl),
                     "sdc": str(spec),
-                    "ppa": str(spec),
+                    "requirements": str(spec),
                     "manifest": str(spec),
                 }
             }

@@ -22,9 +22,9 @@ def _write(module, rel, text):
 
 def test_proof_valid_then_input_change_invalidates(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "v1")
+    _write("m", "intent/brainstorm.md", "v1")
     _write("m", "Design/specification/design.md", "d1")
-    v = _fp("m", "brainstorm.md")
+    v = _fp("m", "intent")
     facts.append_event(
         "m",
         {
@@ -32,7 +32,7 @@ def test_proof_valid_then_input_change_invalidates(tmp_path, monkeypatch):
             "rule": "specification",
             "run": 1,
             "workdir": "w",
-            "inputs": {"brainstorm.md": v},
+            "inputs": {"intent": v},
             "params": {},
         },
         TS,
@@ -53,7 +53,7 @@ def test_proof_valid_then_input_change_invalidates(tmp_path, monkeypatch):
                 {
                     "name": "specification",
                     "verdict": "pass",
-                    "inputs": {"brainstorm.md": v},
+                    "inputs": {"intent": v},
                     "oracle": {"ref": "spec-review", "grade": "human"},
                 }
             ],
@@ -63,16 +63,16 @@ def test_proof_valid_then_input_change_invalidates(tmp_path, monkeypatch):
     )
     evs = facts.read_events("m")
     assert facts.proof_valid("m", evs, "specification")
-    _write("m", "brainstorm.md", "v2-changed")  # input drifts
+    _write("m", "intent/brainstorm.md", "v2-changed")  # input drifts
     assert not facts.proof_valid("m", evs, "specification")
 
 
 def test_proof_invalid_when_own_output_handedited(tmp_path, monkeypatch):
     # Validity condition 4: hand-editing the rule's own output invalidates its proof.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "v1")
+    _write("m", "intent/brainstorm.md", "v1")
     dm = _write("m", "Design/specification/design.md", "d1")
-    v = _fp("m", "brainstorm.md")
+    v = _fp("m", "intent")
     facts.append_event(
         "m",
         {
@@ -80,7 +80,7 @@ def test_proof_invalid_when_own_output_handedited(tmp_path, monkeypatch):
             "rule": "specification",
             "run": 1,
             "workdir": "w",
-            "inputs": {"brainstorm.md": v},
+            "inputs": {"intent": v},
             "params": {},
         },
         TS,
@@ -101,7 +101,7 @@ def test_proof_invalid_when_own_output_handedited(tmp_path, monkeypatch):
                 {
                     "name": "specification",
                     "verdict": "pass",
-                    "inputs": {"brainstorm.md": v},
+                    "inputs": {"intent": v},
                     "oracle": {"ref": "spec-review", "grade": "human"},
                 }
             ],
@@ -117,8 +117,8 @@ def test_proof_invalid_when_own_output_handedited(tmp_path, monkeypatch):
 
 def test_fail_verdict_is_not_valid(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "v1")
-    v = _fp("m", "brainstorm.md")
+    _write("m", "intent/brainstorm.md", "v1")
+    v = _fp("m", "intent")
     facts.append_event(
         "m",
         {
@@ -126,7 +126,7 @@ def test_fail_verdict_is_not_valid(tmp_path, monkeypatch):
             "rule": "specification",
             "run": 1,
             "workdir": "w",
-            "inputs": {"brainstorm.md": v},
+            "inputs": {"intent": v},
             "params": {},
         },
         TS,
@@ -143,7 +143,7 @@ def test_fail_verdict_is_not_valid(tmp_path, monkeypatch):
                 {
                     "name": "specification",
                     "verdict": "fail",
-                    "inputs": {"brainstorm.md": v},
+                    "inputs": {"intent": v},
                     "oracle": {"ref": "spec-review", "grade": "proposed"},
                 }
             ],
@@ -156,8 +156,8 @@ def test_fail_verdict_is_not_valid(tmp_path, monkeypatch):
 
 def test_reopen_after_proof_invalidates(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "v1")
-    v = _fp("m", "brainstorm.md")
+    _write("m", "intent/brainstorm.md", "v1")
+    v = _fp("m", "intent")
     facts.append_event(
         "m",
         {
@@ -165,7 +165,7 @@ def test_reopen_after_proof_invalidates(tmp_path, monkeypatch):
             "rule": "specification",
             "run": 1,
             "workdir": "w",
-            "inputs": {"brainstorm.md": v},
+            "inputs": {"intent": v},
             "params": {},
         },
         TS,
@@ -182,7 +182,7 @@ def test_reopen_after_proof_invalidates(tmp_path, monkeypatch):
                 {
                     "name": "specification",
                     "verdict": "pass",
-                    "inputs": {"brainstorm.md": v},
+                    "inputs": {"intent": v},
                     "oracle": {"ref": "spec-review", "grade": "human"},
                 }
             ],
@@ -262,10 +262,10 @@ def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypa
     # editing it (coverage-inflation / "灌水即作废") invalidates the proof via condition 4 —
     # exactly like tampering any other promoted output. End-to-end freshness assertion.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     rjrel = "Design/specification/result.json"
     _write("m", rjrel, '{"status": "pass"}')
-    bm = _fp("m", "brainstorm.md")
+    bm = _fp("m", "intent")
     rj = _fp("m", rjrel)
     facts.append_event(
         "m",
@@ -274,7 +274,7 @@ def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypa
             "rule": "specification",
             "run": 1,
             "workdir": "w",
-            "inputs": {"brainstorm.md": bm},
+            "inputs": {"intent": bm},
             "params": {},
         },
         TS,
@@ -291,7 +291,7 @@ def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypa
                 {
                     "name": "specification",
                     "verdict": "pass",
-                    "inputs": {"brainstorm.md": bm},
+                    "inputs": {"intent": bm},
                     "oracle": {"ref": "spec-review", "grade": "proposed"},
                 }
             ],
@@ -330,8 +330,8 @@ def test_oracle_covers_the_whole_review_directory(tmp_path, monkeypatch):
 
 
 def _spec_run(module, run, *, oracle_grade="human"):
-    """Dispatch+pass specification run N with brainstorm on disk; returns nothing."""
-    bm = _fp(module, "brainstorm.md")
+    """Dispatch+pass specification run N with the intent tree on disk; returns nothing."""
+    bm = _fp(module, "intent")
     facts.append_event(
         module,
         {
@@ -339,7 +339,7 @@ def _spec_run(module, run, *, oracle_grade="human"):
             "rule": "specification",
             "run": run,
             "workdir": "w",
-            "inputs": {"brainstorm.md": bm},
+            "inputs": {"intent": bm},
             "params": {},
         },
         TS,
@@ -356,7 +356,7 @@ def _spec_run(module, run, *, oracle_grade="human"):
                 {
                     "name": "specification",
                     "verdict": "pass",
-                    "inputs": {"brainstorm.md": bm},
+                    "inputs": {"intent": bm},
                     "oracle": {"ref": "spec-review", "grade": oracle_grade},
                 }
             ],
@@ -370,7 +370,7 @@ def test_re_reap_after_reopen_does_not_resurrect_proof(tmp_path, monkeypatch):
     # Reopen withdraws trust; a bare RE-REAP (re-reading the same run, no re-execution,
     # no re-pin) must NOT resurrect the proof. Condition 3 anchors on the run's DISPATCH.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     _spec_run("m", 1)  # dispatch(run1) + outcome(run1)
     facts.append_event(
         "m",
@@ -401,7 +401,7 @@ def test_re_reap_after_reopen_does_not_resurrect_proof(tmp_path, monkeypatch):
                 {
                     "name": "specification",
                     "verdict": "pass",
-                    "inputs": {"brainstorm.md": _fp("m", "brainstorm.md")},
+                    "inputs": {"intent": _fp("m", "intent")},
                     "oracle": {"ref": "spec-review", "grade": "proposed"},
                 }
             ],
@@ -418,7 +418,7 @@ def test_repin_after_reopen_restores_validity(tmp_path, monkeypatch):
     # Companion: a genuine re-pin (human re-endorses) after reopen DOES restore validity —
     # the second conjunct (no live pin) is then false. The legitimate pin/regrade path lives.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     _spec_run("m", 1)
     facts.append_event(
         "m",
@@ -455,7 +455,7 @@ def test_fresh_dispatch_after_reopen_is_valid(tmp_path, monkeypatch):
     # Companion: a genuine re-execution (new dispatch AFTER the reopen, then reaped) is
     # valid — its dispatch post-dates the reopen, so condition 3 does not fire.
     monkeypatch.chdir(tmp_path)
-    _write("m", "brainstorm.md", "b1")
+    _write("m", "intent/brainstorm.md", "b1")
     _spec_run("m", 1)
     facts.append_event(
         "m",
@@ -543,3 +543,121 @@ def test_proof_none_rule_available_despite_invalid_upstream(tmp_path, monkeypatc
         else []
     )
     assert facts.rule_available("m", evs, "simulation-triage") is True
+
+
+# ── The intent tree: one container, one recorded version ───────────────────────
+#
+# Every rule binds `intent/` as its PIPELINE_INPUT, so one merkle stands for the
+# engineer's whole delivery: the document plus whatever they put beside it. These
+# tests pin the four properties the container was chosen for — the third one
+# (adding the first authority invalidates) is the one a per-entry or
+# complement-of-the-pipeline definition cannot give.
+
+
+def _land_every_proof(module):
+    """Dispatch+pass all eight proof rules, recording inputs through the real
+    kernel resolver so the tree's version is whatever it actually is on disk."""
+    import kernel  # local: this module otherwise depends only on facts/rules
+
+    for name, r in rules.RULES.items():
+        if not r.proof:
+            continue
+        inputs = kernel._resolve_inputs(module, name)
+        facts.append_event(
+            module,
+            {
+                "type": "dispatch",
+                "rule": name,
+                "run": 1,
+                "workdir": f"{name}/runs/1",
+                "inputs": inputs,
+                "params": {},
+            },
+            TS,
+        )
+        facts.append_event(
+            module,
+            {
+                "type": "outcome",
+                "rule": name,
+                "run": 1,
+                "verdict": "pass",
+                "outputs": {},
+                "proofs": [
+                    {
+                        "name": name,
+                        "verdict": "pass",
+                        "inputs": inputs,
+                        "oracle": {
+                            "ref": r.oracle[0] if r.oracle else "tool",
+                            "grade": r.oracle[1] if r.oracle else "tool",
+                        },
+                    }
+                ],
+                "tool_versions": {},
+            },
+            TS,
+        )
+
+
+def _proofs():
+    return [n for n, r in rules.RULES.items() if r.proof]
+
+
+def test_intent_tree_is_recorded_as_one_container(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write("m", "intent/brainstorm.md", "b1")
+    _land_every_proof("m")
+    evs = facts.read_events("m")
+    for name in _proofs():
+        proof = facts._proof_outcome(evs, name)[1]["proofs"][0]
+        assert proof["inputs"]["intent"].startswith("merkle:"), name
+        assert "intent/brainstorm.md" not in proof["inputs"], name
+    assert set(facts.projection("m", evs).values()) == {"valid"}
+
+
+def test_delivering_the_first_authority_invalidates_every_proof(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write("m", "intent/brainstorm.md", "b1")
+    _land_every_proof("m")
+    _write("m", "intent/refs/registers.md", "the authority")  # engineer adds it later
+    evs = facts.read_events("m")
+    assert set(facts.projection("m", evs).values()) == {"stale"}
+
+
+def test_editing_an_authority_invalidates_every_proof(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write("m", "intent/brainstorm.md", "b1")
+    _write("m", "intent/refs/registers.md", "v1")
+    _land_every_proof("m")
+    evs = facts.read_events("m")
+    assert set(facts.projection("m", evs).values()) == {"valid"}
+    _write("m", "intent/refs/registers.md", "v2")
+    evs = facts.read_events("m")
+    assert set(facts.projection("m", evs).values()) == {"stale"}
+    # A tree change is not a narrowing: it sends decide back to specification, which
+    # re-transcribes the document whole, so nothing seeds scope from it.
+    assert facts.stale_inputs("m", evs, "specification") == []
+
+
+def test_writes_outside_the_container_are_not_intent(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write("m", "intent/brainstorm.md", "b1")
+    _land_every_proof("m")
+    # what real runs actually put at a module root: an agent's downloads, a tool's
+    # cwd side-effect, a human's report written afterwards
+    _write("m", "jinja2-3.1.6-py3-none-any.whl", "z")
+    _write("m", "parsetab.py", "z")
+    _write("m", "EVALUATION.md", "z")
+    evs = facts.read_events("m")
+    assert set(facts.projection("m", evs).values()) == {"valid"}
+
+
+def test_container_without_the_entry_document_is_unavailable(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (facts.module_root("m") / "intent").mkdir(parents=True)
+    assert facts.rule_available("m", [], "specification") is False
+    _write("m", "intent/brainstorm.md", "b1")
+    assert facts.rule_available("m", [], "specification") is True
+    (facts.module_root("m") / "intent" / "brainstorm.md").unlink()
+    assert facts.rule_available("m", [], "specification") is False

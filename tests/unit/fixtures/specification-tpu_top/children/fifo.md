@@ -17,8 +17,6 @@ ports:
   - i_rstn
 clocks:
   - { name: i_clk, domain: i_clk }
-features:
-  - F-03
 ---
 
 ## 1. Purpose

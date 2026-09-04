@@ -2,8 +2,9 @@
 """spec — specification-stage CLI.
 
 Verbs (one stage = one tool):
+  check-ledger        validate requirements.json; print the Wave 1 gate view (stdout: JSON)
   derive-ports        per-child ports from interconnects.json (stdout: JSON)
-  check-crossrefs     cross-file name + orphan join         (stdout: verdict JSON; exit 0/1)
+  check-crossrefs     cross-file name + hint↔requirement join (stdout: verdict JSON; exit 0/1)
   derive-constraints  generate SDC/SGDC from clocks.json + top-io.json (stdout: JSON; fail-loud)
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 
@@ -27,6 +28,12 @@ from pathlib import Path
 # never a bare `import <mod>`: a bare name binds the top-level slot and collides
 # with the same module name in another stage's package.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _cmd_check_ledger(a: argparse.Namespace) -> int:
+    from spec import ledger
+
+    return ledger.run(a.workdir)
 
 
 def _cmd_derive_ports(a: argparse.Namespace) -> int:
@@ -56,23 +63,27 @@ def _cmd_derive_constraints(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from spec import result
 
-    return result.finalize(
-        a.workdir,
-        status=a.status,
-        ppa_targets_json=a.ppa_targets,
-        fail_reason=a.fail_reason,
-    )
+    return result.finalize(a.workdir, status=a.status, fail_reason=a.fail_reason)
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="spec", description="specification-stage CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sp = sub.add_parser("derive-ports", help="per-child §1.4.2 inter-module ports")
+    sp = sub.add_parser(
+        "check-ledger",
+        help="validate requirements.json and print what the Wave 1 gate hands the human",
+    )
+    sp.add_argument("--workdir", required=True, type=Path)
+    sp.set_defaults(func=_cmd_check_ledger)
+
+    sp = sub.add_parser("derive-ports", help="per-child inter-module ports")
     sp.add_argument("--workdir", required=True, type=Path)
     sp.set_defaults(func=_cmd_derive_ports)
 
-    sp = sub.add_parser("check-crossrefs", help="cross-file name + orphan join")
+    sp = sub.add_parser(
+        "check-crossrefs", help="cross-file name + hint↔requirement join"
+    )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.set_defaults(func=_cmd_check_crossrefs)
 
@@ -86,20 +97,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--status",
         required=True,
         choices=["pass", "fail"],
-        help="the human approve/reject decision at the Step-7 design.md gate; "
-        "fail also serves the documented early-fail exits (with --fail-reason)",
-    )
-    sp.add_argument(
-        "--ppa-targets",
-        default=None,
-        help="optional override: ppa_targets JSON array; default = read the "
-        "Wave-1-authored {workdir}/ppa.json from disk",
+        help="the human decision at the Wave 3 gate; fail also serves the documented "
+        "early-fail exits (with --fail-reason)",
     )
     sp.add_argument(
         "--fail-reason",
         default=None,
         help="on --status fail: the one-line failure narrative (early-fail entry); "
-        "default = the Step-7 human-reject wording",
+        "default = the human-reject wording",
     )
     sp.set_defaults(func=_cmd_finalize)
 

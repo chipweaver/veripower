@@ -5,7 +5,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/simulation/scripts/sim/__main__.py"
-DEFAULTS = ROOT / "skills/simulation/defaults.yaml"
+_COVERAGE_ROWS = [
+    {
+        "id": f"R-{i}",
+        "verbatim": f"{d} coverage > 90%",
+        "judge": "simulation",
+        "target": {"dim": f"coverage_{d}", "op": ">", "value": 90},
+    }
+    for i, d in enumerate(("line", "cond", "fsm", "toggle"))
+]
 
 SCAFFOLD = {
     "module": "m",
@@ -34,6 +42,7 @@ def _final_workdir(tmp_path):
     (wd / "sequences.json").write_text(json.dumps(doc.pop("sequences", [])))
     (wd / "tb-scaffold.json").write_text(json.dumps(doc))
     (wd / "structural-coverage.json").write_text(json.dumps(COV_PASS))
+    (wd / "requirements.json").write_text(json.dumps(_COVERAGE_ROWS))
     (wd / "case-results.json").write_text(
         json.dumps({"total_tests": 3, "passed_tests": 3, "failed_tests": 0})
     )
@@ -70,8 +79,8 @@ def _finalize_final(wd, *extra):
         "final",
         "--plan",
         str(wd),
-        "--thresholds",
-        str(DEFAULTS),
+        "--requirements",
+        str(wd / "requirements.json"),
         "--conformance-review",
         str(wd / "conformance-review.md"),
         *extra,
@@ -139,7 +148,7 @@ def test_final_thin_fail_is_compile(tmp_path):
     ss = env["stage_specific"]
     # a compile fail ran no test and measured no coverage, so neither companion rides
     assert env["status"] == "fail"
-    assert "failing_cases" not in ss and "dims" not in ss
+    assert "failing_cases" not in ss and "requirements" not in ss
 
 
 def test_final_coverage_fail(tmp_path):
@@ -155,7 +164,9 @@ def test_final_coverage_fail(tmp_path):
     )  # a coverage fail still writes result.json (exit 0, not BLOCKED)
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
-    assert env["stage_specific"]["dims"]["line"]["pass"] is False
+    judged = {e["id"]: e for e in env["stage_specific"]["requirements"]}
+    assert judged["R-0"] == {"id": "R-0", "met": False, "actual": 10.0}  # the line row
+    assert judged["R-1"]["met"] is True
 
 
 def test_final_conformance_trip_is_fail_not_pass(tmp_path):
@@ -218,7 +229,7 @@ def test_final_compile_fail_carries_no_coverage_companions(tmp_path):
     proc = _finalize_final(wd)
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert proc.returncode == 0
-    assert "dims" not in ss and "coverage_extractable" not in ss
+    assert "requirements" not in ss and "coverage_extractable" not in ss
 
 
 def test_early_exit_smoke(tmp_path):
@@ -242,10 +253,10 @@ def test_final_requires_its_three_inputs_exit_2(tmp_path):
     # --conformance-review is one of them: defaulted to absent, the backstop above would read
     # an empty finding set and clear every review it was never given.
     wd = _final_workdir(tmp_path)
-    for missing in ("--plan", "--thresholds", "--conformance-review"):
+    for missing in ("--plan", "--requirements", "--conformance-review"):
         flags = {
             "--plan": str(wd),
-            "--thresholds": str(DEFAULTS),
+            "--requirements": str(wd / "requirements.json"),
             "--conformance-review": str(wd / "conformance-review.md"),
         }
         del flags[missing]
@@ -264,8 +275,8 @@ def test_finalize_blocked_exit_2(tmp_path):
         "final",
         "--plan",
         str(wd / "nope"),
-        "--thresholds",
-        str(DEFAULTS),
+        "--requirements",
+        str(wd / "requirements.json"),
         "--conformance-review",
         str(wd / "conformance-review.md"),
     )

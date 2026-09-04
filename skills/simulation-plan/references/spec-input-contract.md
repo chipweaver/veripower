@@ -7,22 +7,22 @@ only the mapping.
 
 **Scope boundary.** It stops at the JSON contract you author. Turning the scaffold into
 SystemVerilog (driver / monitor bodies, RM `predict()`, scoreboard `check_txn`, reset) happens later
-in the `simulation` stage (`skills/simulation/references/inlined-check-hints.md`). Do not add
-SV-rendering claims here.
+in the `simulation` stage (`skills/simulation/references/check-hints.md`). Do not add SV-rendering
+claims here.
 
-`design.md` and the per-child `<child>.md` are the single human source of truth; there is no
-separate requirement-to-testpoint mapping document, and nothing derives the sidecars — there is no
-intermediate cache to read instead of them.
+`requirements.json` holds what the engineer required, in the engineer's words; `design.md` and the
+per-child `<child>.md` hold the decisions made around it. Nothing derives the sidecars — there is
+no intermediate cache to read instead of them.
 
 ---
 
-## features.json → tests and feature-traceability testpoints
+## requirements.json → tests
 
-One `tests[]` entry per behaviour worth its own testcase, each naming the feature `id` it exercises
-in `tests[].feature`. A feature's `happy_path` / `corner_cases` / `negative_cases` are the positive,
-boundary and negative testcases to author from it; `coverage_intent` is the coverage model to reach
-for when present. `materialize-scaffold` resolves `feature` to the feature's `name`, and that name
-is what the Feature column of `case-results-summary.md` shows a human.
+The rows judged by `simulation` are the behaviour the testbench exists to establish; author one
+`tests[]` entry per behaviour worth its own testcase, each with its `seqs` and `suites`. The rows
+judged by `simulation-plan` are requirements on this plan itself — a stimulus distribution, a seed,
+a scope — and the plan reviewer holds the sidecars to them. A test names no requirement: the trace
+from a requirement to what verifies it runs row → hint → `testpoints[].covers[]`.
 
 ## top-io.json → agents and transactions
 
@@ -60,34 +60,30 @@ its phase-by-phase description carry the cycle-level detail a row cannot.
 ## check-hints/<child>.json → testpoints[].covers[]
 
 One file per child declared in `manifest.json`; `check_id` is unique across all of them, which is why
-they are aggregated before the coverage matrix is checked. You cluster the `check_id`s into
-`testpoints[].covers[]` — that clustering is the only authored input here. `materialize-scaffold`
-then fills each `testpoints[].inlined_check_hints[]` from those `covers[]`:
-`implementation_detail` = `implementation_detail_verbatim` if present else the summary, plus
-`observable` / `reference_rule` / `latency` / `reset_behavior` copied as metadata. How those hints
-become SV `predict()` / scoreboard checks is the downstream `simulation` stage's job.
+they are aggregated before the coverage matrix is checked. Each hint names the requirements rows it
+establishes and says how simulation observes them. You cluster the `check_id`s into
+`testpoints[].covers[]` — that clustering is the only authored input here. `simulation` reads each
+covered hint, and the rows it names, by id; nothing is copied into the scaffold.
 
-Non-target capabilities ("does not support" / "does not include") belong in a feature's
-`negative_cases`, so negative tests and result summaries can be derived from them.
+A power bound that names a scenario (`requirements.json` rows judged by `power-analysis` with
+`target.scenario`) needs a `power_scenarios[]` entry of that id; check-scaffold refuses the plan
+otherwise, because power-analysis would only find out seven stages later.
 
 ---
 
 ## Worked example: APB slave register module
 
-Given `features.json` with `F-00` "APB slave interface" (`happy_path`: legal R/W transactions
-complete; `corner_cases`: `pready` inserts wait cycles; `negative_cases`: illegal address access),
-`top-io.json` grouping `psel / penable / pwrite / paddr / pwdata / prdata / pready / pslverr` under
+Given `requirements.json` rows judged by simulation for the APB slave (legal R/W transactions
+complete; `pready` inserts wait cycles; illegal address access raises `pslverr`), `top-io.json`
+grouping `psel / penable / pwrite / paddr / pwdata / prdata / pready / pslverr` under
 `interface_group: APB` (with `pclk` / `preset_n` ungrouped, `role` clock / reset), §1.5 rows
 `SC-APB-00` (legal write, `pready` within 1–2 cycles, `pslverr`=0) and `SC-APB-02` (illegal address,
 `pslverr` high), and `check-hints/apb_slave.json` with `CHK-APB-00` (write→`reg_file[addr]`,
-read→`prdata`) and `CHK-APB-01` (`pslverr <= (addr not in legal_range)`):
+read→`prdata`) and `CHK-APB-01` (`pslverr <= (addr not in legal_range)`), each naming its rows:
 
 - **agents**: one `apb_agent`, `mode: active`, `interface_groups: ["APB"]`. You write nothing
   else about it: simulation reads the eight APB-group signals out of top-io.json, and `pclk` /
   `preset_n` are the bench's.
 - **sequences**: one entry per `SC-NNN` id, each naming `apb_agent`.
-- **tests**: one per testcase from `F-00`, each with `feature: "F-00"`, its `seqs`, and its `suites`.
+- **tests**: one per testcase, each with its `seqs` and its `suites`.
 - **testpoints**: a positive one covering `CHK-APB-00` and a negative one covering `CHK-APB-01`.
-  materialize fills their `inlined_check_hints[]` from `covers[]` — `implementation_detail` from
-  each hint's `implementation_detail_verbatim`, with `observable` / `reference_rule` / `latency` /
-  `reset_behavior` alongside.

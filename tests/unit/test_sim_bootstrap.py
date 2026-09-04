@@ -198,10 +198,8 @@ def test_bootstrap_renders_scaffold_when_given(tmp_path):
             {
                 "name": "t",
                 "seqs": ["smoke"],
-                "feature": "F-1",
                 "test_id": "T-1",
                 "suites": ["regress"],
-                "feature_name": "Register write path",
             }
         ],
     }

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "requirements.json — everything the engineer's intent document requires, one row each",
+  "description": "Transcribed from brainstorm.md by specification's Wave 1a, one row per atomic proposition, in the engineer's words. Downstream stages bind this file; brainstorm.md is read by nobody after this stage. Scripts act on id, judge and target; verbatim and note are text they carry through unparsed.",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "required": [
+      "id",
+      "verbatim",
+      "judge"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Unique in this file, in document order. check-hints and design documents refer to it; it never changes once written."
+      },
+      "verbatim": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The engineer's own words, trimmed to the clause, original language. Every later reader is held to this wording."
+      },
+      "judge": {
+        "type": "string",
+        "enum": [
+          "specification",
+          "simulation-plan",
+          "rtl-design",
+          "lint-cdc",
+          "synthesis",
+          "timing-analysis",
+          "simulation",
+          "power-analysis",
+          "human",
+          "outside",
+          "none",
+          "unassignable"
+        ],
+        "description": "Who establishes that this holds. A stage name (the eight are rules.FORWARD_PRIORITY): that stage's artifact or run is the evidence and that stage reads this row. specification: one of its own sidecar entries, a clock, a port, a cut edge, an SDC statement. simulation: a testbench observes it or a coverage report measures it. rtl-design: only reading the RTL establishes it. lint-cdc, synthesis, timing-analysis, power-analysis: the tool's report. simulation-plan: the plan itself must contain it. human: a person decides at the specification gate from the documents available there. outside: something the pipeline does not run establishes it; the pipeline does not claim it. none: nothing to establish, a delegation, a scoping statement, background. unassignable: you could not decide; say why in note; finalize refuses the file until a human resolves it."
+      },
+      "target": {
+        "type": "object",
+        "required": [
+          "dim",
+          "op",
+          "value"
+        ],
+        "additionalProperties": false,
+        "description": "Only when the engineer's bound is in a unit the judging stage's tool reports natively; the stage's script then compares. Any other unit stays in verbatim and the stage's reader judges it. synthesis: area_um2, timing_slack_ns. power-analysis: power_mw, optionally per scenario. simulation: coverage_line, coverage_cond, coverage_fsm, coverage_toggle in percent.",
+        "properties": {
+          "dim": {
+            "type": "string",
+            "enum": [
+              "area_um2",
+              "timing_slack_ns",
+              "power_mw",
+              "coverage_line",
+              "coverage_cond",
+              "coverage_fsm",
+              "coverage_toggle"
+            ]
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "<",
+              "<=",
+              ">",
+              ">="
+            ],
+            "description": "The engineer's comparison, transcribed: actual op value must hold."
+          },
+          "value": {
+            "type": "number"
+          },
+          "scenario": {
+            "type": "string",
+            "minLength": 1,
+            "description": "power_mw only: present when the engineer's bound names a power scenario."
+          }
+        }
+      },
+      "note": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Free text when a row needs one: the reason a judge could not be assigned, or which earlier row this one restates."
+      }
+    },
+    "if": {
+      "required": [
+        "judge"
+      ],
+      "properties": {
+        "judge": {
+          "const": "unassignable"
+        }
+      }
+    },
+    "then": {
+      "required": [
+        "note"
+      ]
+    }
+  }
+}
