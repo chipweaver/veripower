@@ -511,20 +511,20 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
     assert all((tmp_path / p).is_file() for p in paths)  # only present files
 
 
-# ── golden test against the real tpu_top run ─────────────────────────────────
+# ── golden test against a real run ───────────────────────────────────────────
 
 
-def test_golden_lean_against_real_tpu_top(tmp_path):
+def test_golden_lean_against_a_real_run(tmp_path):
     import shutil
 
-    ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-tpu_top"
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-golden"
     # Fixture is rooted at Design/ (no `asic` path component — it would be .gitignored).
     shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
     wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
     assert sp.build_result(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
-    # A real tpu_top run: both directions MET, its whole boundary timed, and 1142
+    # A real run: both directions MET, its whole boundary timed, and 1142
     # endpoints left unconstrained all the same. It passes, and that is the point —
     # those endpoints are the reset paths every design has.
     assert env["status"] == "pass"
@@ -562,7 +562,7 @@ def test_golden_is_schema_valid(tmp_path):
     from jsonschema import Draft202012Validator
     from referencing import Registry, Resource
 
-    ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-tpu_top"
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-golden"
     shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
     wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
     sp.build_result(wd, [], [])

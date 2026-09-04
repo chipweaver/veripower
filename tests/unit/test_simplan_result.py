@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT / "skills" / "simulation-plan" / "scripts"))
 from simplan import result as vs  # noqa: E402
 
 FIX = Path(__file__).resolve().parent / "fixtures"
-SPEC_FIX = FIX / "specification-tpu_top"
+SPEC_FIX = FIX / "specification-golden"
 
 # A post-materialize scaffold that really passes check-scaffold: finalize re-runs the gate
 # in-process, so a synthetic shape that the gate would reject is not a usable fixture here.
@@ -219,7 +219,7 @@ def test_review_leaves_as_one_tree_whatever_is_in_it(tmp_path):
     assert not [p for p in paths if p.startswith("plan-review/")]
 
 
-# ── golden: lean shape + schema, against the real tpu_top run ────────────────
+# ── golden: lean shape + schema, against a real run ──────────────────────────
 from jsonschema import Draft202012Validator  # noqa: E402
 from referencing import Registry, Resource  # noqa: E402
 
@@ -241,11 +241,11 @@ def _validate_envelope(env: dict) -> None:
     Draft202012Validator(stage_schema, registry=registry).validate(env)
 
 
-def test_golden_lean_against_real_tpu_top(tmp_path):
+def test_golden_lean_against_a_real_run(tmp_path):
     import shutil
 
     wd = tmp_path / "simulation-plan"
-    shutil.copytree(FIX / "simulation-plan-tpu_top", wd)
+    shutil.copytree(FIX / "simulation-plan-golden", wd)
     rev = "rev 0.3 (rework r2): added apb_weight_load precondition to T-04 + T-07"
     # The plan fixture's covers[] resolve against the specification fixture's check hints —
     # the same pairing the real run had, so the re-run gate is exercised on real content.

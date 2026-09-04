@@ -136,7 +136,7 @@ def test_pass_refused_over_a_file_no_child_wrote(tmp_path, capsys):
     assert not (wd / "result.json").exists()
 
 
-# ── golden test against the real tpu_top run ─────────────────────────────────
+# ── golden test against a real run ───────────────────────────────────────────
 from jsonschema import Draft202012Validator  # noqa: E402
 from referencing import Registry, Resource  # noqa: E402
 
@@ -158,10 +158,10 @@ def _validate_envelope(env: dict) -> None:
     Draft202012Validator(stage_schema, registry=registry).validate(env)
 
 
-def test_golden_lean_against_real_tpu_top(tmp_path):
+def test_golden_lean_against_a_real_run(tmp_path):
     import shutil
 
-    FIX = Path(__file__).resolve().parent / "fixtures" / "rtl-design-tpu_top"
+    FIX = Path(__file__).resolve().parent / "fixtures" / "rtl-design-golden"
     base = tmp_path / "rtl"
     shutil.copytree(FIX, base)
     wd = base / "rtl-design"

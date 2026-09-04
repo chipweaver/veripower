@@ -114,7 +114,7 @@ def test_parse_three_components_missing(tmp_path):
 
 _REAL_SA = (
     REPO_ROOT
-    / "tests/unit/fixtures/power-tpu_top/real/reports_ptpx/S1/switching_activity.rpt"
+    / "tests/unit/fixtures/power-golden/real/reports_ptpx/S1/switching_activity.rpt"
 )
 
 
@@ -717,7 +717,7 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
     assert all((wd / pth).exists() for pth in paths)  # only present paths (file OR dir)
 
 
-# ── Golden test against the real tpu_top run ──────────────────────────────────
+# ── Golden test against a real run ────────────────────────────────────────────
 
 
 def _copy_golden(tmp_path, root):
@@ -734,7 +734,7 @@ def _copy_golden(tmp_path, root):
 
 
 def test_golden_real_reports_lean_pass(tmp_path):
-    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-golden"
     wd = _copy_golden(tmp_path, ROOT)
     rc = p.build_result(wd, str(ROOT / "plan"), [], [])
     assert rc == 0
@@ -772,7 +772,7 @@ def test_golden_is_schema_valid(tmp_path):
     from jsonschema import Draft202012Validator
     from referencing import Registry, Resource
 
-    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-tpu_top"
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-golden"
     wd = _copy_golden(tmp_path, ROOT)
     p.build_result(wd, str(ROOT / "plan"), [], [])
     env = _json.loads((wd / "result.json").read_text())

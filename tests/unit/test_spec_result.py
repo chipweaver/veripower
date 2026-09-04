@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "skills" / "specification" / "scripts"))
 from spec import constraints, result  # noqa: E402
 
 _ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
-_FIX = Path(__file__).resolve().parent / "fixtures" / "specification-tpu_top"
+_FIX = Path(__file__).resolve().parent / "fixtures" / "specification-golden"
 MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
 
 _ROWS = [
@@ -171,13 +171,17 @@ def test_enumerate_artifacts_present_only(tmp_path):
     assert all((wd / p).exists() for p in paths)  # present-only
 
 
-def test_golden_lean_against_real_tpu_top(tmp_path):
+def test_golden_lean_against_a_real_run(tmp_path):
+    # The top module's name is read from the fixture's own manifest rather than written
+    # here: what this asserts is that finalize carries it through and names every present
+    # artifact exactly once, which holds for whichever module the sample happens to be.
     wd = tmp_path / "specification"
     shutil.copytree(_FIX, wd)
+    top = json.loads((_FIX / "manifest.json").read_text())["module"]
     assert result.build_result(wd, status="pass") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
-    assert env["stage_specific"] == {"top_module": "tpu_top"}
+    assert env["stage_specific"] == {"top_module": top}
     paths = {a["path"] for a in env["artifacts"]}
     assert paths == {
         "design.md",
@@ -185,8 +189,8 @@ def test_golden_lean_against_real_tpu_top(tmp_path):
         "children",
         "check-hints",
         "spec-review",
-        "constraints/tpu_top.sdc",
-        "constraints/tpu_top.sgdc",
+        f"constraints/{top}.sdc",
+        f"constraints/{top}.sgdc",
         "requirements.json",
         "clocks.json",
         "top-io.json",

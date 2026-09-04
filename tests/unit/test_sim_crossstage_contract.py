@@ -12,8 +12,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES = ROOT / "skills/simulation/templates/scaffold"
-FIXTURE = ROOT / "tests/unit/fixtures/simulation-plan-tpu_top"  # the plan dir
-BOUNDARY = ROOT / "tests/unit/fixtures/specification-tpu_top"  # top-io + clocks
+FIXTURE = ROOT / "tests/unit/fixtures/simulation-plan-golden"  # the plan dir
+BOUNDARY = ROOT / "tests/unit/fixtures/specification-golden"  # top-io + clocks
 sys.path.insert(0, str(ROOT / "skills" / "simulation" / "scripts"))
 from sim import scaffold  # noqa: E402
 

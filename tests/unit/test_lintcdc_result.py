@@ -209,10 +209,10 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Golden test against the real tpu_top run + schema validation
+# Golden test against a real run + schema validation
 # ---------------------------------------------------------------------------
 
-FIX = Path(__file__).resolve().parent / "fixtures" / "lint-cdc-tpu_top"
+FIX = Path(__file__).resolve().parent / "fixtures" / "lint-cdc-golden"
 
 
 def _resolve_warnings(wd):
@@ -224,8 +224,8 @@ def _resolve_warnings(wd):
     p.write_text(json.dumps(doc))
 
 
-def test_golden_lean_against_real_tpu_top(tmp_path):
-    """The real tpu_top run carried zero errors and two W528 warnings, and the error-only gate
+def test_golden_lean_against_a_real_run(tmp_path):
+    """The real run this fixture came from carried zero errors and two W528 warnings, and the error-only gate
     passed it. Both rows are real findings, so the run does not close on them."""
     wd = tmp_path / "lint-cdc"
     shutil.copytree(FIX, wd)

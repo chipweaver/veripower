@@ -64,7 +64,7 @@ def test_real_vcs_fixture_passes():
         / "tests"
         / "unit"
         / "fixtures"
-        / "power-tpu_top"
+        / "power-golden"
         / "real"
         / "gls-compile-log.txt"
     )

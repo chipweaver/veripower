@@ -445,11 +445,11 @@ def test_enumerate_artifacts_delivers_the_out_tree_whatever_dc_named_inside_it(
     assert paths == {"out"}
 
 
-# ── golden: lean shape against the real tpu_top run ───────────────────────────
-_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "synthesis-tpu_top"
+# ── golden: lean shape against a real run ─────────────────────────────────────
+_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "synthesis-golden"
 
 
-def test_golden_lean_against_real_tpu_top(tmp_path):
+def test_golden_lean_against_a_real_run(tmp_path):
     import shutil
 
     wd = tmp_path / "synthesis"
