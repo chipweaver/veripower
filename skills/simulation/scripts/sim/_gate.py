@@ -3,7 +3,7 @@
 
   materialization_errors  every sequences[]/agents[] SV file present; no TODO residue.
   conformance_flagged     the testpoints the reviewer marked BLOCKING in its own record.
-  coverage_gate           structural-coverage.json has an aggregate block, and each coverage
+  coverage_gate           structural-coverage.json carries the DUT's own per-module row, and each coverage
                           bound requirements.json assigns to simulation holds (a null or '--'
                           dim is skipped; a bounded dim urg did not measure fails).
 
@@ -82,22 +82,39 @@ def materialization_errors(workdir: Path, scaffold: dict) -> list[str]:
     return errs
 
 
-def coverage_gate(cov: dict | None, rows: list[dict]) -> tuple[list[str], list[dict]]:
-    """Extractable, and every bounded dim satisfies its row (a null dim is skipped).
-    Returns (errors, one {id, met, actual} entry per row)."""
-    if (
-        cov is None
-        or not isinstance(cov.get("aggregate"), dict)
-        or not cov["aggregate"]
-    ):
+def coverage_gate(
+    cov: dict | None, rows: list[dict], dut: str
+) -> tuple[list[str], list[dict]]:
+    """Extractable, scoped to the DUT, and every bounded dim satisfies its row (a null dim is
+    skipped). Returns (errors, one {id, met, actual} entry per row).
+
+    Scored against the DUT's own row in `per_module`, never the report's `aggregate`. The
+    aggregate is the TB top's whole instance tree — the DUT plus every agent interface plus
+    every ROM the design instantiates — so it is a mixture the engineer's row never asked
+    about, and the mixture reads high wherever those companions are fully swept. On a real run
+    it read toggle 92.57 where the DUT itself was 76.37, and passed a `> 90` bound the DUT
+    misses by 13 points. A DUT row the report does not carry is a failure to attribute
+    coverage, never a reason to score something else instead."""
+    per = (cov or {}).get("per_module")
+    if not isinstance(per, list) or not per:
         return (
             [
-                "coverage not extractable: structural-coverage.json missing or empty "
-                "(urg did not produce a parseable report; cannot gate -> fail, never claim met)"
+                "coverage not extractable: structural-coverage.json missing or carries no "
+                "per-module rows (urg did not produce a parseable report; cannot gate -> "
+                "fail, never claim met)"
             ],
             [],
         )
-    agg = cov["aggregate"]
+    agg = next((m for m in per if m.get("name") == dut), None)
+    if agg is None:
+        return (
+            [
+                f"coverage not attributable: no per-module row named {dut!r} in "
+                f"structural-coverage.json (rows: {sorted(m.get('name') for m in per)}) — "
+                "the DUT's own coverage is what the row bounds"
+            ],
+            [],
+        )
     errs: list[str] = []
     judged: list[dict] = []
     for r in rows:

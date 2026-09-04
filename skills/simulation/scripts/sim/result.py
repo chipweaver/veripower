@@ -71,10 +71,12 @@ def _final_gate(workdir: Path, plan_dir: Path, requirements: Path, conformance_r
     cov = (
         json.loads(cov_path.read_text(encoding="utf-8")) if cov_path.is_file() else None
     )
-    cov_errs, judged = coverage_gate(cov, rows)
+    dut = scaffold_doc["module"]
+    cov_errs, judged = coverage_gate(cov, rows, dut)
     verdict = {
-        "coverage_extractable": cov is not None and bool((cov or {}).get("aggregate")),
+        "coverage_extractable": not cov_errs or bool(judged),
         "requirements": judged,
+        "scope": dut,
     }
     if d1_errs:
         return (False, verdict, "compile", "; ".join(d1_errs)[:300])
@@ -174,7 +176,7 @@ def build_result(
         "passed": cases["passed"],
         "failed": cases["failed"],
         "stimulus_iterations": verify.get("stimulus_iterations"),
-        "coverage_summary": read_coverage_summary(workdir),
+        "coverage_summary": read_coverage_summary(workdir, gate["scope"]),
         "requirements": gate["requirements"],
     }
     _write_result(
@@ -206,13 +208,17 @@ def read_case_counts(workdir: Path) -> dict:
     }
 
 
-def read_coverage_summary(workdir: Path):
-    """The dims the coverage gate just scored. Only the pass path reaches this, and the gate
-    it passed already required the file and its aggregate block, so this reads rather than
-    checks."""
+def read_coverage_summary(workdir: Path, dut: str):
+    """The dims the coverage gate just scored, and the scope they were scored in. Only the pass
+    path reaches this, and the gate it passed already required the DUT's per-module row, so
+    this reads rather than checks.
+
+    Which tree the number covers is not recorded beside it: the gate scores the DUT's row or
+    fails, so there is no second answer for a field to disambiguate."""
     f = Path(workdir) / "structural-coverage.json"
-    agg = json.loads(f.read_text(encoding="utf-8"))["aggregate"]
-    return {k: agg.get(k) for k in ("line", "cond", "fsm", "toggle")}
+    per = json.loads(f.read_text(encoding="utf-8"))["per_module"]
+    row = next(m for m in per if m.get("name") == dut)
+    return {k: row.get(k) for k in ("line", "cond", "fsm", "toggle")}
 
 
 def enumerate_artifacts(workdir: Path) -> list[dict]:

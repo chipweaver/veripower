@@ -25,7 +25,10 @@ it; a regress failure routes out with `failing_cases` and no check-mapping.
 
 1. **Regression**: `make regress`.
 2. **Coverage iteration** (Rule B, see `coverage-iteration.md`): compare
-   `structural-coverage.json`'s `aggregate` dims (`line`/`cond`/`fsm`/`toggle`) against the
+   `structural-coverage.json`'s row for the DUT module in `per_module` — its
+   `line`/`cond`/`fsm`/`toggle` dims, never the report's `aggregate`, which is the TB top's
+   whole instance tree and reads high wherever the interfaces and any ROMs are fully swept —
+   against the
    coverage bounds `<requirements>/requirements.json` assigns to simulation (rows whose `target.dim`
    is `coverage_*`; a dim with no row is reported, not gated). Every bounded dimension satisfied
    goes straight to summary. Otherwise take the named items from the same file's `uncovered[]`, classify each as a

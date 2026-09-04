@@ -8,7 +8,7 @@ not promoted. All paths are relative to `{workdir}`.
 |---|---|
 | `logs/<test>.status` | `PASS` or `FAIL` per test, written by that test's own `simv` run. The smoke gate reads these and the `RESULT` lines, never a child's account of them. A test that crashed before reporting leaves none, which is a fail. |
 | `regression-log.txt` | The `RESULT` lines. Written twice per round, not accumulated: `make smoke` writes the smoke lines, and `make regress` later rewrites the file with the full-regress ones. Only `logs/` persists across both. |
-| `structural-coverage.json` | Urg-derived coverage. `aggregate` holds the per-dimension percentages the coverage gate scores; `uncovered[]` holds the named branch, condition and FSM items behind them, which is what Rule B classifies. This is the gate source. |
+| `structural-coverage.json` | Urg-derived coverage. `per_module` holds the per-dimension percentages per instance tree, and the DUT's own row there is what the coverage gate scores (`aggregate` covers the TB top's whole tree, so it is not what a row bounds); `uncovered[]` holds the named branch, condition and FSM items behind them, which is what Rule B classifies. This is the gate source. |
 | `case-results.json` | The suite counts, derived by `write_summary.py` from `regression-log.txt` and `testlist.json`. The structured home: `sim finalize` reads its counts here and never re-parses a rendering of them. |
 | `case-results-summary.md` | The rendering of `case-results.json` a human reads: per-test results and, on a failure, what to open. |
 | `tests/testlist.json` | The test roster. Written by env, and appended to by verify when Rule B adds a case, so its final form spans both. |

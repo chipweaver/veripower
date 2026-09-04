@@ -2,8 +2,11 @@
 
 ## What you read
 
-`structural-coverage.json` carries two things you need. `aggregate` holds the per-dimension
-percentages the coverage gate scores against the bounds the engineer wrote, the
+`structural-coverage.json` carries two things you need. `per_module` holds the per-dimension
+percentages per instance tree, and the DUT's own row there is what the coverage gate scores
+against the bounds the engineer wrote — not the `aggregate` block beside it, which covers the TB
+top's whole tree including the agent interfaces and any ROMs, and so answers a question no row
+asked. The bounds are the
 `<requirements>/requirements.json` rows simulation judges with a `coverage_*` target, which is
 what decides pass or fail. `uncovered[]` holds the named items behind those percentages, one entry per
 branch, condition or FSM transition urg saw and never exercised:

@@ -76,48 +76,62 @@ def test_coverage_rows_are_the_simulation_rows_with_a_coverage_bound(tmp_path):
 
 def test_coverage_gate_pass(tmp_path):
     rows = _rows(tmp_path, "line", "cond", "fsm", "toggle")
-    cov = {"aggregate": {"line": 92.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0}}
-    errs, judged = _gate.coverage_gate(cov, rows)
+    cov = {
+        "per_module": [
+            dict(name="m", **{"line": 92.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0})
+        ]
+    }
+    errs, judged = _gate.coverage_gate(cov, rows, "m")
     assert errs == [] and all(j["met"] for j in judged) and judged[0]["actual"] == 92.0
 
 
 def test_coverage_gate_uses_the_engineers_operator(tmp_path):
     # "> 90" is strict: exactly 90.0 does not pass. ">= 90" would.
-    cov = {"aggregate": {"line": 90.0}}
-    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line"))
+    cov = {"per_module": [dict(name="m", **{"line": 90.0})]}
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line"), "m")
     assert judged[0]["met"] is False and "not > 90" in errs[0]
-    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line", op=">="))
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line", op=">="), "m")
     assert errs == [] and judged[0]["met"] is True
 
 
 def test_coverage_gate_below_threshold(tmp_path):
-    cov = {"aggregate": {"line": 10.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0}}
-    errs, _ = _gate.coverage_gate(cov, _rows(tmp_path, "line"))
+    cov = {
+        "per_module": [
+            dict(name="m", **{"line": 10.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0})
+        ]
+    }
+    errs, _ = _gate.coverage_gate(cov, _rows(tmp_path, "line"), "m")
     assert any("R-0: line coverage 10.0 is not > 90" in e for e in errs)
 
 
 def test_coverage_gate_null_dim_skipped(tmp_path):
-    cov = {"aggregate": {"line": 92.0, "cond": 91.0, "fsm": None, "toggle": 93.0}}
-    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "fsm"))
+    cov = {
+        "per_module": [
+            dict(name="m", **{"line": 92.0, "cond": 91.0, "fsm": None, "toggle": 93.0})
+        ]
+    }
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "fsm"), "m")
     assert errs == [] and judged[0] == {"id": "R-0", "met": True, "actual": None}
 
 
 def test_coverage_gate_absent_dim_fails(tmp_path):
-    cov = {"aggregate": {"line": 92.0, "cond": 91.0, "toggle": 93.0}}  # fsm absent
-    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "fsm"))
+    cov = {
+        "per_module": [dict(name="m", **{"line": 92.0, "cond": 91.0, "toggle": 93.0})]
+    }  # fsm absent
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "fsm"), "m")
     assert any("fsm coverage is bounded but absent" in e for e in errs)
     assert judged[0]["met"] is False
 
 
 def test_coverage_gate_unbounded_dim_is_not_gated(tmp_path):
     # No row for fsm: it is reported, not judged.
-    cov = {"aggregate": {"line": 92.0, "fsm": 3.0}}
-    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line"))
+    cov = {"per_module": [dict(name="m", **{"line": 92.0, "fsm": 3.0})]}
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line"), "m")
     assert errs == [] and [j["id"] for j in judged] == ["R-0"]
 
 
 def test_coverage_gate_not_extractable(tmp_path):
-    errs, judged = _gate.coverage_gate(None, _rows(tmp_path, "line"))
+    errs, judged = _gate.coverage_gate(None, _rows(tmp_path, "line"), "m")
     assert any("not extractable" in e for e in errs) and judged == []
 
 
@@ -156,3 +170,43 @@ def test_the_mark_is_read_off_the_heading_not_the_prose(tmp_path):
 def test_a_locus_with_spaces_still_parses(tmp_path):
     body = "## TP-09  plan ref: intent clause 2  BLOCKING\nNo check exists.\n"
     assert _gate.conformance_flagged(_review(tmp_path, body)) == ["TP-09"]
+
+
+def test_coverage_gate_scores_the_dut_not_the_report_aggregate(tmp_path):
+    """The numbers are a real run's. Its report aggregate read toggle 92.57 — the DUT plus
+    eleven fully-swept ROM modules plus three agent interfaces — while the DUT itself was
+    76.37. The engineer's bound was `> 90`, and the aggregate passed it: the gate shipped a
+    pass on a requirement the design misses by 13 points."""
+    cov = {
+        "aggregate": {"line": 99.78, "cond": 97.33, "fsm": 100.0, "toggle": 92.57},
+        "per_module": [
+            {
+                "name": "rom_wq",
+                "line": 100.0,
+                "cond": None,
+                "fsm": None,
+                "toggle": 100.0,
+            },
+            {"name": "m", "line": 99.6, "cond": 97.3, "fsm": 100.0, "toggle": 76.37},
+            {
+                "name": "m_tb_top",
+                "line": 100.0,
+                "cond": None,
+                "fsm": None,
+                "toggle": 100.0,
+            },
+        ],
+    }
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "toggle"), "m")
+    assert judged[0]["actual"] == 76.37 and judged[0]["met"] is False
+    assert errs and "76.37" in errs[0]
+
+
+def test_coverage_gate_refuses_a_report_that_does_not_carry_the_dut(tmp_path):
+    """Not attributable is not a licence to score the aggregate instead."""
+    cov = {
+        "aggregate": {"toggle": 99.0},
+        "per_module": [{"name": "somebody_else", "toggle": 99.0}],
+    }
+    errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "toggle"), "m")
+    assert judged == [] and "not attributable" in errs[0]
