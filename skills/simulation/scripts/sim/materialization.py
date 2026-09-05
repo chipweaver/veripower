@@ -10,7 +10,6 @@ conformance review's question, not this one.
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -22,16 +21,7 @@ def run(workdir, plan_dir) -> int:
     workdir = Path(workdir).resolve()
     scaffold_doc = load_plan(plan_dir)
     errs = materialization_errors(workdir, scaffold_doc)
-    verdict = {
-        "unmaterialized": [e for e in errs if "missing" in e],
-        "todo_residue": [e for e in errs if "TODO" in e],
-    }
-    print(
-        json.dumps(verdict)
-    )  # gate-class: exactly ONE verdict JSON line on stdout, both paths
     if errs:
-        # fix-message goes to STDERR only (keeps stdout a single parseable verdict line);
-        # the env subagent gates STATUS: DONE on the exit code, not on stdout content.
         print(
             "[sim check-materialization] incomplete:\n  - "
             + "\n  - ".join(errs)
@@ -40,4 +30,5 @@ def run(workdir, plan_dir) -> int:
             file=sys.stderr,
         )
         return 1
+    print("check-materialization: OK")
     return 0

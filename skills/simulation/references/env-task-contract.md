@@ -36,28 +36,29 @@ the UVM scaffold, compile, and run the smoke suite.
 
    Deploys the infrastructure and the scaffold into `{workdir}`, including functional sequence
    placeholders. All subsequent `make` targets run with `cd {workdir}`. Run it every round, rework
-   or first run: it writes only where no file is there yet, so on an empty workdir you get the
-   complete stub tree, and on a rework it adds whatever the plan gained since last round and leaves
-   everything already on disk alone.
+   or first run.
 
-   **What that leaves you.** Every round it re-renders what the plan determines — the interface's
-   signal list, the transaction's fields, `tb_pkg.sv`, `tb_top.sv`, the filelist, the testlist —
-   and never touches what a round authored. A boundary that moved therefore lands on disk and
-   stops exactly where authorship begins, and the two ways it stops do not announce themselves
-   alike:
+   **What it re-renders, and what that leaves you.** Every round it rewrites what the plan and
+   `top-io.json` determine — the interface's signal list, the transaction's fields, `tb_pkg.sv`,
+   `tb_top.sv`, the filelist, the testlist — and never touches what a round authored: the
+   clocking blocks in `<agent>_if.sv`, the env, the checker, the RM, the sequences. So a boundary
+   that moved lands on disk and stops exactly where authorship begins, and it does not announce
+   itself:
 
-   - **A signal the plan gained** is declared in the interface and connected in `tb_top`, and is
-     in none of the clocking blocks or modports you wrote. Nothing warns: the compile is green and
-     the new input is simply never driven.
+   - **A signal the plan gained** is declared in the interface's regenerated include and connected
+     in `tb_top`, and is in none of the clocking blocks or modports you wrote. Nothing warns — the
+     compile is green and the new input is simply never driven. Reconciling it is yours.
    - **An agent the plan gained** has its classes rendered and its interface instantiated, while
-     `<module>_env.sv` still neither builds nor connects it — the compile stops on
-     `Identifier not declared`.
+     the carried `<module>_env.sv` neither builds nor connects it. That compiles green too; the
+     self-gate in step 4 is what catches it.
 
-   *Both measured on three modules.* So your resolved edit scope names the scaffold when the
-   scaffold moved; when it does, read the plan against what is on disk before you fill anything,
-   and reconcile the clocking blocks, the driver and monitor that read them, and the env. This is the cost of the deploy not overwriting what a
-   round wrote, and it is the cheaper side: a stale clocking block is one round of reconciliation,
-   and a filled checker replaced by a stub is a round of authored checks gone.
+   *Measured on tpu_top with a real filled clocking block: both cases compile with zero errors and
+   zero warnings.* So when the scaffold moved, read the plan against what is on disk before you
+   fill anything, and reconcile the clocking blocks, the driver and monitor that read them, and the
+   env. This is the cost of the deploy not overwriting what a round wrote, and it is the cheaper
+   side: a stale clocking block is one round of reconciliation, and a filled checker replaced by a
+   stub is a round of authored checks gone.
+
 2. **Fill / reconcile scaffold**: inside
    `{workdir}`, fill or reconcile every `TODO(` across driver / monitor / checker / RM / functional
    seq / top against the current plan (`verification-plan.md` + the plan sidecars).
@@ -93,8 +94,9 @@ the UVM scaffold, compile, and run the smoke suite.
    python3 <skill>/scripts/sim/__main__.py check-materialization --workdir {workdir} --plan <scaffold>
    ```
 
-   This is a **presence** gate: it fails (non-zero) if any required scaffold SV file is missing
-   or any `TODO` marker survives in `tb/uvm/**`. While the scaffold-repair budget remains and the
+   This is a **presence** gate: it fails (non-zero) if any required scaffold SV file is missing,
+   if any `TODO` marker survives in `tb/uvm/**`, or if the env never names an agent the plan
+   declares. While the scaffold-repair budget remains and the
    gate fails, **keep filling** the residual TODOs/files and re-run it. Only report `STATUS: DONE`
    once it exits 0. If the budget is exhausted and it still fails, end with
    `STATUS: BLOCKED compile <residual TODO/file locus>` (the existing compile mapping; this gate is

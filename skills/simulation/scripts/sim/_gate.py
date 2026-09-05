@@ -71,6 +71,23 @@ def materialization_errors(workdir: Path, scaffold: dict) -> list[str]:
             f = workdir / "tb/uvm/agent" / fn
             if not f.is_file():
                 errs.append(f"missing agent file {f.relative_to(workdir)}")
+    # An agent the plan gained gets its classes rendered and its interface instantiated in
+    # tb_top, and stops there: the env is carried, so it neither builds nor connects the new
+    # agent. That compiles clean and drives nothing, which is why it is caught here — measured
+    # on tpu_top, and every shipped TB across two designs already satisfies it.
+    env = workdir / "tb/uvm/env" / f"{module}_env.sv"
+    if not env.is_file():
+        errs.append(f"missing env file {env.relative_to(workdir)}")
+    else:
+        env_text = env.read_text(encoding="utf-8", errors="ignore")
+        for ag in scaffold.get("agents", []):
+            name = ag.get("name")
+            if name and name not in env_text:
+                errs.append(
+                    f"{env.name} never names {name} (the plan declares it; the renderer wrote "
+                    f"its classes and tb_top's interface, and an env that does not build it "
+                    f"compiles clean and drives nothing)"
+                )
     tb = workdir / "tb" / "uvm"
     if tb.is_dir():
         for sv in sorted(set(tb.rglob("*.sv")) | set(tb.rglob("*.svh"))):

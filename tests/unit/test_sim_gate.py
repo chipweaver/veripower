@@ -14,7 +14,7 @@ SCAFFOLD = {
 }
 
 
-def _materialized(tmp_path, todo=False, drop_seq=False):
+def _materialized(tmp_path, todo=False, drop_seq=False, drop_env=False):
     (tmp_path / "tb/uvm/seq").mkdir(parents=True)
     (tmp_path / "tb/uvm/agent").mkdir(parents=True)
     if not drop_seq:
@@ -27,6 +27,12 @@ def _materialized(tmp_path, todo=False, drop_seq=False):
     (tmp_path / "tb/uvm/agent/m_drv_agent.sv").write_text("class x; endclass\n")
     (tmp_path / "tb/uvm/agent/m_obs_monitor.sv").write_text("class x; endclass\n")
     (tmp_path / "tb/uvm/agent/m_obs_agent.sv").write_text("class x; endclass\n")
+    (tmp_path / "tb/uvm/env").mkdir(parents=True)
+    (tmp_path / "tb/uvm/env/m_env.sv").write_text(
+        "class m_env; m_drv_agent drv; m_obs_agent obs; endclass\n"
+        if not drop_env
+        else "class m_env; m_drv_agent drv; endclass\n"
+    )
     return tmp_path
 
 
@@ -210,3 +216,13 @@ def test_coverage_gate_refuses_a_report_that_does_not_carry_the_dut(tmp_path):
     }
     errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "toggle"), "m")
     assert judged == [] and "not attributable" in errs[0]
+
+
+def test_materialization_env_never_builds_a_declared_agent(tmp_path):
+    # The renderer writes a plan-gained agent's classes and tb_top's interface and stops there;
+    # the env is carried, so it neither builds nor connects it. Measured on tpu_top: that
+    # compiles clean with zero warnings, so this gate is the only thing that sees it.
+    errs = _gate.materialization_errors(
+        _materialized(tmp_path, drop_env=True), SCAFFOLD
+    )
+    assert any("never names obs" in e for e in errs)

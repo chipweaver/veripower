@@ -26,6 +26,10 @@ def _workdir(tmp_path, todo=False):
         "m_obs_agent.sv",
     ):
         (tmp_path / "tb/uvm/agent" / f).write_text("class x; endclass\n")
+    (tmp_path / "tb/uvm/env").mkdir(parents=True)
+    (tmp_path / "tb/uvm/env/m_env.sv").write_text(
+        "class m_env; m_drv_agent drv; m_obs_agent obs; endclass\n"
+    )
     doc = dict(SCAFFOLD)
     (tmp_path / "sequences.json").write_text(json.dumps(doc.pop("sequences", [])))
     (tmp_path / "tb-scaffold.json").write_text(json.dumps(doc))
@@ -52,15 +56,14 @@ def test_materialization_clean_exit_0(tmp_path):
     wd, sp = _workdir(tmp_path)
     r = _run(wd, sp)
     assert r.returncode == 0, r.stderr
-    # gate-class: stdout is EXACTLY one verdict JSON line (json.loads on the whole stdout, not
-    # splitlines()[-1] — a stray human line would now make this raise, catching the contract breach).
-    assert json.loads(r.stdout) == {"unmaterialized": [], "todo_residue": []}
+    assert r.stdout.strip() == "check-materialization: OK"
 
 
 def test_materialization_todo_exit_1_stderr(tmp_path):
     wd, sp = _workdir(tmp_path, todo=True)
     r = _run(wd, sp)
     assert r.returncode == 1
-    verdict = json.loads(r.stdout)  # still exactly one JSON line on the fail path
-    assert verdict["todo_residue"]  # non-empty
+    # The gate is exit-code truth: the detail is the fix-oriented message on stderr, and no
+    # reader ever parsed stdout for it.
     assert "[sim check-materialization] incomplete" in r.stderr
+    assert "TODO residue" in r.stderr

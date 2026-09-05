@@ -42,6 +42,10 @@ def _final_workdir(tmp_path):
         "m_obs_agent.sv",
     ):
         (wd / "tb/uvm/agent" / f).write_text("class x; endclass\n")
+    (wd / "tb/uvm/env").mkdir(parents=True)
+    (wd / "tb/uvm/env/m_env.sv").write_text(
+        "class m_env; m_drv_agent drv; m_obs_agent obs; endclass\n"
+    )
     doc = dict(SCAFFOLD)
     (wd / "sequences.json").write_text(json.dumps(doc.pop("sequences", [])))
     (wd / "tb-scaffold.json").write_text(json.dumps(doc))
