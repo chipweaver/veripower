@@ -58,7 +58,18 @@ _STAGE_SPECIFIC = {
     "simulation-plan": {},
     "rtl-design": {},
     "lint-cdc": {"violations": [], "requirements": []},
-    "synthesis": {"requirements": []},
+    # Non-empty on purpose: this verdict is what test_signoff_close_end_to_end follows
+    # from result.json through reap into the basis a human is handed.
+    "synthesis": {
+        "requirements": [
+            {
+                "id": "R-1",
+                "met": True,
+                "actual": 0.0,
+                "measured": "qor.rpt worst Critical Path Slack — setup only",
+            }
+        ]
+    },
     "timing-analysis": {
         "violations": [],
         "requirements": [],
@@ -321,6 +332,13 @@ def test_signoff_close_end_to_end(tmp_path, monkeypatch):
                 "merkle",
             )
         assert b["inputs"] == sorted(b["inputs"])
+    # and the bound judgments themselves, carried up from the stage's own result.json:
+    # for the four tool stages this is the only place one reaches a human, and a verdict
+    # without the measurement behind it names a dimension rather than a number.
+    assert (
+        basis["synthesis"]["requirements"]
+        == _STAGE_SPECIFIC["synthesis"]["requirements"]
+    )
 
 
 def test_reopen_drops_a_landed_signoff(tmp_path, monkeypatch):
