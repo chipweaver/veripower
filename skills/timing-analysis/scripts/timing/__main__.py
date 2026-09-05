@@ -87,7 +87,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
+        # The documented protocol is a reason on stderr and a non-zero exit. A traceback is
+        # not that: it answers with source, which every skill here tells the reader never to
+        # open. The verbs' own refusals keep their own exits; this is only the unexpected.
+        print(
+            f"[timing {args.cmd}] BLOCKED: {type(exc).__name__}: {exc}", file=sys.stderr
+        )
+        return 2
 
 
 if __name__ == "__main__":
