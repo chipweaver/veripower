@@ -91,25 +91,16 @@ it is right.
 preserve the rest, then re-run Step 4 (its self-review re-reads the
 whole doc, so a changed dimension contradicting an untouched one is caught).
 
-## Red Flags
-
-| Excuse | Reality |
-|---|---|
-| "The requirements changed — I'll just edit the brainstorm to absorb it" | Absorb a requirements change by re-invoking in revision mode — never by editing an in-flight artifact (Iron Rule: `brainstorm.md` is frozen for the run). |
-
 ## Completion Gate
 
 - `{module}/intent/brainstorm.md` exists, and any file the document names as authoritative sits beside it in `{module}/intent/`.
 - The brainstorm covers the D0–D7 dimensions reached (D0 intent settled; D4 had 2–3
   candidates; feature IDs / interface-group names / scenario IDs are stable named
   anchors per the checklist's "Subsection IDs" section).
-- The brainstorm body was **not** echoed into the conversation (path-handoff only).
-- No `result.json` / pipeline-state command issued (Iron Rule — pre-pipeline).
 
 ## Return Contract
 
-Control returns to the user. Produce only `{module}/intent/brainstorm.md` (no `result.json`,
-no state files — per the Iron Rule). The user starts the pipeline with `--module {module}`
+Control returns to the user. The user starts the pipeline with `--module {module}`
 when they are satisfied with what is on disk; the kernel will not dispatch `specification`
 until that file exists.
 
