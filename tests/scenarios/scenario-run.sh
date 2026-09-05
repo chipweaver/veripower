@@ -19,18 +19,25 @@ set -euo pipefail
 # producing tags that no longer measured what the stamp claimed. A stamp is only comparable to
 # another stamp taken under an isolation that was checked the same way.
 #
-# Usage: scenario-run.sh --skill <name> --scenario <id|path> --mode <red|green>
+# Usage: scenario-run.sh --skill <name> --scenario <id|path> --mode <red|green> [--extra <file>]
 #   red   = bare: no project CLAUDE.md, no SKILL.md             -> agent SHOULD fail
 #   green = + skills/<skill>/SKILL.md (SKILL.md alone)          -> agent SHOULD comply
+#   --extra <file> = also inject that file (green only). A sub-task contract under
+#   references/ is never in a sub-agent's prompt via SKILL.md, so without this the harness
+#   can only measure SKILL.md — which is why every contract under references/ went unmeasured.
 # Both runs use Opus (= production model). Prints the self-report DECISION/ACTION tag
 # (closed-form types) + the raw transcript. No keyword/regex scoring — the main agent /
 # human judges, and `open`-type scenarios have no tag at all.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-SKILL="" SCEN="" MODE=""
+SKILL="" SCEN="" MODE="" EXTRA=""
 while [[ $# -gt 0 ]]; do
 	case "$1" in
+	--extra)
+		EXTRA="$2"
+		shift 2
+		;;
 	--skill)
 		SKILL="$2"
 		shift 2
@@ -95,6 +102,13 @@ if [[ "$MODE" == "green" ]]; then
 		exit 2
 	}
 	ARGS+=(--append-system-prompt-file "$SKILL_MD")
+	if [[ -n "$EXTRA" ]]; then
+		[[ -f "$EXTRA" ]] || {
+			echo "--extra file not found: $EXTRA" >&2
+			exit 2
+		}
+		ARGS+=(--append-system-prompt-file "$EXTRA")
+	fi
 fi
 
 WORK="$(mktemp -d)"
@@ -112,7 +126,7 @@ cat >"$WORK/home/.claude/settings.json" <<'JSON'
 {
   "permissions": {
     "defaultMode": "manual",
-    "deny": ["Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "LS", "WebFetch", "WebSearch", "Task", "Skill", "Agent", "NotebookEdit", "Artifact", "ToolSearch", "Monitor", "Workflow", "DesignSync", "EnterWorktree", "ExitWorktree", "ListAgents", "SendMessage", "RemoteTrigger", "PushNotification", "ScheduleWakeup", "ReportFindings", "ShareOnboardingGuide", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TaskOutput", "TaskStop", "CronCreate", "CronDelete", "CronList", "TodoWrite", "ExitPlanMode", "EnterPlanMode", "AskUserQuestion", "EndConversation"]
+    "deny": ["Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "LS", "WebFetch", "WebSearch", "Task", "Skill", "Agent", "NotebookEdit", "Artifact", "ToolSearch", "Monitor", "Workflow", "DesignSync", "EnterWorktree", "ExitWorktree", "ListAgents", "SendMessage", "RemoteTrigger", "PushNotification", "ScheduleWakeup", "ReportFindings", "ShareOnboardingGuide", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TaskOutput", "TaskStop", "CronCreate", "CronDelete", "CronList", "TodoWrite", "ExitPlanMode", "EnterPlanMode", "AskUserQuestion", "EndConversation", "WaitForMcpServers"]
   },
   "model": "opus"
 }
@@ -124,7 +138,7 @@ STREAM="$(cd "$WORK" && printf '%s%s' "$BODY" "$SUFFIX" | HOME="$WORK/home" clau
 # a breached run measures the agent plus whatever it read, which is not what the stamp claims.
 RAW="$(printf '%s' "$STREAM" | python3 "$REPO_ROOT/tests/scenarios/stream_text.py")" || {
 	echo "ISOLATION BREACH — a tool call got through the deny list; this run is not a measurement." >&2
-	echo "scenario: $(basename "$SCEN_FILE")  skill: $SKILL  mode: $MODE  type: $TYPE  model: opus"
+	echo "scenario: $(basename "$SCEN_FILE")  skill: $SKILL  mode: $MODE${EXTRA:+ +$(basename "$EXTRA")}  type: $TYPE  model: opus"
 	echo "tag: INVALID"
 	printf '%s\n' "$STREAM"
 	exit 3
@@ -136,7 +150,7 @@ pressure) TAG="$(printf '%s' "$RAW" | grep -oE '^DECISION:[[:space:]]*[ABC]' | h
 missing-info) TAG="$(printf '%s' "$RAW" | grep -oE '^ACTION:[[:space:]]*(PROCEED|BLOCKED)' | head -1 | grep -oE '(PROCEED|BLOCKED)$' || echo REVIEW_NEEDED)" ;;
 esac
 
-echo "scenario: $(basename "$SCEN_FILE")  skill: $SKILL  mode: $MODE  type: $TYPE  model: opus"
+echo "scenario: $(basename "$SCEN_FILE")  skill: $SKILL  mode: $MODE${EXTRA:+ +$(basename "$EXTRA")}  type: $TYPE  model: opus"
 echo "tag: $TAG"
 echo "--- raw transcript ---"
 printf '%s\n' "$RAW"

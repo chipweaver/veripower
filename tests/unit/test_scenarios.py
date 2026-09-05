@@ -324,11 +324,14 @@ def _triage(module, sim_run, root_cause):
         "status": "pass",
         "artifacts": [],
         "stage_specific": {
-            "analysis_state": "complete",
-            # the attribution lives on the finding, and it must carry its anchor
-            "advisory": {
-                "findings": [{"anchor": "matvec.v:1", "root_cause": root_cause}],
-            },
+            # the attribution lives on the finding, with its anchor and its argument
+            "findings": [
+                {
+                    "anchor": "matvec.v:1",
+                    "root_cause": root_cause,
+                    "reason": "the check reads the wrong tap",
+                }
+            ],
         },
     }
     _mk(module, f"{d['workdir']}/result.json", json.dumps(result))
@@ -655,13 +658,11 @@ def _spec_workdir(tmp_path):
                     "name": "clk",
                     "period_ns": 10.0,
                     "relationship": "primary",
-                    "role": "primary clock",
                 },
                 {
                     "name": "clk_io",
                     "period_ns": 20.0,
                     "relationship": "async",
-                    "role": "io clock",
                 },
             ]
         )

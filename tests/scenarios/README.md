@@ -9,6 +9,19 @@ judgment (`open`).
 **The full procedure lives in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) → "Bulletproofing a skill
 (RED-GREEN-REFACTOR)".** This file documents only the corpus layout and conventions.
 
+> **Status (2026-09-05): the harness had been inoperative.** The isolation deny list predates the
+> CLI's built-in `WaitForMcpServers`, so every run ended `ISOLATION BREACH … tag: INVALID` and no
+> measurement was possible. One deny-list entry fixed it. Note what that cost: the only instrument
+> that can tell a load-bearing paragraph from a decorative one was silently unusable, and prose
+> accumulated with no filter. Re-check the deny list against `claude --version`'s built-ins whenever
+> a run comes back INVALID.
+>
+> **Status (2026-09-05): `simulation/scenario-01` joined** (RED 5x = 3C/2A, majority violate;
+> GREEN 5x = 5A). It also carries the methodology lesson: the first draft of that scenario was
+> written around one specific circuit and measured **5/5 compliant** — the invariant looked
+> toothless. Rewritten with no circuit bound into it, the same invariant measured 3/5 violated.
+> A scenario written around one design measures that design, not the invariant.
+>
 > **Status (2026-08-04): 2 teeth-ful scenarios.** `design-flow/scenario-03` joined on 2026-08-04 (RED 5/5 violate, GREEN 0/8) when the orchestrator loop's parallelism invariant was first written down: until then nothing said a turn may hold several runs in flight, and a bare agent reliably ends the turn after starting a background dispatch.
 >
 > **Status (2026-06-10): deliberately lean — exactly 1 teeth-ful scenario.** A full RED-first
