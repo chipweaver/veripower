@@ -63,7 +63,7 @@ def derive_ports(workdir: Path) -> dict:
     try:
         wires = read_sidecar(workdir, "interconnects.json")
     except SidecarError as exc:
-        sys.exit(f"derive-ports: {exc}")
+        sys.exit(f"[spec derive-ports] {exc}")
     children = manifest.get("children")
     if not children:
         sys.exit("derive-ports: manifest.children missing or empty — need >=1 child.")
@@ -75,7 +75,7 @@ def derive_ports(workdir: Path) -> dict:
             )
     # Purity reads rtl_modules, so it runs after the loop above has proved every child has it.
     for v in check_purity(manifest):
-        sys.exit(f"derive-ports: {v}")
+        sys.exit(f"[spec derive-ports] {v}")
     out: dict[str, list[str]] = {}
     for child in children:
         owned = set(child["rtl_modules"])

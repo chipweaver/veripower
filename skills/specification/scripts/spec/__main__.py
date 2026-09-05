@@ -113,7 +113,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    from spec.sidecar import SidecarError
+
+    try:
+        return args.func(args)
+    except SidecarError as exc:
+        # One failure protocol for every verb. A sidecar defect is the caller's to fix, so it
+        # reaches them as the message the reader is told to act on — not as a traceback, which
+        # is the one thing the skills tell an agent never to read.
+        print(f"[spec {args.cmd}] {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

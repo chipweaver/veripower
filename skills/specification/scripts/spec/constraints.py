@@ -2,23 +2,27 @@ import json
 import sys
 from pathlib import Path
 
-from spec.sidecar import SidecarError, read_sidecar
+from spec.sidecar import read_sidecar
 
 _IO_DELAY_FRAC = 0.3
 
 
 def _fail(msg: str):
-    sys.exit(f"derive-constraints: {msg}")
+    sys.exit(f"[spec derive-constraints] {msg}")
 
 
 def load_clocks(workdir: Path) -> list[dict]:
     """Clocks from clocks.json. Type/enum/required are the schema's; the one obligation it
     cannot express — exactly one `primary` — is enforced here, because derive-constraints
     runs before the design.md gate and is therefore the earliest feedback point."""
-    try:
-        clocks = read_sidecar(workdir, "clocks.json")
-    except SidecarError as exc:
-        _fail(str(exc))
+    clocks = read_sidecar(workdir, "clocks.json")
+    names = [c["name"] for c in clocks]
+    dup = sorted({n for n in names if names.count(n) > 1})
+    if dup:
+        # Each entry becomes its own create_clock / clock line, so a repeated name emits the
+        # constraint twice and the tools take whichever they read last. The schema types the
+        # name but cannot say it is unique, which is why it is caught on read.
+        _fail(f"clocks.json declares {dup} more than once — a name is one clock")
     primaries = [c["name"] for c in clocks if c["relationship"] == "primary"]
     if len(primaries) != 1:
         _fail(
@@ -35,10 +39,7 @@ def _ports(workdir: Path) -> list[dict]:
     """Top-level IO from top-io.json. Shape, enums, the conditional requirement on a reset
     row (it declares polarity and kind) and the width-vs-name rule are validated on read;
     check-crossrefs owns only the cross-file joins."""
-    try:
-        return read_sidecar(workdir, "top-io.json")
-    except SidecarError as exc:
-        _fail(str(exc))
+    return read_sidecar(workdir, "top-io.json")
 
 
 _SGDC_SYNC_DOMAIN = "sync"

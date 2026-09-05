@@ -537,3 +537,17 @@ def test_every_data_port_is_accounted_for_in_the_sdc():
         assert re.search(
             rf"(set_(in|out)put_delay .*\b{name}\b|# set_\w+_delay {name}:)", sdc
         ), f"{name} left the SDC with neither a delay nor a named deferral"
+
+
+def test_duplicate_clock_name_is_refused(tmp_path):
+    # Each entry becomes its own create_clock / clock line, so a repeated name emits the
+    # constraint twice and DC / SpyGlass take whichever they read last. Measured: before this
+    # check, derive-constraints exited 0 and wrote two identical create_clock lines.
+    wd = _wd(
+        tmp_path,
+        [{"name": "i_clk", "direction": "input", "width": 1, "role": "clock"}],
+        clocks=[_clk("i_clk", 10.0), _clk("i_clk", 10.0, "synchronous-related")],
+    )
+    with pytest.raises(SystemExit) as exc:
+        constraints.derive_constraints(wd)
+    assert "more than once" in str(exc.value)
