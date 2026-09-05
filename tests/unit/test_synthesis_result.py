@@ -227,7 +227,7 @@ def test_run_slack_min_regression(tmp_path):
     reports = _stage(tmp_path)
     rc, data = sp.run(reports, [])
     assert rc == 0
-    slack = [a for a in data["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]
+    slack = [a for a in data["measurements"] if a["dim"] == "timing_slack_ns"][0]
     assert slack["value"] == pytest.approx(0.95)
     assert slack["value"] != pytest.approx(16.99)
 
@@ -236,7 +236,7 @@ def test_run_area_disambiguation(tmp_path):
     reports = _stage(tmp_path)
     rc, data = sp.run(reports, [])
     assert rc == 0
-    area = [a for a in data["ppa_actual"] if a["dim"] == "area_um2"][0]
+    area = [a for a in data["measurements"] if a["dim"] == "area_um2"][0]
     assert area["value"] == pytest.approx(65018.219263)
 
 
@@ -287,7 +287,7 @@ def test_run_no_targeted_rows_judges_nothing(tmp_path):
     rc, data = sp.run(reports, [])
     assert rc == 0
     assert (
-        data["requirements"] == [] and len(data["ppa_actual"]) == 2
+        data["requirements"] == [] and len(data["measurements"]) == 2
     )  # measured either way
 
 
@@ -296,7 +296,7 @@ def test_run_violated_slack(tmp_path):
     rc, data = sp.run(reports, [_row("R-S", "timing_slack_ns", ">=", 0.0)])
     assert rc == 0
     assert data["requirements"][0]["met"] is False
-    slack = [a for a in data["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]
+    slack = [a for a in data["measurements"] if a["dim"] == "timing_slack_ns"][0]
     assert slack["value"] == pytest.approx(-0.5)
 
 
@@ -356,8 +356,6 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert env["stage"] == "synthesis"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
-    slack = [a for a in ss["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]
-    assert slack["value"] == pytest.approx(0.95)  # parser regression: min across groups
     assert ss["requirements"] == []
     assert (
         "notes" not in ss and "power_report" not in ss
@@ -392,7 +390,7 @@ def test_declared_failure_wins_over_a_clean_gate(tmp_path):
     assert ss["fail_reason"] == "dc_shell segfaulted after write_sdf"
     assert ss["fix_owner"] == "rtl-design"
     # the gate did not run, so no numbers or verdicts are invented for a run that has none
-    assert "ppa_actual" not in ss and "requirements" not in ss
+    assert "measurements" not in ss and "requirements" not in ss
 
 
 def test_declared_failure_needs_a_reason(tmp_path):
@@ -481,9 +479,6 @@ def test_golden_lean_against_a_real_run(tmp_path):
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "pass"
-    area = [a for a in ss["ppa_actual"] if a["dim"] == "area_um2"][0]["value"]
-    slack = [a for a in ss["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]["value"]
-    assert area == pytest.approx(70684.185148) and slack == pytest.approx(0.73)
     assert ss["requirements"] == [
         {
             "id": "R-A",
@@ -656,7 +651,8 @@ def test_pass_requires_the_full_netlist_trio(tmp_path):
     ss = env["stage_specific"]
     assert env["status"] == "fail"
     assert "out/*_syn.v" in ss["fail_reason"] and "out/*_syn.sdf" in ss["fail_reason"]
-    assert ss["ppa_actual"]  # the measured numbers are still recorded
+    # Each verdict names the report line behind it; nothing else travels beside them.
+    assert all(v["measured"] for v in ss["requirements"])
 
 
 def test_partial_netlist_names_only_what_is_absent(tmp_path):
@@ -689,6 +685,6 @@ def test_uninit_group_does_not_shadow_a_constrained_one(tmp_path):
     reports = _stage(tmp_path, qor=QOR_UNINIT_PLUS_REAL)
     rc, data = sp.run(reports, [_row("R-S", "timing_slack_ns", ">=", 0.0)])
     assert rc == 0 and data["requirements"][0]["met"] is True
-    slack = [a for a in data["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]
+    slack = [a for a in data["measurements"] if a["dim"] == "timing_slack_ns"][0]
     assert slack["value"] == pytest.approx(6.51)
     assert "across 1 group(s)" in slack["source"]  # the uninit group is not counted

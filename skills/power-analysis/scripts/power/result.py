@@ -1,7 +1,7 @@
 """power.result — parse power and activity values from PrimeTime PX text reports.
 
 Used by the power-analysis skill to populate result.json's stage_specific:
-  - parse_total_power_mw       → ppa_actual[].value (mW)
+  - parse_total_power_mw       → measurements[].value (mW)
   - parse_three_components     → power_by_scenario[].{internal,switching,leakage}_mw
   - parse_annotation_rate      → power_by_scenario[].saif_annotation_rate
 
@@ -232,7 +232,7 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
 
     failures: list[dict] = []
     saif_artifacts: list[dict] = []
-    ppa_actual: list[dict] = []
+    measurements: list[dict] = []
     power_by_scenario: list[dict] = []
 
     for s in scenarios:
@@ -325,7 +325,7 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
             scenario_failed = True
 
         # A scenario with any deterministic failure has untrustworthy numbers → null them.
-        ppa_actual.append(
+        measurements.append(
             {
                 "dim": "power_mw",
                 "value": None if scenario_failed else total,
@@ -349,11 +349,11 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
 
     if failures:
         payload = {
+            "measurements": measurements,
             "verdict": "fail",
             "saif_artifacts": saif_artifacts,
             "compile_info": compile_info,
             "failures": failures,
-            "ppa_actual": ppa_actual,
             "power_by_scenario": power_by_scenario,
         }
         f0 = failures[0]
@@ -377,12 +377,12 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
     # Judge — one entry per targeted row, with the engineer's own operator. A row naming a
     # scenario this run did not measure, or any row when nothing was measured, cannot be judged.
     judged: list[dict] = []
-    dims = sorted({e["dim"] for e in ppa_actual})
+    dims = sorted({e["dim"] for e in measurements})
     for r in target_rows:
         t = r["target"]
         dim = t["dim"]
         if dim not in dims:
-            # Without this the loop compares whatever ppa_actual holds — a row asking for an
+            # Without this the loop compares whatever measurements holds — a row asking for an
             # area bound was judged met against a number of milliwatts, silently and at exit 0.
             raise ValueError(
                 f"{r['id']} is judged by power-analysis with target dim {dim!r}, which this "
@@ -392,7 +392,7 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
         sc = t.get("scenario")
         picked = [
             e
-            for e in ppa_actual
+            for e in measurements
             if e["dim"] == dim and (sc is None or e["scenario_id"] == sc)
         ]
         if not picked:
@@ -416,10 +416,12 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
         )
 
     payload = {
+        # What this run read, returned to the caller; the envelope carries only the verdicts,
+        # each naming the measurement it came from.
+        "measurements": measurements,
         "saif_artifacts": saif_artifacts,
         "compile_info": compile_info,
         "failures": [],
-        "ppa_actual": ppa_actual,
         "requirements": judged,
         "power_by_scenario": power_by_scenario,
     }
@@ -433,7 +435,6 @@ _FOLD_KEYS = (
     "saif_artifacts",
     "compile_info",
     "failures",
-    "ppa_actual",
     "power_by_scenario",
 )
 

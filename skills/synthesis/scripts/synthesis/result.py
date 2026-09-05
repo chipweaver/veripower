@@ -145,7 +145,9 @@ def run(reports_dir, target_rows) -> tuple[int, dict | None]:
         )
 
     payload = {
-        "ppa_actual": measurements,
+        # What this run read, returned to the caller; the envelope carries only the verdicts,
+        # each naming the measurement it came from.
+        "measurements": measurements,
         "requirements": judged,
     }
     return 0, payload
@@ -249,7 +251,6 @@ def build_result(
     area_text = (reports / "area.rpt").read_text(errors="replace")
     ss = {
         "tool": parse_tool(area_text),
-        "ppa_actual": actual["ppa_actual"],
         "requirements": judged,
     }
     missing = _missing_netlist(workdir)

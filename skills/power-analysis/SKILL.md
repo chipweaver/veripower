@@ -98,7 +98,7 @@ After a clean `make` it judges: it parses each `reports_ptpx/<id>/power_flat.rpt
 total against internal + switching + leakage, and compares every `power-analysis` row with a
 `power_mw` target using the row's own operator — against the named scenario's measurement when the
 row names one, against every scenario's otherwise. It records the measurements as
-`stage_specific.power_by_scenario[]` and `stage_specific.ppa_actual[]`, one verdict per row as
+`stage_specific.power_by_scenario[]`, one verdict per row as
 `stage_specific.requirements[]` (your `--requirements` verdicts folded in for the rows with no
 target), the SAIF set as `stage_specific.saif_artifacts[]`, the VCS identity as
 `stage_specific.compile_info`, and the data faults it detected itself — an empty SAIF, a gate-level

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/power-analysis/result.schema.json",
   "title": "power-analysis result.json contract (merged GLS+PT-PX, SAIF flow)",
-  "description": "Complete contract for <module>/Verification/power-analysis/result.json. On status=pass, stage_specific requires saif_artifacts + compile_info + failures + ppa_actual + requirements + power_by_scenario (compile_info carries vcs_version only). On status=fail, stage_specific.fail_reason is required (if/then below). ppa_actual / power_by_scenario carry PT averaged power_mw plus its three components; requirements[] is one verdict per requirements.json row this stage judges, and carrying it obliges ppa_actual with it (dependentRequired).",
+  "description": "Complete contract for <module>/Verification/power-analysis/result.json. On status=pass, stage_specific requires saif_artifacts + compile_info + failures + requirements + power_by_scenario (compile_info carries vcs_version only). On status=fail, stage_specific.fail_reason is required (if/then below). power_by_scenario carries PT averaged power_mw plus its three components; requirements[] is one verdict per requirements.json row this stage judges,; each verdict carries the measurement behind it in its own `measured`.",
   "allOf": [
     {
       "$ref": "https://veripower.local/schemas/envelope.schema.json"
@@ -14,11 +14,6 @@
         },
         "stage_specific": {
           "type": "object",
-          "dependentRequired": {
-            "requirements": [
-              "ppa_actual"
-            ]
-          },
           "additionalProperties": true,
           "properties": {
             "fix_owner": {
@@ -98,35 +93,6 @@
                     "type": "string"
                   },
                   "log_excerpt": {
-                    "type": "string"
-                  }
-                }
-              }
-            },
-            "ppa_actual": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": [
-                  "dim",
-                  "value",
-                  "scenario_id",
-                  "source"
-                ],
-                "properties": {
-                  "dim": {
-                    "const": "power_mw"
-                  },
-                  "value": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
-                  },
-                  "scenario_id": {
-                    "type": "string"
-                  },
-                  "source": {
                     "type": "string"
                   }
                 }
@@ -221,7 +187,6 @@
               "saif_artifacts",
               "compile_info",
               "failures",
-              "ppa_actual",
               "power_by_scenario",
               "requirements"
             ]

@@ -140,8 +140,8 @@ python3 <skill>/scripts/synthesis/__main__.py finalize \
 
 It compares every `synthesis` row with a target (worst setup slack = `min` of `Critical Path
 Slack` across every clock-group block; area = `Total cell area`) using the row's own operator,
-records both measurements as `stage_specific.ppa_actual[]`, folds your verdicts on the rows with
-no target in beside them as `stage_specific.requirements[]`, reads the DC version off the report
+writes one verdict per row into `stage_specific.requirements[]` — each carrying `measured`, the
+report line it read — folding your verdicts on the rows with no target in beside them, reads the DC version off the report
 header, and enumerates `artifacts[]`. It refuses to write an envelope that leaves any `synthesis`
 row unjudged: a row you did not read cannot pass as silence. A clean set of verdicts is not
 enough for a pass: all three of `out/*_syn.{v,sdc,sdf}` must be on disk, and an incomplete set is

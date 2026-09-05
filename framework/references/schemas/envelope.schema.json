@@ -75,7 +75,7 @@
   },
   "$defs": {
     "requirement_verdict": {
-      "description": "One verdict on one requirements.json row, as carried by a stage envelope's stage_specific.requirements[]. Defined here because the four stages that judge ledger rows record them identically, and the reap-time validator already registers this resource. `measured` is what closes the row: the ledger names a dimension, the stage names the number it actually read, and a reader can see whether the two are the same quantity.",
+      "description": "One verdict on one requirements.json row, as carried by a stage envelope's stage_specific.requirements[]. `measured` is what closes the row: the ledger names a dimension, this names the number the stage actually read, and reap carries it into the signoff basis — the only place the four tool stages' verdicts reach a human at all.",
       "type": "object",
       "required": [
         "id",

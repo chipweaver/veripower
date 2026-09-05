@@ -2,13 +2,6 @@
 
 Invariants that prevent silent-transformation drift across stage boundaries:
 
-1. **Target dim namespace consistency.** Every `dim` value that any stage's
-   `ppa_actual[]` schema allows (via const or enum) must appear in the
-   requirements ledger's `target.dim` enum (specification's
-   `requirements.schema.json`). The ledger authors the bounds; downstream
-   stages MEASURE against them. A stage that reports a dim the ledger can't
-   express has no bound — rework routing loses signal silently.
-
 3. **Judge namespace.** The ledger's `judge` enum is the rule registry's
    FORWARD_PRIORITY plus the three non-stage judges and the transient
    `unassignable`; a stage added to rules.py without the enum is caught here.
@@ -24,7 +17,7 @@ import json
 import re
 
 import pytest
-from _skills_sot import PLUGIN_ROOT, load_stage_schema
+from _skills_sot import PLUGIN_ROOT
 
 from framework.scripts import rules
 from framework.scripts.rules import FORWARD_PRIORITY
@@ -48,16 +41,6 @@ def _collect_dim_values_from_array_schema(array_schema: dict) -> set[str]:
     if "enum" in dim_schema:
         return set(dim_schema["enum"])
     return set()
-
-
-def _ppa_actual_dims_for_stage(stage: str) -> set[str]:
-    dims: set[str] = set()
-    for entry in load_stage_schema(stage).get("allOf", []):
-        ss = entry.get("properties", {}).get("stage_specific", {})
-        ppa = ss.get("properties", {}).get("ppa_actual")
-        if ppa:
-            dims |= _collect_dim_values_from_array_schema(ppa)
-    return dims
 
 
 def _ledger_schema() -> dict:

@@ -284,7 +284,7 @@ def test_run_pass_within_targets(tmp_path):
     ]
     assert (
         len(data["saif_artifacts"])
-        == len(data["ppa_actual"])
+        == len(data["measurements"])
         == len(data["power_by_scenario"])
         == 2
     )
@@ -339,7 +339,7 @@ def test_run_no_targeted_rows_judges_nothing_but_still_measures(tmp_path):
     rc, data = p.run(plan, wd, [])
     assert rc == 0
     assert data["requirements"] == []
-    assert data["ppa_actual"][0]["value"] == pytest.approx(0.42)
+    assert data["measurements"][0]["value"] == pytest.approx(0.42)
 
 
 def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
@@ -356,7 +356,7 @@ def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
     assert (
         data["failures"][0]["phase"] == "run"
     )  # D: SAIF is a run product (no separate saif phase)
-    assert data["ppa_actual"][0]["value"] is None  # nulled despite parseable flat
+    assert data["measurements"][0]["value"] is None  # nulled despite parseable flat
     assert data["power_by_scenario"][0]["power_mw"] is None
     assert all(a["id"] != "S1" for a in data["saif_artifacts"])
 
@@ -401,7 +401,7 @@ def test_run_missing_gls_status_is_not_a_pass(tmp_path):
     assert rc != 0
     assert data["failures"][0]["category"] == "gls_uvm"
     assert "absent" in data["failures"][0]["error_summary"]
-    assert data["ppa_actual"][0]["value"] is None
+    assert data["measurements"][0]["value"] is None
 
 
 def test_run_report_missing_token(tmp_path, capsys):
@@ -411,7 +411,7 @@ def test_run_report_missing_token(tmp_path, capsys):
     rc, data = p.run(plan, wd, [])
     assert rc != 0
     assert "FAIL=report_missing:S1" in capsys.readouterr().err
-    assert data["ppa_actual"][0]["value"] is None
+    assert data["measurements"][0]["value"] is None
 
 
 def test_run_unparseable_total_token(tmp_path, capsys):
@@ -421,7 +421,7 @@ def test_run_unparseable_total_token(tmp_path, capsys):
     rc, data = p.run(plan, wd, [])
     assert rc != 0
     assert "FAIL=unparseable:S1" in capsys.readouterr().err
-    assert data["ppa_actual"][0]["value"] is None
+    assert data["measurements"][0]["value"] is None
 
 
 def test_run_three_component_invariant_break(tmp_path, capsys):
@@ -518,7 +518,6 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert (
         ss["requirements"] == []
     )  # no row judged by this stage; the empty list says so
-    assert ss["ppa_actual"][0]["value"] == pytest.approx(0.42)
     assert ss["compile_info"]["vcs_version"] == "L-2016.06_Full64"
     assert "notes" not in ss  # lean shape: dropped field absent
 
@@ -539,7 +538,7 @@ def test_build_result_tooling_fail_on_invariant(tmp_path):
 
 
 def test_build_result_missed_row(tmp_path):
-    # a scenario over the engineer's bound -> status=fail + requirements + ppa_actual
+    # a scenario over the engineer's bound -> status=fail + requirements
     wd, plan = _make_workdir(
         tmp_path,
         _SCEN,
@@ -562,7 +561,7 @@ def test_build_result_missed_row(tmp_path):
             "measured": "power_mw from reports_ptpx/S2/power_flat.rpt",
         }
     ]
-    assert ss["ppa_actual"]  # required alongside the verdicts
+    assert all(v["measured"] for v in ss["requirements"])  # each names its own
     assert ss["fail_reason"] == "requirement(s) not met: R-P"
 
 
@@ -781,7 +780,6 @@ def test_golden_real_reports_lean_pass(tmp_path):
         "saif_artifacts",
         "compile_info",
         "failures",
-        "ppa_actual",
         "requirements",
         "power_by_scenario",
     }
@@ -789,9 +787,7 @@ def test_golden_real_reports_lean_pass(tmp_path):
     assert ss["failures"] == []  # clean parse — no ptpx_data failures
     assert ss["requirements"] == []  # no row judged by this stage
     assert ss["compile_info"]["vcs_version"] == "L-2016.06_Full64"
-    assert all(
-        e["value"] is not None for e in ss["ppa_actual"]
-    )  # every scenario parsed
+    assert all(v.get("measured") for v in ss["requirements"])  # every scenario parsed
     assert "notes" not in ss  # lean: dropped
     paths = [a["path"] for a in env["artifacts"]]
     assert "reports_ptpx" in paths
@@ -855,7 +851,7 @@ def test_declared_fail_writes_the_envelope_without_touching_the_reports(tmp_path
     assert ss["fix_owner"] == "synthesis"
     assert "dut_top_syn.sdf" in ss["fail_reason"]
     # The pass-shape is not invented on a run that produced none of it.
-    for absent in ("saif_artifacts", "power_by_scenario", "ppa_actual", "failures"):
+    for absent in ("saif_artifacts", "power_by_scenario", "failures"):
         assert absent not in ss
 
 
