@@ -21,7 +21,7 @@ a deployment choice.
 | `LIB_DB`, `LIB_V` | synthesis / power-analysis read std-cell libs | stage `env.sh` `:?` guard fires on miss |
 | `WIRE_LOAD_MODEL` | synthesis selects the interconnect estimate; a library declares no default, and without one PT-PX reports zero net switching power | `env.sh` `:?` guard fires on miss; `dc_run.tcl` aborts when the name is not in the library |
 | `UVM_HOME` | simulation / power-analysis compile UVM DPI | same |
-| `python3` with `jsonschema` >= 4.18, `referencing`, `PyYAML` | framework state tool and stage gates validate result/review schemas (`registry=`-based `$ref` resolution needs the post-4.18 jsonschema API) | `python3 -c "import jsonschema, referencing, yaml"` |
+| `python3` >= 3.10 with `jsonschema` >= 4.18, `referencing`, `PyYAML` | framework state tool and stage gates validate result/review schemas (`registry=`-based `$ref` resolution needs the post-4.18 jsonschema API); the stage CLIs annotate `list[str] | None` in evaluated signature position, which is a TypeError before 3.10 | `python3 -c "import sys, jsonschema, referencing, yaml; assert sys.version_info >= (3, 10)"` |
 | `/bin/sh` → `bash` | The VCS launcher uses `#!/bin/sh -h` and relies on bash semantics | `readlink /bin/sh` should resolve to `bash` |
 
 ## Optional

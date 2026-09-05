@@ -96,7 +96,7 @@ Run the `brainstorm` skill to settle requirements first, then tell the agent:
 
 Full walkthrough in the [user manual](docs/USER-MANUAL.md) ([中文](docs/USER-MANUAL.zh.md)).
 
-**Requirements.** Python 3, `jsonschema`, `referencing`. Synopsys EDA tools, swappable per skill.
+**Requirements.** Python 3.10+, `jsonschema` >= 4.18, `referencing`, `PyYAML`. Synopsys EDA tools, swappable per skill.
 
 ## Citation
 
