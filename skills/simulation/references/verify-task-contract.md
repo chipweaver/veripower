@@ -7,19 +7,17 @@ smoke gate passes and the conformance gate clears. Your job: full regression, co
 ## Inputs (paths only; the main thread does not read these bodies)
 
 - `{workdir}`: the **same** shared workdir the env-build child wrote in wave 1. It already holds the
-  built TB (`tb/uvm/**`), the compiled `simv`, the env-phase artifacts, and
-  `{workdir}/verify-handoff.json`.
+  built TB (`tb/uvm/**`), the compiled `simv` and the env-phase artifacts.
 - testpoints path `<scaffold>/tb-scaffold.json`:
-  read `testpoints[].intent` and `bins[]` for coverage-gap classification (Rule B) and
-  `testpoints[].id` to cross-reference `verify-handoff.json`. (`agents` / `sequences` / `tests` are
+  read `testpoints[].intent` for coverage-gap classification (Rule B) and `testpoints[].seqs` for
+  the sequence to iterate once you have placed an item. (`agents` / `sequences` / `tests` are
   already materialized; do not re-materialize.)
 - `{module}`: the module name.
 - `<skill>`: the simulation skill's own base directory.
 
-`{workdir}/verify-handoff.json` maps each testpoint to the sequences env wired toward it, which
-is the second half of a Rule B classification: you place an uncovered item on a testpoint, and
-this says whose stimulus to iterate. The plan does not carry that edge. Nothing else here needs
-it; a regress failure routes out with `failing_cases` and no check-mapping.
+`testpoints[].seqs` is the second half of a Rule B classification: you place an uncovered item on a
+testpoint, and that names whose stimulus to iterate. A regress failure needs neither — it routes out
+with `failing_cases` and no check-mapping.
 
 ## Work
 
@@ -43,8 +41,8 @@ it; a regress failure routes out with `failing_cases` and no check-mapping.
 - **Rule B stimulus iterate only**: seed / tighten existing seq constraint params / testlist append.
 - **A regress failure routes out; you do not repair it here.** Whether it is rooted in wiring or
   in the checker's semantics makes no difference in this wave: write the `regress` verdict plus
-  `failing_cases` and let the caller decide. That repair authority was the env wave's Rule A
-  budget, and it closed when smoke passed.
+  `failing_cases` and let the caller decide. That repair authority was the env wave's
+  scaffold-repair budget, and it closed when smoke passed.
 
 ## Write-domain
 
@@ -78,7 +76,7 @@ wave: do not edit it, and route out a regress failure rooted there instead.
   finalize, so do not restate them here. On a route-out, carry the failure fields:
 
   ```json
-  {"verdict": "coverage", "coverage_gaps": ["..."], "gaps_not_in_testpoints": ["..."]}
+  {"verdict": "coverage", "gaps_not_in_testpoints": ["..."], "gaps_in_testpoints": ["..."]}
   ```
 
   On a `regress` route-out each failing case is one `failing_cases[]` entry, and its shape is

@@ -5,9 +5,8 @@ conformance reviewer — as Wave 2 (Step 4) AFTER the deterministic smoke gate p
 and BEFORE the verify wave. This review is **gating**: a finding you mark blocking stops the round. Do not call the Task
 tool (no Level-2 dispatch) and do not call `kernel.py`.
 
-**Dispatched every round, never skipped.** Nothing carries the previous round's review forward,
-so a round whose TB and plan are both unchanged still gets a fresh one. You judge checks against
-intent, not RTL correctness, and that judgment never rests on nothing having moved.
+**Dispatched every round, never skipped.** You judge checks against intent, not RTL
+correctness.
 
 Nobody reads your record before the stage acts on it. That is why one field in it is machine
 readable and the rest is yours to write.
@@ -26,10 +25,7 @@ readable and the rest is yours to write.
   - `intent` states what the testpoint drives and why. It is a required field of
     `tb-scaffold.schema.json`, and it is the authoritative intent source for a testpoint
     whose `covers[]` is empty.
-  - `bins` names what it is meant to hit.
 - DUT RTL filelist (read-only, to cross-check intent).
-- **Excluded:** `verify-handoff.json` — it is env's own self-report (env output, not input);
-  reading it would be self-evaluation.
 
 ## Your job: per-testpoint check-adequacy review (NOT lint / coverage / RTL-bug hunting)
 

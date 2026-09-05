@@ -5,5 +5,5 @@
 # Round budget for stimulus iterate (when coverage gaps all map to testpoints)
 stimulus_iterate_max_rounds: 3
 
-# Round budget for compile / smoke scaffold-class repair (triggered by Rule A)
+# Round budget for compile / smoke scaffold-class repair
 scaffold_repair_max_rounds: 3

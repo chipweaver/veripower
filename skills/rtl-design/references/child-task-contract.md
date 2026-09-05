@@ -5,30 +5,22 @@ The rtl-design main thread dispatches one Level-1 sub-Task per child in
 below. Do not call the Task tool: a sub-Task of yours would append no event and sit outside the
 kernel's accounting, where nothing could audit it.
 
-## Inputs (paths only — the main thread does not read these bodies)
+## Inputs
 
-- `<skill>` — the rtl-design skill's own base directory, handed over by the main thread.
-- Child unit name + its `manifest.children[<self>].rtl_modules[]` list.
-- Your per-child design doc, at the path the main thread hands you from `manifest.children[<self>].doc`
-  (the registry SSoT; nothing is copied into `{workdir}`, so never guess a workdir-local path). It is the
-  full per-child sub-design and you are its sole consumer, self-contained:
-  `frontmatter.ports` = injected `interconnects.json` cut-edges, `frontmatter.clocks` ⊆ `clocks.json`;
-  the top-integration child's §3.1 instantiation map wires those same edges.
-- `<skill>/references/coding-rules.md` — the RTL coding rules your files must follow.
-- `top-io.json` and `interconnects.json` paths — the boundary and the cut edges. Read them for
-  `set_case_analysis` (← `top-io.json`), `quasi_static` (← `interconnects.json`) and top wiring.
-- `clocks.json` path (specification workdir) — the clock definitions. Read it for
-  `create_generated_clock`: a `"generated": true` entry is a divider/PLL output whose
-  `create_generated_clock` pin is YOUR RTL's to name, deliberately deferred by specification.
-  **Every child reads `top-io.json`**: which of its ports are yours is your own doc's frontmatter
-  claim — so read it even when you drive nothing.
-- `requirements.json` path (specification workdir) — the engineer's requirements, each with the
-  stage that judges it. Read the rows that bear on your RTL: the ones judged by `rtl-design` are
-  yours to satisfy by construction (a language rule, a hard-coded parameter, a structure the
-  engineer pinned), and the bounds judged by `synthesis` and `power-analysis` decide pipeline
-  depth, operator sharing, RAM vs. register file, and clock-gating granularity. Your `<child>.md`
-  cites rows by id; the wording that binds you is in the row. A row that points at a file under
-  `<intent>/` — a register map, a reference model — is read there.
+The main thread hands over paths only; it reads none of these bodies.
+
+- `<skill>` — this skill's base directory, and `<skill>/references/coding-rules.md`.
+- Your child unit name, its `rtl_modules[]`, and the path to your per-child design doc. That doc is
+  the full sub-design and you are its sole consumer.
+- `top-io.json`, `interconnects.json`, `clocks.json`, `requirements.json` — the boundary, the cut
+  edges, the clocks, and the engineer's requirements. **Every child reads `top-io.json`**, even one
+  that drives no top-level port: which ports are yours is your own doc's frontmatter claim, and
+  checking it against the boundary is how a wrong claim surfaces here rather than at the compile.
+  Read the requirements rows that bear on your RTL — the ones judged by `rtl-design` are yours to
+  satisfy by construction, and the bounds judged by `synthesis` / `power-analysis` decide pipeline
+  depth, operator sharing, RAM vs. register file, and clock-gating granularity.
+
+Field semantics live in each file's own schema under `specification/references/`.
 
 ## Prohibitions
 
