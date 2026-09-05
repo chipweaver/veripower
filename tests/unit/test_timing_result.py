@@ -187,7 +187,6 @@ def test_run_clean_pass(tmp_path):
     rc, data = sp.run(rep)
     assert rc == 0
     assert data["verdict"] == "pass"
-    assert data["violations"] == []
     assert data["timing"]["setup"]["met"] is True
     assert data["timing"]["hold"]["met"] is True
 
@@ -199,10 +198,10 @@ def test_run_marker_keyed_fail_on_displayed_zero(tmp_path):
     assert rc == 0
     assert data["verdict"] == "fail"
     assert data["timing"]["hold"]["met"] is False
-    v = [x for x in data["violations"] if x["dim"] == "timing_hold"]
-    assert len(v) == 1
-    assert v[0]["target"] == 0
-    assert v[0]["path_id"] == "u_rx_filler/wb_free_reg -> u_rx_filler/rd_reg"
+    assert (
+        data["timing"]["hold"]["worst_path"]
+        == "u_rx_filler/wb_free_reg -> u_rx_filler/rd_reg"
+    )
 
 
 def test_run_negative_number_recorded_with_sig_digits4(tmp_path):
@@ -211,8 +210,7 @@ def test_run_negative_number_recorded_with_sig_digits4(tmp_path):
     rc, data = sp.run(rep)
     assert rc == 0
     assert data["timing"]["hold"]["worst_slack_ns"] < 0
-    v = [x for x in data["violations"] if x["dim"] == "timing_hold"][0]
-    assert v["actual"] < 0
+    assert data["timing"]["hold"]["met"] is False
 
 
 def test_uncovered_is_none_only_when_the_boundary_is_whole():
@@ -234,7 +232,6 @@ def test_an_untimed_boundary_cannot_pass(tmp_path):
     assert "2 of 8 output bits" in ss["fail_reason"]
     assert ss["fix_owner"] == "synthesis"
     assert ss["timing"]["setup"]["met"] is True  # the measurements still land
-    assert ss["violations"] == []
 
 
 def test_unconstrained_endpoints_alone_never_fail_a_run(tmp_path):
@@ -256,7 +253,7 @@ def test_an_untimed_boundary_outranks_a_missed_target(tmp_path):
     )
     assert sp.build_result(wd, [], []) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["violations"][0]["dim"] == "timing_hold"
+    assert ss["timing"]["hold"]["met"] is False
 
 
 def test_run_missing_report_exit1(tmp_path):
@@ -337,7 +334,7 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
     assert ss["timing"]["setup"]["met"] is True and ss["timing"]["hold"]["met"] is True
-    assert ss["violations"] == [] and ss["requirements"] == []
+    assert ss["requirements"] == []
     assert "notes" not in ss  # lean shape: dropped field absent
 
 
@@ -390,7 +387,7 @@ def test_fail_reason_wins_over_a_clean_gate(tmp_path):
         "synthesis",
     )
     # An early-fail carries no measurements: PT produced none this caller trusts.
-    assert "timing" not in ss and "violations" not in ss
+    assert "timing" not in ss
 
 
 def test_finalize_blocked_on_empty_fail_reason(tmp_path):
@@ -538,7 +535,6 @@ def test_golden_lean_against_a_real_run(tmp_path):
     )
     assert ss["timing"]["hold"]["worst_slack_ns"] == pytest.approx(0.2341)
     assert ss["timing"]["hold"]["met"] is True
-    assert ss["violations"] == []
     assert ss["tool"] == "PrimeTime M-2016.12-SP1"
     # every copied header field is gone: the lib_db is in the promoted config.tcl and
     # in the kernel's own reap-time environment record, the clock is in the

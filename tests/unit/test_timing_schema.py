@@ -22,25 +22,20 @@ def _validate(stage_specific, status="pass"):
     return err is None, err
 
 
-def test_pass_with_timing_violations_and_requirements_validates():
-    valid, err = _validate({"violations": [], "timing": _TIMING_OK, "requirements": []})
+def test_pass_with_timing_and_requirements_validates():
+    valid, err = _validate({"timing": _TIMING_OK, "requirements": []})
     assert valid, err
 
 
 def test_pass_without_timing_rejected():
-    valid, _ = _validate({"violations": [], "requirements": []})
-    assert not valid
-
-
-def test_pass_without_violations_rejected():
-    valid, _ = _validate({"timing": _TIMING_OK, "requirements": []})
+    valid, _ = _validate({"requirements": []})
     assert not valid
 
 
 def test_pass_without_requirements_rejected():
     # A pass that judged no row is not a pass: the rows timing-analysis judges are its
     # obligations, and an empty list is the explicit statement that there were none.
-    valid, _ = _validate({"violations": [], "timing": _TIMING_OK})
+    valid, _ = _validate({"timing": _TIMING_OK})
     assert not valid
 
 
@@ -52,41 +47,12 @@ def test_infra_fail_without_timing_validates():
     assert valid, err
 
 
-def test_ppa_fail_with_timing_and_violations_validates():
+def test_ppa_fail_with_timing_validates():
     valid, err = _validate(
-        {
-            "fail_reason": "setup/hold timing not met",
-            "violations": [
-                {
-                    "dim": "timing_hold",
-                    "target": 0,
-                    "actual": -0.005,
-                    "path_id": "c -> d",
-                }
-            ],
-            "timing": _TIMING_OK,
-        },
+        {"fail_reason": "setup/hold timing not met", "timing": _TIMING_OK},
         status="fail",
     )
     assert valid, err
-
-
-def test_ppa_fail_without_timing_rejected():
-    valid, _ = _validate(
-        {
-            "fail_reason": "setup/hold timing not met",
-            "violations": [
-                {
-                    "dim": "timing_hold",
-                    "target": 0,
-                    "actual": -0.005,
-                    "path_id": "c -> d",
-                }
-            ],
-        },
-        status="fail",
-    )
-    assert not valid
 
 
 def test_tooling_fail_without_timing_validates():

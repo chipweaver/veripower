@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-triage/result.schema.json",
   "title": "simulation-triage result.json contract",
-  "description": "Complete contract for <module>/Verification/simulation-triage/result.json. analysis_state discriminates ('complete' carries at least one anchored finding, 'skipped' carries skipped_reason). findings[].root_cause names the rule that must act on THAT finding — the reap mints one diagnosis per distinct value, so one analysis routes to as many owners as it found causes — findings[].anchor is its fix locus, and experiment.artifacts[] are the evidence paths — those are read; the rest is prose for whoever opens the record. An experiment block is present exactly when the run built one, so nothing labels the tier separately.",
+  "description": "Complete contract for <module>/Verification/simulation-triage/result.json. One entry per finding: `root_cause` names the rule that must act on THAT finding (the reap mints one diagnosis per distinct value, so one analysis routes to as many owners as it found causes), `anchor` is its fix locus, and `reason` is the argument the fix owner acts on — the fix owner is handed this file and nothing else, so a finding whose reason is absent arrives as a coordinate with no account, and the owner fixes whatever is at that line. An empty findings[] is the only way to say the analysis reached no attribution, and then the top-level `reason` says why. Whatever an experiment produced rides in the envelope's own artifacts[], like every other stage's products.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
@@ -10,62 +10,30 @@
         "stage": {"const": "simulation-triage"},
         "stage_specific": {
           "type": "object",
-          "required": ["analysis_state"],
+          "required": ["findings"],
+          "additionalProperties": false,
           "properties": {
-            "analysis_state": {"type": "string", "enum": ["complete", "skipped"]},
-            "skipped_reason": {"type": "string", "minLength": 1},
-            "advisory": {
-              "type": "object", "additionalProperties": false,
-              "properties": {
-                "findings": {
-                  "type": "array",
-                  "items": {
-                    "type": "object", "additionalProperties": false,
-                    "required": ["root_cause"],
-                    "properties": {
-                      "anchor":     {"type": "string"},
-                      "cases":      {"type": "array", "items": {"type": "string"}},
-                      "root_cause": {"type": "string", "enum": ["rtl-design", "simulation-plan", "specification", "simulation"]}
-                    }
-                  }
-                },
-                "waveform": {
-                  "type": "object", "additionalProperties": false,
-                  "properties": {
-                    "commands":    {"type": "array", "items": {"type": "string"}},
-                    "signals":     {"type": "array", "items": {"type": "string"}}
-                  }
-                },
-                "experiment": {
-                  "type": "object", "additionalProperties": false,
-                  "properties": {
-                    "tool":       {"type": "string"},
-                    "stimulus":   {"type": "string"},
-                    "artifacts":  {"type": "array", "items": {"type": "string"}},
-                    "golden":     {"type": "string"}
-                  }
+            "findings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["anchor", "root_cause", "reason"],
+                "properties": {
+                  "anchor":     {"type": "string", "minLength": 1},
+                  "root_cause": {"type": "string", "enum": ["rtl-design", "simulation-plan", "specification", "simulation"]},
+                  "reason":     {"type": "string", "minLength": 1,
+                                 "description": "Why this cause and this locus: the evidence you read and the inference from it, in enough detail that the fix owner can check your reading against the artifact rather than take it on trust."},
+                  "cases":      {"type": "array", "items": {"type": "string"},
+                                 "description": "Which of the failing run's cases this finding explains, by the test_id the failing envelope's failing_cases[] used."}
                 }
               }
-            }
-          },
-          "allOf": [
-            {
-              "$comment": "a complete analysis must carry a concrete locus — non-empty advisory.findings[], each anchored. Enforced structurally because the anchor is what the fix owner opens this record for: the diagnosis derived from it names the rule, and this file names the line.",
-              "if":   {"properties": {"analysis_state": {"const": "complete"}}, "required": ["analysis_state"]},
-              "then": {
-                "required": ["advisory"],
-                "properties": {"advisory": {"required": ["findings"],
-                                            "properties": {"findings": {"type": "array", "minItems": 1,
-                                                                        "items": {"required": ["anchor"],
-                                                                                  "properties": {"anchor": {"type": "string", "minLength": 1}}}}}}}
-              }
             },
-            {
-              "if":   {"properties": {"analysis_state": {"const": "skipped"}}, "required": ["analysis_state"]},
-              "then": {"required": ["skipped_reason"]}
-            }
-          ],
-          "additionalProperties": false
+            "reason": {"type": "string", "minLength": 1,
+                       "description": "Required when findings[] is empty: why this analysis reached no attribution."}
+          },
+          "if":   {"properties": {"findings": {"maxItems": 0}}},
+          "then": {"required": ["reason"]}
         }
       },
       "required": ["stage_specific"]

@@ -82,9 +82,8 @@ python3 <skill>/scripts/timing/__main__.py finalize \
 
 It classifies each direction on the report's `(MET)` / `(VIOLATED)` marker — never the displayed
 number, which prints `0.00` for a violation smaller than the reported precision — records the
-worst slack and worst path per direction into `stage_specific.timing`, lists the binding violator
-per failing direction into `stage_specific.violations[]`, folds your `--requirements` verdicts in
-as `stage_specific.requirements[]` — refusing an envelope that leaves any `timing-analysis` row
+worst slack and worst path per direction into `stage_specific.timing`, folds your
+`--requirements` verdicts in as `stage_specific.requirements[]` — refusing an envelope that leaves any `timing-analysis` row
 unjudged, and failing the run on any `met: false` — reads the PrimeTime version off the report
 header, and enumerates `artifacts[]`.
 

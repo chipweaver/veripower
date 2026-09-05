@@ -89,7 +89,7 @@ def build_result(workdir, status, fail_reason=None) -> int:
 
     if status == "fail":
         top = _top_from_manifest(workdir)
-        ss = {"top_module": top, "fail_reason": fail_reason or _REJECT_REASON}
+        ss = {"fail_reason": fail_reason or _REJECT_REASON}
         _write_result(
             workdir,
             _envelope(
@@ -123,11 +123,10 @@ def build_result(workdir, status, fail_reason=None) -> int:
             "them before finalize."
         )
 
-    ss = {"top_module": top}
     artifacts = enumerate_artifacts(workdir, top)
     _write_result(
         workdir,
-        _envelope(status="pass", stage_specific=ss, artifacts=artifacts),
+        _envelope(status="pass", stage_specific={}, artifacts=artifacts),
     )
     return 0
 

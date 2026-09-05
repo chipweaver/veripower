@@ -182,31 +182,9 @@ def run(report_path) -> tuple[int, dict | None]:
         )
         return 3, None
 
-    violations = []
-    if not setup["met"]:
-        violations.append(
-            {
-                "dim": "timing_setup",
-                "target": 0,
-                "actual": setup["worst_slack_ns"],
-                "path_id": setup["worst_path"],
-            }
-        )
-    if not hold["met"]:
-        violations.append(
-            {
-                "dim": "timing_hold",
-                "target": 0,
-                "actual": hold["worst_slack_ns"],
-                "path_id": hold["worst_path"],
-            }
-        )
-    verdict = "fail" if violations else "pass"
-
     payload = {
-        "verdict": verdict,
+        "verdict": "pass" if setup["met"] and hold["met"] else "fail",
         "timing": {"setup": setup, "hold": hold, "coverage": coverage},
-        "violations": violations,
     }
     return 0, payload
 
@@ -320,7 +298,6 @@ def build_result(workdir, rows, declared, fix_owner=None, fail_reason=None) -> i
     ss = {
         "tool": parse_tool(report_text),
         "timing": actual["timing"],
-        "violations": actual["violations"],
         "requirements": judged,
     }
     left_out = uncovered(actual["timing"]["coverage"])

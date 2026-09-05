@@ -22,7 +22,7 @@ def _run(workdir, check=True):
     )
 
 
-def _clk(name, period_ns, relationship="primary", generated=False, role=""):
+def _clk(name, period_ns, relationship="primary", generated=False):
     """One clocks.json entry. `generated` is explicit: the emitters read it directly, and
     only load_clocks() defaults the omitted key."""
     return {
@@ -30,7 +30,6 @@ def _clk(name, period_ns, relationship="primary", generated=False, role=""):
         "period_ns": period_ns,
         "relationship": relationship,
         "generated": generated,
-        "role": role,
     }
 
 
@@ -47,7 +46,7 @@ def _port(name, direction, role, domain="clk", width=1, group="cfg", **kw):
     return e
 
 
-_DEFAULT_CLOCKS = [_clk("clk", 10.0, role="primary clock")]
+_DEFAULT_CLOCKS = [_clk("clk", 10.0)]
 _CLK_PORT = _port("clk", "input", "clock")
 
 
@@ -147,7 +146,7 @@ def test_async_clock_groups(tmp_path):
     ]
     clocks = [
         _clk("clk", 10.0),
-        _clk("clk_io", 20.0, "async", role="io clock"),
+        _clk("clk_io", 20.0, "async"),
     ]
     _run(_wd(tmp_path, ports, clocks))
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
@@ -320,7 +319,7 @@ def test_multi_domain_abstract_port_grouping(tmp_path):
         _port("a", "input", "data", width=8),
         _port("b", "input", "data", domain="clk2", width=8),
     ]
-    clocks = [_clk("clk", 10.0), _clk("clk2", 20.0, "async", role="second")]
+    clocks = [_clk("clk", 10.0), _clk("clk2", 20.0, "async")]
     _run(_wd(tmp_path, ports, clocks))
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "abstract_port -ports {a} -clock clk" in sgdc
@@ -379,7 +378,7 @@ def test_sgdc_emits_async_clock_groups(tmp_path):
     ]
     clocks = [
         _clk("clk", 10.0),
-        _clk("clk_io", 20.0, "async", role="io clock"),
+        _clk("clk_io", 20.0, "async"),
     ]
     _run(_wd(tmp_path, ports, clocks))
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
@@ -423,7 +422,7 @@ def test_clock_named_like_domain_flag_not_spurious_fail(tmp_path):
         _port("xd_clk", "input", "clock", domain="x-domain"),
         _port("din", "input", "data", domain="x-domain", width=8),
     ]
-    clocks = [_clk("x-domain", 10.0, role="primary clock")]
+    clocks = [_clk("x-domain", 10.0)]
     proc = _run(_wd(tmp_path, ports, clocks), check=False)
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
 

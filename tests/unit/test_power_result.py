@@ -252,12 +252,10 @@ _SCEN = [
     {
         "id": "S1",
         "sequence_ref": "idle_seq",
-        "corner_intent": "TT@25C",
     },
     {
         "id": "S2",
         "sequence_ref": "busy_seq",
-        "corner_intent": "TT@25C",
     },
 ]
 
@@ -477,7 +475,6 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
                 {
                     "id": "S1",
                     "sequence_ref": "idle_seq",
-                    "corner_intent": "TT@25C",
                 }
             ]
         )

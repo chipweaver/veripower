@@ -44,8 +44,8 @@ def _diagnosis_sources(events, diag) -> list[str]:
     Both are addressable from the diagnosis's own `subject` plus the log — the failing run
     directly, and the analysis as the latest dispatch of that proof's declared diagnostic
     carrying `params.sim_run == outcome_run` — so neither is kept as a field. A stored copy
-    would be the same fact twice, and the analysis's own `experiment.artifacts[]` are a
-    third: they are listed inside the very envelope named here."""
+    would be the same fact twice, and the analysis's argument and evidence are a third: its
+    `findings[].reason` and `artifacts[]` are inside the very envelope named here."""
     subject = diag["subject"]
     out = []
     analyst = rules.RULES[subject["proof"]].triage
@@ -351,8 +351,8 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
 
 
 def _derive_triage(env, dispatch):
-    """Triage reap (the triage contract): complete -> (verdict, None, [], diagnosis-events);
-    skipped/crash -> blocked, no diagnosis (the sim failure stays ambiguous; next round
+    """Triage reap (the triage contract): findings -> (verdict, None, [], diagnosis-events);
+    none/crash -> blocked, no diagnosis (the sim failure stays ambiguous; next round
     re-dispatches triage). `root_cause` IS the rule name, so no map decodes it: it
     becomes `fix_owner` when it is a legal auto-rebuild target, and a self-pointing
     attribution (root_cause == the failing rule) is outside simulation's input closure by
@@ -370,17 +370,17 @@ def _derive_triage(env, dispatch):
     import uuid
 
     ss = env.get("stage_specific", {})
-    if ss.get("analysis_state") != "complete":
-        return "blocked", "skipped_reason", [], []
+    findings = ss.get("findings") or []
+    if not findings:
+        return "blocked", "no_attribution", [], []
     sim_hit = dispatch["params"].get("sim_run")
     # No evidence list: what this analysis rests on is derivable from the `subject` it
-    # carries (_diagnosis_sources), and `advisory.experiment.artifacts[]` are listed inside
-    # the very envelope that derivation names — a stored copy would be the same paths twice.
-    advisory = ss.get("advisory", {})
+    # carries (_diagnosis_sources), and whatever the analysis built is in that envelope's
+    # own artifacts[] — a stored copy would be the same paths twice.
     # The distinct root causes, in the order the analysis wrote them. Where each one points
-    # is not copied out: `findings[].anchor` is read from the analysis itself, which the
-    # dispatch that acts on this diagnosis names in caused_by.
-    causes = list(dict.fromkeys(f["root_cause"] for f in advisory.get("findings", [])))
+    # and why is not copied out: `findings[].anchor` and `findings[].reason` are read from the
+    # analysis itself, which the dispatch that acts on this diagnosis names in caused_by.
+    causes = list(dict.fromkeys(f["root_cause"] for f in findings))
     out = []
     for cause in causes:
         diagnosis = {

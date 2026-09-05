@@ -49,10 +49,9 @@ def test_minimal_complete_accepted(tmp_path):
     r = _run(
         tmp_path,
         {
-            "analysis_state": "complete",
-            "advisory": {
-                "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
-            },
+            "findings": [
+                {"anchor": "a.v:1", "root_cause": "rtl-design", "reason": "why"}
+            ],
         },
     )
     assert r.returncode == 0, r.stderr
@@ -62,10 +61,9 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
     r = _run(
         tmp_path,
         {
-            "analysis_state": "complete",
-            "advisory": {
-                "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
-            },
+            "findings": [
+                {"anchor": "a.v:1", "root_cause": "rtl-design", "reason": "why"}
+            ],
         },
     )
     assert r.returncode == 0, r.stderr
@@ -74,10 +72,7 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
     assert env["status"] == "pass"
     assert env["artifacts"] == []
     assert env["stage_specific"] == {
-        "analysis_state": "complete",
-        "advisory": {
-            "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
-        },
+        "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design", "reason": "why"}]
     }
     # the written file itself validates against the full merged schema
     import jsonschema
@@ -96,210 +91,85 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
     ).validate(env)
 
 
-def test_valid_skipped_derives_status_fail(tmp_path):
+def test_no_attribution_derives_status_fail(tmp_path):
     r = _run(
         tmp_path,
-        {
-            "analysis_state": "skipped",
-            "skipped_reason": "input incomplete: no fail_reason",
-        },
+        {"findings": [], "reason": "input incomplete: no fail_reason"},
     )
     assert r.returncode == 0, r.stderr
     env = json.loads((tmp_path / "result.json").read_text())
     assert env["status"] == "fail"
-    assert env["stage_specific"]["analysis_state"] == "skipped"
+    assert env["stage_specific"]["findings"] == []
 
 
-def test_missing_analysis_state_exits_nonzero_no_write(tmp_path):
-    r = _run(tmp_path, {"advisory": {"findings": []}})
+def test_missing_findings_exits_nonzero_no_write(tmp_path):
+    r = _run(tmp_path, {"reason": "x"})
     assert r.returncode == 1
-    assert "analysis_state" in r.stderr
+    assert "findings" in r.stderr
     assert not (tmp_path / "result.json").exists()
 
 
-def test_complete_without_findings_exits_nonzero(tmp_path):
-    """The attribution lives on the findings now, so a complete analysis with none has not
-    said whose fault it is."""
-    r = _run(tmp_path, {"analysis_state": "complete"})
-    assert r.returncode == 1
-    assert "advisory" in r.stderr or "findings" in r.stderr
-
-
 def test_finding_without_root_cause_exits_nonzero(tmp_path):
-    r = _run(
-        tmp_path,
-        {
-            "analysis_state": "complete",
-            "advisory": {"findings": [{"anchor": "a.v:1"}]},
-        },
-    )
+    r = _run(tmp_path, {"findings": [{"anchor": "a.v:1", "reason": "why"}]})
     assert r.returncode == 1
     assert "root_cause" in r.stderr
 
 
-def test_complete_finding_without_anchor_exits_nonzero(tmp_path):
-    """The anchor is what the fix owner opens this record for — the diagnosis names the
-    rule, this file names the line — so a complete analysis must never be missing one."""
-    r = _run(
-        tmp_path,
-        {
-            "analysis_state": "complete",
-            "advisory": {"findings": [{"root_cause": "rtl-design"}]},
-        },
-    )
+def test_finding_without_anchor_exits_nonzero(tmp_path):
+    """The anchor is where the fix owner starts — the diagnosis names the rule, this file
+    names the line — so a finding must never be missing one."""
+    r = _run(tmp_path, {"findings": [{"root_cause": "rtl-design", "reason": "why"}]})
     assert r.returncode == 1
     assert "anchor" in r.stderr
 
 
-def test_skipped_without_reason_exits_nonzero(tmp_path):
-    r = _run(tmp_path, {"analysis_state": "skipped"})
+def test_finding_without_reason_exits_nonzero(tmp_path):
+    """This file is the whole account the fix owner is handed. A finding with no argument is
+    a coordinate it cannot check, and it will act on it anyway."""
+    r = _run(tmp_path, {"findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}]})
     assert r.returncode == 1
-    assert "skipped_reason" in r.stderr
+    assert "reason" in r.stderr
+
+
+def test_no_attribution_without_reason_exits_nonzero(tmp_path):
+    r = _run(tmp_path, {"findings": []})
+    assert r.returncode == 1
+    assert "reason" in r.stderr
 
 
 def test_root_cause_outside_enum_exits_nonzero(tmp_path):
     r = _run(
         tmp_path,
-        {
-            "analysis_state": "complete",
-            "advisory": {"findings": [{"anchor": "a.v:1", "root_cause": "synthesis"}]},
-        },
+        {"findings": [{"anchor": "a.v:1", "root_cause": "synthesis", "reason": "why"}]},
     )
     assert r.returncode == 1
 
 
 def test_unknown_top_level_key_rejected_by_additional_properties_false(tmp_path):
-    payload = {
-        "analysis_state": "complete",
-        "groups": [{"fault_type": "x"}],
-    }
-    r = _run(tmp_path, payload)
+    r = _run(tmp_path, {"findings": [], "reason": "x", "groups": [{"fault_type": "x"}]})
     assert r.returncode == 1
     assert "groups" in r.stderr or "additional" in r.stderr.lower()
 
 
-def test_advisory_tier_label_rejected(tmp_path):
-    """`advisory.level` is gone: an experiment block is present exactly when one was built,
-    and a label the same author writes one line from the data it labels gated nothing —
-    omitting it or downgrading it both passed the requirement it was supposed to enforce."""
-    r = _run(
-        tmp_path,
-        {
-            "analysis_state": "complete",
-            "advisory": {
-                "level": "L2",
-                "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
-            },
-        },
-    )
-    assert r.returncode == 1
-    assert "level" in r.stderr
-
-
-def test_prose_names_no_advisory_key_the_schema_rejects():
-    """advisory is additionalProperties:false, so prose that instructs writing a key the schema
-    dropped costs the agent a rejected finalize. Both surviving mentions of the deleted
-    `waveform.observation` were exactly that; this pins the whole class."""
-    advisory = _stage_specific()["properties"]["advisory"]
-    legal = set(advisory["properties"])
-    for sub, node in advisory["properties"].items():
-        legal |= {f"{sub}.{k}" for k in node.get("properties", {})}
+def test_prose_names_no_stage_specific_key_the_schema_rejects():
+    """stage_specific is additionalProperties:false, so prose that instructs writing a key the
+    schema dropped costs the agent a rejected finalize. This pins the whole class."""
+    ss = _stage_specific()
+    legal = set(ss["properties"])
+    legal |= set(ss["properties"]["findings"]["items"]["properties"])
 
     skill_dir = ROOT / "skills/simulation-triage"
     docs = [skill_dir / "SKILL.md", *sorted(skill_dir.glob("references/*.md"))]
     cited: set[str] = set()
     for doc in docs:
-        text = doc.read_text()
-        for body in re.findall(r"advisory\.\{([^}]*)\}", text):
-            cited |= {t.strip().rstrip("[]") for t in body.split(",") if t.strip()}
-        for tok in re.findall(r"advisory\.([A-Za-z_]+(?:\.[A-Za-z_]+)?)", text):
+        for tok in re.findall(r'"([a-z_]+)":', doc.read_text()):
             cited.add(tok)
 
-    assert cited, "no advisory.* citation found — did the prose stop naming the shape?"
+    assert cited, "no JSON key citation found — did the prose stop naming the shape?"
     assert cited <= legal, (
-        f"prose names advisory key(s) absent from result.schema.json: "
+        f"prose names stage_specific key(s) absent from result.schema.json: "
         f"{sorted(cited - legal)}"
     )
-
-
-def test_advisory_unknown_key_rejected(tmp_path):
-    r = _run(
-        tmp_path,
-        {
-            "analysis_state": "complete",
-            "advisory": {"bogus": 1},
-        },
-    )
-    assert r.returncode == 1
-
-
-def test_advisory_old_repro_key_rejected(tmp_path):
-    r = _run(
-        tmp_path,
-        {
-            "analysis_state": "complete",
-            "advisory": {"repro": {"tool": "verilator"}},
-        },
-    )
-    # 'repro' renamed to 'experiment'; additionalProperties:false rejects it
-    assert r.returncode == 1
-
-
-def test_advisory_findings_valid(tmp_path):
-    r = _run(
-        tmp_path,
-        {
-            "analysis_state": "complete",
-            "advisory": {
-                "findings": [
-                    {
-                        "anchor": "fp_pkg.svh:264",
-                        "cases": ["T-E2E"],
-                        "root_cause": "rtl-design",
-                    }
-                ],
-            },
-        },
-    )
-    assert r.returncode == 0, r.stderr
-
-
-def test_advisory_waveform_valid(tmp_path):
-    r = _run(
-        tmp_path,
-        {
-            "analysis_state": "complete",
-            "advisory": {
-                "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
-                "waveform": {
-                    "commands": [
-                        "fsdbreport T-SMOKE.fsdb -s /fa_tb_top/u_dut/scores_S -bt 40ns -et 80ns -of h"
-                    ],
-                    "signals": ["/fa_tb_top/u_dut/scores_S"],
-                },
-            },
-        },
-    )
-    assert r.returncode == 0, r.stderr
-
-
-def test_advisory_experiment_valid(tmp_path):
-    r = _run(
-        tmp_path,
-        {
-            "analysis_state": "complete",
-            "advisory": {
-                "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
-                "experiment": {
-                    "tool": "verilator",
-                    "stimulus": "hand-picked fp32_add operand pairs 2+(-3),4+(-5)",
-                    "artifacts": ["experiment/tb_add.sv"],
-                    "golden": "golden_fa.py",
-                },
-            },
-        },
-    )
-    assert r.returncode == 0, r.stderr
 
 
 def test_json_file_input(tmp_path):
@@ -307,10 +177,9 @@ def test_json_file_input(tmp_path):
     p.write_text(
         json.dumps(
             {
-                "analysis_state": "complete",
-                "advisory": {
-                    "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
-                },
+                "findings": [
+                    {"anchor": "a.v:1", "root_cause": "rtl-design", "reason": "why"}
+                ]
             }
         )
     )

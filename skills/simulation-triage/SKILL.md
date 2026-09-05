@@ -43,8 +43,8 @@ what is actually there:
 
 - `failing_cases[]` — one case per entry, each with `error_message` and often a `log_snippet`.
   Read the full per-case log under `<sim_run>` when the snippet is cut short.
-- `coverage_gaps[]` — one case per gap bin, already split into `gaps_in_testpoints` and
-  `gaps_not_in_testpoints`. Regression passed, so there is no waveform to read.
+- `gaps_in_testpoints[]` / `gaps_not_in_testpoints[]` — the uncovered items, split by whether any
+  testpoint claimed them. Regression passed, so there is no waveform to read.
 - `<sim_run>/conformance-review.md` carrying a `BLOCKING` heading — the check-adequacy review
   stopped the round. Read it: the envelope deliberately carries none of it. Reaching you at all
   means the simulation stage already tried to repair its own checks and judged the defect upstream
@@ -55,9 +55,8 @@ what is actually there:
   already a specific sentence about what went wrong.
 
 If `<sim_run>/result.json` is unreadable or missing `fail_reason`, or the inputs show no failure at
-all, land `analysis_state: "skipped"` with a specific `skipped_reason`. That is the only way to say
-you cannot analyze this. `STATUS: BLOCKED` means the program crashed, never that you decided
-something.
+all, land an empty `findings[]` with a specific `reason`. That is the only way to say you cannot
+analyze this. `STATUS: BLOCKED` means the program crashed, never that you decided something.
 
 ## Reading the failing run's waveform
 
@@ -104,15 +103,20 @@ goes in by `` `include`` only, never copied and edited. And a golden model has t
 really a plan defect, and a wrong attribution is the one error this stage cannot absorb, because
 attribution is its whole product.
 
-Whatever the experiment produces stays at the path you record in `advisory.experiment.artifacts[]`.
-Those paths are what the next reader opens, so nothing there is cleaned up.
+Whatever the experiment produces stays under `{workdir}/experiment/`; `finalize` puts that
+directory into `artifacts[]`, so it is promoted and the next reader opens it there. Nothing in it
+is cleaned up.
 
 ## Landing the verdict
 
 Every finding carries a `root_cause` — `rtl-design`, `simulation-plan`, `specification`, or
-`simulation` — naming the rule that must act on **that** finding, and its `anchor` is the
-`file:line` that rework starts from. Choosing the `root_cause` is the judgment this stage exists
-to make.
+`simulation` — naming the rule that must act on **that** finding, its `anchor` is the `file:line`
+that rework starts from, and its `reason` is the argument: what you read and what you concluded
+from it. Choosing the `root_cause` is the judgment this stage exists to make; the `reason` is what
+makes it checkable. This file is the whole account the fix owner is handed, so a reason thin enough
+to be taken on trust is a reason it will act on without checking — and an anchor that has since
+moved will then be "fixed" wherever it now points. Write the evidence, not a restatement of the
+verdict.
 
 Do not fold several causes into whichever one is biggest and leave the rest in the prose. When two
 stages are implicated in **the same** cause and the evidence supports either, name the one you find
@@ -124,27 +128,19 @@ human.
 
 ```jsonc
 {
-  "analysis_state": "complete",
-  "advisory": {
-    // one entry per finding; findings sharing a root_cause become one attribution
-    "findings": [ { "anchor": "file:line", "cases": ["…"], "root_cause": "rtl-design" } ],
-    "waveform": {                    // when you queried a dump
-      "commands": ["fsdbreport <sim_run>/<test_id>.fsdb -s /<dut_top>_tb_top/u_dut/<sig> -bt 40ns -et 80ns -of h -o w.txt"],
-      "signals": ["/<dut_top>_tb_top/u_dut/<sig>"]
-    },
-    "experiment": {                  // when you built one
-      "tool": "<simulator you used>",
-      "stimulus": "<what you drove that the real run never did>",
-      "artifacts": ["experiment/tb_wrap.sv", "experiment/run.log", "experiment/golden.py"],
-      "golden": "<golden model description or path>"
+  // one entry per finding; findings sharing a root_cause become one attribution
+  "findings": [
+    {
+      "anchor": "file:line",
+      "root_cause": "rtl-design",
+      "reason": "what you read and what you concluded from it",
+      "cases": ["…"]                 // the failing test_ids this finding explains
     }
-  }
+  ]
 }
 ```
 
-`findings`, `waveform` and `experiment` nest under `advisory`, never at the top level, and every
-`artifacts[]` entry is a real workdir-relative path, resolved as written. The `skipped` shape
-carries `analysis_state` and `skipped_reason`, nothing else.
+The no-attribution shape is `{"findings": [], "reason": "<why>"}` and carries nothing else.
 
 Run `finalize` to schema-gate the judgment and atomically write `{workdir}/result.json`:
 

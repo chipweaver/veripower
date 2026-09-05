@@ -128,7 +128,7 @@ python3 <skill>/scripts/spec/__main__.py finalize \
   --workdir {workdir} --status <pass|fail> [--fail-reason "<one-line reason>"]
 ```
 
-You supply only the human-gate outcome; everything else in the envelope is finalize's, including `stage_specific.top_module`, which it takes from `manifest.module`. On the pass path it re-validates `requirements.json` and refuses one that still carries an `unassignable` row, then re-runs `check-crossrefs` and `derive-constraints` in-process — both were clean at Wave 2, so a failure now means an artifact was edited after that gate, which is BLOCKED rather than a routable fail. Exit 0 = `result.json` written, status pass or fail. A non-zero exit is a program exception: BLOCKED, reason on stderr, never a `status=fail`.
+You supply only the human-gate outcome; everything else in the envelope is finalize's. On the pass path it re-validates `requirements.json` and refuses one that still carries an `unassignable` row, then re-runs `check-crossrefs` and `derive-constraints` in-process — both were clean at Wave 2, so a failure now means an artifact was edited after that gate, which is BLOCKED rather than a routable fail. Exit 0 = `result.json` written, status pass or fail. A non-zero exit is a program exception: BLOCKED, reason on stderr, never a `status=fail`.
 
 ## Return Contract
 

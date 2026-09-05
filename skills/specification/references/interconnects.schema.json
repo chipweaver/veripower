@@ -6,7 +6,13 @@
   "type": "array",
   "items": {
     "type": "object",
-    "required": ["wire", "producers", "consumers", "width", "clock_domain"],
+    "required": [
+      "wire",
+      "producers",
+      "consumers",
+      "width",
+      "clock_domain"
+    ],
     "additionalProperties": false,
     "properties": {
       "wire": {
@@ -18,12 +24,18 @@
         "description": "RTL module names that drive the wire. `const` marks a literal source with no owning module.",
         "type": "array",
         "minItems": 1,
-        "items": {"type": "string", "minLength": 1}
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "consumers": {
         "type": "array",
         "minItems": 1,
-        "items": {"type": "string", "minLength": 1}
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "width": {
         "description": "Bit width. A heterogeneous control bundle cannot state one honest width — split it into per-field wires instead.",
@@ -35,14 +47,19 @@
         "type": "string",
         "minLength": 1
       },
-      "protocol": {"type": "string", "minLength": 1},
+      "protocol": {
+        "type": "string",
+        "minLength": 1
+      },
       "encoding": {
         "description": "A wire carrying an encoded control/status value pins its bit/field-to-symbol meaning here, same format and consumer-obligation rule as top-io.json's encoding; producer and consumer read this one entry, so per-wire agreement is structural. Agreement ACROSS buses is not pinned here — that joint contract goes in the design.md §1.4.2.1 companion. A raw data wire has none.",
         "type": "string",
         "minLength": 1
       },
-      "timing_constraint": {"type": "string", "minLength": 1},
-      "notes": {"type": "string", "minLength": 1}
+      "timing_constraint": {
+        "type": "string",
+        "minLength": 1
+      }
     }
   }
 }

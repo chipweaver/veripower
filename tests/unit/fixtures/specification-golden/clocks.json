@@ -3,7 +3,6 @@
     "name": "i_clk",
     "period_ns": 10.0,
     "relationship": "primary",
-    "generated": false,
-    "role": "primary clock"
+    "generated": false
   }
 ]

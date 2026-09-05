@@ -57,7 +57,6 @@ def _spec_workdir(tmp_path, rows=None):
                     "name": "i_clk",
                     "period_ns": 10.0,
                     "relationship": "primary",
-                    "role": "primary clock",
                 }
             ]
         )
@@ -128,9 +127,7 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert env["stage"] == "specification"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
-    assert ss == {
-        "top_module": "dut_top"
-    }  # lean: the review is prose, the ledger a sidecar
+    assert ss == {}  # lean: the review is prose, the ledger a sidecar
     assert {"path": "requirements.json"} in env["artifacts"]
     assert (
         json.loads((wd / "requirements.json").read_text()) == _ROWS
@@ -181,7 +178,7 @@ def test_golden_lean_against_a_real_run(tmp_path):
     assert result.build_result(wd, status="pass") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
-    assert env["stage_specific"] == {"top_module": top}
+    assert env["stage_specific"] == {}
     paths = {a["path"] for a in env["artifacts"]}
     assert paths == {
         "design.md",
@@ -262,8 +259,7 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     ss = env["stage_specific"]
-    assert ss["fail_reason"] == "external reference missing: /x/design.md"
-    assert ss["top_module"] == "dut_top"  # from manifest.module, no derivation run
+    assert ss == {"fail_reason": "external reference missing: /x/design.md"}
     paths = {a["path"] for a in env["artifacts"]}
     assert {
         "design.md",

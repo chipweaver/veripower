@@ -238,7 +238,6 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
     for s in scenarios:
         sid = s.get("id", "")
         seq = s.get("sequence_ref", "")
-        corner = s.get("corner_intent", "")
         saif = workdir / "saif" / f"{sid}.saif"
         size = saif.stat().st_size if saif.is_file() else 0
         flat = workdir / "reports_ptpx" / sid / "power_flat.rpt"
@@ -342,7 +341,6 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
                 "switching_mw": None if scenario_failed else switching,
                 "leakage_mw": None if scenario_failed else leakage,
                 "saif_annotation_rate": rate,
-                "corner_intent": corner,
                 "sequence_ref": seq,
             }
         )
@@ -356,7 +354,6 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
             "compile_info": compile_info,
             "failures": failures,
             "ppa_actual": ppa_actual,
-            "violations": [],
             "power_by_scenario": power_by_scenario,
         }
         f0 = failures[0]

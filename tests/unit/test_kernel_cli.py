@@ -506,20 +506,14 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
         d["workdir"],
         status="pass",
         stage_specific={
-            "analysis_state": "complete",
-            "advisory": {
-                "findings": [
-                    {
-                        "anchor": "matvec.v:42",
-                        "cases": ["t1"],
-                        "root_cause": "rtl-design",
-                    }
-                ],
-                "experiment": {
-                    "tool": "verilator",
-                    "artifacts": ["experiment/harness.sv"],
-                },
-            },
+            "findings": [
+                {
+                    "anchor": "matvec.v:42",
+                    "cases": ["t1"],
+                    "root_cause": "rtl-design",
+                    "reason": "the tap is read one cycle late",
+                }
+            ],
         },
     )
     r = _run_json(
@@ -549,7 +543,7 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
     assert diag["fix_owner"] == "rtl-design"
     assert diag["subject"] == {"proof": "simulation", "outcome_run": 7}
     # Nothing beyond the naming is copied onto the record: where the fix goes is in the
-    # analysis (advisory.findings[].anchor), and what it rests on is addressable from the
+    # analysis (findings[].anchor), and what it rests on is addressable from the
     # `subject` it already carries — the dispatch derives both (_diagnosis_sources).
     assert "fix_locus" not in diag and "evidence" not in diag
 
@@ -576,26 +570,26 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
         d["workdir"],
         status="pass",
         stage_specific={
-            "analysis_state": "complete",
-            "advisory": {
-                "findings": [
-                    {
-                        "anchor": "verification-plan.md:88",
-                        "cases": ["t1"],
-                        "root_cause": "simulation-plan",
-                    },
-                    {
-                        "anchor": "core_muldiv.v:129",
-                        "cases": ["t2"],
-                        "root_cause": "rtl-design",
-                    },
-                    {
-                        "anchor": "sequences.json:12",
-                        "cases": ["t3"],
-                        "root_cause": "simulation-plan",
-                    },
-                ]
-            },
+            "findings": [
+                {
+                    "anchor": "verification-plan.md:88",
+                    "cases": ["t1"],
+                    "root_cause": "simulation-plan",
+                    "reason": "no testpoint drives the back-to-back case",
+                },
+                {
+                    "anchor": "core_muldiv.v:129",
+                    "cases": ["t2"],
+                    "root_cause": "rtl-design",
+                    "reason": "the divider stalls one cycle short",
+                },
+                {
+                    "anchor": "sequences.json:12",
+                    "cases": ["t3"],
+                    "root_cause": "simulation-plan",
+                    "reason": "the sequence never raises backpressure",
+                },
+            ],
         },
     )
     r = _run_json(
@@ -621,7 +615,7 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
 def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
     # triage 无独立 fail 态. A schema-legal result.json (the envelope allows
     # status ∈ {pass, fail}; the triage schema does not pin it) that carries status="fail"
-    # with analysis_state="complete" must NOT produce an outcome verdict="fail" — a non-proof
+    # carrying findings[] must NOT produce an outcome verdict="fail" — a non-proof
     # rule's fail outcome later crashes required_proofs(repair)/step-2's FORWARD_PRIORITY.index.
     monkeypatch.chdir(tmp_path)
     module = "triagefail"
@@ -631,10 +625,9 @@ def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
         d["workdir"],
         status="fail",  # schema-legal, but triage has no fail state
         stage_specific={
-            "analysis_state": "complete",
-            "advisory": {
-                "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
-            },
+            "findings": [
+                {"anchor": "a.v:1", "root_cause": "rtl-design", "reason": "why"}
+            ],
         },
     )
     r = _run_json(
@@ -664,8 +657,8 @@ def test_triage_skipped_reap_blocks_no_diagnosis(tmp_path, monkeypatch):
         d["workdir"],
         status="fail",
         stage_specific={
-            "analysis_state": "skipped",
-            "skipped_reason": "no fail case to analyze",
+            "findings": [],
+            "reason": "no fail case to analyze",
         },
     )
     r = _run_json(
@@ -685,7 +678,7 @@ def test_triage_skipped_reap_blocks_no_diagnosis(tmp_path, monkeypatch):
     outcomes = [e for e in events if e["type"] == "outcome"]
     assert len(outcomes) == 1
     assert outcomes[0]["verdict"] == "blocked"
-    assert outcomes[0]["reason"] == "skipped_reason"
+    assert outcomes[0]["reason"] == "no_attribution"
     assert outcomes[0]["proofs"] == [] and outcomes[0]["outputs"] == {}
     assert not any(e["type"] == "diagnosis" for e in events)
 
@@ -705,10 +698,9 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
         d["workdir"],
         status="pass",
         stage_specific={
-            "analysis_state": "complete",
-            "advisory": {
-                "findings": [{"anchor": "a.v:1", "root_cause": "simulation"}],
-            },
+            "findings": [
+                {"anchor": "a.v:1", "root_cause": "simulation", "reason": "why"}
+            ],
         },
     )
     r = _run_json(
@@ -840,10 +832,9 @@ def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
         d["workdir"],
         status="pass",
         stage_specific={
-            "analysis_state": "complete",
-            "advisory": {
-                "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}],
-            },
+            "findings": [
+                {"anchor": "a.v:1", "root_cause": "rtl-design", "reason": "why"}
+            ],
         },
     )
     r = _run_json(
@@ -867,16 +858,15 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
     # diagnosis subject with the OLD run's sim_run (mirrors the proof path's per-run lookup).
     monkeypatch.chdir(tmp_path)
     module = "rereap"
-    _adv = {"findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}]}
+    _ss = {
+        "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design", "reason": "why"}]
+    }
     d1 = _dispatch_triage(tmp_path, module, sim_run=5)
     _write_triage_result(
         module,
         d1["workdir"],
         status="pass",
-        stage_specific={
-            "analysis_state": "complete",
-            "advisory": _adv,
-        },
+        stage_specific=_ss,
     )
     _run_json(
         tmp_path,
@@ -895,10 +885,7 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
         module,
         d2["workdir"],
         status="pass",
-        stage_specific={
-            "analysis_state": "complete",
-            "advisory": _adv,
-        },
+        stage_specific=_ss,
     )
     _run_json(
         tmp_path,
@@ -1024,7 +1011,7 @@ def test_pin_zero_match_selector_rejected(tmp_path, monkeypatch):
 
 
 def test_triage_complete_without_findings_blocked(tmp_path, monkeypatch):
-    # A complete triage MUST carry non-empty advisory.findings[] each with an
+    # A triage that attributes MUST carry non-empty findings[] each with an
     # anchor (so the record the fix owner opens always says where). A complete analysis
     # with no findings violates the schema -> reap derives blocked.
     monkeypatch.chdir(tmp_path)
@@ -1034,10 +1021,8 @@ def test_triage_complete_without_findings_blocked(tmp_path, monkeypatch):
         module,
         d["workdir"],
         status="pass",
-        stage_specific={
-            "analysis_state": "complete",
-        },
-    )  # no advisory.findings
+        stage_specific={"findings": [], "reason": "nothing to analyse"},
+    )  # no findings
     r = _run_json(
         tmp_path,
         "reap",

@@ -7,7 +7,11 @@
   "minItems": 1,
   "items": {
     "type": "object",
-    "required": ["name", "period_ns", "relationship"],
+    "required": [
+      "name",
+      "period_ns",
+      "relationship"
+    ],
     "additionalProperties": false,
     "properties": {
       "name": {
@@ -22,15 +26,15 @@
       },
       "relationship": {
         "description": "async clocks drive set_clock_groups -asynchronous (SDC) and a distinct -domain (SGDC).",
-        "enum": ["primary", "synchronous-related", "async"]
+        "enum": [
+          "primary",
+          "synchronous-related",
+          "async"
+        ]
       },
       "generated": {
         "description": "true for a divider/PLL output with no top-level port: derive-constraints emits no create_clock for it and records a create_generated_clock-deferred-to-RTL note instead. Omitted means false.",
         "type": "boolean"
-      },
-      "role": {
-        "description": "Free text for human and agent readers. No script parses it.",
-        "type": "string"
       }
     }
   }
