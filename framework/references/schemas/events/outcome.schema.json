@@ -28,6 +28,11 @@
       }
     },
     "tool_versions": {"type": "object"},
+    "requirements": {
+      "type": "array",
+      "description": "Every verdict the run recorded on a ledger row, copied from its result.json at reap. Here rather than left on disk because signoff reads the log, and a verdict a human never sees establishes nothing.",
+      "items": {"$ref": "https://veripower.local/schemas/envelope.schema.json#/$defs/requirement_verdict"}
+    },
     "reason": {"type": "string", "description": "blocked sub-class (free string): missing / unparseable / malformed / schema_violation / stale_result / produced_at_unparseable / skipped_reason"}
   }
 }

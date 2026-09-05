@@ -214,6 +214,13 @@ def cmd_reap(module, rule, run):
     }
     if reason:
         ev["reason"] = reason
+    if verdict != "blocked":
+        # The verdicts ride into the log because signoff reads the log, and for the four tool
+        # stages signoff is the only place a human sees them at all. Re-read rather than
+        # threaded through _derive_verdict, whose return shape never varies by rule kind.
+        judged = json.loads(rj.read_text())["stage_specific"].get("requirements")
+        if judged:
+            ev["requirements"] = judged
     facts.append_event(module, ev, _now())
     for diagnosis in diagnoses:  # triage complete -> land the attributions
         facts.append_event(module, diagnosis, _now())

@@ -186,23 +186,35 @@ def _event_schema(etype: str) -> dict:
     return json.loads(path.read_text())
 
 
+_ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
+_ENVELOPE_SCHEMA_PATH = (
+    _PLUGIN_ROOT / "framework" / "references" / "schemas" / "envelope.schema.json"
+)
+
+
+def _envelope_registry() -> Registry:
+    """The one place the shared envelope is registered, so an event schema and a stage schema
+    both reach `$defs.requirement_verdict` at the same URI instead of each carrying a copy."""
+    envelope = Resource.from_contents(
+        json.loads(_ENVELOPE_SCHEMA_PATH.read_text()),
+        default_specification=DRAFT202012,
+    )
+    return Registry().with_resource(_ENVELOPE_URI, envelope)
+
+
 def append_event(module: str, event: dict, ts: str) -> None:
     etype = event.get("type")
     record = {"ts": ts, **event}  # ts first
     try:
-        jsonschema.validate(record, _event_schema(etype))
+        jsonschema.Draft202012Validator(
+            _event_schema(etype), registry=_envelope_registry()
+        ).validate(record)
     except jsonschema.ValidationError as e:
         sys.exit(f"append_event: {etype} schema violation: {e.message}")
     p = events_path(module)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a") as fh:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-
-_ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
-_ENVELOPE_SCHEMA_PATH = (
-    _PLUGIN_ROOT / "framework" / "references" / "schemas" / "envelope.schema.json"
-)
 
 
 def _stage_result_schema_path(rule_name: str) -> Path:
@@ -220,12 +232,9 @@ def validate_result(rule_name: str, result: dict) -> str | None:
     direction is 'not proven valid', never a silent pass."""
     try:
         stage_schema = json.loads(_stage_result_schema_path(rule_name).read_text())
-        envelope = Resource.from_contents(
-            json.loads(_ENVELOPE_SCHEMA_PATH.read_text()),
-            default_specification=DRAFT202012,
+        validator = jsonschema.Draft202012Validator(
+            stage_schema, registry=_envelope_registry()
         )
-        registry = Registry().with_resource(_ENVELOPE_URI, envelope)
-        validator = jsonschema.Draft202012Validator(stage_schema, registry=registry)
         errors = sorted(
             validator.iter_errors(result), key=lambda e: list(e.absolute_path)
         )
@@ -627,6 +636,10 @@ def signoff_basis(module: str, events: list[dict]) -> list[dict]:
       a given library and tool. Recorded at reap from the environment, so it is the weaker of
       the two homes tool identity has; the version the report itself states lives in that
       stage's own result.json.
+    - `requirements` — the propositions themselves: each row this proof judged, whether it was
+      met, and `measured`, the number the stage actually read and where from. The ledger names a
+      dimension; only this says what that name indexed, and for the four tool stages there is no
+      human gate before this one, so a verdict absent here is a verdict nobody ever saw.
     - `inputs` — the proposition is about these bytes. The paths say what the verdict was
       about; their fingerprints are in the log, and the kernel re-checks them on every query,
       so a reviewer does not re-verify by hand. A bare list: a sibling count would only ever
@@ -658,6 +671,7 @@ def signoff_basis(module: str, events: list[dict]) -> list[dict]:
                 "run": outcome["run"],
                 "oracle": oracle,
                 "tool_versions": outcome.get("tool_versions", {}),
+                "requirements": outcome.get("requirements", []),
                 "inputs": sorted(proof.get("inputs", {})),
             }
         )

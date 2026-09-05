@@ -58,7 +58,7 @@ _STAGE_SPECIFIC = {
     "simulation-plan": {},
     "rtl-design": {},
     "lint-cdc": {"violations": [], "requirements": []},
-    "synthesis": {"ppa_actual": [], "requirements": []},
+    "synthesis": {"requirements": []},
     "timing-analysis": {
         "violations": [],
         "requirements": [],
@@ -76,7 +76,6 @@ _STAGE_SPECIFIC = {
         "saif_artifacts": [],
         "compile_info": {"vcs_version": "test"},
         "failures": [],
-        "ppa_actual": [],
         "requirements": [],
         "power_by_scenario": [],
     },
