@@ -1,3 +1,5 @@
+// filelist.f — GENERATED every round from the plan and top-io.json.
+// Do not hand-edit; a source you add is picked up by re-rendering, not by a line here.
 +incdir+${UVM_HOME}/src
 ${UVM_HOME}/src/uvm_pkg.sv
 +incdir+tb/uvm/transaction

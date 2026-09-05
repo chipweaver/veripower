@@ -1,3 +1,9 @@
+// The TB package for {{MODULE}}.
+// GENERATED every round from the plan — the include list is the plan's agent, sequence and
+// checker names, so an include you add here is gone next round, and the file it named is
+// left behind uncompiled. A check the env must instantiate goes into the reference model or
+// the scoreboard named below; one that stands on its own goes in a file listed in
+// tb/uvm/tb_sources.f, which is not regenerated.
 package {{MODULE}}_tb_pkg;
   import uvm_pkg::*;
   `include "uvm_macros.svh"
