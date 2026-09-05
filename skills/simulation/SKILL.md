@@ -36,7 +36,7 @@ each input's producer has recorded it and the fingerprint on disk still matches.
 
 | Path | Use |
 |---|---|
-| `<scaffold>/tb-scaffold.json` + `<scaffold>/sequences.json` | The plan's judgment: which agent owns which `interface_group`, and what to run. `agents` / `sequences` / `tests` are what gets materialized into SV; `testpoints[]` carry which checks each one covers (`covers[]`), what it drives (`intent`) and what it should reach (`bins`). `top` names the DUT. A sub-Task input: you hand over the path. |
+| `<scaffold>/tb-scaffold.json` + `<scaffold>/sequences.json` | The plan's judgment: which agent owns which `interface_group`, and what to run. `agents` / `sequences` / `tests` are what gets materialized into SV; `testpoints[]` carry which checks each one covers (`covers[]`), and what it drives (`intent`). `top` names the DUT. A sub-Task input: you hand over the path. |
 | `<check_hints>/<child>.json` + `<requirements>/requirements.json` | What every covered check observes and against what rule, and the requirement rows each check establishes; the env child reads both by id. The coverage gate reads its bounds from the requirements rows simulation judges. Sub-Task inputs: you hand over the paths. |
 | `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |
 | `<plan>/verification-plan.md` | The human-readable plan the env-build child fills intent against. A sub-Task input; you hand over the path. |
@@ -60,7 +60,7 @@ enumerates it into `artifacts[]` for you:
 
 | Written by | What |
 |---|---|
-| env-build (wave 1) | `Makefile`, `env.sh`, `filelist.f`, `rtl_filelist.f`, `tb/uvm/**`, `scripts/**`, `tests/testlist.json`, the smoke `regression-log.txt` with its per-test `logs/`, and `verify-handoff.json` |
+| env-build (wave 1) | `Makefile`, `env.sh`, `filelist.f`, `rtl_filelist.f`, `tb/uvm/**`, `scripts/**`, `tests/testlist.json`, and the smoke `regression-log.txt` with its per-test `logs/` |
 | the conformance reviewer (wave 2) | `conformance-review.md` |
 | verify (wave 3) | the full-regress `regression-log.txt`, `structural-coverage.json`, `case-results.json`, `case-results-summary.md` |
 | you, via `sim finalize` | `result.json` |
@@ -82,8 +82,7 @@ and leave the re-dispatch to a repair round.
 Dispatch one `Task(run_in_background=True)`, the env-build child, pointing its prompt at
 [`references/env-task-contract.md`](references/env-task-contract.md) and handing over paths only:
 `{workdir}`, `{module}`, `<skill>`, the scaffold-spec path, the verification-plan path, and this
-round's edit scope. It bootstraps, fills every rendered `TODO(` within the Rule A repair boundary
-([`references/repair-boundaries.md`](references/repair-boundaries.md)), compiles, runs smoke, and
+round's edit scope. It bootstraps, fills every rendered `TODO(`, compiles, runs smoke, and
 self-gates its own `STATUS: DONE` on `sim check-materialization` so a hollow TB cannot reach the
 verify run.
 
@@ -91,23 +90,21 @@ On `STATUS: BLOCKED <reason>`, close the round and dispatch nothing further:
 
 ```bash
 python3 <skill>/scripts/sim/__main__.py finalize --workdir {workdir} \
-  --phase env-blocked --failure-phase <compile|smoke|prerequisite> \
-  --fail-reason "<reason>"
+  --phase fail --fail-reason "<the child's reason, verbatim>"
 ```
 
-The child's reason string picks `--failure-phase`: `compile` or `smoke` for a Rule A semantic
-block, `prerequisite` for a check hint whose rule cannot be authored from, which is
-specification's defect rather than one of yours.
+Pass the child's own line through: it names where it stopped and why, and that sentence is the
+whole of what the next reader gets. Do not compress it into a category.
 
 Otherwise gate on the smoke run's own output, never on the child's prose about it. Read
 `regression-log.txt`'s `RESULT <test> <PASS|FAIL>` lines, or the per-test `logs/<test>.status`
 files. Do not use `sim finalize` as this gate: its coverage leg hard-fails before regress has
 produced anything to measure.
 
-- No `RESULT` line at all means `make simv` produced no `simv`, so nothing ran: `finalize --phase
-  smoke --failure-phase compile`.
-- Any non-`PASS` line: `finalize --phase smoke --failure-phase smoke`, passing `--verify-verdict`
-  with the reaped verdict so `failing_cases` reaches triage.
+- No `RESULT` line at all means `make simv` produced no `simv`, so nothing ran:
+  `finalize --phase fail --fail-reason "make simv produced no simv; no test ran"`.
+- Any non-`PASS` line: `finalize --phase fail --fail-reason "<which test, and its first error>"`,
+  passing `--verify-verdict` with the reaped verdict so `failing_cases` reaches triage.
 - Every line `PASS`: go to step 2.
 
 ### 2. Judge the checks
@@ -141,7 +138,7 @@ whether the check can be made adequate at all.
 
 ```bash
 python3 <skill>/scripts/sim/__main__.py finalize --workdir {workdir} \
-  --phase conformance --fail-reason "<the fixer's reason>"
+  --phase fail --fail-reason "<the fixer's reason>"
 ```
 
 Dispatch no verify wave after that. The envelope carries the reason; the findings stay in
@@ -149,24 +146,24 @@ Dispatch no verify wave after that. The envelope carries the reason; the finding
 `simulation-triage`, which opens that record and reaches the attribution this stage does not
 try to.
 
-**No usable review** (`STATUS: BLOCKED`, or no file): do not gate on it, and do not let it
-disappear either. Write the record yourself and go to step 3:
+**No usable review** (`STATUS: BLOCKED`, or no file): close the round.
 
-```markdown
-# conformance review — <module>
-
-## -  -
-Review wave failed: <reason>. The checks went unjudged this round.
+```bash
+python3 <skill>/scripts/sim/__main__.py finalize --workdir {workdir} \
+  --phase fail --fail-reason "conformance review did not run: <the reviewer's reason>"
 ```
 
-This is the only record you author, and it says that no review happened, not what a review
-found. It carries no `BLOCKING`, so it does not gate: an absent judgment is not a finding.
+The review IS this gate. A round whose checks went unjudged has not established that they verify
+anything, so it cannot pass — and you must not author a stand-in record saying so, because a
+record with no `BLOCKING` in it reads to the gate as a clean review and would let exactly that
+round through (checked: `conformance_flagged` returns `[]` on such a file). Dispatch no verify
+wave; the next round re-runs the reviewer.
 
 ### 3. Regress and cover
 
 Dispatch one `Task(run_in_background=True)`, the verify child, pointing its prompt at
 [`references/verify-task-contract.md`](references/verify-task-contract.md) and handing over the same
-`{workdir}` (now holding the built TB, a compiled `simv` and `verify-handoff.json`), the
+`{workdir}` (now holding the built TB and a compiled `simv`), the
 scaffold-spec path, `{module}`, and `<skill>`. It runs the full regression and iterates stimulus against the
 coverage bounds the requirements set, within the Rule B boundary
 ([`references/coverage-iteration.md`](references/coverage-iteration.md)). It repairs nothing: a
@@ -175,13 +172,13 @@ regress failure routes out with `failing_cases` for the caller to attribute.
 Reap its `STATUS:` line and its JSON line. Anything other than a clean verdict closes the round
 here, without step 4:
 
-- a failing regress case: `finalize --phase regress --failure-phase regress --plan <scaffold>`;
-- Rule B gaps (`coverage` in its verdict): `finalize --phase regress
-  --failure-phase coverage --plan <scaffold>`;
-- `STATUS: BLOCKED`: `finalize --phase verify-blocked`.
+- a failing regress case: `finalize --phase fail --fail-reason "<the failing test and its error>"`;
+- Rule B gaps (`coverage` in its verdict): `finalize --phase fail --fail-reason "<which dimension
+  is short, and whether the gaps sit inside any testpoint>"`;
+- `STATUS: BLOCKED`: `finalize --phase fail --fail-reason "<the child's reason, verbatim>"`.
 
 Pass `--verify-verdict <reaped verdict>.json` on the first two: that file is where `failing_cases`
-and the coverage gap lists come from.
+and the coverage gap lists come from, and finalize carries across whichever of them it holds.
 
 ### 4. Close
 
@@ -208,8 +205,10 @@ are the two it cannot re-derive, and each already wrote its own `status=fail` an
 followed, so what reaches this command is only ever the most-failing verdict you hold.
 
 Exit 0 means `result.json` was written, pass or fail. A non-zero exit is a program exception, not a
-`status=fail`. `fail_reason` rides on every fail and is absent on a pass; finalize derives it,
-and the `--phase` you called selects which companion fields ride with it.
+`status=fail` — including `--phase fail` with no `--fail-reason`, which finalize refuses rather than
+writing an envelope the reap would reject. `fail_reason` rides on every fail and is absent on a
+pass; on `--phase final` finalize derives it, and the companions follow from what the reaped verify
+verdict actually carries.
 
 **Naming the fix owner.** On a failure, add `--fix-owner <rule>`, the rule that must act. A
 functional or latency miss the reference model confirms is `rtl-design`; a testpoint or scenario

@@ -101,18 +101,16 @@ def test_final_pass_writes_result(tmp_path):
     assert "result.json" not in [a["path"] for a in env["artifacts"]]
 
 
-def test_verify_handoff_promoted(tmp_path):
-    # verify-handoff.json is promoted to artifacts[] so the
-    # freeze classifier can locate it via the canonical result's artifact list.
+def test_conformance_review_promoted(tmp_path):
+    # The review is promoted into artifacts[] — it is the record the round routes on, and the
+    # only stage product a later reader opens by name.
     wd = _final_workdir(tmp_path)
-    (wd / "verify-handoff.json").write_text("{}\n")
     proc = _finalize_final(wd)
     assert proc.returncode == 0, proc.stderr
     paths = [
         a["path"] for a in json.loads((wd / "result.json").read_text())["artifacts"]
     ]
-    assert "verify-handoff.json" in paths
-    assert "conformance-review.md" in paths  # a sibling handoff IS also promoted
+    assert "conformance-review.md" in paths
 
 
 def test_final_pass_missing_case_results_is_blocked(tmp_path):
@@ -127,13 +125,13 @@ def test_final_pass_missing_case_results_is_blocked(tmp_path):
 
 
 def test_conformance_phase_writes_the_routing_envelope(tmp_path):
-    # The fail-out carries the phase and the reason; the findings themselves stay in the
-    # promoted review beside it, which is what triage opens. Copying them into the envelope
-    # would duplicate a structured sibling in the same directory.
+    # The fail-out carries the reason; the findings themselves stay in the promoted review
+    # beside it, which is what triage opens. Copying them into the envelope would duplicate a
+    # structured sibling in the same directory.
     proc = _finalize(
         tmp_path,
         "--phase",
-        "conformance",
+        "fail",
         "--fail-reason",
         "TP-01: check cannot detect the fault its intent names",
     )
@@ -245,15 +243,7 @@ def test_final_compile_fail_carries_no_coverage_companions(tmp_path):
 
 def test_early_exit_smoke(tmp_path):
     wd = tmp_path
-    proc = _finalize(
-        wd,
-        "--phase",
-        "smoke",
-        "--failure-phase",
-        "smoke",
-        "--fail-reason",
-        "case X failed",
-    )
+    proc = _finalize(wd, "--phase", "fail", "--fail-reason", "case X failed")
     assert proc.returncode == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
@@ -313,3 +303,18 @@ def test_failing_cases_pins_what_triage_reads():
     assert (
         "log_snippet" in item["properties"]
     )  # optional: triage falls back to the full log
+
+
+def test_fail_phase_refuses_an_empty_reason(tmp_path):
+    """The documented route-out commands used to omit --fail-reason, which wrote
+    `fail_reason: ""` — rejected by the envelope schema at reap, so the round cost a blocked
+    outcome instead of a routable fail. Measured 6 times across 5 production runs on 2 designs.
+    finalize now refuses to write it."""
+    proc = _finalize(tmp_path, "--phase", "fail")
+    assert proc.returncode == 2
+    assert "--fail-reason is required" in proc.stderr
+    assert not (tmp_path / "result.json").exists()
+
+    proc = _finalize(tmp_path, "--phase", "fail", "--fail-reason", "   ")
+    assert proc.returncode == 2
+    assert not (tmp_path / "result.json").exists()

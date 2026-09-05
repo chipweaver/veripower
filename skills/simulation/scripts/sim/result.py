@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """sim finalize — assemble the lean simulation result.json at the given exit phase.
 
-result.json's sole owner. --phase final re-derives the exit verdict in-process from
-the three gate primitives in sim._gate (earliest failing wave wins), folds the reaped verify verdict, and
-writes pass|fail; no gate's fail can be argued past it. The early-exit phases
-(env-blocked/smoke/conformance/regress/verify-blocked) write the status=fail envelope,
-with --failure-phase picking the phase where the call-site spans several and the companion
-fields keyed off the resolved phase (the phase itself is internal — it selects, it is not written). Exit 0 = result.json written (pass or fail);
-exit 2 = BLOCKED (internal raise) — never conflated with status=fail.
+result.json's sole owner. --phase final re-derives the exit verdict in-process from the three gate
+primitives in sim._gate (earliest failing wave wins), folds the reaped verify verdict, and writes
+pass|fail; no gate's fail can be argued past it. --phase fail writes the status=fail envelope from
+the reason the caller holds. Which companions ride along is read off the reaped verify verdict
+itself rather than declared: the verdict carries failing_cases or it carries the coverage gap
+lists, and that is already the answer. Exit 0 = result.json written (pass or fail);
+exit 2 = BLOCKED (internal raise, or a fail with no reason) — never conflated with status=fail.
 """
 
 from __future__ import annotations
@@ -102,22 +102,20 @@ def build_result(
     conformance_review=None,
     verify_verdict=None,
     fail_reason=None,
-    observed_phase=None,
     fix_owner=None,
 ) -> int:
     """Assemble the lean simulation result.json for the given exit phase.
     final -> re-derive compile/conformance/coverage from on-disk artifacts, fold the reaped
              verify verdict, write pass|fail.
-    env-blocked|smoke|conformance|regress|verify-blocked -> write the early-exit
-             status=fail envelope (observed_phase picks the phase where the
-             call-site spans several; companions keyed off the resolved phase).
+    fail  -> write the status=fail envelope from the caller's reason, carrying whatever the
+             reaped verify verdict holds.
     Returns 0 (result.json written). A raise -> main() exit 2 (BLOCKED)."""
     workdir = Path(workdir)
     artifacts = enumerate_artifacts(workdir)
     verify = json.loads(Path(verify_verdict).read_text()) if verify_verdict else {}
 
     if phase != "final":
-        ss = _early_exit_ss(phase, fail_reason, verify, observed_phase)
+        ss = _early_exit_ss(fail_reason, verify)
         _write_result(
             workdir,
             _envelope(
@@ -233,7 +231,6 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
         "tests/testlist.json",
         "regression-log.txt",
         "logs",
-        "verify-handoff.json",
         "conformance-review.md",
         "structural-coverage.json",
         "case-results.json",
@@ -242,28 +239,15 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
     return [{"path": p} for p in candidates if (workdir / p).exists()]
 
 
-def _early_exit_ss(phase, fail_reason, verify, observed_phase=None) -> dict:
-    # call-site -> the phase that decides which companions ride along (overridden by
-    # observed_phase where the call-site spans several). The phase itself stays internal:
-    # what it selects is on the envelope, the label it selected by is not.
-    fp = (
-        observed_phase
-        or {
-            "env-blocked": "compile",
-            "smoke": "smoke",
-            "conformance": "conformance",
-            "regress": "regress",
-            "verify-blocked": "regress",
-        }[phase]
-    )
-    ss = {"fail_reason": fail_reason or ""}
-    # companions keyed off the RESOLVED phase, not the call-site:
-    if fp in ("smoke", "regress") and "failing_cases" in verify:
-        ss["failing_cases"] = verify["failing_cases"]
-    if fp == "coverage":  # Rule-B verify route-out
-        for k in ("coverage_gaps", "gaps_not_in_testpoints", "gaps_in_testpoints"):
-            if k in verify:
-                ss[k] = verify[k]
+def _early_exit_ss(fail_reason, verify) -> dict:
+    """The fail envelope: the caller's reason, plus whatever the reaped verify verdict actually
+    carries. Nothing selects the companions but their own presence — a verdict holding
+    failing_cases is a regress or smoke failure, one holding the gap lists is a Rule-B route-out,
+    and a caller that reaped no verdict has neither to pass on."""
+    ss = {"fail_reason": fail_reason}
+    for k in ("failing_cases", "gaps_in_testpoints", "gaps_not_in_testpoints"):
+        if verify.get(k):
+            ss[k] = verify[k]
     return ss
 
 
@@ -276,7 +260,6 @@ def finalize(
     conformance_review=None,
     verify_verdict=None,
     fail_reason=None,
-    observed_phase=None,
     fix_owner=None,
 ) -> int:
     """Assemble the lean simulation result.json. exit 0 = result.json written (pass or fail);
@@ -292,7 +275,6 @@ def finalize(
             conformance_review=conformance_review,
             verify_verdict=verify_verdict,
             fail_reason=fail_reason,
-            observed_phase=observed_phase,
             fix_owner=fix_owner,
         )
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED

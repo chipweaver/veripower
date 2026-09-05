@@ -27,9 +27,12 @@ def test_sim_conformance_selfheal_no_deferred():
 
 def test_sim_conformance_has_selfheal_loop():
     # A trip is repaired in-stage first, and the fixer, not the reviewer, is the one that
-    # decides the defect is upstream: it is the one that tried.
+    # decides the defect is upstream: it is the one that tried. Asserted as the invariant, not
+    # as a CLI literal — an earlier version of this test pinned `--phase conformance`, which
+    # said nothing about the disposition and broke when the flag was collapsed.
     assert "conformance-fix" in SIM
-    assert "STATUS: BLOCKED" in SIM and "--phase conformance" in SIM
+    assert "STATUS: BLOCKED" in SIM
+    assert "the fixer's reason" in SIM  # its word, not the reviewer's, closes the round
 
 
 def test_conformance_fix_contract_exists():

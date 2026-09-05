@@ -4,7 +4,7 @@
 Verbs (one stage = one tool):
   bootstrap             deploy infra + optional scaffold into a run workdir   (exit 0 / 1 / 2)
   check-materialization presence gate over the materialized TB (env-exit self-gate) (stdout verdict; exit 0/1)
-  finalize              write result.json at the exit phase                   (exit 0 written / 2 BLOCKED)
+  finalize              write result.json (--phase fail | final)              (exit 0 written / 2 BLOCKED)
 
 Thin dispatcher: each subcommand parses its own flags and calls into the sim.*
 library. Library imports are deferred into each handler rather than taken at the top so
@@ -49,6 +49,16 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    # A fail envelope whose reason is empty is rejected by the envelope schema at reap, which
+    # costs the round a blocked outcome instead of a routable fail. Refuse here, loudly, rather
+    # than write one: the caller always holds a reason — the child's BLOCKED line, or the
+    # failing case it just read.
+    if a.phase == "fail" and not (a.fail_reason and a.fail_reason.strip()):
+        print(
+            "[sim finalize] ERROR: --fail-reason is required for --phase fail",
+            file=sys.stderr,
+        )
+        return 2
     return result.finalize(
         a.workdir,
         phase=a.phase,
@@ -57,7 +67,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         conformance_review=a.conformance_review,
         verify_verdict=a.verify_verdict,
         fail_reason=a.fail_reason,
-        observed_phase=a.failure_phase,
         fix_owner=a.fix_owner,
     )
 
@@ -86,33 +95,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--plan", required=True, type=Path)
     sp.set_defaults(func=_cmd_check_materialization)
 
-    sp = sub.add_parser("finalize", help="write result.json at the exit phase")
+    sp = sub.add_parser("finalize", help="write result.json (--phase fail | final)")
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
         "--phase",
         required=True,
-        choices=[
-            "env-blocked",
-            "smoke",
-            "conformance",
-            "regress",
-            "verify-blocked",
-            "final",
-        ],
-    )
-    sp.add_argument(
-        "--failure-phase",
-        choices=[
-            "prerequisite",
-            "compile",
-            "smoke",
-            "conformance",
-            "regress",
-            "coverage",
-        ],
-        default=None,
-        help="the observed phase when the call-site spans several; defaults per --phase. It\n"
-        "selects which companion fields ride along and is not itself written.",
+        choices=["fail", "final"],
+        help="`fail` closes the round on a failure the caller already holds a reason for; "
+        "`final` re-runs the three exit gates. Which sub-step tripped is not a flag: it is "
+        "what --fail-reason says, and which companions ride along follows from what the "
+        "reaped verify verdict actually carries.",
     )
     sp.add_argument(
         "--plan",

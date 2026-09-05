@@ -2,27 +2,46 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation/result.schema.json",
   "title": "simulation result.json contract",
-  "description": "Complete contract for <module>/Verification/simulation/result.json. On status=fail, stage_specific.fail_reason is required (if/then below): the one-line failure narrative, absent on pass. Which sub-step tripped is not a field — a reader tells a compile failure from a regression one by which companions are present (failing_cases, coverage_gaps) and by the record itself. Only routing-relevant fields are enumerated below; informational fields (total_cases, coverage_summary, etc.) live free under additionalProperties.",
+  "description": "Complete contract for <module>/Verification/simulation/result.json. On status=fail, stage_specific.fail_reason is required (if/then below): the one-line failure narrative, absent on pass, and the only thing that says which sub-step tripped. Companions ride along when the reaped verify verdict held them — failing_cases on a smoke/regress failure, the two gap lists on a Rule-B route-out. Only routing-relevant fields are enumerated below; informational fields (total_cases, coverage_summary, etc.) live free under additionalProperties.",
   "allOf": [
-    {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
+    {
+      "$ref": "https://veripower.local/schemas/envelope.schema.json"
+    },
     {
       "properties": {
-        "stage": {"const": "simulation"},
+        "stage": {
+          "const": "simulation"
+        },
         "stage_specific": {
           "type": "object",
           "properties": {
-            "fix_owner": {"type": "string", "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."},
-            "fail_reason": {"type": "string", "minLength": 1},
+            "fix_owner": {
+              "type": "string",
+              "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."
+            },
+            "fail_reason": {
+              "type": "string",
+              "minLength": 1
+            },
             "failing_cases": {
               "description": "One entry per case that failed this run, written by the verify child and read by simulation-triage. The shape is declared here because the triage contract names these fields: without test_id it cannot reach logs/<test_id>.log, and error_message is the log anchor its Step-1 reasoning starts from.",
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["test_id", "error_message"],
+                "required": [
+                  "test_id",
+                  "error_message"
+                ],
                 "additionalProperties": false,
                 "properties": {
-                  "test_id": {"type": "string", "minLength": 1},
-                  "error_message": {"type": "string", "minLength": 1},
+                  "test_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "error_message": {
+                    "type": "string",
+                    "minLength": 1
+                  },
                   "log_snippet": {
                     "description": "Optional: the tail around the first UVM_ERROR / UVM_FATAL. Triage falls back to the full per-case log when it is absent or truncated.",
                     "type": "string"
@@ -30,18 +49,48 @@
                 }
               }
             },
-            "coverage_gaps": {"type": "array", "items": {"type": "string"}},
-            "gaps_not_in_testpoints": {"type": "array", "items": {"type": "string"}},
-            "gaps_in_testpoints": {"type": "array", "items": {"type": "string"}}
+            "gaps_not_in_testpoints": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Uncovered items no testpoint claims — an intent gap. Present only on a coverage route-out; it is what sends the rework to simulation-plan rather than back into the stimulus loop."
+            },
+            "gaps_in_testpoints": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Uncovered items a testpoint does claim, left when the Rule-B iterate budget ran out. Present only on a coverage route-out."
+            }
           },
           "additionalProperties": true
         }
       },
-      "required": ["stage_specific"]
+      "required": [
+        "stage_specific"
+      ]
     },
     {
-      "if":   {"properties": {"status": {"const": "fail"}}, "required": ["status"]},
-      "then": {"properties": {"stage_specific": {"required": ["fail_reason"]}}}
+      "if": {
+        "properties": {
+          "status": {
+            "const": "fail"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stage_specific": {
+            "required": [
+              "fail_reason"
+            ]
+          }
+        }
+      }
     }
   ]
 }
