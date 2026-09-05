@@ -135,7 +135,7 @@ reports included, and you never hand-assemble it:
 python3 <skill>/scripts/synthesis/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] \
   [--fail-reason "<cause>"] \
-  [--requirements '[{"id": "R-083", "met": false, "actual": "0.48M NAND2-eq"}]']
+  [--requirements '[{"id": "R-083", "met": false, "actual": "0.48M NAND2-eq", "measured": "area.rpt Total cell area / 2.8224 um2 per NAND2"}]']
 ```
 
 It compares every `synthesis` row with a target (worst setup slack = `min` of `Critical Path
@@ -152,7 +152,7 @@ The flags carry what the reports cannot:
 - **`--requirements`**, your verdict on each `synthesis` row that carries no target, in the
   engineer's own unit. A budget in NAND2-equivalent gates is `Total cell area` divided by your
   library's NAND2 cell area, compared with the row's wording; write the number you computed in
-  `actual` so the verdict can be re-checked.
+  `actual` so the verdict can be re-checked. Every entry also carries `measured`: which report, which row, which scope you read it from. The row names a dimension; `measured` is what that name indexed, and it is the only way a later reader can tell whether the number answers the row's own words.
 
 - **`--fail-reason`**, which fills `stage_specific.fail_reason`, when dc_shell produced nothing
   gradeable: no license, an `analyze` / `elaborate` / `link` / `check_design` / `compile_ultra`

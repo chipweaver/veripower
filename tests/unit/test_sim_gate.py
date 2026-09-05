@@ -117,7 +117,12 @@ def test_coverage_gate_null_dim_skipped(tmp_path):
         ]
     }
     errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "fsm"), "m")
-    assert errs == [] and judged[0] == {"id": "R-0", "met": True, "actual": None}
+    assert errs == [] and judged[0] == {
+        "id": "R-0",
+        "met": True,
+        "actual": None,
+        "measured": "fsm coverage of 'm': reported N/A by urg",
+    }
 
 
 def test_coverage_gate_absent_dim_fails(tmp_path):

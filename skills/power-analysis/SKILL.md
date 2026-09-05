@@ -91,7 +91,7 @@ and you never hand-assemble the envelope:
 python3 <skill>/scripts/power/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] \
   [--fail-reason "<cause>"] \
-  [--requirements '[{"id": "R-252", "met": true, "actual": "reported only"}]']
+  [--requirements '[{"id": "R-252", "met": true, "actual": "reported only", "measured": "reports_ptpx/S4a/power_flat.rpt, internal+switching+leakage"}]']
 ```
 
 After a clean `make` it judges: it parses each `reports_ptpx/<id>/power_flat.rpt`, reconciles the
@@ -108,7 +108,7 @@ unjudged. No row at all means nothing was gated, and the empty `requirements[]` 
 
 The flags carry what the reports cannot:
 
-- **`--requirements`**, your verdict on each `power-analysis` row that carries no target.
+- **`--requirements`**, your verdict on each `power-analysis` row that carries no target. Every entry also carries `measured`: which report, which row, which scope you read it from. The row names a dimension; `measured` is what that name indexed, and it is the only way a later reader can tell whether the number answers the row's own words.
 
 - **`--fail-reason`**, which fills `stage_specific.fail_reason`, when `make` exited non-zero and
   there is nothing gradeable. Read a **bounded** slice of the failing step's log

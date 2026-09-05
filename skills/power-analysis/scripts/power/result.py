@@ -377,23 +377,41 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
     # Judge — one entry per targeted row, with the engineer's own operator. A row naming a
     # scenario this run did not measure, or any row when nothing was measured, cannot be judged.
     judged: list[dict] = []
+    dims = sorted({e["dim"] for e in ppa_actual})
     for r in target_rows:
         t = r["target"]
-        sc = t.get("scenario")
-        values = [
-            e["value"] for e in ppa_actual if sc is None or e["scenario_id"] == sc
-        ]
-        if not values:
+        dim = t["dim"]
+        if dim not in dims:
+            # Without this the loop compares whatever ppa_actual holds — a row asking for an
+            # area bound was judged met against a number of milliwatts, silently and at exit 0.
             raise ValueError(
-                f"{r['id']} needs a measured power_mw"
+                f"{r['id']} is judged by power-analysis with target dim {dim!r}, which this "
+                f"stage does not measure (it measures {dims}) — the row names the wrong judge, "
+                f"or the dim is wrong"
+            )
+        sc = t.get("scenario")
+        picked = [
+            e
+            for e in ppa_actual
+            if e["dim"] == dim and (sc is None or e["scenario_id"] == sc)
+        ]
+        if not picked:
+            raise ValueError(
+                f"{r['id']} needs a measured {dim}"
                 + (f" for scenario {sc!r}" if sc else "")
                 + "; this run measured none"
             )
         judged.append(
             {
                 "id": r["id"],
-                "met": all(requirements.met(v, t) for v in values),
-                "actual": max(values),
+                "met": all(requirements.met(e["value"], t) for e in picked),
+                "actual": max(e["value"] for e in picked),
+                "measured": (
+                    f"{dim} from " + ", ".join(sorted(e["source"] for e in picked))
+                    if len(picked) == 1
+                    else f"worst {dim} across {len(picked)} scenarios: "
+                    + ", ".join(sorted(e["source"] for e in picked))
+                ),
             }
         )
 

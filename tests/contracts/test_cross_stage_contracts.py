@@ -72,37 +72,9 @@ def _ledger_schema() -> dict:
     )
 
 
-def _spec_ppa_target_dims() -> set[str]:
-    return set(
-        _ledger_schema()["items"]["properties"]["target"]["properties"]["dim"]["enum"]
-    )
-
-
 def test_judge_enum_is_the_rule_registry_plus_the_non_stage_judges() -> None:
     judges = _ledger_schema()["items"]["properties"]["judge"]["enum"]
     assert judges == [*FORWARD_PRIORITY, "human", "outside", "none", "unassignable"]
-
-
-def test_ppa_dim_union_subset_of_spec_targets() -> None:
-    """Every measured PPA dim must be a bound dim the ledger can author."""
-    measured: dict[str, set[str]] = {}
-    for stage in FORWARD_PRIORITY:
-        if stage == "specification":
-            continue
-        dims = _ppa_actual_dims_for_stage(stage)
-        if dims:
-            measured[stage] = dims
-
-    measured_union: set[str] = set().union(*measured.values()) if measured else set()
-    spec_targets = _spec_ppa_target_dims()
-    missing = measured_union - spec_targets
-    assert not missing, (
-        f"Stages report ppa_actual dims {sorted(missing)} that the ledger's "
-        f"target.dim enum doesn't list. Per-stage measured dims: "
-        f"{ {s: sorted(d) for s, d in measured.items()} }; "
-        f"ledger dims: {sorted(spec_targets)}. Add the missing dim(s) to "
-        f"requirements.schema.json, or stop reporting them downstream."
-    )
 
 
 _RESULT_PATH_RE = re.compile(

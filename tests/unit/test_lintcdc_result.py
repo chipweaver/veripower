@@ -512,8 +512,18 @@ def test_declared_verdicts_land_in_the_envelope(tmp_path):
     wd = _clean_workdir(tmp_path)
     _spec(tmp_path, _ROWS)
     declared = [
-        {"id": "R-7", "met": True, "actual": "0 errors, 0 warnings, 0 waivers"},
-        {"id": "R-8", "met": True, "actual": "1 clock domain"},
+        {
+            "id": "R-7",
+            "met": True,
+            "actual": "0 errors, 0 warnings, 0 waivers",
+            "measured": "read from the run's own report",
+        },
+        {
+            "id": "R-8",
+            "met": True,
+            "actual": "1 clock domain",
+            "measured": "read from the run's own report",
+        },
     ]
     r = _cli(wd, "--requirements", json.dumps(declared))
     assert r.returncode == 0, r.stderr
@@ -528,8 +538,13 @@ def test_an_unmet_row_fails_the_run(tmp_path):
     wd = _clean_workdir(tmp_path)
     _spec(tmp_path, _ROWS)
     declared = [
-        {"id": "R-7", "met": False, "actual": "2 warnings waived"},
-        {"id": "R-8", "met": True},
+        {
+            "id": "R-7",
+            "met": False,
+            "actual": "2 warnings waived",
+            "measured": "read from the run's own report",
+        },
+        {"id": "R-8", "met": True, "measured": "read from the run's own report"},
     ]
     r = _cli(wd, "--requirements", json.dumps(declared), "--fix-owner", "rtl-design")
     assert r.returncode == 0, r.stderr
@@ -542,7 +557,13 @@ def test_a_row_nobody_judged_is_blocked(tmp_path):
     # A row the agent never read cannot pass as silence.
     wd = _clean_workdir(tmp_path)
     _spec(tmp_path, _ROWS)
-    r = _cli(wd, "--requirements", json.dumps([{"id": "R-7", "met": True}]))
+    r = _cli(
+        wd,
+        "--requirements",
+        json.dumps(
+            [{"id": "R-7", "met": True, "measured": "read from the run's own report"}]
+        ),
+    )
     assert r.returncode == 2
     assert "R-8" in r.stderr and not (wd / "result.json").exists()
 
@@ -551,9 +572,9 @@ def test_a_verdict_on_another_stages_row_is_blocked(tmp_path):
     wd = _clean_workdir(tmp_path)
     _spec(tmp_path, _ROWS)
     declared = [
-        {"id": "R-7", "met": True},
-        {"id": "R-8", "met": True},
-        {"id": "R-9", "met": True},
+        {"id": "R-7", "met": True, "measured": "read from the run's own report"},
+        {"id": "R-8", "met": True, "measured": "read from the run's own report"},
+        {"id": "R-9", "met": True, "measured": "read from the run's own report"},
     ]
     r = _cli(wd, "--requirements", json.dumps(declared))
     assert r.returncode == 2 and "R-9" in r.stderr

@@ -118,14 +118,14 @@ never hand-assemble it:
 ```bash
 python3 <skill>/scripts/lintcdc/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] [--fail-reason "<cause>"] \
-  [--requirements '[{"id": "R-103", "met": true, "actual": "0 errors, 0 warnings, 0 waivers"}]']
+  [--requirements '[{"id": "R-103", "met": true, "actual": "0 errors, 0 warnings, 0 waivers", "measured": "reports/moresimple.rpt, whole run"}]']
 ```
 
 It ANDs the two sidecars for the gate (`status=pass` iff both exist and `counts.error` and
 `counts.warning` are both 0 in both), reads the SpyGlass version off the report, reshapes those
 rows into `violations[]`, folds your `--requirements` verdicts in as `requirements[]` — refusing
 an envelope that leaves any `lint-cdc` row unjudged, and failing the run on any `met: false` —
-and enumerates `artifacts[]`. The flags carry what the report cannot:
+and enumerates `artifacts[]`. Every verdict carries `measured` — which report, which row, which scope you read it from — because the row names a dimension and `measured` is what that name indexed. The flags carry what the report cannot:
 
 - **`--fail-reason`**, which fills `stage_specific.fail_reason`, when a `make` died before the
   parser wrote its sidecar, so the cause exists only on the stderr you read. Supplying it is

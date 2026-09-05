@@ -60,7 +60,7 @@ def test_requirements_helper_keeps_only_the_rows_this_stage_judges(tmp_path):
     # merge: one entry per row, in ledger order; a missing or foreign verdict is refused
     computed = [{"id": "R-1", "met": True, "actual": 400000}]
     declared = rq.parse_declared(
-        '[{"id": "R-3", "met": true, "actual": "elaborates clean"}]'
+        '[{"id": "R-3", "met": true, "actual": "elaborates clean", "measured": "check_design.rpt, read by hand"}]'
     )
     assert [e["id"] for e in rq.merge(mine, computed, declared)] == ["R-1", "R-3"]
     with pytest.raises(ValueError, match="R-3"):

@@ -49,19 +49,12 @@
           "value"
         ],
         "additionalProperties": false,
-        "description": "Only when the engineer's bound is in a unit the judging stage's tool reports natively; the stage's script then compares. Any other unit stays in verbatim and the stage's reader judges it. synthesis: area_um2, timing_slack_ns. power-analysis: power_mw, optionally per scenario. simulation: coverage_line, coverage_cond, coverage_fsm, coverage_toggle in percent.",
+        "description": "Only when the engineer's bound is in a unit the judging stage's tool reports natively; the stage's script then compares, and its verdict carries `measured` — the report row it actually read. Any other unit stays in verbatim and the stage's reader judges it.",
         "properties": {
           "dim": {
             "type": "string",
-            "enum": [
-              "area_um2",
-              "timing_slack_ns",
-              "power_mw",
-              "coverage_line",
-              "coverage_cond",
-              "coverage_fsm",
-              "coverage_toggle"
-            ]
+            "minLength": 1,
+            "description": "Deliberately NOT an enum — which dimensions a stage measures is that stage's own fact, declared and implemented in one place by the script that reads the report, and refused by name there when a row names one it does not measure. An enum here would be a second copy that drifts: the one this replaced listed nothing for timing-analysis, though PrimeTime reports slack natively."
           },
           "op": {
             "type": "string",

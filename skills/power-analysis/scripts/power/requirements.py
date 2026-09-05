@@ -35,12 +35,21 @@ def met(actual: float, target: dict) -> bool:
 
 
 def parse_declared(text: str | None) -> list[dict]:
-    """The agent's verdicts for the rows no script compares: [{id, met, actual?}]."""
+    """The agent's verdicts for the rows no script compares: [{id, met, measured, actual?}].
+
+    `measured` is refused here rather than at reap: the envelope schema requires it, and a
+    verdict that reaches reap without it costs the round a blocked outcome instead of a
+    routable one."""
     declared = json.loads(text) if text else []
     for e in declared:
         if not isinstance(e.get("id"), str) or not isinstance(e.get("met"), bool):
             raise ValueError(
                 f"--requirements entry needs a string id and a boolean met: {e}"
+            )
+        if not isinstance(e.get("measured"), str) or not e["measured"].strip():
+            raise ValueError(
+                f"--requirements entry needs `measured` — what you read, and where, so the "
+                f"verdict can be checked against the row's own words: {e}"
             )
     return declared
 

@@ -97,17 +97,10 @@ def _base_name_rule(doc) -> list[dict]:
 
 
 # The dims a judging stage's script compares; every other judge takes no target.
-TARGET_DIMS = {
-    "synthesis": {"area_um2", "timing_slack_ns"},
-    "power-analysis": {"power_mw"},
-    "simulation": {"coverage_line", "coverage_cond", "coverage_fsm", "coverage_toggle"},
-}
-
-
 def _requirements_rule(doc) -> list[dict]:
-    """What the ledger's schema cannot say: ids are unique; a target's dim belongs to the judge
-    that compares it, and no other judge takes one; a scenario only qualifies power_mw; a value
-    is finite (`json.loads` accepts NaN / Infinity and `type: number` admits them, and a NaN
+    """What the ledger's schema cannot say: ids are unique; a scenario only qualifies
+    power_mw; a value is finite (which dim a judge can compare is the judge's own fact, refused
+    by the stage that would have to measure it) (`json.loads` accepts NaN / Infinity and `type: number` admits them, and a NaN
     bound makes every comparison false — a gate silently disarmed)."""
     out: list[dict] = []
     if not isinstance(doc, list):
@@ -122,22 +115,9 @@ def _requirements_rule(doc) -> list[dict]:
                 {"at": f"$[{i}].id", "error": f"{rid!r} already used at $[{seen[rid]}]"}
             )
         seen.setdefault(rid, i)
-        t, j = r.get("target"), r.get("judge")
+        t = r.get("target")
         if not isinstance(t, dict):
             continue
-        allowed = TARGET_DIMS.get(j, set())
-        if t.get("dim") not in allowed:
-            out.append(
-                {
-                    "at": f"$[{i}].target.dim",
-                    "error": f"{t.get('dim')!r} is not a dim {j!r} compares"
-                    + (
-                        f" (one of {sorted(allowed)})"
-                        if allowed
-                        else " — that judge takes no target"
-                    ),
-                }
-            )
         if "scenario" in t and t.get("dim") != "power_mw":
             out.append(
                 {

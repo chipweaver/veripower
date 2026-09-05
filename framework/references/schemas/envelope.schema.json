@@ -4,42 +4,101 @@
   "title": "result.json envelope",
   "description": "Common envelope wrapping every stage's result.json (stage, produced_at, status, artifacts, stage_specific).",
   "type": "object",
-  "required": ["stage", "produced_at", "status", "artifacts", "stage_specific"],
+  "required": [
+    "stage",
+    "produced_at",
+    "status",
+    "artifacts",
+    "stage_specific"
+  ],
   "additionalProperties": true,
   "properties": {
-    "stage":          {"type": "string", "enum": ["specification","rtl-design","lint-cdc","simulation-plan","simulation","synthesis","power-analysis","timing-analysis","simulation-triage"]},
-    "produced_at":    {"type": "string"},
-    "status":         {"type": "string", "enum": ["pass", "fail"]},
+    "stage": {
+      "type": "string",
+      "enum": [
+        "specification",
+        "rtl-design",
+        "lint-cdc",
+        "simulation-plan",
+        "simulation",
+        "synthesis",
+        "power-analysis",
+        "timing-analysis",
+        "simulation-triage"
+      ]
+    },
+    "produced_at": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
     "artifacts": {
       "description": "Output paths produced by this stage, each promoted into the stage's canonical dir. result.json is promoted automatically and MUST NOT be self-listed here — self-listing collides with the canonical result.json during promote (FileExistsError).",
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["path"],
+        "required": [
+          "path"
+        ],
         "properties": {
           "path": {
             "type": "string",
             "allOf": [
-              {"not": {"const": "result.json"}},
-              {"not": {"pattern": "(^|/)\\.\\.(/|$)"}},
-              {"not": {"pattern": "^/"}}
+              {
+                "not": {
+                  "const": "result.json"
+                }
+              },
+              {
+                "not": {
+                  "pattern": "(^|/)\\.\\.(/|$)"
+                }
+              },
+              {
+                "not": {
+                  "pattern": "^/"
+                }
+              }
             ]
           }
         }
       }
     },
-    "stage_specific": {"type": "object"}
+    "stage_specific": {
+      "type": "object"
+    }
   },
   "$defs": {
     "requirement_verdict": {
-      "description": "One verdict on one requirements.json row, as carried by a stage envelope's stage_specific.requirements[]. Defined here because the four stages that judge ledger rows record them identically, and the reap-time validator already registers this resource.",
+      "description": "One verdict on one requirements.json row, as carried by a stage envelope's stage_specific.requirements[]. Defined here because the four stages that judge ledger rows record them identically, and the reap-time validator already registers this resource. `measured` is what closes the row: the ledger names a dimension, the stage names the number it actually read, and a reader can see whether the two are the same quantity.",
       "type": "object",
-      "required": ["id", "met"],
+      "required": [
+        "id",
+        "met",
+        "measured"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id":     {"type": "string", "minLength": 1},
-        "met":    {"type": "boolean"},
-        "actual": {"description": "What was measured or observed, in whatever unit the row speaks."}
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "met": {
+          "type": "boolean"
+        },
+        "actual": {
+          "description": "What was measured or observed, in whatever unit the row speaks."
+        },
+        "measured": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The measurement behind this verdict, in the stage's own words: which report, which row, which scope. A dimension name is an index; this is what it indexed."
+        }
       }
     }
   }

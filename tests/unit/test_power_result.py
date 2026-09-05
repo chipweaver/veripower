@@ -274,7 +274,13 @@ def test_run_pass_within_targets(tmp_path):
     assert rc == 0
     # no scenario named: the bound holds for every scenario, and actual is the worst of them
     assert data["requirements"] == [
-        {"id": "R-P", "met": True, "actual": pytest.approx(1.10)}
+        {
+            "id": "R-P",
+            "met": True,
+            "actual": pytest.approx(1.10),
+            "measured": "worst power_mw across 2 scenarios: "
+            "reports_ptpx/S1/power_flat.rpt, reports_ptpx/S2/power_flat.rpt",
+        }
     ]
     assert (
         len(data["saif_artifacts"])
@@ -303,7 +309,12 @@ def test_run_ppa_miss_is_exit0_fail(tmp_path):
     rc, data = p.run(plan, wd, [_bound("R-P", "<=", 1.2, scenario="S2")])
     assert rc == 0  # a miss is a verdict, not a tooling failure
     assert data["requirements"] == [
-        {"id": "R-P", "met": False, "actual": pytest.approx(1.85)}
+        {
+            "id": "R-P",
+            "met": False,
+            "actual": pytest.approx(1.85),
+            "measured": "power_mw from reports_ptpx/S2/power_flat.rpt",
+        }
     ]
 
 
@@ -544,7 +555,12 @@ def test_build_result_missed_row(tmp_path):
     )
     ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["requirements"] == [
-        {"id": "R-P", "met": False, "actual": pytest.approx(1.85)}
+        {
+            "id": "R-P",
+            "met": False,
+            "actual": pytest.approx(1.85),
+            "measured": "power_mw from reports_ptpx/S2/power_flat.rpt",
+        }
     ]
     assert ss["ppa_actual"]  # required alongside the verdicts
     assert ss["fail_reason"] == "requirement(s) not met: R-P"
@@ -634,7 +650,16 @@ def test_finalize_cli_reads_the_ledger(tmp_path):
         _json.dumps({"inputs": {"requirements": str(spec_dir), "scaffold": str(plan)}})
     )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
-    declared = _json.dumps([{"id": "R-R", "met": True, "actual": "0.42 mW reported"}])
+    declared = _json.dumps(
+        [
+            {
+                "id": "R-R",
+                "met": True,
+                "actual": "0.42 mW reported",
+                "measured": "reports_ptpx/S1/power_flat.rpt, read by hand",
+            }
+        ]
+    )
     r = subprocess.run(
         [
             "python3",
@@ -653,8 +678,18 @@ def test_finalize_cli_reads_the_ledger(tmp_path):
     ss = env["stage_specific"]
     assert env["status"] == "fail"
     assert ss["requirements"] == [
-        {"id": "R-P", "met": False, "actual": pytest.approx(0.42)},
-        {"id": "R-R", "met": True, "actual": "0.42 mW reported"},
+        {
+            "id": "R-P",
+            "met": False,
+            "actual": pytest.approx(0.42),
+            "measured": "power_mw from reports_ptpx/S1/power_flat.rpt",
+        },
+        {
+            "id": "R-R",
+            "met": True,
+            "actual": "0.42 mW reported",
+            "measured": "reports_ptpx/S1/power_flat.rpt, read by hand",
+        },
     ]
     assert ss["fail_reason"] == "requirement(s) not met: R-P"
 

@@ -121,14 +121,6 @@ def test_unassignable_needs_a_note(tmp_path):
     assert read_sidecar(tmp_path, "requirements.json")[0]["judge"] == "unassignable"
 
 
-def test_target_dim_must_belong_to_the_judge(tmp_path):
-    target = {"dim": "power_mw", "op": "<=", "value": 5}
-    msg, _ = _bad(tmp_path, [{**_ROW, "judge": "synthesis", "target": target}])
-    assert "power_mw" in msg and "synthesis" in msg
-    msg, _ = _bad(tmp_path, [{**_ROW, "judge": "rtl-design", "target": target}])
-    assert "takes no target" in msg
-
-
 def test_a_matching_target_is_accepted(tmp_path):
     row = {
         **_ROW,

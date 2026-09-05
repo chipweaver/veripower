@@ -110,26 +110,42 @@ def run(reports_dir, target_rows) -> tuple[int, dict | None]:
             )
             return 3, None
 
-    # Judge — one entry per targeted row, compared with the engineer's own operator.
-    actual = {"area_um2": area, "timing_slack_ns": worst}
-    judged = [
+    # The measurements this stage can make, each carrying the sentence that says what it is.
+    # A verdict is built from one of these, so a dim with no measurement behind it is a named
+    # refusal rather than a KeyError, and the verdict travels with what it measured.
+    measurements = [
+        {"dim": "area_um2", "value": area, "source": "area.rpt Total cell area"},
         {
-            "id": r["id"],
-            "met": requirements.met(actual[r["target"]["dim"]], r["target"]),
-            "actual": actual[r["target"]["dim"]],
-        }
-        for r in target_rows
+            "dim": "timing_slack_ns",
+            "value": worst,
+            "source": f"qor.rpt worst Critical Path Slack across {n_groups} group(s) (min) "
+            f"— setup only; hold is timing-analysis's",
+        },
     ]
+    by_dim = {m["dim"]: m for m in measurements}
+
+    # Judge — one entry per targeted row, compared with the engineer's own operator.
+    judged = []
+    for r in target_rows:
+        dim = r["target"]["dim"]
+        m = by_dim.get(dim)
+        if m is None:
+            raise ValueError(
+                f"{r['id']} is judged by synthesis with target dim {dim!r}, which this stage "
+                f"does not measure (it measures {sorted(by_dim)}) — the row names the wrong "
+                f"judge, or the dim is wrong"
+            )
+        judged.append(
+            {
+                "id": r["id"],
+                "met": requirements.met(m["value"], r["target"]),
+                "actual": m["value"],
+                "measured": m["source"],
+            }
+        )
 
     payload = {
-        "ppa_actual": [
-            {"dim": "area_um2", "value": area, "source": "area.rpt Total cell area"},
-            {
-                "dim": "timing_slack_ns",
-                "value": worst,
-                "source": f"qor.rpt worst Critical Path Slack across {n_groups} group(s) (min)",
-            },
-        ],
+        "ppa_actual": measurements,
         "requirements": judged,
     }
     return 0, payload

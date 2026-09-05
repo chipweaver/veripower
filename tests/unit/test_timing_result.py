@@ -455,7 +455,14 @@ def _cli(wd, *extra):
 
 def test_the_agents_verdict_on_its_rows_lands_in_the_envelope(tmp_path):
     wd = _workdir(tmp_path, rows=_ROWS)
-    declared = [{"id": "R-1", "met": True, "actual": "setup +2.93 ns, hold +0.20 ns"}]
+    declared = [
+        {
+            "id": "R-1",
+            "met": True,
+            "actual": "setup +2.93 ns, hold +0.20 ns",
+            "measured": "read from the run's own report",
+        }
+    ]
     r = _cli(wd, "--requirements", json.dumps(declared))
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
@@ -467,7 +474,9 @@ def test_a_declared_miss_fails_a_run_primetime_passed(tmp_path):
     r = _cli(
         wd,
         "--requirements",
-        json.dumps([{"id": "R-1", "met": False}]),
+        json.dumps(
+            [{"id": "R-1", "met": False, "measured": "read from the run's own report"}]
+        ),
         "--fix-owner",
         "synthesis",
     )

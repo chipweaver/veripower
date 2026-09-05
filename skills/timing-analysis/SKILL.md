@@ -77,7 +77,7 @@ report included, and you never hand-assemble it:
 python3 <skill>/scripts/timing/__main__.py finalize \
   --workdir {workdir} [--fix-owner <rule>] \
   [--fail-reason "<cause>"] \
-  [--requirements '[{"id": "R-249", "met": true, "actual": "setup +0.31 ns, hold +0.12 ns"}]']
+  [--requirements '[{"id": "R-249", "met": true, "actual": "setup +0.31 ns, hold +0.12 ns", "measured": "reports/timing_setup.rpt and timing_hold.rpt, worst path each"}]']
 ```
 
 It classifies each direction on the report's `(MET)` / `(VIOLATED)` marker — never the displayed
@@ -85,7 +85,7 @@ number, which prints `0.00` for a violation smaller than the reported precision 
 worst slack and worst path per direction into `stage_specific.timing`, folds your
 `--requirements` verdicts in as `stage_specific.requirements[]` — refusing an envelope that leaves any `timing-analysis` row
 unjudged, and failing the run on any `met: false` — reads the PrimeTime version off the report
-header, and enumerates `artifacts[]`.
+header, and enumerates `artifacts[]`. Every verdict carries `measured` — which report, which row, which scope you read it from — because the row names a dimension and `measured` is what that name indexed.
 
 Two MET markers are not enough for a pass. The markers describe the paths PrimeTime analyzed and
 say nothing about the ones it was never asked to, so `finalize` also compares how many output

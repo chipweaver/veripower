@@ -139,6 +139,14 @@ QOR_UNINIT_PLUS_REAL = """\
 """
 
 
+AREA_SRC = "area.rpt Total cell area"
+# The slack a synthesis run compares is setup only — the sentence says so, which is the point.
+SLACK_SRC = (
+    "qor.rpt worst Critical Path Slack across 2 group(s) (min) "
+    "— setup only; hold is timing-analysis's"
+)
+
+
 def _stage(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR):
     """Write reports/{area,qor}.rpt under tmp_path; return (reports_dir, out_path)."""
     reports = tmp_path / "reports"
@@ -237,8 +245,18 @@ def test_run_judges_each_targeted_row(tmp_path):
     rc, data = sp.run(reports, [AREA_OK, SLACK_OK])
     assert rc == 0
     assert data["requirements"] == [
-        {"id": "R-A", "met": True, "actual": pytest.approx(65018.219263)},
-        {"id": "R-S", "met": True, "actual": pytest.approx(0.95)},
+        {
+            "id": "R-A",
+            "met": True,
+            "actual": pytest.approx(65018.219263),
+            "measured": AREA_SRC,
+        },
+        {
+            "id": "R-S",
+            "met": True,
+            "actual": pytest.approx(0.95),
+            "measured": SLACK_SRC,
+        },
     ]
 
 
@@ -247,7 +265,12 @@ def test_run_a_missed_row_is_still_exit0(tmp_path):
     rc, data = sp.run(reports, [SLACK_TIGHT])
     assert rc == 0  # a miss is a verdict, not a tooling failure
     assert data["requirements"] == [
-        {"id": "R-S", "met": False, "actual": pytest.approx(0.95)}
+        {
+            "id": "R-S",
+            "met": False,
+            "actual": pytest.approx(0.95),
+            "measured": SLACK_SRC,
+        }
     ]
 
 
@@ -462,7 +485,12 @@ def test_golden_lean_against_a_real_run(tmp_path):
     slack = [a for a in ss["ppa_actual"] if a["dim"] == "timing_slack_ns"][0]["value"]
     assert area == pytest.approx(70684.185148) and slack == pytest.approx(0.73)
     assert ss["requirements"] == [
-        {"id": "R-A", "met": True, "actual": pytest.approx(70684.185148)}
+        {
+            "id": "R-A",
+            "met": True,
+            "actual": pytest.approx(70684.185148),
+            "measured": AREA_SRC,
+        }
     ]
     assert ss["tool"] == "Design Compiler L-2016.03-SP1"  # report header, NOT "dc2016"
     for k in ("top_module", "lib_db", "clock", "violations"):
@@ -540,7 +568,12 @@ def test_finalize_cli_reads_the_ledger_from_dispatch(tmp_path):
     ss = env["stage_specific"]
     assert env["status"] == "fail"
     assert ss["requirements"] == [
-        {"id": "R-A", "met": False, "actual": pytest.approx(65018.219263)}
+        {
+            "id": "R-A",
+            "met": False,
+            "actual": pytest.approx(65018.219263),
+            "measured": AREA_SRC,
+        }
     ]
     assert ss["fail_reason"] == "requirement(s) not met: R-A"
 
@@ -561,7 +594,14 @@ def test_a_row_without_a_target_takes_the_agents_verdict(tmp_path):
     wd = _workdir(tmp_path)
     _spec(tmp_path, [AREA_OK, NAND2])
     declared = json.dumps(
-        [{"id": "R-N", "met": True, "actual": "248.6K NAND2-eq at 2.8224 um2/gate"}]
+        [
+            {
+                "id": "R-N",
+                "met": True,
+                "actual": "248.6K NAND2-eq at 2.8224 um2/gate",
+                "measured": "read from the run's own report",
+            }
+        ]
     )
     r = _cli(wd, "--requirements", declared)
     assert r.returncode == 0, r.stderr
@@ -585,7 +625,16 @@ def test_a_declared_miss_fails_the_run(tmp_path):
     r = _cli(
         wd,
         "--requirements",
-        json.dumps([{"id": "R-N", "met": False, "actual": "0.48M NAND2-eq"}]),
+        json.dumps(
+            [
+                {
+                    "id": "R-N",
+                    "met": False,
+                    "actual": "0.48M NAND2-eq",
+                    "measured": "read from the run's own report",
+                }
+            ]
+        ),
         "--fix-owner",
         "rtl-design",
     )

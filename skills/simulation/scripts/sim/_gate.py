@@ -103,7 +103,9 @@ def coverage_gate(
     cov: dict | None, rows: list[dict], dut: str
 ) -> tuple[list[str], list[dict]]:
     """Extractable, scoped to the DUT, and every bounded dim satisfies its row (a null dim is
-    skipped). Returns (errors, one {id, met, actual} entry per row).
+    skipped). Returns (errors, one {id, met, actual, measured} entry per row) — `measured` names the
+    row of the report the number came from, so a verdict cannot be read without seeing what
+    scope produced it.
 
     Scored against the DUT's own row in `per_module`, never the report's `aggregate`. The
     aggregate is the TB top's whole instance tree — the DUT plus every agent interface plus
@@ -140,7 +142,14 @@ def coverage_gate(
         if (
             dim not in agg
         ):  # urg never measured this dim -> cannot gate it -> fail (not silent skip)
-            judged.append({"id": r["id"], "met": False, "actual": None})
+            judged.append(
+                {
+                    "id": r["id"],
+                    "met": False,
+                    "actual": None,
+                    "measured": f"{dim} coverage of {dut!r}: urg measured none",
+                }
+            )
             errs.append(
                 f"{r['id']}: {dim} coverage is bounded but absent from the coverage report "
                 f"(urg did not measure it; cannot gate)"
@@ -150,10 +159,25 @@ def coverage_gate(
         if (
             val is None
         ):  # measured as N/A ('--', e.g. a DUT with no FSM) -> skip, do not fail
-            judged.append({"id": r["id"], "met": True, "actual": None})
+            judged.append(
+                {
+                    "id": r["id"],
+                    "met": True,
+                    "actual": None,
+                    "measured": f"{dim} coverage of {dut!r}: reported N/A by urg",
+                }
+            )
             continue
         ok = _OPS[t["op"]](val, t["value"])
-        judged.append({"id": r["id"], "met": ok, "actual": val})
+        judged.append(
+            {
+                "id": r["id"],
+                "met": ok,
+                "actual": val,
+                "measured": f"{dim} coverage of the DUT {dut!r}, from the per-module row of "
+                f"structural-coverage.json (not the TB top aggregate)",
+            }
+        )
         if not ok:
             errs.append(
                 f"{r['id']}: {dim} coverage {val} is not {t['op']} {t['value']}"

@@ -25,16 +25,36 @@ def load(workdir) -> list[dict]:
 
 
 def mine(rows: list[dict]) -> list[dict]:
-    return [r for r in rows if r["judge"] == STAGE]
+    """The rows this stage judges. It compares no dimension, so a row it judges may carry no
+    target: there would be no measurement to hold the bound against, and the agent's own
+    verdict would stand in for a comparison nobody made."""
+    ours = [r for r in rows if r["judge"] == STAGE]
+    bounded = [r["id"] for r in ours if "target" in r]
+    if bounded:
+        raise ValueError(
+            f"{bounded} are judged by {STAGE} and carry a target, but {STAGE} measures no "
+            f"dimension — either the row names the wrong judge, or the bound belongs in a "
+            f"row that judge can compare"
+        )
+    return ours
 
 
 def parse_declared(text: str | None) -> list[dict]:
-    """The agent's verdicts for the rows no script compares: [{id, met, actual?}]."""
+    """The agent's verdicts for the rows no script compares: [{id, met, measured, actual?}].
+
+    `measured` is refused here rather than at reap: the envelope schema requires it, and a
+    verdict that reaches reap without it costs the round a blocked outcome instead of a
+    routable one."""
     declared = json.loads(text) if text else []
     for e in declared:
         if not isinstance(e.get("id"), str) or not isinstance(e.get("met"), bool):
             raise ValueError(
                 f"--requirements entry needs a string id and a boolean met: {e}"
+            )
+        if not isinstance(e.get("measured"), str) or not e["measured"].strip():
+            raise ValueError(
+                f"--requirements entry needs `measured` — what you read, and where, so the "
+                f"verdict can be checked against the row's own words: {e}"
             )
     return declared
 

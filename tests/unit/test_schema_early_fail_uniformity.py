@@ -43,13 +43,17 @@ def test_schema_validates_minimum_fail_envelope(stage):
 _PPA_FAIL_NUMBERS = {
     "synthesis": {
         "ppa_actual": [{"dim": "area_um2", "value": 1234.0}],
-        "requirements": [{"id": "R-1", "met": False, "actual": 1234.0}],
+        "requirements": [
+            {"id": "R-1", "met": False, "actual": 1234.0, "measured": "area.rpt"}
+        ],
     },
     "power-analysis": {
         "ppa_actual": [
             {"dim": "power_mw", "value": 12.0, "scenario_id": "s1", "source": "pt"}
         ],
-        "requirements": [{"id": "R-1", "met": False, "actual": 12.0}],
+        "requirements": [
+            {"id": "R-1", "met": False, "actual": 12.0, "measured": "power_flat.rpt"}
+        ],
     },
 }
 

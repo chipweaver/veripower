@@ -178,7 +178,10 @@ def test_final_coverage_fail(tmp_path):
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     judged = {e["id"]: e for e in env["stage_specific"]["requirements"]}
-    assert judged["R-0"] == {"id": "R-0", "met": False, "actual": 10.0}  # the line row
+    assert judged["R-0"]["met"] is False  # the line row
+    assert judged["R-0"]["actual"] == 10.0
+    # The verdict names the scope it scored, so a reader never has to guess it.
+    assert "line coverage of the DUT" in judged["R-0"]["measured"]
     assert judged["R-1"]["met"] is True
 
 
