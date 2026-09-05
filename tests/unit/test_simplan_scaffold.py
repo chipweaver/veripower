@@ -40,7 +40,7 @@ GOOD = {
         {
             "id": "TP-1",
             "intent": "drive TP-1 and observe it",
-            "bins": ["a"],
+            "seqs": ["smoke"],
             "covers": ["CHK-0"],
         }
     ],
@@ -48,7 +48,6 @@ GOOD = {
         {
             "id": "S1",
             "sequence_ref": "smoke",
-            "corner_intent": "SS/125C",
         }
     ],
 }
@@ -383,7 +382,12 @@ def test_power_bound_naming_a_defined_scenario_passes(tmp_path):
 def test_coverage_uncovered_check_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["testpoints"] = [
-        {"id": "TP-0", "intent": "drive TP-0 and observe it", "covers": ["CHK-00"]}
+        {
+            "id": "TP-0",
+            "intent": "drive TP-0 and observe it",
+            "seqs": ["smoke"],
+            "covers": ["CHK-00"],
+        }
     ]
     proc = _run(
         tmp_path,
@@ -399,7 +403,12 @@ def test_coverage_uncovered_check_fails(tmp_path):
 def test_coverage_skip_passes(tmp_path):
     s = copy.deepcopy(GOOD)
     s["testpoints"] = [
-        {"id": "TP-0", "intent": "drive TP-0 and observe it", "covers": ["CHK-00"]}
+        {
+            "id": "TP-0",
+            "intent": "drive TP-0 and observe it",
+            "seqs": ["smoke"],
+            "covers": ["CHK-00"],
+        }
     ]
     s["skipped_checks"] = [{"check_id": "CHK-01", "reason": "lint-only gate"}]
     proc = _run(
@@ -416,6 +425,7 @@ def test_coverage_dangling_covers_fails(tmp_path):
         {
             "id": "TP-0",
             "intent": "drive TP-0 and observe it",
+            "seqs": ["smoke"],
             "covers": ["CHK-00", "CHK-99"],
         }
     ]
@@ -433,6 +443,7 @@ def test_coverage_fully_covered_passes(tmp_path):
         {
             "id": "TP-0",
             "intent": "drive TP-0 and observe it",
+            "seqs": ["smoke"],
             "covers": ["CHK-00", "CHK-01"],
         }
     ]

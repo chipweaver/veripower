@@ -37,7 +37,7 @@ Everything below is produced under `{workdir}`.
 | Path | What it is |
 |---|---|
 | `verification-plan.md` | The review anchor the human gate is held over (template: `references/verification-plan-template.md`) |
-| `tb-scaffold.json` | What simulation builds the TB from: `agents` / `tests` / `testpoints[]` / `rm` / `scoreboard` / `skipped_checks[]` |
+| `tb-scaffold.json` | What simulation builds the TB from: `agents` / `tests` / `testpoints[]` (each naming the checks it covers and the `seqs` that drive it) / `rm` / `scoreboard` / `skipped_checks[]` |
 | `sequences.json` | The sequence roster — the one part both simulation and power-analysis read |
 | `power-scenarios.json` | The power scenarios, read by power-analysis alone. Its own file so a scenario-only edit does not invalidate simulation's proof |
 | `plan-review/review.md`, `plan-review/decisions.md` | The reviewer's findings, and the user's resolution of anything it called blocking |
@@ -92,10 +92,10 @@ scenario needs its own stimulus.
 
 When amending, keep testpoint IDs / sequence names / `sequence_ref` stable: downstream coverage /
 scaffold / SAIF caches key off them, so renumbering one silently breaks the cache. One amendment is
-counter-intuitive enough to name: when triage attributes a coverage hole to plan over-spec — a bin
-the RTL cannot legally reach — **narrow** `bins` rather than chasing the hole, and delete the
-testpoint outright if the whole thing is unreachable, recording the over-spec attribution in §5.
-Coverage does not fall; a bin that could never be hit was never coverage.
+counter-intuitive enough to name: when triage attributes a coverage hole to plan over-spec — a
+situation the RTL cannot legally reach — **narrow the testpoint's `intent`** rather than chasing the
+hole, and delete the testpoint outright if the whole thing is unreachable, recording the over-spec
+attribution in §5. Coverage does not fall; a hole that could never be hit was never coverage.
 
 **Gate, script.** Run `materialize-scaffold` to fill the script-injected fields, then
 `check-scaffold` to validate the sidecars' structure, semantics, and coverage matrix:

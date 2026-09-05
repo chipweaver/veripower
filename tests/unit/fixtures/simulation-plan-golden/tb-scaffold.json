@@ -127,211 +127,205 @@
     {
       "id": "TP-MAC-FUNC",
       "intent": "Registered MAC compute and data forwarding across all four cells; array result outputs out1/out2 observed via o_prdata read-back.",
-      "bins": [
-        "mac00",
-        "mac01",
-        "mac10",
-        "mac11",
-        "data_forward"
-      ],
       "covers": [
         "CHK-MAC-01",
         "CHK-MAC-02",
         "CHK-MAC-05"
+      ],
+      "seqs": [
+        "tpu_top_apb_weight_load_seq",
+        "tpu_top_data_in_stream_seq",
+        "tpu_top_start_seq"
       ]
     },
     {
       "id": "TP-MAC-PARTIALSUM",
       "intent": "Partial-sum chaining: top-row seed 32'h0 into i_pre_result and accumulate MSBs.",
-      "bins": [
-        "seed_zero",
-        "msb_accumulate"
-      ],
       "covers": [
         "CHK-MAC-03",
         "CHK-MAC-04"
+      ],
+      "seqs": [
+        "tpu_top_apb_weight_load_seq",
+        "tpu_top_data_in_stream_seq",
+        "tpu_top_start_seq"
       ]
     },
     {
       "id": "TP-MAC-WRAP",
       "intent": "32-bit multiply/accumulate wrap on overflow (no saturation).",
-      "bins": [
-        "overflow_wrap"
-      ],
       "covers": [
         "CHK-MAC-06"
+      ],
+      "seqs": [
+        "tpu_top_apb_weight_load_seq",
+        "tpu_top_data_in_stream_seq",
+        "tpu_top_start_seq"
       ]
     },
     {
       "id": "TP-MAC-UNCONNECTED",
       "intent": "Intentionally-unconnected mac_01/mac_11 o_data_next must not affect results.",
-      "bins": [
-        "unconnected_forward"
-      ],
       "covers": [
         "CHK-MAC-07"
+      ],
+      "seqs": [
+        "tpu_top_data_in_stream_seq",
+        "tpu_top_start_seq"
       ]
     },
     {
       "id": "TP-SREG-SKEW",
       "intent": "Skew alignment: out1=in1 delayed 1 cycle, out2=in2 delayed 2 cycles, staggered wavefront.",
-      "bins": [
-        "delay1",
-        "delay2",
-        "wavefront_align"
-      ],
       "covers": [
         "CHK-SREG-01",
         "CHK-SREG-02",
         "CHK-SREG-04"
+      ],
+      "seqs": [
+        "tpu_top_data_in_stream_seq",
+        "tpu_top_start_seq"
       ]
     },
     {
       "id": "TP-SREG-RESET",
       "intent": "Async active-low reset clears delay10/delay20/delay21 to 0 mid-stream.",
-      "bins": [
-        "reset_clear"
-      ],
       "covers": [
         "CHK-SREG-03"
+      ],
+      "seqs": [
+        "tpu_top_rerun_seq"
       ]
     },
     {
       "id": "TP-FIFO-WR",
       "intent": "Write on i_wr & !o_full into mem[wr_addr]; wr_addr advances.",
-      "bins": [
-        "write"
-      ],
       "covers": [
         "CHK-FIFO-01"
+      ],
+      "seqs": [
+        "tpu_top_data_in_stream_seq"
       ]
     },
     {
       "id": "TP-FIFO-RD",
       "intent": "Combinational read o_data=mem[rd_addr]; rd_addr advances on i_rd & !o_empty; FIFO-order sequence.",
-      "bins": [
-        "read",
-        "fifo_order"
-      ],
       "covers": [
         "CHK-FIFO-02",
         "CHK-FIFO-03",
         "CHK-FIFO-07"
+      ],
+      "seqs": [
+        "tpu_top_data_in_stream_seq",
+        "tpu_top_start_seq"
       ]
     },
     {
       "id": "TP-FIFO-FLAGS",
       "intent": "Flag generation compared directly: o_empty=(wr_addr==rd_addr), o_full=((wr_addr+1)==rd_addr); RM predicts o_full/o_empty per cycle, scoreboard compares against DUT status outputs.",
-      "bins": [
-        "empty",
-        "full"
-      ],
       "covers": [
         "CHK-FIFO-04",
         "CHK-FIFO-05"
+      ],
+      "seqs": [
+        "tpu_top_data_in_stream_seq",
+        "tpu_top_fifo_boundary_seq"
       ]
     },
     {
       "id": "TP-FIFO-BOUNDARY",
       "intent": "Write-while-full and read-while-empty are ignored (pointers do not advance).",
-      "bins": [
-        "write_full_ignored",
-        "read_empty_ignored"
-      ],
       "covers": [
         "CHK-FIFO-08"
+      ],
+      "seqs": [
+        "tpu_top_fifo_boundary_seq"
       ]
     },
     {
       "id": "TP-FIFO-WRAP",
       "intent": "Modulo-8 (3-bit) pointer wrap.",
-      "bins": [
-        "ptr_wrap"
-      ],
       "covers": [
         "CHK-FIFO-09"
+      ],
+      "seqs": [
+        "tpu_top_fifo_boundary_seq"
       ]
     },
     {
       "id": "TP-FIFO-RESET",
       "intent": "Async active-low reset clears memory and both pointers to 0.",
-      "bins": [
-        "reset_clear"
-      ],
       "covers": [
         "CHK-FIFO-06"
+      ],
+      "seqs": [
+        "tpu_top_rerun_seq"
       ]
     },
     {
       "id": "TP-APB-WRITE",
       "intent": "APB weight load to mem[i_paddr]; address map W00=0,W01=1,W10=2,W11=3.",
-      "bins": [
-        "w00",
-        "w01",
-        "w10",
-        "w11"
-      ],
       "covers": [
         "CHK-TOP-01",
         "CHK-TOP-03"
+      ],
+      "seqs": [
+        "tpu_top_apb_weight_load_seq"
       ]
     },
     {
       "id": "TP-APB-READ",
       "intent": "APB read returns next result-FIFO word via o_prdata and advances fifo_result read pointer; o_prdata=0 when no read.",
-      "bins": [
-        "read_word",
-        "no_read_zero"
-      ],
       "covers": [
         "CHK-TOP-02"
+      ],
+      "seqs": [
+        "tpu_top_apb_result_read_seq"
       ]
     },
     {
       "id": "TP-CTRL-COUNTER",
       "intent": "Counter advance while start asserted, reset to 0 when start deasserted; RM predicts counter per cycle, scoreboard compares against DUT counter output directly.",
-      "bins": [
-        "advance",
-        "reset_on_deassert"
-      ],
       "covers": [
         "CHK-TOP-04",
         "CHK-TOP-10"
+      ],
+      "seqs": [
+        "tpu_top_start_seq"
       ]
     },
     {
       "id": "TP-CTRL-FIFOEN",
       "intent": "fifo_en = start & (counter<2) pop window drives both input FIFO i_rd.",
-      "bins": [
-        "pop_window"
-      ],
       "covers": [
         "CHK-TOP-05"
+      ],
+      "seqs": [
+        "tpu_top_start_seq",
+        "tpu_top_data_in_stream_seq"
       ]
     },
     {
       "id": "TP-CTRL-RESULTWR",
       "intent": "result_fifo_wr window counter in {2,3,4,5}; routing result_fifo_i_data=out1 at {2,4}, out2 at {3,5}, else 0.",
-      "bins": [
-        "wr_window",
-        "route_out1",
-        "route_out2"
-      ],
       "covers": [
         "CHK-TOP-06",
         "CHK-TOP-07",
         "CHK-TOP-09"
+      ],
+      "seqs": [
+        "tpu_top_start_seq",
+        "tpu_top_apb_result_read_seq"
       ]
     },
     {
       "id": "TP-CTRL-DONE",
       "intent": "done = (counter >= 5); RM predicts done per cycle, scoreboard compares against the DUT done status output directly (no longer relies on o_prdata propagation).",
-      "bins": [
-        "done_assert",
-        "done_deassert"
-      ],
       "covers": [
         "CHK-TOP-08"
+      ],
+      "seqs": [
+        "tpu_top_start_seq"
       ]
     }
   ],

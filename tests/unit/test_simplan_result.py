@@ -35,7 +35,7 @@ GOOD = {
         {
             "id": "TP-1",
             "intent": "drive a write and observe the read-back",
-            "bins": ["a"],
+            "seqs": ["smoke"],
             "covers": ["CHK-0"],
         }
     ],
@@ -43,7 +43,6 @@ GOOD = {
         {
             "id": "S1",
             "sequence_ref": "smoke",
-            "corner_intent": "SS/125C",
         }
     ],
 }

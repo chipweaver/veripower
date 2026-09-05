@@ -28,7 +28,8 @@ from simplan.hints import HintsError, load_check_hints
 
 def semantic_errors(scaffold: dict) -> list:
     """Referential-integrity checks the JSON Schema cannot express: name uniqueness,
-    observer/inports/sequences.agent/tests.seqs/power_scenarios.sequence_ref resolution,
+    observer/inports/sequences.agent/tests.seqs/testpoints.seqs/power_scenarios.sequence_ref
+    resolution,
     and option-c (observer omitted with multiple agents). Returns human-readable errors."""
     agents = scaffold.get("agents", [])
     agent_name_list = [a.get("name") for a in agents]
@@ -93,12 +94,38 @@ def semantic_errors(scaffold: dict) -> list:
                     f"{sorted(n for n in seq_names if n)}."
                 )
 
+    # The testpoint -> sequence edge. It used to be written by the simulation stage's env child
+    # into a verify-handoff.json nothing else read; it is the plan author's judgment, so it is
+    # declared here and the verify child reads it from the plan like every other plan fact.
+    for tp in scaffold.get("testpoints", []):
+        for sn in tp.get("seqs", []):
+            if sn not in seq_names:
+                errs.append(
+                    f"testpoints[{tp.get('id')!r}].seqs entry {sn!r} not in sequences[] "
+                    f"{sorted(n for n in seq_names if n)}."
+                )
+
+    # Two rows on one sequence_ref are one measurement: emit_power_tests groups by it and
+    # ptpx.tcl loads a single LIB_DB, so both rows are computed from the same SAIF at the same
+    # operating condition and report the same number to the digit (measured on 5 runs across 2
+    # modules). Declaring both publishes one measurement as two.
+    by_ref: dict[str, list[str]] = {}
     for ps in scaffold.get("power_scenarios", []):
         ref = ps.get("sequence_ref")
         if ref not in seq_names:
             errs.append(
                 f"power_scenarios[{ps.get('id')!r}].sequence_ref {ref!r} not in sequences[] "
                 f"{sorted(n for n in seq_names if n)}."
+            )
+        by_ref.setdefault(ref, []).append(ps.get("id"))
+    for ref, ids in by_ref.items():
+        if len(ids) > 1:
+            errs.append(
+                f"power_scenarios {sorted(i for i in ids if i)} all point at sequence_ref "
+                f"{ref!r}, so they are one measurement reported several times. Give each row "
+                f"the stimulus that distinguishes it (clock, reset or low-power state drive "
+                f"through the sequence, not through the row), or drop the row and say why in "
+                f"verification-plan.md §4."
             )
 
     return errs

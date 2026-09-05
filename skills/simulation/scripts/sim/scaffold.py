@@ -58,9 +58,16 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     sb_name = sb_cfg.get("name", "scoreboard")
     # Determine the observer agent (passive agent whose txn is compared by scoreboard)
     obs_agent = sb_cfg.get("observer", "")
-    if not obs_agent and agents:
-        # Default: last agent if not specified
-        obs_agent = agents[-1]["name"]
+    if not obs_agent:
+        # Omitting it is legal only with one agent (simplan check-scaffold rejects the rest),
+        # so the one agent IS the observer; anything else here means the gate was bypassed.
+        if len(agents) != 1:
+            sys.exit(
+                f"[sim bootstrap] scoreboard.observer is absent with {len(agents)} agents. "
+                "It is authored in simulation-plan and check-scaffold requires it whenever "
+                "more than one agent is declared."
+            )
+        obs_agent = agents[0]["name"]
 
     # Inport agents for RM (active agents that feed into RM)
     rm_inports = rm_cfg.get("inports", [])
@@ -75,7 +82,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     # --- Per-agent files ---
     for agent in agents:
         aname = agent["name"]
-        mode = agent.get("mode", "active")
+        mode = agent["mode"]
         # The agent's ports are its interface_groups resolved against top-io.json. Clock and
         # reset never appear: agent_if's header already takes clk/rst_n and tb_top drives them,
         # so a DUT clock re-declared in a vif would bind that port to a signal nothing drives.
@@ -283,7 +290,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     test_lines = ["// Auto-generated from tb-scaffold.json."]
     for test in tests:
         tname = test["name"]
-        test_id = test.get("test_id", tname)
+        test_id = test["test_id"]
         # Build sequence start calls
         seq_calls: list[str] = []
         test_seqs = test.get("seqs", [])

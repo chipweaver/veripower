@@ -131,7 +131,8 @@
         "required": [
           "id",
           "intent",
-          "covers"
+          "covers",
+          "seqs"
         ],
         "additionalProperties": false,
         "properties": {
@@ -140,17 +141,22 @@
             "minLength": 1
           },
           "intent": {
-            "description": "What this testpoint drives and why — the stimulus/intent the env and conformance-fix children read as the intent source. Write the situation being created, not the check: the covered hints already say how each check is verified.",
+            "description": "What this testpoint drives and why — the situation being created, not the check (the covered hints already say how each check is verified). It is the whole of what a reader has: simulation's verify child judges against it whether an uncovered branch or FSM transition falls inside this testpoint's remit, and an item it cannot place is routed back here as a missing testpoint.",
             "type": "string",
             "minLength": 1
-          },
-          "bins": {
-            "description": "The coverage bins this testpoint is meant to hit, as your own tags. Simulation's verify child reads them alongside `intent` when it judges whether an uncovered branch or FSM transition falls inside any testpoint's remit, so write what the testpoint covers rather than urg's identifiers; an item it cannot place is routed back here as a missing testpoint.",
-            "type": "array"
           },
           "covers": {
             "description": "The `check-hints/<child>.json` check_ids this testpoint verifies — YOUR clustering (one-to-one, one-to-many, or many-to-one). Present with an explicit empty array on a scenario testpoint you invented, since omitted and `[]` are not the same claim; an empty one verifies no authored check. Simulation reads each covered hint, and the requirements.json rows it names, by id.",
             "type": "array"
+          },
+          "seqs": {
+            "description": "The sequences[] names whose stimulus is meant to drive this testpoint. YOUR judgment: `tests[].seqs` says what a testcase runs, this says which of those the testpoint rides on. simulation's verify child reads it for Rule B — it places an uncovered branch on a testpoint and this is what tells it whose stimulus to iterate. A testpoint no sequence drives cannot be exercised, so name at least one.",
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       }

@@ -45,14 +45,26 @@ The testpoints live in `tb-scaffold.json`'s `testpoints[]`. The partition follow
 
 ## 4. Power Scenarios
 
-All nine standard rows are materialized; `power-scenarios.json` carries their `sequence_ref` and `corner_intent`. Per-row materialization on this module:
+Three rows are materialized, one per distinct stimulus this module can be driven into;
+`power-scenarios.json` carries their `sequence_ref`. Two rows that would reduce to the same
+sequence are one measurement, so the rest are dropped here with the reason:
 
-- **S1 / S7 (static + high-temperature leakage).** Clock off, reset asserted, no traffic. Both reduce to `tpu_top_idle_seq` and stay distinct only by `corner_intent` (SS@125C vs FF@125C).
-- **S2 (clock-tree power).** Clock toggling, reset asserted, no traffic — same idle sequence, clock left running, so the delta against S1 is the clock tree.
-- **S3a / S3b (idle).** Reset de-asserted, no `start` driven. This module has no low-power control signal, so the low-power-on row has nothing to switch: S3b is materialized identically to S3a and differs in intent only.
-- **S4a / S4b (business flow).** Sustained back-to-back APB weight load + data stream + `start` via `tpu_top_traffic_seq`. Same note as S3b: nothing to gate, so S4b repeats S4a.
-- **S5 (peak / worst case).** Full-toggle stimulus on both input FIFOs with the array saturated, at FF@125C, for PDN / IR-drop.
-- **S6 (DVFS switching transient).** The module runs on one fixed clock with no voltage/frequency domain, so `switching` names no band here; the row reuses the traffic sequence and is annotated purely by corner.
+- **S1 (leakage baseline).** Clock off, reset asserted, no traffic — `tpu_top_idle_seq`.
+- **S4a (business flow).** Sustained back-to-back APB weight load + data stream + `start` via
+  `tpu_top_traffic_seq`.
+- **S5 (peak / worst case).** Full-toggle stimulus on both input FIFOs with the array saturated,
+  for PDN / IR-drop.
+- **S2 (clock-tree power) dropped.** It would need reset held with the clock running, and this
+  module's idle sequence holds the clock off; authoring a second idle variant to isolate the
+  clock tree was judged not worth a GLS run on a module this size.
+- **S3a / S3b (idle) dropped.** Reset de-asserted with no `start` driven is electrically the
+  same as S1 here, and the module has no low-power control signal, so the low-power-on row has
+  nothing to switch.
+- **S4b dropped**, same reason: nothing to gate.
+- **S6 (DVFS switching transient) dropped.** The module runs on one fixed clock with no
+  voltage/frequency domain, so `switching` names no band here.
+- **S7 dropped.** It differed from S1 only in the corner it was meant for, and this flow computes
+  every row at the one library `ptpx.tcl` loads.
 
 ## 5. Revision Summary
 

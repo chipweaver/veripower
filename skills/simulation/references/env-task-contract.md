@@ -15,8 +15,7 @@ the UVM scaffold, compile, and run the smoke suite.
   `tb-scaffold.json` (the TB scaffold contract: `agents` / `tests` are materialized into SV
   here, and `testpoints[].covers[]` names the check hints your refmodel / scoreboard implement;
   see `check-hints.md`) and `sequences.json` (one seq class per entry).
-  `testpoints[].bins[]` is not consumed in this wave, and `power-scenarios.json` is not
-  declared here at all: it is power-analysis's.
+  `power-scenarios.json` is not declared here at all: it is power-analysis's.
 - verification-plan path `<plan>/verification-plan.md`: the human-readable
   plan (review anchor for filling intent).
 - (rework only) the caller's resolved edit scope, as whichever of these the kernel put in this
@@ -56,11 +55,10 @@ the UVM scaffold, compile, and run the smoke suite.
 
    *Both measured on three modules.* So your resolved edit scope names the scaffold when the
    scaffold moved; when it does, read the plan against what is on disk before you fill anything,
-   and reconcile the clocking blocks, the driver and monitor that read them, and the env. All of
-   them are on Rule A's repairable list. This is the cost of the deploy not overwriting what a
+   and reconcile the clocking blocks, the driver and monitor that read them, and the env. This is the cost of the deploy not overwriting what a
    round wrote, and it is the cheaper side: a stale clocking block is one round of reconciliation,
    and a filled checker replaced by a stub is a round of authored checks gone.
-2. **Fill / reconcile scaffold** (bound by **Rule A**, see `repair-boundaries.md`): inside
+2. **Fill / reconcile scaffold**: inside
    `{workdir}`, fill or reconcile every `TODO(` across driver / monitor / checker / RM / functional
    seq / top against the current plan (`verification-plan.md` + the plan sidecars).
    - **First run:** fill every rendered `TODO(` stub in the freshly bootstrapped tree.
@@ -82,15 +80,13 @@ the UVM scaffold, compile, and run the smoke suite.
    `<check_hints>/<child>.json`, and the rows it names in `<requirements>/requirements.json`; and
    read the small top-level arrays (`sequences[].agent` / `tests[].seqs` / `rm` / `scoreboard`)
    for the testpoint→component mapping. `testpoints[]` itself carries only `id` / `intent` /
-   `bins` / `covers`, never agent/seq/rm, so
-   the cross-array join is over small arrays. (`verify-handoff.json` is your *output*, not an
-   input, and does not exist at fill time.)
+   `covers` / `seqs`, never agent/rm, so the cross-array join is over small arrays.
 3. **Compile + smoke**: `make simv` → `make smoke`. The two steps **share** one
    `defaults.yaml.scaffold_repair_max_rounds` repair budget (compile + smoke do not each get N rounds).
-   On a scaffold/wiring error within budget, error-driven repair is allowed (Rule A repairable list);
+   On a scaffold/wiring error within budget, error-driven repair is allowed;
    on a semantic / expected-behavior error, do **not** retry: end with `STATUS: BLOCKED <one-line
-   reason naming compile|smoke + the semantic locus>` so the orchestrator records
-   `--failure-phase compile|smoke`.
+   reason naming where it stopped and the semantic locus>`, which the orchestrator records
+   verbatim as the round's `fail_reason`.
 4. **Env-exit completeness self-gate**: before reporting `STATUS: DONE`, run
 
    ```bash
@@ -135,7 +131,7 @@ smoke gate still decides smoke pass/fail.
   testpoint's `intent` -- the DUT RTL is NOT in this child's input set and MUST NOT be opened to
   understand a signal or derive an expected value. RTL participates only mechanically, through the
   compile filelist. A golden model reverse-engineered from the DUT mirrors the implementation (bugs
-  included) and can never disagree -- circular verification. Reading RTL to author a check is a Rule A
+  included) and can never disagree -- circular verification. Reading RTL to author a check is a
   semantic violation → `STATUS: BLOCKED <compile|smoke> rtl-source-read: <locus>`, do not retry.
 
 ## Output
@@ -148,41 +144,17 @@ smoke gate still decides smoke pass/fail.
   env-phase artifacts (artifact ownership split is in `artifact-contract.md`); the full-regress /
   coverage / case-result artifacts are produced by the verify child in wave 3, and `result.json`
   is assembled by the orchestrator.
-- Emit `{workdir}/verify-handoff.json`, a per-testpoint check-intent digest (schema below) so the
-  verify child gets check-intent without re-reading the whole TB.
 - End the response with `STATUS: DONE` + a single JSON line listing what is now in the workdir:
 
   ```json
-  {"files": ["Makefile", "env.sh", "filelist.f", "rtl_filelist.f", "tb/uvm/", "scripts/", "tests/testlist.json", "regression-log.txt", "logs/", "verify-handoff.json"]}
+  {"files": ["Makefile", "env.sh", "filelist.f", "rtl_filelist.f", "tb/uvm/", "scripts/", "tests/testlist.json", "regression-log.txt", "logs/"]}
   ```
 
-  or `STATUS: BLOCKED <reason>` using exactly one of the two reason-string forms below, because the
-  orchestrator parses this line to pick `--failure-phase`, so the wording must match:
-
-  - **Rule A unrepairable** (compile/smoke semantic error per `repair-boundaries.md`):
-    `STATUS: BLOCKED <compile|smoke> <locus>`, naming the failing phase first, then the semantic
-    locus. Drives `--failure-phase compile|smoke`.
-  - **A check hint whose rule cannot be authored from** (per `check-hints.md`):
-    `STATUS: BLOCKED check-hints incomplete: <check_id list>` verbatim. Drives
-    `--failure-phase prerequisite`; the hint is specification's artifact.
+  or `STATUS: BLOCKED <reason>`. The orchestrator passes your reason through verbatim as the
+  envelope's `fail_reason`, so it is the whole of what the next reader gets: name where you stopped
+  (compile, smoke, or a check hint you could not author from) and the semantic locus, in your own
+  words. A check hint whose rule cannot be authored from is specification's defect, not yours — say
+  so and name the `check_id`s.
 
   `STATUS: BLOCKED` is a **harness-level** signal, distinct from the `result.json.status` enum
-  (`pass`/`fail` only); the orchestrator maps it to `status=fail` + `fail_reason` with the
-  `--failure-phase` picked from the form above.
-
-## `verify-handoff.json`
-
-The plan maps tests to sequences and sequences to agents. It does not map a **testpoint** to the
-sequences meant to exercise it, and you are the one who wired them, so nothing else can record
-that edge. Write it down:
-
-```json
-{"testpoints": [{"tp_id": "TP-07", "seqs": ["attn_prefix_seq", "attn_scale_seq"]}]}
-```
-
-One entry per testpoint you materialized a check for, including the ones whose `covers[]` was
-empty. The verify child reads it for Rule B: an uncovered item it
-places on a testpoint leads to the sequence whose stimulus it then iterates.
-
-Nothing else about your checks belongs here. What a check verifies is in the check, the reviewer
-reads it there, and a summary of your own work is the one thing a reviewer is told not to read.
+  (`pass`/`fail` only); the orchestrator maps it to `status=fail` + your reason.

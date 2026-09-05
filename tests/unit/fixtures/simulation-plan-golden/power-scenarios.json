@@ -1,47 +1,14 @@
 [
   {
     "id": "S1",
-    "sequence_ref": "tpu_top_idle_seq",
-    "corner_intent": "SS@125C"
-  },
-  {
-    "id": "S2",
-    "sequence_ref": "tpu_top_idle_seq",
-    "corner_intent": "TT@25C"
-  },
-  {
-    "id": "S3a",
-    "sequence_ref": "tpu_top_idle_seq",
-    "corner_intent": "TT@25C"
-  },
-  {
-    "id": "S3b",
-    "sequence_ref": "tpu_top_idle_seq",
-    "corner_intent": "TT@25C"
+    "sequence_ref": "tpu_top_idle_seq"
   },
   {
     "id": "S4a",
-    "sequence_ref": "tpu_top_traffic_seq",
-    "corner_intent": "TT@25C"
-  },
-  {
-    "id": "S4b",
-    "sequence_ref": "tpu_top_traffic_seq",
-    "corner_intent": "TT@25C"
+    "sequence_ref": "tpu_top_traffic_seq"
   },
   {
     "id": "S5",
-    "sequence_ref": "tpu_top_peak_toggle_seq",
-    "corner_intent": "FF@125C"
-  },
-  {
-    "id": "S6",
-    "sequence_ref": "tpu_top_traffic_seq",
-    "corner_intent": "TT@25C"
-  },
-  {
-    "id": "S7",
-    "sequence_ref": "tpu_top_idle_seq",
-    "corner_intent": "FF@125C"
+    "sequence_ref": "tpu_top_peak_toggle_seq"
   }
 ]
