@@ -116,8 +116,8 @@ violating is one of two things:
 - **A declaration you rendered wrong** — the description named a path and your SDC command does
   not match it. Fix the command and re-run.
 - **A path nobody declared** — a real violation. Stop iterating and go to step 4. Its negative
-  slack fails the `timing_slack_ns` target on its own, so the gate writes the `violations[]` row;
-  what it cannot write is who must fix it.
+  slack fails the `timing_slack_ns` target on its own, so `finalize` judges that row unmet and
+  records the measured slack; what it cannot write is who must fix it.
 
 Excepting the second kind here on your own judgement is the one way this stage can except its way
 to a passing PPA verdict. If the path really is multicycle or false, its author is the one who
