@@ -62,15 +62,6 @@ stage list you keep yourself:
 Every task dispatch renders identically, including `simulation-triage`: what the round is
 about is in the kernel-written `{workdir}/dispatch.json`, never in the prompt.
 
-**You author no content into a dispatch, and you need none** — at dispatch time every fact
-you could state is already a file on disk that the target reads for itself. The rework
-channels in `dispatch_args` are coordinates, not content: `--caused-by` makes the kernel
-write the failing run's own `result.json` path into `dispatch.json`, and `--diagnosis-refs`
-makes it name that diagnosis's own record in `caused_by` and copy a human author's `reason` into
-`reasons`, verbatim. Never restate a failure's numbers, root cause, or bottleneck yourself:
-a paraphrase of a machine-authored envelope can only lose or distort it, and the target
-reads the original.
-
 ## `REAP` — close a run, then loop
 
 ```bash
@@ -78,7 +69,7 @@ kernel.py reap --module {module} --rule <rule> --run <run>
 ```
 
 `reap` derives the verdict from the run's own `result.json`. Whether a stage passed is not
-yours to decide, and there is no flag through which to say so.
+yours to decide.
 
 ## `YIELD` — report what is running, end the turn
 
@@ -99,9 +90,9 @@ user the reason, any `candidates`, and — to show the blast radius of a propose
 change — `kernel.py consequences --module {module} --paths <path…>` (the currently-valid
 proofs a path change would invalidate). Offer 2–3 concrete next steps.
 
-Recovery is **exclusively a human `kernel.py diagnose`** (source=human) — there is no
-`resolve` verb, and you never auto-author a diagnosis (only triage mints one). Surface the
-recovery command for the user to approve/author:
+Recovery is **exclusively a human `kernel.py diagnose`**, and you never author one yourself:
+the verb stamps every diagnosis it writes `source=human`, so one you mint is recorded as a
+human's judgment. Surface the command for the user to approve/author:
 
 ```bash
 kernel.py diagnose --module {module} --id <diag-id> \
