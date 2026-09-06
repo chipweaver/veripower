@@ -91,9 +91,18 @@ def _sev(token: str) -> str | None:
     Substring-based, so compound tokens classify correctly (SynthesisError -> error,
     a hypothetical SynthesisWarning -> warning). An unrecognized token returns None
     and run() fails loud rather than guessing.
+
+    `Syntax` carries none of those substrings and is what SpyGlass puts on an STX_*
+    row — RTL that would not parse, which is the one finding this stage most needs to
+    render and was the one it refused, calling the report unparseable when the report
+    was fine and the design was not. SpyGlass registers it FATAL
+    (`spyRegisterSeverity(..., "Syntax", "FATAL", ...)`), so it gates like an error.
+    Its other labels that carry none of these substrings (Rule, Note, Recommended,
+    Prohibited, Caution, Reference, Data, Race) are rule-metadata severities no
+    report row here has ever carried; they stay fail-loud until one does.
     """
     t = token.lower()
-    if "fatal" in t or "error" in t or "mandatory" in t:
+    if "fatal" in t or "error" in t or "mandatory" in t or "syntax" in t:
         return "error"
     if "warning" in t:
         return "warning"

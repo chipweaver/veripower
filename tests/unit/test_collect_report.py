@@ -119,6 +119,21 @@ def test_sev_maps_the_starc_mandatory_token():
     assert cr._sev("Mandatory") == "error"
 
 
+def test_sev_maps_the_syntax_token_this_stage_exists_to_report():
+    # An STX_* row reports "Syntax", which carries none of the substrings above.
+    # Unmapped it rejected the whole report as unparseable — on RTL that would not
+    # parse, which is the finding this stage most needs to render. Verbatim from a
+    # SpyGlass vL-2016.06 lint_rtl run over ChipVerilog's or1200.
+    row = (
+        "[2]      STX_VE_481           Syntax      or1200_ctrl.v     241     1     "
+        "Syntax error near ( ; )"
+    )
+    (parsed,) = cr.parse_rows(row)
+    assert parsed["sev_token"] == "Syntax"
+    # SpyGlass registers it FATAL, so it gates.
+    assert cr._sev("Syntax") == "error"
+
+
 def test_parse_rows_alias_variants_and_native_id():
     rows = cr.parse_rows(MIXED)
     assert len(rows) == 4
