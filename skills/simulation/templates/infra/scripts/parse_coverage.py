@@ -25,8 +25,13 @@ import re
 import sys
 from pathlib import Path
 
-# Header column order in urg L-2016.06 text reports.
-_DIM_ORDER = ["score", "line", "cond", "toggle", "fsm", "branch"]
+# urg prints its column names above every table, and which columns it prints follows the
+# `-metric` it was run with. Reading them beats assuming a set: a report produced without
+# branch coverage has five columns, and a parser expecting six walks past the row it wants
+# and latches onto the next block's — on a real OpenTitan run that put an instance NAME
+# where a number belonged. So the header is the schema, and a dim urg did not measure is
+# simply absent, which is what the coverage gate already answers ("urg measured none").
+_HDR_TOKENS = ("SCORE", "LINE")
 
 
 def _num(tok: str):
@@ -34,13 +39,19 @@ def _num(tok: str):
     return None if tok in ("--", "n/a", "") else float(tok)
 
 
+def _dims(header: str) -> list[str]:
+    """The dim column names this table declares, lowercased, NAME excluded."""
+    return [t.lower() for t in header.split() if t.upper() != "NAME"]
+
+
 def _values_after_header(lines: list[str], start: int) -> dict | None:
-    """Given a 'SCORE LINE COND ... ' header at lines[start], parse the next
-    non-empty line of 6 leading numeric/-- tokens into the dim dict."""
+    """The first row under the header at lines[start] that has exactly the columns the
+    header declares. A row with a different count belongs to another block, not this one."""
+    dims = _dims(lines[start])
     for ln in lines[start + 1 :]:
         toks = ln.split()
-        if len(toks) >= len(_DIM_ORDER) and re.match(r"^[\d.]+$|^--$", toks[0]):
-            return {d: _num(t) for d, t in zip(_DIM_ORDER, toks[: len(_DIM_ORDER)])}
+        if len(toks) == len(dims) and re.match(r"^[\d.]+$|^--$", toks[0]):
+            return dict(zip(dims, (_num(t) for t in toks)))
     return None
 
 
@@ -51,29 +62,28 @@ def parse_aggregate(text: str) -> dict | None:
         if ln.strip().startswith("Total Coverage Summary"):
             # next line is the SCORE LINE COND ... header
             for j in range(i + 1, min(i + 4, len(lines))):
-                if "SCORE" in lines[j] and "LINE" in lines[j]:
+                if all(t in lines[j] for t in _HDR_TOKENS):
                     return _values_after_header(lines, j)
     return None
 
 
 def parse_modules(text: str) -> list[dict]:
-    """Per-module rows from modlist.txt: 6 dim tokens + trailing module name."""
+    """Per-module rows from modlist.txt: the header's dim columns, then the module name."""
     out: list[dict] = []
-    lines = text.splitlines()
-    in_table = False
-    for ln in lines:
-        if "SCORE" in ln and "LINE" in ln and "NAME" in ln:
-            in_table = True
+    dims: list[str] = []
+    for ln in text.splitlines():
+        if all(t in ln for t in _HDR_TOKENS) and "NAME" in ln:
+            dims = _dims(ln)
             continue
-        if not in_table:
+        if not dims:
             continue
         toks = ln.split()
-        if len(toks) < len(_DIM_ORDER) + 1:
+        if len(toks) != len(dims) + 1:
             continue
         if not re.match(r"^[\d.]+$|^--$", toks[0]):
             continue
-        row = {d: _num(t) for d, t in zip(_DIM_ORDER, toks[: len(_DIM_ORDER)])}
-        row["name"] = toks[len(_DIM_ORDER)]
+        row = dict(zip(dims, (_num(t) for t in toks[: len(dims)])))
+        row["name"] = toks[len(dims)]
         out.append(row)
     return out
 

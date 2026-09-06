@@ -1,0 +1,45 @@
+Design Module List
+
+Total Module Definition Coverage Summary 
+SCORE  LINE   COND   TOGGLE FSM    
+ 49.75  86.98  37.20  53.41  21.43 
+
+
+Total modules in report: 34
+-------------------------------------------------------------------------------
+SCORE  LINE   COND   TOGGLE FSM    NAME                      
+ 12.50 --      25.00   0.00 --     pins_if                   
+ 25.00 --     --      25.00 --     prim_sec_anchor_buf       
+ 28.33 --     --      28.33 --     prim_reg_we_check         
+ 37.54  61.90  66.67  21.59   0.00 prim_alert_sender         
+ 38.32  83.87  44.83  24.59   0.00 alert_esc_if              
+ 49.00  74.00   0.00  62.00  60.00 prim_diff_decode          
+ 51.55 100.00  33.22  21.43 --     prim_onehot_check         
+ 53.43  75.00  50.00  35.28 --     prim_fifo_sync_cnt        
+ 53.80 100.00 --       7.61 --     tb                        
+ 54.00  81.03  42.86  38.10 --     uart_core                 
+ 54.55 100.00 --       9.09 --     prim_secded_inv_64_57_enc 
+ 57.62 --     --      57.62 --     uart                      
+ 58.33 --     --      58.33 --     prim_sec_anchor_flop      
+ 60.12  63.93  71.43  45.00 --     clk_rst_if                
+ 63.77 --      50.00  77.54 --     tl_if                     
+ 64.67 --     --      64.67 --     prim_subreg_ext           
+ 66.76 --      83.33  50.19 --     prim_subreg_arb           
+ 70.68 100.00 100.00  12.04 --     prim_fifo_sync            
+ 77.97 100.00  83.33  50.59 --     prim_subreg               
+ 78.56  92.86 --      64.26 --     prim_intr_hw              
+ 79.78  95.92  75.00  68.41 --     uart_reg_top              
+ 81.28 100.00 --      62.56 --     tlul_rsp_intg_gen         
+ 81.35  95.00  92.31  88.10  50.00 uart_rx                   
+ 83.18 100.00  63.64  85.90 --     tlul_adapter_reg          
+ 83.33 --     --      83.33 --     uart_nf_if                
+ 93.19  82.35 100.00  97.22 --     tlul_err                  
+ 94.23 100.00 --      88.46 --     prim_secded_inv_64_57_dec 
+ 97.45 --     --      97.45 --     tlul_cmd_intg_chk         
+ 97.84 100.00 100.00  93.52 --     uart_tx                   
+100.00 --     --     100.00 --     tlul_data_integ_dec       
+100.00 --     --     100.00 --     tlul_data_integ_enc       
+100.00 100.00 --     100.00 --     prim_secded_inv_39_32_dec 
+100.00 100.00 --     100.00 --     prim_secded_inv_39_32_enc 
+100.00 --     --     100.00 --     uart_if                   
+

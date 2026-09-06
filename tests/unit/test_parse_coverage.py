@@ -11,6 +11,7 @@ sys.path.insert(
     0, str(ROOT / "skills" / "simulation" / "templates" / "infra" / "scripts")
 )
 FIX = Path(__file__).resolve().parent / "fixtures" / "parse_coverage"
+FIX5 = Path(__file__).resolve().parent / "fixtures" / "parse_coverage-5col"
 
 import parse_coverage as pc  # noqa: E402
 
@@ -28,6 +29,24 @@ def test_parse_aggregate_dims():
         },
         rel=1e-3,
     )
+
+
+def test_columns_come_from_the_header_not_from_an_assumed_set():
+    # Verbatim urg L-2016.06 output from an OpenTitan DV run whose -metric left out
+    # branch: five dim columns, not six. Assuming six walked past this row, latched onto
+    # the next block's (Hierarchical coverage, which appends an instance NAME) and tried
+    # to read that name as a number. The columns are printed above every table.
+    agg = pc.parse_aggregate((FIX5 / "dashboard.txt").read_text())
+    assert agg == pytest.approx(
+        {"score": 48.00, "line": 82.42, "cond": 41.17, "toggle": 50.25, "fsm": 18.18},
+        rel=1e-3,
+    )
+    assert "branch" not in agg  # a dim urg did not measure is absent, never guessed
+
+    mods = {m["name"]: m for m in pc.parse_modules((FIX5 / "modlist.txt").read_text())}
+    assert len(mods) == 34
+    assert mods["uart_core"]["line"] == pytest.approx(81.03)
+    assert "branch" not in mods["uart_core"]
 
 
 def test_parse_aggregate_missing_returns_none():

@@ -1,0 +1,28 @@
+Dashboard
+
+Date: Tue Sep  1 05:02:04 2026
+
+User: root
+
+Version: L-2016.06
+Command line: urg -full64 -dir cov.vdb -format text -report urgTxt -metric line+cond+fsm+tgl 
+
+Number of tests: 1
+
+-------------------------------------------------------------------------------
+Total Coverage Summary 
+SCORE  LINE   COND   TOGGLE FSM    
+ 48.00  82.42  41.17  50.25  18.18 
+
+
+-------------------------------------------------------------------------------
+Hierarchical coverage data for top-level instances 
+SCORE  LINE   COND   TOGGLE FSM    NAME 
+ 48.00  82.42  41.17  50.25  18.18 tb   
+
+
+-------------------------------------------------------------------------------
+Total Module Definition Coverage Summary 
+SCORE  LINE   COND   TOGGLE FSM    
+ 49.75  86.98  37.20  53.41  21.43 
+
