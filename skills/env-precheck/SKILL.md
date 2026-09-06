@@ -23,7 +23,7 @@ What a missing row costs:
 | Missing | Stages lost |
 |---|---|
 | `python3`, `jsonschema` >= 4.18, `referencing`, `PyYAML` | all |
-| `/bin/sh` → bash, `make` | every EDA stage |
+| `/bin/sh` → bash where the tools run, `make` | every EDA stage |
 | `vcs`, `urg`, `fsdbreport`, `fsdb2vcd`, `UVM_HOME` | simulation, power-analysis, simulation-triage |
 | `dc_shell`, a DC-Ultra checkout, `LIB_DB` | synthesis, timing-analysis, power-analysis |
 | `pt_shell` | timing-analysis, power-analysis |
@@ -64,5 +64,6 @@ Per row: pass or fail, and the stages it costs. Close with the stage list runnab
   and lmstat missing or timing out is not a failure.
 - A `compile_ultra` that cannot check out DC-Ultra costs the whole row, not QoR: `dc_run.tcl` has
   no plain-`compile` path, so report it as synthesis lost even where plain `compile` works.
-- An `urg -version` other than L-2016.06 is a warning — the coverage parser is layout-sensitive.
+- An `urg -version` other than L-2016.06 is worth reporting, not a failure: the coverage parser
+  takes its columns from the header urg prints, so a different column set parses.
 - Print `export` lines for the user; never edit their shell config.

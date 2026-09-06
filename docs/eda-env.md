@@ -19,10 +19,10 @@ a deployment choice.
 | `LM_LICENSE_FILE` and/or `SNPSLMD_LICENSE_FILE` | Synopsys license server checkout (tools read these at launch; VeriPower does not validate) | `lmstat -c "$LM_LICENSE_FILE"` |
 | A **DC-Ultra** entitlement on that server | `dc_run.tcl` maps with `compile_ultra` and has no plain-`compile` path — the PPA targets are judged against DC-Ultra QoR | run the `env-precheck` skill's Design Compiler smoke row |
 | `LIB_DB`, `LIB_V` | synthesis / power-analysis read std-cell libs | stage `env.sh` `:?` guard fires on miss |
-| `WIRE_LOAD_MODEL` | synthesis selects the interconnect estimate; a library declares no default, and without one PT-PX reports zero net switching power | `env.sh` `:?` guard fires on miss; `dc_run.tcl` aborts when the name is not in the library |
+| `WIRE_LOAD_MODEL` | synthesis's interconnect estimate: a model the library carries, or `none`. Required without a default because a library declares neither, and the choice moves both numbers the stage is judged on | `env.sh` `:?` guard fires on miss; `dc_run.tcl` aborts when the reports disagree with what was asked for, either way |
 | `UVM_HOME` | simulation / power-analysis compile UVM DPI | same |
 | `python3` >= 3.10 with `jsonschema` >= 4.18, `referencing`, `PyYAML` | framework state tool and stage gates validate result/review schemas (`registry=`-based `$ref` resolution needs the post-4.18 jsonschema API); the stage CLIs annotate `list[str] | None` in evaluated signature position, which is a TypeError before 3.10 | `python3 -c "import sys, jsonschema, referencing, yaml; assert sys.version_info >= (3, 10)"` |
-| `/bin/sh` → `bash` | The VCS launcher uses `#!/bin/sh -h` and relies on bash semantics | `readlink /bin/sh` should resolve to `bash` |
+| `/bin/sh` → `bash` **where VCS runs** | The VCS launcher is `#!/bin/sh -h` and relies on bash semantics. That is the machine the launcher executes on, which is not always the one you type on: with a containerized install the host's `/bin/sh` can be `dash` and every stage still runs | `readlink -f /bin/sh` there, not necessarily here |
 
 ## Optional
 
@@ -32,16 +32,20 @@ a deployment choice.
 
 ## Coverage report (urg text layout)
 
-`simulation`'s structural-coverage gate parses the **text** report from
-`urg -report cov_merge -format text` (`cov_merge/dashboard.txt` + `modlist.txt`) into
-`structural-coverage.json` (`parse_coverage.py`). The parser was developed and **verified against
-urg L-2016.06**, whose layout is a fixed-column `SCORE LINE COND TOGGLE FSM BRANCH` block (`--` =
-dim not applicable). VeriPower does not pin a urg release, but this text layout is
-version-sensitive: a different urg major version may emit a different header/column layout, in
-which case `parse_coverage.py` **fails loud** (it never fabricates a "coverage met" result) and
-must be adjusted for that version. The report MODE matters — `-report both` / `-report struct_cov`
-emit a covergroup `SCORE GROUP` table instead, which is **not** the structural report the gate
-consumes; the gate's `coverage` target must use `-report cov_merge`.
+`simulation`'s structural-coverage gate parses the **text** report from `urg` (`dashboard.txt` +
+`modlist.txt`) into `structural-coverage.json` (`parse_coverage.py`). Two things it needs:
+
+- **`-format text`.** The parser reads urg's text tables; nothing reads the HTML.
+- **`-report <dir>` and `--cov-dir` naming the same directory.** `-report` names where urg writes,
+  not what it reports — the `coverage` target passes both on one line, so they agree by
+  construction.
+
+Which dim columns appear is not fixed. urg prints the columns it has, which follows the `-cm`
+metrics compiled in (`VCS_COV`) and what the `.vdb` holds: a real run without branch coverage
+prints five columns, and runs with covergroups print a `GROUP` column beside the structural ones.
+The parser takes its columns from the header above each table, so a different set parses; a dim
+urg did not measure is absent, and a requirements row bounding it fails by name rather than
+being scored against something else.
 
 ## Convention
 
