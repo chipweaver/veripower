@@ -1,4 +1,1 @@
-# spec review — tpu_top
-
-No findings. Compared `tpu_top.md` against the whole brainstorm and against `design.md` §1.4;
-nothing omitted, contradicted or silently added.
+Stub: keeps its directory non-empty, which is what the tests assert as an artifact; git carries no empty directory.
