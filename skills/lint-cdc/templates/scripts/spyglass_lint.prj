@@ -12,29 +12,25 @@ read_file -type sourcelist scripts/filelist.txt
 read_file -type sgdc       scripts/constraints.sgdc
 
 ##Common Options Section
-# Measured, not assumed: each option below was removed on its own from a real
-# ChipVerilog i2c lint run and the reported messages compared. Every one of them is
-# individually inert on that design — which is what an option that only matters to a
-# design shape this one does not have looks like, not a reason to drop it.
+# Measured against a real ChipVerilog i2c lint run, one option removed at a time: each is
+# inert on its own there. That is what an option matters-to-a-shape-this-design-lacks looks
+# like, not a reason to drop it, and the two notes below are the cases where removing one
+# does change the result.
 set_option projectwdir                  ./spyglass_work
-# mixed: the sourcelist may name VHDL beside Verilog.
 set_option language_mode                mixed
-# The lint goals read RTL; synthesizing it here would only cost time, and flattening
-# would lose the hierarchy the per-file messages are reported against.
 set_option designread_enable_synthesis  no
 set_option designread_disable_flatten   no
-# enableSV / enableSV09: SystemVerilog, and its 2009 additions. SpyGlass prints
-# "Option 'enableSV' ignored as another option(s) 'enableSV09' have been specified"
-# on every run, and `stop` is listed as an unused specification in stop_summary.rpt.
-# Neither message means the line is dead: removing either alone changes nothing, and
-# removing BOTH loses a real CheckDelayTimescale-ML warning on i2c_master_bit_ctrl.v,
-# reproducibly, while removing any other two (or three) options does not. Keep the pair.
+# Neither of these two lines is dead, whatever the run says about them. SpyGlass prints
+# "Option 'enableSV' ignored as another option(s) 'enableSV09' have been specified" every
+# time, and lists `stop` as an unused specification in stop_summary.rpt. Removing either
+# alone changes nothing; removing BOTH loses a real CheckDelayTimescale-ML warning on
+# i2c_master_bit_ctrl.v, reproducibly, where removing any other two or three does not.
 set_option enableSV                     yes
 set_option enableSV09                   yes
-# sort: report messages in a stable order, so two runs of the same design diff cleanly.
 set_option sort                         yes
 set_option stop                         {no}
-# allow_module_override: a design that defines a module name twice is read rather than
-# refused, so lint gets to say so instead of the project failing to open.
+# Load-bearing on a file set that defines a module name twice: with it, that design reads
+# and lints normally; without it lint reports nothing at all — no error, an empty report,
+# exit 0.
 set_option allow_module_override        yes
 set_option top                          MY_TOP
