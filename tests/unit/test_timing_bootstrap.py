@@ -19,6 +19,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -78,7 +79,10 @@ def _make_tree(
     return m, workdir, _MAIN
 
 
-_LIB_DB = "/home/eda/Foundry/TSMC.90/slow.db"
+# A real file: bootstrap refuses a LIB_DB path that is not there, because config.tcl is
+# the record of which library the STA linked against. Created once for the module.
+_LIB_DB = str(Path(tempfile.mkdtemp(prefix="timing-lib-")) / "slow.db")
+Path(_LIB_DB).write_text("# stand-in for a .db\n")
 
 
 def _run(workdir, main, extra=None, cwd=None, lib_db=_LIB_DB):
@@ -174,6 +178,18 @@ def test_fail_closed_when_lib_db_unset(tmp_path):
 def test_fail_closed_when_lib_db_empty(tmp_path):
     m, workdir, main = _make_tree(tmp_path)
     r = _run(workdir, main, lib_db="")
+    assert r.returncode == 1
+    assert "LIB_DB" in r.stderr
+    assert not (workdir / "config.tcl").exists()
+
+
+def test_fail_closed_when_lib_db_is_not_a_file(tmp_path):
+    # Set is not the same as readable. PT reads a missing library without raising, so a
+    # typo deployed here first shows up as a design that linked with no cells; and
+    # config.tcl, which claims to record the library the STA linked against, would be
+    # recording a path that is not there.
+    m, workdir, main = _make_tree(tmp_path)
+    r = _run(workdir, main, lib_db=str(tmp_path / "typo" / "slow.db"))
     assert r.returncode == 1
     assert "LIB_DB" in r.stderr
     assert not (workdir / "config.tcl").exists()

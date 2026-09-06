@@ -99,6 +99,13 @@ def run(workdir, top: str | None = None) -> int:
     if not lib_db:
         _err("LIB_DB is not in the environment; export it before bootstrap")
         return 1
+    # Set is not the same as readable, and config.tcl is the record of which library the
+    # STA was linked against — a path that is not there makes that record false. PT reads
+    # a missing library without raising, so the first sign of it is a linked design with
+    # no cells, three commands later.
+    if not Path(lib_db).is_file():
+        _err(f"LIB_DB is not a readable file: {lib_db}")
+        return 1
 
     workdir.mkdir(parents=True, exist_ok=True)
     if (workdir / "run_sta.tcl").is_file():
