@@ -98,12 +98,17 @@ run_selected_tests() {
 		# IPD_FSDB_FILE makes dump.tcl (loaded via -ucli) write this run's FSDB;
 		# TB_TOP is already exported by env.sh. Capture the exit code with
 		# `|| simv_rc=$?` so a -ucli FATAL cannot abort this set -euo pipefail
-		# loop — the status file, not the exit code (which the eda-exec shim
-		# normalizes to 0 even on $fatal), is the authoritative pass/fail signal.
+		# loop — the status file, not the exit code, is the authoritative pass/fail
+		# signal: simv exits 0 on $fatal exactly as it does on $finish, so there is
+		# no exit code to read. That is VCS itself, not the container: the same
+		# binary run directly gives the same 0.
+		# +ntb_random_seed is what makes $SEED the run's seed. Without it VCS uses
+		# its own default and every regression replays identical stimulus, while
+		# regression-log.txt records a fresh number each time.
 		simv_rc=0
 		IPD_FSDB_FILE="$fsdb_path" \
 			"./$SIMV" +UVM_TESTNAME="$uvm_testname" +IPD_TEST_ID="$test_id" \
-			+IPD_STATUS_PATH="$status_path" \
+			+IPD_STATUS_PATH="$status_path" +ntb_random_seed="$test_seed" \
 			"${VCS_COV_ARGS[@]}" -cm_dir "$cov_dir" -cm_name "$cov_name" \
 			-ucli -do "$(dirname "${BASH_SOURCE[0]}")/dump.tcl" \
 			-l "$log_path" || simv_rc=$?
