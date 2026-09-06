@@ -26,28 +26,40 @@ if {$_stage ne "lint" && $_stage ne "cdc" && $_stage ne "all"} {
     exit 1
 }
 
-open_project scripts/spyglass_lint.prj
+# Everything below runs inside one catch. SpyGlass RAISES on the failures that stop a run
+# — a project whose sourcelist is not there, a goal the methodology does not have — but the
+# process still ends at status 0, so an unwrapped script that read nothing exits exactly
+# like one that linted cleanly, and the first sign of it is `collect_report.py` reporting
+# no source report: true, and about the wrong thing. Warnings are NOT such a failure:
+# `run_goal` returns `0 {Rule-checking completed with warnings}` on a normal run, and the
+# report those warnings land in is this stage's deliverable.
+if {[catch {
+    open_project scripts/spyglass_lint.prj
 
-# Measured on SpyGlass_vL-2016.06: a `waive` issued while a goal is current
-# applies to THAT goal only. Sourced after `current_goal lint/lint_rtl` it never
-# reached the CDC goals, on any SPYGLASS_STAGE; sourced after
-# `current_goal cdc/cdc_setup` it did not reach cdc_verify_struct either. Sourced
-# here, before any goal is current, it applies to every goal in the session and
-# leaves lint waiving unchanged.
-source scripts/waiver.tcl
+    # Measured on SpyGlass_vL-2016.06: a `waive` issued while a goal is current
+    # applies to THAT goal only. Sourced after `current_goal lint/lint_rtl` it never
+    # reached the CDC goals, on any SPYGLASS_STAGE; sourced after
+    # `current_goal cdc/cdc_setup` it did not reach cdc_verify_struct either. Sourced
+    # here, before any goal is current, it applies to every goal in the session and
+    # leaves lint waiving unchanged.
+    source scripts/waiver.tcl
 
-if {$_stage eq "lint" || $_stage eq "all"} {
-    current_goal lint/lint_rtl
-    run_goal
-}
+    if {$_stage eq "lint" || $_stage eq "all"} {
+        current_goal lint/lint_rtl
+        run_goal
+    }
 
-if {$_stage eq "cdc" || $_stage eq "all"} {
-    current_goal cdc/cdc_setup
-    run_goal
-    current_goal cdc/cdc_setup_check
-    run_goal
-    current_goal cdc/cdc_verify_struct
-    run_goal
+    if {$_stage eq "cdc" || $_stage eq "all"} {
+        current_goal cdc/cdc_setup
+        run_goal
+        current_goal cdc/cdc_setup_check
+        run_goal
+        current_goal cdc/cdc_verify_struct
+        run_goal
+    }
+} _err]} {
+    puts stderr "ERROR: SpyGlass stopped (SPYGLASS_STAGE=$_stage): $_err"
+    exit 1
 }
 
 exit -force
