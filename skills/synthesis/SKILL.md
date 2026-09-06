@@ -38,10 +38,13 @@ SDC dc_shell reads is rebuilt every round.
 `LIB_DB` and `WIRE_LOAD_MODEL` must be in the environment before `make`: `env.sh` refuses to run
 without either, and the placeholders in `scripts/config.tcl` are a fallback for a `dc_shell`
 started outside the Makefile, not a second way to set them. Exporting them after step 1 is fine.
-`WIRE_LOAD_MODEL` names the interconnect estimate this block gets — `report_lib` lists what the
-library has, and the models differ by the block size they were calibrated for, so it is a judgment
-with no default: without one DC reports no net interconnect and PT-PX reports zero net switching
-power, so the power number would silently exclude interconnect.
+`WIRE_LOAD_MODEL` names the interconnect estimate this block is synthesized against, or `none`
+for no estimate — `report_lib` lists what the library has. It is a judgment with no default
+because the choice moves both numbers you are judged on and nothing else records that it was
+made: measured against a TSMC 90 library, the smallest bucket cost OpenTitan's i2c its whole
+2.47 ns of setup margin, and the largest raised total cell area by between 18% and 65%. Each model is
+calibrated to a block size and the library declares no default, so `none` is a legal answer;
+the reports then say `No wire load specified` where a reader can see it.
 
 One file under `{workdir}` is yours to edit, and it reaches you holding the previous round's work
 rather than the specification SDC:

@@ -65,7 +65,7 @@ if {![elaborate $top]} {
 }
 current_design $top
 if {![link]} {
-    puts stderr "ERROR: link failed — unresolved references (a module is missing from the RTL set; see the unresolved-reference warnings above)"
+    puts stderr "ERROR: link failed - unresolved references (a module is missing from the RTL set; see the unresolved-reference warnings above)"
     exit 1
 }
 
@@ -78,7 +78,7 @@ set _fh [open $_check_rpt r]
 set _check_content [read $_fh]
 close $_fh
 if {[regexp -line {^Error:} $_check_content]} {
-    puts stderr "ERROR: check_design reported errors — see $_check_rpt"
+    puts stderr "ERROR: check_design reported errors - see $_check_rpt"
     exit 1
 }
 
@@ -86,15 +86,16 @@ if {[regexp -line {^Error:} $_check_content]} {
 source [file join [pwd] constraints.sdc]
 
 # --- Interconnect estimate ---
-# A library carries several wire load models and typically declares neither a default nor a
-# selection group, so nothing selects one unless this does. With none selected DC reports
-# `Net Interconnect area: undefined (No wire load specified)` and no net capacitance, which
-# reaches PT-PX as zero net switching power — a power number that silently excludes
-# interconnect. Which model is a per-block judgment (they differ by the block size they were
-# calibrated for), so it is required with no default and comes from the environment.
-# `write_sdc` below emits the selection, and both PT flows read that SDC, so this is the one
-# place it is chosen.
-set_wire_load_model -name $wlm
+# WIRE_LOAD_MODEL names a model the library carries, or `none`. A library declares neither a
+# default nor a selection group, so nothing selects one unless this does, and the choice is
+# not free either way: measured against a TSMC 90 library, the smallest bucket cost
+# OpenTitan's i2c its whole 2.47 ns of setup margin and the largest raised total cell area by
+# 18% to 65%. `none` is a legal answer, and what it buys is reports that say so out loud.
+# `write_sdc` below emits whichever was chosen, and both PT flows read that SDC, so this is
+# the one place it is decided.
+if {$wlm ne "none"} {
+    set_wire_load_model -name $wlm
+}
 set_wire_load_mode top
 
 # --- Synthesis ---
@@ -102,7 +103,7 @@ set_wire_load_mode top
 # QoR, not plain compile's. It needs a DC-Ultra license, which env-precheck smoke-tests
 # before the pipeline runs. Return value is 0 on failure, as with elaborate / link.
 if {![compile_ultra]} {
-    puts stderr "ERROR: compile_ultra failed — design remains unmapped"
+    puts stderr "ERROR: compile_ultra failed - design remains unmapped"
     exit 1
 }
 
@@ -111,15 +112,21 @@ report_qor                                       > [file join $reports_dir "qor.
 set _area_rpt [file join $reports_dir "area.rpt"]
 report_area   -hierarchy                         > $_area_rpt
 
-# The area report is the only reliable signal that the model took. `set_wire_load_model`
-# returns success for a name the library does not have — it prints `Error: Wire load ... not
-# found` without raising — and the design attribute stays unset either way, so neither the
-# return value nor the attribute distinguishes the cases.
+# The area report is the only reliable signal of what actually took. `set_wire_load_model`
+# returns success for a name the library does not have (it prints `Error: Wire load ... not
+# found` without raising) and the design attribute stays unset either way, so neither the
+# return value nor the attribute distinguishes the cases. Checked both ways, because a run
+# whose reports disagree with what was asked for is not the run that was asked for.
 set _fh [open $_area_rpt r]
 set _area_content [read $_fh]
 close $_fh
-if {[regexp {No wire load specified} $_area_content]} {
+set _no_wlm [regexp {No wire load specified} $_area_content]
+if {$wlm ne "none" && $_no_wlm} {
     puts stderr "ERROR: wire load model '$wlm' is not in $lib_db (report_lib lists what is)"
+    exit 1
+}
+if {$wlm eq "none" && !$_no_wlm} {
+    puts stderr "ERROR: WIRE_LOAD_MODEL=none, but $_area_rpt reports an interconnect estimate"
     exit 1
 }
 report_timing -max_paths 20 -nworst 1            > [file join $reports_dir "timing_setup.rpt"]

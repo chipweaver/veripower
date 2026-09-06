@@ -12,14 +12,18 @@ TOP="${TOP:-MY_TOP}"
 # Standard-cell library path — must come from the environment.
 # Example: export LIB_DB=/home/eda/Foundry/TSMC.90/slow.db
 LIB_DB="${LIB_DB:?ERROR: LIB_DB not set. Export it before running make.}"
-# The wire load model this library offers for a block of this size. Required, with no
-# default: a library carries several (tsmc090_wl10..wl50, smic18_wl10..wl50) and typically
-# declares neither a default nor a selection group, so nothing picks one unless you do —
-# and with none picked DC reports no net interconnect at all, which reaches PT-PX as zero
-# net switching power. Their estimates differ by the block size they were calibrated for,
-# so this is a per-block choice: `report_lib <lib>` lists what the library has.
-# Example: export WIRE_LOAD_MODEL=tsmc090_wl10
-WIRE_LOAD_MODEL="${WIRE_LOAD_MODEL:?ERROR: WIRE_LOAD_MODEL not set. Export it before running make (report_lib lists the models a library has).}"
+# Which interconnect estimate this block is synthesized against, or `none` for no estimate.
+# Required and without a default, because the choice moves both numbers this stage is judged
+# on and nothing else records that it was made. Measured on three designs against a TSMC 90
+# library: going from `none` to the SMALLEST bucket cost OpenTitan's i2c its whole 2.47 ns
+# of setup margin, and the largest bucket raised total cell area by 18% to 65%. A library
+# carries several models (tsmc090_wl10..wl50, smic18_wl10..wl50), declares no default and
+# no selection group, and calibrates each to a block size — so no bucket is the right one to
+# assume on your behalf. `none` is a legal answer and is what OpenTitan and mflowgen do;
+# a physical flow reads real parasitics instead. `report_lib <lib>` lists what the library
+# has.
+# Example: export WIRE_LOAD_MODEL=none      (or tsmc090_wl10)
+WIRE_LOAD_MODEL="${WIRE_LOAD_MODEL:?ERROR: WIRE_LOAD_MODEL not set. Export it before running make — a model name (report_lib lists them) or $(none).}"
 [ -f "$LIB_DB" ] || {
 	echo "ERROR: LIB_DB invalid or not found: $LIB_DB" >&2
 	exit 1
