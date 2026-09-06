@@ -5,10 +5,9 @@
 # placeholders post-deploy — the power bootstrap verb substitutes them.
 # ==============================================================================
 
-# Top module and module-directory names, substituted by the power bootstrap verb.
-# MODULE is used to resolve simulation TB class names ({MODULE}_tb_pkg /
-# {MODULE}_base_test / {MODULE}_<seq>_seq, etc.). MODULE and TOP are usually
-# identical but the contract allows them to diverge.
+# Top module name, substituted by the power bootstrap verb. The UVM class prefix the
+# rendered power tests need is NOT here: emit_power_tests reads it out of the TB's own
+# `package <prefix>_tb_pkg;`, which is the declaration those tests are compiled against.
 export TOP="${TOP:-MY_TOP}"
 
 # External reference paths — MY_SYN_OUT / MY_SIM_DIR / MY_PLAN_DIR are
