@@ -21,17 +21,3 @@
 #       -msg {clk} \
 #       -regexp \
 #       -comment "Gating is on the clock port itself, which is the intended structure here"
-
-# ------------------------------------------------------------------------------
-# Project-global waivers (rules already reviewed and accepted)
-# ------------------------------------------------------------------------------
-
-# W257: RTL contains delay statements (e.g. `#10`). Synthesis ignores them;
-# they are used for simulation-only models — accepted.
-waive -rules {W257} \
-      -comment "Global: synthesis ignores delays — simulation-only, reviewed and accepted. Owner: <name> Date: yyyy-mm-dd"
-
-# W280: nonblocking assignment with delay (e.g. `q <= #1 d`). Simulation-only,
-# accepted.
-waive -rules {W280} \
-      -comment "Global: delay in nonblocking assignment — simulation-only, reviewed and accepted. Owner: <name> Date: yyyy-mm-dd"
