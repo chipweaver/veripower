@@ -90,7 +90,7 @@ source [file join [pwd] constraints.sdc]
 # default nor a selection group, so nothing selects one unless this does, and the choice is
 # not free either way: measured against a TSMC 90 library, the smallest bucket cost
 # OpenTitan's i2c its whole 2.47 ns of setup margin and the largest raised total cell area by
-# 18% to 65%. `none` is a legal answer, and what it buys is reports that say so out loud.
+# a fifth to two thirds. `none` is a legal answer, and what it buys is reports that say so.
 # `write_sdc` below emits whichever was chosen, and both PT flows read that SDC, so this is
 # the one place it is decided.
 if {$wlm ne "none"} {

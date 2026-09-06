@@ -14,9 +14,11 @@ TOP="${TOP:-MY_TOP}"
 LIB_DB="${LIB_DB:?ERROR: LIB_DB not set. Export it before running make.}"
 # Which interconnect estimate this block is synthesized against, or `none` for no estimate.
 # Required and without a default, because the choice moves both numbers this stage is judged
-# on and nothing else records that it was made. Measured on three designs against a TSMC 90
-# library: going from `none` to the SMALLEST bucket cost OpenTitan's i2c its whole 2.47 ns
-# of setup margin, and the largest bucket raised total cell area by 18% to 65%. A library
+# on and nothing else records that it was made. Measured against a TSMC 90 library: going from
+# `none` to the SMALLEST bucket cost OpenTitan's i2c its whole 2.47 ns of setup margin, and the
+# largest raised total cell area by 21% (ChipVerilog's i2c) to 65% (OpenTitan's). Two more
+# designs closed at exactly 0.00 ns with no model at all, so for them any bucket is negative.
+# A library
 # carries several models (tsmc090_wl10..wl50, smic18_wl10..wl50), declares no default and
 # no selection group, and calibrates each to a block size — so no bucket is the right one to
 # assume on your behalf. `none` is a legal answer and is what OpenTitan and mflowgen do;
