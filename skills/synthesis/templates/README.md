@@ -6,10 +6,11 @@ bootstrap verb. That skill's own `SKILL.md` is the stage SOP.
 `make help` lists the targets. `make synthesis` runs `dc_shell` and tees `run.log`; the netlist
 and post-synthesis constraints land in `out/`, the reports in `reports/`.
 
-`LIB_DB` must be in the environment: `export LIB_DB=<path>` to the standard-cell Liberty `.db`
-before `make`. `env.sh` refuses to run without it, so the `FILL_IN_LIB_DB_PATH` placeholder in
-`scripts/config.tcl` is a fallback for a `dc_shell` started outside the Makefile, not a second
-way to set it.
+`LIB_DB` and `WIRE_LOAD_MODEL` must both be in the environment before `make`: the standard-cell
+Liberty `.db`, and either a wire load model the library carries (`report_lib` lists them) or
+`none`. `env.sh` refuses to run without either, so the `FILL_IN_` placeholders in
+`scripts/config.tcl` are a fallback for a `dc_shell` started outside the Makefile, not a second
+way to set them.
 
 ## The one file you edit
 
