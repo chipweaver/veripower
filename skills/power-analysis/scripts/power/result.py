@@ -3,13 +3,13 @@
 Used by the power-analysis skill to populate result.json's stage_specific:
   - parse_total_power_mw       → measurements[].value (mW)
   - parse_three_components     → power_by_scenario[].{internal,switching,leakage}_mw
-  - parse_annotation_rate      → power_by_scenario[].saif_annotation_rate
+  - parse_toggled_net_fraction → power_by_scenario[].toggled_net_fraction
 
 Source files:
   - power_flat.rpt            ← from `report_power -verbose` (no -hierarchy);
                                 stable verbose-summary sentence form is more
                                 regex-friendly than the hierarchical table.
-  - switching_activity.rpt    ← from `report_switching_activity`.
+  - saif/<id>.saif            ← from the gate-level run's $toggle_report.
   - saif/<id>.status          ← from base_test.report_phase, one token per
                                 gate-level run (see _read_gls_status).
 
@@ -145,52 +145,33 @@ def parse_three_components(path: Path | str) -> dict[str, float] | None:
     }
 
 
-# ── parse_annotation_rate ──────────────────────────────────────
+# ── parse_toggled_net_fraction ─────────────────────────────────
 
-# `report_switching_activity` prints the same table twice — under "Switching Activity Overview
-# Statistics" and under "Static Probability Overview Statistics". Only the first describes
-# toggle activity, so the section header is the anchor; matching the first " Nets " row would
-# be luck. That row is the aggregate, the "Nets Driven by" rows below partition it, and its
-# cells are `count(pct%)` ending in a bare Total.
-#
-# templates/scripts/ptpx.tcl reads the same row for its in-run "annotated 0%" gate, needing
-# only >0. PT is the only host for the Tcl half, so anything learned here must land there too.
-_SWITCHING_SECTION_RE = re.compile(
-    r"Switching\s+Activity\s+Overview\s+Statistics(?P<body>.*?)(?=Static\s+Probability|\Z)",
-    re.IGNORECASE | re.DOTALL,
-)
-# A cell is count(pct%); the width-0 rows print "0(0%)" rather than "0(0.00%)".
-_NETS_ROW_RE = re.compile(
-    r"^\s*Nets\s+((?:\d+\(\s*[\d.]+%\)\s+){8})(\d+)\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
-_CELL_COUNT_RE = re.compile(r"(\d+)\(\s*[\d.]+%\)")
+# The SAIF's own per-net toggle counts: `(TC <n>)`, one per net, beside (T0 …) (T1 …).
+# Nothing PT reports carries this. `report_switching_activity` and
+# `report_activity_file_check` both describe where the activity came from, not how much
+# there was, and on a real netlist their output is byte-identical for a SAIF whose design
+# ran and one whose design sat still.
+_TC_RE = re.compile(rb"\(TC (\d+)\)")
 
 
-def parse_annotation_rate(path: Path | str) -> float | None:
-    """Fraction of nets whose switching activity came from the SAIF, or None.
-
-    Derived from the row's counts rather than its printed percentage: PT rounds the cell
-    to two decimals, so 155931 of 155936 prints as "100.00%" and a small shortfall would
-    be invisible. The eight category counts must sum to the row's Total — a reconciliation
-    the report affords for free, and the thing that makes this parser worth having rather
-    than a transcription. A sum that does not reconcile means the column set moved, so the
-    rate is unknown (None) rather than a number derived from a misread row.
-    """
-    text = _read(path)
-    if text is None:
+def parse_toggled_net_fraction(path: Path | str) -> float | None:
+    """Fraction of the SAIF's nets that toggled at least once. None when the file is
+    absent or carries no TC entry at all (a format surprise, not a quiet zero)."""
+    p = Path(path)
+    if not p.is_file():
         return None
-    section = _SWITCHING_SECTION_RE.search(text)
-    if not section:
+    total = 0
+    moved = 0
+    with p.open("rb") as fh:
+        for line in fh:
+            for m in _TC_RE.finditer(line):
+                total += 1
+                if m.group(1) != b"0":
+                    moved += 1
+    if total == 0:
         return None
-    row = _NETS_ROW_RE.search(section.group("body"))
-    if not row:
-        return None
-    counts = [int(c) for c in _CELL_COUNT_RE.findall(row.group(1))]
-    total = int(row.group(2))
-    if len(counts) != 8 or total <= 0 or sum(counts) != total:
-        return None
-    return counts[0] / total
+    return moved / total
 
 
 _VCS_VER_RE = re.compile(r"\b([A-Z]-\d{4}\.\d{2}(?:-SP\d+)?(?:_Full64)?)\b")
@@ -241,11 +222,10 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
         saif = workdir / "saif" / f"{sid}.saif"
         size = saif.stat().st_size if saif.is_file() else 0
         flat = workdir / "reports_ptpx" / sid / "power_flat.rpt"
-        sa = workdir / "reports_ptpx" / sid / "switching_activity.rpt"
 
         total = parse_total_power_mw(flat)
         three = parse_three_components(flat)
-        rate = parse_annotation_rate(sa)
+        toggled = parse_toggled_net_fraction(saif)
 
         scenario_failed = False
 
@@ -340,7 +320,7 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
                 "internal_mw": None if scenario_failed else internal,
                 "switching_mw": None if scenario_failed else switching,
                 "leakage_mw": None if scenario_failed else leakage,
-                "saif_annotation_rate": rate,
+                "toggled_net_fraction": toggled,
                 "sequence_ref": seq,
             }
         )

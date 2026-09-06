@@ -109,7 +109,7 @@
                   "internal_mw",
                   "switching_mw",
                   "leakage_mw",
-                  "saif_annotation_rate",
+                  "toggled_net_fraction",
                   "sequence_ref"
                 ],
                 "properties": {
@@ -140,14 +140,14 @@
                       "null"
                     ]
                   },
-                  "saif_annotation_rate": {
+                  "toggled_net_fraction": {
                     "type": [
                       "number",
                       "null"
                     ],
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Fraction of nets whose switching activity came from the SAIF, from switching_activity.rpt. Qualifies power_mw: the same number at 0.2 is mostly tool defaults, at 1.0 it is measured. null = not determinable from the report."
+                    "description": "Fraction of the SAIF's nets that toggled at least once, counted from its own (TC n) entries. Qualifies power_mw by saying whether the design was doing anything: near 0 the number is clock tree plus leakage, whatever the scenario was named. Nothing PrimeTime reports carries this — its activity reports say where the activity came from, not how much there was. null = the SAIF is absent or carries no TC entry."
                   },
                   "sequence_ref": {
                     "type": "string"

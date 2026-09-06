@@ -1,0 +1,180 @@
+/** The set_gate_level_monitoring command explicitly turns **/
+/** ON the internal nets monitoring **/
+(SAIFILE
+(SAIFVERSION "2.0")
+(DIRECTION "backward")
+(DESIGN )
+(DATE "Mon Aug 31 03:18:17 2026")
+(VENDOR "Synopsys, Inc")
+(PROGRAM_NAME "VCS L-2016.06_Full64")
+(VERSION "1.0")
+(DIVIDER / )
+(TIMESCALE 1 ns)
+(DURATION 2015.00)
+(INSTANCE fa_core_tb_top
+   (INSTANCE u_dut
+      (NET
+         (m_vec\[127\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[126\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[125\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[124\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[123\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[122\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[121\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[120\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[119\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[118\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[117\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[116\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[115\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[114\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[113\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[112\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[111\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[110\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[109\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[108\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[107\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[106\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[105\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[104\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[103\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[102\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[101\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[100\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[99\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[98\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[97\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[96\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[95\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[94\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[93\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[92\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[91\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[90\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[89\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+         (m_vec\[88\]
+            (T0 2015) (T1 0) (TX 0)
+            (TC 0) (IG 0)
+         )
+      )
+   )
+)
+)

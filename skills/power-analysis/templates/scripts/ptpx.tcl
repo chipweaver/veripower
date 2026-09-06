@@ -137,7 +137,7 @@ foreach entry [split $saif_list " "] {
     set scenario_log [file join $reports_dir "ptpx.log"]
 
     if {![file exists $saif_file]} {
-        puts stderr "ERROR: scenario $scenario_id — saif not found: $saif_file"
+        puts stderr "ERROR: scenario $scenario_id - saif not found: $saif_file"
         incr fail_count
         continue
     }
@@ -209,7 +209,7 @@ foreach entry [split $saif_list " "] {
     # Surface failures on stderr outside the redirect block so the operator
     # sees them on the terminal (PT's redirect -tee captures stderr inside).
     if {!$scenario_ok && $scenario_error ne ""} {
-        puts stderr "ERROR: scenario $scenario_id — $scenario_error"
+        puts stderr "ERROR: scenario $scenario_id - $scenario_error"
     }
 
     if {$scenario_ok} {

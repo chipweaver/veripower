@@ -112,76 +112,26 @@ def test_parse_three_components_missing(tmp_path):
 # can be invented to match whatever the regex happens to want. Hence the first test below runs
 # on the committed real report.
 
-_REAL_SA = (
-    REPO_ROOT
-    / "tests/unit/fixtures/power-golden/real/reports_ptpx/S1/switching_activity.rpt"
-)
+_SAIF_IDLE = REPO_ROOT / "tests/unit/fixtures/power-golden/saif-excerpts/idle.saif"
+_SAIF_ACTIVE = REPO_ROOT / "tests/unit/fixtures/power-golden/saif-excerpts/active.saif"
 
 
-def test_parse_annotation_rate_on_the_real_report():
-    assert p.parse_annotation_rate(_REAL_SA) == pytest.approx(1.0)
+def test_toggled_fraction_separates_a_run_that_moved_from_one_that_did_not():
+    # Both excerpts are verbatim VCS $toggle_report output from the same design and the
+    # same testbench, 40 nets each: one scenario drove it, the other left it sitting.
+    # Neither PT report distinguishes them — report_switching_activity is byte-identical
+    # for the two, because 0% and 100% of nothing both annotate perfectly.
+    assert p.parse_toggled_net_fraction(_SAIF_IDLE) == 0.0
+    assert p.parse_toggled_net_fraction(_SAIF_ACTIVE) == pytest.approx(35 / 40)
 
 
-def _sa_rpt(tmp_path, nets_row, static_nets_row=None):
-    """A switching_activity.rpt carrying the two same-shaped tables PT prints."""
-    head = (
-        ' {kind} Overview Statistics for "top"\n'
-        "------------------------------------------------------------\n"
-        "                  From Activity     From         From         From"
-        "                                                         Not\n"
-        "Object Type       File (%)          SSA (%)      SCA (%)      Clock (%)"
-        "    Default (%)     Propagated(%)   Implied(%)      Annotated(%)    Total\n"
-        "------------------------------------------------------------\n"
-    )
-    text = ""
-    if nets_row is not None:
-        text += head.format(kind="Switching Activity") + nets_row + "\n"
-    if static_nets_row is not None:
-        text += head.format(kind="Static Probability") + static_nets_row + "\n"
-    rpt = tmp_path / "switching_activity.rpt"
-    rpt.write_text(text)
-    return rpt
-
-
-def _row(from_file, implied, total):
-    z = "0(0.00%)"
-    pct = 100.0 * from_file / total if total else 0.0
-    return (
-        f" Nets             {from_file}({pct:.2f}%)   {z}     {z}     {z}     {z}"
-        f"        {z}        {implied}(0.00%)        {z}        {total}"
-    )
-
-
-def test_annotation_rate_comes_from_the_counts_not_the_printed_percent(tmp_path):
-    # PT rounds the cell to two decimals, so 155931 of 155936 prints as "100.00%". The
-    # shortfall is the whole point of the field, so the count must win over the percentage.
-    rpt = _sa_rpt(tmp_path, _row(155931, 5, 155936))
-    assert "100.00%" in rpt.read_text()  # the report really does say 100
-    assert p.parse_annotation_rate(rpt) == pytest.approx(155931 / 155936)
-    assert p.parse_annotation_rate(rpt) < 1.0
-
-
-def test_annotation_rate_none_when_only_the_static_probability_table_is_present(
-    tmp_path,
-):
-    # Both tables carry a " Nets " row and both reconcile, so a parser that took the first
-    # row it found would report static probability as if it were switching activity. On a
-    # full report that lands on the right row by ordering luck; on a truncated one it does
-    # not, and a wrong number here silently mis-qualifies power_mw.
-    rpt = _sa_rpt(tmp_path, None, static_nets_row=_row(100, 0, 100))
-    assert p.parse_annotation_rate(rpt) is None
-
-
-def test_annotation_rate_none_when_the_row_does_not_reconcile(tmp_path):
-    # Columns summing to something other than Total means the column set moved; a rate
-    # derived from a misread row would be worse than no rate.
-    rpt = _sa_rpt(tmp_path, _row(80, 5, 100))
-    assert p.parse_annotation_rate(rpt) is None
-
-
-def test_annotation_rate_none_when_absent_or_unreadable(tmp_path):
-    assert p.parse_annotation_rate(tmp_path / "nope.rpt") is None
-    assert p.parse_annotation_rate(_write_rpt(tmp_path, "nothing here")) is None
+def test_toggled_fraction_none_when_absent_or_carrying_no_counts(tmp_path):
+    # A SAIF with no TC entry at all is a format surprise, not a design that sat still —
+    # reporting 0.0 there would put a made-up qualification on the power number.
+    assert p.parse_toggled_net_fraction(tmp_path / "nope.saif") is None
+    stub = tmp_path / "stub.saif"
+    stub.write_text('(SAIFILE (SAIFVERSION "2.0"))\n')
+    assert p.parse_toggled_net_fraction(stub) is None
 
 
 def _flat_rpt(total_mw, internal=None, switching=None, leakage=None):
@@ -196,25 +146,27 @@ def _flat_rpt(total_mw, internal=None, switching=None, leakage=None):
     return "\n".join(lines) + "\n"
 
 
-# Real report shape, so the end-to-end path exercises the parser the same way a run does.
+# ptpx.tcl writes this per scenario and its own in-run 0%-annotation gate reads it; the
+# whole reports_ptpx/ tree is promoted, so a workdir without it is not shaped like a run.
 _SA_RPT = (
     ' Switching Activity Overview Statistics for "top"\n'
-    "Object Type       File (%)   SSA   SCA   Clock   Default   Propagated   Implied"
-    "   Not Annotated   Total\n" + _row(95, 5, 100) + "\n"
+    " Nets             95(95.00%)   5(5.00%)   100\n"
 )
 _VCS_LOG = "Chronologic VCS simulator copyright ...\nVersion L-2016.06_Full64\n"
 
 
 def _make_workdir(tmp_path, scenarios, sizes, flats, statuses=None):
-    """sizes: {id:int saif bytes}.  flats: {id: power_flat text, or None to omit the file}.
-    statuses: {id: token, or None to omit the file}; a scenario not named here passes."""
+    """sizes: {id: 0 to omit the SAIF, non-zero to write one}. A written SAIF is the real
+    excerpt whose 40 nets carry 35 toggles, so the scenario table's toggled_net_fraction
+    comes out of the same parser a run uses.  flats: {id: power_flat text, or None to omit
+    the file}.  statuses: {id: token, or None to omit the file}; unnamed scenarios pass."""
     wd = tmp_path / "wd"
     (wd / "saif").mkdir(parents=True)
     (wd / "gls-compile-log.txt").write_text(_VCS_LOG)
     for s in scenarios:
         sid = s["id"]
         if sizes.get(sid, 0) > 0:
-            (wd / "saif" / f"{sid}.saif").write_bytes(b"x" * sizes[sid])
+            (wd / "saif" / f"{sid}.saif").write_bytes(_SAIF_ACTIVE.read_bytes())
         token = (statuses or {}).get(sid, "PASS")
         if token is not None:
             (wd / "saif" / f"{sid}.status").write_text(token + "\n")
@@ -290,9 +242,9 @@ def test_run_pass_within_targets(tmp_path):
     )
     assert data["compile_info"] == {"vcs_version": "L-2016.06_Full64"}
     # The field that qualifies power_mw must survive the whole run, not just the parser.
-    assert [c["saif_annotation_rate"] for c in data["power_by_scenario"]] == [
-        0.95,
-        0.95,
+    assert [c["toggled_net_fraction"] for c in data["power_by_scenario"]] == [
+        pytest.approx(35 / 40),
+        pytest.approx(35 / 40),
     ]
 
 
