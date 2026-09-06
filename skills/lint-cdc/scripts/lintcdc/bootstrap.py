@@ -65,8 +65,10 @@ def _sub(path: Path, placeholder: str, value: str) -> None:
 def _sync_filelist(dest: Path, rtl_dir: Path) -> int:
     """Generate scripts/filelist.txt from rtl-files.json, anchoring every RTL path at the
     ABSOLUTE injected rtl_dir (no relpath climb). Fail-closed (return 1) when the file is
-    missing, unreadable, or lists nothing: SpyGlass reading an empty sourcelist reports a
-    clean run, so a silent no-op here would promote a pass that analyzed no RTL.
+    missing, unreadable, or lists nothing. Not because the round would otherwise pass — an
+    empty sourcelist makes SpyGlass emit `CMD_top ... Fatal: top '<TOP>' : Design unit not
+    found`, which the gate counts as an error — but because that message sends the reader
+    after a top name that is fine. The cause is upstream and is known here.
 
     Not validated here: rtl-design schema-validates rtl-files.json when it writes it, and a
     stage does not reach into another skill's references/ (skills stay decoupled).
