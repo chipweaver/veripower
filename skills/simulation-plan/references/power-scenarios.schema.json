@@ -2,8 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-plan/power-scenarios.schema.json",
   "title": "power-scenarios.json contract",
-  "description": "Structural contract for <module>/Verification/simulation-plan/power-scenarios.json — one entry per scenario materialized from references/power-scenarios-template.md's standard set. Read by power-analysis alone, and these two fields are exactly what it reads: it keys SAIF and PT-PX reports by id and groups runs by sequence_ref. The standard set's abstract columns (clock / reset / data / low-power state, the scenario name, its purpose) are NOT here: no program reads them, so they belong in verification-plan.md §4 beside the per-scenario materialization note that explains them. sequence_ref resolving against sequences.json is not expressible here; the check-scaffold gate enforces it, where both files are in hand.",
+  "description": "Structural contract for <module>/Verification/simulation-plan/power-scenarios.json — one entry per scenario materialized from references/power-scenarios-template.md's standard set. Read by power-analysis alone, and these two fields are exactly what it reads: it keys SAIF and PT-PX reports by id and groups runs by sequence_ref. The standard set's abstract columns (clock / reset / data / low-power state, the scenario name, its purpose) are NOT here: no program reads them, so they belong in verification-plan.md §4 beside the per-scenario materialization note that explains them. sequence_ref resolving against sequences.json is not expressible here; the check-scaffold gate enforces it, where both files are in hand. minItems is 1 because an empty table is not a module with no power question: power-analysis runs it, measures nothing, and returns a pass whose power_by_scenario is empty — a stage that reports success for work it did not do. The standard set above is 8 rows, and a row you drop is a note in verification-plan.md, not a row removed from here.",
   "type": "array",
+  "minItems": 1,
   "items": {
     "type": "object",
     "required": [
