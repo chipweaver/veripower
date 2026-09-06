@@ -88,9 +88,10 @@ source [file join [pwd] constraints.sdc]
 # --- Interconnect estimate ---
 # WIRE_LOAD_MODEL names a model the library carries, or `none`. A library declares neither a
 # default nor a selection group, so nothing selects one unless this does, and the choice is
-# not free either way: measured against a TSMC 90 library, the smallest bucket cost
-# OpenTitan's i2c its whole 2.47 ns of setup margin and the largest raised total cell area by
-# a fifth to two thirds. `none` is a legal answer, and what it buys is reports that say so.
+# not free either way: measured on five designs against a TSMC 90 library, the smallest bucket
+# cost OpenTitan's i2c its whole 2.47 ns of setup margin, and the largest raised total cell area
+# by a fifth to more than double. `none` is a legal answer, and what it buys is reports that
+# say so.
 # `write_sdc` below emits whichever was chosen, and both PT flows read that SDC, so this is
 # the one place it is decided.
 if {$wlm ne "none"} {

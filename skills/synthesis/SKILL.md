@@ -41,8 +41,9 @@ started outside the Makefile, not a second way to set them. Exporting them after
 `WIRE_LOAD_MODEL` names the interconnect estimate this block is synthesized against, or `none`
 for no estimate — `report_lib` lists what the library has. It is a judgment with no default
 because the choice moves both numbers you are judged on and nothing else records that it was
-made: measured against a TSMC 90 library, the smallest bucket cost OpenTitan's i2c its whole
-2.47 ns of setup margin, and the largest raised total cell area by a fifth to two thirds. Each model is
+made: measured on five designs against a TSMC 90 library, the smallest bucket cost OpenTitan's
+i2c its whole 2.47 ns of setup margin, and the largest raised total cell area by anywhere from a
+fifth to more than double. Each model is
 calibrated to a block size and the library declares no default, so `none` is a legal answer;
 the reports then say `No wire load specified` where a reader can see it.
 
