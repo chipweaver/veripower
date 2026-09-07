@@ -20,22 +20,20 @@ def test_intent_source_defect_is_handed_upstream():
 SIM = Path("skills/simulation/SKILL.md").read_text()
 
 
-def test_sim_conformance_selfheal_no_deferred():
+def test_sim_check_review_selfheal_no_deferred():
     assert "Self-heal is deferred" not in SIM
     assert "no in-skill fix-loop" not in SIM
 
 
-def test_sim_conformance_has_selfheal_loop():
+def test_sim_check_review_has_selfheal_loop():
     # A trip is repaired in-stage first, and the fixer, not the reviewer, is the one that
     # decides the defect is upstream: it is the one that tried. Asserted as the invariant, not
-    # as a CLI literal — an earlier version of this test pinned `--phase conformance`, which
+    # as a CLI literal — an earlier version of this test pinned a CLI literal that
     # said nothing about the disposition and broke when the flag was collapsed.
-    assert "conformance-fix" in SIM
+    assert "check-fix" in SIM
     assert "STATUS: BLOCKED" in SIM
     assert "the fixer's reason" in SIM  # its word, not the reviewer's, closes the round
 
 
-def test_conformance_fix_contract_exists():
-    assert Path(
-        "skills/simulation/references/conformance-fix-task-contract.md"
-    ).is_file()
+def test_check_fix_contract_exists():
+    assert Path("skills/simulation/references/check-fix-task-contract.md").is_file()

@@ -197,7 +197,7 @@ RULES: dict[str, Rule] = {
         # survives runs; content drift (LLM regenerates refmodel) drops the pin at reap
         triage="simulation-triage",  # the one stage with a deeper analyzer behind it
         carry=("**",),
-        no_carry=("conformance-review.md",),
+        no_carry=("check-review.md",),
     ),
     "power-analysis": Rule(
         name="power-analysis",

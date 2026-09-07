@@ -12,7 +12,7 @@ not promoted. All paths are relative to `{workdir}`.
 | `case-results.json` | The suite counts, derived by `write_summary.py` from `regression-log.txt` and `testlist.json`. The structured home: `sim finalize` reads its counts here and never re-parses a rendering of them. |
 | `case-results-summary.md` | The rendering of `case-results.json` a human reads: per-test results and, on a failure, what to open. |
 | `tests/testlist.json` | The test roster. Written by env, and appended to by verify when a stimulus iterate adds a case, so its final form spans both. |
-| `conformance-review.md` | The reviewer's findings, one `##` heading each, `BLOCKING` on the ones that stop the round. The record `simulation-triage` opens when a round fails on conformance. |
+| `check-review.md` | The reviewer's findings, one `##` heading each, `BLOCKING` on the ones that stop the round. The record `simulation-triage` opens when a round fails on check adequacy. |
 | `<test_id>.fsdb` | Full-hierarchy waveform of a **failing** test, at the run-dir root rather than in `logs/`. Deliberately **not** promoted: it is large and per-run, and `simulation-triage` reaches it through `sim_run`. Passing tests' waveforms are deleted, so one exists only where something went wrong. |
 
 Everything above except the FSDB is promoted, and `finalize` enumerates it. A product missing

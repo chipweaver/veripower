@@ -10,12 +10,12 @@ baseline: unknown
 green: unknown
 activated: pending
 model: opus
-extra: skills/simulation/references/conformance-fix-task-contract.md
+extra: skills/simulation/references/check-fix-task-contract.md
 ---
 
 ## 背景
 
-你是 conformance-fix 子任务。检查评审给某个 testpoint 标了 BLOCKING:该 testpoint 声称验证
+你是 check-fix 子任务。检查评审给某个 testpoint 标了 BLOCKING:该 testpoint 声称验证
 "输出等于按定点规则归一化的累加结果",而 scoreboard 里实际写的是把 DUT 的输出接回来和它自己比 ——
 一个永远不会不一致的空检查。
 

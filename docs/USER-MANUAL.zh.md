@@ -279,7 +279,7 @@ intent/brainstorm.md
 | `structural-coverage.json` | 结构覆盖率：line / cond / branch / toggle / fsm | 选看 |
 | `regression-log.txt` + `logs/` | 回归日志，以及每个用例自己的 log | 选看，查某个用例为什么挂就翻 |
 | `tb/uvm/**`（其余） | UVM TB 本体 | 选看 |
-| `conformance-review.md` | 逐 testpoint 的检查充分性评审 | 阶段内自用，不给人读 |
+| `check-review.md` | 逐 testpoint 的检查充分性评审 | 阶段内自用，不给人读 |
 | `env.sh` / `filelist.f` / `rtl_filelist.f` / `tests/testlist.json` / `case-results.json` | 环境、编译文件表、用例清单、机器可读结果 | 不用看 |
 
 **你的动作：细看参考模型 `tb/uvm/refmodel/*`。** 它是判对错的那把尺子，四份待你认可的判据里最该较真的一份（§1.6）。尺子错了，整片回归的绿都是假的。流水线不会在这里停下来等你，返工也不用你指派。

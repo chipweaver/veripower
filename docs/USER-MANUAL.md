@@ -284,7 +284,7 @@ After this stage, the pipeline forks into the implementation chain and the simul
 | `structural-coverage.json` | Structural coverage: line / cond / branch / toggle / fsm | Optional |
 | `regression-log.txt` + `logs/` | Regression log plus per-case logs | Optional, check when you want to know why a specific case failed |
 | `tb/uvm/**` (rest) | UVM testbench proper | Optional |
-| `conformance-review.md` | Per-testpoint check adequacy review | Internal to this stage, not for human consumption |
+| `check-review.md` | Per-testpoint check adequacy review | Internal to this stage, not for human consumption |
 | `env.sh` / `filelist.f` / `rtl_filelist.f` / `tests/testlist.json` / `case-results.json` | Environment, compile file lists, case list, machine-readable results | No need |
 
 **Your action: read the reference model `tb/uvm/refmodel/*` carefully.** It's the ruler that judges right from wrong. Of the four artifacts you'll endorse, this one deserves the most scrutiny (§1.6). If the ruler is wrong, every green in the regression is a lie. The pipeline won't stop here, and rework doesn't need your direction.

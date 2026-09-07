@@ -168,7 +168,7 @@ def test_carry_no_carry_fields_and_values():
     assert rules.RULES["rtl-design"].carry == ("**",)
     assert rules.RULES["rtl-design"].no_carry == ("semantic-review/*",)
     assert rules.RULES["simulation"].carry == ("**",)
-    assert rules.RULES["simulation"].no_carry == ("conformance-review.md",)
+    assert rules.RULES["simulation"].no_carry == ("check-review.md",)
     # Both constraint stages carry ONLY what they author. The file the tool reads is
     # assembled from the upstream seed every round, so carrying it would pin the seed to
     # whatever it said the round the workdir was first created.

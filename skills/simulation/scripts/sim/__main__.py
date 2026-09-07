@@ -42,9 +42,9 @@ def _cmd_check_materialization(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from sim import result
 
-    if a.phase == "final" and not (a.plan and a.requirements and a.conformance_review):
+    if a.phase == "final" and not (a.plan and a.requirements and a.check_review):
         print(
-            "[sim finalize] ERROR: --plan, --requirements and --conformance-review are "
+            "[sim finalize] ERROR: --plan, --requirements and --check-review are "
             "required for --phase final",
             file=sys.stderr,
         )
@@ -64,7 +64,7 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         phase=a.phase,
         scaffold=a.plan,
         requirements=a.requirements,
-        conformance_review=a.conformance_review,
+        check_review=a.check_review,
         verify_verdict=a.verify_verdict,
         fail_reason=a.fail_reason,
         fix_owner=a.fix_owner,
@@ -119,7 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="the specification requirements.json; its coverage bounds judged by simulation "
         "are the coverage gate (required for --phase final)",
     )
-    sp.add_argument("--conformance-review", type=Path, default=None)
+    sp.add_argument("--check-review", type=Path, default=None)
     sp.add_argument(
         "--verify-verdict", type=Path, default=None, help="reaped verify-child JSON"
     )

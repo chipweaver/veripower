@@ -128,7 +128,7 @@ Then the user approves, requests changes, or rejects:
 - **approve**: if the user accepts a finding the reviewer called blocking, write their reason —
   **their words, not yours** — to `{workdir}/plan-review/decisions.md`, so the override travels
   with the review it overrode instead of living only in this session. Nothing downstream re-checks
-  testpoint-vs-spec (sim conformance judges TB-vs-testpoint), so an accepted coverage gap is a
+  testpoint-vs-spec (sim's check-adequacy review judges TB-vs-testpoint), so an accepted coverage gap is a
   terminal accept.
 - **request changes**: revise incrementally, re-run the script gate, re-dispatch the reviewer,
   re-present.

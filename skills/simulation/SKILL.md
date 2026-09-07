@@ -52,7 +52,7 @@ scope is the whole testbench.
 
 Every round is the same round. `{workdir}` arrives holding your previous round's canonical output,
 or empty on a first run, and you never branch on which: `bootstrap` writes only where a file is
-missing. `conformance-review.md` is the one thing not carried forward, so the checks are judged
+missing. `check-review.md` is the one thing not carried forward, so the checks are judged
 again from scratch whether or not the testbench changed.
 
 Everything under `{workdir}` other than `result.json` is written by one of the children, and `finalize`
@@ -61,7 +61,7 @@ enumerates it into `artifacts[]` for you:
 | Written by | What |
 |---|---|
 | env-build | `Makefile`, `env.sh`, `filelist.f`, `rtl_filelist.f`, `tb/uvm/**`, `scripts/**`, `tests/testlist.json`, and the smoke `regression-log.txt` with its per-test `logs/` |
-| the conformance reviewer | `conformance-review.md` |
+| the check-adequacy reviewer | `check-review.md` |
 | verify | the full-regress `regression-log.txt`, `structural-coverage.json`, `case-results.json`, `case-results-summary.md` |
 | you, via `sim finalize` | `result.json` |
 
@@ -109,10 +109,10 @@ produced anything to measure.
 
 ### 2. Judge the checks
 
-Dispatch one `Task(run_in_background=True)`, the conformance reviewer, pointing its prompt at
-[`references/conformance-review-task-contract.md`](references/conformance-review-task-contract.md)
+Dispatch one `Task(run_in_background=True)`, the check-adequacy reviewer, pointing its prompt at
+[`references/check-review-task-contract.md`](references/check-review-task-contract.md)
 and handing over the `{workdir}`, the scaffold-spec path, the DUT RTL filelist, and `{module}`.
-It writes `{workdir}/conformance-review.md` itself. You never retype a finding: a review passed
+It writes `{workdir}/check-review.md` itself. You never retype a finding: a review passed
 through your hands is your judgment wearing the reviewer's name, and this gate decides your status.
 
 On wake-up, reap its `STATUS:` line and read the file it left. Any finding whose heading ends
@@ -125,8 +125,8 @@ pass, so a trip you walk past costs the round either way (step 4).
 
 **Nothing marked:** go to step 3.
 
-**Something marked:** dispatch one conformance-fix `Task(run_in_background=True)` per
-[`references/conformance-fix-task-contract.md`](references/conformance-fix-task-contract.md), with
+**Something marked:** dispatch one check-fix `Task(run_in_background=True)` per
+[`references/check-fix-task-contract.md`](references/check-fix-task-contract.md), with
 the flagged findings as its fix scope. It is the one that tries, so it is the one that decides
 whether the check can be made adequate at all.
 
@@ -142,7 +142,7 @@ python3 <skill>/scripts/sim/__main__.py finalize --workdir {workdir} \
 ```
 
 Dispatch no verify child after that. The envelope carries the reason; the findings stay in
-`conformance-review.md`, which is promoted beside it. The route from here is into
+`check-review.md`, which is promoted beside it. The route from here is into
 `simulation-triage`, which opens that record and reaches the attribution this stage does not
 try to.
 
@@ -150,13 +150,13 @@ try to.
 
 ```bash
 python3 <skill>/scripts/sim/__main__.py finalize --workdir {workdir} \
-  --phase fail --fail-reason "conformance review did not run: <the reviewer's reason>"
+  --phase fail --fail-reason "check-adequacy review did not run: <the reviewer's reason>"
 ```
 
 The review IS this gate. A round whose checks went unjudged has not established that they verify
 anything, so it cannot pass — and you must not author a stand-in record saying so, because a
 record with no `BLOCKING` in it reads to the gate as a clean review and would let exactly that
-round through (checked: `conformance_flagged` returns `[]` on such a file). Dispatch no verify
+round through (checked: `check_review_flagged` returns `[]` on such a file). Dispatch no verify
 child; the next round re-runs the reviewer.
 
 ### 3. Regress and cover
@@ -190,13 +190,13 @@ python3 <skill>/scripts/sim/__main__.py finalize \
   --workdir {workdir} --phase final \
   --plan <scaffold> \
   --requirements <requirements>/requirements.json \
-  --conformance-review {workdir}/conformance-review.md \
+  --check-review {workdir}/check-review.md \
   --verify-verdict {workdir}/<reaped-verify-verdict>.json \
   [--fix-owner <rule>]
 ```
 
 `--phase final` re-runs three gates over the workdir before it will write a pass: materialization,
-the conformance verdict off the review file you hand it, and coverage against the bounds the
+the check-adequacy verdict off the review file you hand it, and coverage against the bounds the
 requirements rows set. The
 earliest failing one wins. So arriving here with an
 un-dispositioned `gate=trip` costs you the round rather than passing it: finalize writes the same
@@ -212,7 +212,7 @@ verdict actually carries.
 
 **Naming the fix owner.** On a failure, add `--fix-owner <rule>`, the rule that must act. A
 functional or latency miss the reference model confirms is `rtl-design`; a testpoint or scenario
-gap is `simulation-plan`; a conformance finding whose defect is in the spec is `specification`.
+gap is `simulation-plan`; a check-adequacy finding whose defect is in the spec is `specification`.
 When you have read the logs and the reference model and still cannot attribute it, omit the flag.
 This is the one stage whose unattributed failure dispatches `simulation-triage` for a deeper
 analysis, so omitting it is an answer here rather than a shrug.

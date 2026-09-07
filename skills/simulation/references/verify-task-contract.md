@@ -1,7 +1,7 @@
 # verify sub-Task contract
 
 The simulation main thread dispatches the **verify** child last, only after the
-smoke gate passes and the conformance gate clears. Your job: full regression, coverage iteration
+smoke gate passes and the check-adequacy gate clears. Your job: full regression, coverage iteration
 and the review summary.
 
 ## Inputs (paths only; the main thread does not read these bodies)

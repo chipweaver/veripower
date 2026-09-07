@@ -61,8 +61,8 @@ def _final_workdir(tmp_path):
 def _review(wd, *findings):
     """The reviewer's own record, as it stands on disk when finalize runs: one heading per
     finding, and a blocking one says so."""
-    body = "# conformance review — m\n\n" + "\n\n".join(findings)
-    (wd / "conformance-review.md").write_text(body + "\n")
+    body = "# check-adequacy review — m\n\n" + "\n\n".join(findings)
+    (wd / "check-review.md").write_text(body + "\n")
 
 
 def _finalize(wd, *extra):
@@ -89,8 +89,8 @@ def _finalize_final(wd, *extra):
         str(wd),
         "--requirements",
         str(wd / "requirements.json"),
-        "--conformance-review",
-        str(wd / "conformance-review.md"),
+        "--check-review",
+        str(wd / "check-review.md"),
         *extra,
     )
 
@@ -105,7 +105,7 @@ def test_final_pass_writes_result(tmp_path):
     assert "result.json" not in [a["path"] for a in env["artifacts"]]
 
 
-def test_conformance_review_promoted(tmp_path):
+def test_check_review_promoted(tmp_path):
     # The review is promoted into artifacts[] — it is the record the round routes on, and the
     # only stage product a later reader opens by name.
     wd = _final_workdir(tmp_path)
@@ -114,7 +114,7 @@ def test_conformance_review_promoted(tmp_path):
     paths = [
         a["path"] for a in json.loads((wd / "result.json").read_text())["artifacts"]
     ]
-    assert "conformance-review.md" in paths
+    assert "check-review.md" in paths
 
 
 def test_final_pass_missing_case_results_is_blocked(tmp_path):
@@ -128,7 +128,7 @@ def test_final_pass_missing_case_results_is_blocked(tmp_path):
     assert not (wd / "result.json").exists()
 
 
-def test_conformance_phase_writes_the_routing_envelope(tmp_path):
+def test_check_review_phase_writes_the_routing_envelope(tmp_path):
     # The fail-out carries the reason; the findings themselves stay in the promoted review
     # beside it, which is what triage opens. Copying them into the envelope would duplicate a
     # structured sibling in the same directory.
@@ -142,7 +142,7 @@ def test_conformance_phase_writes_the_routing_envelope(tmp_path):
     assert proc.returncode == 0, proc.stderr
     ss = json.loads((tmp_path / "result.json").read_text())["stage_specific"]
     assert "TP-01" in ss["fail_reason"]
-    assert "conformance_findings" not in ss
+    assert "check_review_findings" not in ss
 
 
 def test_final_thin_fail_is_compile(tmp_path):
@@ -185,7 +185,7 @@ def test_final_coverage_fail(tmp_path):
     assert judged["R-1"]["met"] is True
 
 
-def test_final_conformance_trip_is_fail_not_pass(tmp_path):
+def test_final_check_review_trip_is_fail_not_pass(tmp_path):
     # The one gate whose verdict finalize is handed rather than deriving alone. SKILL.md tells
     # the main thread it may not override a trip; until finalize itself refuses, that sentence
     # is the whole enforcement, and the main thread is the party it constrains.
@@ -258,14 +258,14 @@ def test_early_exit_smoke(tmp_path):
 
 
 def test_final_requires_its_three_inputs_exit_2(tmp_path):
-    # --conformance-review is one of them: defaulted to absent, the backstop above would read
+    # --check-review is one of them: defaulted to absent, the backstop above would read
     # an empty finding set and clear every review it was never given.
     wd = _final_workdir(tmp_path)
-    for missing in ("--plan", "--requirements", "--conformance-review"):
+    for missing in ("--plan", "--requirements", "--check-review"):
         flags = {
             "--plan": str(wd),
             "--requirements": str(wd / "requirements.json"),
-            "--conformance-review": str(wd / "conformance-review.md"),
+            "--check-review": str(wd / "check-review.md"),
         }
         del flags[missing]
         args = [x for kv in flags.items() for x in kv]
@@ -285,8 +285,8 @@ def test_finalize_blocked_exit_2(tmp_path):
         str(wd / "nope"),
         "--requirements",
         str(wd / "requirements.json"),
-        "--conformance-review",
-        str(wd / "conformance-review.md"),
+        "--check-review",
+        str(wd / "check-review.md"),
     )
     assert proc.returncode == 2
 

@@ -146,7 +146,7 @@ def test_coverage_gate_not_extractable(tmp_path):
     assert any("not extractable" in e for e in errs) and judged == []
 
 
-# ── conformance: the reviewer's own mark ──────────────────────────────────────
+# ── check adequacy: the reviewer's own mark ──────────────────────────────────────
 _BLOCKING = (
     "## TP-03  tb/uvm/checker/m_sb.sv:49  BLOCKING\n"
     "Compares next_token end to end and probes nothing between.\n"
@@ -155,17 +155,19 @@ _NOTED = "## TP-14  tb/uvm/checker/m_sb.sv:72\nThe per-step bounds dominate it.\
 
 
 def _review(tmp_path, body):
-    p = tmp_path / "conformance-review.md"
-    p.write_text("# conformance review — m\n\n" + body)
+    p = tmp_path / "check-review.md"
+    p.write_text("# check-adequacy review — m\n\n" + body)
     return p
 
 
 def test_a_review_with_nothing_marked_flags_nothing(tmp_path):
-    assert _gate.conformance_flagged(_review(tmp_path, _NOTED)) == []
+    assert _gate.check_review_flagged(_review(tmp_path, _NOTED)) == []
 
 
 def test_a_marked_finding_is_flagged_by_its_testpoint(tmp_path):
-    assert _gate.conformance_flagged(_review(tmp_path, _NOTED + _BLOCKING)) == ["TP-03"]
+    assert _gate.check_review_flagged(_review(tmp_path, _NOTED + _BLOCKING)) == [
+        "TP-03"
+    ]
 
 
 def test_the_mark_is_read_off_the_heading_not_the_prose(tmp_path):
@@ -175,12 +177,12 @@ def test_the_mark_is_read_off_the_heading_not_the_prose(tmp_path):
         "## TP-07  tb/uvm/checker/m_sb.sv:20\n"
         "Worth BLOCKING on if it recurs, but the stimulus never reaches it this round.\n"
     )
-    assert _gate.conformance_flagged(_review(tmp_path, body)) == []
+    assert _gate.check_review_flagged(_review(tmp_path, body)) == []
 
 
 def test_a_locus_with_spaces_still_parses(tmp_path):
     body = "## TP-09  plan ref: intent clause 2  BLOCKING\nNo check exists.\n"
-    assert _gate.conformance_flagged(_review(tmp_path, body)) == ["TP-09"]
+    assert _gate.check_review_flagged(_review(tmp_path, body)) == ["TP-09"]
 
 
 def test_coverage_gate_scores_the_dut_not_the_report_aggregate(tmp_path):

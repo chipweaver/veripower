@@ -45,7 +45,7 @@ what is actually there:
   Read the full per-case log under `<sim_run>` when the snippet is cut short.
 - `gaps_in_testpoints[]` / `gaps_not_in_testpoints[]` — the uncovered items, split by whether any
   testpoint claimed them. Regression passed, so there is no waveform to read.
-- `<sim_run>/conformance-review.md` carrying a `BLOCKING` heading — the check-adequacy review
+- `<sim_run>/check-review.md` carrying a `BLOCKING` heading — the check-adequacy review
   stopped the round. Read it: the envelope deliberately carries none of it. Reaching you at all
   means the simulation stage already tried to repair its own checks and judged the defect upstream
   of them, so attributing it back to `simulation` returns it to the loop that just gave up.

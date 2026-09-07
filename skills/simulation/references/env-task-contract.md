@@ -105,7 +105,7 @@ the UVM scaffold, compile, and run the smoke suite.
    reaches the verify run. (Note: `make smoke` runs earlier in your own step, *before* this gate,
    the savings are that no regress or coverage run happens on a hollow TB, not that smoke is skipped.)
    It checks presence and nothing else: a renamed marker, an empty stub or a plausible but
-   wrong fill all pass it. Whether a check verifies the right thing is the conformance review's
+   wrong fill all pass it. Whether a check verifies the right thing is the check-adequacy review's
    question.
 
 The smoke result is judged by the orchestrator's **deterministic gate** (the smoke run's own

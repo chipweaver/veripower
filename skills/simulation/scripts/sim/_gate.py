@@ -2,7 +2,7 @@
 """The three gate primitives finalize re-runs before it will write a pass.
 
   materialization_errors  every sequences[]/agents[] SV file present; no TODO residue.
-  conformance_flagged     the testpoints the reviewer marked BLOCKING in its own record.
+  check_review_flagged     the testpoints the reviewer marked BLOCKING in its own record.
   coverage_gate           structural-coverage.json carries the DUT's own per-module row, and each coverage
                           bound requirements.json assigns to simulation holds (a null or '--'
                           dim is skipped; a bounded dim urg did not measure fails).
@@ -22,7 +22,7 @@ from pathlib import Path
 
 _OPS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge}
 
-# A finding heading in conformance-review.md. The testpoint is the first token after the
+# A finding heading in check-review.md. The testpoint is the first token after the
 # hashes and the marker is the last, so a locus carrying spaces still parses.
 _FINDING = re.compile(r"^##\s+(?P<tp_id>\S+)\s+(?P<rest>.*?)\s*$")
 
@@ -185,7 +185,7 @@ def coverage_gate(
     return errs, judged
 
 
-def conformance_flagged(review_path: Path) -> list[str]:
+def check_review_flagged(review_path: Path) -> list[str]:
     """The testpoints the reviewer marked BLOCKING, read off its own record.
 
     Whether a finding stops the round is the reviewer's call, made in one place and in one

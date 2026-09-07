@@ -1,7 +1,7 @@
-# Conformance review sub-Task contract
+# Check-adequacy review sub-Task contract
 
 The simulation main thread dispatches one Level-1 sub-Task — the
-conformance reviewer — after the deterministic smoke gate passes and before the verify
+check-adequacy reviewer — after the deterministic smoke gate passes and before the verify
 child. This review is **gating**: a finding you mark blocking stops the round. Do not call the Task
 tool (no Level-2 dispatch) and do not call `kernel.py`.
 
@@ -75,7 +75,7 @@ then marking it non-blocking, one of the two is wrong.
 
 ## Output
 
-Write `{workdir}/conformance-review.md` yourself, then end the response with `STATUS: DONE`,
+Write `{workdir}/check-review.md` yourself, then end the response with `STATUS: DONE`,
 or with `STATUS: BLOCKED <reason>` if you wrote no file. That one file is your entire write
 domain: everything else under `{workdir}` is the material you are judging, and you do not
 edit it.
@@ -84,7 +84,7 @@ One `##` heading per finding, carrying the testpoint, where you found it, and `B
 the last word when it blocks. Under it, prose:
 
 ```markdown
-# conformance review — <module>
+# check-adequacy review — <module>
 
 ## TP-03  tb/uvm/checker/microgpt_core_scoreboard.sv:49  BLOCKING
 The scoreboard compares next_token end to end and probes nothing between. TP-03's intent

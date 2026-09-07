@@ -13,7 +13,7 @@ justified rather than hiding a verification need), and does each testpoint's che
 actually verify the behavior its `intent` promises.
 
 **Out of scope, do not report:** TB materialization and RTL correctness — the downstream
-`simulation` conformance review judges TB checks against testpoints, you judge testpoints against
+`simulation` check-adequacy review judges TB checks against testpoints, you judge testpoints against
 spec; the structural coverage matrix, which `simplan check-scaffold` already owns; lint, timing,
 power. If you happen to see one of those, say so as an observation, not as a finding.
 

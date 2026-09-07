@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from sim._gate import (
-    conformance_flagged,
+    check_review_flagged,
     coverage_gate,
     coverage_rows,
     materialization_errors,
@@ -55,12 +55,12 @@ def _write_result(workdir: Path, env: dict) -> None:
     )
 
 
-def _final_gate(workdir: Path, plan_dir: Path, requirements: Path, conformance_review):
+def _final_gate(workdir: Path, plan_dir: Path, requirements: Path, check_review):
     """Re-derive the exit verdict in-process from the three primitives in sim._gate.
     Returns (ok, verdict, phase, fail_reason); the earliest wave to fail wins, in the
-    order the waves ran: materialization, conformance review, coverage.
+    order the waves ran: materialization, check-adequacy review, coverage.
 
-    The conformance leg is the one the orchestrator could otherwise walk past. The other two
+    The check-review leg is the one the orchestrator could otherwise walk past. The other two
     re-derive a verdict nobody else held; this one re-derives a verdict the main thread was
     already handed and told not to override, which is worth nothing until something other than
     the overriding party checks it."""
@@ -80,13 +80,13 @@ def _final_gate(workdir: Path, plan_dir: Path, requirements: Path, conformance_r
     }
     if d1_errs:
         return (False, verdict, "compile", "; ".join(d1_errs)[:300])
-    flagged = conformance_flagged(conformance_review)
+    flagged = check_review_flagged(check_review)
     if flagged:
         return (
             False,
             verdict,
-            "conformance",
-            f"conformance gate tripped on {', '.join(flagged)}"[:300],
+            "check-review",
+            f"check-adequacy gate tripped on {', '.join(flagged)}"[:300],
         )
     if cov_errs:
         return (False, verdict, "coverage", "; ".join(cov_errs)[:300])
@@ -99,13 +99,13 @@ def build_result(
     phase,
     scaffold=None,
     requirements=None,
-    conformance_review=None,
+    check_review=None,
     verify_verdict=None,
     fail_reason=None,
     fix_owner=None,
 ) -> int:
     """Assemble the lean simulation result.json for the given exit phase.
-    final -> re-derive compile/conformance/coverage from on-disk artifacts, fold the reaped
+    final -> re-derive compile/check-review/coverage from on-disk artifacts, fold the reaped
              verify verdict, write pass|fail.
     fail  -> write the status=fail envelope from the caller's reason, carrying whatever the
              reaped verify verdict holds.
@@ -128,7 +128,7 @@ def build_result(
         return 0
 
     ok, gate, fphase, freason = _final_gate(
-        workdir, scaffold, requirements, conformance_review
+        workdir, scaffold, requirements, check_review
     )
     if not ok:
         # companions keyed off the resolved phase, the same way _early_exit_ss keys them,
@@ -231,7 +231,7 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
         "tests/testlist.json",
         "regression-log.txt",
         "logs",
-        "conformance-review.md",
+        "check-review.md",
         "structural-coverage.json",
         "case-results.json",
         "case-results-summary.md",
@@ -257,7 +257,7 @@ def finalize(
     phase,
     scaffold=None,
     requirements=None,
-    conformance_review=None,
+    check_review=None,
     verify_verdict=None,
     fail_reason=None,
     fix_owner=None,
@@ -272,7 +272,7 @@ def finalize(
             phase=phase,
             scaffold=scaffold,
             requirements=requirements,
-            conformance_review=conformance_review,
+            check_review=check_review,
             verify_verdict=verify_verdict,
             fail_reason=fail_reason,
             fix_owner=fix_owner,

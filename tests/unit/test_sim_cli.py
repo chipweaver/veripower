@@ -49,8 +49,8 @@ def test_classify_and_copy_baseline_verbs_removed(tmp_path):
 
 
 def test_validate_review_verb_removed(tmp_path):
-    # The conformance review is prose the reviewer writes, and the one word a machine reads
+    # The check-adequacy review is prose the reviewer writes, and the one word a machine reads
     # off it is read by finalize, which is what makes the pass conditional on it. A verb that
     # told the main thread what it could see for itself enforced nothing.
-    r = _run("validate-review", "--review", str(tmp_path / "conformance-review.md"))
+    r = _run("validate-review", "--review", str(tmp_path / "check-review.md"))
     assert r.returncode != 0 and "invalid choice" in r.stderr

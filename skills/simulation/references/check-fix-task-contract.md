@@ -1,10 +1,10 @@
-# Conformance-fix sub-Task contract
+# Check-fix sub-Task contract
 
-Dispatched on every conformance trip. Do not call the Task tool and do not call `kernel.py`: the
+Dispatched on every check-adequacy trip. Do not call the Task tool and do not call `kernel.py`: the
 parent session owns state transitions.
 
 **Job:** make the flagged checks verify what their testpoints set out to verify. The findings
-marked `BLOCKING` in `{workdir}/conformance-review.md` are your scope, and `{workdir}` is your
+marked `BLOCKING` in `{workdir}/check-review.md` are your scope, and `{workdir}` is your
 whole write domain — the plan and the check hints are the statement you are being measured
 against, and they are handed to you as reference.
 

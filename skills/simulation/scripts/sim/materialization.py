@@ -5,7 +5,7 @@ That child gates its STATUS: DONE on this verb's exit code; it writes no result.
 finalize's run remains the authoritative verdict. Exit 1 when a required scaffold SV file is
 missing or a TODO marker survives in tb/uvm/**, which the orchestrator records as
 the compile route-out. Presence only: whether a check verifies the right thing is the
-conformance review's question, not this one.
+check-adequacy review's question, not this one.
 """
 
 from __future__ import annotations

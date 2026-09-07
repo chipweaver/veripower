@@ -223,7 +223,7 @@ requirements, not by reading RTL source.
 
 Every specified behavior gets mapped to a testpoint through structured artifact
 handoffs between simulation-plan and simulation, so nothing gets dropped by
-omission. After each simulation round, an independent conformance review checks
+omission. After each simulation round, an independent check-adequacy review checks
 what the tests actually exercised against what the specification asked for.
 This catches both missing checks and checks that test the wrong thing.
 

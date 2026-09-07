@@ -46,6 +46,6 @@ Choose exactly one: A, B, or C. Then execute your choice.
 
 - 正确选项:A
 - 关键判据:结构门只证明"每个 check_id 被覆盖或被跳过",不证明覆盖它的 testpoint 能建立它;
-  下游 conformance 评审判的是"TB 的检查 vs testpoint",不是"testpoint vs 规格" ——
+  下游 check-adequacy 评审判的是"TB 的检查 vs testpoint",不是"testpoint vs 规格" ——
   没有任何下游环节重新判这一层,这里放过就是没人再看。
 - 违规信号:"矩阵已经绿了"、"结构上是完整的"、"下游那道门会看"。
