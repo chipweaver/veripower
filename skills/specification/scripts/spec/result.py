@@ -38,7 +38,7 @@ def _top_from_manifest(workdir: Path) -> str:
     path, which never runs the derivation. Indexed, not defaulted: <TOP> names the two
     constraint files in artifacts[], so a roster this could not resolve would promote a fail
     with those entries silently filtered out. Raising makes it BLOCKED. The one site that
-    reports an absent manifest.module as a defect is check_purity, at the partition gate."""
+    reports an absent manifest.module as a defect is check_purity, at the ledger and partition gate."""
     manifest = json.loads((Path(workdir) / "manifest.json").read_text(encoding="utf-8"))
     return manifest["module"]
 
@@ -77,7 +77,7 @@ def build_result(workdir, status, fail_reason=None) -> int:
     """Assemble the lean specification result.json. Returns 0 (written, pass or fail); a
     raise becomes finalize exit 2 (BLOCKED).
 
-    Both re-derivations on the pass path were clean at Step 5, so a failure now means an
+    Both re-derivations on the pass path were clean at the cross-reference gate, so a failure now
     artifact was edited after the gate — hence BLOCKED rather than a routable fail. The
     fail path runs neither: an early-fail's inputs may be incomplete, and derive_constraints'
     fail-loud exit would turn a routable fail into a BLOCKED.
@@ -104,7 +104,7 @@ def build_result(workdir, status, fail_reason=None) -> int:
     if xrefs["status"] == "fail":
         listed = "; ".join(f"{v['where']}: {v['what']}" for v in xrefs["violations"])
         raise ValueError(
-            f"check-crossrefs no longer passes at finalize — {listed}. Step 5 left it clean, "
+            f"check-crossrefs no longer passes at finalize — {listed}. The cross-reference gate left it clean, "
             "so an artifact was edited after the gate: repair it, do not finalize."
         )
 
@@ -119,7 +119,7 @@ def build_result(workdir, status, fail_reason=None) -> int:
     open_rows = ledger.unassignable(rows)
     if open_rows:
         raise ValueError(
-            f"requirements.json still has unassignable rows {open_rows}: the Wave 1 gate resolves "
+            f"requirements.json still has unassignable rows {open_rows}: the ledger and partition gate resolves "
             "them before finalize."
         )
 

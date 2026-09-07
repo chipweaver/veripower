@@ -1,9 +1,9 @@
-"""Tests for check_purity — the top-partition invariant, at specification's partition gate.
+"""Tests for check_purity — the top-partition invariant, at specification's ledger and partition gate.
 
 "Exactly one child covers <TOP>, and that child's rtl_modules == [<TOP>]" is decided here and
 nowhere else: rtl-design used to re-decide it at its own exit gate, which could only fire when
 this gate had been bypassed and could only produce a failure rtl-design was unable to repair.
-The partition gate is the last moment the partition is still editable, so it is the only place
+That gate is the last moment the partition is still editable, so it is the only place
 the rule earns its round.
 """
 

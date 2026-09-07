@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "requirements.json — everything the engineer's intent document requires, one row each",
-  "description": "Transcribed from brainstorm.md by specification's Wave 1a, one row per atomic proposition, in the engineer's words. Downstream stages bind this file; brainstorm.md is read by nobody after this stage. Scripts act on id, judge and target; verbatim and note are text they carry through unparsed.",
+  "description": "Transcribed from brainstorm.md by specification, one row per atomic proposition, in the engineer's words. Downstream stages bind this file; brainstorm.md is read by nobody after this stage. Scripts act on id, judge and target; verbatim and note are text they carry through unparsed.",
   "type": "array",
   "minItems": 1,
   "items": {

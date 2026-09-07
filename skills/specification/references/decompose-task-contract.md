@@ -21,7 +21,7 @@ with no clean internal handshake is monolithic (N=1 — only the top boundary is
 modules join their cluster — no line-count floor / size class.
 
 **top-integration carve-out (best-effort hint):** `<TOP>` (= `manifest.module`) should form its own
-child whose `rtl_modules == [<TOP>]` — do not bundle any logic module into the top child. It is checked at the partition gate.
+child whose `rtl_modules == [<TOP>]` — do not bundle any logic module into the top child. It is checked at the ledger and partition gate.
 
 ## Write
 Each sidecar's fields and which of them are required are in its own

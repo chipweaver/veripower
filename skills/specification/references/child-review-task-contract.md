@@ -1,7 +1,7 @@
 # Child design review sub-Task contract
 
-The specification main thread dispatches one Level-1 reviewer per child as its third wave, AFTER
-`check-crossrefs` is green and BEFORE the design.md approval gate. You write your findings to a
+The specification main thread dispatches one Level-1 reviewer per child AFTER
+`check-crossrefs` is green and BEFORE the design gate. You write your findings to a
 file; the main thread never re-types them and never reads your body. A human resolves each
 blocker at that gate. Do not call the Task tool: a sub-Task writes no events, so anything you
 dispatch is work the kernel cannot see or audit.

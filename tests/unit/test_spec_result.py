@@ -237,7 +237,7 @@ def test_nan_target_is_blocked(tmp_path):
 
 
 def test_crossrefs_regression_after_the_gate_is_blocked(tmp_path):
-    # A hint pointing at a row nobody has any more: clean at the Wave 2 gate, so a failure now
+    # A hint pointing at a row nobody has any more: clean at the cross-reference gate, so a failure now
     # means an artifact was edited afterwards.
     wd = _spec_workdir(tmp_path)
     (wd / "requirements.json").write_text(json.dumps([_ROWS[1]]))

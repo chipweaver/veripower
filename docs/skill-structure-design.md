@@ -38,13 +38,11 @@ rather than a violation:
    routing vocabulary is what the skill is about.
 2. **Fan-out dispatchers** — `specification`, `rtl-design`, `simulation`, and
    `simulation-plan`. These are main-thread skills that hold Level-1 sub-Task dispatch
-   authority. `specification` runs two sub-Task waves around its partition gate,
-   `rtl-design` runs one per-child fan-out wave, `simulation` runs two sequential waves
-   around its smoke gate, and `simulation-plan` self-dispatches a single Level-1
-   plan-adequacy review sub-Task at its adequacy gate. Because dispatching and reaping
-   their own Level-1 sub-Tasks *is* their control flow, `dispatcher` / `orchestrate` /
-   `sub-Task` / `wave` / `Task` vocabulary in their `SKILL.md` describes the skill's own
-   operation, not a sibling stage or the DAG.
+   authority: each dispatches its authoring and reviewing children around its own gates.
+   How many children and around which gates is each SKILL.md's own business and is not
+   restated here. Because dispatching and reaping their own Level-1 sub-Tasks *is* their
+   control flow, `dispatcher` / `orchestrate` / `sub-Task` / `Task` vocabulary in their
+   `SKILL.md` describes the skill's own operation, not a sibling stage or the DAG.
 
 **Decision criterion:** the vocabulary describes *this skill's own operation* — emitting a
 routing decision (router) or driving its own intra-stage fan-out (fan-out dispatcher) →

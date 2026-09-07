@@ -17,7 +17,7 @@ Write only under `{workdir}`; never another module's artifacts. Reading template
 
 `<skill>` is this skill's own base directory, named on the first line of this file.
 
-Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key to a location, so `<key>/<subpath>` is how you address one. The only input is the intent tree, the container `<intent>/`: `brainstorm.md`, in whatever shape the engineer wrote it, plus whatever the engineer delivered with it and the document names as authoritative. Frozen for the run. The document is read whole only by the Wave 1a author and the requirements reviewer; another file in the container is read by whoever a row pointing at it concerns.
+Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key to a location, so `<key>/<subpath>` is how you address one. The only input is the intent tree, the container `<intent>/`: `brainstorm.md`, in whatever shape the engineer wrote it, plus whatever the engineer delivered with it and the document names as authoritative. Frozen for the run. The document is read whole only by the transcriber and the requirements reviewer; another file in the container is read by whoever a row pointing at it concerns.
 
 Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `references/<name>.schema.json`.
 
@@ -40,20 +40,18 @@ Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `re
 
 ## Workflow
 
-Four dispatch waves, two human gates, then finalize.
-
 ### Which round is this
 
 Read `{workdir}/dispatch.json` first. The kernel writes `scope` / `caused_by` / `reasons` **only when they carry something**, so their presence is what tells you:
 
-- **`caused_by` present — failures downstream are waiting on this stage.** Each entry is one failing run's own `result.json`, and a round scheduled for some other reason carries them too: answer them in this round. This stage already shipped, and rtl-design / simulation-plan consumed the manifest, so the partition is not this round's to change. Scope is the union of `dispatch.json`'s `scope` and what the `caused_by` envelopes attribute; Read each envelope once. Dispatch one repair sub-Task over the decisions (`design.md`, the children, the sidecars), then pick up at **Wave 2's gate** and run through to finalize: the wave dispatches are skipped, but the join and the constraints must re-verify against what changed, and Wave 3 re-runs so the promoted review is never stale. The ledger is not re-transcribed: the intent document is frozen, and a row changes only by a human's ruling.
-- **`caused_by` absent — a first delivery.** Run all four waves.
+- **`caused_by` present — failures downstream are waiting on this stage.** Each entry is one failing run's own `result.json`, and a round scheduled for some other reason carries them too: answer them in this round. This stage already shipped, and rtl-design / simulation-plan consumed the manifest, so the partition is not this round's to change. Scope is the union of `dispatch.json`'s `scope` and what the `caused_by` envelopes attribute; Read each envelope once. Dispatch one repair sub-Task over the decisions (`design.md`, the children, the sidecars), then pick up at **`check-crossrefs`** and run through to finalize: the authoring dispatches are skipped, but the join and the constraints must re-verify against what changed, and the child reviews re-run so the promoted review is never stale. The ledger is not re-transcribed: the intent document is frozen, and a row changes only by a human's ruling.
+- **`caused_by` absent — a first delivery.** Run every step below.
 
 Either way your previous round, if any, is already in `{workdir}`: edit it in place, touching only what this round requires. Rewriting an artifact this round did not change still changes its bytes, and every stage downstream declares these files as inputs, so a cosmetic rewrite invalidates their proofs and buys a rebuild of everything transitively below for no change in content. Row ids never change and are never renumbered; a row added in a repair takes a fresh id.
 
 A `{workdir}` already holding part of a round means the session was compacted or interrupted: that work is yours to continue or redo, and artifacts on disk are not a gate you already passed.
 
-### Wave 1a — transcribe
+### Transcribe
 
 Dispatch one Level-1 sub-Task per `references/ledger-task-contract.md`. In its own context it reads `<intent>/brainstorm.md` and writes `requirements.json`.
 
@@ -63,9 +61,9 @@ Dispatch one Level-1 sub-Task per `references/ledger-task-contract.md`. In its o
 python3 <skill>/scripts/spec/__main__.py check-ledger --workdir {workdir}
 ```
 
-A non-zero exit names every shape or content defect on stderr (an unknown judge, a target no judge compares, a duplicate id); re-dispatch Wave 1a. On success stdout is the gate view: the count per judge, and verbatim the rows judged `unassignable`, `outside` and `human`, and the rows carrying a `target`. Keep it; the human gate below hands it over.
+A non-zero exit names every shape or content defect on stderr (an unknown judge, a target no judge compares, a duplicate id); re-dispatch the transcriber. On success stdout is the gate view: the count per judge, and verbatim the rows judged `unassignable`, `outside` and `human`, and the rows carrying a `target`. Keep it; the human gate below hands it over.
 
-### Wave 1b — decompose
+### Decompose
 
 Dispatch one Level-1 sub-Task per `references/decompose-task-contract.md`. It reads `requirements.json`, not the intent document, and writes `manifest.json`, `design.md`, `clocks.json`, `top-io.json`, `interconnects.json`. The author holds the rows and their ids and nothing else, so the design cites requirements rather than restating them.
 
@@ -75,19 +73,19 @@ Dispatch one Level-1 sub-Task per `references/decompose-task-contract.md`. It re
 python3 <skill>/scripts/spec/__main__.py derive-ports --workdir {workdir}
 ```
 
-It also decides the top-partition purity rule, since this is the last moment the partition is still editable. On success the port map is on stdout, and Wave 2 injects it. A non-zero exit names the defect on stderr; every one of them routes a Wave 1b rework sub-Task.
+It also decides the top-partition purity rule, since this is the last moment the partition is still editable. On success the port map is on stdout, and the child sub-designs inject it. A non-zero exit names the defect on stderr; every one of them routes a decompose rework sub-Task.
 
 ### Requirements review
 
 Dispatch one Level-1 reviewer per `references/requirements-review-task-contract.md`. It reads the intent document, the ledger, the three sidecars and `design.md`, and writes `spec-review/requirements.md`: what the document states that no row carries, what a row states that the document does not, which sidecar entries no row supports, where `design.md` contradicts or restates a row.
 
-**Gate, human.** Path-handoff, echoing no body, with four exceptions the gate view already holds verbatim: the `unassignable` rows with their `note`, the `outside` rows, the `human` rows, and the rows carrying a `target`. Add the `requirements.md` path, the N-child summary from manifest metadata (`Grep manifest.children[].{name,rtl_modules}`) plus the `derive-ports` map, and the `design.md` path.
+**Gate, human — the ledger and partition gate.** Path-handoff, echoing no body, with four exceptions the gate view already holds verbatim: the `unassignable` rows with their `note`, the `outside` rows, the `human` rows, and the rows carrying a `target`. Add the `requirements.md` path, the N-child summary from manifest metadata (`Grep manifest.children[].{name,rtl_modules}`) plus the `derive-ports` map, and the `design.md` path.
 
-What the user decides here: every `unassignable` row (how it is measured, who judges it, or that it is not a requirement, in which case it becomes `none` with the reason in `note`); each `human` row, which they judge now from the documents in front of them; the partition. Write each ruling to `spec-review/decisions.md` in **their words, not yours**, then dispatch a Wave 1a repair sub-Task that edits the rows it names — nothing outside a sub-Task edits an artifact. After any edit to the ledger, re-run `check-ledger` and the requirements review. A reported omission or a partition change re-enters at Wave 1a or Wave 1b.
+What the user decides here: every `unassignable` row (how it is measured, who judges it, or that it is not a requirement, in which case it becomes `none` with the reason in `note`); each `human` row, which they judge now from the documents in front of them; the partition. Write each ruling to `spec-review/decisions.md` in **their words, not yours**, then dispatch a transcribe repair sub-Task that edits the rows it names — nothing outside a sub-Task edits an artifact. After any edit to the ledger, re-run `check-ledger` and the requirements review. A reported omission or a partition change re-enters at transcribe or decompose.
 
-### Wave 2 — child sub-designs (×N)
+### Child sub-designs (×N)
 
-Dispatch one sub-Task per child, each writing `children/<child>.md` per `references/child-design-template.md` and `check-hints/<child>.json` per `references/check-hints-task-contract.md`. Inject each child's wire list from Wave 1b's gate; the child adds any top-IO ports it drives or reads.
+Dispatch one sub-Task per child, each writing `children/<child>.md` per `references/child-design-template.md` and `check-hints/<child>.json` per `references/check-hints-task-contract.md`. Inject each child's wire list from `derive-ports`; the child adds any top-IO ports it drives or reads.
 
 **Gate, script.** Run `check-crossrefs`. N children authored their docs and check hints in parallel, so it reports what only a join can see: a name one of them wrote that resolves nowhere, a target nobody claimed, a hint naming a row simulation does not judge, a row simulation judges that no hint names.
 
@@ -95,7 +93,7 @@ Dispatch one sub-Task per child, each writing `children/<child>.md` per `referen
 python3 <skill>/scripts/spec/__main__.py check-crossrefs --workdir {workdir}
 ```
 
-The verdict is structured on stdout and a non-clean one exits non-zero. **Fix nothing yourself.** Each disagreement names both sides, and which of the two is wrong is a judgment: the child may have mistyped a port, or the boundary may be missing it. Decide that, then route the rework to whoever authored that file, Wave 1b for a sidecar and the affected child for a `<child>.md` or its check hints.
+The verdict is structured on stdout and a non-clean one exits non-zero. **Fix nothing yourself.** Each disagreement names both sides, and which of the two is wrong is a judgment: the child may have mistyped a port, or the boundary may be missing it. Decide that, then route the rework to whoever authored that file, decompose for a sidecar and the affected child for a `<child>.md` or its check hints.
 
 On a clean gate, immediately derive the constraints:
 
@@ -103,13 +101,13 @@ On a clean gate, immediately derive the constraints:
 python3 <skill>/scripts/spec/__main__.py derive-constraints --workdir {workdir}
 ```
 
-It generates `constraints/<TOP>.{sdc,sgdc}` from `clocks.json` + `top-io.json`. Running it here, before the human gate, surfaces defects no cross-file join can see (the exactly-one-`primary` rule, clock-name collisions) while a rework is still cheap. It reads only the Wave-1b sidecars, so a defect it reports on stderr routes to Wave 1b.
+It generates `constraints/<TOP>.{sdc,sgdc}` from `clocks.json` + `top-io.json`. Running it here, before the human gate, surfaces defects no cross-file join can see (the exactly-one-`primary` rule, clock-name collisions) while a rework is still cheap. It reads only the boundary sidecars, so a defect it reports on stderr routes to decompose.
 
-### Wave 3 — per-child review (×N)
+### Child reviews (×N)
 
 Dispatch one Level-1 reviewer per `manifest.children[]` per `references/child-review-task-contract.md`, passing paths. Each writes its own `spec-review/<child>.md`.
 
-**Gate, human.** Path-handoff, echoing no body: the `design.md` and per-child paths, the `check-crossrefs` verdict, one `spec-review/<child>.md` path per child.
+**Gate, human — the design gate.** Path-handoff, echoing no body: the `design.md` and per-child paths, the `check-crossrefs` verdict, one `spec-review/<child>.md` path per child.
 
 What the user is approving is the engineering soundness no script and no reviewer can reach: port roles, reset polarity, clock relationships, whether the children realize the rows they cite.
 
@@ -117,7 +115,7 @@ You do not summarize the findings, rank them, or decide which ones matter: a rev
 
 If the user accepts a finding a reviewer called blocking, write their reason — **their words, not yours** — to `spec-review/decisions.md`, so the override travels with the review it overrode instead of living only in this session.
 
-On reject, re-run from wherever their feedback starts: a body change re-enters at Wave 2, a partition change at Wave 1b.
+On reject, re-run from wherever their feedback starts: a body change re-enters at the child sub-designs, a partition change at decompose.
 
 ### Finalize
 
@@ -128,7 +126,7 @@ python3 <skill>/scripts/spec/__main__.py finalize \
   --workdir {workdir} --status <pass|fail> [--fail-reason "<one-line reason>"]
 ```
 
-You supply only the human-gate outcome; everything else in the envelope is finalize's. On the pass path it re-validates `requirements.json` and refuses one that still carries an `unassignable` row, then re-runs `check-crossrefs` and `derive-constraints` in-process — both were clean at Wave 2, so a failure now means an artifact was edited after that gate, which is BLOCKED rather than a routable fail. Exit 0 = `result.json` written, status pass or fail. A non-zero exit is a program exception: BLOCKED, reason on stderr, never a `status=fail`.
+You supply only the human-gate outcome; everything else in the envelope is finalize's. On the pass path it re-validates `requirements.json` and refuses one that still carries an `unassignable` row, then re-runs `check-crossrefs` and `derive-constraints` in-process — both were clean at the cross-reference gate, so a failure now means an artifact was edited after that gate, which is BLOCKED rather than a routable fail. Exit 0 = `result.json` written, status pass or fail. A non-zero exit is a program exception: BLOCKED, reason on stderr, never a `status=fail`.
 
 ## Return Contract
 

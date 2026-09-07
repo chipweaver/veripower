@@ -164,7 +164,7 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 | `design.md` | Module overview §1.1–1.6, §1.7 points to manifest | **Must read** |
 | `<child>.md × N` | Sub-design for each child module | **Must read** |
 | `requirements.json` | Everything your intent document requires, one row each in your own words, with the stage that will judge it. The gate shows you verbatim the rows nobody could place (`unassignable`), the rows judged outside this pipeline, the rows left to you, and the numeric bounds the tools will compare | **Must read those four groups** |
-| `manifest.json` | Partition: `module` + `children[]` | **Must read**, at the partition gate |
+| `manifest.json` | Partition: `module` + `children[]` | **Must read**, at the ledger and partition gate |
 | `spec-review/requirements.md` / `<child>.md` / `decisions.md` | The ledger checked against your document, each child design checked against the ledger, and your rulings | **Must read** |
 | `check-hints/<child>.json` | How simulation will observe each requirement row it judges | Optional |
 | `clocks.json` / `top-io.json` / `interconnects.json` | Boundary info: clocks, top-level ports, cut wires | `design.md` §1.4 is the human-readable version |
@@ -172,8 +172,8 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 
 **Your action: two gates**
 
-- **Ledger and partition gate** (after the transcription and the decomposition): resolve every `unassignable` row (define how it is measured, assign a judge, or declare it not a requirement), read the rows judged outside the pipeline and the ones left to you, check the numeric bounds, confirm the partition or give feedback to repartition.
-- **Spec gate** (after the child designs): focus on whether `design.md` and each `<child>.md` realize the ledger rows they cite, and whether you agree with the findings and decisions in `spec-review/`.
+- **Ledger and partition gate** (after the requirements review): resolve every `unassignable` row (define how it is measured, assign a judge, or declare it not a requirement), read the rows judged outside the pipeline and the ones left to you, check the numeric bounds, confirm the partition or give feedback to repartition.
+- **Design gate** (after the child reviews): focus on whether `design.md` and each `<child>.md` realize the ledger rows they cite, and whether you agree with the findings and decisions in `spec-review/`.
 
 > Decisions made earlier in the pipeline have the biggest impact. The spec stage is the source for everything that follows. Take the time.
 
@@ -452,8 +452,8 @@ The body of this manual uses familiar terms where possible. Below are the words 
 | # | When | Stage | What you decide | Can you skip it? | Details |
 |---|---|---|---|---|---|
 | 1 | Requirements dialogue | brainstorm (before pipeline) | Requirements and architecture, including PPA targets | No | §1.2 |
-| 2 | Ledger and partition gate | specification, after decomposition | Resolve `unassignable` rows, read the rows outside the pipeline and yours, check the bounds, confirm the partition | No, and it's the **last chance to change the partition** | §1.4 |
-| 3 | Spec gate | specification, after the child designs | design.md / sub-designs / reviews | No | §1.4 |
+| 2 | Ledger and partition gate | specification, after the requirements review | Resolve `unassignable` rows, read the rows outside the pipeline and yours, check the bounds, confirm the partition | No, and it's the **last chance to change the partition** | §1.4 |
+| 3 | Design gate | specification, after the child reviews | design.md / sub-designs / reviews | No | §1.4 |
 | 4 | Plan gate | simulation-plan | approve / request changes / reject | No | §1.4 |
 | 5 | ESCALATE | any stage | Attribute the failure to a stage and say why | No | §1.5 |
 | 6 | Endorse judgments | four LLM-authored artifacts | Read, confirm, give a reason | Required before signoff | §1.6 |

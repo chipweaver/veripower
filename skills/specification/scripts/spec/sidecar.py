@@ -1,7 +1,7 @@
 """Read the authored JSON sidecars this stage emits — validating on the way in.
 
-Wave 1a authors requirements.json; Wave 1b authors clocks.json / top-io.json / interconnects.json;
-each wave-2 child authors check-hints/<child>.json. Every read goes through `read_sidecar`, so a
+The transcriber authors requirements.json; the decomposer authors clocks.json / top-io.json /
+interconnects.json; each child authors check-hints/<child>.json. Every read goes through `read_sidecar`, so a
 malformed sidecar is reported by **whichever verb needed it, at the moment it needed it**.
 That placement is the point: a file's own shape is not a cross-file property, so it has no
 business waiting for a gate that runs after every author has finished.

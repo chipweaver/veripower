@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """check-crossrefs — the one check the specification stage's fan-out makes necessary.
 
-Wave 1 authors the ledger and the sidecars; N wave-2 children each author their own doc and check
+The ledger and the sidecars are authored first; N children each author their own doc and check
 hints, in parallel, none able to see another's context. So two things can be wrong that no single
 author is in a position to notice: a name one file writes that the owning file does not have, and
 a requirement nothing anywhere verifies. Both are set operations over identifiers that exist for a
-downstream consumer anyway, so the whole verb is a join. It runs after the last wave-2 author
+downstream consumer anyway, so the whole verb is a join. It runs after the last child author
 finishes, because that is when the question first has an answer.
 
 Each violation names both sides in words — which file wrote the name, and which file was
@@ -14,7 +14,7 @@ the boundary may be missing it), so the verdict states the disagreement and leav
 whoever reads the two files.
 
 Deliberately NOT here: a sidecar's own shape (validated by whoever reads it — see sidecar.py),
-the top-partition purity rule (decided at the partition gate — see ports.py), and anything
+the top-partition purity rule (decided at the ledger and partition gate — see ports.py), and anything
 needing a reference frame, such as whether a doc realizes a requirement. Those are a reader's job.
 
 Usage: ``python3 scripts/spec/__main__.py check-crossrefs --workdir {workdir}``
@@ -64,7 +64,7 @@ def violations(workdir: Path, manifest: dict, child_texts: dict) -> list[dict]:
         out.append({"where": where, "what": what})
 
     # A child's frontmatter is its claim about which of the shared boundary is its own. The
-    # sidecars are Wave 1's claim about what the boundary is. Two authors, two facts.
+    # sidecars are the decomposer's claim about what the boundary is. Two authors, two facts.
     named: set[str] = set()
     claimed: set[str] = set()
     check_ids: dict[str, str] = {}

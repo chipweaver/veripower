@@ -4,7 +4,7 @@ One question, unanswerable by any single author: does what one file wrote agree 
 that owns it. Each test asserts on the violation an agent actually reads — where + what — not
 on an internal key, because that sentence IS the interface. A sidecar's own shape is not tested
 here (read-time, see test_spec_sidecar.py) and neither is top-partition purity (decided at the
-partition gate — test_spec_ports.py + the contract test).
+ledger and partition gate — test_spec_ports.py + the contract test).
 """
 
 import json

@@ -9,11 +9,11 @@ correct-by-construction (specification's main thread injects this into each wave
 prompt; children never hand-guess inter-module ports).
 
 Top-level IO ports are NOT derived here. Which top-IO ports a child drives or reads is that
-child's own implementation decision, made in wave 2 and declared in its frontmatter — a
+child's own implementation decision, made when it authors its sub-design and declared in its frontmatter — a
 different fact, authored where it is known, and backstopped by check-crossrefs.
 
 This verb also decides the top-partition purity rule, and is the only place that decides it:
-the partition gate is next, so a violation is caught before N children are written against it,
+the ledger and partition gate is next, so a violation is caught before N children are written against it,
 and this is the last moment the partition is still editable.
 
 Usage:  python3 scripts/spec/__main__.py derive-ports --workdir <workdir>
@@ -57,7 +57,7 @@ def check_purity(manifest: dict) -> list:
 
 def derive_ports(workdir: Path) -> dict:
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
-    # This verb runs BEFORE the partition gate and its output is injected into the wave-2
+    # This verb runs BEFORE the ledger and partition gate and its output is injected into the child
     # child prompts, so a malformed sidecar must stop here rather than silently inject an
     # empty cut-edge list.
     try:

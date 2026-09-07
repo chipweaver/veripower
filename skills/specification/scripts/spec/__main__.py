@@ -2,7 +2,7 @@
 """spec — specification-stage CLI.
 
 Verbs (one stage = one tool):
-  check-ledger        validate requirements.json; print the Wave 1 gate view (stdout: JSON)
+  check-ledger        validate requirements.json; print the ledger and partition gate view (stdout: JSON)
   derive-ports        per-child ports from interconnects.json (stdout: JSON)
   check-crossrefs     cross-file name + hint↔requirement join (stdout: verdict JSON; exit 0/1)
   derive-constraints  generate SDC/SGDC from clocks.json + top-io.json (stdout: JSON; fail-loud)
@@ -72,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "check-ledger",
-        help="validate requirements.json and print what the Wave 1 gate hands the human",
+        help="validate requirements.json and print what the ledger and partition gate hands the human",
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.set_defaults(func=_cmd_check_ledger)
@@ -97,7 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--status",
         required=True,
         choices=["pass", "fail"],
-        help="the human decision at the Wave 3 gate; fail also serves the documented "
+        help="the human decision at the design gate; fail also serves the documented "
         "early-fail exits (with --fail-reason)",
     )
     sp.add_argument(
