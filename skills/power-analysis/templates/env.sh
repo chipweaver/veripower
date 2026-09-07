@@ -26,9 +26,11 @@ export PLAN_DIR="MY_PLAN_DIR"
 export POWER_TESTS_DIR="./scaffold/power_tests"
 export POWER_FILELIST="./scaffold/power_filelist.f"
 
-# DUT instance hierarchy — single source for the {TOP}_tb_top/u_dut convention.
-# Must match simulation templates/scaffold/tb_top.sv (enforced by
-# tests/contracts/test_cross_stage_contracts.py). PT uses '/', VCS -sdf uses '.'.
+# DUT instance hierarchy — the one place this stage writes the DUT path, which ptpx.tcl reads
+# from $STRIP_PATH rather than hardcoding. It must name the scope the testbench actually
+# instantiates, or the SAIF paths keep a prefix the netlist does not have and nothing annotates;
+# tests/contracts/test_cross_stage_contracts.py holds both ends to the same convention.
+# PT uses '/', VCS -sdf uses '.'.
 export TB_TOP="${TOP}_tb_top"
 export DUT_INST="u_dut"
 export STRIP_PATH="${TB_TOP}/${DUT_INST}"
