@@ -14,8 +14,9 @@ Report only; nothing in the pipeline depends on this having run.
 
 `<skill>/../../docs/eda-env.md` is the requirement source — read it and run each
 row's sanity check rather than restating it here. Two exceptions: its check for `LIB_DB` /
-`LIB_V` / `UVM_HOME` is a stage `env.sh` guard that presupposes a deployed work tree, so here
-test that each is set and its path readable; and `make` / `urg` have no row there at all.
+`LIB_V` / `UVM_HOME` / `WIRE_LOAD_MODEL` is a stage `env.sh` guard that presupposes a deployed
+work tree, so here test that each is set, and that the three that name a path are readable; and
+`make` / `urg` have no row there at all.
 `timeout` every probe — an unreachable license server hangs the tool.
 
 What a missing row costs:
@@ -25,7 +26,7 @@ What a missing row costs:
 | `python3`, `jsonschema` >= 4.18, `referencing`, `PyYAML` | all |
 | `/bin/sh` → bash where the tools run, `make` | every EDA stage |
 | `vcs`, `urg`, `fsdbreport`, `fsdb2vcd`, `UVM_HOME` | simulation, power-analysis, simulation-triage |
-| `dc_shell`, a DC-Ultra checkout, `LIB_DB` | synthesis, timing-analysis, power-analysis |
+| `dc_shell`, a DC-Ultra checkout, `LIB_DB`, `WIRE_LOAD_MODEL` | synthesis, timing-analysis, power-analysis |
 | `pt_shell` | timing-analysis, power-analysis |
 | `LIB_V` | power-analysis |
 | `spyglass` | lint-cdc |
@@ -34,8 +35,8 @@ What a missing row costs:
 
 ## 2. Smoke
 
-Presence is not a checkout. Ask which stages to cover — cover every row when there is nobody to
-ask — then run one minimal job per row in a temp dir: write the DUT (one clocked flop), the TB
+Presence is not a checkout. Ask which stages to cover, then run one minimal job per row in a
+temp dir: write the DUT (one clocked flop), the TB
 (`import uvm_pkg::*`) and each tcl yourself, mirroring how that stage invokes the tool in
 `<skill>/../<stage>/templates/`. A row passes iff it produces the file below.
 
@@ -50,7 +51,9 @@ ask — then run one minimal job per row in a temp dir: write the DUT (one clock
 | SpyGlass Lint | `current_goal lint/lint_rtl` + `run_goal` | that goal's `moresimple.rpt` | lint-cdc |
 | SpyGlass CDC | `cdc/cdc_setup`, `cdc/cdc_setup_check`, `cdc/cdc_verify_struct`, each `run_goal` | each goal's `moresimple.rpt` | lint-cdc |
 
-Run rows 1 and 4 first: 2–3 read row 1's netlist, 5–6 reuse row 4's simv. Rows 1–3 need `LIB_DB`
+Rows 4–6 each need their own compile: `-cm` (with `-cm_dir`, which VCS bakes in at compile time)
+and `-debug_access+all -kdb -lca` take effect there, and a simv built without them runs to exit 0
+producing no coverage database and no FSDB. Rows 1–3 need `LIB_DB`
 and 4–6 need `UVM_HOME`; a row whose tool or variable already failed §1 is skipped, not failed —
 §1 has said it, and a second verdict on it would only be a worse-sourced copy. The
 SDC and the SGDC belong to specification and to `bootstrap`, so write a bare `create_clock` and
@@ -64,6 +67,4 @@ Per row: pass or fail, and the stages it costs. Close with the stage list runnab
   and lmstat missing or timing out is not a failure.
 - A `compile_ultra` that cannot check out DC-Ultra costs the whole row, not QoR: `dc_run.tcl` has
   no plain-`compile` path, so report it as synthesis lost even where plain `compile` works.
-- An `urg -version` other than L-2016.06 is worth reporting, not a failure: the coverage parser
-  takes its columns from the header urg prints, so a different column set parses.
 - Print `export` lines for the user; never edit their shell config.
