@@ -65,7 +65,7 @@ python3 <skill>/scripts/spec/__main__.py check-ledger --workdir {workdir}
 
 A non-zero exit names every shape or content defect on stderr (an unknown judge, a target no judge compares, a duplicate id); re-dispatch Wave 1a. On success stdout is the gate view: the count per judge, and verbatim the rows judged `unassignable`, `outside` and `human`, and the rows carrying a `target`. Keep it; the human gate below hands it over.
 
-### Wave 1b — decide
+### Wave 1b — decompose
 
 Dispatch one Level-1 sub-Task per `references/decompose-task-contract.md`. It reads `requirements.json`, not the intent document, and writes `manifest.json`, `design.md`, `clocks.json`, `top-io.json`, `interconnects.json`. The author holds the rows and their ids and nothing else, so the design cites requirements rather than restating them.
 
@@ -79,7 +79,7 @@ It also decides the top-partition purity rule, since this is the last moment the
 
 ### Requirements review
 
-Dispatch one Level-1 reviewer per `references/requirements-review-contract.md`. It reads the intent document, the ledger, the three sidecars and `design.md`, and writes `spec-review/requirements.md`: what the document states that no row carries, what a row states that the document does not, which sidecar entries no row supports, where `design.md` contradicts or restates a row.
+Dispatch one Level-1 reviewer per `references/requirements-review-task-contract.md`. It reads the intent document, the ledger, the three sidecars and `design.md`, and writes `spec-review/requirements.md`: what the document states that no row carries, what a row states that the document does not, which sidecar entries no row supports, where `design.md` contradicts or restates a row.
 
 **Gate, human.** Path-handoff, echoing no body, with four exceptions the gate view already holds verbatim: the `unassignable` rows with their `note`, the `outside` rows, the `human` rows, and the rows carrying a `target`. Add the `requirements.md` path, the N-child summary from manifest metadata (`Grep manifest.children[].{name,rtl_modules}`) plus the `derive-ports` map, and the `design.md` path.
 
@@ -87,7 +87,7 @@ What the user decides here: every `unassignable` row (how it is measured, who ju
 
 ### Wave 2 — child sub-designs (×N)
 
-Dispatch one sub-Task per child, each writing `children/<child>.md` per `references/child-design-template.md` and `check-hints/<child>.json` per `references/check-hints-contract.md`. Inject each child's wire list from Wave 1b's gate; the child adds any top-IO ports it drives or reads.
+Dispatch one sub-Task per child, each writing `children/<child>.md` per `references/child-design-template.md` and `check-hints/<child>.json` per `references/check-hints-task-contract.md`. Inject each child's wire list from Wave 1b's gate; the child adds any top-IO ports it drives or reads.
 
 **Gate, script.** Run `check-crossrefs`. N children authored their docs and check hints in parallel, so it reports what only a join can see: a name one of them wrote that resolves nowhere, a target nobody claimed, a hint naming a row simulation does not judge, a row simulation judges that no hint names.
 
@@ -107,7 +107,7 @@ It generates `constraints/<TOP>.{sdc,sgdc}` from `clocks.json` + `top-io.json`. 
 
 ### Wave 3 — per-child review (×N)
 
-Dispatch one Level-1 reviewer per `manifest.children[]` per `references/spec-review-task-contract.md`, passing paths. Each writes its own `spec-review/<child>.md`.
+Dispatch one Level-1 reviewer per `manifest.children[]` per `references/child-review-task-contract.md`, passing paths. Each writes its own `spec-review/<child>.md`.
 
 **Gate, human.** Path-handoff, echoing no body: the `design.md` and per-child paths, the `check-crossrefs` verdict, one `spec-review/<child>.md` path per child.
 

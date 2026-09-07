@@ -3,7 +3,7 @@
 test_skill_path_references covers SKILL.md and only slash-bearing paths, because a bare
 `design.md` is a runtime artifact that legitimately lives nowhere in the source tree. That
 leaves the citations reference docs make to each other unchecked: renaming
-wave2-check-hints-contract.md broke one line in child-design-template.md and the whole suite
+check-hints contract broke one line in child-design-template.md and the whole suite
 stayed green.
 
 `-contract.md` and `-template.md` are the discriminator, and they need no exclusion list: every

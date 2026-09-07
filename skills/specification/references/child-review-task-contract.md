@@ -1,4 +1,4 @@
-# Spec semantic review sub-Task contract
+# Child design review sub-Task contract
 
 The specification main thread dispatches one Level-1 reviewer per child as its third wave, AFTER
 `check-crossrefs` is green and BEFORE the design.md approval gate. You write your findings to a

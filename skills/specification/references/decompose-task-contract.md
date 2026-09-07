@@ -1,4 +1,4 @@
-# Spec decompose sub-Task contract (Wave 1b)
+# Spec decompose sub-Task contract
 
 Partition the module and author `design.md` and the boundary sidecars from `{workdir}/requirements.json`.
 Do not call the Task tool: a sub-Task writes no events, so anything you dispatch is work the kernel

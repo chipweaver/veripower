@@ -73,8 +73,8 @@ why.
 The wire list lives in `interconnects.json` (authoritative for every RTL-module-to-RTL-module
 cut edge; an N=1 module writes an empty array). Here: how the children divide the datapath.
 
-> **Inter-module Behavior Contract** (required content rule, enforced by the spec-review
-> `conformance` lens, NOT a deterministic gate): when a *group* of inter-module wires is governed by
+> **Inter-module Behavior Contract** (required content rule, reported by the per-child
+> reviewer, NOT a deterministic gate): when a *group* of inter-module wires is governed by
 > a contract that **more than one wire / child must jointly agree on** (a shared operating-phase or
 > event timeline, a sequencing, a co-assertion or mutual-exclusion among control strobes), that joint
 > contract MUST be stated **once** in the `##### 1.4.2.1` companion below, NOT left implicit in one
