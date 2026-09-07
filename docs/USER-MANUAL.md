@@ -101,10 +101,10 @@ The entire pipeline reads one directory: `{module}/intent/`. The document goes i
 > Run the brainstorm skill for {module}
 
 It asks one question at a time, each with the answer it would give and why, so you are picking
-rather than composing. It starts from intent and scope and is not done until your functions,
-top-level IO, clocks and resets and their crossings, architecture partition, timing scenarios,
-PPA targets, and what the downstream stages need are each either settled or deliberately left
-open. What you already brought it does not ask again.
+rather than composing. It is done when your scope, functions, top-level IO, clocks and resets
+and their crossings, architecture partition, timing scenarios, PPA targets, and what the
+downstream stages need are each either settled or deliberately left open. What you already
+brought, it does not ask again.
 
 When it finishes, it **hands you the path only**, not the content. Read the file on disk and **confirm it looks right to start the pipeline**.
 
