@@ -100,18 +100,11 @@ The entire pipeline reads one directory: `{module}/intent/`. The document goes i
 
 > Run the brainstorm skill for {module}
 
-It walks you through a structured D0–D7 dialogue, one question at a time, with options for you to pick:
-
-| Dimension | What it covers |
-|---|---|
-| D0 | Intent and scope (settle this first) |
-| D1 | Features list |
-| D2 | Interfaces and interconnects |
-| D3 | Clocks and resets |
-| D4 | Architecture partition candidates (**requires 2–3**, side-by-side mermaid comparison) |
-| D5 | Timing scenarios |
-| D6 | PPA targets |
-| D7 | Verification input readiness |
+It asks one question at a time, each with the answer it would give and why, so you are picking
+rather than composing. It starts from intent and scope and is not done until your functions,
+top-level IO, clocks and resets and their crossings, architecture partition, timing scenarios,
+PPA targets, and what the downstream stages need are each either settled or deliberately left
+open. What you already brought it does not ask again.
 
 When it finishes, it **hands you the path only**, not the content. Read the file on disk and **confirm it looks right to start the pipeline**.
 
@@ -458,7 +451,7 @@ The body of this manual uses familiar terms where possible. Below are the words 
 
 | # | When | Stage | What you decide | Can you skip it? | Details |
 |---|---|---|---|---|---|
-| 1 | D0–D7 dialogue | brainstorm (before pipeline) | Requirements and architecture, including PPA targets | No | §1.2 |
+| 1 | Requirements dialogue | brainstorm (before pipeline) | Requirements and architecture, including PPA targets | No | §1.2 |
 | 2 | Ledger and partition gate | specification, after decomposition | Resolve `unassignable` rows, read the rows outside the pipeline and yours, check the bounds, confirm the partition | No, and it's the **last chance to change the partition** | §1.4 |
 | 3 | Spec gate | specification, after the child designs | design.md / sub-designs / reviews | No | §1.4 |
 | 4 | Plan gate | simulation-plan | approve / request changes / reject | No | §1.4 |
