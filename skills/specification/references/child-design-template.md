@@ -51,7 +51,7 @@ Async interaction / back-pressure / error handling / exception paths (prose).
 ## §5 Verification Hints
 
 The hints live in `check-hints/<child>.json`, one file per child because children are authored
-in parallel; the contract is `wave2-check-hints-contract.md` and the shape
+in parallel; the contract is `check-hints-contract.md` and the shape
 `check-hints.schema.json`. Keep this section as a pointer to it; narrative about *why* a check
 exists belongs in §3 / §4, and a hint that has to observe an internal signal says here why the
 boundary does not suffice.

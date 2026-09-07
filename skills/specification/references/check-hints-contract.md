@@ -1,4 +1,4 @@
-# Wave 2: check-hints for your child
+# Check hints for your child
 
 Read `{workdir}/requirements.json`, your child's `rtl_modules` from `manifest.json`, and the wire list
 `derive-ports` gave you. A row that points at a file under `<intent>/` is read there.

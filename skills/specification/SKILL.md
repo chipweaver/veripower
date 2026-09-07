@@ -55,7 +55,7 @@ A `{workdir}` already holding part of a round means the session was compacted or
 
 ### Wave 1a — transcribe
 
-Dispatch one Level-1 sub-Task per `references/wave1a-ledger-contract.md`. In its own context it reads `<intent>/brainstorm.md` and writes `requirements.json`.
+Dispatch one Level-1 sub-Task per `references/ledger-task-contract.md`. In its own context it reads `<intent>/brainstorm.md` and writes `requirements.json`.
 
 **Gate, script.**
 
@@ -87,7 +87,7 @@ What the user decides here: every `unassignable` row (how it is measured, who ju
 
 ### Wave 2 — child sub-designs (×N)
 
-Dispatch one sub-Task per child, each writing `children/<child>.md` per `references/child-design-template.md` and `check-hints/<child>.json` per `references/wave2-check-hints-contract.md`. Inject each child's wire list from Wave 1b's gate; the child adds any top-IO ports it drives or reads.
+Dispatch one sub-Task per child, each writing `children/<child>.md` per `references/child-design-template.md` and `check-hints/<child>.json` per `references/check-hints-contract.md`. Inject each child's wire list from Wave 1b's gate; the child adds any top-IO ports it drives or reads.
 
 **Gate, script.** Run `check-crossrefs`. N children authored their docs and check hints in parallel, so it reports what only a join can see: a name one of them wrote that resolves nowhere, a target nobody claimed, a hint naming a row simulation does not judge, a row simulation judges that no hint names.
 

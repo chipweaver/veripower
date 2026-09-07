@@ -1,4 +1,4 @@
-# Wave 1a: the requirements ledger
+# The requirements ledger
 
 Read `<intent>/brainstorm.md`, all of it, in whatever shape the engineer wrote it. The intent is
 a tree: a file elsewhere under `<intent>/` that the document names as authoritative — a reference
