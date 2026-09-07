@@ -1,8 +1,8 @@
-# Conformance review sub-Task contract (gating)
+# Conformance review sub-Task contract
 
 The simulation main thread dispatches one Level-1 sub-Task — the
-conformance reviewer — as Wave 2 (Step 4) AFTER the deterministic smoke gate passes
-and BEFORE the verify wave. This review is **gating**: a finding you mark blocking stops the round. Do not call the Task
+conformance reviewer — after the deterministic smoke gate passes and before the verify
+child. This review is **gating**: a finding you mark blocking stops the round. Do not call the Task
 tool (no Level-2 dispatch) and do not call `kernel.py`.
 
 **Dispatched every round, never skipped.** You judge checks against intent, not RTL
@@ -21,7 +21,7 @@ readable and the rest is yours to write.
 - Immutable plan, all of it in `<scaffold>/tb-scaffold.json`'s `testpoints[]`:
   - `covers[]` names the check hints in `<check_hints>/<child>.json`; each hint's
     `reference_rule` is the check semantics, and the `<requirements>/requirements.json` rows it
-    names are what the check establishes (see `check-hints.md`).
+    names are what the check establishes (see `authoring-checks.md`).
   - `intent` states what the testpoint drives and why. It is a required field of
     `tb-scaffold.schema.json`, and it is the authoritative intent source for a testpoint
     whose `covers[]` is empty.
@@ -35,7 +35,7 @@ out to verify, and say whether the first would catch the second going wrong.
 
 - **Non-empty `covers[]`:** the refmodel and scoreboard must implement a cycle-accurate check
   matched to each covered hint's `reference_rule` (assignment formula, behavioral model,
-  reference algorithm, or time-domain trigger monitoring; see `check-hints.md`). The
+  reference algorithm, or time-domain trigger monitoring; see `authoring-checks.md`). The
   anti-gaming lines are there too: a mismatch raises `` `uvm_error `` rather than `uvm_info`,
   the mismatch counter actually increments, and the check reads the `observable` it claims to.
 - **Empty `covers[]`** (scenario testpoints the plan author added, e.g. TP-IRQ / TP-RESET): a

@@ -1,28 +1,28 @@
-# verify sub-Task contract (wave 3)
+# verify sub-Task contract
 
-The simulation main thread dispatches the **verify** child as the third sequential wave, only after the
+The simulation main thread dispatches the **verify** child last, only after the
 smoke gate passes and the conformance gate clears. Your job: full regression, coverage iteration
-(Rule B), and the review summary.
+and the review summary.
 
 ## Inputs (paths only; the main thread does not read these bodies)
 
-- `{workdir}`: the **same** shared workdir the env-build child wrote in wave 1. It already holds the
+- `{workdir}`: the **same** shared workdir the env-build child wrote. It already holds the
   built TB (`tb/uvm/**`), the compiled `simv` and the env-phase artifacts.
 - testpoints path `<scaffold>/tb-scaffold.json`:
-  read `testpoints[].intent` for coverage-gap classification (Rule B) and `testpoints[].seqs` for
+  read `testpoints[].intent` for coverage-gap classification and `testpoints[].seqs` for
   the sequence to iterate once you have placed an item. (`agents` / `sequences` / `tests` are
   already materialized; do not re-materialize.)
 - `{module}`: the module name.
 - `<skill>`: the simulation skill's own base directory.
 
-`testpoints[].seqs` is the second half of a Rule B classification: you place an uncovered item on a
+`testpoints[].seqs` is the second half of that classification: you place an uncovered item on a
 testpoint, and that names whose stimulus to iterate. A regress failure needs neither — it routes out
 with `failing_cases` and no check-mapping.
 
 ## Work
 
 1. **Regression**: `make regress`.
-2. **Coverage iteration** (Rule B, see `coverage-iteration.md`): compare
+2. **Coverage iteration** (see `coverage-iteration.md`): compare
    `structural-coverage.json`'s row for the DUT module in `per_module` — its
    `line`/`cond`/`fsm`/`toggle` dims, never the report's `aggregate`, which is the TB top's
    whole instance tree and reads high wherever the interfaces and any ROMs are fully swept —
@@ -38,20 +38,19 @@ with `failing_cases` and no check-mapping.
 
 ## Authority
 
-- **Rule B stimulus iterate only**: seed / tighten existing seq constraint params / testlist append.
+- **Stimulus iterate only**: seed / tighten existing seq constraint params / testlist append.
 - **A regress failure routes out; you do not repair it here.** Whether it is rooted in wiring or
-  in the checker's semantics makes no difference in this wave: write the `regress` verdict plus
-  `failing_cases` and let the caller decide. That repair authority was the env wave's
+  in the checker's semantics makes no difference here: write the `regress` verdict plus
+  `failing_cases` and let the caller decide. That repair authority was env-build's
   scaffold-repair budget, and it closed when smoke passed.
 
 ## Write-domain
 
-Writes are confined to `tb/uvm/seq/*` + `tests/testlist.json` (Rule B). This is **not**
-pure append-only: Rule B may tune the constraint params of an **existing** seq, and testlist entries
+Writes are confined to `tb/uvm/seq/*` + `tests/testlist.json`. This is **not**
+pure append-only: a stimulus iterate may tune the constraint params of an **existing** seq, and testlist entries
 are appended (do not change the semantics of existing testlist entries). An appended entry carries
 the same four fields the scaffold emits (`test_id`, `uvm_testname`, `suites`, `seqs`);
-`write_summary.py` reads them unconditionally, so an entry missing one aborts the summary. The env child's checker, RM and scaffold structure is **read-only reference** in this
-wave: do not edit it, and route out a regress failure rooted there instead.
+`write_summary.py` reads them unconditionally, so an entry missing one aborts the summary. The env child's checker, RM and scaffold structure is **read-only reference** here: do not edit it, and route out a regress failure rooted there instead.
 
 ## Prohibitions
 
@@ -69,9 +68,9 @@ wave: do not edit it, and route out a regress failure rooted there instead.
 ## Output
 
 - Verify-phase artifacts written in `{workdir}`: `regression-log.txt`, `structural-coverage.json`,
-  `case-results.json`, `case-results-summary.md` (what each one is: `artifact-contract.md`).
+  `case-results.json`, `case-results-summary.md` (what each one is: `artifacts.md`).
 - End the response with `STATUS: DONE` plus a single JSON line. On a clean pass the only field
-  read from it is `stimulus_iterations`, the number of Rule B rounds you spent; the suite counts
+  read from it is `stimulus_iterations`, the number of stimulus-iterate rounds you spent; the suite counts
   and coverage numbers are read off `case-results.json` and `structural-coverage.json` by
   finalize, so do not restate them here. On a route-out, carry the failure fields:
 

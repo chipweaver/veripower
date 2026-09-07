@@ -1,4 +1,4 @@
-# Conformance-fix sub-Task contract (dispatched when the conformance gate trips)
+# Conformance-fix sub-Task contract
 
 Dispatched on every conformance trip. Do not call the Task tool and do not call `kernel.py`: the
 parent session owns state transitions.

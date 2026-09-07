@@ -1,4 +1,4 @@
-# Rule B: Stimulus vs. Intent coverage iteration
+# Coverage iteration: stimulus gap or intent gap
 
 ## What you read
 

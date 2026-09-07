@@ -14,7 +14,7 @@ percentage is the only thing a reader can act on if the items are dropped, and
 'mgpt_rmsnorm.v:160 branch (div_q > QMAX) never taken' is actionable where '85.71%' is
 not. modinfo.txt is optional: absent, or a urg version whose format differs, yields an empty
 list rather than a failure. That leaves the gate intact, since it scores the DUT's own
-`per_module` row, but it does leave Rule B with nothing to classify when a dimension is short.
+`per_module` row, but it does leave the gap classification with nothing to work on when a dimension is short.
 """
 
 from __future__ import annotations

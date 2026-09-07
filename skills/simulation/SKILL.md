@@ -8,7 +8,7 @@ description: Use when materializing and running a module's UVM TB from an approv
 Your sole responsibility: turn this module's approved verification plan into a running UVM
 testbench, establish that the checks in it verify what the plan asked for, and close the run
 through the `sim` CLI. You do that as a dispatcher over three sequential sub-Tasks, gating each
-time on what the wave left on disk rather than on what it says about itself.
+time on what the child left on disk rather than on what it says about itself.
 
 You never author TB inline, never read the TB body, and never re-run heavy EDA: what you read is
 status files, envelopes and paths.
@@ -55,17 +55,17 @@ or empty on a first run, and you never branch on which: `bootstrap` writes only 
 missing. `conformance-review.md` is the one thing not carried forward, so the checks are judged
 again from scratch whether or not the testbench changed.
 
-Everything under `{workdir}` other than `result.json` is written by a wave, and `finalize`
+Everything under `{workdir}` other than `result.json` is written by one of the children, and `finalize`
 enumerates it into `artifacts[]` for you:
 
 | Written by | What |
 |---|---|
-| env-build (wave 1) | `Makefile`, `env.sh`, `filelist.f`, `rtl_filelist.f`, `tb/uvm/**`, `scripts/**`, `tests/testlist.json`, and the smoke `regression-log.txt` with its per-test `logs/` |
-| the conformance reviewer (wave 2) | `conformance-review.md` |
-| verify (wave 3) | the full-regress `regression-log.txt`, `structural-coverage.json`, `case-results.json`, `case-results-summary.md` |
+| env-build | `Makefile`, `env.sh`, `filelist.f`, `rtl_filelist.f`, `tb/uvm/**`, `scripts/**`, `tests/testlist.json`, and the smoke `regression-log.txt` with its per-test `logs/` |
+| the conformance reviewer | `conformance-review.md` |
+| verify | the full-regress `regression-log.txt`, `structural-coverage.json`, `case-results.json`, `case-results-summary.md` |
 | you, via `sim finalize` | `result.json` |
 
-Per-file detail is in [`references/artifact-contract.md`](references/artifact-contract.md). One
+Per-file detail is in [`references/artifacts.md`](references/artifacts.md). One
 product is deliberately left out of `artifacts[]`: a failing test's full-hierarchy
 `<test_id>.fsdb`, kept at the run-dir root for `simulation-triage` to open and dropped for tests
 that passed.
@@ -132,7 +132,7 @@ whether the check can be made adequate at all.
 
 - `STATUS: DONE`: re-run this whole step over its work. There is no round cap and no build step in
   the loop; the reviewer is a static read, and a fix that breaks the compile surfaces at the verify
-  wave.
+  child.
 - `STATUS: BLOCKED`: it judges the defect to be in the plan rather than in the check. Fail out on
   its word, without re-running the reviewer, since nothing changed to re-judge:
 
@@ -141,7 +141,7 @@ python3 <skill>/scripts/sim/__main__.py finalize --workdir {workdir} \
   --phase fail --fail-reason "<the fixer's reason>"
 ```
 
-Dispatch no verify wave after that. The envelope carries the reason; the findings stay in
+Dispatch no verify child after that. The envelope carries the reason; the findings stay in
 `conformance-review.md`, which is promoted beside it. The route from here is into
 `simulation-triage`, which opens that record and reaches the attribution this stage does not
 try to.
@@ -157,7 +157,7 @@ The review IS this gate. A round whose checks went unjudged has not established 
 anything, so it cannot pass — and you must not author a stand-in record saying so, because a
 record with no `BLOCKING` in it reads to the gate as a clean review and would let exactly that
 round through (checked: `conformance_flagged` returns `[]` on such a file). Dispatch no verify
-wave; the next round re-runs the reviewer.
+child; the next round re-runs the reviewer.
 
 ### 3. Regress and cover
 
@@ -165,7 +165,7 @@ Dispatch one `Task(run_in_background=True)`, the verify child, pointing its prom
 [`references/verify-task-contract.md`](references/verify-task-contract.md) and handing over the same
 `{workdir}` (now holding the built TB and a compiled `simv`), the
 scaffold-spec path, `{module}`, and `<skill>`. It runs the full regression and iterates stimulus against the
-coverage bounds the requirements set, within the Rule B boundary
+coverage bounds the requirements set, on the stimulus side of the stimulus/intent boundary
 ([`references/coverage-iteration.md`](references/coverage-iteration.md)). It repairs nothing: a
 regress failure routes out with `failing_cases` for the caller to attribute.
 
@@ -173,7 +173,7 @@ Reap its `STATUS:` line and its JSON line. Anything other than a clean verdict c
 here, without step 4:
 
 - a failing regress case: `finalize --phase fail --fail-reason "<the failing test and its error>"`;
-- Rule B gaps (`coverage` in its verdict): `finalize --phase fail --fail-reason "<which dimension
+- coverage gaps (`coverage` in its verdict): `finalize --phase fail --fail-reason "<which dimension
   is short, and whether the gaps sit inside any testpoint>"`;
 - `STATUS: BLOCKED`: `finalize --phase fail --fail-reason "<the child's reason, verbatim>"`.
 

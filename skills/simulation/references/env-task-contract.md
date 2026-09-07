@@ -1,20 +1,20 @@
-# env-build sub-Task contract (wave 1)
+# env-build sub-Task contract
 
 The simulation main thread dispatches **one** Level-1 sub-Task, the
-env-build child, as the first of three sequential waves. Your job: bootstrap the stage workdir, fill
+env-build child, first of three sequential children. Your job: bootstrap the stage workdir, fill
 the UVM scaffold, compile, and run the smoke suite.
 
 ## Inputs (paths only; the main thread does not read these bodies)
 
 - `{workdir}`: the shared simulation stage workdir; you are the first writer, and the verify
-  child runs in the same directory in wave 3. On a rework it already holds the previous round's
+  child runs in the same directory later. On a rework it already holds the previous round's
   TB; on a first run it is empty.
 - `{module}`: the module name.
 - `<skill>`: the simulation skill's own base directory.
 - plan-sidecar dir `<scaffold>/`: holds the two sidecars this stage declares,
   `tb-scaffold.json` (the TB scaffold contract: `agents` / `tests` are materialized into SV
   here, and `testpoints[].covers[]` names the check hints your refmodel / scoreboard implement;
-  see `check-hints.md`) and `sequences.json` (one seq class per entry).
+  see `authoring-checks.md`) and `sequences.json` (one seq class per entry).
   `power-scenarios.json` is not declared here at all: it is power-analysis's.
 - verification-plan path `<plan>/verification-plan.md`: the human-readable
   plan (review anchor for filling intent).
@@ -102,8 +102,8 @@ the UVM scaffold, compile, and run the smoke suite.
    `STATUS: BLOCKED compile <residual TODO/file locus>` (the existing compile mapping; this gate is
    exit-code truth, not narration). It does **not** write `result.json`; the orchestrator's finalize
    run remains the authoritative verdict; this is your self-gate so a hollow TB never
-   reaches the wave-3 verify run. (Note: `make smoke` runs earlier in wave 1, *before* this gate,
-   the savings are that no regress/coverage wave runs on a hollow TB, not that smoke is skipped.)
+   reaches the verify run. (Note: `make smoke` runs earlier in your own step, *before* this gate,
+   the savings are that no regress or coverage run happens on a hollow TB, not that smoke is skipped.)
    It checks presence and nothing else: a renamed marker, an empty stub or a plausible but
    wrong fill all pass it. Whether a check verifies the right thing is the conformance review's
    question.
@@ -116,7 +116,7 @@ smoke gate still decides smoke pass/fail.
 
 ## Anti-gaming (cycle-accurate checks)
 
-- Author cycle-accurate checks per `check-hints.md`: every check a testpoint covers gets a
+- Author cycle-accurate checks per `authoring-checks.md`: every check a testpoint covers gets a
   cycle-accurate refmodel / scoreboard check matched to its `reference_rule`; mismatches use
   `` `uvm_error `` with counters that actually increment.
 
@@ -143,8 +143,8 @@ smoke gate still decides smoke pass/fail.
   `tests/testlist.json`. Not `rtl_filelist.f`, which bootstrap derives. `make smoke` then
   writes the smoke-suite `regression-log.txt` `RESULT` lines + per-test `logs/<test>.status`
   files: surface these too, since the main-thread smoke gate reads exactly them. These are the
-  env-phase artifacts (artifact ownership split is in `artifact-contract.md`); the full-regress /
-  coverage / case-result artifacts are produced by the verify child in wave 3, and `result.json`
+  env-phase artifacts (artifact ownership split is in `artifacts.md`); the full-regress /
+  coverage / case-result artifacts are produced by the verify child, and `result.json`
   is assembled by the orchestrator.
 - End the response with `STATUS: DONE` + a single JSON line listing what is now in the workdir:
 
