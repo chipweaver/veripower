@@ -12,9 +12,8 @@ a deployment choice.
 
 ## Mandatory
 
-What must be true, and which stages you lose without it. How to find out whether it is true on a
-given machine is the `env-precheck` skill's job, not a column here — it probes every row below and
-smoke-runs each license checkout.
+What must be true, and which stages you lose without it. The `env-precheck` skill probes every row
+below against a live machine and smoke-runs each license checkout.
 
 | Required | Purpose | Stages lost |
 |---|---|---|
