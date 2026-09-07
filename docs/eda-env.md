@@ -12,17 +12,28 @@ a deployment choice.
 
 ## Mandatory
 
-| Required | Purpose | Sanity check |
+What must be true, and which stages you lose without it. How to find out whether it is true on a
+given machine is the `env-precheck` skill's job, not a column here — it probes every row below and
+smoke-runs each license checkout.
+
+| Required | Purpose | Stages lost |
 |---|---|---|
-| `dc_shell` / `pt_shell` / `vcs` / `spyglass` on `PATH` | Stage Makefiles and scripts invoke directly | `which dc_shell` |
-| `fsdbreport` / `fsdb2vcd` on `PATH` | simulation dumps FSDB (`vcs -debug_access+all -kdb -lca` + `-ucli` do-file `$fsdbDumpvars`); simulation-triage queries it (`fsdbreport`) | `which fsdbreport` |
-| `LM_LICENSE_FILE` and/or `SNPSLMD_LICENSE_FILE` | Synopsys license server checkout (tools read these at launch; VeriPower does not validate) | `lmstat -c "$LM_LICENSE_FILE"` |
-| A **DC-Ultra** entitlement on that server | `dc_run.tcl` maps with `compile_ultra` and has no plain-`compile` path — the PPA targets are judged against DC-Ultra QoR | run the `env-precheck` skill's Design Compiler smoke row |
-| `LIB_DB`, `LIB_V` | synthesis / power-analysis read std-cell libs | stage `env.sh` `:?` guard fires on miss |
-| `WIRE_LOAD_MODEL` | synthesis's interconnect estimate: a model the library carries, or `none`. Required without a default because a library declares neither, and the choice moves both numbers the stage is judged on | `env.sh` `:?` guard fires on miss; `dc_run.tcl` aborts when the reports disagree with what was asked for, either way |
-| `UVM_HOME` | simulation / power-analysis compile UVM DPI | same |
-| `python3` >= 3.10 with `jsonschema` >= 4.18, `referencing`, `PyYAML` | framework state tool and stage gates validate result/review schemas (`registry=`-based `$ref` resolution needs the post-4.18 jsonschema API); the stage CLIs annotate `list[str] | None` in evaluated signature position, which is a TypeError before 3.10 | `python3 -c "import sys, jsonschema, referencing, yaml; assert sys.version_info >= (3, 10)"` |
-| `/bin/sh` → `bash` **where VCS runs** | The VCS launcher is `#!/bin/sh -h` and relies on bash semantics. That is the machine the launcher executes on, which is not always the one you type on: with a containerized install the host's `/bin/sh` can be `dash` and every stage still runs | `readlink -f /bin/sh` there, not necessarily here |
+| `python3` >= 3.10 with `jsonschema` >= 4.18, `referencing`, `PyYAML` | The kernel and every stage gate validate result/review schemas (`registry=`-based `$ref` resolution needs the post-4.18 jsonschema API); the stage CLIs annotate `list[str] \| None` in evaluated signature position, which is a TypeError before 3.10 | all |
+| `LM_LICENSE_FILE` and/or `SNPSLMD_LICENSE_FILE` | Synopsys license server checkout — every tool reads these at launch, and VeriPower does not validate them | every EDA stage |
+| `make` | The stages that ship a Makefile drive their tool through it | lint-cdc, simulation, synthesis, power-analysis |
+| `/bin/sh` → `bash` **where VCS runs** | The VCS launcher is `#!/bin/sh -h` and relies on bash semantics. That is the machine the launcher executes on, which is not always the one you type on: with a containerized install the host's `/bin/sh` can be `dash` and every other stage still runs | simulation, power-analysis |
+| `vcs`, `UVM_HOME` | Compiling and running the UVM testbench, and the gate-level run that produces the SAIF | simulation, power-analysis |
+| `urg` | Merging and reporting structural coverage, which the coverage gate parses | simulation's coverage gate |
+| `fsdbreport`, `fsdb2vcd` | Querying the FSDB simulation dumps (`vcs -debug_access+all -kdb -lca` plus a `-ucli` do-file `$fsdbDumpvars`) | simulation-triage |
+| `dc_shell`, and a **DC-Ultra** entitlement on the license server | Mapping. `dc_run.tcl` maps with `compile_ultra` and has no plain-`compile` path — the PPA targets are judged against DC-Ultra QoR, so a plain-`compile` fallback would be judged against numbers nobody asked for | synthesis |
+| `pt_shell` | Timing and power analysis of the mapped netlist | timing-analysis, power-analysis |
+| `LIB_DB` | The std-cell Liberty `.db` that mapping links against and that both analyses re-link | synthesis, timing-analysis, power-analysis |
+| `LIB_V` | The std-cell Verilog models the gate-level run needs | power-analysis |
+| `WIRE_LOAD_MODEL` | synthesis's interconnect estimate: a model the library carries, or `none`. Required without a default because a library declares neither, and the choice moves both numbers the stage is judged on | synthesis |
+| `spyglass` | Lint and CDC goals | lint-cdc |
+
+`specification`, `simulation-plan` and `rtl-design` need only the first row. Losing synthesis
+costs timing-analysis and power-analysis too — both read the netlist it writes.
 
 ## Optional
 
