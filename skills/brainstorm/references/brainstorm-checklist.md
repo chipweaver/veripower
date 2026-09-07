@@ -1,10 +1,25 @@
 # IC Spec Brainstorm Checklist
 
-The brainstorm dialogue is driven by the following dimensions: **one question at a time, multiple-choice preferred.** Decide which specific questions to ask, and which dimensions to skip, based on the known context. **D0 must be asked first** (do not enter D1 until intent is clarified); **D4 must present 2–3 candidate proposals for comparison.**
+The dimensions below are what a brainstorm can cover, not a march. **What is left to ask is
+whatever the delivered input does not already settle**: an engineer arriving with a protocol
+standard and a register map has settled D2 and D3 in the document they brought, and asking them
+again wastes the one thing this dialogue costs. Read the material first, then ask.
+
+**One question at a time, multiple-choice preferred.** Two things do not scale with the module:
+**D0 is asked first** (do not enter D1 until intent is clarified), and the user's approval of what
+lands on disk. Everything else does — a dimension the input settles is recorded from the input, a
+dimension the module does not have is omitted.
 
 ## brainstorm.md Section Layout
 
-The dialogue walks dimensions D0–D7, but the **written artifact** uses **descriptive** section headers — one per dimension reached. (The `## Dx.` headers in this checklist are **dialogue labels**, not artifact headers.)
+This is **this skill's default shape, not a contract**: specification transcribes the document
+into one ledger row per proposition, so no stage reads a heading. An engineer's own document in
+its own shape is read the same way, which is why every intent document delivered to this pipeline
+so far uses a shape of its own. Follow the default when you are the one writing; when the engineer
+brought a document, keep theirs.
+
+Headers are **descriptive** — one per dimension reached. (The `## Dx.` headers in this checklist
+are **dialogue labels**, not artifact headers.)
 
 - `## Overview` — D0
 - `## Functions & Features` — D1
@@ -85,9 +100,13 @@ RTL modules — producer, consumer at RTL-module level, protocol, timing.
 - Reset strategy (async low / sync / multi-domain independent resets) — **polarity + sync/async must be explicitly settled**, not deferred to the design.md / SDC stage.
 - Reset release ordering constraints (when there are multiple resets).
 
-## D4. Architecture Partitioning Candidates (2–3 candidates mandatory)
+## D4. Architecture Partitioning Candidates
 
-Cover at least the following decision dimensions; for each, present 2–3 candidates with a recommendation + one-sentence rationale:
+Where the partition is still open, present 2–3 candidates with a recommendation + one-sentence
+rationale, so the user chooses rather than inherits your first idea. Where it is not open — the
+input fixes the pipeline depth, or the module is one datapath with nothing to partition — say so
+in one line and move on; candidates manufactured to fill the section are a choice the user did not
+have. Decision dimensions worth candidates when they are open:
 
 - Pipeline stage count selection.
 - Resource sharing vs. duplication (parallel paths).
@@ -147,7 +166,10 @@ from "forgot to ask".
 
 - For topics not covered by D1–D7: open questions may be appended.
 - Trigger condition: the user introduces a new boundary condition / constraint / technical choice.
-- Every open question must also be settled (do not leave TBD in brainstorm.md).
+- Every open question must also be settled (do not leave TBD in brainstorm.md). Not ceremony:
+  the ledger carries one row per proposition, and an unanswered question is not a proposition,
+  so a TBD reaches specification as either a row nobody can judge or nothing at all. The document
+  is also frozen for the run, which means a TBD settled later is settled somewhere else.
 
 ## Revision Mode Trimming Rules
 

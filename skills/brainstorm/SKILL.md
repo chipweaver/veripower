@@ -62,8 +62,8 @@ no stage is handed it and no proof records it. There is **no** `version` frontma
 ### Step 2: D0–D7 dimensional brainstorm dialogue
 
 (one question at a time, multiple-choice
-preferred; D0 first; D4 presents 2–3 candidate architectures with side-by-side
-mermaid): see `references/brainstorm-checklist.md`.
+preferred; D0 first; what is left to ask is whatever the material the user brought does not
+already settle): see `references/brainstorm-checklist.md`.
 
 ### Step 3: Write `{module}/intent/brainstorm.md`
 
@@ -94,9 +94,10 @@ whole doc, so a changed dimension contradicting an untouched one is caught).
 ## Completion Gate
 
 - `{module}/intent/brainstorm.md` exists, and any file the document names as authoritative sits beside it in `{module}/intent/`.
-- The brainstorm covers the D0–D7 dimensions reached (D0 intent settled; D4 had 2–3
-  candidates; feature IDs / interface-group names / scenario IDs are stable named
-  anchors per the checklist's "Subsection IDs" section).
+- The brainstorm covers the D0–D7 dimensions reached (D0 intent settled; a still-open
+  partition got 2–3 candidates and a closed one got a line saying so; feature IDs /
+  interface-group names / scenario IDs are stable named anchors per the checklist's
+  "Subsection IDs" section).
 
 ## Return Contract
 
