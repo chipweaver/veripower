@@ -1,181 +1,54 @@
 # IC Spec Brainstorm Checklist
 
-The dimensions below are what a brainstorm can cover, not a march. **What is left to ask is
-whatever the delivered input does not already settle**: an engineer arriving with a protocol
-standard and a register map has settled D2 and D3 in the document they brought, and asking them
-again wastes the one thing this dialogue costs. Read the material first, then ask.
+## What is left to ask
 
-**One question at a time, multiple-choice preferred.** Two things do not scale with the module:
-**D0 is asked first** (do not enter D1 until intent is clarified), and the user's approval of what
-lands on disk. Everything else does — a dimension the input settles is recorded from the input, a
-dimension the module does not have is omitted.
+Whatever the delivered material does not already settle. An engineer arriving with a protocol
+standard and a register map has settled their interfaces and clocking in the document they
+brought; asking again spends the only thing this dialogue costs. Read the material first.
 
-## brainstorm.md Section Layout
+Two things do not scale with the module: **D0 is asked first** (do not enter the rest until
+intent is clarified), and the user approves what lands on disk. Everything else does.
 
-This is **this skill's default shape, not a contract**: specification transcribes the document
-into one ledger row per proposition, so no stage reads a heading. An engineer's own document in
-its own shape is read the same way, which is why every intent document delivered to this pipeline
-so far uses a shape of its own. Follow the default when you are the one writing; when the engineer
-brought a document, keep theirs.
+## Coverage
 
-Headers are **descriptive** — one per dimension reached. (The `## Dx.` headers in this checklist
-are **dialogue labels**, not artifact headers.)
+The dialogue is done when none of these is still unspoken for. What each one contains you can
+work out; whether *this* project has settled it, you cannot.
 
-- `## Overview` — D0
-- `## Functions & Features` — D1
-- `## Interfaces & Interconnects` — D2
-- `## Clocks & Reset` — D3
-- `## Architecture Candidates` — D4
-- `## Timing Scenarios` — D5
-- `## PPA Targets` — D6
-- `## Readiness` — D7
-- `## Document Control` — revision notes (no dimension)
+**D0** intent and scope · **D1** functions and features · **D2** top-level IO, and inter-module
+wires when N>1 · **D3** clocks, resets, and every crossing between them · **D4** architecture
+partition · **D5** timing scenarios · **D6** PPA targets · **D7** readiness
 
-Omit any dimension not reached. Headers stay descriptive, **never** literal `## D0.`; `Dx` is a dialogue label and does not appear in the artifact.
+One question at a time, and end each with the answer you would give and why — a question with no
+recommendation makes the user do your work. Where D4's partition is still open, put 2-3 candidates
+side by side so they choose rather than inherit your first idea; where the input already fixes it,
+say so in a line. Diagram conventions, when a question wants one:
+`../../specification/references/design-template.md` §Rendering Conventions.
 
-## Q&A Style: Options + Recommendation
+## Four things this dialogue is the last chance to settle
 
-Every question follows this format:
+- **A number a reference implementation would answer** — a latency, a byte width, a state-machine
+  cycle count. Settle it here with its source. Deferred, it reaches design.md as a wrong first
+  draft and a run of Edits on the main thread.
+- **Reset polarity, and sync vs async** — deferred, it becomes an SDC-stage guess.
+- **A PPA dimension you deliberately leave unbounded** — say so. The ledger distinguishes "asked,
+  bounded by nothing" from "never asked"; silence reads as the second.
+- **Every open question** — a question is not a proposition, so it gets no ledger row, and the
+  document is frozen for the run: a TBD settled later is settled somewhere else.
 
-1. List 2–4 candidate options (A/B/C[/D]), one short sentence per option.
-2. End with one line: `Recommend X: <one-sentence rationale>`.
+## Readiness
 
-User responses:
-- Option label ("A" / "B") → record the choice, advance to the next dimension.
-- Custom value → record the custom value, advance to the next dimension.
-- Follow-up question → expand the candidate options in more detail.
+Ask whether the stages that author from this document could do so without coming back. Their own
+references say what they need, field by field — read them there. A list kept here would be a copy
+that goes stale while nothing checks it. Name every gap you find, by name.
 
-Format example:
+## The written document
 
-> D3 Clocks and Reset:
->
-> - A: single clock 200 MHz / async active-low reset
-> - B: dual clock (200 MHz data + 50 MHz config) / async active-low reset
-> - C: single clock 100 MHz / sync reset
->
-> Recommend A: single clock is simplest; 200 MHz leaves ample synthesis margin.
+Descriptive headers, one per dimension reached; `Dx` is a dialogue label and never appears in the
+artifact. This shape is **this skill's default, not a contract** — specification transcribes the
+document into one ledger row per proposition, so no stage reads a heading, and every intent
+document delivered to this pipeline so far arrived in a shape of its own. When the engineer
+brought a document, keep theirs. Stable names help whoever reads it next; nothing parses them.
 
-D0 (intent and scope) is open-ended Q&A and does not follow this format.
-D4 (architecture partitioning candidates): 2–3 candidates with side-by-side mermaid diagrams; the recommendation is annotated separately; the user makes the explicit selection.
-
-## D0. Intent and Scope (intent-first)
-
-Open-ended Q&A; may span 2–3 rounds. Do not enter D1 until intent is clarified.
-
-- The module's role in the system (input / output / who it serves).
-- The core problem to be solved.
-- Scope boundaries (explicitly excluded functionality).
-- Hard constraints from upstream and downstream modules (interface specifications, protocol versions, SoC layout).
-- Project phase (greenfield / replacement / backward-compatible / exploratory prototype).
-
-Closure signal: you restate the module's intent accurately in 1–2 sentences and the user confirms. Record under `Overview` in brainstorm.md.
-
-## D1. Functions and Features
-
-- Module's core function (1–2 sentences).
-- Main feature list (each item has `ID` / description / priority).
-- For each feature: a Happy path + at least 1 corner case + at least 1 negative case.
-- Are there operating-mode switches? (e.g., slave/master, bypass/active.)
-- **Critical numeric parameter lock**: if a feature involves a deterministic latency / byte width / state-machine cycle count or any other numeric quantifiable from a reference implementation, it must be settled at this dimension (value + source rationale) — do not defer it to the design.md authoring stage. Otherwise, the Write-after-correction pattern (a wrong first draft → multiple Edits on the main thread) appears during the design.md authoring stage.
-
-## D2. Interfaces and Interconnects
-
-D2 covers two related but separate concerns:
-
-**D2a Top-Level IO**: DUT-boundary signals — name, direction, width, clock domain,
-protocol — settled here and written into brainstorm.md.
-
-- List of top-level interface groups (one name per group, e.g., `cfg_bus` / `data_in` / `status_out`).
-- Protocol type per group (AXI-lite / APB / valid-ready / streaming / custom).
-- Clock domain each group belongs to.
-- Backpressure strategy (blocking / drop / overwrite).
-
-**D2b Inter-module Interconnects** (fan-out mode only; empty for an N=1 module): wires between
-RTL modules — producer, consumer at RTL-module level, protocol, timing.
-
-## D3. Clocks and Reset
-
-- Clock list (name / nominal frequency in MHz / SDC period in ns).
-- Are there cross-clock-domain crossings? Synchronization strategy per crossing (Gray / handshake / async FIFO / 2-flop).
-- Reset strategy (async low / sync / multi-domain independent resets) — **polarity + sync/async must be explicitly settled**, not deferred to the design.md / SDC stage.
-- Reset release ordering constraints (when there are multiple resets).
-
-## D4. Architecture Partitioning Candidates
-
-Where the partition is still open, present 2–3 candidates with a recommendation + one-sentence
-rationale, so the user chooses rather than inherits your first idea. Where it is not open — the
-input fixes the pipeline depth, or the module is one datapath with nothing to partition — say so
-in one line and move on; candidates manufactured to fill the section are a choice the user did not
-have. Decision dimensions worth candidates when they are open:
-
-- Pipeline stage count selection.
-- Resource sharing vs. duplication (parallel paths).
-- Centralized vs. distributed state machines.
-- FIFO / buffer size and placement.
-
-Rendering conventions (side-by-side mermaid) are documented in `../../specification/references/design-template.md` §Rendering Conventions. Side-by-side example:
-
-### Candidate A: 2-stage pipeline
-
-```mermaid
-flowchart LR
-  IN --> S1[Stage 1] --> S2[Stage 2] --> OUT
-```
-
-### Candidate B: 3-stage pipeline
-
-```mermaid
-flowchart LR
-  IN --> S1[Stage 1] --> S2[Stage 2] --> S3[Stage 3] --> OUT
-```
-
-## D5. Timing Scenarios
-
-- Typical transactions (at least 1 happy-path scenario).
-- Back-to-back / backpressure scenarios.
-- Exception scenarios (timeout, illegal request, reset interrupting a transaction).
-- For each scenario: `trigger/stimulus → expected result → timing constraint`.
-
-Rendering conventions (hand-drawn ASCII preferred / wavedrom — note that GitHub does not render wavedrom) are documented in `../../specification/references/design-template.md` §Rendering Conventions; an ASCII timing example is in design-template.md §1.5.
-
-## D6. PPA Targets
-
-- Is PPA optimization required?
-- If so, which dimensions are on the list (`area_um2` / `timing_slack_ns` / `power_mw`)?
-- Target value for each listed dimension.
-- If PPA optimization is not pursued: record explicitly as an empty list (`[]`), distinguishing from "never asked" (field missing).
-
-## D7. Readiness
-
-Look back over what D0–D6 actually settled and ask whether the stage that authors from this
-document could do so without coming back with questions. Its own references say what it has to
-fill, field by field — read them there rather than from a list kept here, which is a copy that
-goes stale while nothing checks it. This dimension only reminds; nothing lands here. Name every
-gap you find, by name, in the `Readiness` section of brainstorm.md.
-
-## Stable Names
-
-The specification stage transcribes this document into a requirements ledger, one row per
-proposition in your words, so nothing downstream depends on its shape. What helps the reader is
-stable names to refer to: an `ID` on each D1 feature row (recommended `F-NN`), named interface
-groups and wires, named D4 candidates, `SC-NNN` scenario ids, `OQ-NN` open questions. State a PPA
-dimension you deliberately leave unbounded as such, so "asked and decided none" is distinguishable
-from "forgot to ask".
-
-## Open-Question Usage Rules
-
-- For topics not covered by D1–D7: open questions may be appended.
-- Trigger condition: the user introduces a new boundary condition / constraint / technical choice.
-- Every open question must also be settled (do not leave TBD in brainstorm.md). Not ceremony:
-  the ledger carries one row per proposition, and an unanswered question is not a proposition,
-  so a TBD reaches specification as either a row nobody can judge or nothing at all. The document
-  is also frozen for the run, which means a TBD settled later is settled somewhere else.
-
-## Revision Mode Trimming Rules
-
-> **Scope**: only the revision-mode re-invocation of this skill (brainstorm SKILL.md Workflow Step 5), where a requirements change prompts a re-run against an existing brainstorm.md.
-
-- Compare against the existing `brainstorm.md`, and only re-ask **the D dimensions affected by this requirements change**.
-- D0 can usually be skipped (intent unchanged), but if the change hints at intent drift (e.g., "the original module positioning no longer fits"), still do a round of mini-D0.
-- If this is a PPA change: re-ask at least D4 (architecture partitioning) + D6 (whether PPA targets need adjustment).
-- Skip all other dimensions; in brainstorm.md's Document Control Notes, note which dimensions this round did not touch (e.g., "this round did not touch D0/D1/...").
+Revision mode re-reads the existing document, which makes it the delivered material: what is left
+to ask is what the change unsettles. Note in the document which dimensions this round did not
+touch.

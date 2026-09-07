@@ -45,7 +45,7 @@ nothing downstream imposes one, and a guess sends them looking for a tree they d
 
 | Path | Schema / Format | Use |
 |---|---|---|
-| `{module}/intent/brainstorm.md` | Custom markdown; descriptive ATX sections per the checklist's Section Layout | The pipeline's frozen input. The pipeline assumes nothing about its shape: an engineer's own document in any form serves the same, and this skill is one way to write one. |
+| `{module}/intent/brainstorm.md` | Custom markdown; descriptive ATX sections per `references/brainstorm-checklist.md` | The pipeline's frozen input. The pipeline assumes nothing about its shape: an engineer's own document in any form serves the same, and this skill is one way to write one. |
 
 `brainstorm.md` lives in `{module}/intent/`, the intent container, NOT under any stage
 workdir. That directory is the whole of what the pipeline treats as intent: anything the
@@ -67,8 +67,8 @@ already settle): see `references/brainstorm-checklist.md`.
 
 ### Step 3: Write `{module}/intent/brainstorm.md`
 
-with descriptive section headers per the
-checklist's Section Layout (create `{module}/intent/` if it does not exist):
+with descriptive section headers per
+`references/brainstorm-checklist.md` (create `{module}/intent/` if it does not exist):
 ```markdown
 # <module> Brainstorm
 ...
@@ -94,10 +94,10 @@ whole doc, so a changed dimension contradicting an untouched one is caught).
 ## Completion Gate
 
 - `{module}/intent/brainstorm.md` exists, and any file the document names as authoritative sits beside it in `{module}/intent/`.
-- The brainstorm covers the D0–D7 dimensions reached (D0 intent settled; a still-open
-  partition got 2–3 candidates and a closed one got a line saying so; feature IDs /
-  interface-group names / scenario IDs are stable named anchors per the checklist's
-  "Subsection IDs" section).
+- Every dimension the checklist names is either settled or deliberately out, and each
+  thing it calls this dialogue's last chance is settled — a number a reference
+  implementation would answer, reset polarity and sync-vs-async, any PPA dimension left
+  unbounded, and every open question.
 
 ## Return Contract
 
