@@ -27,8 +27,8 @@ changed since your last run: that narrows what you triage, never what the tool a
 
 | Path | Use |
 |---|---|
-| `<annotations>/constraint-annotations.json` | The `sgdc` block per child: every depth annotation this RTL implies. `bootstrap` renders all four categories into the SGDC itself — you never transcribe them. Nothing upstream matched a name against the netlist, so a name SpyGlass cannot find surfaces here first, as its author's defect. Schema: `skills/rtl-design/references/constraint-annotations.schema.json`. |
-| `<rtl>/rtl-files.json` | Per-child file layout, which `bootstrap` turns into `scripts/filelist.txt`. Schema: `skills/rtl-design/references/rtl-files.schema.json`. |
+| `<annotations>/constraint-annotations.json` | The `sgdc` block per child: every depth annotation this RTL implies. `bootstrap` renders all four categories into the SGDC itself — you never transcribe them. Nothing upstream matched a name against the netlist, so a name SpyGlass cannot find surfaces here first, as its author's defect. |
+| `<rtl>/rtl-files.json` | Per-child file layout, which `bootstrap` turns into `scripts/filelist.txt`. |
 | `<sgdc_seed>/constraints/<TOP>.sgdc` | Clocks and resets from specification. `bootstrap` reads it every round, so a correction here arrives on its own; it is not yours to restate or override. |
 | `<requirements>/requirements.json` | The engineer's requirements, one row each with the stage that judges it. The rows judged by `lint-cdc` are yours: a bar on the counts, a rule about what may be waived, a clock-domain fact the analysis must confirm. A row that says zero warnings means zero, not zero after waivers. You declare a verdict on each through `finalize`. |
 | `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |

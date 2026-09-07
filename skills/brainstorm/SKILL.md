@@ -38,11 +38,10 @@ contains you can work out; whether *this* project has settled it, you cannot.
 
 One question at a time, and end each with the answer you would give and why — a question with
 no recommendation makes the user do your work. Where the partition is still open, put 2-3
-candidates side by side so they choose rather than inherit your first idea. For a diagram, the
-conventions are in `skills/specification/references/design-template.md` §Rendering Conventions.
+candidates side by side so they choose rather than inherit your first idea.
 
 On readiness, ask whether the stages that author from this document could do so without coming
-back; their own references say what they need, field by field. Name every gap you find.
+back, and name every gap you find.
 
 ## Four things this dialogue is the last chance to settle
 

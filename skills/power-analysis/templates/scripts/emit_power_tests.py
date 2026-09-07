@@ -144,8 +144,7 @@ def main() -> int:
                 f"sequences.json — simulation TB has not compiled this seq class. Fix in "
                 f"Verification/simulation-plan/: either add a matching sequences.json "
                 f"entry (name={seq!r} + an agent), or point the scenario's sequence_ref "
-                f"at an existing one. Field semantics: "
-                f"skills/simulation-plan/references/power-scenarios.schema.json.",
+                f"at an existing one.",
                 file=sys.stderr,
             )
             return 1

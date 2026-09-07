@@ -40,7 +40,7 @@ each input's producer has recorded it and the fingerprint on disk still matches.
 | `<check_hints>/<child>.json` + `<requirements>/requirements.json` | What every covered check observes and against what rule, and the requirement rows each check establishes; the env child reads both by id. The coverage gate reads its bounds from the requirements rows simulation judges. Sub-Task inputs: you hand over the paths. |
 | `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |
 | `<plan>/verification-plan.md` | The human-readable plan the env-build child fills intent against. A sub-Task input; you hand over the path. |
-| `<rtl>/rtl-files.json` | Per-child DUT file layout, which `bootstrap` turns into `rtl_filelist.f`. Schema: `skills/rtl-design/references/rtl-files.schema.json`. |
+| `<rtl>/rtl-files.json` | Per-child DUT file layout, which `bootstrap` turns into `rtl_filelist.f`. |
 | `<spec>/top-io.json` + `<spec>/clocks.json` | The DUT boundary. `bootstrap` derives every vif signal, every clock generator and the reset polarity from these at render time — the scaffold does not restate them, so nothing you see in the TB can disagree with what specification declared. |
 
 `dispatch.json` also carries `caused_by`, `scope` or `reasons` when the kernel knows what this round

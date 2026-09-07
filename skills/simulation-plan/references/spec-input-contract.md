@@ -7,7 +7,7 @@ only the mapping.
 
 **Scope boundary.** It stops at the JSON contract you author. Turning the scaffold into
 SystemVerilog (driver / monitor bodies, RM `predict()`, scoreboard `check_txn`, reset) happens later
-in the `simulation` stage (`skills/simulation/references/check-hints.md`). Do not add SV-rendering
+in the `simulation` stage. Do not add SV-rendering
 claims here.
 
 `requirements.json` holds what the engineer required, in the engineer's words; `design.md` and the

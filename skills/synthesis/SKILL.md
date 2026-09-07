@@ -29,10 +29,10 @@ SDC dc_shell reads is rebuilt every round.
 
 | Path | Use |
 |---|---|
-| `<annotations>/constraint-annotations.json` | The `sdc` block per child: every timing exception and generated clock this RTL implies, in real module names. Its authors declared it and this stage is its only consumer. Schema: `skills/rtl-design/references/constraint-annotations.schema.json`. |
-| `<rtl>/rtl-files.json` | Per-child file layout, which `bootstrap` turns into `scripts/rtl_load.tcl`. The RTL itself is under `<rtl>` too, and step 2 reads it for divider ratios. Schema: `skills/rtl-design/references/rtl-files.schema.json`. |
+| `<annotations>/constraint-annotations.json` | The `sdc` block per child: every timing exception and generated clock this RTL implies, in real module names. Its authors declared it and this stage is its only consumer. |
+| `<rtl>/rtl-files.json` | Per-child file layout, which `bootstrap` turns into `scripts/rtl_load.tcl`. The RTL itself is under `<rtl>` too, and step 2 reads it for divider ratios. |
 | `<sdc>/constraints/<TOP>.sdc` | Clocks and IO delays from specification. `bootstrap` reads it every round, so a correction here arrives on its own; it is not yours to restate or override. |
-| `<requirements>/requirements.json` | The engineer's requirements, one row each with the stage that judges it. The rows judged by `synthesis` are yours: a row with a `target` in `area_um2` or `timing_slack_ns` is compared by `finalize` itself; a row without one — a budget in NAND2-equivalent gates, a rule the reports show but no number compares — is yours to judge from the reports and your library, and to declare. Schema: `skills/specification/references/requirements.schema.json`. |
+| `<requirements>/requirements.json` | The engineer's requirements, one row each with the stage that judges it. The rows judged by `synthesis` are yours: a row with a `target` in `area_um2` or `timing_slack_ns` is compared by `finalize` itself; a row without one — a budget in NAND2-equivalent gates, a rule the reports show but no number compares — is yours to judge from the reports and your library, and to declare. |
 | `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |
 
 `LIB_DB` and `WIRE_LOAD_MODEL` must be in the environment before `make`: `env.sh` refuses to run

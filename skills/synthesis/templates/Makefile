@@ -8,7 +8,7 @@
 # Targets:
 #   make synthesis  run dc_shell synthesis; log → run.log
 #   make clean      remove intermediate artifacts and reports
-# Power analysis lives in a separate stage; see skills/power-analysis/.
+# Power analysis lives in a separate stage.
 # ==============================================================================
 
 ROOT := $(abspath .)
