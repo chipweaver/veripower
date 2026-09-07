@@ -5,106 +5,81 @@ description: Use when brainstorming a new module's requirements and architecture
 
 # Pre-Pipeline Requirements Brainstorm
 
-Own the interactive D0–D7 brainstorm dialogue and produce a frozen
-`{module}/intent/brainstorm.md`. Run **in your own session, before** the design
-pipeline: the brainstorm conversation never enters the pipeline's context. The pipeline
-starts when the user starts it and reads that file solely inside its sub-agent contexts
-(it is the pipeline's input, not a pipeline stage).
+Run an interactive dialogue with the engineer and write `{module}/intent/brainstorm.md`, one
+way to produce the intent document the pipeline starts from. You run **in your own session,
+before the pipeline** — this conversation never enters the pipeline's context.
 
-## When to Use
+Write that one file and nothing else: no `result.json`, no `design.md`, no RTL, no
+constraints. You are not a pipeline stage and no pipeline state exists yet. The document is
+frozen once a run starts, so a requirements change is a fresh invocation of this skill, never
+an edit to an in-flight artifact.
 
-- A new module needs its requirements + architecture settled before the pipeline.
-- A requirements contradiction surfaced downstream and was escalated for revision: the
-  user aborts, re-invokes this skill in revision mode, re-approves.
+Re-invoked after a downstream contradiction was escalated, the existing document is your
+input: what is left to ask is what the change unsettles, and you say in the document which
+parts this round did not touch.
 
-## Iron Rule
+## Where the output goes
 
-- You are **pre-pipeline**: write exactly one artifact, `{module}/intent/brainstorm.md`
-  (creating `{module}/intent/` if absent, before the module enters the pipeline). Write
-  **no** `result.json`, and you are **not** a pipeline stage — you run before any pipeline state exists.
-- **Do not author design.md / RTL / constraints / any downstream artifact.** Your
-  output is the brainstorm only; `design.md` is derived from it downstream.
-- `brainstorm.md` is **frozen for the duration of a run**. A requirements change is handled
-  by re-invoking this skill in revision mode, never by editing an in-flight artifact to
-  absorb the change: every proof downstream records the fingerprint it read.
-
-## Input Artifacts
-
-| Variable / input | Purpose |
-|---|---|
-| `{module}` | The module's directory — the same path the pipeline is later given as `--module`, and where its whole work tree goes. Anywhere the user wants: `~/chips/mydesign`, `./mychip`, `asic/mychip`. Its last component is the module name, which titles the brainstorm. |
-| User-provided material (optional) | Public spec / reference docs the user pastes or points to. |
-
-No fixed external inputs. Revision mode additionally reads the existing
-`{module}/intent/brainstorm.md`.
-
-Ask for the directory if the user named only a module. Do not invent a parent for them:
+`{module}` is wherever the engineer wants — `~/chips/mydesign`, `./mychip`, `asic/mychip` —
+and is the same path the pipeline is later given as `--module`; its last component is the
+module name. If they named only a module, ask for the directory. Do not invent a parent:
 nothing downstream imposes one, and a guess sends them looking for a tree they did not ask for.
 
-## Output Artifacts
+Create `{module}/intent/` if absent. That directory is the whole of what the pipeline treats
+as intent, so anything the engineer delivers with the document — a reference model, a register
+map, a standard the document names as authoritative — belongs inside it. A file left at the
+module root is not intent: no stage is handed it and no proof records it.
 
-| Path | Schema / Format | Use |
-|---|---|---|
-| `{module}/intent/brainstorm.md` | Custom markdown; descriptive ATX sections per `references/brainstorm-checklist.md` | The pipeline's frozen input. The pipeline assumes nothing about its shape: an engineer's own document in any form serves the same, and this skill is one way to write one. |
+## The dialogue
 
-`brainstorm.md` lives in `{module}/intent/`, the intent container, NOT under any stage
-workdir. That directory is the whole of what the pipeline treats as intent: anything the
-engineer delivers with the document — a reference model, a register map, a standard the
-document names as authoritative — belongs in it, and one fingerprint over the directory is
-what every downstream proof records. A file left at the module root instead is not intent;
-no stage is handed it and no proof records it. There is **no** `version` frontmatter field
-(re-derivation after a revision is given naturally by the fresh run's empty workdir).
+Settle intent and scope first, and do not enter the rest until it is clear. After that, what
+is left to ask is whatever the material the engineer brought does not already settle — someone
+arriving with a protocol standard and a register map has settled their interfaces and clocking
+in the document they brought, and asking again spends the only thing this dialogue costs. Read
+the material first.
 
-## Workflow
+The dialogue is done when none of these is still unspoken for: intent and scope · functions
+and features · top-level IO, and inter-module wires when N>1 · clocks, resets, and every
+crossing between them · architecture partition · timing scenarios · PPA targets · readiness.
+What each one contains you can work out; whether *this* project has settled it, you cannot.
 
-### Step 1: Settle `{module}` + read any user-provided material
+One question at a time, and end each with the answer you would give and why — a question with
+no recommendation makes the user do your work. Where the partition is still open, put 2-3
+candidates side by side so they choose rather than inherit your first idea; where the input
+already fixes it, say so in a line. When a question wants a diagram, the conventions are in
+`skills/specification/references/design-template.md` §Rendering Conventions.
 
-### Step 2: D0–D7 dimensional brainstorm dialogue
+On readiness, ask whether the stages that author from this document could do so without coming
+back. Their own references say what they need, field by field — read them there. A list kept
+here would be a copy that goes stale while nothing checks it. Name every gap you find, by name.
 
-(one question at a time, multiple-choice
-preferred; D0 first; what is left to ask is whatever the material the user brought does not
-already settle): see `references/brainstorm-checklist.md`.
+## Four things this dialogue is the last chance to settle
 
-### Step 3: Write `{module}/intent/brainstorm.md`
+- **A number a reference implementation would answer** — a latency, a byte width, a
+  state-machine cycle count. Settle it here with its source. Deferred, it reaches design.md as
+  a wrong first draft and a run of Edits on the main thread.
+- **Reset polarity, and sync vs async** — deferred, it becomes an SDC-stage guess.
+- **What is deliberately left unconstrained** — a PPA dimension with no bound, a behaviour
+  left to the implementer, a bound some outside authority owns. Say so, and say which:
+  `specification` writes a row for each of those too and the ledger tells them apart by
+  `judge`. What it cannot do is tell a deliberate silence from a forgotten one.
+- **Every open question** — a question is not a proposition, so it gets no ledger row, and the
+  document is frozen for the run: a TBD settled later is settled somewhere else.
 
-with descriptive section headers per
-`references/brainstorm-checklist.md` (create `{module}/intent/` if it does not exist):
-```markdown
-# <module> Brainstorm
-...
-```
+## The document, and handing it off
 
-### Step 4: Hand off the path
+Write what the engineer would recognize as their own document, one statement per proposition:
+`specification` reads it whole, top to bottom, and transcribes one ledger row per atomic
+proposition in the engineer's words, so a sentence carrying three of them makes that split a
+guess. Nothing reads a heading and no shape is a contract — when the engineer brought a
+document, keep theirs. Descriptive headers and stable names help whoever reads it next.
 
-First re-read the just-written `brainstorm.md` and
-fix inline any defect that would survive the freeze: a placeholder / unsettled `OQ-NN`,
-a cross-dimension contradiction (e.g. a clock in a D2a clock-domain column but absent
-from the D3 clock list), or a two-way-ambiguous requirement. Then point the user to the
-on-disk path + a short orientation (the D-dimensions covered; revision mode: only the D
-sections changed this round). **Do not echo the brainstorm body** (sections / tables /
-mermaid / code). Then stop: the user reads it, and starting the pipeline is how they say
-it is right.
+Before handing off, re-read what you just wrote and fix inline any defect that would survive
+the freeze: an unsettled placeholder, a contradiction between two parts of the document (a
+clock named in an interface table but absent from the clock list), or a two-way-ambiguous
+requirement.
 
-### Step 5: Revision mode
-
-(re-invoked after an abort): re-ask only the affected D dimensions,
-preserve the rest, then re-run Step 4 (its self-review re-reads the
-whole doc, so a changed dimension contradicting an untouched one is caught).
-
-## Completion Gate
-
-- `{module}/intent/brainstorm.md` exists, and any file the document names as authoritative sits beside it in `{module}/intent/`.
-- Every dimension the checklist names is either settled or deliberately out, and each
-  thing it calls this dialogue's last chance is settled — a number a reference
-  implementation would answer, reset polarity and sync-vs-async, any PPA dimension left
-  unbounded, and every open question.
-
-## Return Contract
-
-Control returns to the user. The user starts the pipeline with `--module {module}`
-when they are satisfied with what is on disk; the kernel will not dispatch `specification`
-until that file exists.
-
-## Bundled References
-
-- [`references/brainstorm-checklist.md`](references/brainstorm-checklist.md) — D0–D7 dimensional Q&A checklist + style + trimming rules + diagram conventions.
+Then give the user the on-disk path and a short orientation — the areas covered, and on a
+revision, which ones changed. **Do not echo the document body.** Then stop: the user reads it,
+and starting the pipeline with `--module {module}` is how they say it is right. Nothing is
+dispatchable until that file exists.
