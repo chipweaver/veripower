@@ -35,9 +35,12 @@ Each sidecar's fields and which of them are required are in its own
   to `manifest.json`. It records decisions; a requirement is cited by row id, never restated.
 - `top-io.json` — one object per top-level port.
 - `interconnects.json` — one object per cut edge; `[]` for an N=1 module.
-- `clocks.json` — one object per clock. `period_ns` is the sole statement of the clock's rate,
-  and exactly one entry is `relationship: "primary"` — the schema cannot express that, so
-  `derive-constraints` fails loud on it.
+- `clocks.json` — one object per clock. `period_ns` is the sole statement of the clock's rate
+  and `io_delay_ns` of its ports' arrival budget; both are numbers you state, and both decide
+  what synthesis and timing-analysis judge, so a row that gives one is cited and one the
+  engineer left open goes to the human at the gate rather than to a default. Exactly one entry
+  is `relationship: "primary"` — the schema cannot express that, so `derive-constraints` fails
+  loud on it.
 
 ## Output
 End with `STATUS: DONE` + the written paths, or `STATUS: BLOCKED <reason>` (a program exception

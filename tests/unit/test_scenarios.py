@@ -656,11 +656,13 @@ def _spec_workdir(tmp_path):
             [
                 {
                     "name": "clk",
+                    "io_delay_ns": 3.0,
                     "period_ns": 10.0,
                     "relationship": "primary",
                 },
                 {
                     "name": "clk_io",
+                    "io_delay_ns": 6.0,
                     "period_ns": 20.0,
                     "relationship": "async",
                 },

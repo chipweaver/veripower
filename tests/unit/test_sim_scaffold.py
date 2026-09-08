@@ -67,7 +67,9 @@ _TOP_IO = [
         "role": "data",
     },
 ]
-_CLOCKS = [{"name": "clk", "period_ns": 10.0, "relationship": "primary"}]
+_CLOCKS = [
+    {"name": "clk", "io_delay_ns": 3.0, "period_ns": 10.0, "relationship": "primary"}
+]
 
 
 def _write_boundary(d, top_io=None, clocks=None):
@@ -236,7 +238,9 @@ def test_every_clock_is_generated_and_bound(tmp_path):
             "role": "clock",
         }
     ]
-    clocks = _CLOCKS + [{"name": "clk2", "period_ns": 8.0, "relationship": "async"}]
+    clocks = _CLOCKS + [
+        {"name": "clk2", "io_delay_ns": 2.4, "period_ns": 8.0, "relationship": "async"}
+    ]
     tb = (
         _render(tmp_path, top_io=top_io, clocks=clocks)
         / "tb"
@@ -441,7 +445,9 @@ def test_each_vif_runs_on_its_own_declared_clock_domain(tmp_path):
     for p_ in top_io:
         if p_["interface_group"] == "obs_g":
             p_["clock_domain"] = "clk2"
-    clocks = _CLOCKS + [{"name": "clk2", "period_ns": 8.0, "relationship": "async"}]
+    clocks = _CLOCKS + [
+        {"name": "clk2", "io_delay_ns": 2.4, "period_ns": 8.0, "relationship": "async"}
+    ]
     tb = (
         _render(tmp_path, top_io=top_io, clocks=clocks)
         / "tb"
@@ -467,7 +473,9 @@ def test_agent_spanning_two_clock_domains_exits(tmp_path):
     for p_ in top_io:
         if p_["interface_group"] == "obs_g":
             p_["clock_domain"] = "clk2"
-    clocks = _CLOCKS + [{"name": "clk2", "period_ns": 8.0, "relationship": "async"}]
+    clocks = _CLOCKS + [
+        {"name": "clk2", "io_delay_ns": 2.4, "period_ns": 8.0, "relationship": "async"}
+    ]
     spec = {
         **SPEC,
         "agents": [

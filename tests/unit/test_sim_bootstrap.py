@@ -90,7 +90,16 @@ def _mirror(
         )
     )
     (spec_root / "clocks.json").write_text(
-        json.dumps([{"name": "clk", "period_ns": 10.0, "relationship": "primary"}])
+        json.dumps(
+            [
+                {
+                    "name": "clk",
+                    "io_delay_ns": 3.0,
+                    "period_ns": 10.0,
+                    "relationship": "primary",
+                }
+            ]
+        )
     )
     workdir = tmp_path / "asic" / module / "Verification" / "simulation" / "runs" / "1"
     workdir.mkdir(parents=True)

@@ -2,6 +2,7 @@
   {
     "name": "i_clk",
     "period_ns": 10.0,
+    "io_delay_ns": 3.0,
     "relationship": "primary",
     "generated": false
   }

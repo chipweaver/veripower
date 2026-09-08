@@ -4,8 +4,6 @@ from pathlib import Path
 
 from spec.sidecar import read_sidecar
 
-_IO_DELAY_FRAC = 0.3
-
 
 def _fail(msg: str):
     sys.exit(f"[spec derive-constraints] {msg}")
@@ -129,7 +127,7 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
         "set_clock_uncertainty -hold  0.0 [all_clocks]   ;# pre-CTS hold = 0; replace per CTS skew"
     )
     out.append("")
-    period_of = {c["name"]: c["period_ns"] for c in non_gen}
+    delay_of = {c["name"]: c["io_delay_ns"] for c in non_gen}
     for p in ports:
         # A clock is constrained by create_clock and an async reset is not timed against one.
         # A SYNC reset is: it is sampled by the same edge as every data input, so leaving it
@@ -139,8 +137,8 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
             p["role"] == "reset" and p["reset_kind"] == "async"
         ):
             continue
-        T = period_of.get(p["clock_domain"])
-        if T is None:
+        delay = delay_of.get(p["clock_domain"])
+        if delay is None:
             # The domain is a generated clock, so there is no create_clock to delay
             # against yet: synthesis writes create_generated_clock from rtl-design's pin
             # annotation, and the delay belongs beside it. Named rather than skipped —
@@ -153,7 +151,6 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
                 f"synthesis completes this next to its create_generated_clock"
             )
             continue
-        delay = round(T * _IO_DELAY_FRAC, 4)
         # An inout is both, and used to be neither: the branch tested the two unidirectional
         # values and let the third enum member fall through unconstrained.
         if p["direction"] in ("input", "inout"):

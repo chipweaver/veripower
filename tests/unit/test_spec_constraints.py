@@ -22,11 +22,16 @@ def _run(workdir, check=True):
     )
 
 
-def _clk(name, period_ns, relationship="primary", generated=False):
+def _clk(name, period_ns, relationship="primary", generated=False, io_delay_ns=None):
     """One clocks.json entry. `generated` is explicit: the emitters read it directly, and
-    only load_clocks() defaults the omitted key."""
+    only load_clocks() defaults the omitted key. `io_delay_ns` defaults to 30% of the period,
+    the fraction derive-constraints used to invent, so a case that does not care about the
+    boundary budget asserts the same SDC as before."""
     return {
         "name": name,
+        "io_delay_ns": round(period_ns * 0.3, 4)
+        if io_delay_ns is None and isinstance(period_ns, (int, float))
+        else io_delay_ns,
         "period_ns": period_ns,
         "relationship": relationship,
         "generated": generated,
@@ -177,7 +182,14 @@ def test_generated_clock_skips_create_clock(tmp_path):
 def test_generated_flag_may_be_omitted(tmp_path):
     # `generated` is optional in the schema; load_clocks defaults it to False, so an entry
     # written without the key must behave exactly like generated: false.
-    lean = [{"name": "clk", "period_ns": 10.0, "relationship": "primary"}]
+    lean = [
+        {
+            "name": "clk",
+            "io_delay_ns": 3.0,
+            "period_ns": 10.0,
+            "relationship": "primary",
+        }
+    ]
     ports = [_CLK_PORT, _port("din", "input", "data", width=8)]
     proc = _run(_wd(tmp_path, ports, lean), check=False)
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
@@ -451,6 +463,7 @@ def test_inout_port_gets_both_delays():
     clocks = [
         {
             "name": "clk",
+            "io_delay_ns": 3.0,
             "period_ns": 10.0,
             "relationship": "primary",
             "generated": False,
@@ -473,12 +486,14 @@ def test_generated_clock_domain_is_named_not_dropped():
     clocks = [
         {
             "name": "clk",
+            "io_delay_ns": 3.0,
             "period_ns": 10.0,
             "relationship": "primary",
             "generated": False,
         },
         {
             "name": "clk_div2",
+            "io_delay_ns": 6.0,
             "period_ns": 20.0,
             "relationship": "synchronous-related",
             "generated": True,
@@ -506,18 +521,21 @@ def test_every_data_port_is_accounted_for_in_the_sdc():
     clocks = [
         {
             "name": "clk",
+            "io_delay_ns": 1.2,
             "period_ns": 4.0,
             "relationship": "primary",
             "generated": False,
         },
         {
             "name": "clk_b",
+            "io_delay_ns": 1.8,
             "period_ns": 6.0,
             "relationship": "async",
             "generated": False,
         },
         {
             "name": "clk_gen",
+            "io_delay_ns": 2.4,
             "period_ns": 8.0,
             "relationship": "async",
             "generated": True,
@@ -551,3 +569,23 @@ def test_duplicate_clock_name_is_refused(tmp_path):
     with pytest.raises(SystemExit) as exc:
         constraints.derive_constraints(wd)
     assert "more than once" in str(exc.value)
+
+
+def test_io_delay_is_the_authored_number_not_a_fraction_of_the_period(tmp_path):
+    # The budget is a contract with whatever sits outside the chip, so it reaches the SDC
+    # verbatim. A value the period cannot produce is what proves it: 0.3 x 10.0 is 3.0, and
+    # nothing in the generator may turn 1.25 into that.
+    clocks = [_clk("clk", 10.0, io_delay_ns=1.25)]
+    ports = [_CLK_PORT, _port("din", "input", "data", width=8)]
+    _run(_wd(tmp_path, ports, clocks))
+    sdc = (tmp_path / "constraints" / "m.sdc").read_text()
+    assert "set_input_delay  1.25 -clock clk [get_ports {din}]" in sdc
+    assert "3.0 -clock clk" not in sdc
+
+
+def test_a_clock_with_no_io_delay_is_refused(tmp_path):
+    # No default: an arrival budget nobody stated is a number nobody owns, and synthesis and
+    # timing-analysis would judge their rows against it.
+    bad = [{k: v for k, v in _clk("clk", 10.0).items() if k != "io_delay_ns"}]
+    proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
+    assert proc.returncode != 0 and "io_delay_ns" in proc.stderr
