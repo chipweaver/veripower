@@ -60,14 +60,10 @@ RULES: dict[str, Rule] = {
             "intent": ("intent",),
             "design": ("Design/specification/design.md",),
             "manifest": ("Design/specification/manifest.json",),
-            "children": ("Design/specification/children",),
             "clocks": ("Design/specification/clocks.json",),
             "requirements": ("Design/specification/requirements.json",),
             "check_hints": ("Design/specification/check-hints.json",),
             "top_io": ("Design/specification/top-io.json",),
-            # NOT interconnects.json: cross-child wires are internal to the DUT, so no
-            # plan field derives from them, and binding it would let a wire-only edit
-            # invalidate the plan and its review.
         },
         proof="simulation-plan",
         oracle=("plan-review", "proposed"),
@@ -84,13 +80,11 @@ RULES: dict[str, Rule] = {
             "intent": ("intent",),
             "design": ("Design/specification/design.md",),
             "manifest": ("Design/specification/manifest.json",),
-            "children": ("Design/specification/children",),
             # Read by the child sub-Tasks (create_generated_clock, set_case_analysis and
             # quasi_static annotations), not by any
             # script in this stage.
             "clocks": ("Design/specification/clocks.json",),
             "top_io": ("Design/specification/top-io.json",),
-            "interconnects": ("Design/specification/interconnects.json",),
             # The engineer's requirements, one row each with the judge that establishes it.
             # The child authors read the rows that bear on their RTL; the intent reviewers
             # read the rows judged by this stage.

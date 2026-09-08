@@ -1,25 +1,25 @@
 # Intent review sub-Task contract
 
-The rtl-design main thread dispatches fresh Level-1 reviewers over
-`manifest.children[]`, on every round that reaches a written sidecar; you are assigned one or more
-of those children. You write your own review files. Nothing reduces them to a verdict and no script
+The rtl-design main thread dispatches fresh Level-1 reviewers over the children it split the
+design into, on every round that reaches a written sidecar; you are assigned one or more of them. You write your own review files. Nothing reduces them to a verdict and no script
 parses them, so write for the engineer who reads them before this RTL ships. Do not call the Task
 tool: a sub-Task of yours would append no event and sit outside the kernel's accounting, where
 nothing could audit it.
 
 ## Inputs (paths only — the main thread does not read these bodies)
 
-- The child units assigned to you + each one's `manifest.children[<name>].rtl_modules[]` list.
+- The child units assigned to you + the RTL modules each covers (`rtl-files.json`).
 - Each assigned child's authored RTL `files[]` (from `rtl-files.json`) — read these.
 - `requirements.json` (specification workdir): the engineer's requirements, one row each. The rows
   judged by `rtl-design` are yours to hold the RTL to — a declared port, a hard-coded parameter, a
   language rule, a structure the engineer pinned, a bound no tool measures. Read all of it; the
   rows your children realize are not marked, you recognize them. A row that points at a file under
   `<intent>/` is checked against that file.
-- Each assigned child's design doc, located via `manifest.children[<name>].doc` (the registry SSoT —
-  the SAME path authoring uses; do NOT hardcode `Design/specification/children/<child>.md`, which can drift from
-  the deployed layout). Read the whole document: its interface mapping, internal behaviour and
-  corner cases are the decisions the RTL was to realize, and it cites requirement rows by id.
+- `design.md` (specification workdir): the architecture it proposes, the boundary narrative, the
+  obligations more than one child must jointly keep, and the timing scenarios. That is the intent
+  the RTL was to realize, and it cites requirement rows by id. The RTL's module split is this
+  stage's own call, so a split that differs from what §1.2 argues for is a finding only when the
+  argument's reason still holds against the RTL.
 - `design.md` path, for integration intent: the wiring the top child instantiates and the
   inter-module behaviour contract siblings must jointly keep. Nothing matches that edge list
   against the RTL mechanically, so a module or wire the spec names and the RTL does not — or

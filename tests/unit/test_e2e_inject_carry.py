@@ -176,7 +176,6 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     spec_root = str((tmp_path / module / "Design" / "specification").resolve())
     assert table["design"] == spec_root
     assert table["manifest"] == spec_root
-    assert table["children"] == spec_root
 
     # 3. write a schema-valid rtl result.json in the workdir, reap -> verdict
     # pass, promote

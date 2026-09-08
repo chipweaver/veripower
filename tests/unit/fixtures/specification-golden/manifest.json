@@ -1,33 +1,3 @@
 {
-  "module": "tpu_top",
-  "children": [
-    {
-      "name": "mac",
-      "doc": "children/mac.md",
-      "rtl_modules": [
-        "mac"
-      ]
-    },
-    {
-      "name": "systolic_reg",
-      "doc": "children/systolic_reg.md",
-      "rtl_modules": [
-        "systolic_reg"
-      ]
-    },
-    {
-      "name": "fifo",
-      "doc": "children/fifo.md",
-      "rtl_modules": [
-        "fifo"
-      ]
-    },
-    {
-      "name": "tpu_top",
-      "doc": "children/tpu_top.md",
-      "rtl_modules": [
-        "tpu_top"
-      ]
-    }
-  ]
+  "module": "tpu_top"
 }

@@ -47,13 +47,11 @@ def _now_iso() -> str:
 _OUTPUTS = {
     "specification": [
         "Design/specification/design.md",
-        "Design/specification/children",
         "Design/specification/manifest.json",
         "Design/specification/requirements.json",
         "Design/specification/clocks.json",
         "Design/specification/check-hints.json",
         "Design/specification/top-io.json",
-        "Design/specification/interconnects.json",
         "Design/specification/constraints/top.sdc",
         "Design/specification/constraints/top.sgdc",
     ],
@@ -612,7 +610,6 @@ def _spec_workdir(tmp_path):
         json.dumps(
             {
                 "module": "m",
-                "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
             }
         )
     )
@@ -750,7 +747,7 @@ def test_forward_redispatch_scope_names_the_drifted_inputs(tmp_path, monkeypatch
     assert d["ok"], d
     doc = _dispatch_doc(m, d["workdir"])
     assert "Design/specification/design.md" in doc["scope"]
-    assert "Design/specification/children" in doc["scope"]
+    assert "Design/specification/design.md" in doc["scope"]
     assert "caused_by" not in doc and "reasons" not in doc
 
 

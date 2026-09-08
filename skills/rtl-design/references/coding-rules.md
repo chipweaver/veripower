@@ -33,5 +33,5 @@ this flow until the netlist disagrees with the testbench.
 
 Area and power optimisation are advisory: no gate checks them, and `synthesis` / `power-analysis`
 only measure the outcome against the requirements rows they judge. So never trade away behaviour a
-requirements row or your `<child>.md` specifies in order to buy one — a deviation from stated intent
+requirements row or `design.md` specifies in order to buy one — a deviation from stated intent
 is what the intent reviewer is looking for, a missed optimisation is not.

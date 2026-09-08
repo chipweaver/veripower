@@ -2,9 +2,8 @@
 """spec — specification-stage CLI.
 
 Verbs (one stage = one tool):
-  check-ledger        validate requirements.json; print the ledger and partition gate view (stdout: JSON)
-  derive-ports        per-child ports from interconnects.json (stdout: JSON)
-  check-crossrefs     cross-file name + hint↔requirement join (stdout: verdict JSON; exit 0/1, 2 BLOCKED)
+  check-ledger        validate requirements.json; print the ledger and boundary gate view (stdout: JSON)
+  check-crossrefs     hint↔requirement join + phantom clock domain (stdout: verdict JSON; exit 0/1, 2 BLOCKED)
   derive-constraints  generate SDC/SGDC from clocks.json + top-io.json (stdout: JSON; fail-loud)
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 
@@ -36,13 +35,6 @@ def _cmd_check_ledger(a: argparse.Namespace) -> int:
     return ledger.run(a.workdir)
 
 
-def _cmd_derive_ports(a: argparse.Namespace) -> int:
-    from spec import ports
-
-    print(json.dumps(ports.derive_ports(a.workdir), ensure_ascii=False, indent=2))
-    return 0
-
-
 def _cmd_check_crossrefs(a: argparse.Namespace) -> int:
     from spec import crossrefs
 
@@ -72,17 +64,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "check-ledger",
-        help="validate requirements.json and print what the ledger and partition gate hands the human",
+        help="validate requirements.json and print what the ledger and boundary gate hands the human",
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.set_defaults(func=_cmd_check_ledger)
 
-    sp = sub.add_parser("derive-ports", help="per-child inter-module ports")
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.set_defaults(func=_cmd_derive_ports)
-
     sp = sub.add_parser(
-        "check-crossrefs", help="cross-file name + hint↔requirement join"
+        "check-crossrefs", help="hint↔requirement join + phantom clock domain"
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.set_defaults(func=_cmd_check_crossrefs)

@@ -1,10 +1,10 @@
 # design.md Section Template
 
 `{workdir}/design.md` records the **decisions** made around the requirements ledger: how the module
-is structured, why the partition falls where it does, what the children must jointly keep at their
-boundaries, and the timing scenarios the interfaces are held to. §1.6 points at `manifest.json`,
-whose `doc` field locates each child's design under `children/`. `rtl-design`, `simulation-plan`
-and `simulation-triage` declare `design.md` as an input; the first two read the child docs as well.
+is structured, what any split of it must jointly keep at its internal boundaries, and the timing
+scenarios the interfaces are held to. `rtl-design`, `simulation-plan` and `simulation-triage`
+declare `design.md` as an input — rtl-design reads §1.2 to choose the module split, and is held to
+§1.3.2's obligations whatever it chooses.
 
 > **Cite, never restate.** What the engineer requires is in `requirements.json`, one row each, in
 > their words, and every stage reads that file. Mention a requirement here by its row id with at
@@ -14,15 +14,14 @@ and `simulation-triage` declare `design.md` as an input; the first two read the 
 
 > **Single home**: every per-field fact lives in exactly one place — its sidecar. Each §1.x below
 > points at its sidecar and carries only the narrative no field can hold: why the boundary is
-> what it is, how the children divide the datapath, what is out of scope. Never restate a field
-> value in prose or in a second table.
+> what it is, how the datapath divides, what is out of scope. Never restate a field value in
+> prose or in a second table.
 
 ## Document Position
 
 | Section range | Responsibility |
 |---|---|
 | 1.1–1.5 Overview sections | Function, interfaces, timing, frequencies, architecture partitioning: the decisions, citing requirement rows by id. |
-| 1.6 Submodule Index | A pointer to `manifest.json`, the child registry (`name` / `doc` / `rtl_modules`). The per-submodule implementation detail (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.) lives in the child docs. |
 | 2 Document control | Version, revision notes. |
 
 ## Rendering Conventions
@@ -50,9 +49,10 @@ requirement rows that set them.)
 
 ### 1.2 Module Structure
 
-The child roster lives in `manifest.json`. Here: the architecture diagram the manifest cannot
-hold — dataflow direction, which cut edges carry backpressure, why the partition falls where it
-does.
+The structure this module wants, and the argument for it: the dataflow, which internal edges are
+clean elastic handshakes and which couplings forbid a cut, which block carries the dominant area
+term. **This is an argument, not a roster.** rtl-design reads it and decides the module split, so
+say why a boundary belongs where you put it rather than only where.
 
 ```mermaid
 flowchart LR
@@ -66,42 +66,33 @@ flowchart LR
 The port list lives in `top-io.json`. Here: what the boundary is for, which groups exist and
 why.
 
-#### 1.3.2 Inter-module Interconnects
+#### 1.3.2 Joint Obligations
 
-The wire list lives in `interconnects.json` (authoritative for every RTL-module-to-RTL-module
-cut edge; an N=1 module writes an empty array). Here: how the children divide the datapath.
+Whatever this module divides into, some obligations bind more than one part of it: a shared
+operating-phase or event timeline, a sequencing, a co-assertion or mutual-exclusion among control
+strobes, who holds a value stable and for how long. **State each of them once, here.** The stage
+that writes the RTL chooses the module split and reads this section to know what any split must
+keep; an obligation left inside one part's description is one the others never see.
 
-> **Inter-module Behavior Contract** (required content rule, reported by the per-child
-> reviewer, NOT a deterministic gate): when a *group* of inter-module wires is governed by
-> a contract that **more than one wire / child must jointly agree on** (a shared operating-phase or
-> event timeline, a sequencing, a co-assertion or mutual-exclusion among control strobes), that joint
-> contract MUST be stated **once** in the `##### 1.3.2.1` companion below, NOT left implicit in one
-> child's body (where sibling children and their per-child reviewers cannot see it).
-> - A behavior fully captured by a single wire's own entry (a plain valid/ready handshake, a
->   single-clock latency) needs no companion.
-> - Form adapts to the module: a phase-sequenced datapath states an ordered operating-phase table;
->   a handshake/arbitration module states the co-assertion / mutual-exclusion rule in prose. A wire's
->   `timing_constraint` and a control bus's `encoding` in `interconnects.json` then reference the
->   names declared in the companion.
+> - A behaviour one signal's own entry fully captures (a plain valid/ready handshake, a
+>   single-clock latency) is not a joint obligation and belongs in `top-io.json`.
+> - Form adapts to the module: a phase-sequenced datapath states an ordered operating-phase
+>   timeline; a handshake/arbitration module states the co-assertion / mutual-exclusion rule in
+>   prose.
 > - **State the obligation, never the cycle.** "The operands are captured in the cycle the strobe
->   is sampled" is an obligation every child can keep; "the strobe is asserted in cycle 0" is a
->   schedule, and whether a child's outputs are registered decides it. A cycle count the engineer
->   stated is a requirement row, and the row is its home. A companion that names cycles turns one
->   child's implementation choice into an obligation on its siblings, and the sibling that chose
->   otherwise is then in breach of a contract nothing required.
-> - This pins the *statement* of the contract and the *resolvability* of references to it; the
->   *correctness* of the co-assertions / mutual-exclusion is design judgment (advisory soundness +
->   downstream RTL/sim), not pinned here.
+>   is sampled" is an obligation any split can keep; "the strobe is asserted in cycle 0" is a
+>   schedule, and whether the producer registers its outputs decides it. A cycle count the
+>   engineer stated is a requirement row, and the row is its home. Naming cycles here turns one
+>   implementation choice into an obligation on the rest, and whoever chose otherwise is then in
+>   breach of a contract nothing required.
+> - This pins the *statement* of the obligations. Their *correctness* is design judgment
+>   (advisory soundness + downstream RTL/sim), not pinned here.
 
-##### 1.3.2.1 Inter-module Behavior Contract
+##### 1.3.2.1 Worked forms
 
-Present **only** when the `interconnects.json` wires share a joint contract (see the Inter-module
-Behavior Contract rule above); omit entirely otherwise.
-
-Worked example A — a **phase-sequenced datapath** states an ordered operating-phase timeline;
-control buses project onto it (each `encoding` symbol names its canonical phase(s)) and per-wire
-`timing_constraint` windows reference these phase names. The order is the contract; how long each
-phase takes is not:
+Form A — a **phase-sequenced datapath** states an ordered operating-phase timeline; control
+encodings project onto it (each symbol names its canonical phase(s)). The order is the contract;
+how long each phase takes is not:
 
 | # | Phase | Entered when | Notes (projection / co-assertion / boundary, as applicable) |
 |---|-------|--------------|-------------------------------------------------------------|
@@ -109,8 +100,8 @@ phase takes is not:
 | 2 | PRELOAD | LOAD's operand set is complete | ctrl_fabric=PRELOAD |
 | … | …       | …                               | … |
 
-Worked example B — a **handshake / arbitration** module states the joint contract in prose (no
-phase table). E.g. a TX/RX start mux:
+Form B — a **handshake / arbitration** module states the obligation in prose (no phase table).
+E.g. a TX/RX start mux:
 
 > `start_tx_fifo` and `start_rx_fifo` are mutually exclusive (never both high). The master-bus
 > outputs route to the TX variables when `start_tx_fifo` is high, to the RX variables when
@@ -156,17 +147,6 @@ Clock definitions live in `clocks.json` (the sole numeric + relationship source;
 scheme, release-ordering constraints.
 ```
 
-## Submodule Index Template (§1.6)
-
-```markdown
-### 1.6 Submodule Index
-
-The child registry is `manifest.json` in this same directory — one entry per child, carrying
-`name` / `doc` / `rtl_modules`.
-```
-
-Point at the manifest and write nothing else here. Each child's own detail lives in its
-`<child>.md`, per `child-design-template.md`.
 
 ## Where the rules live
 

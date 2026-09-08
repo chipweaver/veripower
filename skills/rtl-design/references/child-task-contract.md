@@ -1,8 +1,7 @@
 # Per-child RTL sub-Task contract
 
-The rtl-design main thread dispatches one Level-1 sub-Task per child in
-`manifest.children[]` (including the top-integration child). Every child gets the identical contract
-below. Do not call the Task tool: a sub-Task of yours would append no event and sit outside the
+The rtl-design main thread decides the split and dispatches one Level-1 sub-Task per child
+(including the top-integration child). Every child gets the identical contract below. Do not call the Task tool: a sub-Task of yours would append no event and sit outside the
 kernel's accounting, where nothing could audit it.
 
 ## Inputs
@@ -10,10 +9,11 @@ kernel's accounting, where nothing could audit it.
 The main thread hands over paths only; it reads none of these bodies.
 
 - `<skill>` — this skill's base directory, and `<skill>/references/coding-rules.md`.
-- Your child unit name, its `rtl_modules[]`, and the path to your per-child design doc. That doc is
-  the full sub-design and you are its sole consumer.
-- `top-io.json`, `interconnects.json`, `clocks.json`, `requirements.json` — the boundary, the cut
-  edges, the clocks, and the engineer's requirements. **Every child reads `top-io.json`**, even one
+- Your child unit name, the RTL modules it covers, and the cut edges the main thread assigned it.
+- `design.md`, `top-io.json`, `clocks.json`, `requirements.json` — the architecture it proposes,
+  the boundary, the clocks, and the engineer's requirements. `design.md` is where the obligations
+  more than one child must jointly keep are stated; you are held to those and may not restate them
+  differently. **Every child reads `top-io.json`**, even one
   that drives no top-level port: which ports are yours is your own doc's frontmatter claim, and
   checking it against the boundary is how a wrong claim surfaces here rather than at the compile.
   Read the requirements rows that bear on your RTL — the ones judged by `rtl-design` are yours to
@@ -25,19 +25,19 @@ Field semantics live in each file's own schema under `specification/references/`
 ## Prohibitions
 
 - **Do not reverse-read your interface into existence.** Your ports come from the
-  `top-io.json` / `interconnects.json` / `<child>.md §2` contract — never from an external
+  `top-io.json` / `design.md` boundary contract — never from an external
   verification harness (a reference top, `Makefile`, or `*_defines` from the verification
   environment) reverse-read until they line up. Your siblings were handed that same contract, and
   it is the only reason their RTL and yours meet.
 
 ## Output
 
-Write your `rtl_modules[]` into one or more files of your choosing under `src/` (one file
+Write your modules into one or more files of your choosing under `src/` (one file
 may hold multiple modules). **STRICT Verilog-2001** — no SystemVerilog constructs
 (`logic`/`always_ff`/`always_comb`/`typedef`/`enum`/`struct`/`interface`/`package`/…).
 That is your discipline, per `references/coding-rules.md`; no gate decides it, and no
 extension stands in for it. End the response with `STATUS: DONE` + a single JSON line, or
-`STATUS: BLOCKED <reason>` (e.g. `<child>.md §2 Interface incomplete`).
+`STATUS: BLOCKED <reason>` (e.g. `top-io.json` names no port for an edge you were assigned).
 
 ```json
 {
@@ -58,7 +58,7 @@ extension stands in for it. End the response with `STATUS: DONE` + a single JSON
   name you actually wrote, not a design.md placeholder). This is the whole point — `sync_cell -name`
   must match the netlist.
 - **Completeness is contract-bound, not best-effort.** Report **every** annotation your owned
-  structures imply from the `top-io.json` / `interconnects.json` / `clocks.json` contract you received. An omission is a
+  structures imply from the `top-io.json` / `clocks.json` contract you received. An omission is a
   contract violation, not a silent empty list. RTL-true names (`sync_cell`, `reset_synchronizer`) come
   from your RTL; contract-fact categories (`quasi_static`, `set_case_analysis`,
   `create_generated_clock`) come from the sidecars you read. Synthesis has no independent backstop for the SDC categories, so an

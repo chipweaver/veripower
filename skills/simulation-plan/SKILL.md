@@ -25,12 +25,11 @@ to a location, so `<key>/<subpath>` is how you address one. `design` / `manifest
 | Path | What it is |
 |---|---|
 | `<design>/design.md` | §1 behavior, §1.3 boundary, and §1.4's scenario table — the only home for the scenarios you author sequences from, so you read it. A waveform there is optional and not authoritative; the rows and the scenario entry govern |
-| `<children>/<child>.md` | Per-child implementation constraints a testpoint may have to verify: register side effects, exceptions, concurrency, back-pressure, reset, state-machine boundaries |
 | `<requirements>/requirements.json` | The engineer's requirements, one row each with the stage that judges it. The rows judged by simulation are what the testpoints exist to establish; the rows judged by simulation-plan are requirements on this plan itself: a stimulus distribution, a seed, a scope |
 | `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |
 | `<check_hints>/check-hints.json` | How simulation observes each requirement row it judges — `check_id` is unique in it, and each hint names the rows it establishes |
 | `<design>/clocks.json`, `<design>/top-io.json` | The clock and the DUT boundary `materialize-scaffold` derives from |
-| `<manifest>/manifest.json` | `.module` is the Top field in plan §1; `children[]` is the child roster |
+| `<manifest>/manifest.json` | `.module` is the Top field in plan §1 |
 
 Everything below is produced under `{workdir}`.
 

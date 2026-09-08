@@ -66,22 +66,10 @@ def _spec_workdir(tmp_path, rows=None):
         json.dumps(
             {
                 "module": "dut_top",
-                "children": [
-                    {
-                        "name": "dut_top",
-                        "doc": "children/dut_top.md",
-                        "rtl_modules": ["dut_top"],
-                    }
-                ],
             }
         )
     )
-    (wd / "children").mkdir(exist_ok=True)
-    (wd / "children" / "dut_top.md").write_text(
-        "---\nports: []\nclocks: []\n---\n\n# child\n"
-    )
     (wd / "requirements.json").write_text(json.dumps(_ROWS if rows is None else rows))
-    (wd / "interconnects.json").write_text(json.dumps([]))
     (wd / "check-hints.json").write_text(
         json.dumps(
             [
@@ -149,17 +137,10 @@ def test_a_stated_reason_is_the_failure(tmp_path):
 def test_enumerate_artifacts_present_only(tmp_path):
     wd = _spec_workdir(tmp_path)
     constraints.derive_constraints(wd)
-    (wd / "children" / "fifo.md").write_text("# child\n")
-    m = json.loads((wd / "manifest.json").read_text())
-    m["children"].append(
-        {"name": "fifo", "doc": "children/fifo.md", "rtl_modules": ["fifo"]}
-    )
-    (wd / "manifest.json").write_text(json.dumps(m))
     arts = result.enumerate_artifacts(wd, top="dut_top")
     paths = {a["path"] for a in arts}
     assert {
         "design.md",
-        "children",
         "check-hints.json",
         "spec-review",
         "manifest.json",
@@ -188,7 +169,6 @@ def test_golden_lean_against_a_real_run(tmp_path):
     assert paths == {
         "design.md",
         "manifest.json",
-        "children",
         "check-hints.json",
         "spec-review",
         f"constraints/{top}.sdc",
@@ -196,7 +176,6 @@ def test_golden_lean_against_a_real_run(tmp_path):
         "requirements.json",
         "clocks.json",
         "top-io.json",
-        "interconnects.json",
     }
     _validate_envelope(env)
 

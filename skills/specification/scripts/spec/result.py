@@ -36,7 +36,7 @@ def _top_from_manifest(workdir: Path) -> str:
     path, which never runs the derivation. Indexed, not defaulted: <TOP> names the two
     constraint files in artifacts[], so a roster this could not resolve would promote a fail
     with those entries silently filtered out. Raising makes it BLOCKED. The one site that
-    reports an absent manifest.module as a defect is check_purity, at the ledger and partition gate."""
+    reports an absent manifest.module as a defect is derive_constraints."""
     manifest = json.loads((Path(workdir) / "manifest.json").read_text(encoding="utf-8"))
     return manifest["module"]
 
@@ -45,9 +45,8 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
     """Fixed specification artifact set, present-only. NEVER lists brainstorm.md
     (module-root, outside the workdir — would break promote()) or result.json (self).
 
-    The child designs and the reviews each leave as one tree, so however the decomposition lays
-    them out inside those directories they are delivered and versioned together — each is read
-    downstream, or endorsed, as a set, so this needs no roster: <TOP>
+    The reviews leave as one tree, so however they are laid out inside it they are delivered and
+    endorsed together, which needs no roster: <TOP>
     is the caller's (build_result reads manifest.module, and an unreadable manifest is BLOCKED
     there)."""
     workdir = Path(workdir)
@@ -59,12 +58,10 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
         "requirements.json",
         "clocks.json",
         "top-io.json",
-        "interconnects.json",
         "check-hints.json",
     ]
-    child_docs = ["children"] if (workdir / "children").is_dir() else []
     reviews = ["spec-review"] if (workdir / "spec-review").is_dir() else []
-    return [{"path": p} for p in fixed + child_docs + reviews if (workdir / p).exists()]
+    return [{"path": p} for p in fixed + reviews if (workdir / p).exists()]
 
 
 def build_result(workdir, fail_reason=None) -> int:
@@ -119,7 +116,7 @@ def build_result(workdir, fail_reason=None) -> int:
     open_rows = ledger.unassignable(rows)
     if open_rows:
         raise ValueError(
-            f"requirements.json still has unassignable rows {open_rows}: the ledger and partition gate resolves "
+            f"requirements.json still has unassignable rows {open_rows}: the ledger and boundary gate resolves "
             "them before finalize."
         )
 

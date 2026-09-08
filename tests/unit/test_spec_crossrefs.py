@@ -1,10 +1,9 @@
-"""check-crossrefs: the join fan-out makes necessary.
+"""check-crossrefs: the joins no single author of this stage's artifacts can see.
 
 One question, unanswerable by any single author: does what one file wrote agree with the file
 that owns it. Each test asserts on the violation an agent actually reads — where + what — not
 on an internal key, because that sentence IS the interface. A sidecar's own shape is not tested
-here (read-time, see test_spec_sidecar.py) and neither is top-partition purity (decided at the
-ledger and partition gate — test_spec_ports.py + the contract test).
+here (read-time, see test_spec_sidecar.py).
 """
 
 import json
@@ -53,38 +52,9 @@ def _port(name, direction, role, domain="clk", width=1, group="cfg"):
 _PORTS = [_port("clk", "input", "clock"), _port("din", "input", "data", width=8)]
 
 
-def _fm(ports=(), clocks=()):
-    def block(key, items):
-        return (
-            f"{key}:\n" + "".join(f"  - {i}\n" for i in items)
-            if items
-            else f"{key}: []\n"
-        )
-
-    return (
-        "---\n"
-        + block("ports", ports)
-        + block("clocks", clocks)
-        + "---\n\n## §5 Verification Hints\n\nSee `check-hints.json`.\n"
-    )
-
-
-def _workdir(
-    tmp_path, children=None, clocks=None, rows=None, ports=None, wires=None, hints=None
-):
-    """A complete N-child specification workdir. `children` maps child name -> frontmatter;
-    `hints` maps child name -> its hints (a list applies to every child)."""
-    children = {"c": _fm()} if children is None else children
-    (tmp_path / "manifest.json").write_text(
-        json.dumps(
-            {
-                "module": "m",
-                "children": [
-                    {"name": n, "doc": f"{n}.md", "rtl_modules": [n]} for n in children
-                ],
-            }
-        )
-    )
+def _workdir(tmp_path, clocks=None, rows=None, ports=None, hints=None):
+    """A complete specification workdir, as it stands when check-crossrefs runs."""
+    (tmp_path / "manifest.json").write_text(json.dumps({"module": "m"}))
     (tmp_path / "clocks.json").write_text(
         json.dumps(_CLOCKS if clocks is None else clocks)
     )
@@ -94,18 +64,9 @@ def _workdir(
     (tmp_path / "top-io.json").write_text(
         json.dumps(_PORTS if ports is None else ports)
     )
-    (tmp_path / "interconnects.json").write_text(
-        json.dumps([] if wires is None else wires)
+    (tmp_path / "check-hints.json").write_text(
+        json.dumps(_HINTS if hints is None else hints)
     )
-    all_hints: list = []
-    for n, body in children.items():
-        (tmp_path / f"{n}.md").write_text(body)
-        all_hints += (
-            _HINTS
-            if hints is None
-            else (hints[n] if isinstance(hints, dict) else hints)
-        )
-    (tmp_path / "check-hints.json").write_text(json.dumps(all_hints))
     return tmp_path
 
 
@@ -115,171 +76,10 @@ def _verdict(tmp_path, **kw):
     return crossrefs.verdict(_workdir(tmp_path, **kw))
 
 
-def _said(v, where_frag, what_frag):
-    """Did the verdict say this, in the words the agent reads?"""
-    return [
-        x
-        for x in v["violations"]
-        if where_frag in x["where"] and what_frag in x["what"]
-    ]
-
-
-# ---------- a name the owning file does not have ----------
-
-
-def test_clean_workdir_passes(tmp_path):
-    v = _verdict(tmp_path)
-    assert v == {"status": "pass", "violations": []}
-
-
-def test_child_port_not_in_any_boundary_sidecar(tmp_path):
-    v = _verdict(tmp_path, children={"c": _fm(ports=["ghost"])})
-    assert _said(v, "c.md frontmatter ports", "'ghost' is in neither top-io.json")
-
-
-def test_child_port_may_name_an_interconnect_wire(tmp_path):
-    wires = [
-        {
-            "wire": "score_S",
-            "producers": ["a"],
-            "consumers": ["b"],
-            "width": 32,
-            "clock_domain": "clk",
-        }
-    ]
-    v = _verdict(tmp_path, children={"c": _fm(ports=["score_S"])}, wires=wires)
-    assert v["status"] == "pass", v
-
-
-def test_child_clock_not_in_clocks_json(tmp_path):
-    v = _verdict(tmp_path, children={"c": _fm(clocks=["clk_x"])})
-    assert _said(v, "c.md frontmatter clocks", "'clk_x' is not in clocks.json")
-
-
-def test_missing_frontmatter_key_is_reported(tmp_path):
-    # An absent key would make its check pass vacuously, so presence is the guard.
-    v = _verdict(tmp_path, children={"c": "---\nports: []\n---\n\nbody\n"})
-    assert _said(v, "c.md frontmatter", "no 'clocks' key")
-
-
-def test_port_clock_domain_not_in_clocks_json(tmp_path):
-    bad = [
-        _port("clk", "input", "clock"),
-        _port("din", "input", "data", domain="clk_x"),
-    ]
-    v = _verdict(tmp_path, ports=bad)
-    assert _said(v, "top-io.json din", "clock_domain 'clk_x' is not in clocks.json")
-
-
-def test_wire_clock_domain_not_in_clocks_json(tmp_path):
-    bad = [
-        {
-            "wire": "score_S",
-            "producers": ["a"],
-            "consumers": ["b"],
-            "width": 32,
-            "clock_domain": "clk_x",
-        }
-    ]
-    v = _verdict(tmp_path, wires=bad)
-    assert _said(v, "interconnects.json score_S", "clock_domain 'clk_x' is not in")
-
-
-# ---------- hints and the rows they name ----------
-
-
-def test_hint_naming_a_row_the_ledger_lacks_is_reported(tmp_path):
-    v = _verdict(tmp_path, hints=[{**_HINTS[0], "requirements": ["R-00", "R-99"]}])
-    assert _said(
-        v, "check-hints.json CHK-0", "'R-99', which requirements.json does not have"
+def _said(v, where, what_fragment):
+    return any(
+        x["where"] == where and what_fragment in x["what"] for x in v["violations"]
     )
-
-
-def test_hint_naming_a_row_another_stage_judges_is_reported(tmp_path):
-    # A hint for a row rtl-design establishes would turn a requirement the engineer kept out
-    # of the testbench into a gating check.
-    v = _verdict(tmp_path, hints=[{**_HINTS[0], "requirements": ["R-00", "R-01"]}])
-    assert _said(v, "check-hints.json CHK-0", "'R-01', which is not a simulation row")
-
-
-def test_hint_naming_a_coverage_row_is_reported(tmp_path):
-    # A coverage bound is compared by the coverage gate, not observed by a check.
-    v = _verdict(tmp_path, hints=[{**_HINTS[0], "requirements": ["R-00", "R-02"]}])
-    assert _said(v, "check-hints.json CHK-0", "'R-02', which is not a simulation row")
-
-
-def test_simulation_row_no_hint_names_is_reported(tmp_path):
-    rows = [
-        *_ROWS,
-        {"id": "R-03", "verbatim": "busy drops with done", "judge": "simulation"},
-    ]
-    v = _verdict(tmp_path, rows=rows)
-    assert _said(v, "requirements.json R-03", "nothing verifies it")
-
-
-def test_row_named_by_one_child_is_covered(tmp_path):
-    # Emergent across children: the coverage is the union of what all of them wrote.
-    rows = [
-        *_ROWS,
-        {"id": "R-03", "verbatim": "busy drops with done", "judge": "simulation"},
-    ]
-    hints = {
-        "a": _HINTS,
-        "b": [
-            {
-                "check_id": "CHK-1",
-                "requirements": ["R-03"],
-                "observable": "busy",
-                "reference_rule": "rm",
-            }
-        ],
-    }
-    v = _verdict(tmp_path, children={"a": _fm(), "b": _fm()}, rows=rows, hints=hints)
-    assert v["status"] == "pass", v
-
-
-def test_duplicate_check_id_in_the_file_is_reported(tmp_path):
-    # check_id is the coverage matrix's key, so a reused one makes one testpoint appear to
-    # cover both and leaves the second silently unverified.
-    v = _verdict(tmp_path, children={"a": _fm(), "b": _fm()})
-    assert _said(v, "check-hints.json CHK-0", "already used in this file")
-
-
-# ---------- outputs and their claimants ----------
-
-
-def test_output_no_child_claims_is_reported(tmp_path):
-    ports = [*_PORTS, _port("sig_o", "output", "data", width=8, group="g")]
-    v = _verdict(tmp_path, ports=ports)
-    assert _said(v, "top-io.json sig_o", "nothing drives it")
-
-
-def test_output_claimed_by_a_child_passes(tmp_path):
-    ports = [*_PORTS, _port("sig_o", "output", "data", width=8, group="g")]
-    v = _verdict(tmp_path, children={"c": _fm(ports=["sig_o"])}, ports=ports)
-    assert v["status"] == "pass", v
-
-
-def test_multiple_claimants_are_not_asked_about(tmp_path):
-    ports = [*_PORTS, _port("sig_o", "output", "data", width=8, group="g")]
-    children = {"a": _fm(ports=["sig_o"]), "b": _fm(ports=["sig_o"])}
-    hints = {"a": _HINTS, "b": []}
-    v = _verdict(tmp_path, children=children, ports=ports, hints=hints)
-    assert v["status"] == "pass", v
-
-
-def test_an_unclaimed_input_is_not_reported(tmp_path):
-    ports = [*_PORTS, _port("in_i", "input", "data", width=8, group="g")]
-    v = _verdict(tmp_path, ports=ports)
-    assert v["status"] == "pass", v
-
-
-def test_every_disagreement_is_reported_not_just_the_first(tmp_path):
-    v = _verdict(tmp_path, children={"c": _fm(ports=["ghost"], clocks=["clk_x"])})
-    assert len(v["violations"]) == 2, v
-
-
-# ---------- the verb ----------
 
 
 def _run(workdir):
@@ -290,45 +90,118 @@ def _run(workdir):
     )
 
 
-def test_verb_prints_the_verdict_and_exits_zero(tmp_path):
-    wd = _workdir(
-        tmp_path,
-        children={"core_top": _fm(), "core_b": _fm()},
-        hints={"core_top": _HINTS, "core_b": []},
+# ---------- clean ----------
+
+
+def test_clean_workdir_passes(tmp_path):
+    v = _verdict(tmp_path)
+    assert v == {"status": "pass", "violations": []}
+
+
+# ---------- the boundary's own clock domains ----------
+
+
+def test_port_clock_domain_not_in_clocks_json(tmp_path):
+    # A phantom domain renders `abstract_port -clock <phantom>` and hides a CDC path.
+    ports = _PORTS + [_port("q", "output", "data", domain="ghost")]
+    v = _verdict(tmp_path, ports=ports)
+    assert _said(v, "top-io.json q", "'ghost' is not in clocks.json")
+
+
+# ---------- hints against the ledger ----------
+
+
+def test_hint_naming_a_row_the_ledger_lacks_is_reported(tmp_path):
+    hints = [{**_HINTS[0], "requirements": ["R-99"]}]
+    v = _verdict(tmp_path, hints=hints)
+    assert _said(
+        v, "check-hints.json CHK-0", "'R-99', which requirements.json does not have"
     )
-    proc = _run(wd)
-    assert proc.returncode == 0, (proc.stdout, proc.stderr)
-    assert json.loads(proc.stdout) == {"status": "pass", "violations": []}
+
+
+def test_hint_naming_a_row_another_stage_judges_is_reported(tmp_path):
+    # A hint for a row established elsewhere would turn it into a gating check the engineer
+    # did not ask for.
+    hints = [{**_HINTS[0], "requirements": ["R-01"]}]
+    v = _verdict(tmp_path, hints=hints)
+    assert _said(v, "check-hints.json CHK-0", "'R-01', which is not a simulation row")
+
+
+def test_hint_naming_a_coverage_row_is_reported(tmp_path):
+    # A row with a target is compared by simulation's own gate, not by a hint.
+    hints = [{**_HINTS[0], "requirements": ["R-02"]}]
+    v = _verdict(tmp_path, hints=hints)
+    assert _said(v, "check-hints.json CHK-0", "'R-02', which is not a simulation row")
+
+
+def test_simulation_row_no_hint_names_is_reported(tmp_path):
+    # The orphan: nothing else asks whether every row simulation judges has an observation.
+    rows = _ROWS + [
+        {"id": "R-03", "verbatim": "busy falls with done", "judge": "simulation"}
+    ]
+    v = _verdict(tmp_path, rows=rows)
+    assert _said(v, "requirements.json R-03", "no check-hints entry names it")
+
+
+def test_a_row_two_hints_name_is_covered_once(tmp_path):
+    hints = _HINTS + [{**_HINTS[0], "check_id": "CHK-1"}]
+    v = _verdict(tmp_path, hints=hints)
+    assert v["status"] == "pass", v
+
+
+def test_duplicate_check_id_in_the_file_is_reported(tmp_path):
+    # check_id is the coverage matrix's key, so a reused one makes one testpoint appear to
+    # cover both and leaves the second silently unverified.
+    v = _verdict(tmp_path, hints=_HINTS + _HINTS)
+    assert _said(v, "check-hints.json CHK-0", "already used in this file")
+
+
+# ---------- every disagreement, and the verb's contract ----------
+
+
+def test_every_disagreement_is_reported_not_just_the_first(tmp_path):
+    rows = _ROWS + [
+        {"id": "R-03", "verbatim": "busy falls with done", "judge": "simulation"}
+    ]
+    ports = _PORTS + [_port("q", "output", "data", domain="ghost")]
+    hints = [{**_HINTS[0], "requirements": ["R-99"]}]
+    v = _verdict(tmp_path, rows=rows, ports=ports, hints=hints)
+    wheres = {x["where"] for x in v["violations"]}
+    assert wheres == {
+        "check-hints.json CHK-0",
+        "requirements.json R-00",
+        "requirements.json R-03",
+        "top-io.json q",
+    }, v
+
+
+def test_verb_prints_the_verdict_and_exits_zero(tmp_path):
+    r = _run(_workdir(tmp_path))
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {"status": "pass", "violations": []}
 
 
 def test_verb_exits_one_on_a_violation(tmp_path):
-    wd = _workdir(tmp_path, children={"c": _fm(ports=["ghost"])})
-    proc = _run(wd)
-    assert proc.returncode == 1, (proc.stdout, proc.stderr)
-    assert "ghost" in proc.stdout
+    wd = _workdir(tmp_path, hints=[{**_HINTS[0], "requirements": ["R-99"]}])
+    r = _run(wd)
+    assert r.returncode == 1, (r.stdout, r.stderr)
+    assert json.loads(r.stdout)["status"] == "fail"
 
 
 def test_verb_raises_on_a_malformed_sidecar(tmp_path):
-    # Shape is a read-time defect, so it surfaces as the reader's error, not as a violation.
     wd = _workdir(tmp_path)
-    (wd / "requirements.json").write_text("[]")  # minItems 1
-    proc = _run(wd)
-    assert proc.returncode != 0
-    assert "requirements.json" in (proc.stdout + proc.stderr)
+    (wd / "check-hints.json").write_text(json.dumps([{"check_id": "CHK-0"}]))
+    r = _run(wd)
+    assert r.returncode != 0
+    assert "check-hints.json" in r.stderr
 
 
-def test_a_missing_child_doc_is_blocked_not_a_violation(tmp_path):
-    """Exit 1 means the join found something; a precondition failure must not borrow it.
-
-    A manifest naming a child whose doc has not been written yet used to raise
-    FileNotFoundError out of run(), leaving a traceback on stderr, no JSON on stdout, and
-    exit 1 — which the skill documents as "a non-clean verdict", so the caller would route
-    rework to a child over a crash. 2 = BLOCKED is the split finalize already documents.
-    """
-    (tmp_path / "manifest.json").write_text(
-        json.dumps({"module": "m", "children": [{"name": "c", "doc": "children/c.md"}]})
-    )
-    r = _run(tmp_path)
-    assert r.returncode == 2, r.stderr
-    assert "BLOCKED" in r.stderr
-    assert r.stdout == ""
+def test_a_missing_input_names_the_file_and_is_routable(tmp_path):
+    # Not BLOCKED: an unauthored hints file is fixed by re-dispatching the sub-Task that writes
+    # it, which is what exit 1 means. The message has to name the file for that to be possible.
+    wd = _workdir(tmp_path)
+    (wd / "check-hints.json").unlink()
+    r = _run(wd)
+    assert r.returncode == 1, (r.returncode, r.stdout, r.stderr)
+    assert "check-hints.json" in r.stderr and "missing" in r.stderr
+    assert r.stdout.strip() == ""

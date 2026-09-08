@@ -77,8 +77,10 @@ def _help(cli: Path, verb: str):
 
 def test_every_skill_command_block_is_checked():
     # A guard nothing reaches is not a guard. If this drops, a documented command stopped
-    # being resolvable and is now silently unchecked.
-    assert len(CASES) >= 25
+    # being resolvable and is now silently unchecked. Lowering the floor is only correct when a
+    # command was deliberately deleted — last: specification's derive-ports, with the roster
+    # it computed.
+    assert len(CASES) >= 24
 
 
 @pytest.mark.parametrize(

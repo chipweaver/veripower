@@ -1,7 +1,7 @@
 """Read the authored JSON sidecars this stage emits — validating on the way in.
 
-The transcriber authors requirements.json; the decomposer authors clocks.json / top-io.json /
-interconnects.json; a fourth sub-Task authors check-hints.json. Every read goes through `read_sidecar`, so a
+The transcriber authors requirements.json; the decomposer authors clocks.json and top-io.json;
+a third sub-Task authors check-hints.json. Every read goes through `read_sidecar`, so a
 malformed sidecar is reported by **whichever verb needed it, at the moment it needed it**.
 That placement is the point: a file's own shape is not a cross-file property, so it has no
 business waiting for a gate that runs after every author has finished.
@@ -38,33 +38,6 @@ class SidecarError(Exception):
         super().__init__(f"{name}: {detail}")
 
 
-def _width_rule(doc) -> list[dict]:
-    """`width` must agree with the `[h:l]` range the name carries — cross-field arithmetic,
-    so not expressible in JSON Schema. An `[i]` index (a register-file element) makes no
-    width claim and is skipped."""
-    out: list[dict] = []
-    if not isinstance(doc, list):
-        return out
-    for e in doc:
-        if not isinstance(e, dict):
-            continue
-        n, w = e.get("name") or e.get("wire"), e.get("width")
-        if not isinstance(n, str) or not isinstance(w, int):
-            continue
-        m = _BIT_RANGE_RE.search(n)
-        if m:
-            implied = int(m.group(1)) - int(m.group(2)) + 1
-            if implied != w:
-                out.append(
-                    {
-                        "at": f"${n}",
-                        "error": f"width {w} disagrees with the range in the name "
-                        f"(implies {implied})",
-                    }
-                )
-    return out
-
-
 def _base_name_rule(doc) -> list[dict]:
     """A top-IO `name` is the base identifier alone; `width` carries the width.
 
@@ -75,8 +48,8 @@ def _base_name_rule(doc) -> list[dict]:
     from the same string will not compile. A parameterized declaration is worse still —
     `[DATA_WIDTH-1:0]` names a parameter no tool downstream evaluates.
 
-    Detecting the two forms disagreeing (_width_rule) cannot reach any of that, because the
-    range is wrong here even when it agrees with `width`.
+    A `width` that agrees with the range in the name does not make this any better: the range
+    is wrong here either way.
     """
     out: list[dict] = []
     if not isinstance(doc, list):
@@ -134,11 +107,9 @@ def _requirements_rule(doc) -> list[dict]:
 
 
 _CONTENT_RULES = {
-    # top-io names reach three tools verbatim, so the range is banned outright rather
-    # than cross-checked. interconnects wires reach none of them — they are read by the
-    # rtl-design children as prose — so there the cross-check still applies.
+    # A top-io name reaches three tools verbatim, so a range in it is banned outright rather
+    # than cross-checked against `width`.
     "top-io.json": _base_name_rule,
-    "interconnects.json": _width_rule,
     "requirements.json": _requirements_rule,
 }
 

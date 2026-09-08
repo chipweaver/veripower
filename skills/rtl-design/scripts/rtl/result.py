@@ -18,8 +18,13 @@ import json
 import sys
 from pathlib import Path
 
-from rtl._ledger import LedgerError
-from rtl.partition import exit_artifacts, ledger_artifacts
+from rtl._ledger import (
+    ANNOTATIONS_NAME,
+    FILES_NAME,
+    SRC_DIR,
+    LedgerError,
+    load_ledger,
+)
 
 STAGE = "rtl-design"
 REVIEW_DIR = "semantic-review"
@@ -74,12 +79,55 @@ def _caller_reported_artifacts(workdir: Path) -> list:
     return files + _reviews(workdir)
 
 
-def build_result(workdir, manifest, fail_reason=None, fix_owner=None) -> int:
+def _ledger_files(ledger: dict) -> list:
+    return sorted({f for rec in ledger.values() for f in rec["files"]})
+
+
+def _artifacts(workdir: Path) -> list:
+    """The RTL tree as ONE directory artifact, plus the two sidecars, in the envelope shape.
+
+    `src/` is the unit a consumer depends on, not the files inside it: its version is a merkle
+    over every path under it, so a header, a file in a subdirectory and a file the sidecars do
+    not name are all covered without the kernel ever matching a filename. Omitted when the
+    round wrote no tree at all — promote raises on an absent entry, which happens BEFORE the
+    outcome event is appended, so the round would hang with nothing in the log to repair from."""
+    arts = [SRC_DIR] if (workdir / SRC_DIR).is_dir() else []
+    return [{"path": p} for p in arts + [FILES_NAME, ANNOTATIONS_NAME]]
+
+
+def ledger_artifacts(workdir: Path) -> list:
+    """The artifacts[] enumeration off disk. Loads the sidecars for their validation — an
+    unreadable one is a LedgerError here, not a degraded envelope — and delivers the tree."""
+    load_ledger(workdir)
+    return _artifacts(Path(workdir))
+
+
+def exit_artifacts(workdir: Path) -> list:
+    """artifacts[] for a passing round: the RTL tree plus the two sidecars.
+
+    Raises LedgerError when the workdir cannot yield one — a sidecar that is unreadable or
+    schema-invalid, or a file the sidecars name and nobody wrote. Either would promote a
+    canonical view short of the RTL it claims to hold.
+    """
+    ledger = load_ledger(workdir)
+
+    absent = [f for f in _ledger_files(ledger) if not (workdir / f).is_file()]
+    if absent:
+        raise LedgerError(
+            f"{FILES_NAME} names files that are not in the workdir: "
+            + ", ".join(absent)
+            + " — re-dispatch the child that owns them"
+        )
+
+    return _artifacts(workdir)
+
+
+def build_result(workdir, fail_reason=None, fix_owner=None) -> int:
     """Build the lean rtl-design result.json from the on-disk workdir. The caller supplies
     only what no on-disk state can express: `fail_reason` for an early exit, and `fix_owner` for
     the rule that must act on a failure. Returns 0 (result.json written, pass or fail); a raise
     → exit 2 (BLOCKED)."""
-    workdir, manifest = Path(workdir), Path(manifest)
+    workdir = Path(workdir)
 
     if fail_reason:
         # An early exit outside the derivable set: a child could not deliver, or a sidecar is
@@ -95,7 +143,7 @@ def build_result(workdir, manifest, fail_reason=None, fix_owner=None) -> int:
         )
         return 0
 
-    artifacts = exit_artifacts(manifest, workdir) + _reviews(workdir)
+    artifacts = exit_artifacts(workdir) + _reviews(workdir)
     _write_result(
         workdir,
         _envelope(status="pass", stage_specific={}, artifacts=artifacts),
@@ -103,14 +151,12 @@ def build_result(workdir, manifest, fail_reason=None, fix_owner=None) -> int:
     return 0
 
 
-def finalize(workdir, manifest, fail_reason=None, fix_owner=None) -> int:
+def finalize(workdir, fail_reason=None, fix_owner=None) -> int:
     """Build the lean rtl-design result.json from the on-disk workdir.
     exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (any internal
     raise) — never conflated with status=fail. (Owns the policy the deleted main() had.)"""
     try:
-        return build_result(
-            workdir, manifest, fail_reason=fail_reason, fix_owner=fix_owner
-        )
+        return build_result(workdir, fail_reason=fail_reason, fix_owner=fix_owner)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[rtl finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2
