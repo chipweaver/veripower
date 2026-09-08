@@ -16,7 +16,9 @@ ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
 sys.path.insert(0, str(ROOT / "skills/specification/scripts"))
 
-_CLOCKS = [{"name": "clk", "period_ns": 10.0, "relationship": "primary"}]
+_CLOCKS = [
+    {"name": "clk", "io_delay_ns": 3.0, "period_ns": 10.0, "relationship": "primary"}
+]
 _ROWS = [
     {"id": "R-00", "verbatim": "y follows the reference model", "judge": "simulation"},
     {"id": "R-01", "verbatim": "ports are Verilog-2001", "judge": "rtl-design"},

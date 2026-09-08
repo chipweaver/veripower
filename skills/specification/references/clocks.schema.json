@@ -10,6 +10,7 @@
     "required": [
       "name",
       "period_ns",
+      "io_delay_ns",
       "relationship"
     ],
     "additionalProperties": false,
@@ -23,6 +24,11 @@
         "description": "Period in ns. Reaches the TB scaffold's primary_clock.period_ns, where it is halved to build the clock generator.",
         "type": "number",
         "exclusiveMinimum": 0
+      },
+      "io_delay_ns": {
+        "description": "The arrival budget for every non-clock port in this domain, in ns: how much of the period is spent outside this module before an input is stable, and is left for whoever consumes an output. It reaches synthesis and timing-analysis as set_input_delay / set_output_delay, so it decides their verdicts. Authored, never derived from the period — an arrival budget is a contract with whatever sits outside the chip, so it comes from a requirements row or, when the engineer left it open, from the human at the ledger and partition gate.",
+        "type": "number",
+        "minimum": 0
       },
       "relationship": {
         "description": "async clocks drive set_clock_groups -asynchronous (SDC) and a distinct -domain (SGDC).",

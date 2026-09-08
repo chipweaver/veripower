@@ -55,6 +55,7 @@ def _spec_workdir(tmp_path, rows=None):
             [
                 {
                     "name": "i_clk",
+                    "io_delay_ns": 3.0,
                     "period_ns": 10.0,
                     "relationship": "primary",
                 }
@@ -296,7 +297,14 @@ def test_derivation_failure_on_pass_is_blocked_exit2(tmp_path):
     wd = _spec_workdir(tmp_path)
     (wd / "clocks.json").write_text(
         json.dumps(
-            [{"name": "i_clk", "period_ns": "banana", "relationship": "primary"}]
+            [
+                {
+                    "name": "i_clk",
+                    "io_delay_ns": 3.0,
+                    "period_ns": "banana",
+                    "relationship": "primary",
+                }
+            ]
         )
     )
     assert result.finalize(wd, status="pass") == 2

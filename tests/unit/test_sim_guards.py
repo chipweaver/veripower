@@ -53,7 +53,9 @@ TOP_IO = [
         "role": "data",
     },
 ]
-CLOCKS = [{"name": "clk", "period_ns": 10.0, "relationship": "primary"}]
+CLOCKS = [
+    {"name": "clk", "io_delay_ns": 3.0, "period_ns": 10.0, "relationship": "primary"}
+]
 
 
 def _boundary(tmp_path, top_io=None, clocks=None):
