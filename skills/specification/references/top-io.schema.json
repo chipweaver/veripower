@@ -28,7 +28,7 @@
         "minimum": 1
       },
       "clock_domain": {
-        "description": "A clocks.json name. Clock and reset ports carry no IO delay; each data port gets set_input/output_delay against this domain.",
+        "description": "A clocks.json name. Clock and async-reset ports carry no IO delay; every other port, a synchronous reset included, gets set_input/output_delay against this domain.",
         "type": "string",
         "minLength": 1
       },

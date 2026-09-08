@@ -12,9 +12,9 @@ kept it from analyzing at all, so the two are separate questions and a MET pair 
 is not an answer to the second.
 
 The boundary is measured on OUTPUTS only. check_timing's unconstrained-endpoint count
-looks like the more direct measure and is not usable as one: reset ports carry no input
-delay by construction (specification's derive-constraints gives IO delay to data ports
-alone), so every async-reset flop lands in that count on a correctly constrained design
+looks like the more direct measure and is not usable as one: async-reset ports carry no
+input delay by construction (specification's derive-constraints exempts clocks and async
+resets alone), so every async-reset flop lands in that count on a correctly constrained design
 — measured across eight synthesized designs it read 0 to 4242 with a complete SDC, and
 on two of them it was IDENTICAL with an incomplete one. Output bits carry no such
 exemption: every output port is a data port, so the count PT should have timed is

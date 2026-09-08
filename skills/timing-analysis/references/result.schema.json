@@ -74,7 +74,7 @@
                   }
                 },
                 "coverage": {
-                  "description": "How much of the design boundary the run timed. output_bits is every output port bit; output_bits_timed is how many PrimeTime performed an out_setup check for. Equal on a pass. Outputs only: a reset port carries no input delay by construction, so the input side has no determined expectation this stage could compare against.",
+                  "description": "How much of the design boundary the run timed. output_bits is every output port bit; output_bits_timed is how many PrimeTime performed an out_setup check for. Equal on a pass. Outputs only: an async-reset port carries no input delay by construction, so the input side has no determined expectation this stage could compare against.",
                   "type": "object",
                   "required": [
                     "output_bits",
