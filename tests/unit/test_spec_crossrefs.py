@@ -312,3 +312,20 @@ def test_verb_raises_on_a_malformed_sidecar(tmp_path):
     proc = _run(wd)
     assert proc.returncode != 0
     assert "requirements.json" in (proc.stdout + proc.stderr)
+
+
+def test_a_missing_child_doc_is_blocked_not_a_violation(tmp_path):
+    """Exit 1 means the join found something; a precondition failure must not borrow it.
+
+    A manifest naming a child whose doc has not been written yet used to raise
+    FileNotFoundError out of run(), leaving a traceback on stderr, no JSON on stdout, and
+    exit 1 — which the skill documents as "a non-clean verdict", so the caller would route
+    rework to a child over a crash. 2 = BLOCKED is the split finalize already documents.
+    """
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"module": "m", "children": [{"name": "c", "doc": "children/c.md"}]})
+    )
+    r = _run(tmp_path)
+    assert r.returncode == 2, r.stderr
+    assert "BLOCKED" in r.stderr
+    assert r.stdout == ""

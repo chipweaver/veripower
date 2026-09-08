@@ -93,7 +93,7 @@ Dispatch one sub-Task per child, each writing `children/<child>.md` per `referen
 python3 <skill>/scripts/spec/__main__.py check-crossrefs --workdir {workdir}
 ```
 
-The verdict is structured on stdout and a non-clean one exits non-zero. **Fix nothing yourself.** Each disagreement names both sides, and which of the two is wrong is a judgment: the child may have mistyped a port, or the boundary may be missing it. Decide that, then route the rework to whoever authored that file, decompose for a sidecar and the affected child for a `<child>.md` or its check hints.
+The verdict is structured on stdout: exit 0 clean, exit 1 the join found something. A non-zero exit with no verdict on stdout is exit 2 — a program exception, BLOCKED with the reason on stderr, most often a child doc the manifest names and nobody has written yet. **Fix nothing yourself.** Each disagreement names both sides, and which of the two is wrong is a judgment: the child may have mistyped a port, or the boundary may be missing it. Decide that, then route the rework to whoever authored that file, decompose for a sidecar and the affected child for a `<child>.md` or its check hints.
 
 On a clean gate, immediately derive the constraints:
 

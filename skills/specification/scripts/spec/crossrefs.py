@@ -23,6 +23,7 @@ Exit: 0 if `status == "pass"`, 1 if `status == "fail"`.
 
 import json
 import re
+import sys
 from pathlib import Path
 
 import yaml
@@ -161,6 +162,14 @@ def verdict(workdir) -> dict:
 
 
 def run(workdir: str) -> int:
-    v = verdict(workdir)
+    # A missing child doc is a precondition failure, not a violation: exit 1 already means
+    # "the join found something", and a traceback on stderr with no JSON on stdout reads to
+    # the caller as a non-clean verdict it would route to a child. Exit 2 = BLOCKED, the same
+    # split finalize documents.
+    try:
+        v = verdict(workdir)
+    except (OSError, KeyError, ValueError) as exc:
+        print(f"[spec check-crossrefs] BLOCKED: {exc}", file=sys.stderr)
+        return 2
     print(json.dumps(v, ensure_ascii=False, indent=2))
     return 0 if v["status"] == "pass" else 1
