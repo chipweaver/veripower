@@ -661,3 +661,60 @@ def test_container_without_the_entry_document_is_unavailable(tmp_path, monkeypat
     assert facts.rule_available("m", [], "specification") is True
     (facts.module_root("m") / "intent" / "brainstorm.md").unlink()
     assert facts.rule_available("m", [], "specification") is False
+
+
+def test_intent_tree_is_unwritable_while_a_run_is_in_flight(tmp_path, monkeypatch):
+    """The frozen-for-the-run property is enforced by the kernel, not asserted in prose.
+
+    A stage's contract points judges into the intent tree, and a tool that reads a file there
+    can write beside it — importing a delivered model.py leaves a __pycache__. Hashing that
+    moved the merkle every proof records, so the module went stale on a tree whose delivered
+    files were byte-identical. The write is prevented instead: writability is reconciled
+    against `in_flight` after every append, so it needs no stored state and a killed run
+    self-heals on the next kernel call.
+    """
+    monkeypatch.chdir(tmp_path)
+    ref = _write("m", "intent/reference/model.py", "X = 1\n")
+    v = _fp("m", "intent")
+
+    facts.append_event(
+        "m",
+        {
+            "type": "dispatch",
+            "rule": "specification",
+            "run": 1,
+            "workdir": "w",
+            "inputs": {"intent": v},
+            "params": {},
+        },
+        TS,
+    )
+    # In flight: the delivered file and the directory holding it both refuse a write, so no
+    # tool can drop a cache beside what it read.
+    for p in (ref, ref.parent, facts.module_root("m") / "intent"):
+        assert not p.stat().st_mode & 0o200, p
+    assert _fp("m", "intent") == v
+
+    facts.append_event(
+        "m",
+        {
+            "type": "outcome",
+            "rule": "specification",
+            "run": 1,
+            "verdict": "pass",
+            "outputs": {},
+            "proofs": [
+                {
+                    "name": "specification",
+                    "verdict": "pass",
+                    "inputs": {"intent": v},
+                    "oracle": {"ref": "spec-review", "grade": "proposed"},
+                }
+            ],
+            "tool_versions": {},
+        },
+        TS,
+    )
+    # Reaped: the window was exactly the run.
+    for p in (ref, ref.parent):
+        assert p.stat().st_mode & 0o200, p

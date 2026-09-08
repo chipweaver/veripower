@@ -202,6 +202,37 @@ def _envelope_registry() -> Registry:
     return Registry().with_resource(_ENVELOPE_URI, envelope)
 
 
+def _freeze_inputs(module: str, events: list[dict]) -> None:
+    """A pipeline input is frozen while a run is in flight — enforced, not asserted.
+
+    A stage's contract points judges INTO the intent tree ("a bit-exact reference algorithm
+    the engineer delivered is what your refmodel ports"), and a tool that reads a file there
+    can write beside it: importing a delivered model.py leaves a __pycache__, which moved the
+    merkle every proof in this module records and left all of them stale on a tree whose
+    delivered files were byte-identical — `decide` then re-dispatched the stage forever and
+    `signoff_gate` never cleared. A tool's droppings are not distinguishable from delivered
+    content by inspection, nor from a deliberate edit by timestamp without a snapshot to
+    compare against, so the write is prevented rather than filtered afterwards.
+
+    Derived, never stored: writability is reconciled against `in_flight` after every append,
+    so a run killed between two transitions self-heals on the next kernel call. Only the owner
+    write bit is touched — the writers are the pipeline's own tools, running as the caller —
+    which leaves a shared checkout's group and other bits exactly as delivered.
+    """
+    frozen = bool(in_flight(events))
+    for key in rules.PIPELINE_INPUTS:
+        root = module_root(module) / key
+        if not root.exists():
+            continue
+        for q in (root, *root.rglob("*")):
+            if (
+                q.is_symlink()
+            ):  # chmod follows a link; its target may be outside the tree
+                continue
+            mode = q.stat().st_mode
+            q.chmod(mode & ~0o200 if frozen else mode | 0o200)
+
+
 def append_event(module: str, event: dict, ts: str) -> None:
     etype = event.get("type")
     record = {"ts": ts, **event}  # ts first
@@ -215,6 +246,7 @@ def append_event(module: str, event: dict, ts: str) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a") as fh:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    _freeze_inputs(module, read_events(module))
 
 
 def _stage_result_schema_path(rule_name: str) -> Path:
