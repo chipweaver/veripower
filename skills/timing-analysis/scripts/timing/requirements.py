@@ -1,7 +1,7 @@
 """The rows of requirements.json this stage establishes, and the envelope entry each one gets.
 
-No row this stage judges can carry a target — `check-ledger` refuses a dim timing-analysis does not
-compare — so every one of them is judged by the agent that ran the tool and declared through
+No row this stage judges can carry a target: it measures no dimension, so `mine` refuses one
+that does. Every row it judges is therefore judged by the agent that ran the tool and declared through
 `finalize --requirements`. `merge` refuses an envelope that does not account for every row this
 stage judges, so a row the agent never read cannot pass as silence.
 """

@@ -62,7 +62,7 @@ Dispatch one Level-1 sub-Task per `references/ledger-task-contract.md`. In its o
 python3 <skill>/scripts/spec/__main__.py check-ledger --workdir {workdir}
 ```
 
-A non-zero exit names every shape or content defect on stderr (an unknown judge, a target no judge compares, a duplicate id); re-dispatch the transcriber. On success stdout is the gate view: the count per judge, and verbatim the rows judged `unassignable`, `outside` and `human`, and the rows carrying a `target`. Keep it; the human gate below hands it over.
+A non-zero exit names every shape or content defect on stderr (an unknown judge, a duplicate id, an `unassignable` row with no reason); re-dispatch the transcriber. On success stdout is the gate view: the count per judge, and verbatim the rows judged `unassignable`, `outside` and `human`, and the rows carrying a `target`. Keep it; the human gate below hands it over.
 
 ### Decompose
 
