@@ -49,7 +49,7 @@ RULES: dict[str, Rule] = {
         oracle=("spec-review", "proposed"),
         oracle_selector="spec-review",
         carry=("**",),
-        no_carry=("spec-review/*",),
+        no_carry=("spec-review/findings/*",),
     ),
     "simulation-plan": Rule(
         name="simulation-plan",
@@ -73,7 +73,7 @@ RULES: dict[str, Rule] = {
         oracle=("plan-review", "proposed"),
         oracle_selector="plan-review",
         carry=("**",),
-        no_carry=("plan-review/*",),
+        no_carry=("plan-review/findings.md",),
     ),
     "rtl-design": Rule(
         name="rtl-design",

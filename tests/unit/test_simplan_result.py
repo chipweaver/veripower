@@ -126,7 +126,7 @@ def _finalize_workdir(tmp_path, *, scaffold=None, review=True):
     )
     if review:
         (wd / "plan-review").mkdir()
-        (wd / "plan-review" / "review.md").write_text("# Review\n\nNo blockers.\n")
+        (wd / "plan-review" / "findings.md").write_text("# Review\n\nNo blockers.\n")
     return wd
 
 

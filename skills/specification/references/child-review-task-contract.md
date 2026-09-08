@@ -39,7 +39,7 @@ deterministic checks the scripts own (sidecar shapes, top-partition purity, cros
 resolution, every top output claimed). If you happen to see one of those, say so — but
 as an observation, not as your finding.
 
-### Output: `{workdir}/spec-review/<child>.md`
+### Output: `{workdir}/spec-review/findings/<child>.md`
 
 Write the file yourself. Free prose, one section per finding, in whatever order serves the
 reader. Each finding states three things:

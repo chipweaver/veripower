@@ -40,7 +40,8 @@ Everything below is produced under `{workdir}`.
 | `tb-scaffold.json` | What simulation builds the TB from: `agents` / `tests` / `testpoints[]` (each naming the checks it covers and the `seqs` that drive it) / `rm` / `scoreboard` / `skipped_checks[]` |
 | `sequences.json` | The sequence roster — the one part both simulation and power-analysis read |
 | `power-scenarios.json` | The power scenarios, read by power-analysis alone. Its own file so a scenario-only edit does not invalidate simulation's proof |
-| `plan-review/review.md`, `plan-review/decisions.md` | The reviewer's findings, and the user's resolution of anything it called blocking |
+| `plan-review/findings.md` | The reviewer's findings. This round's record: it does not carry into the next round |
+| `plan-review/decisions.md` | The user's resolution of anything it called blocking. It accumulates across rounds — carried forward and appended to, never rewritten |
 | `result.json` | The status envelope |
 
 Each sidecar's shape, and per field whether it is yours to author or script-injected, is
@@ -113,12 +114,12 @@ a failure when the defect is not yours to fix.
 
 Dispatch ONE Level-1 reviewer per
 [`references/plan-review-task-contract.md`](references/plan-review-task-contract.md), passing paths.
-It writes its own `{workdir}/plan-review/review.md`. After dispatching, send a brief status and end
+It writes its own `{workdir}/plan-review/findings.md`. After dispatching, send a brief status and end
 the turn; reap before proceeding. A `STATUS: BLOCKED` reviewer is a crash, not a verdict: the review
 did not happen, so finalize a failure with that as the reason.
 
 **Gate, human.** Path-handoff: present the `verification-plan.md` path and the
-`plan-review/review.md` path, echoing no body.
+`plan-review/findings.md` path, echoing no body.
 
 You do not summarize the findings, rank them, or decide which ones matter: a review relayed through
 your summary is your judgment wearing the reviewer's name.

@@ -17,7 +17,7 @@ actually verify the behavior its `intent` promises.
 spec; the structural coverage matrix, which `simplan check-scaffold` already owns; lint, timing,
 power. If you happen to see one of those, say so as an observation, not as a finding.
 
-## Output: `{workdir}/plan-review/review.md`
+## Output: `{workdir}/plan-review/findings.md`
 
 Write the file yourself. Free prose, one section per finding, in whatever order serves the reader.
 Each finding states **what you compared against** — a named `design.md` §ref, a `requirements.json`

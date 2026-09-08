@@ -160,11 +160,12 @@ def test_simulation_does_not_bind_constraint_annotations():
 def test_carry_no_carry_fields_and_values():
     import rules
 
-    # authors carry everything, drop their review record
+    # authors carry everything, drop this round's review record — and only that: the
+    # human rulings sit beside it under the same oracle directory and must carry.
     assert rules.RULES["specification"].carry == ("**",)
-    assert rules.RULES["specification"].no_carry == ("spec-review/*",)
+    assert rules.RULES["specification"].no_carry == ("spec-review/findings/*",)
     assert rules.RULES["simulation-plan"].carry == ("**",)
-    assert rules.RULES["simulation-plan"].no_carry == ("plan-review/*",)
+    assert rules.RULES["simulation-plan"].no_carry == ("plan-review/findings.md",)
     assert rules.RULES["rtl-design"].carry == ("**",)
     assert rules.RULES["rtl-design"].no_carry == ("semantic-review/*",)
     assert rules.RULES["simulation"].carry == ("**",)

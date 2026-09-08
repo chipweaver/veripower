@@ -160,7 +160,7 @@ intent/brainstorm.md
 | `<child>.md × N` | 每个子模块的子设计 | **必看** |
 | `requirements.json` | 你的意图文档里每一条要求，一行一条，用你的原话，写明由哪个阶段判。门上逐字给你看四组：没人能派的（`unassignable`）、流水线之外判的、留给你判的、工具将要比数的数值界限 | **这四组必看** |
 | `manifest.json` | 子模块划分：`module` + `children[]` | **必看**，在分区门 |
-| `spec-review/requirements.md` / `<child>.md` / `decisions.md` | 账本对你文档的核对、各子设计对账本的核对、以及你的裁决 | **必看** |
+| `spec-review/findings/requirements.md` / `findings/<child>.md` / `decisions.md` | 账本对你文档的核对、各子设计对账本的核对、以及你的裁决 | **必看** |
 | `check-hints/<child>.json` | 仿真将怎样观测它判的每一条要求 | 选看 |
 | `clocks.json` / `top-io.json` / `interconnects.json` | 边界信息：时钟、顶层端口、切开的连线 | `design.md` §1.4 是它们的人读版本 |
 | `constraints/<TOP>.sdc` / `.sgdc` | 由 clocks + top-io 生成的约束对 | 生成物，不是决策 |
@@ -183,12 +183,12 @@ intent/brainstorm.md
 | 文件 | 是什么 | 要你看吗 |
 |---|---|---|
 | `verification-plan.md` | §3 测试点矩阵 + §4 功耗场景，你在计划门看的就是这份 | **必看** |
-| `plan-review/review.md` / `decisions.md` | 计划评审的发现，以及你的裁决 | **必看** |
+| `plan-review/findings.md` / `decisions.md` | 计划评审的发现，以及你的裁决 | **必看** |
 | `tb-scaffold.json` | TB 骨架：testpoint 与 agent 的定义 | 选看，plan §3 是它的人读版本 |
 | `power-scenarios.json` | 功耗场景，由 power-analysis 消费 | 选看，plan §4 是它的人读版本 |
 | `sequences.json` | 激励序列定义 | 不用看 |
 
-**你的动作：计划门。** 看 `verification-plan.md` 的测试点矩阵和 `plan-review/review.md` 的发现，三选一：
+**你的动作：计划门。** 看 `verification-plan.md` 的测试点矩阵和 `plan-review/findings.md` 的发现，三选一：
 
 - **approve**：批准整份计划（测试点矩阵、TB 骨架）。如果你认下了评审标为 blocking 的发现，你的原话会记进 `plan-review/decisions.md`。
 - **request changes**：你提修改意见，它增量改后重新回到这道门。
@@ -347,7 +347,7 @@ intent/brainstorm.md
 
 | 阶段 | 判它过没过的是什么 |
 |---|---|
-| specification | `spec-review/*.md`，LLM 写的规格评审 |
+| specification | `spec-review/findings/*.md`，LLM 写的规格评审 |
 | simulation-plan | `plan-review/*.md`，LLM 写的计划评审 |
 | rtl-design | `semantic-review/*.md`，LLM 写的 RTL 评审 |
 | simulation | `tb/uvm/refmodel/*`，LLM 写的参考模型，判每个用例对错的那把尺子 |

@@ -75,7 +75,7 @@ def build_result(
     if status == "fail":
         if (
             fail_reason is None
-            and not (workdir / "plan-review" / "review.md").is_file()
+            and not (workdir / "plan-review" / "findings.md").is_file()
         ):
             # A user reject can only follow the Step-3 review and the Step-4 loop, and the
             # reviewer — not this caller — writes that file. A bare --status fail on a
@@ -83,7 +83,7 @@ def build_result(
             # caller to say what failed instead.
             raise ValueError(
                 "--status fail without --fail-reason is the user reject and requires "
-                "plan-review/review.md on disk; for an early fail pass --fail-reason"
+                "plan-review/findings.md on disk; for an early fail pass --fail-reason"
             )
         ss = {"fail_reason": fail_reason or _REJECT_REASON}
         if revision:

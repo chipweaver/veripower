@@ -165,7 +165,7 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 | `<child>.md × N` | Sub-design for each child module | **Must read** |
 | `requirements.json` | Everything your intent document requires, one row each in your own words, with the stage that will judge it. The gate shows you verbatim the rows nobody could place (`unassignable`), the rows judged outside this pipeline, the rows left to you, and the numeric bounds the tools will compare | **Must read those four groups** |
 | `manifest.json` | Partition: `module` + `children[]` | **Must read**, at the ledger and partition gate |
-| `spec-review/requirements.md` / `<child>.md` / `decisions.md` | The ledger checked against your document, each child design checked against the ledger, and your rulings | **Must read** |
+| `spec-review/findings/requirements.md` / `findings/<child>.md` / `decisions.md` | The ledger checked against your document, each child design checked against the ledger, and your rulings | **Must read** |
 | `check-hints/<child>.json` | How simulation will observe each requirement row it judges | Optional |
 | `clocks.json` / `top-io.json` / `interconnects.json` | Boundary info: clocks, top-level ports, cut wires | `design.md` §1.4 is the human-readable version |
 | `constraints/<TOP>.sdc` / `.sgdc` | Constraint pair generated from clocks + top-io | Generated, not a decision |
@@ -188,12 +188,12 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 | File | What it is | Read it? |
 |---|---|---|
 | `verification-plan.md` | §3 testpoint matrix + §4 power scenarios. This is what you review at the plan gate | **Must read** |
-| `plan-review/review.md` / `decisions.md` | Review findings and your rulings | **Must read** |
+| `plan-review/findings.md` / `decisions.md` | Review findings and your rulings | **Must read** |
 | `tb-scaffold.json` | TB scaffold: testpoint and agent definitions | Optional, plan §3 is the human-readable version |
 | `power-scenarios.json` | Power scenarios, consumed by power-analysis | Optional, plan §4 is the human-readable version |
 | `sequences.json` | Stimulus sequence definitions | No need |
 
-**Your action: plan gate.** Read the testpoint matrix in `verification-plan.md` and the findings in `plan-review/review.md`. Three choices:
+**Your action: plan gate.** Read the testpoint matrix in `verification-plan.md` and the findings in `plan-review/findings.md`. Three choices:
 
 - **approve**: accept the plan (testpoint matrix, TB scaffold). If you accept findings the review flagged as blocking, your exact words get recorded in `plan-review/decisions.md`.
 - **request changes**: give feedback, it revises incrementally and comes back to this gate.
@@ -352,7 +352,7 @@ More error messages in [Appendix B](#appendix-b-error-reference).
 
 | Stage | What judges pass/fail |
 |---|---|
-| specification | `spec-review/*.md`, LLM-authored spec review |
+| specification | `spec-review/findings/*.md`, LLM-authored spec review |
 | simulation-plan | `plan-review/*.md`, LLM-authored plan review |
 | rtl-design | `semantic-review/*.md`, LLM-authored RTL review |
 | simulation | `tb/uvm/refmodel/*`, LLM-authored reference model, the ruler for every test case |
