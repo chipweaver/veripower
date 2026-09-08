@@ -52,11 +52,12 @@
         "minLength": 1
       },
       "encoding": {
-        "description": "A wire carrying an encoded control/status value pins its bit/field-to-symbol meaning here, same format and consumer-obligation rule as top-io.json's encoding; producer and consumer read this one entry, so per-wire agreement is structural. Agreement ACROSS buses is not pinned here — that joint contract goes in the design.md §1.4.2.1 companion. A raw data wire has none.",
+        "description": "A wire carrying an encoded control/status value pins its bit/field-to-symbol meaning here, same format and consumer-obligation rule as top-io.json's encoding; producer and consumer read this one entry, so per-wire agreement is structural. Agreement ACROSS buses is not pinned here — that joint contract goes in the design.md §1.3.2.1 companion. A raw data wire has none.",
         "type": "string",
         "minLength": 1
       },
       "timing_constraint": {
+        "description": "The obligation this wire is held to, in the phase names design.md's §1.3.2.1 companion declares — when the value is valid, what it may not overlap, what must be true when it is sampled. Not a cycle index: whether the producer registers its output decides that, and a cycle written here makes one child's implementation choice binding on the others.",
         "type": "string",
         "minLength": 1
       }

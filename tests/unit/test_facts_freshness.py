@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "framework" / "scripts"))
 import facts  # noqa: E402
@@ -14,7 +16,17 @@ def _fp(module, rel):
 
 
 def _write(module, rel, text):
-    p = facts.module_root(module) / rel
+    """Write a file under the module root, taking the write bit back first: the kernel leaves
+    the intent tree unwritable, and revising it is exactly `chmod u+w` then edit."""
+    root = facts.module_root(module)
+    p = root / rel
+    intent = root / "intent"
+    # The kernel leaves the intent tree unwritable; revising it is `chmod -R u+w intent`
+    # then edit, which is what a test that changes the engineer's document is doing.
+    if intent.exists() and str(p).startswith(str(intent)):
+        for q in (intent, *intent.rglob("*")):
+            if not q.is_symlink():
+                q.chmod(q.stat().st_mode | 0o200)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text)
     return p
@@ -663,58 +675,31 @@ def test_container_without_the_entry_document_is_unavailable(tmp_path, monkeypat
     assert facts.rule_available("m", [], "specification") is False
 
 
-def test_intent_tree_is_unwritable_while_a_run_is_in_flight(tmp_path, monkeypatch):
-    """The frozen-for-the-run property is enforced by the kernel, not asserted in prose.
+def test_intent_tree_is_unwritable(tmp_path, monkeypatch):
+    """The unwritable-input property is enforced by the kernel, not asserted in prose.
 
     A stage's contract points judges into the intent tree, and a tool that reads a file there
     can write beside it — importing a delivered model.py leaves a __pycache__. Hashing that
     moved the merkle every proof records, so the module went stale on a tree whose delivered
-    files were byte-identical. The write is prevented instead: writability is reconciled
-    against `in_flight` after every append, so it needs no stored state and a killed run
-    self-heals on the next kernel call.
+    files were byte-identical. The write is prevented instead, and unconditionally: gating it
+    on a run being in flight left the same hole open between rounds, where a reader poking at
+    a reaped module invalidated every proof the same way.
     """
     monkeypatch.chdir(tmp_path)
     ref = _write("m", "intent/reference/model.py", "X = 1\n")
     v = _fp("m", "intent")
 
-    facts.append_event(
-        "m",
-        {
-            "type": "dispatch",
-            "rule": "specification",
-            "run": 1,
-            "workdir": "w",
-            "inputs": {"intent": v},
-            "params": {},
-        },
-        TS,
-    )
-    # In flight: the delivered file and the directory holding it both refuse a write, so no
-    # tool can drop a cache beside what it read.
+    facts.freeze_inputs("m")
+
+    # The delivered file and every directory above it refuse a write, so no tool can drop a
+    # cache beside what it read.
     for p in (ref, ref.parent, facts.module_root("m") / "intent"):
         assert not p.stat().st_mode & 0o200, p
     assert _fp("m", "intent") == v
+    with pytest.raises(PermissionError):
+        (ref.parent / "__pycache__").mkdir()
 
-    facts.append_event(
-        "m",
-        {
-            "type": "outcome",
-            "rule": "specification",
-            "run": 1,
-            "verdict": "pass",
-            "outputs": {},
-            "proofs": [
-                {
-                    "name": "specification",
-                    "verdict": "pass",
-                    "inputs": {"intent": v},
-                    "oracle": {"ref": "spec-review", "grade": "proposed"},
-                }
-            ],
-            "tool_versions": {},
-        },
-        TS,
-    )
-    # Reaped: the window was exactly the run.
-    for p in (ref, ref.parent):
-        assert p.stat().st_mode & 0o200, p
+    # Idempotent, and it does not touch group or other: a shared checkout keeps what it had.
+    before = ref.stat().st_mode
+    facts.freeze_inputs("m")
+    assert ref.stat().st_mode == before

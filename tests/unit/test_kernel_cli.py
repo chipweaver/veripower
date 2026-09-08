@@ -44,7 +44,17 @@ def _run_json(tmp_path, *args):
 
 
 def _write_file(module, rel, content):
-    p = facts.module_root(module) / rel
+    """The kernel leaves the intent tree unwritable, and revising it is `chmod u+w` then edit,
+    so take the write bit back on every existing ancestor first."""
+    root = facts.module_root(module)
+    p = root / rel
+    intent = root / "intent"
+    # The kernel leaves the intent tree unwritable; revising it is `chmod -R u+w intent`
+    # then edit, which is what a test that changes the engineer's document is doing.
+    if intent.exists() and str(p).startswith(str(intent)):
+        for q in (intent, *intent.rglob("*")):
+            if not q.is_symlink():
+                q.chmod(q.stat().st_mode | 0o200)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
     return p
@@ -1258,3 +1268,20 @@ def test_bare_import_single_module_identity():
     assert kernel.rules is schedule.rules is facts.rules
     assert kernel.schedule is schedule
     assert kernel.facts is schedule.facts is facts
+
+
+def test_a_read_only_verb_freezes_the_intent_tree(tmp_path, monkeypatch):
+    """The enforcement hangs off the CLI, not off an event append: an operator poking at a
+    reaped module reaches for `status`, which writes nothing, and that is exactly the window
+    in which a reader's __pycache__ invalidated every proof."""
+    monkeypatch.chdir(tmp_path)
+    module = "frozen"
+    _write_file(module, "intent/reference/model.py", "X = 1\n")
+    ref = facts.module_root(module) / "intent" / "reference" / "model.py"
+    assert ref.stat().st_mode & 0o200  # the test wrote it, so it starts writable
+
+    r = _run_json(tmp_path, "status", "--module", module)
+    assert r["stages"]["specification"] == "missing"
+
+    for p in (ref, ref.parent, facts.module_root(module) / "intent"):
+        assert not p.stat().st_mode & 0o200, p

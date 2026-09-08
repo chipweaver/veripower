@@ -83,9 +83,15 @@ cut edge; an N=1 module writes an empty array). Here: how the children divide th
 >   a handshake/arbitration module states the co-assertion / mutual-exclusion rule in prose. A wire's
 >   `timing_constraint` and a control bus's `encoding` in `interconnects.json` then reference the
 >   names declared in the companion.
+> - **State the obligation, never the cycle.** "The operands are captured in the cycle the strobe
+>   is sampled" is an obligation every child can keep; "the strobe is asserted in cycle 0" is a
+>   schedule, and whether a child's outputs are registered decides it. A cycle count the engineer
+>   stated is a requirement row, and the row is its home. A companion that names cycles turns one
+>   child's implementation choice into an obligation on its siblings, and the sibling that chose
+>   otherwise is then in breach of a contract nothing required.
 > - This pins the *statement* of the contract and the *resolvability* of references to it; the
->   *correctness* of the co-assertions / relative offsets / mutual-exclusion is design judgment
->   (advisory soundness + downstream RTL/sim), not pinned here.
+>   *correctness* of the co-assertions / mutual-exclusion is design judgment (advisory soundness +
+>   downstream RTL/sim), not pinned here.
 
 ##### 1.3.2.1 Inter-module Behavior Contract
 
@@ -94,13 +100,14 @@ Behavior Contract rule above); omit entirely otherwise.
 
 Worked example A — a **phase-sequenced datapath** states an ordered operating-phase timeline;
 control buses project onto it (each `encoding` symbol names its canonical phase(s)) and per-wire
-`timing_constraint` windows reference these phase names:
+`timing_constraint` windows reference these phase names. The order is the contract; how long each
+phase takes is not:
 
-| # | Phase | Cycles | Notes (projection / co-assertion / boundary, as applicable) |
-|---|-------|--------|-------------------------------------------------------------|
-| 1 | LOAD    | 12 (handshake) | ctrl_phase=LOAD |
-| 2 | PRELOAD | 2N−1           | ctrl_fabric=PRELOAD |
-| … | …       | …              | … |
+| # | Phase | Entered when | Notes (projection / co-assertion / boundary, as applicable) |
+|---|-------|--------------|-------------------------------------------------------------|
+| 1 | LOAD    | the last input beat is accepted | ctrl_phase=LOAD |
+| 2 | PRELOAD | LOAD's operand set is complete | ctrl_fabric=PRELOAD |
+| … | …       | …                               | … |
 
 Worked example B — a **handshake / arbitration** module states the joint contract in prose (no
 phase table). E.g. a TX/RX start mux:

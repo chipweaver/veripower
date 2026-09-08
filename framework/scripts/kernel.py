@@ -724,6 +724,9 @@ def main():
         "status": lambda: cmd_status(args.module),
         "consequences": lambda: cmd_consequences(args.module, args.paths),
     }
+    facts.freeze_inputs(
+        args.module
+    )  # every verb, before it reads: see facts.freeze_inputs
     print(json.dumps(handlers[args.verb](), indent=2, ensure_ascii=False))
 
 

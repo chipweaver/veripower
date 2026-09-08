@@ -202,8 +202,8 @@ def _envelope_registry() -> Registry:
     return Registry().with_resource(_ENVELOPE_URI, envelope)
 
 
-def _freeze_inputs(module: str, events: list[dict]) -> None:
-    """A pipeline input is frozen while a run is in flight — enforced, not asserted.
+def freeze_inputs(module: str) -> None:
+    """A pipeline input is unwritable — enforced, not asserted.
 
     A stage's contract points judges INTO the intent tree ("a bit-exact reference algorithm
     the engineer delivered is what your refmodel ports"), and a tool that reads a file there
@@ -214,12 +214,17 @@ def _freeze_inputs(module: str, events: list[dict]) -> None:
     content by inspection, nor from a deliberate edit by timestamp without a snapshot to
     compare against, so the write is prevented rather than filtered afterwards.
 
-    Derived, never stored: writability is reconciled against `in_flight` after every append,
-    so a run killed between two transitions self-heals on the next kernel call. Only the owner
-    write bit is touched — the writers are the pipeline's own tools, running as the caller —
-    which leaves a shared checkout's group and other bits exactly as delivered.
+    Unconditional, and called once per kernel invocation rather than on an event append:
+    nothing in the pipeline produces this tree, a read that leaves droppings is no more
+    legitimate between rounds than during one, and hanging it off the append left every
+    read-only verb — the ones an operator reaches for while poking at a reaped module — not
+    enforcing it at all. The engineer revising the document makes it writable, edits, and the
+    next `decide` sees the new merkle; re-freezing costs them one chmod and closes the only
+    path by which anything else can write there.
+
+    Only the owner write bit is touched — the writers are the pipeline's own tools, running as
+    the caller — which leaves a shared checkout's group and other bits exactly as delivered.
     """
-    frozen = bool(in_flight(events))
     for key in rules.PIPELINE_INPUTS:
         root = module_root(module) / key
         if not root.exists():
@@ -229,8 +234,7 @@ def _freeze_inputs(module: str, events: list[dict]) -> None:
                 q.is_symlink()
             ):  # chmod follows a link; its target may be outside the tree
                 continue
-            mode = q.stat().st_mode
-            q.chmod(mode & ~0o200 if frozen else mode | 0o200)
+            q.chmod(q.stat().st_mode & ~0o200)
 
 
 def append_event(module: str, event: dict, ts: str) -> None:
@@ -246,7 +250,6 @@ def append_event(module: str, event: dict, ts: str) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a") as fh:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-    _freeze_inputs(module, read_events(module))
 
 
 def _stage_result_schema_path(rule_name: str) -> Path:
