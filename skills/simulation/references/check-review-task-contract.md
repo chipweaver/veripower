@@ -19,7 +19,7 @@ readable and the rest is yours to write.
   the drive path; the rendered `tb_top` carries the actual `.{{RST}}(...)`/`.{{CLK}}(...)`
   wiring.
 - Immutable plan, all of it in `<scaffold>/tb-scaffold.json`'s `testpoints[]`:
-  - `covers[]` names the check hints in `<check_hints>/<child>.json`; each hint's
+  - `covers[]` names the check hints in `<check_hints>/check-hints.json`; each hint's
     `reference_rule` is the check semantics, and the `<requirements>/requirements.json` rows it
     names are what the check establishes (see `authoring-checks.md`).
   - `intent` states what the testpoint drives and why. It is a required field of

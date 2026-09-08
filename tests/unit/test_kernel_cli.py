@@ -133,7 +133,7 @@ _STAGE_FILES = {
         "manifest.json": "{}",
         "requirements.json": "[]",
         "clocks.json": "[]",
-        "check-hints/c.json": "[]",
+        "check-hints.json": "[]",
         "top-io.json": "[]",
         "interconnects.json": "[]",
         "constraints/top.sdc": "# sdc",

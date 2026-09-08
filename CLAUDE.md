@@ -27,7 +27,7 @@ Per-module work tree under the module directory `--module` names (conventionally
 - `Design/specification/requirements.json` — the requirements ledger: one row per proposition the intent document states, in the engineer's words, with `judge` naming who establishes it (a stage, `human`, `outside`, `none`) and, when the bound is in a unit a tool reports, a `target`. Every downstream rule binds it; scripts act on `id` / `judge` / `target`, readers on `verbatim`. Schema `skills/specification/references/requirements.schema.json`.
 - `Design/specification/manifest.json` — child registry SSoT (every module, N≥1; contains `module` and `children[]` with `name` / `doc` / `rtl_modules[]`).
 - `Design/specification/spec-review/` — `findings/` holds the module-level review of the ledger against the intent document (`requirements.md`) and the per-child reviews of each child design against the ledger; `decisions.md` holds the user's rulings at both gates. The two have different lifetimes: `findings/` is this round's record and does not carry forward, `decisions.md` accumulates across rounds. Prose: what it compared against, whether it blocks, where. Specification's proposed oracle — the kernel fingerprints it, no script reduces it to a verdict.
-- `Design/specification/children/` — the per-child sub-designs (frontmatter `ports` / `clocks` + §1–§5; §5 points into `check-hints/`, whose entries name the ledger rows each check establishes).
+- `Design/specification/children/` — the per-child sub-designs (frontmatter `ports` / `clocks` + §1–§5; §5 points at `check-hints.json`, whose entries name the ledger rows each check establishes).
 
 Result-envelope schemas: `framework/references/schemas/`.
 

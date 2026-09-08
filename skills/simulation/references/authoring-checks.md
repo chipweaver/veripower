@@ -1,6 +1,6 @@
 # Authoring checks from the check hints
 
-A testpoint's `covers[]` names check hints; each hint lives in `<check_hints>/<child>.json` and
+A testpoint's `covers[]` names check hints; each hint lives in `<check_hints>/check-hints.json` and
 names the `<requirements>/requirements.json` rows it establishes. Read the hint by `check_id` and
 the rows by `id`; the row's `verbatim` is what the check exists to establish, the hint's
 `observable` and `reference_rule` say how.

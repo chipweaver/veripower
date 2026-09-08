@@ -81,8 +81,7 @@ def _spec_workdir(tmp_path, rows=None):
     )
     (wd / "requirements.json").write_text(json.dumps(_ROWS if rows is None else rows))
     (wd / "interconnects.json").write_text(json.dumps([]))
-    (wd / "check-hints").mkdir(exist_ok=True)
-    (wd / "check-hints" / "dut_top.json").write_text(
+    (wd / "check-hints.json").write_text(
         json.dumps(
             [
                 {
@@ -155,7 +154,7 @@ def test_enumerate_artifacts_present_only(tmp_path):
     assert {
         "design.md",
         "children",
-        "check-hints",
+        "check-hints.json",
         "spec-review",
         "manifest.json",
         "requirements.json",
@@ -184,7 +183,7 @@ def test_golden_lean_against_a_real_run(tmp_path):
         "design.md",
         "manifest.json",
         "children",
-        "check-hints",
+        "check-hints.json",
         "spec-review",
         f"constraints/{top}.sdc",
         f"constraints/{top}.sgdc",

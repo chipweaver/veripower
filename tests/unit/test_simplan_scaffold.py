@@ -101,7 +101,7 @@ _ROWS = [
 
 
 def _spec(tmp_path, hints=None, top_io=None, rows=None):
-    """tmp_path doubles as the spec workdir: manifest + check-hints/ + top-io.json + ledger."""
+    """tmp_path doubles as the spec workdir: manifest + check-hints.json + top-io.json + ledger."""
     (tmp_path / "top-io.json").write_text(
         json.dumps(_TOP_IO if top_io is None else top_io)
     )
@@ -111,9 +111,7 @@ def _spec(tmp_path, hints=None, top_io=None, rows=None):
     (tmp_path / "manifest.json").write_text(
         json.dumps({"module": "m", "children": [{"name": "c", "doc": "c.md"}]})
     )
-    hd = tmp_path / "check-hints"
-    hd.mkdir(exist_ok=True)
-    (hd / "c.json").write_text(
+    (tmp_path / "check-hints.json").write_text(
         json.dumps([{"check_id": "CHK-0"}] if hints is None else hints)
     )
     return tmp_path

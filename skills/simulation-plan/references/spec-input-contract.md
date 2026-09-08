@@ -50,14 +50,14 @@ run on, the rest each get their own generator. simulation refuses a clock port w
 rather than leaving it out — a DUT clock port nothing binds compiles without an error and stops
 that domain for the whole run.
 
-## design.md §1.5 timing scenarios → sequences
+## design.md §1.4 timing scenarios → sequences
 
 One scenario row per `SC-NNN` id, next to the waveform it belongs to. Author one `sequences[]` entry
 per id: the row's stimulus is the sequence body, its expected outcome and timing obligation become
 the testpoint's check intent, and a negative-path row gets a negative testpoint. The waveform and
 its phase-by-phase description carry the cycle-level detail a row cannot.
 
-## check-hints/<child>.json → testpoints[].covers[]
+## check-hints.json → testpoints[].covers[]
 
 One file per child declared in `manifest.json`; `check_id` is unique across all of them, which is why
 they are aggregated before the coverage matrix is checked. Each hint names the requirements rows it
@@ -76,9 +76,9 @@ otherwise, because power-analysis would only find out seven stages later.
 Given `requirements.json` rows judged by simulation for the APB slave (legal R/W transactions
 complete; `pready` inserts wait cycles; illegal address access raises `pslverr`), `top-io.json`
 grouping `psel / penable / pwrite / paddr / pwdata / prdata / pready / pslverr` under
-`interface_group: APB` (with `pclk` / `preset_n` ungrouped, `role` clock / reset), §1.5 rows
+`interface_group: APB` (with `pclk` / `preset_n` ungrouped, `role` clock / reset), §1.4 rows
 `SC-APB-00` (legal write, `pready` within 1–2 cycles, `pslverr`=0) and `SC-APB-02` (illegal address,
-`pslverr` high), and `check-hints/apb_slave.json` with `CHK-APB-00` (write→`reg_file[addr]`,
+`pslverr` high), and `check-hints.json` with `CHK-APB-00` (write→`reg_file[addr]`,
 read→`prdata`) and `CHK-APB-01` (`pslverr <= (addr not in legal_range)`), each naming its rows:
 
 - **agents**: one `apb_agent`, `mode: active`, `interface_groups: ["APB"]`. You write nothing

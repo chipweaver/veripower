@@ -62,7 +62,7 @@ def _split(wd, scaffold):
 def _spec(tmp_path, hints=("CHK-0",)):
     """A minimal specification workdir for the coverage layer finalize re-runs."""
     sd = tmp_path / "spec"
-    (sd / "check-hints").mkdir(parents=True, exist_ok=True)
+    sd.mkdir(parents=True, exist_ok=True)
     (sd / "top-io.json").write_text(
         json.dumps(
             [
@@ -106,9 +106,7 @@ def _spec(tmp_path, hints=("CHK-0",)):
     (sd / "manifest.json").write_text(
         json.dumps({"module": "m", "children": [{"name": "c", "doc": "c.md"}]})
     )
-    (sd / "check-hints" / "c.json").write_text(
-        json.dumps([{"check_id": c} for c in hints])
-    )
+    (sd / "check-hints.json").write_text(json.dumps([{"check_id": c} for c in hints]))
     (sd / "requirements.json").write_text(
         json.dumps(
             [{"id": "R-0", "verbatim": "reads back writes", "judge": "simulation"}]

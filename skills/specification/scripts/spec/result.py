@@ -47,9 +47,9 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
     """Fixed specification artifact set, present-only. NEVER lists brainstorm.md
     (module-root, outside the workdir — would break promote()) or result.json (self).
 
-    The child designs, their check hints and the reviews each leave as one tree, so however
-    the decomposition lays them out inside those directories they are delivered and versioned
-    together — each is read downstream, or endorsed, as a set, so this needs no roster: <TOP>
+    The child designs and the reviews each leave as one tree, so however the decomposition lays
+    them out inside those directories they are delivered and versioned together — each is read
+    downstream, or endorsed, as a set, so this needs no roster: <TOP>
     is the caller's (build_result reads manifest.module, and an unreadable manifest is BLOCKED
     there)."""
     workdir = Path(workdir)
@@ -62,15 +62,11 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
         "clocks.json",
         "top-io.json",
         "interconnects.json",
+        "check-hints.json",
     ]
     child_docs = ["children"] if (workdir / "children").is_dir() else []
-    child_hints = ["check-hints"] if (workdir / "check-hints").is_dir() else []
     reviews = ["spec-review"] if (workdir / "spec-review").is_dir() else []
-    return [
-        {"path": p}
-        for p in fixed + child_docs + child_hints + reviews
-        if (workdir / p).exists()
-    ]
+    return [{"path": p} for p in fixed + child_docs + reviews if (workdir / p).exists()]
 
 
 def build_result(workdir, status, fail_reason=None) -> int:

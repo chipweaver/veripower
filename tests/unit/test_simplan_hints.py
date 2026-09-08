@@ -1,4 +1,4 @@
-"""Tests for simplan.hints.load_check_hints — the per-child aggregate."""
+"""Tests for simplan.hints.load_check_hints — the specification's authored hints."""
 
 import json
 import sys
@@ -20,24 +20,15 @@ CHECK_HINTS = [
 ]
 
 
-def _spec(tmp_path, hints=None, children=None):
-    (tmp_path / "manifest.json").write_text(
-        json.dumps(
-            {
-                "module": "m",
-                "children": children
-                or [{"name": "core", "doc": "core.md", "rtl_modules": ["core"]}],
-            }
-        )
+def _spec(tmp_path, hints=None):
+    (tmp_path / "check-hints.json").write_text(
+        json.dumps(CHECK_HINTS if hints is None else hints)
     )
-    hd = tmp_path / "check-hints"
-    hd.mkdir(exist_ok=True)
-    (hd / "core.json").write_text(json.dumps(CHECK_HINTS if hints is None else hints))
     return tmp_path
 
 
 def test_hints_are_carried_verbatim(tmp_path):
-    # A pure concatenation of what the children authored — no field selection, no tagging.
+    # What was authored, in authored order — no field selection, no tagging.
     assert load_check_hints(_spec(tmp_path)) == CHECK_HINTS
 
 
@@ -47,45 +38,27 @@ def test_pipes_in_a_rule_need_no_escaping(tmp_path):
     assert got[0]["reference_rule"] == "`sel | in | 3 | bank`"
 
 
-def test_aggregates_across_children_in_manifest_order(tmp_path):
-    children = [
-        {"name": "a", "doc": "a.md", "rtl_modules": ["a"]},
-        {"name": "b", "doc": "b.md", "rtl_modules": ["b"]},
+def test_authored_order_is_kept(tmp_path):
+    hints = [
+        {**CHECK_HINTS[0], "check_id": "CHK-A"},
+        {**CHECK_HINTS[0], "check_id": "CHK-B"},
     ]
-    (tmp_path / "manifest.json").write_text(
-        json.dumps({"module": "m", "children": children})
-    )
-    hd = tmp_path / "check-hints"
-    hd.mkdir()
-    (hd / "a.json").write_text(json.dumps([{**CHECK_HINTS[0], "check_id": "CHK-A"}]))
-    (hd / "b.json").write_text(json.dumps([{**CHECK_HINTS[0], "check_id": "CHK-B"}]))
-    assert [h["check_id"] for h in load_check_hints(tmp_path)] == ["CHK-A", "CHK-B"]
+    assert [h["check_id"] for h in load_check_hints(_spec(tmp_path, hints))] == [
+        "CHK-A",
+        "CHK-B",
+    ]
 
 
-def test_duplicate_check_id_across_children_raises(tmp_path):
-    # Uniqueness is global, which is why the per-child files are aggregated before it is
-    # checked: a collision would collapse in a by-id map, making one testpoint appear to
-    # cover both and leaving the second silently unverified.
-    children = [
-        {"name": "a", "doc": "a.md", "rtl_modules": ["a"]},
-        {"name": "b", "doc": "b.md", "rtl_modules": ["b"]},
-    ]
-    (tmp_path / "manifest.json").write_text(
-        json.dumps({"module": "m", "children": children})
-    )
-    hd = tmp_path / "check-hints"
-    hd.mkdir()
-    for c in ("a", "b"):
-        (hd / f"{c}.json").write_text(json.dumps(CHECK_HINTS))
+def test_duplicate_check_id_raises(tmp_path):
+    # check_id is the coverage matrix's key: a collision would collapse in a by-id map,
+    # making one testpoint appear to cover both and leaving the second silently unverified.
     with pytest.raises(HintsError, match="duplicate check_id"):
+        load_check_hints(_spec(tmp_path, CHECK_HINTS + CHECK_HINTS))
+
+
+def test_missing_hints_file_raises(tmp_path):
+    with pytest.raises(HintsError, match="check-hints.json"):
         load_check_hints(tmp_path)
-
-
-def test_missing_child_hint_file_raises(tmp_path):
-    wd = _spec(tmp_path)
-    (wd / "check-hints" / "core.json").unlink()
-    with pytest.raises(HintsError, match="check-hints/core.json"):
-        load_check_hints(wd)
 
 
 def test_entry_without_check_id_raises(tmp_path):

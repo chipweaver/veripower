@@ -146,7 +146,7 @@
             "minLength": 1
           },
           "covers": {
-            "description": "The `check-hints/<child>.json` check_ids this testpoint verifies — YOUR clustering (one-to-one, one-to-many, or many-to-one). Present with an explicit empty array on a scenario testpoint you invented, since omitted and `[]` are not the same claim; an empty one verifies no authored check. Simulation reads each covered hint, and the requirements.json rows it names, by id.",
+            "description": "The `check-hints.json` check_ids this testpoint verifies — YOUR clustering (one-to-one, one-to-many, or many-to-one). Present with an explicit empty array on a scenario testpoint you invented, since omitted and `[]` are not the same claim; an empty one verifies no authored check. Simulation reads each covered hint, and the requirements.json rows it names, by id.",
             "type": "array"
           },
           "seqs": {

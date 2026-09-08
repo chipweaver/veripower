@@ -37,7 +37,7 @@ each input's producer has recorded it and the fingerprint on disk still matches.
 | Path | Use |
 |---|---|
 | `<scaffold>/tb-scaffold.json` + `<scaffold>/sequences.json` | The plan's judgment: which agent owns which `interface_group`, and what to run. `agents` / `sequences` / `tests` are what gets materialized into SV; `testpoints[]` carry which checks each one covers (`covers[]`), and what it drives (`intent`). `top` names the DUT. A sub-Task input: you hand over the path. |
-| `<check_hints>/<child>.json` + `<requirements>/requirements.json` | What every covered check observes and against what rule, and the requirement rows each check establishes; the env child reads both by id. The coverage gate reads its bounds from the requirements rows simulation judges. Sub-Task inputs: you hand over the paths. |
+| `<check_hints>/check-hints.json` + `<requirements>/requirements.json` | What every covered check observes and against what rule, and the requirement rows each check establishes; the env child reads both by id. The coverage gate reads its bounds from the requirements rows simulation judges. Sub-Task inputs: you hand over the paths. |
 | `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |
 | `<plan>/verification-plan.md` | The human-readable plan the env-build child fills intent against. A sub-Task input; you hand over the path. |
 | `<rtl>/rtl-files.json` | Per-child DUT file layout, which `bootstrap` turns into `rtl_filelist.f`. |

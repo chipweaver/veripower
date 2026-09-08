@@ -10,7 +10,7 @@ dispatch is work the kernel cannot see or audit.
 
 ### Inputs (paths only)
 - The child's per-child design doc, located via `manifest.children[<self>].doc`, and its
-  `check-hints/<child>.json`.
+  the hints in `{workdir}/check-hints.json` that name rows your child realizes.
 - `requirements.json`, **read all of it** — the engineer's requirements, one row each with the
   judge that establishes it. The rows your child realizes are not marked; you recognize them.
 - `design.md` — the integration decisions the child sits inside: the wiring, the inter-module
@@ -24,13 +24,15 @@ what is wrong with them.
 What is worth reporting, in descending order of what it costs to find later:
 
 - The doc omits, contradicts, silently adds to, or restates instead of citing a requirement row.
-- A hint observes an internal signal without the child design saying why the boundary does not
-  suffice, or a hint's rule cannot establish the rows it names.
+- A hint's rule cannot establish the rows it names, or it asserts something none of those rows
+  says — a rule is an obligation, and one no row carries is an obligation nobody asked for. A
+  hint naming a cut-edge wire instead of the top boundary says why in its own `reference_rule`;
+  report one that does not.
 - A **control/status** §1.4.x row this child consumes or drives pins an Encoding too thin for the
   consumer to implement its decode with no guessing — or this child's §2/§3 decode contradicts
   the row it claims to follow.
 - Two or more `interconnects.json` wires reference the same named phase / sequence that the
-  §1.4.2.1 companion never declares (including: such references exist and there is no companion).
+  §1.3.2.1 companion never declares (including: such references exist and there is no companion).
 - The micro-architecture this child introduces cannot realize the behavior it promises, or two
   interfaces disagree in a way no single frame settles.
 

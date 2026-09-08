@@ -63,7 +63,7 @@ RULES: dict[str, Rule] = {
             "children": ("Design/specification/children",),
             "clocks": ("Design/specification/clocks.json",),
             "requirements": ("Design/specification/requirements.json",),
-            "check_hints": ("Design/specification/check-hints",),
+            "check_hints": ("Design/specification/check-hints.json",),
             "top_io": ("Design/specification/top-io.json",),
             # NOT interconnects.json: cross-child wires are internal to the DUT, so no
             # plan field derives from them, and binding it would let a wire-only edit
@@ -188,7 +188,7 @@ RULES: dict[str, Rule] = {
             # The requirements the coverage gate reads its thresholds from, and the hints the
             # testpoints cover — read by id, never copied into the scaffold.
             "requirements": ("Design/specification/requirements.json",),
-            "check_hints": ("Design/specification/check-hints",),
+            "check_hints": ("Design/specification/check-hints.json",),
         },
         # promoted products (sim/result.py enumerate_artifacts) — power-analysis consumes them
         proof="simulation",

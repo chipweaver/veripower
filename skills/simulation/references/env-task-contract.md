@@ -78,7 +78,7 @@ the UVM scaffold, compile, and run the smoke suite.
    first read gets truncated by the token cap, forcing a costly re-read). Instead: take **structural
    facts** (interface signals, txn fields) from the **rendered includes** (`*_signals.svh` / `*_fields.svh`, regenerated from top-io.json every round);
    read **check semantics per-testpoint** through `testpoints[].covers[]`: each check_id is in
-   `<check_hints>/<child>.json`, and the rows it names in `<requirements>/requirements.json`; and
+   `<check_hints>/check-hints.json`, and the rows it names in `<requirements>/requirements.json`; and
    read the small top-level arrays (`sequences[].agent` / `tests[].seqs` / `rm` / `scoreboard`)
    for the testpoint→component mapping. `testpoints[]` itself carries only `id` / `intent` /
    `covers` / `seqs`, never agent/rm, so the cross-array join is over small arrays.

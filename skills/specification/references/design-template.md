@@ -2,7 +2,7 @@
 
 `{workdir}/design.md` records the **decisions** made around the requirements ledger: how the module
 is structured, why the partition falls where it does, what the children must jointly keep at their
-boundaries, and the timing scenarios the interfaces are held to. §1.7 points at `manifest.json`,
+boundaries, and the timing scenarios the interfaces are held to. §1.6 points at `manifest.json`,
 whose `doc` field locates each child's design under `children/`. `rtl-design`, `simulation-plan`
 and `simulation-triage` declare `design.md` as an input; the first two read the child docs as well.
 
@@ -21,8 +21,8 @@ and `simulation-triage` declare `design.md` as an input; the first two read the 
 
 | Section range | Responsibility |
 |---|---|
-| 1.1–1.6 Overview sections | Function, interfaces, timing, frequencies, architecture partitioning: the decisions, citing requirement rows by id. |
-| 1.7 Submodule Index | A pointer to `manifest.json`, the child registry (`name` / `doc` / `rtl_modules`). The per-submodule implementation detail (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.) lives in the child docs. |
+| 1.1–1.5 Overview sections | Function, interfaces, timing, frequencies, architecture partitioning: the decisions, citing requirement rows by id. |
+| 1.6 Submodule Index | A pointer to `manifest.json`, the child registry (`name` / `doc` / `rtl_modules`). The per-submodule implementation detail (FIFO / arbitration / exceptions / state-machine boundaries / register side effects, etc.) lives in the child docs. |
 | 2 Document control | Version, revision notes. |
 
 ## Rendering Conventions
@@ -30,11 +30,14 @@ and `simulation-triage` declare `design.md` as an input; the first two read the 
 | Content type | Recommended format | Notes |
 |----------|----------|------|
 | Architecture diagrams (§1.2 / submodule `<child>.md` bodies) | mermaid code block | GitHub / VSCode preview / mkdocs all render natively; for multiple side-by-side candidates use one code block each. |
-| Timing diagrams (§1.5 interface timing) | Hand-drawn ASCII (preferred) or wavedrom | wavedrom does **not** render on GitHub — if wavedrom is used, attach an ASCII equivalent or export a PNG when reviewing the PR; otherwise stick with ASCII. |
+| Timing diagrams (§1.4 interface timing) | Hand-drawn ASCII (preferred) or wavedrom | wavedrom does **not** render on GitHub — if wavedrom is used, attach an ASCII equivalent or export a PNG when reviewing the PR; otherwise stick with ASCII. |
 
-Each timing diagram must be paired with a textual description that **maps one-to-one onto each phase of the waveform** (setup/hold, handshake meaning, typical/boundary cycles, etc.).
+A waveform is optional and never authoritative: the requirement rows and the scenario row below
+govern, and a picture drawn to agree with them is a second home for one fact. Draw one only where
+it shows something neither can — a phase relationship across several signals — and say which
+scenario id it belongs to.
 
-## Overview Section Template (1.1–1.6)
+## Overview Section Template (1.1–1.5)
 
 ```markdown
 # <module_name> Design Document (design.md)
@@ -56,19 +59,14 @@ flowchart LR
   A[Sub-A] --> B[Sub-B] --> C[Sub-C]
 ```
 
-### 1.3 Requirements Coverage
+### 1.3 Module Interface and Interconnects
 
-The requirements live in `requirements.json`. Here: how the children divide them (which child
-realizes which rows), and which rows are out of scope for this module and why.
-
-### 1.4 Module Interface and Interconnects
-
-#### 1.4.1 Top-Level IO
+#### 1.3.1 Top-Level IO
 
 The port list lives in `top-io.json`. Here: what the boundary is for, which groups exist and
 why.
 
-#### 1.4.2 Inter-module Interconnects
+#### 1.3.2 Inter-module Interconnects
 
 The wire list lives in `interconnects.json` (authoritative for every RTL-module-to-RTL-module
 cut edge; an N=1 module writes an empty array). Here: how the children divide the datapath.
@@ -77,7 +75,7 @@ cut edge; an N=1 module writes an empty array). Here: how the children divide th
 > reviewer, NOT a deterministic gate): when a *group* of inter-module wires is governed by
 > a contract that **more than one wire / child must jointly agree on** (a shared operating-phase or
 > event timeline, a sequencing, a co-assertion or mutual-exclusion among control strobes), that joint
-> contract MUST be stated **once** in the `##### 1.4.2.1` companion below, NOT left implicit in one
+> contract MUST be stated **once** in the `##### 1.3.2.1` companion below, NOT left implicit in one
 > child's body (where sibling children and their per-child reviewers cannot see it).
 > - A behavior fully captured by a single wire's own entry (a plain valid/ready handshake, a
 >   single-clock latency) needs no companion.
@@ -89,7 +87,7 @@ cut edge; an N=1 module writes an empty array). Here: how the children divide th
 >   *correctness* of the co-assertions / relative offsets / mutual-exclusion is design judgment
 >   (advisory soundness + downstream RTL/sim), not pinned here.
 
-##### 1.4.2.1 Inter-module Behavior Contract
+##### 1.3.2.1 Inter-module Behavior Contract
 
 Present **only** when the `interconnects.json` wires share a joint contract (see the Inter-module
 Behavior Contract rule above); omit entirely otherwise.
@@ -112,9 +110,10 @@ phase table). E.g. a TX/RX start mux:
 > `start_rx_fifo` is high, else to `0`. Consumers of the muxed bus rely on this exclusion to decode
 > the source.
 
-### 1.5 Interface Timing Scenarios
+### 1.4 Interface Timing Scenarios
 
-Subdivide by **interface group**; diagrams may be hand-drawn ASCII (preferred) / wavedrom / tool-exported image (rendering and textual-description requirements per §Rendering Conventions).
+Subdivide by **interface group**. The scenario table below is this section's product; a waveform
+is optional (rendering per §Rendering Conventions).
 
 #### Example: a configuration-port write transaction (hand-drawn ASCII)
 
@@ -127,7 +126,7 @@ wdata    _________<── WDATA ─>_______________
 rdy      _________|‾‾‾‾‾‾‾‾‾‾‾‾‾|_______________   (slave ready)
 ~~~
 
-**Textual description (must map one-to-one onto each phase above)**
+**What it shows** (the obligations themselves are rows; SC-001 below is what a sequence is built from)
 - **idle**: `cfg_en` low; whether ADDR/WDATA matter is defined by the protocol.
 - **setup/hold region**: before/after the valid sampling edge, ADDR and WDATA satisfy *T_setup* / *T_hold* relative to `clk`.
 - **transaction done**: when `cfg_en` and `rdy` are both high, the slave accepts this write.
@@ -143,17 +142,17 @@ say what is driven, what is observable, and the timing obligation. Prose; the sh
 |---|---|---|---|---|
 | SC-001 | APB / write | Legal-address write transaction | `pready` high within 1–2 cycles, `pslverr`=0 | ≤2 cycles after `penable` |
 
-### 1.6 Clocks and Frequencies
+### 1.5 Clocks and Frequencies
 
 Clock definitions live in `clocks.json` (the sole numeric + relationship source;
 `constraints/<TOP>.{sdc,sgdc}` are generated from it). Here: domain count, CDC posture, reset
 scheme, release-ordering constraints.
 ```
 
-## Submodule Index Template (§1.7)
+## Submodule Index Template (§1.6)
 
 ```markdown
-### 1.7 Submodule Index
+### 1.6 Submodule Index
 
 The child registry is `manifest.json` in this same directory — one entry per child, carrying
 `name` / `doc` / `rtl_modules`.

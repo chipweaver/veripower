@@ -1,7 +1,7 @@
 """Read the authored JSON sidecars this stage emits — validating on the way in.
 
 The transcriber authors requirements.json; the decomposer authors clocks.json / top-io.json /
-interconnects.json; each child authors check-hints/<child>.json. Every read goes through `read_sidecar`, so a
+interconnects.json; a fourth sub-Task authors check-hints.json. Every read goes through `read_sidecar`, so a
 malformed sidecar is reported by **whichever verb needed it, at the moment it needed it**.
 That placement is the point: a file's own shape is not a cross-file property, so it has no
 business waiting for a gate that runs after every author has finished.
@@ -143,13 +143,13 @@ _CONTENT_RULES = {
 }
 
 
-def validate_doc(name: str, doc, schema: str | None = None) -> list[dict]:
+def validate_doc(name: str, doc) -> list[dict]:
     """Every violation in an already-parsed sidecar doc — schema first, then the content
     rules JSON Schema cannot carry.
 
     An unreadable schema is itself a violation, so a caller can never wave a doc through
     because the schema went missing."""
-    schema_path = _REFERENCES / (schema or f"{Path(name).stem}.schema.json")
+    schema_path = _REFERENCES / f"{Path(name).stem}.schema.json"
     try:
         schema_doc = json.loads(schema_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -170,17 +170,16 @@ def validate_doc(name: str, doc, schema: str | None = None) -> list[dict]:
     return violations + _CONTENT_RULES.get(name, lambda _doc: [])(doc)
 
 
-def read_sidecar(workdir, name: str, schema: str | None = None) -> list[dict]:
-    """One sidecar's entries, validated. Raises SidecarError naming every violation.
-    `schema` overrides the filename-derived schema, for sidecars named after their subject
-    (check-hints/<child>)."""
+def read_sidecar(workdir, name: str) -> list[dict]:
+    """One sidecar's entries, validated against references/<name>.schema.json. Raises
+    SidecarError naming every violation."""
     try:
         doc = json.loads((Path(workdir) / name).read_text(encoding="utf-8"))
     except FileNotFoundError:
         raise SidecarError(name, [{"error": "missing"}]) from None
     except (OSError, json.JSONDecodeError) as exc:
         raise SidecarError(name, [{"error": f"unreadable: {exc}"}]) from None
-    violations = validate_doc(name, doc, schema)
+    violations = validate_doc(name, doc)
     if violations:
         raise SidecarError(name, violations)
     return doc

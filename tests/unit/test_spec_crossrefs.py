@@ -63,7 +63,7 @@ def _fm(ports=(), clocks=()):
         "---\n"
         + block("ports", ports)
         + block("clocks", clocks)
-        + "---\n\n## §5 Verification Hints\n\nSee `check-hints/<child>.json`.\n"
+        + "---\n\n## §5 Verification Hints\n\nSee `check-hints.json`.\n"
     )
 
 
@@ -95,16 +95,15 @@ def _workdir(
     (tmp_path / "interconnects.json").write_text(
         json.dumps([] if wires is None else wires)
     )
-    hd = tmp_path / "check-hints"
-    hd.mkdir(exist_ok=True)
+    all_hints: list = []
     for n, body in children.items():
         (tmp_path / f"{n}.md").write_text(body)
-        h = (
+        all_hints += (
             _HINTS
             if hints is None
             else (hints[n] if isinstance(hints, dict) else hints)
         )
-        (hd / f"{n}.json").write_text(json.dumps(h))
+    (tmp_path / "check-hints.json").write_text(json.dumps(all_hints))
     return tmp_path
 
 
@@ -190,7 +189,7 @@ def test_wire_clock_domain_not_in_clocks_json(tmp_path):
 def test_hint_naming_a_row_the_ledger_lacks_is_reported(tmp_path):
     v = _verdict(tmp_path, hints=[{**_HINTS[0], "requirements": ["R-00", "R-99"]}])
     assert _said(
-        v, "check-hints/c.json CHK-0", "'R-99', which requirements.json does not have"
+        v, "check-hints.json CHK-0", "'R-99', which requirements.json does not have"
     )
 
 
@@ -198,13 +197,13 @@ def test_hint_naming_a_row_another_stage_judges_is_reported(tmp_path):
     # A hint for a row rtl-design establishes would turn a requirement the engineer kept out
     # of the testbench into a gating check.
     v = _verdict(tmp_path, hints=[{**_HINTS[0], "requirements": ["R-00", "R-01"]}])
-    assert _said(v, "check-hints/c.json CHK-0", "'R-01', which is not a simulation row")
+    assert _said(v, "check-hints.json CHK-0", "'R-01', which is not a simulation row")
 
 
 def test_hint_naming_a_coverage_row_is_reported(tmp_path):
     # A coverage bound is compared by the coverage gate, not observed by a check.
     v = _verdict(tmp_path, hints=[{**_HINTS[0], "requirements": ["R-00", "R-02"]}])
-    assert _said(v, "check-hints/c.json CHK-0", "'R-02', which is not a simulation row")
+    assert _said(v, "check-hints.json CHK-0", "'R-02', which is not a simulation row")
 
 
 def test_simulation_row_no_hint_names_is_reported(tmp_path):
@@ -237,9 +236,11 @@ def test_row_named_by_one_child_is_covered(tmp_path):
     assert v["status"] == "pass", v
 
 
-def test_duplicate_check_id_across_children_is_reported(tmp_path):
+def test_duplicate_check_id_in_the_file_is_reported(tmp_path):
+    # check_id is the coverage matrix's key, so a reused one makes one testpoint appear to
+    # cover both and leaves the second silently unverified.
     v = _verdict(tmp_path, children={"a": _fm(), "b": _fm()})
-    assert _said(v, "check-hints/b.json CHK-0", "already used in check-hints/a.json")
+    assert _said(v, "check-hints.json CHK-0", "already used in this file")
 
 
 # ---------- outputs and their claimants ----------

@@ -44,10 +44,10 @@ def _write(tmp_path, name, doc):
     return tmp_path
 
 
-def _bad(tmp_path, doc, name="requirements.json", schema=None):
+def _bad(tmp_path, doc, name="requirements.json"):
     _write(tmp_path, name, doc)
     with pytest.raises(SidecarError) as e:
-        read_sidecar(tmp_path, name, schema=schema)
+        read_sidecar(tmp_path, name)
     return str(e.value), e.value.violations
 
 
@@ -149,17 +149,14 @@ def test_non_finite_target_value_is_rejected(tmp_path):
     assert "finite" in str(e.value)
 
 
-def test_schema_override_for_a_subject_named_file(tmp_path):
-    _write(tmp_path, "check-hints/c.json", [_HINT])
-    got = read_sidecar(tmp_path, "check-hints/c.json", schema="check-hints.schema.json")
-    assert got == [_HINT]
+def test_hints_validate_against_their_own_schema(tmp_path):
+    _write(tmp_path, "check-hints.json", [_HINT])
+    assert read_sidecar(tmp_path, "check-hints.json") == [_HINT]
 
 
 def test_hint_missing_required_field_is_rejected(tmp_path):
     lean = {k: v for k, v in _HINT.items() if k != "reference_rule"}
-    msg, _ = _bad(
-        tmp_path, [lean], name="check-hints/c.json", schema="check-hints.schema.json"
-    )
+    msg, _ = _bad(tmp_path, [lean], name="check-hints.json")
     assert "reference_rule" in msg
 
 
@@ -167,8 +164,7 @@ def test_hint_naming_no_row_is_rejected(tmp_path):
     msg, _ = _bad(
         tmp_path,
         [{**_HINT, "requirements": []}],
-        name="check-hints/c.json",
-        schema="check-hints.schema.json",
+        name="check-hints.json",
     )
     assert "requirements" in msg
 
@@ -178,9 +174,7 @@ def test_hint_alias_field_is_rejected_not_reinterpreted(tmp_path):
         **{k: v for k, v in _HINT.items() if k != "requirements"},
         "rows": ["R-001"],
     }
-    msg, _ = _bad(
-        tmp_path, [aliased], name="check-hints/c.json", schema="check-hints.schema.json"
-    )
+    msg, _ = _bad(tmp_path, [aliased], name="check-hints.json")
     assert "rows" in msg or "requirements" in msg
 
 

@@ -82,7 +82,7 @@ _STAGE_FILES = {
         "manifest.json": "{}",
         "requirements.json": "[]",
         "clocks.json": "[]",
-        "check-hints/child_a.json": "[]",
+        "check-hints.json": "[]",
         "top-io.json": "[]",
         "interconnects.json": "[]",
         "children/child_a.md": "child a design",  # the per-child design tree (N>=1),

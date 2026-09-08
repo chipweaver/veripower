@@ -69,7 +69,6 @@ def violations(workdir: Path, manifest: dict, child_texts: dict) -> list[dict]:
     # sidecars are the decomposer's claim about what the boundary is. Two authors, two facts.
     named: set[str] = set()
     claimed: set[str] = set()
-    check_ids: dict[str, str] = {}
     for child in manifest["children"]:
         cname = child["name"]
         doc = child["doc"]
@@ -93,28 +92,28 @@ def violations(workdir: Path, manifest: dict, child_texts: dict) -> list[dict]:
                 say(f"{doc} frontmatter clocks", f"{cn!r} is not in clocks.json")
         claimed |= set(fm.get("ports") or [])
 
-        # A hint says how simulation observes a requirement. It may name only rows simulation
-        # judges without a coverage target: any other row is established elsewhere, and a hint
-        # for it would turn a requirement the engineer kept out of the testbench into a gate.
-        hints_file = f"check-hints/{cname}.json"
-        for h in read_sidecar(workdir, hints_file, schema="check-hints.schema.json"):
-            cid = h["check_id"]
-            if cid in check_ids:
-                say(f"{hints_file} {cid}", f"check_id already used in {check_ids[cid]}")
-            check_ids.setdefault(cid, hints_file)
-            for rid in h["requirements"]:
-                if rid not in row_ids:
-                    say(
-                        f"{hints_file} {cid}",
-                        f"names {rid!r}, which requirements.json does not have",
-                    )
-                elif rid not in hintable:
-                    say(
-                        f"{hints_file} {cid}",
-                        f"names {rid!r}, which is not a simulation row without a target; "
-                        f"only those take hints",
-                    )
-                named.add(rid)
+    # A hint says how simulation observes a requirement. It may name only rows simulation judges
+    # without a coverage target: any other row is established elsewhere, and a hint for it would
+    # turn a requirement the engineer kept out of the testbench into a gate.
+    check_ids: set[str] = set()
+    for h in read_sidecar(workdir, "check-hints.json"):
+        cid = h["check_id"]
+        if cid in check_ids:
+            say(f"check-hints.json {cid}", "check_id already used in this file")
+        check_ids.add(cid)
+        for rid in h["requirements"]:
+            if rid not in row_ids:
+                say(
+                    f"check-hints.json {cid}",
+                    f"names {rid!r}, which requirements.json does not have",
+                )
+            elif rid not in hintable:
+                say(
+                    f"check-hints.json {cid}",
+                    f"names {rid!r}, which is not a simulation row without a target; "
+                    f"only those take hints",
+                )
+            named.add(rid)
 
     # A phantom clock domain would render `abstract_port -clock <phantom>` and hide a CDC path.
     for e in ports:

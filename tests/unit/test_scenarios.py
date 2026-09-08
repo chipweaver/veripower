@@ -51,7 +51,7 @@ _OUTPUTS = {
         "Design/specification/manifest.json",
         "Design/specification/requirements.json",
         "Design/specification/clocks.json",
-        "Design/specification/check-hints/c.json",
+        "Design/specification/check-hints.json",
         "Design/specification/top-io.json",
         "Design/specification/interconnects.json",
         "Design/specification/constraints/top.sdc",
