@@ -131,7 +131,13 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     out.append("")
     period_of = {c["name"]: c["period_ns"] for c in non_gen}
     for p in ports:
-        if p["role"] != "data":
+        # A clock is constrained by create_clock and an async reset is not timed against one.
+        # A SYNC reset is: it is sampled by the same edge as every data input, so leaving it
+        # out left a timed input unconstrained — invisible to dc_shell, and reported as
+        # unconstrained by timing-analysis.
+        if p["role"] == "clock" or (
+            p["role"] == "reset" and p["reset_kind"] == "async"
+        ):
             continue
         T = period_of.get(p["clock_domain"])
         if T is None:
