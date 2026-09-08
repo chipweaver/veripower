@@ -122,7 +122,7 @@ def _validate_envelope(env: dict) -> None:
 
 def test_build_result_pass_lean_shape(tmp_path):
     wd = _spec_workdir(tmp_path)
-    assert result.build_result(wd, status="pass") == 0
+    assert result.build_result(wd) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["stage"] == "specification"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
@@ -134,11 +134,16 @@ def test_build_result_pass_lean_shape(tmp_path):
     )  # re-validated, untouched
 
 
-def test_build_result_reject_status_writes_fail(tmp_path):
+def test_a_stated_reason_is_the_failure(tmp_path):
+    # The status is derived: no separate verdict flag can disagree with the reason, and a
+    # failure nobody can name is not one this stage can record.
     wd = _spec_workdir(tmp_path)
-    assert result.build_result(wd, status="fail") == 0
+    assert result.build_result(wd, fail_reason="transcribe sub-Task BLOCKED: x") == 0
     env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "fail" and env["stage_specific"]["fail_reason"]
+    assert env["status"] == "fail"
+    assert env["stage_specific"]["fail_reason"] == "transcribe sub-Task BLOCKED: x"
+
+    _validate_envelope(env)
 
 
 def test_enumerate_artifacts_present_only(tmp_path):
@@ -175,7 +180,7 @@ def test_golden_lean_against_a_real_run(tmp_path):
     wd = tmp_path / "specification"
     shutil.copytree(_FIX, wd)
     top = json.loads((_FIX / "manifest.json").read_text())["module"]
-    assert result.build_result(wd, status="pass") == 0
+    assert result.build_result(wd) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
     assert env["stage_specific"] == {}
@@ -202,13 +207,13 @@ def test_golden_lean_against_a_real_run(tmp_path):
 def test_missing_ledger_is_blocked(tmp_path):
     wd = _spec_workdir(tmp_path)
     (wd / "requirements.json").unlink()
-    assert result.finalize(wd, status="pass") == 2
+    assert result.finalize(wd) == 2
     assert not (wd / "result.json").exists()
 
 
 def test_invalid_ledger_is_blocked(tmp_path):
     wd = _spec_workdir(tmp_path, rows=[{**_ROWS[0], "judge": "bogus"}])
-    assert result.finalize(wd, status="pass") == 2
+    assert result.finalize(wd) == 2
 
 
 def test_unassignable_row_is_blocked_with_its_id(tmp_path, capsys):
@@ -223,7 +228,7 @@ def test_unassignable_row_is_blocked_with_its_id(tmp_path, capsys):
         },
     ]
     wd = _spec_workdir(tmp_path, rows=rows)
-    assert result.finalize(wd, status="pass") == 2
+    assert result.finalize(wd) == 2
     assert "R-003" in capsys.readouterr().err
     assert not (wd / "result.json").exists()
 
@@ -233,7 +238,7 @@ def test_nan_target_is_blocked(tmp_path):
     (wd / "requirements.json").write_text(
         '[{"id":"R-001","verbatim":"v","judge":"synthesis","target":{"dim":"area_um2","op":"<=","value":NaN}}]'
     )
-    assert result.finalize(wd, status="pass") == 2
+    assert result.finalize(wd) == 2
 
 
 def test_crossrefs_regression_after_the_gate_is_blocked(tmp_path):
@@ -241,7 +246,7 @@ def test_crossrefs_regression_after_the_gate_is_blocked(tmp_path):
     # means an artifact was edited afterwards.
     wd = _spec_workdir(tmp_path)
     (wd / "requirements.json").write_text(json.dumps([_ROWS[1]]))
-    assert result.finalize(wd, status="pass") == 2
+    assert result.finalize(wd) == 2
 
 
 # ── early-fail entry (--fail-reason): routable fail, full artifact carry ──
@@ -251,9 +256,7 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
     wd = _spec_workdir(tmp_path)
     constraints.derive_constraints(wd)
     assert (
-        result.build_result(
-            wd, status="fail", fail_reason="external reference missing: /x/design.md"
-        )
+        result.build_result(wd, fail_reason="external reference missing: /x/design.md")
         == 0
     )
     env = json.loads((wd / "result.json").read_text())
@@ -270,23 +273,15 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
     _validate_envelope(env)
 
 
-def test_reject_default_reason_unchanged(tmp_path):
-    wd = _spec_workdir(tmp_path)
-    result.build_result(wd, status="fail")
-    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["fail_reason"] == "design.md gate rejected at human review"
-
-
 def test_fail_without_manifest_is_blocked(tmp_path):
-    rc = result.finalize(tmp_path, status="fail", fail_reason="wave-1 BLOCKED: x")
+    rc = result.finalize(tmp_path, fail_reason="wave-1 BLOCKED: x")
     assert rc == 2
     assert not (tmp_path / "result.json").exists()
 
 
-def test_pass_ignores_fail_reason(tmp_path):
+def test_no_reason_is_a_pass(tmp_path):
     wd = _spec_workdir(tmp_path)
-    rc = result.finalize(wd, status="pass", fail_reason="should be ignored")
-    assert rc == 0
+    assert result.finalize(wd) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
     assert "fail_reason" not in env["stage_specific"]
@@ -306,12 +301,12 @@ def test_derivation_failure_on_pass_is_blocked_exit2(tmp_path):
             ]
         )
     )
-    assert result.finalize(wd, status="pass") == 2
+    assert result.finalize(wd) == 2
 
 
 def test_empty_fail_reason_is_blocked(tmp_path):
     wd = _spec_workdir(tmp_path)
-    rc = result.finalize(wd, status="fail", fail_reason="   ")
+    rc = result.finalize(wd, fail_reason="   ")
     assert rc == 2
     assert not (wd / "result.json").exists()
 
@@ -331,7 +326,7 @@ def test_unreadable_schema_blocks_instead_of_waving_a_doc_through(
 def test_finalize_cli_happy_path(tmp_path):
     wd = _spec_workdir(tmp_path)
     r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--workdir", str(wd), "--status", "pass"],
+        ["python3", str(MAIN), "finalize", "--workdir", str(wd)],
         capture_output=True,
         text=True,
     )
@@ -339,13 +334,16 @@ def test_finalize_cli_happy_path(tmp_path):
     assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
 
-def test_finalize_missing_required_flag_is_blocked(tmp_path):
+def test_finalize_needs_only_the_workdir(tmp_path):
+    # Nothing about the outcome is the caller's to assert, so nothing about it is a flag.
+    wd = _spec_workdir(tmp_path)
     r = subprocess.run(
-        ["python3", str(MAIN), "finalize", "--workdir", str(tmp_path)],
+        ["python3", str(MAIN), "finalize", "--workdir", str(wd)],
         capture_output=True,
         text=True,
     )
-    assert r.returncode == 2  # argparse: missing --status
+    assert r.returncode == 0, r.stderr
+    assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
 
 def test_check_ledger_prints_the_gate_view(tmp_path):

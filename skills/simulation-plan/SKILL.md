@@ -118,23 +118,21 @@ It writes its own `{workdir}/plan-review/findings.md`. After dispatching, send a
 the turn; reap before proceeding. A `STATUS: BLOCKED` reviewer is a crash, not a verdict: the review
 did not happen, so finalize a failure with that as the reason.
 
-**Gate, human.** Path-handoff: present the `verification-plan.md` path and the
-`plan-review/findings.md` path, echoing no body.
+**Handoff, not a gate.** Give the user the `verification-plan.md` path and the
+`plan-review/findings.md` path, echoing no body. You do not summarize the findings, rank them, or
+decide which ones matter: a review relayed through your summary is your judgment wearing the
+reviewer's name.
 
-You do not summarize the findings, rank them, or decide which ones matter: a review relayed through
-your summary is your judgment wearing the reviewer's name.
+Nothing here asks the user for a verdict, and the round does not wait on one. Endorsing the review
+is `kernel.py pin`, which anchors to its content and is what `signoff` refuses without — and
+nothing downstream re-checks testpoint-vs-spec (sim's check-adequacy review judges
+TB-vs-testpoint), so an unaddressed coverage gap leaves the module unsignable rather than shipping
+under a word typed to keep the round moving.
 
-Then the user approves, requests changes, or rejects:
-
-- **approve**: if the user accepts a finding the reviewer called blocking, write their reason —
-  **their words, not yours** — to `{workdir}/plan-review/decisions.md`, so the override travels
-  with the review it overrode instead of living only in this session. Nothing downstream re-checks
-  testpoint-vs-spec (sim's check-adequacy review judges TB-vs-testpoint), so an accepted coverage gap is a
-  terminal accept.
-- **request changes**: revise incrementally, re-run the script gate, re-dispatch the reviewer,
-  re-present.
-- **reject**: finalize with `--status fail` and no `--fail-reason`, which records
-  `fail_reason="user rejected plan"`.
+Act on what they say: revise incrementally and re-present, re-running the script gate and
+re-dispatching the reviewer; a finding they tell you to accept as-is goes to
+`{workdir}/plan-review/decisions.md` in **their words, not yours**, so the reasoning travels with
+the review it overrode. A round that cannot deliver at all closes below with `--fail-reason`.
 
 ### Finalize
 
@@ -143,11 +141,13 @@ Every run ends here, including one you could not carry to the human gate:
 ```bash
 python3 <skill>/scripts/simplan/__main__.py finalize \
   --workdir {workdir} --spec <design> \
-  [--status fail] [--fail-reason "<one-line reason>"] [--fix-owner <rule>] \
+  [--fail-reason "<one-line reason>"] [--fix-owner <rule>] \
   [--revision '<one-line revision narrative>']
 ```
 
-You supply only the human-gate outcome, plus `--revision` on a scoped revision. On a failure name
+The status is derived, so you assert nothing about the outcome: a reason names what stopped the
+round and lands in the envelope's `stage_specific.fail_reason`, and its absence means the stage
+delivered what it owes. `--revision` marks a scoped revision. On a failure name
 the owner: `--fix-owner specification` when the spec does not say enough for any plan to cover the
 gap, `--fix-owner simulation-plan` when the gap is yours but you have exhausted what you can do
 from here, and omit the flag when you cannot tell.

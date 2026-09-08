@@ -9,8 +9,6 @@ from spec.crossrefs import verdict as crossrefs_verdict
 
 STAGE = "specification"
 
-_REJECT_REASON = "design.md gate rejected at human review"
-
 
 def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -69,9 +67,14 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
     return [{"path": p} for p in fixed + child_docs + reviews if (workdir / p).exists()]
 
 
-def build_result(workdir, status, fail_reason=None) -> int:
+def build_result(workdir, fail_reason=None) -> int:
     """Assemble the lean specification result.json. Returns 0 (written, pass or fail); a
     raise becomes finalize exit 2 (BLOCKED).
+
+    The status is derived, not supplied: a round either delivered what the stage owes or the
+    caller says in one line what stopped it. There is no human verdict to carry — the reviews
+    are prose nothing reduces to a pass, and the act that endorses them is `kernel.py pin`,
+    which anchors to their content and is what signoff requires.
 
     Both re-derivations on the pass path were clean at the cross-reference gate, so a failure now
     artifact was edited after the gate — hence BLOCKED rather than a routable fail. The
@@ -83,14 +86,15 @@ def build_result(workdir, status, fail_reason=None) -> int:
     caller that assembled the record."""
     workdir = Path(workdir)
 
-    if status == "fail":
+    if fail_reason:
+        # An early exit outside the derivable set: a sub-Task could not deliver, or an input is
+        # malformed, so no verdict can be re-derived. Record the caller's one-line reason.
         top = _top_from_manifest(workdir)
-        ss = {"fail_reason": fail_reason or _REJECT_REASON}
         _write_result(
             workdir,
             _envelope(
                 status="fail",
-                stage_specific=ss,
+                stage_specific={"fail_reason": fail_reason},
                 artifacts=enumerate_artifacts(workdir, top),
             ),
         )
@@ -127,9 +131,9 @@ def build_result(workdir, status, fail_reason=None) -> int:
     return 0
 
 
-def finalize(workdir, *, status, fail_reason=None) -> int:
-    """Parse the human-gate outcome args, then build_result. exit 0 = result.json written (pass
-    or fail); exit 2 = BLOCKED (empty --fail-reason, an invalid or unresolved requirements.json,
+def finalize(workdir, *, fail_reason=None) -> int:
+    """build_result, with the exit-code contract. exit 0 = result.json written (pass or fail);
+    exit 2 = BLOCKED (an empty --fail-reason, an invalid or unresolved requirements.json, an
     unreadable manifest, a derivation fail-loud, or any internal raise) — never conflated with
     status=fail."""
     if fail_reason is not None and not fail_reason.strip():
@@ -139,7 +143,7 @@ def finalize(workdir, *, status, fail_reason=None) -> int:
         )
         return 2
     try:
-        return build_result(workdir, status, fail_reason=fail_reason)
+        return build_result(workdir, fail_reason=fail_reason)
     except SystemExit as exc:
         # derive_constraints' fail-loud sys.exit is a BaseException; keep the
         # documented exit-code contract (2 = BLOCKED) instead of leaking exit 1.

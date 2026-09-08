@@ -63,7 +63,7 @@ def _cmd_derive_constraints(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from spec import result
 
-    return result.finalize(a.workdir, status=a.status, fail_reason=a.fail_reason)
+    return result.finalize(a.workdir, fail_reason=a.fail_reason)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -94,17 +94,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("finalize", help="assemble the lean result.json")
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
-        "--status",
-        required=True,
-        choices=["pass", "fail"],
-        help="the human decision at the design gate; fail also serves the documented "
-        "early-fail exits (with --fail-reason)",
-    )
-    sp.add_argument(
         "--fail-reason",
         default=None,
-        help="on --status fail: the one-line failure narrative (early-fail entry); "
-        "default = the human-reject wording",
+        help="the one-line reason this round could not deliver; its presence is the failure. "
+        "Absent = the stage delivered what it owes",
     )
     sp.set_defaults(func=_cmd_finalize)
 

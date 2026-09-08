@@ -1,9 +1,9 @@
 # Child design review sub-Task contract
 
 The specification main thread dispatches one Level-1 reviewer per child AFTER
-`check-crossrefs` is green and BEFORE the design gate. You write your findings to a
-file; the main thread never re-types them and never reads your body. A human resolves each
-blocker at that gate. Do not call the Task tool: a sub-Task writes no events, so anything you
+`check-crossrefs` is green and BEFORE the round is handed to the user. You write your findings to a
+file; the main thread never re-types them and never reads your body. A human reads them there and
+endorses them, or does not, with `kernel.py pin`. Do not call the Task tool: a sub-Task writes no events, so anything you
 dispatch is work the kernel cannot see or audit.
 
 ## Per-child reviewer (one per `manifest.children[]`)

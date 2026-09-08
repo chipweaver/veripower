@@ -46,7 +46,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     return result.finalize(
         a.workdir,
         a.spec,
-        status=a.status,
         revision=a.revision,
         fail_reason=a.fail_reason,
         fix_owner=a.fix_owner,
@@ -99,20 +98,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="the specification workdir: the pass path re-runs check-scaffold against it",
     )
     sp.add_argument(
-        "--status",
-        choices=["pass", "fail"],
+        "--fail-reason",
         default=None,
-        help="human user-review-loop verdict; fail = user reject, or a documented "
-        "early-fail exit (with --fail-reason)",
+        help="the one-line reason this round could not deliver; its presence is the failure. "
+        "Absent = the stage delivered what it owes",
     )
     sp.add_argument(
         "--revision", default=None, help="agent-composed revision narrative"
-    )
-    sp.add_argument(
-        "--fail-reason",
-        default=None,
-        help="on --status fail: the one-line failure narrative (early-fail entry); "
-        "default = the user-reject wording",
     )
     sp.add_argument(
         "--fix-owner",

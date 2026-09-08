@@ -161,14 +161,14 @@ intent/brainstorm.md
 | `requirements.json` | 你的意图文档里每一条要求，一行一条，用你的原话，写明由哪个阶段判。门上逐字给你看四组：没人能派的（`unassignable`）、流水线之外判的、留给你判的、工具将要比数的数值界限 | **这四组必看** |
 | `manifest.json` | 子模块划分：`module` + `children[]` | **必看**，在分区门 |
 | `spec-review/findings/requirements.md` / `findings/<child>.md` / `decisions.md` | 账本对你文档的核对、各子设计对账本的核对、以及你的裁决 | **必看** |
-| `check-hints/<child>.json` | 仿真将怎样观测它判的每一条要求 | 选看 |
+| `check-hints.json` | 仿真将怎样观测它判的每一条要求 | 选看 |
 | `clocks.json` / `top-io.json` / `interconnects.json` | 边界信息：时钟、顶层端口、切开的连线 | `design.md` §1.4 是它们的人读版本 |
 | `constraints/<TOP>.sdc` / `.sgdc` | 由 clocks + top-io 生成的约束对 | 生成物，不是决策 |
 
 **你的动作：两道门**
 
 - **账本与分区门**（需求评审之后）：处理每一条 `unassignable`（定义怎么量、指派裁判、或宣布它不是要求），看流水线之外判的和留给你判的那几行，核对数值界限，确认划分或给合并意见让它重划。
-- **设计门**（子设计评审之后）：重点看 `design.md` 和各 `<child>.md` 是否实现了它们引用的账本行，以及 `spec-review/` 里的发现和决策你是否认同。
+- **交付回顾**（子设计评审之后）：只给你路径，不问你任何结论。看 `design.md` 和各 `<child>.md` 是否实现了它们引用的账本行，说出你要改什么。认可这些评审是 `kernel.py pin`（下表 #6）—— 在那之前模块签不了核，所以一条没处置的阻塞发现挡的是模块，不是这一轮。
 
 > 流水线越靠前的决策影响越大，spec 阶段是后面一切开发验证的来源，需认真确认。
 
@@ -182,17 +182,13 @@ intent/brainstorm.md
 
 | 文件 | 是什么 | 要你看吗 |
 |---|---|---|
-| `verification-plan.md` | §3 测试点矩阵 + §4 功耗场景，你在计划门看的就是这份 | **必看** |
+| `verification-plan.md` | §3 测试点矩阵 + §4 功耗场景，交付回顾时你看的就是这份 | **必看** |
 | `plan-review/findings.md` / `decisions.md` | 计划评审的发现，以及你的裁决 | **必看** |
 | `tb-scaffold.json` | TB 骨架：testpoint 与 agent 的定义 | 选看，plan §3 是它的人读版本 |
 | `power-scenarios.json` | 功耗场景，由 power-analysis 消费 | 选看，plan §4 是它的人读版本 |
 | `sequences.json` | 激励序列定义 | 不用看 |
 
-**你的动作：计划门。** 看 `verification-plan.md` 的测试点矩阵和 `plan-review/findings.md` 的发现，三选一：
-
-- **approve**：批准整份计划（测试点矩阵、TB 骨架）。如果你认下了评审标为 blocking 的发现，你的原话会记进 `plan-review/decisions.md`。
-- **request changes**：你提修改意见，它增量改后重新回到这道门。
-- **reject**。
+**你的动作：交付回顾。** 给你 `verification-plan.md` 和 `plan-review/findings.md` 的路径，不问你任何结论。说出你要改什么，它增量改后再交一次；你让它认下某条评审标为 blocking 的发现时，你的原话会记进 `plan-review/decisions.md`。认可这份评审是 `kernel.py pin`（下表 #6），而下游没有任何东西复查"测试点对规格" —— 所以一条没处置的缺口挡在签核上。
 
 > 测试点矩阵定下来之后，TB、回归、覆盖率收敛全按它走，这道门值得花时间。
 
@@ -447,8 +443,8 @@ rm ~/.claude/skills/veripower
 |---|---|---|---|---|---|
 | 1 | 需求对话 | brainstorm（流水线之前） | 需求与架构，含 PPA 目标 | 否 | §1.2 |
 | 2 | 账本与分区门 | specification 需求评审后 | 处理 `unassignable` 行，看流水线之外和留给你的行，核对数值界限，确认划分 | 否，且是**最后一次能改分区** | §1.4 |
-| 3 | 设计门 | specification 子设计评审后 | design.md / 各子设计 / 评审 | 否 | §1.4 |
-| 4 | 计划门 | simulation-plan | approve / request changes / reject | 否 | §1.4 |
+| 3 | 交付回顾 | specification 子设计评审后 | 不用决定什么 —— 读评审、说要改什么；认可在 #6 | 是 | §1.4 |
+| 4 | 交付回顾 | simulation-plan | 同上；计划评审的认可在 #6 | 是 | §1.4 |
 | 5 | ESCALATE | 任意阶段 | 指认该由哪个阶段去修，并给出理由 | 否 | §1.5 |
 | 6 | 认可判据 | 四份 LLM 写的判据 | 读过之后确认，并给一句理由 | 签核前必做 | §1.6 |
 | 7 | 签核 | 全部阶段之后 | 看完签核依据后批准 | 是，不签核就一直停在交付态 | §1.6 |

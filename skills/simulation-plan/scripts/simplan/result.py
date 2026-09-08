@@ -7,8 +7,6 @@ from simplan._plan import SIDECAR_NAMES
 
 STAGE = "simulation-plan"
 
-_REJECT_REASON = "user rejected plan"
-
 
 def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -53,7 +51,7 @@ def enumerate_artifacts(workdir) -> list:
 
 
 def build_result(
-    workdir, spec_workdir, *, status, revision, fail_reason=None, fix_owner=None
+    workdir, spec_workdir, *, revision, fail_reason=None, fix_owner=None
 ) -> int:
     """Assemble the lean simulation-plan result.json from the workdir.
 
@@ -64,28 +62,17 @@ def build_result(
     and a fail-loud exit there would turn a routable fail into a BLOCKED.
 
     The plan-adequacy review is NOT re-judged here, and re-adding that would not buy a check:
-    a verdict re-derived from the record would be checked against the --status of the same
-    caller that assembled the record.
+    a verdict re-derived from the record would be checked against the record's own author.
 
-    The human-gate state (status=user-reject / revision) is passed in by the caller, NOT
-    derivable from any artifact.
+    The status is derived: a round either delivered the plan or the caller says in one line what
+    stopped it. There is no human verdict to carry — the review is prose nothing reduces to a
+    pass, and the act that endorses it is `kernel.py pin`, which anchors to its content and is
+    what signoff requires. `revision` is an amendment marker, not an outcome.
     Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED)."""
     workdir = Path(workdir)
 
-    if status == "fail":
-        if (
-            fail_reason is None
-            and not (workdir / "plan-review" / "findings.md").is_file()
-        ):
-            # A user reject can only follow the Step-3 review and the Step-4 loop, and the
-            # reviewer — not this caller — writes that file. A bare --status fail on a
-            # workdir where no review ran would fabricate a human rejection; force the
-            # caller to say what failed instead.
-            raise ValueError(
-                "--status fail without --fail-reason is the user reject and requires "
-                "plan-review/findings.md on disk; for an early fail pass --fail-reason"
-            )
-        ss = {"fail_reason": fail_reason or _REJECT_REASON}
+    if fail_reason:
+        ss = {"fail_reason": fail_reason}
         if revision:
             ss["revision"] = revision
         _write_result(
@@ -126,22 +113,14 @@ def build_result(
 
 
 def finalize(
-    workdir, spec_workdir, *, status, revision, fail_reason=None, fix_owner=None
+    workdir, spec_workdir, *, revision, fail_reason=None, fix_owner=None
 ) -> int:
-    """Parse the human-gate outcome args, then build_result. exit 0 = result.json written
-    (pass or fail); exit 2 = BLOCKED (empty --fail-reason, a re-run check-scaffold failure,
-    or any internal raise) — never conflated with status=fail."""
+    """build_result, with the exit-code contract. exit 0 = result.json written (pass or fail);
+    exit 2 = BLOCKED (an empty --fail-reason, a re-run check-scaffold failure, or any internal
+    raise) — never conflated with status=fail."""
     if fail_reason is not None and not fail_reason.strip():
         print(
             "[simplan finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",
-            file=sys.stderr,
-        )
-        return 2
-    if fail_reason is not None and status != "fail":
-        # An unpaired --fail-reason is a caller slip about to invert a failure into a
-        # computed pass; refuse loudly instead of silently discarding the reason.
-        print(
-            "[simplan finalize] BLOCKED: --fail-reason requires --status fail",
             file=sys.stderr,
         )
         return 2
@@ -149,7 +128,6 @@ def finalize(
         return build_result(
             workdir,
             spec_workdir,
-            status=status,
             revision=revision,
             fail_reason=fail_reason,
             fix_owner=fix_owner,

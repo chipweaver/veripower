@@ -37,7 +37,7 @@ Everything below is produced under `{workdir}`. Each JSON sidecar's shape is `re
 ## Fan-out
 
 - **Dispatch-and-wait:** after dispatching, send a brief status and end the turn; a wave's gate begins once every sub-Task in it has reported.
-- **Sub-Task `STATUS: BLOCKED`:** a crash, not a `fail` verdict. Finalize `status=fail` with a `fail_reason` listing the failed children, and leave per-child re-dispatch to a repair round.
+- **Sub-Task `STATUS: BLOCKED`:** a crash, not a `fail` verdict. Finalize with a `--fail-reason` listing the failed children — it lands in the envelope's `stage_specific.fail_reason` — and leave per-child re-dispatch to a repair round.
 
 ## Workflow
 
@@ -108,26 +108,21 @@ It generates `constraints/<TOP>.{sdc,sgdc}` from `clocks.json` + `top-io.json`. 
 
 Dispatch one Level-1 reviewer per `manifest.children[]` per `references/child-review-task-contract.md`, passing paths. Each writes its own `spec-review/findings/<child>.md`.
 
-**Gate, human — the design gate.** Path-handoff, echoing no body: the `design.md` and per-child paths, the `check-crossrefs` verdict, one `spec-review/findings/<child>.md` path per child.
+**Handoff, not a gate.** Give the user the paths, echoing no body: `design.md`, each `children/<child>.md`, the `check-crossrefs` verdict, one `spec-review/findings/<child>.md` per child. You do not summarize the findings, rank them, or decide which ones matter: a review relayed through your summary is your judgment wearing the reviewer's name.
 
-What the user is approving is the engineering soundness no script and no reviewer can reach: port roles, reset polarity, clock relationships, whether the children realize the rows they cite.
+Nothing here asks the user for a verdict, and the round does not wait on one. What the reviews reach for is the engineering soundness no script can — port roles, reset polarity, clock relationships, whether the children realize the rows they cite — and endorsing that is `kernel.py pin`, which anchors to the review's content and is what `signoff` refuses without. A blocking finding nobody acts on therefore leaves the module unsignable rather than shipping under a word typed to keep the round moving.
 
-You do not summarize the findings, rank them, or decide which ones matter: a review relayed through your summary is your judgment wearing the reviewer's name.
-
-If the user accepts a finding a reviewer called blocking, write their reason — **their words, not yours** — to `spec-review/decisions.md`, so the override travels with the review it overrode instead of living only in this session.
-
-On reject, re-run from wherever their feedback starts: a body change re-enters at the child sub-designs, a partition change at decompose.
+Act on what they say: a body change re-enters at the child sub-designs, a partition change at decompose, and a finding they tell you to accept as-is goes to `spec-review/decisions.md` in **their words, not yours**, so the reasoning travels with the review it overrode. A round that cannot deliver at all closes below with `--fail-reason`.
 
 ### Finalize
 
 Every run ends here, an unresolvable failure included:
 
 ```bash
-python3 <skill>/scripts/spec/__main__.py finalize \
-  --workdir {workdir} --status <pass|fail> [--fail-reason "<one-line reason>"]
+python3 <skill>/scripts/spec/__main__.py finalize --workdir {workdir} [--fail-reason "<one-line reason>"]
 ```
 
-You supply only the human-gate outcome; everything else in the envelope is finalize's. On the pass path it re-validates `requirements.json` and refuses one that still carries an `unassignable` row, then re-runs `check-crossrefs` and `derive-constraints` in-process — both were clean at the cross-reference gate, so a failure now means an artifact was edited after that gate, which is BLOCKED rather than a routable fail. Exit 0 = `result.json` written, status pass or fail. A non-zero exit is a program exception: BLOCKED, reason on stderr, never a `status=fail`.
+The status is derived, so you assert nothing about the outcome: a reason names what stopped the round, and its absence means the stage delivered what it owes. On the delivering path finalize re-validates `requirements.json` and refuses one that still carries an `unassignable` row, then re-runs `check-crossrefs` and `derive-constraints` in-process — both were clean at the cross-reference gate, so a failure now means an artifact was edited after that gate, which is BLOCKED rather than a routable fail. Exit 0 = `result.json` written. A non-zero exit is a program exception: BLOCKED, reason on stderr, never a `status=fail`.
 
 ## Return Contract
 

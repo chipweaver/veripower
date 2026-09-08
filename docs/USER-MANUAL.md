@@ -166,14 +166,14 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 | `requirements.json` | Everything your intent document requires, one row each in your own words, with the stage that will judge it. The gate shows you verbatim the rows nobody could place (`unassignable`), the rows judged outside this pipeline, the rows left to you, and the numeric bounds the tools will compare | **Must read those four groups** |
 | `manifest.json` | Partition: `module` + `children[]` | **Must read**, at the ledger and partition gate |
 | `spec-review/findings/requirements.md` / `findings/<child>.md` / `decisions.md` | The ledger checked against your document, each child design checked against the ledger, and your rulings | **Must read** |
-| `check-hints/<child>.json` | How simulation will observe each requirement row it judges | Optional |
-| `clocks.json` / `top-io.json` / `interconnects.json` | Boundary info: clocks, top-level ports, cut wires | `design.md` §1.4 is the human-readable version |
+| `check-hints.json` | How simulation will observe each requirement row it judges | Optional |
+| `clocks.json` / `top-io.json` / `interconnects.json` | Boundary info: clocks, top-level ports, cut wires | `design.md` §1.3 is the human-readable version |
 | `constraints/<TOP>.sdc` / `.sgdc` | Constraint pair generated from clocks + top-io | Generated, not a decision |
 
-**Your action: two gates**
+**Your action: one gate, then a handoff**
 
-- **Ledger and partition gate** (after the requirements review): resolve every `unassignable` row (define how it is measured, assign a judge, or declare it not a requirement), read the rows judged outside the pipeline and the ones left to you, check the numeric bounds, confirm the partition or give feedback to repartition.
-- **Design gate** (after the child reviews): focus on whether `design.md` and each `<child>.md` realize the ledger rows they cite, and whether you agree with the findings and decisions in `spec-review/`.
+- **Ledger and partition gate** (after the requirements review): resolve every `unassignable` row (define how it is measured, assign a judge, or declare it not a requirement), read the rows judged outside the pipeline and the ones left to you, check the numeric bounds, confirm the partition or give feedback to repartition. These are answers the pipeline cannot compute, so it waits for them.
+- **The delivery handoff** (after the child reviews): you get the paths and nothing is asked of you. Read whether `design.md` and each `<child>.md` realize the ledger rows they cite, and say what you want changed. Endorsing the reviews is `kernel.py pin` (#6 below) — until then the module cannot be signed off, so an unresolved blocking finding stops the module rather than the round.
 
 > Decisions made earlier in the pipeline have the biggest impact. The spec stage is the source for everything that follows. Take the time.
 
@@ -187,17 +187,13 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 
 | File | What it is | Read it? |
 |---|---|---|
-| `verification-plan.md` | §3 testpoint matrix + §4 power scenarios. This is what you review at the plan gate | **Must read** |
+| `verification-plan.md` | §3 testpoint matrix + §4 power scenarios. This is what you read when the round is handed over | **Must read** |
 | `plan-review/findings.md` / `decisions.md` | Review findings and your rulings | **Must read** |
 | `tb-scaffold.json` | TB scaffold: testpoint and agent definitions | Optional, plan §3 is the human-readable version |
 | `power-scenarios.json` | Power scenarios, consumed by power-analysis | Optional, plan §4 is the human-readable version |
 | `sequences.json` | Stimulus sequence definitions | No need |
 
-**Your action: plan gate.** Read the testpoint matrix in `verification-plan.md` and the findings in `plan-review/findings.md`. Three choices:
-
-- **approve**: accept the plan (testpoint matrix, TB scaffold). If you accept findings the review flagged as blocking, your exact words get recorded in `plan-review/decisions.md`.
-- **request changes**: give feedback, it revises incrementally and comes back to this gate.
-- **reject**.
+**Your action: a handoff.** You get the `verification-plan.md` and `plan-review/findings.md` paths, and nothing is asked of you. Say what you want changed and it revises incrementally and comes back; if you tell it to accept a finding the review flagged as blocking, your exact words get recorded in `plan-review/decisions.md`. Endorsing the review is `kernel.py pin` (#6 below), and nothing downstream re-checks testpoint-vs-spec — so an unaddressed gap stops the module at signoff.
 
 > Once the testpoint matrix is locked, the TB, regression, and coverage convergence all follow from it. This gate is worth the time.
 
@@ -453,8 +449,8 @@ The body of this manual uses familiar terms where possible. Below are the words 
 |---|---|---|---|---|---|
 | 1 | Requirements dialogue | brainstorm (before pipeline) | Requirements and architecture, including PPA targets | No | §1.2 |
 | 2 | Ledger and partition gate | specification, after the requirements review | Resolve `unassignable` rows, read the rows outside the pipeline and yours, check the bounds, confirm the partition | No, and it's the **last chance to change the partition** | §1.4 |
-| 3 | Design gate | specification, after the child reviews | design.md / sub-designs / reviews | No | §1.4 |
-| 4 | Plan gate | simulation-plan | approve / request changes / reject | No | §1.4 |
+| 3 | Delivery handoff | specification, after the child reviews | Nothing — read the reviews and say what you want changed; you endorse them at #6 | Yes | §1.4 |
+| 4 | Delivery handoff | simulation-plan | Nothing — same; you endorse the plan review at #6 | Yes | §1.4 |
 | 5 | ESCALATE | any stage | Attribute the failure to a stage and say why | No | §1.5 |
 | 6 | Endorse judgments | four LLM-authored artifacts | Read, confirm, give a reason | Required before signoff | §1.6 |
 | 7 | Signoff | after all stages | Review the signoff basis and approve | Yes. Without it the module stays in delivery state | §1.6 |
