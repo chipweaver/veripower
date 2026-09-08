@@ -36,16 +36,17 @@ _TODO_RE = re.compile(r"TODO")
 
 
 def coverage_rows(requirements_path: Path) -> list[dict]:
-    """The requirements.json rows simulation judges with a coverage bound: the engineer's own
+    """The requirements.json rows simulation judges with a bound: the engineer's own
     thresholds, in the engineer's own comparison. No row for a dim means that dim is reported,
-    not gated."""
+    not gated.
+
+    Every targeted `simulation` row is returned, not only the `coverage_*` ones. A dim this
+    stage does not measure must be REFUSED BY NAME here — which is what requirements.schema.json
+    promises of every judging stage — and coverage_gate below does refuse it. Filtering on the
+    prefix instead dropped such a row before the gate that would have failed it, leaving a bound
+    the engineer wrote silently ungated and nothing anywhere complaining."""
     rows = json.loads(Path(requirements_path).read_text(encoding="utf-8"))
-    return [
-        r
-        for r in rows
-        if r["judge"] == "simulation"
-        and r.get("target", {}).get("dim", "").startswith("coverage_")
-    ]
+    return [r for r in rows if r["judge"] == "simulation" and "target" in r]
 
 
 def materialization_errors(workdir: Path, scaffold: dict) -> list[str]:
@@ -147,12 +148,12 @@ def coverage_gate(
                     "id": r["id"],
                     "met": False,
                     "actual": None,
-                    "measured": f"{dim} coverage of {dut!r}: urg measured none",
+                    "measured": f"{dim} of {dut!r}: simulation measures no such dimension",
                 }
             )
             errs.append(
-                f"{r['id']}: {dim} coverage is bounded but absent from the coverage report "
-                f"(urg did not measure it; cannot gate)"
+                f"{r['id']}: {dim} is bounded but simulation's coverage report carries no "
+                f"such dimension (cannot gate)"
             )
             continue
         val = agg[dim]

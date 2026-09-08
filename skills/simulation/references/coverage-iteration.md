@@ -7,8 +7,9 @@ percentages per instance tree, and the DUT's own row there is what the coverage 
 against the bounds the engineer wrote — not the `aggregate` block beside it, which covers the TB
 top's whole tree including the agent interfaces and any ROMs, and so answers a question no row
 asked. The bounds are the
-`<requirements>/requirements.json` rows simulation judges with a `coverage_*` target, which is
-what decides pass or fail. `uncovered[]` holds the named items behind those percentages, one entry per
+`<requirements>/requirements.json` rows simulation judges that carry a `target`, which is what
+decides pass or fail — and a row whose `target.dim` names something this stage does not measure
+fails by name rather than going unnoticed. `uncovered[]` holds the named items behind those percentages, one entry per
 branch, condition or FSM transition urg saw and never exercised:
 
 ```json
@@ -61,6 +62,8 @@ the coverage route-out.
 
 ## Threshold source
 
-The engineer's own rows in `<requirements>/requirements.json`: `judge` simulation, `target.dim`
-one of `coverage_line` / `coverage_cond` / `coverage_fsm` / `coverage_toggle`, compared with the
-row's own `op`. A dimension no row bounds is reported and not gated.
+The engineer's own rows in `<requirements>/requirements.json`: `judge` simulation with a
+`target`, compared with the row's own `op`. The dimensions this stage measures are
+`coverage_line` / `coverage_cond` / `coverage_fsm` / `coverage_toggle`; a row naming any other
+dimension is refused by name here, because a bound nothing compares is a bound the engineer
+wrote and nobody kept. A dimension no row bounds is reported and not gated.

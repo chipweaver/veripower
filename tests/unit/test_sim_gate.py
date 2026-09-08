@@ -75,9 +75,31 @@ def _rows(tmp_path, *dims, op=">", value=90):
     return _gate.coverage_rows(p)
 
 
-def test_coverage_rows_are_the_simulation_rows_with_a_coverage_bound(tmp_path):
+def test_coverage_rows_are_every_targeted_simulation_row(tmp_path):
     rows = _rows(tmp_path, "line", "fsm")
     assert [r["id"] for r in rows] == ["R-0", "R-1"]
+
+
+def test_a_dim_simulation_does_not_measure_is_refused_by_name(tmp_path):
+    # requirements.schema.json promises that a dim a stage does not measure is "refused by
+    # name there". Filtering coverage_rows on the coverage_ prefix instead dropped such a row
+    # before the gate, so the engineer's bound was silently ungated and nothing complained.
+    rows = [
+        {
+            "id": "R-9",
+            "verbatim": "single-tile latency <= 80 cycles",
+            "judge": "simulation",
+            "target": {"dim": "single_tile_latency", "op": "<=", "value": 80},
+        }
+    ]
+    p = tmp_path / "requirements.json"
+    p.write_text(json.dumps(rows))
+    selected = _gate.coverage_rows(p)
+    assert [r["id"] for r in selected] == ["R-9"], "the row must reach the gate at all"
+    cov = {"per_module": [dict(name="m", **{"line": 92.0})]}
+    errs, judged = _gate.coverage_gate(cov, selected, "m")
+    assert judged[0]["met"] is False
+    assert any("single_tile_latency is bounded but" in e for e in errs)
 
 
 def test_coverage_gate_pass(tmp_path):
@@ -130,7 +152,7 @@ def test_coverage_gate_absent_dim_fails(tmp_path):
         "per_module": [dict(name="m", **{"line": 92.0, "cond": 91.0, "toggle": 93.0})]
     }  # fsm absent
     errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "fsm"), "m")
-    assert any("fsm coverage is bounded but absent" in e for e in errs)
+    assert any("fsm is bounded but" in e for e in errs)
     assert judged[0]["met"] is False
 
 
