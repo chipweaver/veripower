@@ -18,7 +18,8 @@ the top-partition purity rule (decided at the ledger and partition gate — see 
 needing a reference frame, such as whether a doc realizes a requirement. Those are a reader's job.
 
 Usage: ``python3 scripts/spec/__main__.py check-crossrefs --workdir {workdir}``
-Exit: 0 if `status == "pass"`, 1 if `status == "fail"`.
+Exit: 0 if `status == "pass"`, 1 if `status == "fail"`, 2 if a precondition read failed
+(BLOCKED, reason on stderr, no verdict on stdout).
 """
 
 import json

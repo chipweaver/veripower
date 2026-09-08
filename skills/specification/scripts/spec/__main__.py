@@ -4,7 +4,7 @@
 Verbs (one stage = one tool):
   check-ledger        validate requirements.json; print the ledger and partition gate view (stdout: JSON)
   derive-ports        per-child ports from interconnects.json (stdout: JSON)
-  check-crossrefs     cross-file name + hint↔requirement join (stdout: verdict JSON; exit 0/1)
+  check-crossrefs     cross-file name + hint↔requirement join (stdout: verdict JSON; exit 0/1, 2 BLOCKED)
   derive-constraints  generate SDC/SGDC from clocks.json + top-io.json (stdout: JSON; fail-loud)
   finalize            assemble the lean result.json         (exit 0 written / 2 BLOCKED)
 
