@@ -21,7 +21,7 @@
       "verbatim": {
         "type": "string",
         "minLength": 1,
-        "description": "The engineer's own words, trimmed to the clause, original language. Every later reader is held to this wording."
+        "description": "The engineer's own words, copied, original language — a clause, or a label and what it labels with each piece left as it stands. Every later reader is held to this wording."
       },
       "judge": {
         "type": "string",
