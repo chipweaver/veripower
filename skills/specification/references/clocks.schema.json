@@ -25,7 +25,7 @@
         "exclusiveMinimum": 0
       },
       "io_delay_ns": {
-        "description": "The arrival budget for every non-clock port in this domain, in ns: how much of the period is spent outside this module before an input is stable, and is left for whoever consumes an output. It reaches synthesis and timing-analysis as set_input_delay / set_output_delay, so it decides their verdicts. Optional, because a budget is a contract with whatever sits outside the chip and a module document often does not state one: write it when a requirements row gives it, and leave it out otherwise — omitted, the SDC times the domain at 0, which is what an unallocated budget means, says so in a comment, and the human rules a real budget at the ledger and boundary gate. Never a fraction of the period.",
+        "description": "The arrival budget for every non-clock port in this domain, in ns: how much of the period is spent outside this module before an input is stable, and is left for whoever consumes an output. It reaches synthesis and timing-analysis as set_input_delay / set_output_delay, so it decides their verdicts. Optional, because a budget is a contract with whatever sits outside the chip and a module document often does not state one: write it when a requirements row gives it or the human rules one at the ledger and boundary gate, and leave it out otherwise — omitted, the SDC times the domain at 0, which is what an unallocated budget means, and says so in a comment. A ruling that the budget is unallocated leaves the field out: the SDC's 0 already carries it, and the ruling's words live in the stage's decisions. Never a fraction of the period.",
         "type": "number",
         "minimum": 0
       },

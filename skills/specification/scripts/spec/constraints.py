@@ -138,11 +138,9 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
     delay_of = {c["name"]: c.get("io_delay_ns", 0.0) for c in non_gen}
     if unstated:
         out.append(
-            "# arrival budget unstated for clock(s) "
+            "# no requirements row gives an arrival budget for clock(s) "
             + ", ".join(unstated)
-            + ": timed at 0 below — the whole period is available at the pins. No"
-            " requirements row gives a budget; the human rules it at the ledger and"
-            " boundary gate, and this file is re-derived from clocks.json when they do."
+            + ": timed at 0 below — the whole period is available at the pins."
         )
     for p in ports:
         # A clock is constrained by create_clock and an async reset is not timed against one.

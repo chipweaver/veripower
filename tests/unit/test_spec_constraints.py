@@ -593,5 +593,8 @@ def test_a_clock_with_no_io_delay_is_timed_at_zero_and_says_so(tmp_path):
     text = (wd / "constraints" / "m.sdc").read_text()
     assert re.search(r"^set_input_delay\s+0(\.0)?\s+-clock clk .*d_in", text, re.M)
     assert re.search(r"^set_output_delay\s+0(\.0)?\s+-clock clk .*d_out", text, re.M)
-    assert "arrival budget unstated for clock(s) clk" in text
-    assert "ledger and boundary gate" in text
+    assert "no requirements row gives an arrival budget for clock(s) clk" in text
+    assert "the whole period is available at the pins" in text
+    # the generator reads clocks.json, not decisions.md: it must not claim to know
+    # whether a human has ruled the budget yet.
+    assert "gate" not in text
