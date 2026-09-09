@@ -90,7 +90,7 @@ Dispatch one Level-1 sub-Task per `references/check-hints-task-contract.md`, wri
 python3 <skill>/scripts/spec/__main__.py check-crossrefs --workdir {workdir}
 ```
 
-The verdict is structured on stdout: exit 0 clean, exit 1 the join found something. A non-zero exit with no verdict on stdout is exit 2 — a program exception, BLOCKED with the reason on stderr. **Fix nothing yourself.** Each disagreement names both sides, and which of the two is wrong is a judgment: the hint may name the wrong row, or the row may name the wrong judge. Decide that, then route the rework to whoever authored that file.
+The verdict is structured on stdout: exit 0 clean, exit 1 the join found something. Exit 1 with **nothing** on stdout is a file it could not read, named on stderr — route that to whoever authors it. **Fix nothing yourself.** Each disagreement names both sides, and which of the two is wrong is a judgment: the hint may name the wrong row, or the row may name the wrong judge. Decide that, then route the rework to whoever authored that file.
 
 On a clean gate, immediately derive the constraints:
 
@@ -118,7 +118,7 @@ Every run ends here, an unresolvable failure included:
 python3 <skill>/scripts/spec/__main__.py finalize --workdir {workdir} [--fail-reason "<one-line reason>"]
 ```
 
-The status is derived, so you assert nothing about the outcome: a reason names what stopped the round, and its absence means the stage delivered what it owes. On the delivering path finalize re-validates `requirements.json` and refuses one that still carries an `unassignable` row, then re-runs `check-crossrefs` and `derive-constraints` in-process — both were clean at the cross-reference gate, so a failure now means an artifact was edited after that gate, which is BLOCKED rather than a routable fail. Exit 0 = `result.json` written. A non-zero exit is a program exception: BLOCKED, reason on stderr, never a `status=fail`.
+The status is derived, so you assert nothing about the outcome: a reason names what stopped the round, and its absence means the stage delivered what it owes. On the delivering path finalize re-runs `check-crossrefs` and `derive-constraints` in-process, then re-validates `requirements.json` and refuses one that still carries an `unassignable` row — the first two were clean at the cross-reference gate, so a failure there means an artifact was edited after that gate, which is BLOCKED rather than a routable fail. Exit 0 = `result.json` written. A non-zero exit is a program exception: BLOCKED, reason on stderr, never a `status=fail`.
 
 ## Return Contract
 
