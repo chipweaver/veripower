@@ -56,14 +56,7 @@ _CLK_PORT = _port("clk", "input", "clock")
 
 
 def _wd(tmp_path, ports, clocks=None, write_clocks=True, write_io=True):
-    (tmp_path / "manifest.json").write_text(
-        json.dumps(
-            {
-                "module": "m",
-                "children": [{"name": "c", "doc": "c.md", "rtl_modules": ["c"]}],
-            }
-        )
-    )
+    (tmp_path / "manifest.json").write_text(json.dumps({"module": "m"}))
     if write_clocks:
         (tmp_path / "clocks.json").write_text(
             json.dumps(_DEFAULT_CLOCKS if clocks is None else clocks, indent=2)
@@ -583,9 +576,22 @@ def test_io_delay_is_the_authored_number_not_a_fraction_of_the_period(tmp_path):
     assert "3.0 -clock clk" not in sdc
 
 
-def test_a_clock_with_no_io_delay_is_refused(tmp_path):
-    # No default: an arrival budget nobody stated is a number nobody owns, and synthesis and
-    # timing-analysis would judge their rows against it.
-    bad = [{k: v for k, v in _clk("clk", 10.0).items() if k != "io_delay_ns"}]
-    proc = _run(_wd(tmp_path, [_CLK_PORT], bad), check=False)
-    assert proc.returncode != 0 and "io_delay_ns" in proc.stderr
+def test_a_clock_with_no_io_delay_is_timed_at_zero_and_says_so(tmp_path):
+    # An arrival budget nobody stated is a number nobody owns, so the SDC states the one
+    # reading that is true — the whole period is available at the pins — rather than a
+    # fraction of the period. It must still emit the lines: timing-analysis counts output
+    # bits that CARRY a delay, so omitting them fails the run on tooling instead, which no
+    # human can clear without inventing the number the omission was avoiding.
+    bare = [{k: v for k, v in _clk("clk", 10.0).items() if k != "io_delay_ns"}]
+    ports = [
+        _CLK_PORT,
+        _port("d_in", "input", "data"),
+        _port("d_out", "output", "data"),
+    ]
+    wd = _wd(tmp_path, ports, bare)
+    _run(wd)
+    text = (wd / "constraints" / "m.sdc").read_text()
+    assert re.search(r"^set_input_delay\s+0(\.0)?\s+-clock clk .*d_in", text, re.M)
+    assert re.search(r"^set_output_delay\s+0(\.0)?\s+-clock clk .*d_out", text, re.M)
+    assert "arrival budget unstated for clock(s) clk" in text
+    assert "ledger and boundary gate" in text

@@ -127,7 +127,23 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
         "set_clock_uncertainty -hold  0.0 [all_clocks]   ;# pre-CTS hold = 0; replace per CTS skew"
     )
     out.append("")
-    delay_of = {c["name"]: c["io_delay_ns"] for c in non_gen}
+    # A domain the engineer gave no arrival budget for is timed at 0, not at a fraction of
+    # the period and not skipped. 0 is what an unallocated budget MEANS — the whole period
+    # is available at the pins — so the SDC states a true reading instead of a guess, and
+    # the verdict it produces is "meets timing with nothing outside this module". Skipping
+    # the line instead would read as a pass too: timing-analysis counts output bits that
+    # CARRY a delay, so an omitted one lands as an untimed bit and fails the run on tooling,
+    # which no human can clear without inventing the number anyway. The gate replaces it.
+    unstated = sorted(c["name"] for c in non_gen if "io_delay_ns" not in c)
+    delay_of = {c["name"]: c.get("io_delay_ns", 0.0) for c in non_gen}
+    if unstated:
+        out.append(
+            "# arrival budget unstated for clock(s) "
+            + ", ".join(unstated)
+            + ": timed at 0 below — the whole period is available at the pins. No"
+            " requirements row gives a budget; the human rules it at the ledger and"
+            " boundary gate, and this file is re-derived from clocks.json when they do."
+        )
     for p in ports:
         # A clock is constrained by create_clock and an async reset is not timed against one.
         # A SYNC reset is: it is sampled by the same edge as every data input, so leaving it

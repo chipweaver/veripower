@@ -205,14 +205,7 @@ def test_finalize_on_an_empty_workdir_is_blocked(tmp_path, capsys):
     spec = tmp_path / "Design" / "specification"
     spec.mkdir(parents=True)
     manifest = spec / "manifest.json"
-    manifest.write_text(
-        json.dumps(
-            {
-                "module": "dut_top",
-                "children": [{"name": "mac", "doc": "mac.md", "rtl_modules": ["mac"]}],
-            }
-        )
-    )
+    manifest.write_text(json.dumps({"module": "dut_top"}))
     assert ve.finalize(wd) == 2
     assert "rtl-files.json" in capsys.readouterr().err
     assert not (wd / "result.json").exists()
