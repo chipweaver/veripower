@@ -108,9 +108,7 @@ def _spec(tmp_path, hints=None, top_io=None, rows=None):
     (tmp_path / "requirements.json").write_text(
         json.dumps(_ROWS if rows is None else rows)
     )
-    (tmp_path / "manifest.json").write_text(
-        json.dumps({"module": "m", "children": [{"name": "c", "doc": "c.md"}]})
-    )
+    (tmp_path / "manifest.json").write_text(json.dumps({"module": "m"}))
     (tmp_path / "check-hints.json").write_text(
         json.dumps([{"check_id": "CHK-0"}] if hints is None else hints)
     )

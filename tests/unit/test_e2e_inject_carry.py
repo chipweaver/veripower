@@ -84,9 +84,6 @@ _STAGE_FILES = {
         "clocks.json": "[]",
         "check-hints.json": "[]",
         "top-io.json": "[]",
-        "interconnects.json": "[]",
-        "children/child_a.md": "child a design",  # the per-child design tree (N>=1),
-        # distinct from design.md, so the "children" selector has a genuine match
         "constraints/top.sdc": "# sdc",
         "constraints/top.sgdc": "# sgdc",
     },
@@ -160,7 +157,7 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     )
     assert spec["ok"] is True and spec["verdict"] == "pass", spec
 
-    # 2. dispatch rtl-design -> dispatch.json's design/manifest/children all
+    # 2. dispatch rtl-design -> dispatch.json's design and manifest both
     # resolve to the SAME producer (specification) stage root, absolute.
     d1 = _run_json(
         tmp_path,

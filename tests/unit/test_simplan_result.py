@@ -103,9 +103,7 @@ def _spec(tmp_path, hints=("CHK-0",)):
             ]
         )
     )
-    (sd / "manifest.json").write_text(
-        json.dumps({"module": "m", "children": [{"name": "c", "doc": "c.md"}]})
-    )
+    (sd / "manifest.json").write_text(json.dumps({"module": "m"}))
     (sd / "check-hints.json").write_text(json.dumps([{"check_id": c} for c in hints]))
     (sd / "requirements.json").write_text(
         json.dumps(

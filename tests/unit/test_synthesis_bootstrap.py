@@ -32,7 +32,7 @@ def _mirror(tmp_path):
     workdir = tmp_path / "asic" / "M" / "Design" / "synthesis" / "runs" / "1"
     workdir.mkdir(parents=True)
     spec.mkdir(parents=True, exist_ok=True)
-    (spec / "manifest.json").write_text(json.dumps({"module": "M_top", "children": []}))
+    (spec / "manifest.json").write_text(json.dumps({"module": "M_top"}))
     # The SDC source of truth is REQUIRED (bootstrap fails closed without it); specification
     # always emits it, so the fixture does too. test_missing_spec_sdc_fails_closed removes it.
     con = spec / "constraints"

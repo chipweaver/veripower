@@ -19,7 +19,7 @@ only what it reads.
 `<skill>` is this skill's own base directory, named on the first line of this file.
 
 Read `{workdir}/dispatch.json` for this round's inputs: its `inputs` table maps each upstream key
-to a location, so `<key>/<subpath>` is how you address one. `design` / `manifest` / `children` /
+to a location, so `<key>/<subpath>` is how you address one. `design` / `manifest` /
 `clocks` / `requirements` / `check_hints` / `top_io` all resolve to the specification stage root.
 
 | Path | What it is |

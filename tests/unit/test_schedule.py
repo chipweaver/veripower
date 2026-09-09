@@ -872,7 +872,6 @@ _OUTPUTS = {
         "Design/specification/clocks.json",
         "Design/specification/check-hints.json",
         "Design/specification/top-io.json",
-        "Design/specification/interconnects.json",
         "Design/specification/constraints/top.sdc",
         "Design/specification/constraints/top.sgdc",
     ],

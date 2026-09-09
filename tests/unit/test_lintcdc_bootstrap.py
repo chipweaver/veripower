@@ -91,9 +91,7 @@ def _make_tree(
         if carried_waiver is not None:
             (ws / "waiver.tcl").write_text(carried_waiver)
     spec_root.mkdir(parents=True, exist_ok=True)
-    (spec_root / "manifest.json").write_text(
-        json.dumps({"module": "dut", "children": []})
-    )
+    (spec_root / "manifest.json").write_text(json.dumps({"module": "dut"}))
     (workdir / "dispatch.json").write_text(
         json.dumps(
             {

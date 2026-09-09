@@ -145,7 +145,6 @@ _STAGE_FILES = {
         "clocks.json": "[]",
         "check-hints.json": "[]",
         "top-io.json": "[]",
-        "interconnects.json": "[]",
         "constraints/top.sdc": "# sdc",
         "constraints/top.sgdc": "# sgdc",
     },
