@@ -12,9 +12,8 @@ finding, saying what you compared against each time.
 
 Two directions are yours alone, because nothing else holds both sides:
 
-- A row judged `specification` is established by a sidecar entry — a clock, a port, the top
-  module's name, an SDC statement. Report a row nothing realizes, and a sidecar entry no row
-  supports.
+- A row judged `specification` is made true by something inside this stage's own artifacts.
+  Point at it. Report a row you cannot point at, and a sidecar entry no row supports.
 - A check hint's rule must establish the rows it names and assert nothing they do not. A rule is
   an obligation, and one no row carries is an obligation nobody asked for. A hint observing
   something other than the top boundary says why in its own `reference_rule`; report one that

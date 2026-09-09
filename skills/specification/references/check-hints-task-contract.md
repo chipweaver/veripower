@@ -12,6 +12,6 @@ Observe at the top boundary — it is the one boundary that exists no matter how
 split. Name something inside only when no top-boundary stimulus and observation can tell the row
 holding from failing, and say why in that hint's `reference_rule`: the reader who has to trust the
 exception is looking at the hint, not elsewhere. A name from inside is a bet on a structure
-rtl-design has not chosen yet, so it costs a rework when the bet is wrong.
+rtl-design has not chosen yet.
 
 End with `STATUS: DONE` and the path, or `STATUS: BLOCKED <reason>`.

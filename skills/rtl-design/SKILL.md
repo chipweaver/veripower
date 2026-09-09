@@ -7,7 +7,7 @@ description: Use when writing or modifying Verilog/SystemVerilog RTL, or recordi
 
 Your sole responsibility: turn the boundary specification froze into authored RTL. You are a thin dispatcher — per-child sub-Tasks author every `.v` file, and a reviewer per child reads it back against its intent. You hold no RTL body, and every fix lands through a child re-dispatch.
 
-**The split is yours.** Nothing upstream names the RTL modules: `design.md` §1.2 argues for a structure and the rows constrain it, but you are the first reader who has the RTL in front of them. Partition on the interface graph's edges, NOT by line counts: cut ONLY at clean elastic-handshake boundaries (`valid/ready` or `req/ack`); a skew- or phase-locked coupling is never a cut point — the modules it binds stay in one child, internalizing that coupling. Each child is thus one or more whole RTL modules forming a coupling cluster bounded by clean handshakes; a tightly-coupled fabric with no clean internal handshake is monolithic. Small leaf modules join their cluster — no line-count floor or size class. `<top_module>` is its own child and carries no logic. On a repair round the split already in `rtl-files.json` is the one to keep unless the repair is what changes it.
+**The split is yours.** Nothing upstream names the RTL modules: `design.md` §1.2 argues for a structure and the rows constrain it, but you are the first reader who has the RTL in front of them. On a repair round the split already in `rtl-files.json` is the one to keep unless the repair is what changes it.
 
 ## Iron Rule
 
