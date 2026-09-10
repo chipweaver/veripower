@@ -23,9 +23,9 @@ In `/hooks`, review and trust VeriPower's two hooks, then start a new session.
 Run `brainstorm` or `design-flow`. Python and EDA prerequisites are in the
 [user manual](../docs/USER-MANUAL.md).
 
-Use the interactive CLI or an App Server client that handles approvals. In the
-0.153.4 experiment, `codex exec` forced `approval_policy=never`, preventing the
-container-based EDA launchers from requesting access after a sandbox denial.
+Use the interactive CLI or an App Server client that handles approvals. With CLI
+0.153.4, `codex exec` uses `approval_policy=never`; EDA launchers that require
+approval therefore use those clients.
 
 Setup adds `rules/veripower.rules` and `veripower.config.toml` under `CODEX_HOME`
 (default `~/.codex`). The profile enables hooks, subagents and human approvals
@@ -59,9 +59,9 @@ Responses endpoint. They check approval acceptance/rejection and fresh subagent
 context with parent waiting, without a model or EDA license.
 
 A 4-bit-counter experiment with gpt-6-astra verified the native background EDA
-cycle on 2026-09-10. After VCS compiled the RTL through App Server approval, kernel
-dispatched lint-cdc to a fresh child. The child ran SpyGlass, polled its process to
-exit 0, and finalized a pass with zero errors, warnings and waivers. The parent
-waited, reaped that result, and received `DISPATCH synthesis` from its next decide.
+cycle through lint-cdc on 2026-09-10. After VCS compiled the RTL through App Server
+approval, kernel dispatched lint-cdc to a fresh child. The child ran SpyGlass,
+polled its process to exit 0, and finalized a pass with zero errors, warnings and
+waivers. The parent waited, reaped that result, and received `DISPATCH synthesis`
+from its next decide.
 The installed framework, skills and adapter were unchanged during the experiment.
-Complete simulation, synthesis, timing, power and final signoff remain unverified.

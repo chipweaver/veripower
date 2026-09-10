@@ -6,52 +6,31 @@
 
 VeriPower's DAG topology is derived from `rules.py`'s artifact selectors and every routing
 decision is computed by `schedule.decide`; `design-flow` is the thin executor that runs the
-one action `decide` returns. So no *skill* owns the topology — but design-flow is the only
-one whose subject matter is the routing decision itself.
+one action `decide` returns. Its subject matter is executing the routing decision.
 Individual stage skills, in contrast, describe a bounded operation: what they receive, what
 they produce, and what they decide internally. They do not describe DAG position or who calls
 them. DAG-agnostic descriptions stay composable and replaceable — topology can evolve without
 touching stage content.
 
-**One deliberate exception: a failing stage names its own `fix_owner`.** Attributing a failure
-is not describing topology, it is reporting what the stage found: it read the raw tool output,
-so it is the only party that knows whose artifact is at fault, and the symptom's location does
-not reveal that. The earlier arrangement had stages emit an input-provenance *label* instead
-(`netlist`, `sgdc_seed`) for something outside to decode, which named the same upstream one
-indirection later while losing everything the stage actually understood. A stage still decides
+**A failing stage names its own `fix_owner`.** It reports what it found in the raw tool
+output; the symptom's location does not necessarily identify the artifact to fix. A stage still decides
 nothing about scheduling: it names a rule, and `schedule.py` checks that naming against the
 derived input closure before anything is dispatched.
 
 ### Principle — describe self, not orchestration
 
 A stage skill describes what *this skill* does, its inputs, its outputs, and its internal
-decision rules. It does not describe who calls it, when it is dispatched, what happens to
-its outputs, or how failures are routed. Any sentence mentioning DAG structure, stage
-relationships, or dispatch mechanics is a violation.
+decision rules. Keep orchestration detail where it is needed to execute the task.
 
-### Dispatcher exemption
+### Dispatching skills
 
-Two kinds of skill carry orchestration vocabulary in-role, so it is their subject matter
-rather than a violation:
+Two kinds of skill describe dispatch as part of their work:
 
 1. **Router** — `design-flow`. What it executes *is* a routing decision; DAG / orchestrator /
    routing vocabulary is what the skill is about.
 2. **Fan-out dispatchers** — `specification`, `rtl-design`, `simulation`, and
    `simulation-plan`. These are main-thread skills that hold Level-1 sub-Task dispatch
    authority: each dispatches its authoring and reviewing children around its own gates.
-   How many children and around which gates is each SKILL.md's own business and is not
-   restated here. Because dispatching and reaping their own Level-1 sub-Tasks *is* their
-   control flow, `dispatcher` / `orchestrate` / `sub-Task` / `Task` vocabulary in their
-   `SKILL.md` describes the skill's own operation, not a sibling stage or the DAG.
-
-**Decision criterion:** the vocabulary describes *this skill's own operation* — emitting a
-routing decision (router) or driving its own intra-stage fan-out (fan-out dispatcher) →
-exempt. The vocabulary describes who calls the skill, what happens to its outputs, or how
-its failures are routed → working-stage narrative → scrub rule applies, even inside a
-fan-out dispatcher.
-
-The exempt set is closed: `design-flow` + the four fan-out dispatchers above. A new
-dispatcher must be explicitly named here before the exemption applies to it.
 
 ## 2. References organization
 
@@ -62,69 +41,50 @@ VeriPower uses a three-layer content model:
 1. **SKILL.md body** — entry point; inline-friendly content the agent reads in a single
    context load.
 2. **`skills/<name>/references/`** — skill-private externalizations; specific to one stage.
-3. **`framework/references/`** — cross-skill shared pool; centralized to prevent N-copy
-   drift.
+3. **`framework/references/`** — cross-skill shared references.
 
-Each layer has a distinct purpose; blurring the boundary creates duplicate anchors for the
-same rule. *N copies = N drift anchors.*
+Each layer serves a different set of readers.
 
 ### Principles
 
 **P1 — Single canonical home.** Every rule has exactly one canonical home; cross-references
 use markdown links, never duplication. Applied to a rule's own placement, the home is whichever
 artifact a reader will consult anyway: the schema description for a field, the `--help` for a
-flag, the corpus of SKILL.md for an authoring convention. Prose that restates one of those is a
-second copy, and the copy is what goes stale.
+flag, the corpus of SKILL.md for an authoring convention.
 
-**P2 — Hard criteria plus soft signals.** Externalize when a hard criterion is met.
-Soft signals (concept orthogonality, evolution cadence difference) are reviewer hints only —
-authors do not externalize on soft signals alone.
+**P2 — Reader need.** Externalize a topic when readers benefit from consulting it separately.
 
 **P3 — One-layer `references/`.** `references/` is a flat directory: no nested
 subdirectories. Private references (`skills/<name>/references/`) must not cross-reference
 other skills' private references; only `framework/references/` is shareable across skills.
 
 **P4 — Filename default.** Markdown files use kebab-case; Python files follow PEP 8
-snake_case. Suffixes (e.g. `*.schema.json`, `*-rules.md`, `*-template.md`) follow the
-suffix taxonomy in the externalization decision cascade below; use the first matching type.
+snake_case. Use descriptive suffixes such as `*.schema.json`, `*-rules.md` and `*-template.md`.
 
-### Externalization decision cascade
+### When to externalize
 
-Apply steps in order; stop at the first match.
+Consider the consumers and the topic's independence.
 
-1. **Hard criteria (any one match → externalize):**
+1. **Reasons to externalize:**
    - Machine contract: program-consumed structured data (e.g., `result.schema.json`,
      `envelope.schema.json`).
-   - Cross-skill shared: consumers in different skills; not externalizing forces N drift
-     copies.
-   - Fits a recognized suffix type AND is ≥ 30 lines (self-contained; readable without
-     surrounding SKILL.md context).
+   - Cross-skill shared: consumers in different skills.
+   - A self-contained topic that is readable without surrounding SKILL.md context.
 
-2. **Soft signals (reviewer hint only — not a mandate):**
+2. **Other considerations:**
    - Concept orthogonal to the surrounding workflow context.
    - Evolution cadence differs from the skill body.
-   - Length smell: SKILL.md body > 250 lines — signal to re-examine, not a mandate.
 
 3. **Default: keep inline.**
 
-### Always-inline content
+### SKILL.md entry-point content
 
-The following are always kept in the SKILL.md body. All are stage-bound; externalizing adds
-navigation cost without separability benefit.
+The SKILL.md body introduces the task and links to detail where it is used.
 
 - **Iron Rule** — architectural boundary constraints; must be visible before step 1.
-- **Artifacts** — one section, split by who writes each file, not by in/out. Stage-specific;
-  orphans if externalized.
-- **Workflow** — the agent reads steps in sequence during execution; external loading breaks
-  single-context.
-- **Return Contract** — the terminal action; the last thing read, so the last thing written.
-
-That is the whole list, and it is the shape the eight pipeline skills converged on. Routing
-is decided from frontmatter `description` alone, so a `When to Use` section has no reader
-that `description` does not already have; the same audit removed `Pitfalls`, `Completion
-Gate`, `Decision Rules`, `Red Flags` and `Bundled References` from every stage as second
-copies of a gate, an Iron Rule, or a link already given at its point of use. Adding one back
-needs a reader that none of those four sections has.
+- **Artifacts** — one section, split by who writes each file, not by in/out. Stage-specific.
+- **Workflow** — the execution sequence, with links to task references.
+- **Return Contract** — the terminal action.
 
 ### Cross-skill reference syntax
 

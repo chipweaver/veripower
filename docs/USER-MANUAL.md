@@ -6,7 +6,7 @@ For front-end design and verification engineers. Walks through the full flow fro
 
 ## §0 In one sentence
 
-VeriPower takes a finalized module requirement all the way to front-end signoff. Spec, verification plan, RTL, lint/CDC, synthesis, timing, simulation, power. Nine stages, dispatched and reworked automatically by an Orchestrator. You step in at four types of checkpoints to control quality. **You're still the responsible engineer.** It doesn't make decisions for you, but it's a capable assistant. It also doesn't import your existing RTL or testbench. Right now it regenerates them from the spec.
+VeriPower takes a finalized module requirement all the way to front-end signoff. Spec, verification plan, RTL, lint/CDC, synthesis, timing, simulation, power. Eight stages, dispatched and reworked automatically by an Orchestrator. You step in at four types of checkpoints to control quality.
 
 ---
 
@@ -43,7 +43,7 @@ OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
 
 The first flag enables the background subagents stage dispatch runs on. Without the second,
 opencode (as of 1.18.x) caps every completion at 32,000 tokens regardless of the model's
-declared limit, and a subagent authoring a whole module's RTL dies silently mid-thought.
+declared limit, which can truncate long RTL-authoring completions.
 
 DeepSeek Harness — install into the profile you run:
 
@@ -101,7 +101,7 @@ Once the environment is ready, in a **separate session**:
 
 > Run the env-precheck skill
 
-It checks each tool and variable, does a live checkout of each license, and reports which stages this machine can run. Read-only, it won't change your environment. When a variable is missing, it prints the `export` line for you to paste.
+It checks each tool and variable, does a live checkout of each license, and reports which stages this machine can run. It reports the findings without changing your environment. When a variable is missing, it prints the `export` line for you to paste.
 
 ### 1.2 Input
 
@@ -160,9 +160,9 @@ The work tree splits into `Design/` and `Verification/`. Each stage below covers
 
 The third column in artifact tables tells you whether to read it. **Must read** means the pipeline will put the path in front of you at a gate. **Optional** means you'd look at it during review. Unmarked files are consumed by scripts or downstream tools.
 
-**You don't need to watch for when to act.** Where there's a **gate**, the pipeline stops and asks (specification has two, simulation-plan has one). When it needs you to attribute a failure, it stops. At signoff it blocks on each endorsement individually.
+**The pipeline prompts at decision points.** It asks at the specification ledger and boundary gate, when a failure needs your attribution, and for each endorsement at signoff.
 
-The items marked "read xx" or "glance at xx" are review actions. The pipeline won't stop for them. `semantic-review` and `refmodel` will get caught at signoff if you haven't endorsed them yet. Only lint-cdc's `waiver.tcl` has no prompt anywhere. If you want to check it, go look on your own.
+The items marked "read xx" or "glance at xx" are review actions. The pipeline won't stop for them. `semantic-review` and `refmodel` will get caught at signoff if you haven't endorsed them yet. Review lint-cdc's `waiver.tcl` directly; it has no separate approval prompt.
 
 ---
 
@@ -188,7 +188,7 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 - **Ledger and boundary gate** (after the requirements review): resolve every `unassignable` row (define how it is measured, assign a judge, or declare it not a requirement), read the rows judged outside the pipeline and the ones left to you, check the numeric bounds, confirm the partition or give feedback to repartition. These are answers the pipeline cannot compute, so it waits for them.
 - **The delivery handoff** (after the child reviews): you get the paths and nothing is asked of you. Read whether `design.md` and each `<child>.md` realize the ledger rows they cite, and say what you want changed. Endorsing the reviews is `kernel.py pin` (#6 below) — until then the module cannot be signed off, so an unresolved blocking finding stops the module rather than the round.
 
-> Decisions made earlier in the pipeline have the biggest impact. The spec stage is the source for everything that follows. Take the time.
+> The spec stage is the source for the design and verification work that follows.
 
 ---
 
@@ -208,7 +208,7 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 
 **Your action: a handoff.** You get the `verification-plan.md` and `plan-review/findings.md` paths, and nothing is asked of you. Say what you want changed and it revises incrementally and comes back; if you tell it to accept a finding the review flagged as blocking, your exact words get recorded in `plan-review/decisions.md`. Endorsing the review is `kernel.py pin` (#6 below), and nothing downstream re-checks testpoint-vs-spec — so an unaddressed gap stops the module at signoff.
 
-> Once the testpoint matrix is locked, the TB, regression, and coverage convergence all follow from it. This gate is worth the time.
+> The testpoint matrix guides TB authoring, regression and coverage convergence.
 
 ---
 
@@ -243,9 +243,9 @@ After this stage, the pipeline forks into the implementation chain and the simul
 | `lint-report.txt` / `cdc-report.txt` | Raw SpyGlass reports | Optional |
 | `lint-violations.json` / `cdc-violations.json` | Structured violation lists | Optional |
 | `scripts/local.sgdc` | SGDC annotations added by this stage for port/clock associations the seed can't know | Optional |
-| `scripts/constraints.sgdc` | Assembled SGDC: spec seed + RTL annotations + `local.sgdc` | Editing it won't help, next run reassembles from scratch |
+| `scripts/constraints.sgdc` | Assembled SGDC: spec seed + RTL annotations + `local.sgdc` | Reassembled each run; edit `scripts/local.sgdc` for stage-local annotations |
 
-**Your action: glance at `scripts/waiver.tcl`.** Violations it deems acceptable are written as `waive` entries with reasons. **Clean lint does not mean zero violations.** Pass/fail itself is determined by the SpyGlass ruleset. No input needed from you.
+**Your action: glance at `scripts/waiver.tcl`.** Violations it deems acceptable are written as `waive` entries with reasons. **Review waived violations as well as the reported counts.** Pass/fail itself is determined by the SpyGlass ruleset. No input needed from you.
 
 ---
 
@@ -262,7 +262,7 @@ After this stage, the pipeline forks into the implementation chain and the simul
 | `out/<TOP>_syn.v` / `_syn.sdc` / `_syn.sdf` | Post-synthesis netlist, exported SDC, delay annotation | Consumed by downstream timing/power |
 | `constraints.sdc` | Assembled constraints: spec SDC + `constraints.local.sdc` | Assembly product |
 
-**Your action: none.** To review, read `reports/qor.rpt` and `result.json`'s `requirements[]`. The judgment comes from dc_shell's QoR report, against the rows you approved at the ledger gate. It won't invent timing exceptions. SDC exceptions can only be transcribed from the `constraint-annotations.json` declared by rtl-design. If a path truly can't meet timing, it reworks back upstream rather than adding a false path to hide it.
+**Your action: none.** To review, read `reports/qor.rpt` and `result.json`'s `requirements[]`. The judgment comes from dc_shell's QoR report, against the rows you approved at the ledger gate. SDC exceptions come from the `constraint-annotations.json` declared by rtl-design. A path that cannot meet timing is routed upstream for repair.
 
 ---
 
@@ -293,10 +293,10 @@ After this stage, the pipeline forks into the implementation chain and the simul
 | `structural-coverage.json` | Structural coverage: line / cond / branch / toggle / fsm | Optional |
 | `regression-log.txt` + `logs/` | Regression log plus per-case logs | Optional, check when you want to know why a specific case failed |
 | `tb/uvm/**` (rest) | UVM testbench proper | Optional |
-| `check-review.md` | Per-testpoint check adequacy review | Internal to this stage, not for human consumption |
+| `check-review.md` | Per-testpoint check adequacy review | Used by the stage to direct check repairs |
 | `env.sh` / `filelist.f` / `rtl_filelist.f` / `tests/testlist.json` / `case-results.json` | Environment, compile file lists, case list, machine-readable results | No need |
 
-**Your action: read the reference model `tb/uvm/refmodel/*` carefully.** It's the ruler that judges right from wrong. Of the four artifacts you'll endorse, this one deserves the most scrutiny (§1.6). If the ruler is wrong, every green in the regression is a lie. The pipeline won't stop here, and rework doesn't need your direction.
+**Your action: read the reference model `tb/uvm/refmodel/*` carefully.** It supplies the expected behavior for regression checks and is one of the four artifacts you endorse (§1.6). The pipeline won't stop here, and rework doesn't need your direction.
 
 ---
 
@@ -309,7 +309,7 @@ After this stage, the pipeline forks into the implementation chain and the simul
 | File | What it is | Read it? |
 |---|---|---|
 | `reports_ptpx/<id>/power_flat.rpt` | Total power for this scenario. PPA judgment reads this | Optional |
-| `reports_ptpx/<id>/switching_activity.rpt` | How much switching came from SAIF vs. tool defaults | Optional. If SAIF didn't annotate, the power number is meaningless |
+| `reports_ptpx/<id>/switching_activity.rpt` | How much switching came from SAIF vs. tool defaults | Optional, check that the measured scenario activity was annotated |
 | `reports_ptpx/<id>/power_hier.rpt` | Hierarchical power breakdown | Optional, look at it when you need to reduce power |
 | `saif/<id>.saif` | One SAIF per scenario. Scenarios with equivalent stimuli simulate once and share results | No need |
 | `reports_ptpx/<id>/ptpx.log` | PT-PX log for this scenario | Only when something goes wrong |
@@ -353,7 +353,7 @@ More error messages in [Appendix B](#appendix-b-error-reference).
 
 ### 1.6 Signoff
 
-**Pipeline completion is not signoff.** Completion means every stage has a result and the result is currently valid. Signoff is you, as the responsible engineer, doing a final end-to-end review of those results and putting your name on them. It only starts when you ask:
+**Signoff endorses the completed verification results.** Completion means every stage has a result and the result is currently valid. Signoff is you, as the responsible engineer, doing a final end-to-end review of those results and putting your name on them. It only starts when you ask:
 
 > Run signoff for {module}
 
@@ -366,7 +366,7 @@ More error messages in [Appendix B](#appendix-b-error-reference).
 | rtl-design | `semantic-review/*.md`, LLM-authored RTL review |
 | simulation | `tb/uvm/refmodel/*`, LLM-authored reference model, the ruler for every test case |
 
-LLM-authored artifacts can't vouch for themselves. **So signoff requires you to read and endorse each of those four.**
+**Signoff requires you to read and endorse each of those four.**
 
 **Three things you do**
 
@@ -378,9 +378,9 @@ Steps 2 and 3, and "withdraw an endorsement," are all **ask-gated actions**. Eac
 
 > **Endorsement is bound to content, not the filename.** It records what the file looks like at that moment. If the file changes, the endorsement lapses automatically. You have to re-read and re-endorse. You're signing the content itself.
 
-**Signoff reverts on its own.** After signoff, if you change any upstream design file or withdraw any endorsement, the module immediately drops back to unsigned. Nobody needs to revoke anything. Signoff is only as strong as the results underneath it.
+**Signoff reverts on its own.** After signoff, if you change any upstream design file or withdraw any endorsement, the module immediately drops back to unsigned. Nobody needs to revoke anything.
 
-One more thing you probably won't hit: if a file gets **added to a stage's inputs outside the pipeline**, the gate won't clear. Either remove the file or let the stage rerun to formally record it.
+If a file is **added to a stage's inputs outside the pipeline**, the gate requires that input to be recorded. Either remove the file or let the stage rerun to formally record it.
 
 ### 1.7 Artifacts and exit paths
 
@@ -428,7 +428,7 @@ rm ~/.claude/skills/veripower
 
 **Can I use the artifacts without this tool?**
 
-Yes. RTL is standard `.v` plus a filelist (`rtl-files.json`). The TB is standard UVM with `filelist.f` + `env.sh`, and `vcs` can compile it directly. Constraints are standard SDC/SGDC. Synthesis, timing, and power artifacts are just the tools' own netlists and reports. **Only `events.jsonl` belongs to this tool.** Deleting it doesn't affect whether anything else can run. What you lose is the audit trail, not the design.
+Yes. RTL is standard `.v` plus a filelist (`rtl-files.json`). The TB is standard UVM with `filelist.f` + `env.sh`, and `vcs` can compile it directly. Constraints are standard SDC/SGDC. Synthesis, timing, and power artifacts are just the tools' own netlists and reports. `events.jsonl` preserves the VeriPower audit trail; the design artifacts also run with the EDA tools directly.
 
 ---
 
@@ -497,9 +497,9 @@ The body of this manual uses familiar terms where possible. Below are the words 
 | Symptom | Cause | Fix |
 |---|---|---|
 | An EDA stage immediately reports an unset variable | `LIB_DB` / `LIB_V` / `UVM_HOME` not exported | First `echo $VAR` to confirm it's really unset (don't go searching the filesystem yet), then export and rerun |
-| `compile_ultra` can't check out a license | No DC-Ultra license | The synthesis stage is entirely unavailable. There's no fallback to plain `compile` |
+| `compile_ultra` can't check out a license | No DC-Ultra license | Provide a DC-Ultra entitlement for `compile_ultra` |
 | Linker error when building `simv` | Host GCC incompatible with VCS pre-compiled objects | `export VCS_CC=<gcc>` / `export VCS_CPP=<g++>` (GCC 4.8 is a known-good combination on some VCS + newer distro setups) |
-| Coverage parsing fails | Your `urg` version has a different report layout than L-2016.06 | Switch to L-2016.06, or report the version difference to the plugin maintainers. It **won't** fake a "coverage met" |
+| Coverage parsing fails | Your `urg` version has a different report layout than L-2016.06 | Switch to L-2016.06, or report the version difference to the plugin maintainers. |
 | VCS launcher behaves strangely | `/bin/sh` is not bash | Debian/Ubuntu: `sudo dpkg-reconfigure dash` and select No |
 | Environment check hangs on license probing | License server unreachable | Fix the network first, or point to a different license server |
 
@@ -507,6 +507,6 @@ The body of this manual uses familiar terms where possible. Below are the words 
 
 ## Further reading
 
-- [`../ARCHITECTURE.md`](../ARCHITECTURE.md): why it's built this way. The pipeline and how the dependency graph is derived, proof validity, how a failure gets attributed, the trust boundary, and what the system does not do.
+- [`../ARCHITECTURE.md`](../ARCHITECTURE.md): why it's built this way. The pipeline and how the dependency graph is derived, proof validity, how a failure gets attributed, the trust boundary, and the scope of verification.
 - [`eda-env.md`](eda-env.md): full EDA tool, license, and environment requirements.
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md): replacing a stage's implementation (e.g. Verilator for simulation, Yosys for synthesis).

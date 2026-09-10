@@ -6,7 +6,7 @@
 
 ## §0 一句话介绍
 
-VeriPower 把一份已经敲定的模块需求，一路推到前端签核。Spec、验证计划、RTL、lint/CDC、综合、时序、仿真、功耗，九个阶段由 Orchestrator 自动派发和返工，你在四类节点上出手来把控质量。**第一责任人仍然是你**，它不替你做决策，但会是一个听话的助手。它也不接管你已有的 RTL 和 testbench，目前是从 spec 重新生成，不是导入。
+VeriPower 把一份已经敲定的模块需求，一路推到前端签核。Spec、验证计划、RTL、lint/CDC、综合、时序、仿真、功耗，八个阶段由 Orchestrator 自动派发和返工，你在四类节点上出手来把控质量。
 
 ---
 
@@ -41,7 +41,7 @@ OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
 ```
 
 第一个开关放开后台子 agent，阶段派发跑在上面。第二个不能省：opencode（1.18.x）会把每次
-补全截到 32,000 token，无视模型自身声明上限，写整个模块 RTL 的子 agent 会在中途无声断掉。
+补全截到 32,000 token，无视模型自身声明上限，较长的 RTL 编写输出可能因此被截断。
 
 DeepSeek Harness —— 装进你要跑的 profile：
 
@@ -154,9 +154,9 @@ intent/brainstorm.md
 
 产物表第三列标出要不要你看。**必看**表示门上会把路径交到你手上。**选看**表示复核时才需要翻。没标的不用读，脚本把关或直接被下游工具消费。
 
-**你不用自己盯着什么时候该出手。** 标着**门**的地方，流水线会停下来问你（specification 两道、simulation-plan 一道）。出事要你归因时会停。签核时会逐份拦着要你认可。
+**流水线会在决策点提示你。** 包括 specification 的账本与边界门、失败需要你归因时，以及签核时逐份认可判据。
 
-剩下标着「读 xx / 扫一眼 xx」的是复核动作，流水线不为它们停。`semantic-review` 和 `refmodel` 会在你签核时被拦下来补上。只有 lint-cdc 的 `waiver.tcl` 全程没有提示点，想核就自己去看。
+剩下标着「读 xx / 扫一眼 xx」的是复核动作，流水线不为它们停。`semantic-review` 和 `refmodel` 会在你签核时被拦下来补上。lint-cdc 的 `waiver.tcl` 由你直接复核，没有单独的审批提示。
 
 ---
 
@@ -177,12 +177,12 @@ intent/brainstorm.md
 | `clocks.json` / `top-io.json` | 边界信息：时钟与到达预算、顶层端口 | `design.md` §1.3 是它们的人读版本 |
 | `constraints/<TOP>.sdc` / `.sgdc` | 由 clocks + top-io 生成的约束对 | 生成物，不是决策 |
 
-**你的动作：两道门**
+**你的动作：一道门，然后交付回顾**
 
 - **账本与边界门**（需求评审之后）：处理每一条 `unassignable`（定义怎么量、指派裁判、或宣布它不是要求），看流水线之外判的和留给你判的那几行，核对数值界限，确认划分或给合并意见让它重划。
 - **交付回顾**（子设计评审之后）：只给你路径，不问你任何结论。看 `design.md` 和各 `<child>.md` 是否实现了它们引用的账本行，说出你要改什么。认可这些评审是 `kernel.py pin`（下表 #6）—— 在那之前模块签不了核，所以一条没处置的阻塞发现挡的是模块，不是这一轮。
 
-> 流水线越靠前的决策影响越大，spec 阶段是后面一切开发验证的来源，需认真确认。
+> spec 阶段是后续设计与验证工作的来源。
 
 ---
 
@@ -202,7 +202,7 @@ intent/brainstorm.md
 
 **你的动作：交付回顾。** 给你 `verification-plan.md` 和 `plan-review/findings.md` 的路径，不问你任何结论。说出你要改什么，它增量改后再交一次；你让它认下某条评审标为 blocking 的发现时，你的原话会记进 `plan-review/decisions.md`。认可这份评审是 `kernel.py pin`（下表 #6），而下游没有任何东西复查"测试点对规格" —— 所以一条没处置的缺口挡在签核上。
 
-> 测试点矩阵定下来之后，TB、回归、覆盖率收敛全按它走，这道门值得花时间。
+> 测试点矩阵指导 TB 编写、回归和覆盖率收敛。
 
 ---
 
@@ -237,9 +237,9 @@ intent/brainstorm.md
 | `lint-report.txt` / `cdc-report.txt` | SpyGlass 原始报告 | 选看 |
 | `lint-violations.json` / `cdc-violations.json` | 结构化的 violation 清单 | 选看 |
 | `scripts/local.sgdc` | 本阶段补的 SGDC 标注，seed 无从得知的端口/时钟关联 | 选看 |
-| `scripts/constraints.sgdc` | 实际用的 SGDC，由 spec 的 seed + RTL 标注 + `local.sgdc` 装配而成 | 改它没用，下一轮会重装 |
+| `scripts/constraints.sgdc` | 实际用的 SGDC，由 spec 的 seed + RTL 标注 + `local.sgdc` 装配而成 | 每轮重装；本阶段补充标注写入 `scripts/local.sgdc` |
 
-**你的动作：扫一眼 `scripts/waiver.tcl`。** 它自己判为「可接受」的 violation 会写成 `waive` 并附理由。**lint 干净不等于零 violation。** 判定本身由 SpyGlass 规则集给出，不需要你表态。
+**你的动作：扫一眼 `scripts/waiver.tcl`。** 它自己判为「可接受」的 violation 会写成 `waive` 并附理由。**复核报告计数时也要查看被 waive 的 violation。** 判定本身由 SpyGlass 规则集给出，不需要你表态。
 
 ---
 
@@ -256,7 +256,7 @@ intent/brainstorm.md
 | `out/<TOP>_syn.v` / `_syn.sdc` / `_syn.sdf` | 综合后 netlist、导出 SDC、延时标注 | 下游 timing / power 消费 |
 | `constraints.sdc` | 实际用的约束，由 spec 的 SDC + `constraints.local.sdc` 装配而成 | 装配产物 |
 
-**你的动作：无。** 要复核就看 `reports/qor.rpt` 和 `result.json` 里的 `requirements[]`。判定由 dc_shell 的 QoR 报告给出，基准是你在账本门批过的那几行。它不会自己发明时序例外。SDC 里的例外只能转写自 rtl-design 声明的 `constraint-annotations.json`，一条路径真收不进来就返工回上游，不会加一条 false path 蒙过去。
+**你的动作：无。** 要复核就看 `reports/qor.rpt` 和 `result.json` 里的 `requirements[]`。判定由 dc_shell 的 QoR 报告给出，基准是你在账本门批过的那几行。SDC 里的例外来自 rtl-design 声明的 `constraint-annotations.json`，无法满足时序的路径会路由到上游修复。
 
 ---
 
@@ -287,10 +287,10 @@ intent/brainstorm.md
 | `structural-coverage.json` | 结构覆盖率：line / cond / branch / toggle / fsm | 选看 |
 | `regression-log.txt` + `logs/` | 回归日志，以及每个用例自己的 log | 选看，查某个用例为什么挂就翻 |
 | `tb/uvm/**`（其余） | UVM TB 本体 | 选看 |
-| `check-review.md` | 逐 testpoint 的检查充分性评审 | 阶段内自用，不给人读 |
+| `check-review.md` | 逐 testpoint 的检查充分性评审 | 用于本阶段的检查修复 |
 | `env.sh` / `filelist.f` / `rtl_filelist.f` / `tests/testlist.json` / `case-results.json` | 环境、编译文件表、用例清单、机器可读结果 | 不用看 |
 
-**你的动作：细看参考模型 `tb/uvm/refmodel/*`。** 它是判对错的那把尺子，四份待你认可的判据里最该较真的一份（§1.6）。尺子错了，整片回归的绿都是假的。流水线不会在这里停下来等你，返工也不用你指派。
+**你的动作：细看参考模型 `tb/uvm/refmodel/*`。** 它为回归检查提供预期行为，是签核前需要认可的四份判据之一（§1.6）。流水线不会在这里停下来等你，返工也不用你指派。
 
 ---
 
@@ -303,7 +303,7 @@ intent/brainstorm.md
 | 文件 | 是什么 | 要你看吗 |
 |---|---|---|
 | `reports_ptpx/<id>/power_flat.rpt` | 该场景的功耗总数，PPA 判定读的就是这份 | 选看 |
-| `reports_ptpx/<id>/switching_activity.rpt` | 多少翻转来自 SAIF，多少来自工具默认值 | 选看，SAIF 没标注上的话功耗数就是假的 |
+| `reports_ptpx/<id>/switching_activity.rpt` | 多少翻转来自 SAIF，多少来自工具默认值 | 选看，核对实测场景的活动是否已标注 |
 | `reports_ptpx/<id>/power_hier.rpt` | 功耗花在哪，层次化明细 | 选看，要降功耗才翻 |
 | `saif/<id>.saif` | 每个场景一份 SAIF，激励等价的场景只仿一次、共享结果 | 不用看 |
 | `reports_ptpx/<id>/ptpx.log` | 该场景的 PT-PX 日志 | 出错时才看 |
@@ -347,7 +347,7 @@ intent/brainstorm.md
 
 ### 1.6 签核
 
-**流水线跑完不等于签核。** 跑完只说明每个阶段都出了结果、且结果当前有效。签核是你作为责任人在这批结果上最终从头到尾检查一次并落名，它只在你开口要的时候才开始：
+**签核是对已完成验证结果的认可。** 跑完只说明每个阶段都出了结果、且结果当前有效。签核是你作为责任人在这批结果上最终从头到尾检查一次并落名，它只在你开口要的时候才开始：
 
 > 为 {module} 进行签核
 
@@ -360,7 +360,7 @@ intent/brainstorm.md
 | rtl-design | `semantic-review/*.md`，LLM 写的 RTL 评审 |
 | simulation | `tb/uvm/refmodel/*`，LLM 写的参考模型，判每个用例对错的那把尺子 |
 
-LLM 写的东西不能自己给自己作证。**所以签核的门槛是这四份你得逐份读过、并认可。**
+**签核前，这四份判据需要你逐份读过并认可。**
 
 **你要做的三件事**
 
@@ -372,9 +372,9 @@ LLM 写的东西不能自己给自己作证。**所以签核的门槛是这四�
 
 > **认可绑的是内容，不是文件名。** 它记下那份文件此刻的样子。文件一改，认可自动失效，要重新读、重新认。你签的是那份东西本身。
 
-**签核会自己跌回去。** 签核之后，你改了任何一个上游设计文件，或撤回了任何一次认可，模块立刻退回未签核，不需要谁去撤销。签核的成色不会超过它脚下那批结果。
+**签核会自己跌回去。** 签核之后，你改了任何一个上游设计文件，或撤回了任何一次认可，模块立刻退回未签核，不需要谁去撤销。
 
-还有一条你一般碰不到：如果有文件**绕过流程**被塞进某个阶段的输入里，门也不放行。把它移走，或者让那一阶段重跑一次、正式把它记录下来。
+如果有文件**在流程外新增到某个阶段的输入里**，签核门要求先记录该输入。把它移走，或者让那一阶段重跑一次、正式把它记录下来。
 
 ### 1.7 产物与退出路径
 
@@ -421,7 +421,7 @@ rm ~/.claude/skills/veripower
 
 **脱离这个工具，产物还能用吗**
 
-能。RTL 是标准 `.v` 加一份 filelist（`rtl-files.json`）。TB 是标准 UVM 加 `filelist.f` + `env.sh`，`vcs` 直接能编。约束是标准 SDC/SGDC。综合、时序、功耗的产物就是各工具自己的 netlist 和报告。**只有 `events.jsonl` 属于这个工具**，删掉它不影响其余任何东西能不能跑。你丢掉的是审计轨迹，不是设计。
+能。RTL 是标准 `.v` 加一份 filelist（`rtl-files.json`）。TB 是标准 UVM 加 `filelist.f` + `env.sh`，`vcs` 直接能编。约束是标准 SDC/SGDC。综合、时序、功耗的产物就是各工具自己的 netlist 和报告。`events.jsonl` 保存 VeriPower 的审计轨迹，设计产物也可以直接交给 EDA 工具运行。
 
 ---
 
@@ -490,9 +490,9 @@ rm ~/.claude/skills/veripower
 | 症状 | 原因 | 处置 |
 |---|---|---|
 | 某个 EDA 阶段一上来就报变量未设 | `LIB_DB` / `LIB_V` / `UVM_HOME` 没 export | 先 `echo $VAR` 确认真的没设（别急着去文件系统里翻），export 后让它重跑 |
-| `compile_ultra` 检不出 license | 没有 DC-Ultra 授权 | 综合阶段整个不可用，没有退到 plain `compile` 的路子 |
+| `compile_ultra` 检不出 license | 没有 DC-Ultra 授权 | 为 `compile_ultra` 配置 DC-Ultra 授权 |
 | 建 `simv` 时链接报错 | 宿主 GCC 与 VCS 预编译对象不兼容 | `export VCS_CC=<gcc>` / `export VCS_CPP=<g++>`（某些 VCS + 新发行版组合下 4.8 是已知可用组合） |
-| 覆盖率解析失败 | 你的 `urg` 版本报告布局和 L-2016.06 不同 | 换成 L-2016.06，或把版本差异反馈给插件维护者。它**不会**伪造一个「覆盖率达标」 |
+| 覆盖率解析失败 | 你的 `urg` 版本报告布局和 L-2016.06 不同 | 换成 L-2016.06，或把版本差异反馈给插件维护者。 |
 | VCS launcher 行为怪异 | `/bin/sh` 不是 bash | Debian/Ubuntu：`sudo dpkg-reconfigure dash` 选 No |
 | 检查环境时卡在 license 探测 | license server 不可达 | 先修网络，或换一台 license server |
 
@@ -500,6 +500,6 @@ rm ~/.claude/skills/veripower
 
 ## 还想看什么
 
-- [`../ARCHITECTURE.zh.md`](../ARCHITECTURE.zh.md)：为什么这样设计。流水线与依赖图怎么推出来的、结果有效性怎么判、失败怎么归因、信任边界，以及它做不到什么。
+- [`../ARCHITECTURE.zh.md`](../ARCHITECTURE.zh.md)：为什么这样设计。流水线与依赖图怎么推出来的、结果有效性怎么判、失败怎么归因、信任边界，以及验证范围。
 - [`eda-env.md`](eda-env.md)：EDA 工具 / license / 环境要求的完整原文。
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md)：替换某个阶段的实现（比如换成 Verilator 的 simulation、Yosys 的 synthesis）。

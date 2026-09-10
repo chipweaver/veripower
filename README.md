@@ -39,7 +39,7 @@ Reference implementation wraps Synopsys tools (SpyGlass, Design Compiler, PrimeT
 
 ## Results
 
-Three front-end design tasks, bare Claude Code vs. Claude Code + VeriPower. Same LLM, same spec, same EDA tools. Paper forthcoming.
+Three front-end design tasks, bare Claude Code vs. Claude Code + VeriPower. Same LLM, same spec, same EDA tools.
 
 | Benchmark | Scale | Baseline | + VeriPower |
 |---|---|---|---|
@@ -47,7 +47,7 @@ Three front-end design tasks, bare Claude Code vs. Claude Code + VeriPower. Same
 | FSA — FlashAttention accelerator | 32K gates | 2 unresolved CDC violations | **pass** |
 | Coral-NPU — RISC-V ML accelerator | 3.4M gates | 6/19 tests | **19/19** |
 
-Bare agents write correct RTL but can't catch their own blind spots when testing it.
+Across these tasks, VeriPower closes verification gaps in coverage, CDC and test execution.
 
 ## Quickstart
 
@@ -76,8 +76,8 @@ OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
 ```
 
 Without the second flag, opencode (as of 1.18.x) caps every completion at 32,000 tokens
-regardless of the model's declared limit. Subagents authoring whole-module RTL think past
-that cap and die silently. 131072 matches the GLM-5.x declared limit, and models declaring
+regardless of the model's declared limit. Long RTL-authoring completions can be truncated at
+that cap. 131072 matches the GLM-5.x declared limit, and models declaring
 less keep their own.
 
 **DeepSeek Harness** — install into the profile you run:

@@ -15,9 +15,8 @@ The whole system is built around one idea. A deterministic kernel owns every
 fact about the design flow. It knows which verification conclusions still hold,
 what got invalidated by a change, what should run next, and who's responsible
 for fixing a failure. LLM agents and human engineers both sit outside this
-kernel. They can propose work and propose judgments, but they can't alter
-what's been recorded. The kernel is the only thing that writes to the event
-log, and no agent prompt can inject or change a record.
+kernel. They can propose work and propose judgments. The kernel records them
+through schema-validated, append-only operations.
 
 <p align="center">
   <img src="assets/architecture.png" alt="VeriPower architecture" width="460" />
@@ -66,8 +65,7 @@ own.
 The graph comes from each rule's declared inputs in `rules.py`. An input names
 a path under some stage's directory, and that stage is its producer — stage
 roots are disjoint, so the producer is exact and nothing declares its outputs
-twice. Nothing else maintains the graph, so it can't disagree with what rules
-actually read and write.
+twice. The graph stays aligned with those input declarations.
 
 <p align="center">
   <img src="assets/pipeline-dag.png" alt="Pipeline dependency graph" width="660" />
@@ -93,13 +91,11 @@ for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 Look at the Oracle column. The four tool-graded rules all deal with structural
 and physical correctness (lint, synthesis, timing, power). Their oracles, the
 EDA tool rulesets and constraint decks, existed before the design under test
-did. The tool can't share the design's mistakes.
+did. The tool applies those rules independently of the RTL author.
 
 The four proposed-graded rules all deal with intent and functional correctness
-(specification, verification plan, RTL, simulation). There's no independent
-oracle for these, because function *is* intent, and intent stays
-underdetermined until someone settles it. That's where human judgment comes in
-(§5).
+(specification, verification plan, RTL, simulation). Their oracles express
+engineering intent and receive human endorsement before signoff (§5).
 
 ---
 
@@ -114,7 +110,7 @@ only writer, and every record is schema-validated before it lands.
 
 The orchestrator carries nothing between turns. If a context window gets
 compacted or the process crashes, the next `decide` call just re-derives the
-right action from disk. No recovery protocol needed.
+right action from disk.
 
 ### Proofs
 
@@ -201,15 +197,14 @@ twice.
 ### Two kinds of oracle
 
 A tool-graded oracle is independent of the design it judges. SpyGlass's lint
-rules existed before any RTL was written. The tool and the artifact can't share
-the same mistake, so the verdict is authoritative.
+rules existed before any RTL was written. Their verdicts establish the checks
+performed under the supplied constraints.
 
 A proposed-graded oracle is different. An LLM-authored review or reference
 model comes from the same information the artifact was built from. If the LLM
 misunderstands a spec requirement, it can produce RTL and a reference model
-that agree with each other while both being wrong. Tests pass, nothing gets
-flagged. This, silent false green, is worse than any explicit failure because
-nobody's attention gets called to it.
+that agree with each other while both being wrong. Agreement alone therefore
+does not establish conformance to the spec.
 
 ### Verification independence
 
@@ -222,8 +217,8 @@ model that actually judges the simulation is built from the spec's behavioral
 requirements, not by reading RTL source.
 
 Every specified behavior gets mapped to a testpoint through structured artifact
-handoffs between simulation-plan and simulation, so nothing gets dropped by
-omission. After each simulation round, an independent check-adequacy review checks
+handoffs between simulation-plan and simulation. After each simulation round,
+an independent check-adequacy review checks
 what the tests actually exercised against what the specification asked for.
 This catches both missing checks and checks that test the wrong thing.
 
@@ -249,16 +244,14 @@ Everything else is computed.
 
 ---
 
-## 6. Limits
+## 6. Verification Scope
 
-**Declared inputs aren't enforced.** A rule says what it reads, but nothing
-actually stops it from reading other files. If it does, the dependency graph is
-wrong in the dangerous direction, where a proof that should have gone invalid
-didn't. What a stage delivers is bounded — an input names a tree, and the tree
+**Proof coverage follows declared inputs.** A rule can read other files, but
+changes to those files are outside its recorded dependencies. What a stage
+delivers is bounded — an input names a tree, and the tree
 versions as a merkle over everything under it, so nothing inside one escapes by
 being named unexpectedly — and the signoff gate refuses a stage whose canonical
-directory holds a file its own outcome does not record. Neither reaches a tool
-that goes outside the trees it was given.
+directory holds a file its own outcome does not record.
 
 **Versioning of the intent stops at the container's edge.** The intent tree is
 one directory, `intent/`, holding `brainstorm.md` and whatever the engineer
@@ -272,18 +265,16 @@ link moves invisibly. Such a reference becomes a ledger row like any other
 sentence, and whoever the row names has to establish it by reading it where it
 lives.
 
-**Signoff is not correctness.** It's closure over a declared set of
-obligations: the eight proofs the rule registry lists, each held to the
+**Signoff closes the declared verification obligations.** These are the
+eight proofs the rule registry lists, each held to the
 requirements-ledger rows that name it as judge. The ledger is a transcription of
 the engineer's document that a second reader checks against it, not a derivation
-from language semantics; a row judged `outside` is one the pipeline never
-establishes, and signoff closes over it in silence. Signoff is only as credible
-as the ledger is complete and its judges honest.
+from language semantics; rows judged `outside` remain the responsibility of
+their external judges
+and are not established by pipeline signoff.
 
-**The system lowers the cost of each human judgment, not the count.** How often
-someone needs to step in depends on what the LLM can handle. The architecture
-makes each judgment reusable and durable, but it can't replace the judgment
-itself.
+**Human judgments are reusable and durable.** The architecture
+makes each judgment reusable across runs while its endorsed content is unchanged.
 
 ---
 

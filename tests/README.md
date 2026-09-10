@@ -8,7 +8,6 @@ Choose tests by the behavior a change could affect. Contribution guidance lives 
 | `unit/` | Code behavior, including CLI and adapter integration tests |
 | `contracts/` | Consistency across declarations, files and documented commands |
 | `scenarios/` | Agent behavior on concrete tasks; see the [scenario guide](scenarios/README.md) |
-| `eda/` | Experiments requiring EDA tools, with instructions and observations per experiment |
 
 Contract checks may invoke code, for example to verify a documented CLI command.
 Prefer exercising the shipped producer over reproducing its logic in a test. Review

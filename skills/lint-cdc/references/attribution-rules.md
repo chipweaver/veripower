@@ -39,7 +39,7 @@ Families: `Ac_unsync*`, `Ac_conv*`, `Ac_glitch*`, `Ac_sync*`, `Reconvergence*`, 
 
 The reported file is the file to fix. Name `rtl-design`.
 
-*Measured on SpyGlass `vL-2016.06`* (`tests/eda/f1-sgdc-clock-group/`): an unsynchronized
+*Measured on SpyGlass `vL-2016.06`*: an unsynchronized
 single-flop crossing is flagged as `Ac_unsync01` under policy `clock-reset`, goal
 `cdc/cdc_verify_struct`.
 
