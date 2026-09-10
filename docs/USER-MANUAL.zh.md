@@ -53,7 +53,7 @@ dsh web
 它以 profile 层的形式装入，并自己找到 `skills/`，无需任何配置。用 `web`，不要用一次性的
 `headless` —— 派发出去的阶段会活过派发它的那个回合，而 `headless` 回合一结束就退出。
 
-Codex — 安装原生插件（CLI 0.153.4+，已在 Linux 验证）：
+Codex — 安装原生插件（已在 Linux、CLI 0.153.4 验证）：
 
 ```bash
 codex plugin marketplace add chipweaver/veripower
@@ -61,7 +61,7 @@ codex plugin add veripower@chipweaver --json
 ```
 
 使用安装输出中的 `installedPath`，运行 `python3 <installedPath>/codex/setup.py`，
-然后以 `codex --profile veripower` 启动。在 `/hooks` 中审核并信任 VeriPower 的四个
+然后以 `codex --profile veripower` 启动。在 `/hooks` 中审核并信任 VeriPower 的两个
 hook，再开启新会话。专用配置将判断命令的审批交给用户；后台阶段使用原生子代理，
 父线程等待完成后继续调度。升级步骤与验证范围见 [Codex 适配说明](../codex/README.md)。
 

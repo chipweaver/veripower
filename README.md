@@ -88,7 +88,7 @@ dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripo
 
 Run the `web` profile (`dsh web`), not the one-shot `headless` profile.
 
-**Codex** — native plugin and subagents (CLI 0.153.4+, tested on Linux):
+**Codex** — native plugin and subagents (tested with CLI 0.153.4 on Linux):
 
 ```bash
 codex plugin marketplace add chipweaver/veripower
@@ -96,7 +96,7 @@ codex plugin add veripower@chipweaver --json
 ```
 
 Use the returned `installedPath` to run `python3 <installedPath>/codex/setup.py`,
-then launch `codex --profile veripower`. Review the four VeriPower hooks in `/hooks`
+then launch `codex --profile veripower`. Review the two VeriPower hooks in `/hooks`
 and start a new session. Setup adds native command approval rules and a profile
 that routes oracle judgments to the human reviewer. See [Codex setup and runtime
 behavior](codex/README.md) for upgrades, background jobs and verification scope.

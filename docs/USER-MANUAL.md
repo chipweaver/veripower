@@ -56,7 +56,7 @@ It installs as a profile layer and finds its own `skills/`, so there is nothing 
 configure. Use `web`, not the one-shot `headless` profile — a dispatched stage outlives the
 turn that started it, and `headless` exits when the turn ends.
 
-Codex — install the native plugin (CLI 0.153.4+, tested on Linux):
+Codex — install the native plugin (tested with CLI 0.153.4 on Linux):
 
 ```bash
 codex plugin marketplace add chipweaver/veripower
@@ -64,7 +64,7 @@ codex plugin add veripower@chipweaver --json
 ```
 
 Run `python3 <installedPath>/codex/setup.py` using the install response's path, then
-start `codex --profile veripower`. Review all four VeriPower hooks in `/hooks` and
+start `codex --profile veripower`. Review all two VeriPower hooks in `/hooks` and
 start a new session. The dedicated profile keeps judgment approvals with the human;
 background stages use native subagents and the parent waits before continuing.
 See [Codex setup](../codex/README.md) for upgrade steps and the tested scope.

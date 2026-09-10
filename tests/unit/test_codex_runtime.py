@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from test_codex_adapter import adapter
+from test_codex_adapter import setup
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.skipif(
@@ -52,6 +52,7 @@ def run_codex(tmp_path, responder, decision="decline"):
     fixture = tmp_path / "plugin"
     (fixture / "framework/scripts").mkdir(parents=True)
     (fixture / "codex").mkdir()
+    (fixture / "skills/design-flow").mkdir(parents=True)
     (fixture / "codex/instructions.md").write_text(
         (ROOT / "codex/instructions.md").read_text()
     )
@@ -62,46 +63,10 @@ def run_codex(tmp_path, responder, decision="decline"):
     )
     config = tmp_path / ".codex"
     (config / "rules").mkdir(parents=True)
-    from setup import rules_text
-
-    (config / "rules/veripower.rules").write_text(rules_text(fixture))
-    shim = tmp_path / "hook.py"
-    shim.write_text(
-        "import os,sys\nfrom pathlib import Path\n"
-        f"sys.path.insert(0, {str(ROOT / 'codex')!r})\n"
-        "import adapter,setup\n"
-        f"adapter.ROOT=Path({str(fixture)!r})\n"
-        f"adapter.codex_home=lambda:Path({str(config)!r})\n"
-        "adapter.rules_text=lambda:setup.rules_text(adapter.ROOT)\n"
-        f"os.environ['PLUGIN_DATA']={str(tmp_path / 'data')!r}\n"
-        "adapter.main()\n"
-    )
-    import shlex
-
+    (config / "rules/veripower.rules").write_text(setup.rules_text(fixture))
+    shutil.copyfile(ROOT / "codex/adapter.py", fixture / "codex/adapter.py")
     (config / "hooks.json").write_text(
-        json.dumps(
-            {
-                "hooks": {
-                    event: [
-                        {
-                            "matcher": "Bash" if "Tool" in event else "*",
-                            "hooks": [
-                                {
-                                    "type": "command",
-                                    "command": shlex.join(["python3", str(shim), verb]),
-                                }
-                            ],
-                        }
-                    ]
-                    for event, verb in [
-                        ("SessionStart", "start"),
-                        ("SubagentStart", "start"),
-                        ("PreToolUse", "pre"),
-                        ("PostToolUse", "post"),
-                    ]
-                }
-            }
-        )
+        (ROOT / "codex/hooks.json").read_text().replace("${PLUGIN_ROOT}", str(fixture))
     )
     requests = []
     errors = []
@@ -268,13 +233,20 @@ def run_codex(tmp_path, responder, decision="decline"):
 
 
 @pytest.mark.parametrize("decision", ["accept", "decline"])
-def test_rewritten_command_still_gets_native_human_approval(tmp_path, decision):
+@pytest.mark.parametrize(
+    "kernel",
+    [
+        "framework/scripts/kernel.py",
+        "skills/design-flow/../../framework/scripts/kernel.py",
+    ],
+)
+def test_judgment_gets_native_human_approval(tmp_path, decision, kernel):
     def response(_body, number, fixture):
         if number == 1:
             return call(
                 "exec_command",
                 {
-                    "cmd": f"/usr/bin/python3 {fixture}/framework/scripts/../scripts/kernel.py pin",
+                    "cmd": f"python3 {fixture}/{kernel} pin",
                     "workdir": str(tmp_path),
                     "yield_time_ms": 1000,
                 },
@@ -286,30 +258,8 @@ def test_rewritten_command_still_gets_native_human_approval(tmp_path, decision):
         e for e in events if e.get("method") == "item/commandExecution/requestApproval"
     ]
     assert len(approvals) == 1
-    assert "scripts/../scripts" not in approvals[0]["params"]["command"]
-    assert adapter.reason("pin") in approvals[0]["params"]["reason"]
+    assert setup.REASON.format(verb="pin") in approvals[0]["params"]["reason"]
     assert (tmp_path / "executed").exists() == (decision == "accept")
-
-
-def test_native_stdout_reaches_dispatch_reminder(tmp_path):
-    def response(_body, number, _fixture):
-        if number == 1:
-            # Use a fixture dispatch whose stdout has the real kernel shape.
-            script = tmp_path / "kernel.py"
-            script.write_text(
-                'print(\'{"ok":true,"execution":"task","rule":"lint-cdc","run":7}\')\n'
-            )
-            return call(
-                "exec_command",
-                {"cmd": f"python3 {script} dispatch", "workdir": str(tmp_path)},
-            )
-        return message()
-
-    _, requests = run_codex(tmp_path, response)
-    assert len(requests) >= 2
-    assert adapter.REMINDER.format(rule="lint-cdc", run=7) in json.dumps(
-        requests[-1], ensure_ascii=False
-    )
 
 
 def test_fresh_native_child_receives_adapter_and_parent_waits(tmp_path):
@@ -373,46 +323,4 @@ def test_fresh_native_child_receives_adapter_and_parent_waits(tmp_path):
         "child read the stage skill" in json.dumps(request)
         for request in requests
         if request not in child_requests
-    )
-
-
-def test_dispatch_reminder_survives_unified_exec_poll(tmp_path):
-    import re
-
-    def response(body, number, _fixture):
-        if number == 1:
-            script = tmp_path / "kernel.py"
-            script.write_text(
-                "import time\ntime.sleep(1.5)\n"
-                'print(\'{"execution":"task","rule":"synthesis","run":9}\')\n'
-            )
-            return call(
-                "exec_command",
-                {
-                    "cmd": f"python3 {script} dispatch",
-                    "workdir": str(tmp_path),
-                    "yield_time_ms": 1000,
-                },
-                "slow_dispatch",
-            )
-        if number == 2:
-            output = next(
-                item["output"]
-                for item in body["input"]
-                if item.get("type") == "function_call_output"
-                and item.get("call_id") == "slow_dispatch"
-            )
-            session = re.search(r"session ID (\d+)", output)
-            assert session, output
-            return call(
-                "write_stdin",
-                {"session_id": int(session[1]), "chars": "", "yield_time_ms": 1000},
-                "poll_dispatch",
-            )
-        return message()
-
-    _, requests = run_codex(tmp_path, response)
-    assert len(requests) == 3
-    assert adapter.REMINDER.format(rule="synthesis", run=9) in json.dumps(
-        requests[-1], ensure_ascii=False
     )
