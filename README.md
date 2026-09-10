@@ -13,7 +13,7 @@
 
 VeriPower is an open-source agent flow that takes a natural-language spec all the way to front-end signoff on commercial EDA tools. A deterministic engine sits underneath, recording every action in an append-only log. All pipeline status is derived from that log on demand, never stored as a flag or snapshot. The agent can iterate on its own, but every LLM-authored oracle needs a human sign-off.
 
-Ships as a plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [opencode](https://opencode.ai), and [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
+Ships as a plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [opencode](https://opencode.ai), [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), and [Codex](codex/README.md).
 
 ## How it works
 
@@ -87,6 +87,19 @@ dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripo
 ```
 
 Run the `web` profile (`dsh web`), not the one-shot `headless` profile.
+
+**Codex** — native plugin and subagents (CLI 0.153.4+, tested on Linux):
+
+```bash
+codex plugin marketplace add chipweaver/veripower
+codex plugin add veripower@chipweaver --json
+```
+
+Use the returned `installedPath` to run `python3 <installedPath>/codex/setup.py`,
+then launch `codex --profile veripower`. Review the four VeriPower hooks in `/hooks`
+and start a new session. Setup adds native command approval rules and a profile
+that routes oracle judgments to the human reviewer. See [Codex setup and runtime
+behavior](codex/README.md) for upgrades, background jobs and verification scope.
 
 Ask it to list its skills — the twelve VeriPower ones confirm the install.
 
