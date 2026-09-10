@@ -1,10 +1,7 @@
 """Every command line a skill documents must be one its CLI actually accepts.
 
-CONTRIBUTING calls this sync mandatory — a SKILL.md is the complete runtime contract for the
-scripts it invokes, because agents run them per the documented lines rather than reading their
-source. Nothing enforced it. The drift it is meant to prevent has happened: three of the five
-finalize lines `simulation` documented passed a `--failure-phase` flag, which cost six blocked
-outcomes across the shipped runs before it was found by hand.
+Outdated flags in simulation's documented finalize commands previously blocked real runs.
+Keep the examples consistent with the commands agents can execute.
 
 So the check is mechanical: pull every `bash` block out of the agent-facing prose, resolve the
 CLI it names, and ask that CLI whether the verb and every long flag exist. Re-introducing the

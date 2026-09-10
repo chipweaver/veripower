@@ -1,126 +1,55 @@
-# Scenario tests — skill discipline under pressure
+# Agent scenarios
 
-Each scenario tests whether a skill's agent makes the right call under pressure (deadline,
-authority, sunk cost, …) on an invariant that skill is supposed to enforce. The test **subject** is a
-fresh, isolated `claude -p` subprocess run by **`scenario-run.sh`** on **Opus** (the production
-model); the verdict is the subprocess's own self-report tag (closed-form) or human / main-agent
-judgment (`open`).
+Scenarios exercise agent behavior on a concrete task. Use them when a code test cannot
+answer the question under investigation. General validation guidance lives in
+[CONTRIBUTING.md](../../CONTRIBUTING.md#development-and-validation).
 
-**The full procedure lives in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) → "Bulletproofing a skill
-(RED-GREEN-REFACTOR)".** This file documents only the corpus layout and conventions.
+Run on the platform and model relevant to the change. Provide the task's normal
+instructions, references and tools, without the author's conversation or answer key.
+Inspect actions and resulting artifacts when testing execution; a stated choice alone
+only tests a stated choice.
 
-> **Status (2026-09-05): the harness had been inoperative.** The isolation deny list predates the
-> CLI's built-in `WaitForMcpServers`, so every run ended `ISOLATION BREACH … tag: INVALID` and no
-> measurement was possible. One deny-list entry fixed it. Note what that cost: the only instrument
-> that can tell a load-bearing paragraph from a decorative one was silently unusable, and prose
-> accumulated with no filter. Re-check the deny list against `claude --version`'s built-ins whenever
-> a run comes back INVALID.
->
-> **Status (2026-09-05): `simulation/scenario-01` joined** (RED 5x = 3C/2A, majority violate;
-> GREEN 5x = 5A). It also carries the methodology lesson: the first draft of that scenario was
-> written around one specific circuit and measured **5/5 compliant** — the invariant looked
-> toothless. Rewritten with no circuit bound into it, the same invariant measured 3/5 violated.
-> A scenario written around one design measures that design, not the invariant.
->
-> **Status (2026-08-04): 2 teeth-ful scenarios.** `design-flow/scenario-03` joined on 2026-08-04 (RED 5/5 violate, GREEN 0/8) when the orchestrator loop's parallelism invariant was first written down: until then nothing said a turn may hold several runs in flight, and a bare agent reliably ends the turn after starting a background dispatch.
->
-> **Status (2026-06-10): deliberately lean — exactly 1 teeth-ful scenario.** A full RED-first
-> traversal of ~50 candidate invariants across all 12 skills (clean harness, Opus, with a 5× majority
-> vote on boundary cases) found that **CLAUDE.md + Opus + EDA domain knowledge already produce the
-> compliant behavior for nearly every invariant** — they pass RED, so they're toothless and were not
-> kept. The one survivor is `design-flow/scenario-02-escalate-verbatim` (an arbitrary "forward the
-> subagent's text verbatim, don't tidy it" convention an over-helpful agent reliably violates under a
-> safety-framed prompt: 4/5 RED fail, 0/5 GREEN fail). Methodology note: single-probe RED is noisy —
-> the boundary cases need sharpening + a 5× majority vote to separate real teeth from sampling noise.
-> An empty per-skill dir is the honest outcome for that skill, not unfinished work.
->
-> **(2026-06-18 — baseline change.)** RED no longer injects `CLAUDE.md`; it is now bare Opus (see
-> below). The toothlessness verdicts above were taken against the **old CLAUDE.md-inclusive RED**, so
-> some "toothless" invariants may bite under the bare baseline — the corpus may legitimately grow.
+## Existing Claude runner
 
-## Why a subprocess, not an in-session subagent
-
-A RED baseline must be an agent that genuinely lacks the skill's guidance. An in-session subagent
-does **not** qualify: it inherits the project `CLAUDE.md`, **the developer's auto-memory, and
-repo file-access**, all of which pre-encode the invariants under test (verified 2026-06-10 — a
-tools-off subagent still complied, citing the auto-memory's "no skill-decided BLOCKED" note). A
-fresh `claude -p` from a temp workdir with `--allowedTools ""` loads no developer auto-memory, no skill, and
-can read no repo file — only the context the runner injects. That is the only faithful baseline.
-
-## How a scenario is run
+[scenario-run.sh](scenario-run.sh) currently invokes `claude -p --model opus`.
+It is a Claude-specific runner, not a requirement to use Claude for other platforms.
+There is no Codex scenario runner in this directory. Codex experiments should use
+Codex; the [native runtime tests](../../codex/README.md#verification) use scripted
+responses and do not substitute for model scenarios.
 
 ```bash
-./tests/scenarios/scenario-run.sh --skill <name> --scenario <id> --mode red     # bare: no project CLAUDE.md, no SKILL.md
-./tests/scenarios/scenario-run.sh --skill <name> --scenario <id> --mode green    # + skills/<name>/SKILL.md (SKILL.md alone)
+./tests/scenarios/scenario-run.sh --skill simulation --scenario 01 --mode red
+./tests/scenarios/scenario-run.sh --skill simulation --scenario 01 --mode green
 ```
 
-1. **RED** (`--mode red`) injects **nothing** — no project `CLAUDE.md`, no `SKILL.md` (bare Opus).
-   The agent should *fail* (pick the violating option). A scenario that passes RED is toothless —
-   discard or re-aim it at what `SKILL.md` adds.
-2. **GREEN** (`--mode green`) injects `SKILL.md` **alone** — exactly what a plugin end-user receives
-   (they run VeriPower from outside this repo and never load its `CLAUDE.md`). The agent should
-   *comply*. On failure, REFACTOR the skill (from the verbatim rationalization) and meta-test, then
-   re-run (see CONTRIBUTING.md).
+`red` supplies the scenario without skill guidance. `green` also supplies the skill's
+`SKILL.md`. To include a reference used by the task, add
+`--extra skills/<skill>/references/<file>.md` in green mode. The mode names do not
+prescribe what the model must answer; a model may solve the task without the skill.
 
-3. **Record** the provenance stamp (below). The runner prints the self-report tag + the raw
-   transcript; it does **no** keyword/regex scoring — you judge.
+The runner uses a temporary workdir and home, links existing Claude credentials, and
+configures a tool deny list. `stream_text.py` rejects transcripts that list available
+tools or contain tool calls. Inspect isolation results when the CLI changes. This
+runner measures responses without tools, not actual file edits, dispatch or EDA work.
+Authentication failures, rate limits and isolation failures are not scenario outcomes.
 
-> **Isolation caveat (A2) — this section is the authoritative baseline description.** `claude -p`
-> still auto-discovers the developer's user-level `~/.claude/CLAUDE.md` into both modes. The clean
-> fix `claude --bare` is not used: it forces `ANTHROPIC_API_KEY`/apiKeyHelper auth the team lacks.
-> Verdicts are therefore only as clean as the runner's `~/.claude/CLAUDE.md`; run with a
-> minimal/empty global. `CONTRIBUTING.md` and `tests/README.md` cross-ref this description.
+## Scenario files and results
 
-## Scenario types
+Existing files use frontmatter for the skill, scenario ID, title and type. Templates
+are in `templates/`. The runner accepts an ID or a file path and removes the answer-key
+sections (`Expected Behavior` and `Anti-Pattern`) before sending the task.
 
-| Type | Tag the agent self-reports | Verdict |
-|---|---|---|
-| `pressure` | `DECISION: A/B/C` (first line) | tag vs `expected_choice` (deterministic) |
-| `missing-info` | `ACTION: PROCEED/BLOCKED` (first line) | tag vs expected (deterministic) |
-| `open` | none | human / main-agent judgment + meta-test (answer key in `## Expected Behavior` / `## Anti-Pattern`) |
+| Type | Output inspected |
+|---|---|
+| `pressure` | `DECISION: A/B/C`, compared with the scenario's expected choice |
+| `missing-info` | `ACTION: PROCEED/BLOCKED`, interpreted against the task |
+| `open` | Response reviewed against the expected behavior |
 
-`pressure` + `missing-info` are the regression-replayable subset (re-run `--mode green` after editing
-a skill; a previously-passing scenario that now fails means the edit reopened a hole). `open` is
-judgment-only.
+Historical `baseline`, `green`, `activated`, `model` and `provenance` entries describe
+past measurements. Revisit their assumptions before using a case as a regression test.
+Keep useful cases, including cases a bare model already solves; remove obsolete ones.
+Do not manufacture pressure merely to make a baseline fail.
 
-Scenario bodies are bilingual: Chinese narrative + an English pressure-injection block (project
-Surface-2 user-data posture). The answer-key sections (`## Expected Behavior` / `## Anti-Pattern`)
-are truncated out of the injected prompt by the runner — never part of what the agent sees.
-
-## Provenance stamps
-
-Every closed-form scenario that has been activated carries, in its frontmatter:
-
-```yaml
-baseline: fail      # the RED run failed (the scenario has teeth)
-green: pass         # the GREEN run passed (the skill holds)
-activated: <date>   # when the loop was run
-model: opus         # the model used for both runs (= production)
-```
-
-The durable evidence of *why* a skill's Red-Flag exists is the rationalization-table row in that
-`skills/<skill>/SKILL.md`, derived from the observed verbatim excuse — not the raw transcript.
-
-## Directory layout
-
-```
-scenarios/
-├── scenario-run.sh            # the clean-isolation runner (one scenario, one mode)
-├── templates/                 # scenario authoring templates
-│   ├── scenario-template-pressure.md
-│   ├── scenario-template-missing.md
-│   └── scenario-template-open.md
-├── results/                   # raw subprocess transcripts + inventories — gitignored (regenerable)
-├── <skill>/                   # one dir per skill; scenario-*.md files
-│   └── scenario-*.md
-└── README.md
-```
-
-## Writing new scenarios
-
-Copy a template under `templates/`, fill in the frontmatter (`skill`, `scenario_id`, `title`, `type`,
-plus `expected_choice` for `pressure`), and target what the skill's **`SKILL.md` must carry on its
-own** (its mechanisms, exact gates, thresholds) — the production end-user has the `SKILL.md` but not
-veripower's `CLAUDE.md`. Then run it through the RED-first acceptance gate (CONTRIBUTING.md) before
-committing. A skill whose discipline **bare Opus already holds unaided** legitimately gets few or
-zero scenarios.
+Record the actual platform/model, supplied context, observed behavior and limitations
+of a new experiment. Keep the task and useful findings reproducible; temporary runs
+and raw transcripts belong outside tracked files (`results/` is ignored).

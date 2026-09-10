@@ -1,121 +1,92 @@
 # Contributing to VeriPower
 
-VeriPower is a stage-gated, event-sourced agent pipeline. This guide covers the core contribution workflows. For architectural background, read [ARCHITECTURE.md](ARCHITECTURE.md) first.
+VeriPower shares its design flow across Claude Code, opencode, DeepSeek Harness and
+Codex. Start with the problem and the behavior you want to change. Read the relevant
+code and try the current behavior; existing documentation and implementation can both
+be wrong and are open to revision.
 
-## Adding or modifying a stage skill
+## Design principles
 
-A stage skill's job is to "write `result.json` correctly." DAG routing and state transitions are NOT a stage skill's responsibility — those belong to the Orchestrator and the kernel (`kernel.py`).
+- Trust the model to reason. Give it the task, evidence and necessary boundaries;
+  avoid prescribing every step or accumulating warnings for hypothetical mistakes.
+- Keep the solution small. Remove obsolete behavior and its callers together.
+  Do not add fallback paths, degraded success, arbitrary retry budgets or compatibility
+  layers to preserve a design being replaced.
+- Add a field or schema only when an actual consumer needs structured data. Use prose
+  for engineering judgment; do not build a parser and validator just to formalize it.
+- Keep shared capabilities in `framework/` and `skills/`. Use each platform's native
+  facilities in its adapter, and preserve the other platforms' capabilities.
+- State guidance once, close to its use. Delete stale instructions instead of adding
+  exceptions around them.
 
-Checklist for a new stage skill:
+## Where changes belong
 
-1. `skills/<stage-skill>/SKILL.md` — skill description + instructions. It must be **self-sufficient** — carry every mechanism, gate sequence, and threshold inline, since the plugin end-user has the `SKILL.md` but not veripower's `CLAUDE.md` (the full rule is the §Scope note under [Bulletproofing a skill](#bulletproofing-a-skill-red-green-refactor)). Frontmatter carries only `name` and `description` — no `allowed-tools`; subagent behavior is bound by the dispatch-time prose forbidden-actions list, not tool gating.
-2. If needed, `skills/<stage-skill>/references/` — tool manuals, checklists, prompt fragments.
-3. If the stage is a new rule (not a replacement of an existing one), add a `Rule` to `framework/scripts/rules.py:RULES` — declaring its `skill`, `execution`, `workdir_root` and `inputs` (the producer→consumer dependency graph is *derived* from those: an input names a path under some stage's `workdir_root`, and that stage is its producer — there is no separate DAG to edit and no output declaration to keep in sync). An input should name what its producer delivers as a unit — a file, or the directory a stage delivers whole — never a filename pattern: a pattern can only ever be a guess at what the producer will call things, plus `proof` and `oracle`. Register its name in `FORWARD_PRIORITY` (and in `ADVISORY_ORDER` only if it needs a non-data sequencing edge). `rules.py` is the SSoT — see the Cross-module SSoT identity note under Coding Conventions. Add unit tests (code-behavior); put any new cross-artifact sync/invariant check in `tests/contracts/`.
-4. Add scenario tests under `tests/scenarios/<stage>/` — bulletproof them RED-first via the subagent ritual (see **Bulletproofing a skill**).
-5. Update `skills/design-flow/SKILL.md` if the new stage introduces new scheduling semantics.
+| Area | Location |
+|---|---|
+| Stage work, instructions and EDA tools | `skills/<stage>/` |
+| Scheduling, event history and artifact provenance | `framework/scripts/` |
+| Claude Code integration | `.claude-plugin/`, `hooks/` |
+| opencode integration | `.opencode/` |
+| DeepSeek Harness integration | `.dsh/` |
+| Codex integration | `.codex-plugin/`, `codex/` |
 
-## Modifying the kernel
+For a stage change, follow its inputs through the skill, scripts and outputs. Keep
+commands, callers and result readers consistent. A new stage also needs registration
+in [rules.py](framework/scripts/rules.py); dependencies are derived from its inputs.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the current scheduling and provenance model.
 
-The kernel is the deterministic core: `kernel.py` (the CLI and sole writer of `events.jsonl`), `schedule.py` (the `decide` scheduler), `rules.py` (the rule registry), and `facts.py` (event-log I/O + the freshness queries). Changes require unit tests.
+Skills may link to references and scripts. They should be usable from an installed
+plugin without relying on repository instructions or the author's session memory.
+Resolve plugin files from the installed skill location (`<skill>` in shared commands),
+not the design workdir. Put platform-specific tool translation in the adapter.
 
-Rules:
-- **Every scheduling decision lives in `schedule.py`, never in the Orchestrator or a skill.** "If upstream is X, start Y" is a decision — it is computed by `kernel.py decide`; the Orchestrator only executes the one action it returns. Rework-target selection is not a computation at all: the failing envelope names its own `fix_owner` and `schedule.py` checks that naming against the derived input closure. The Orchestrator's only judgment channel is the ask-gated `pin` / `reopen` / human `diagnose` proposals — nothing else. It authors no per-dispatch content: at dispatch time every fact it could state is already a file the target reads, so it passes coordinates and the kernel resolves them into `dispatch.json`.
-- **The event log is the only durable state.** A state change is an append to `events.jsonl` via `facts.append_event`, reachable only through `kernel.py` (the sole writer). There is no `task.json` and no status snapshot to keep in sync — per-stage status, freshness, and in-flight are *derived* on demand from the log + disk (`facts.projection` / `proof_valid` / `input_available`). Never add a stored status or freshness field.
-- Verb return values are Orchestrator prompt material — new fields need a clear consumer.
-- Unit tests live under `tests/unit/`: `test_kernel_cli.py` (verbs), `test_schedule.py` (decide), `test_rules.py` (registry + derived graph), `test_facts_*.py` (events / fingerprints / freshness), Cover happy path + error branches.
+Check the consumer before changing an output. Validate data that code depends on,
+and keep EDA pass/fail grounded in the tool results and the engineer's requirements.
+Formatting a model's judgment as JSON does not establish its correctness.
 
-## Validating new structured outputs
+## Development and validation
 
-Which validation regime a new structured output needs depends on its class: kernel-enforced schema validation for verdict outputs, or a producer self-gate for advisory artifacts. The contributor obligation per class:
+Use Python 3.10 or later:
 
-- **Verdict output** (`result.json`, event payloads): do not add a field without a schema update **and** a coverage test (`test_event_schemas.py` for an event field, the stage's `test_<stage>_result.py` for a `result.json` field). The kernel validates events at append time and `result.json` at reap, so an unschema'd field corrupts the deterministic core.
-- **Descriptive/advisory artifact** (e.g., triage ANALYSIS, verification scaffold): ship a `scripts/validate_*.py` producer self-gate (pattern: `skills/simulation-triage/scripts/simtriage/__main__.py`, `skills/simulation-plan/scripts/simplan/__main__.py`); the skill fixes-and-retries before emitting. Do **not** add a `kernel.py` verb for advisory validation — the kernel never validates the artifact's content.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest tests/unit/ tests/contracts/
+pre-commit run --all-files
+```
 
-## Testing
+Choose checks that exercise the change. Add regression tests for meaningful code
+behavior; do not add tests that merely repeat the implementation or pin prose wording.
+Documentation-only edits need review of facts, commands and links. Formatting is owned
+by [.pre-commit-config.yaml](.pre-commit-config.yaml), not a separate style checklist.
+See [tests/README.md](tests/README.md) for the available tests and commands.
 
-- `tests/unit/` — pure-Python code-behavior tests (call a framework function, assert output). `tests/contracts/` — deterministic artifact sync/invariant lints (read declarations & compare; run no code). Run `pytest tests/unit/ tests/contracts/` for the fast loop when changing the kernel (`kernel.py` / `schedule.py` / `rules.py` / `facts.py`), schemas, or any cross-artifact contract.
-- `tests/scenarios/` — skill-level discipline tests under pressure. No EDA tools; uses Claude (Opus) as the system under test, run via a **clean-isolation `claude -p` subprocess** (`tests/scenarios/scenario-run.sh`) — see **Bulletproofing a skill** below.
-- **CI** (`.github/workflows/ci.yml`) is the enforcement net for the gates you run locally: `pytest` on Python 3.10/3.11/3.12, and the `pre-commit` lint gate ([Coding Conventions](#coding-conventions)) on 3.12 — on every push and PR; PRs must be green to merge. Keep running both locally for fast feedback; CI is the net, not the loop. `tests/scenarios/` is deliberately **not** in CI: it drives a live `claude -p` subprocess (non-deterministic, needs model access) and stays a manual gate.
+Test platform behavior on the platform being changed: Codex for Codex, Claude Code
+for Claude Code, and likewise for the other adapters. For shared changes, select the
+affected platform checks and report what was exercised. One platform's result does
+not establish another's behavior. The current CI jobs are in
+[ci.yml](.github/workflows/ci.yml); they do not run live model or EDA experiments.
 
-## Bulletproofing a skill (RED-GREEN-REFACTOR)
+Use a model experiment when the uncertainty concerns agent behavior. Give the agent
+the materials and tools the task actually needs, without the author's conversation
+or answer key. Check its actions and artifacts. A comparison with and without an
+instruction can help decide whether to keep it; a baseline failure is not a prerequisite
+for a useful regression case. Investigate a failure before adding more instructions.
 
-Testing a VeriPower skill **is** TDD applied to the skill document. The test *subject* is a fresh, isolated `claude -p` subprocess — **not** an in-session subagent. This matters: an in-session subagent inherits the project `CLAUDE.md`, **the developer's auto-memory, and repo file-access**, all of which pre-encode the invariants under test and contaminate the RED baseline — even a tools-off subagent stays compliant, carrying the auto-memory's invariant notes and reading `SKILL.md` straight from disk. The runner `tests/scenarios/scenario-run.sh` gives a clean baseline — a temp workdir (no developer auto-memory, no skill auto-load), `--allowedTools ""` (no file reads), and only the context it injects. Both RED and GREEN run on **Opus** (= production), so teeth are judged against the model that ships.
+Distinguish a scripted runtime test, a real model run, an EDA tool run and a complete
+flow. Record the platform/model, relevant versions, task, observed outcome and limits
+of the evidence in a concise report. If a check cannot run, say why. Keep temporary
+workdirs and raw logs out of commits; retain only evidence needed to understand or
+reproduce the result. EDA prerequisites are in [docs/eda-env.md](docs/eda-env.md).
 
-**RED-first acceptance gate:** keep a scenario only if it *fails RED and passes GREEN*. A scenario the agent gets right on RED is toothless (bare Opus already complies) — discard or re-aim it.
+## Commits and pull requests
 
-**Per scenario** (the runner does RED/GREEN; you judge + REFACTOR):
-1. **RED** — `scenario-run.sh --skill <s> --scenario <id> --mode red` injects **nothing** — bare Opus, no project `CLAUDE.md`, no `SKILL.md` (baseline + isolation caveat: `tests/scenarios/README.md`). Read the printed `DECISION:`/`ACTION:` tag. **Expected: it fails** (violating option / proceeds when it should block).
-2. **GREEN** — `--mode green` injects `skills/<s>/SKILL.md` **alone** — exactly what a plugin end-user receives. **Expected: it complies.**
-3. **REFACTOR (on GREEN failure)** — edit the skill: an explicit negation in the rule + a rationalization-table row (the agent's **verbatim** excuse → reality) + a Red-Flags entry + a `description` symptom. Then **meta-test** (a follow-up `claude -p` with the transcript, or in-session reasoning — meta-testing is not a baseline, so contamination is harmless): "you read the skill and still chose X; how should it have been written to make the compliant option unambiguous?" Apply the answer; re-run GREEN until it passes.
-4. **Record provenance** — stamp the scenario frontmatter `baseline: fail` / `green: pass` / `activated: <date>` / `model: opus`. For a borderline tag, run 2–3 times and take the majority.
+Keep each change coherent and reviewable. Use a short `type: description` title,
+such as `fix: ...` or `docs: ...`. Explain the problem, resulting behavior and any
+non-obvious decision. Include relevant validation and what remains unverified;
+scale the detail to the change. Link an issue when applicable.
 
-**Scope (the SKILL.md-self-sufficiency rule):** target what each skill's **`SKILL.md` must carry on its own** — its mechanisms, exact gate sequences, thresholds — since the plugin end-user has the `SKILL.md` but not veripower's `CLAUDE.md`. Skills whose discipline **bare Opus already holds unaided** get few or zero scenarios; never manufacture pressure — an empty per-skill corpus is an honest outcome, not a gap. Baseline + isolation caveat and live corpus status: [`tests/scenarios/README.md`](tests/scenarios/README.md).
-
-**Scenario types:** `pressure` (`DECISION: A/B/C`) and `missing-info` (`ACTION: PROCEED/BLOCKED`) self-report a tag the runner extracts. `open` (answer key in `## Expected Behavior` / `## Anti-Pattern`) has no tag — human/main-agent judgment only.
-
-**Regression (after editing a skill):** re-run that skill's scenarios `--mode green`. A previously-passing scenario that now fails means the edit reopened a hole — fix before merging.
-
-## Documentation
-
-- **Script contract sync (mandatory).** Each SKILL.md is the *complete* runtime contract for the scripts it invokes — agents run them per its documented command lines rather than reading their source. So any change to a directly-invoked script's CLI flags, exit codes, or output shape MUST update the invoking SKILL.md (and the script's `--help` text) in the same commit; a new script MUST be classified at introduction (directly-invoked: document the full command line + failure protocol; bootstrap-/make-internal or import-only: one line marking it internal). Silent drift breaks the black-box rule for every downstream run; [`tests/contracts/test_documented_commands_exist.py`](tests/contracts/test_documented_commands_exist.py) asks each CLI whether the verb and long flags a block documents are ones it accepts.
-- **Paths into the plugin.** The plugin installs outside the tree a run works in, so nothing in skill content may be written relative to the working directory, and no harness variable stands in for the install location — `${CLAUDE_SKILL_DIR}` is a render-time substitution applied to a SKILL.md body only, so the same literal in a `references/` contract reaches a sub-Task's shell and expands to nothing. Three forms — [`tests/contracts/test_skill_self_location.py`](tests/contracts/test_skill_self_location.py) enforces the harness-variable ban and that every `<skill>/…` resolves; the other two are convention. A **shell command** cites `<skill>/…`, defined once per file as this skill's base directory (the rendered body names it on its first line); a **document citing a document** goes relative to itself, as `references/x.md` already does throughout; a **Level-1 contract** takes `<skill>` as a named input its dispatcher hands over, since a sub-Task renders no skill.
-- **ARCHITECTURE.md no-restatement rule.** State each cross-cutting invariant **once** — either at a single home section (every other mention cross-refs it), or split across a rationale sentence + a `> **Contract:**` box that each state only their half (the *why* vs. the verifiable form). A *localized* contract — a per-stage `result.json` field, a CLI flag — is **never restated** here; link to its SSoT (the owning `result.schema.json` description / `kernel.py --help`) instead. New architectural content picks one home before it lands; if you find yourself writing a fact this document already states, cross-reference it rather than rephrasing it.
-- **User/contributor-facing content** (architecture, contribution norms) — lives at the repo root: [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), this file.
-- **Design proposals, working notes, retrospectives** — under `docs/design/` and `docs/retrospective/`, both uncommitted by convention (see `.gitignore`).
-
-## Language posture
-
-VeriPower content lives on two surfaces: Surface 1 (runtime-LLM-consumed; English-only) and Surface 2 (user-data; bilingual, follows user language). For the full rule and the boundary criterion, see [`docs/language-posture-design.md`](docs/language-posture-design.md). When writing skill content, use the established workflow vocabulary already present in `skills/<name>/SKILL.md` and `skills/<name>/references/*.md` as the source of truth.
-
-## Commit messages
-
-One inclusion test decides what goes in: **write only what a reader can't recover from a more authoritative source.** The diff already records *what changed*; CI records *whether it passes*. A message owns only what neither does:
-
-- **Subject** — imperative, intent not mechanism, with a `type:` prefix (`ci:`, `docs:`, `fix:`, `style:`, …). Self-evident commits can stop here.
-- **Body** (when warranted) — the *why*: problem + root cause (cause only when non-obvious). No file:line evidence (the diff has it); length scales with the change.
-- **Verification** — only for checks CI does *not* run: manual bring-up, a local EDA flow, a reproduced bug. Don't write "pytest passes" — CI is the authoritative pass/fail record.
-- **Trailers** — `Co-authored-by:`, issue refs.
-
-## Pull requests
-
-A PR adds one authoritative source on top of the commits: the commit list itself. So the same inclusion test gains a clause — **write only what the diff, CI, *and the individual commit messages* don't already give.** What's left is PR-unique: the umbrella *why* and reviewer guidance.
-
-- **Title** — like a commit subject (imperative, intent, `type:` prefix), but the *umbrella* intent of the whole PR, not a copy of one commit. If the repo squash-merges, this becomes the merge commit's subject — keep it convention-clean.
-- **Description** — the umbrella why (what these commits deliver together) plus reviewer guidance: where to start, what's risky, what's deliberately out of scope, what to verify by hand. Link issues with `Closes #N`. Don't re-list files (the diff has them), don't say "tests pass" (CI does), don't re-narrate each commit (the commit list does).
-
-One PR, one logical change; length scales with the change. The `.github/PULL_REQUEST_TEMPLATE.md` prefills this shape.
-
-### Merge strategy
-
-Rebase and merge — keeps history linear and preserves each commit's message. Squash only a PR of WIP/fixup commits not worth keeping apart. Avoid merge commits (they own nothing the commits / PR / CI don't already).
-
-## Coding Conventions
-
-Enforced by `pre-commit` (`ruff` + `shellcheck` + `shfmt`); run `pre-commit run --all-files` (or `pre-commit install` once for the per-commit hook). Config: `ruff.toml`, `.shellcheckrc`, `.pre-commit-config.yaml`.
-
-**Python**
-- Naming: `snake_case` functions/vars, `UPPER_SNAKE` constants, `_private` prefix. No `camelCase`.
-- Formatting: `ruff format` (88 cols); imports sorted by ruff `I`. f-strings (not `%`/`.format`, except dict-unpack `"{x}".format(**d)`). `pathlib.Path` over `os.path`.
-- A script that is directly runnable (`if __name__ == "__main__"`) starts with `#!/usr/bin/env python3`; import-only library modules do not.
-- Exit via `sys.exit(...)` — never `raise SystemExit(...)`. Pass an int code, or a `"<script>: message"` string for fail-fast (Python prints it to stderr and exits 1; see the `_fail()` helper in `spec/constraints.py`). Use `print(..., file=sys.stderr)` for diagnostics that aren't the exit message itself. Exit codes: 0 ok, 1 runtime failure, 2 usage.
-- New scripts are fully type-annotated. (Legacy partial annotations are not retrofitted.)
-- JSON I/O: `json.dumps(..., ensure_ascii=False)`; `indent=2` for files written to disk; compact (no indent) only for single-line stdout payloads consumed by a caller.
-
-**Shell**
-- `#!/usr/bin/env bash` + `set -euo pipefail` for executable scripts. Sourced POSIX files (`env.sh`) carry `# shellcheck shell=sh`.
-- Tabs (`shfmt -i 0`). `[[ ]]` tests (not `[ ]`). `UPPER_CASE` globals, `local` lowercase. Quote expansions (`"$VAR"`); brace where needed (`${VAR}`).
-- Errors to stderr prefixed `<script>: ...` `>&2`. Exit codes: 2 usage, 1 runtime, 0 ok.
-
-**EDA templates** — three placeholder conventions:
-- `MY_*` — substituted by the bootstrap shell via `sed` (default for shell/TCL/SDC templates).
-- `{{VAR}}` — substituted by Python at scaffold-build time (the simulation `render-scaffold` verb for the simulation scaffold, `emit_power_tests.py` for the power scaffold).
-- `FILL_IN_*` — a sentinel for a value the human must supply (e.g. `FILL_IN_LIB_DB_PATH`); the bootstrap substitutes it only when it can resolve a value, and the tool script fail-closes if the sentinel survives.
-
-**Cross-module SSoT identity** — import shared SSoT modules the bare way (`import rules` after putting `framework/scripts` on `sys.path`, as `kernel.py` / `schedule.py` / `facts.py` and the tests all do), never via the package path (`framework.scripts.rules`); the latter creates a second module object and breaks the `kernel.rules is schedule.rules` identity (the dup-module bug class). Do not add re-exports for test convenience; tests read framework constants from their real home module. Guarded by `tests/unit/test_kernel_cli.py::test_bare_import_single_module_identity`.
-
-**File naming** — each stage's Tier-1 scripts live in one package `skills/<stage>/scripts/<pkg>/` (`<pkg>` = the short stage tool name, no hyphens, e.g. `lint-cdc`→`lintcdc`): a thin `__main__.py` argparse entry dispatches verb subcommands to focused `<verb>.py` / `_<lib>.py` modules (no god-file). Verbs follow the shared vocabulary (`bootstrap` / `finalize` / `derive-*` / `materialize-*` / `render-*` / `check-*`). There is no review-validating verb in any stage: every one that had one dropped it, last of all simulation, whose review is the only one no human reads before the stage routes on it. The reason generalizes past the review case. A verb that hands a verdict to the party the verdict constrains enforces nothing, and it is the step that cannot proceed without the answer, `finalize`, that has to read it. Put the check where the consequence is. Framework libraries keep domain-noun names (`rules.py`, `store.py`); kebab-case skill directories.
-
-## Further reading
-
-- **EDA tool environment** — PATH, `LIB_DB`, `UVM_HOME`, `/bin/sh→bash`, optional `VCS_CC`: [docs/eda-env.md](docs/eda-env.md).
-- **Repository layout** — per-module workspace: [CLAUDE.md § Module Layout](CLAUDE.md#module-layout).
+Write runtime skill instructions in English. User-facing material may follow the
+user's language. Keep prose direct and link to detailed references instead of
+copying them into every document.

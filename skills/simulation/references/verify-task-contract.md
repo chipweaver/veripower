@@ -31,8 +31,7 @@ with `failing_cases` and no check-mapping.
    is `coverage_*`; a dim with no row is reported, not gated). Every bounded dimension satisfied
    goes straight to summary. Otherwise take the named items from the same file's `uncovered[]`, classify each as a
    stimulus-layer or intent-layer gap per `coverage-iteration.md`, and either iterate stimulus
-   within `defaults.yaml.stimulus_iterate_max_rounds` rounds or route out with
-   the coverage route-out.
+   or report the intent gaps.
 3. **Summary**: `make summary` produces `case-results.json` and `case-results-summary.md`.
    The exit gates run at the orchestrator's finalize, not here.
 
@@ -41,8 +40,7 @@ with `failing_cases` and no check-mapping.
 - **Stimulus iterate only**: seed / tighten existing seq constraint params / testlist append.
 - **A regress failure routes out; you do not repair it here.** Whether it is rooted in wiring or
   in the checker's semantics makes no difference here: write the `regress` verdict plus
-  `failing_cases` and let the caller decide. That repair authority was env-build's
-  scaffold-repair budget, and it closed when smoke passed.
+  `failing_cases` and let the caller decide. Scaffold repair belongs to env-build.
 
 ## Write-domain
 
@@ -69,10 +67,9 @@ the same four fields the scaffold emits (`test_id`, `uvm_testname`, `suites`, `s
 
 - Verify-phase artifacts written in `{workdir}`: `regression-log.txt`, `structural-coverage.json`,
   `case-results.json`, `case-results-summary.md` (what each one is: `artifacts.md`).
-- End the response with `STATUS: DONE` plus a single JSON line. On a clean pass the only field
-  read from it is `stimulus_iterations`, the number of stimulus-iterate rounds you spent; the suite counts
-  and coverage numbers are read off `case-results.json` and `structural-coverage.json` by
-  finalize, so do not restate them here. On a route-out, carry the failure fields:
+- On a clean pass, end with `STATUS: DONE`. Finalize reads counts and coverage from
+  `case-results.json` and `structural-coverage.json`.
+- On a route-out, return `STATUS: DONE` plus a JSON line carrying the failure fields:
 
   ```json
   {"verdict": "coverage", "gaps_not_in_testpoints": ["..."], "gaps_in_testpoints": ["..."]}

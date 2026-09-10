@@ -169,7 +169,7 @@ coverage bounds the requirements set, on the stimulus side of the stimulus/inten
 ([`references/coverage-iteration.md`](references/coverage-iteration.md)). It repairs nothing: a
 regress failure routes out with `failing_cases` for the caller to attribute.
 
-Reap its `STATUS:` line and its JSON line. Anything other than a clean verdict closes the round
+Reap its `STATUS:` line and any failure JSON line. Anything other than a clean verdict closes the round
 here, without step 4:
 
 - a failing regress case: `finalize --phase fail --fail-reason "<the failing test and its error>"`;
@@ -191,7 +191,6 @@ python3 <skill>/scripts/sim/__main__.py finalize \
   --plan <scaffold> \
   --requirements <requirements>/requirements.json \
   --check-review {workdir}/check-review.md \
-  --verify-verdict {workdir}/<reaped-verify-verdict>.json \
   [--fix-owner <rule>]
 ```
 

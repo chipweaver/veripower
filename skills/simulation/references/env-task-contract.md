@@ -82,9 +82,8 @@ the UVM scaffold, compile, and run the smoke suite.
    read the small top-level arrays (`sequences[].agent` / `tests[].seqs` / `rm` / `scoreboard`)
    for the testpoint→component mapping. `testpoints[]` itself carries only `id` / `intent` /
    `covers` / `seqs`, never agent/rm, so the cross-array join is over small arrays.
-3. **Compile + smoke**: `make simv` → `make smoke`. The two steps **share** one
-   `defaults.yaml.scaffold_repair_max_rounds` repair budget (compile + smoke do not each get N rounds).
-   On a scaffold/wiring error within budget, error-driven repair is allowed;
+3. **Compile + smoke**: `make simv` → `make smoke`.
+   Repair scaffold/wiring errors and re-run;
    on a semantic / expected-behavior error, do **not** retry: end with `STATUS: BLOCKED <one-line
    reason naming where it stopped and the semantic locus>`, which the orchestrator records
    verbatim as the round's `fail_reason`.
@@ -96,11 +95,8 @@ the UVM scaffold, compile, and run the smoke suite.
 
    This is a **presence** gate: it fails (non-zero) if any required scaffold SV file is missing,
    if any `TODO` marker survives in `tb/uvm/**`, or if the env never names an agent the plan
-   declares. While the scaffold-repair budget remains and the
-   gate fails, **keep filling** the residual TODOs/files and re-run it. Only report `STATUS: DONE`
-   once it exits 0. If the budget is exhausted and it still fails, end with
-   `STATUS: BLOCKED compile <residual TODO/file locus>` (the existing compile mapping; this gate is
-   exit-code truth, not narration). It does **not** write `result.json`; the orchestrator's finalize
+   declares. If the gate fails, fill the residual TODOs/files and re-run it. Only report
+   `STATUS: DONE` once it exits 0. It does **not** write `result.json`; the orchestrator's finalize
    run remains the authoritative verdict; this is your self-gate so a hollow TB never
    reaches the verify run. (Note: `make smoke` runs earlier in your own step, *before* this gate,
    the savings are that no regress or coverage run happens on a hollow TB, not that smoke is skipped.)

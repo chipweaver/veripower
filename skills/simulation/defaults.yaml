@@ -1,9 +1,0 @@
-# Global default round budgets, shared by all modules; per-module override is not supported
-# (YAGNI). Coverage thresholds are not here: they are the engineer's own, read by the coverage
-# gate from the requirements.json rows simulation judges.
-
-# Round budget for stimulus iterate (when coverage gaps all map to testpoints)
-stimulus_iterate_max_rounds: 3
-
-# Round budget for compile / smoke scaffold-class repair
-scaffold_repair_max_rounds: 3

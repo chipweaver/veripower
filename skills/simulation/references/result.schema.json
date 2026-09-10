@@ -61,7 +61,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Uncovered items a testpoint does claim, left when the Rule-B iterate budget ran out. Present only on a coverage route-out."
+              "description": "Uncovered items a testpoint does claim, reported alongside intent-layer gaps. Present only on a coverage route-out."
             }
           },
           "additionalProperties": true

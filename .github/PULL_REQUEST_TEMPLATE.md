@@ -1,17 +1,10 @@
-<!--
-PR convention (CONTRIBUTING.md § Pull requests): write only what the diff,
-CI, and the commit messages don't already give — the umbrella why and
-reviewer guidance. No file lists, no "tests pass", no per-commit retelling.
-Title = umbrella intent, commit-subject style.
--->
+## Change
 
-## Why
+<!-- Describe the problem and resulting behavior. Add rationale where it helps review. -->
 
-<!-- 1–2 sentences: what these commits deliver together, and why now. -->
+## Validation
 
-## Reviewer notes
-
-<!-- Where to start, what's risky, what's deliberately out of scope, what to
-verify by hand (CI can't). Delete this section if there's nothing to add. -->
+<!-- Relevant checks and outcomes, including anything unverified. For platform or
+EDA experiments, name what actually ran and the scope it establishes. -->
 
 <!-- Closes #ISSUE -->

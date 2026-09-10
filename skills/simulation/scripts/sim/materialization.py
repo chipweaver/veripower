@@ -25,8 +25,7 @@ def run(workdir, plan_dir) -> int:
         print(
             "[sim check-materialization] incomplete:\n  - "
             + "\n  - ".join(errs)
-            + "\nFill the scaffold (no TODO may survive; all required files present), then re-run. "
-            "Budget-exhausted-with-residue -> the compile route-out.",
+            + "\nFill the scaffold (no TODO may survive; all required files present), then re-run.",
             file=sys.stderr,
         )
         return 1

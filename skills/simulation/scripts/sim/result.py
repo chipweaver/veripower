@@ -173,7 +173,6 @@ def build_result(
         "total_cases": cases["total"],
         "passed": cases["passed"],
         "failed": cases["failed"],
-        "stimulus_iterations": verify.get("stimulus_iterations"),
         "coverage_summary": read_coverage_summary(workdir, gate["scope"]),
         "requirements": gate["requirements"],
     }

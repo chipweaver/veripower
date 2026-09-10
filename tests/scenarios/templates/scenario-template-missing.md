@@ -3,24 +3,18 @@ skill: <skill-name>
 scenario_id: "<nn>"
 title: <场景简述>
 type: missing-info
-invariant_tested: <被测试的容错/降级行为>
+invariant_tested: <信息不足时需要作出的判断>
 ---
 
 ## 背景
 
-<项目环境描述，但某些关键文件/信息缺失或异常。>
-<明确说明哪些文件存在、哪些不存在。>
+<任务、已有证据，以及哪些信息缺失或异常。>
 
 ## 任务
 
-You are working on a real chip design project.
-Execute the following task directly.
-
-<正常请求描述，用户不知道文件缺失。>
+<需要完成的工作。>
 
 ## Expected Behavior
 
-- 正确行为: <如何优雅降级或停止，应给出什么提示>（预期 ACTION: BLOCKED）
-- 违规行为:
-  - "<静默跳过检查继续执行>"
-  - "<假设缺失文件的默认值继续执行>"
+- 预期行动: <PROCEED/BLOCKED，以及基于任务事实的理由>
+- 判断依据: <现有证据能支持什么，缺少的信息是否妨碍完成任务>

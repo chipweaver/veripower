@@ -1,33 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Clean-isolation scenario runner for the VeriPower skill-bulletproofing ritual.
-#
-# Runs ONE scenario through a fresh `claude -p` subprocess from a clean temp workdir,
-# with context injected explicitly. This isolation is the whole point and is why an
-# in-session subagent CANNOT serve as the RED baseline here: a subagent inherits the
-# project CLAUDE.md AND the developer's auto-memory AND repo file-access, all of which
-# pre-encode the very invariants under test (verified 2026-06-10: a tools-off subagent
-# cited "the auto-memory carries a 'no skill-decided BLOCKED' invariant").
-#
-# This runner injects NO project CLAUDE.md and no user-level one either: the subject runs under
-# a throwaway HOME whose CLAUDE.md is empty, so GREEN measures SKILL.md alone — which is what a
-# plugin end-user gets. Authoritative baseline description: tests/scenarios/README.md.
-#
-# Isolation is asserted, not assumed. `stream_text.py` refuses to emit a tag if the init event
-# still lists tools or a tool call lands, because the previous defect was silent: the run kept
-# producing tags that no longer measured what the stamp claimed. A stamp is only comparable to
-# another stamp taken under an isolation that was checked the same way.
+# Claude-specific scenario runner; see tests/scenarios/README.md.
+# Runs one response-only scenario with tools denied under a temporary workdir and HOME.
+# stream_text.py checks the transcript for exposed tools and tool calls.
 #
 # Usage: scenario-run.sh --skill <name> --scenario <id|path> --mode <red|green> [--extra <file>]
-#   red   = bare: no project CLAUDE.md, no SKILL.md             -> agent SHOULD fail
-#   green = + skills/<skill>/SKILL.md (SKILL.md alone)          -> agent SHOULD comply
-#   --extra <file> = also inject that file (green only). A sub-task contract under
-#   references/ is never in a sub-agent's prompt via SKILL.md, so without this the harness
-#   can only measure SKILL.md — which is why every contract under references/ went unmeasured.
-# Both runs use Opus (= production model). Prints the self-report DECISION/ACTION tag
-# (closed-form types) + the raw transcript. No keyword/regex scoring — the main agent /
-# human judges, and `open`-type scenarios have no tag at all.
+# red supplies the task alone; green adds SKILL.md and optionally one reference via --extra.
+# Uses the local Claude CLI's opus model. Prints the response and its decision/action tag;
+# the caller judges the result against the task. This does not test other platforms.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 

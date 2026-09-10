@@ -29,14 +29,10 @@ drives (`intent`), and asking whether it falls inside that.
 - **Stimulus-layer gap:** a testpoint does claim it, and the sequence written for that testpoint
   never drove the design through it.
 - **Intent-layer gap:** no testpoint claims it, or you cannot tell which one would. Route out.
-  Uncertainty belongs on this side: the other side spends the iterate budget trying to close a hole
-  no testpoint was ever going to close, and then reports the budget as exhausted, which sends the
-  rework somewhere else again.
 
 ## Stimulus iterate flow
 
-Only while every uncovered item is a stimulus-layer gap, and for at most
-`defaults.yaml.stimulus_iterate_max_rounds` rounds:
+While every uncovered item is a stimulus-layer gap:
 
 1. For each item, find the testpoint that claims it and the sequence wired toward it
    (`testpoints[].seqs` names them).
@@ -45,7 +41,7 @@ Only while every uncovered item is a stimulus-layer gap, and for at most
    entries).
 3. Re-run `make regress` and read the new `structural-coverage.json`.
 4. Every bounded dimension satisfying its row means coverage converged.
-5. Gaps remaining means repeat, until the bounds are met or the budget is spent.
+5. If gaps remain, classify them again and continue adjusting stimulus for those within the plan.
 
 ## Routing out
 
@@ -54,11 +50,8 @@ carrying the failure fields, which the orchestrator maps into a `status=fail` en
 the coverage route-out.
 
 - **Any intent-layer gap**, whether or not stimulus-layer gaps sit beside it:
-  `gaps_not_in_testpoints`. The intent gap goes first; iterating stimulus in the same round would
-  spend budget on a plan defect.
-- **Budget spent with stimulus-layer gaps left:** `gaps_in_testpoints`. Whether the cause is an
-  insufficient stimulus plan or RTL the design can never reach is for the caller to decide, and it
-  is why the two lists are separate rather than one.
+  `gaps_not_in_testpoints`.
+- Include any remaining stimulus-layer gaps in `gaps_in_testpoints`.
 
 ## Threshold source
 
