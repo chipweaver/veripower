@@ -68,10 +68,8 @@ a table could work out what you already knew, and the table could only ever reco
 answer you had encoded in them.
 
 Block when the testpoint would pass while the behavior it exists to verify is broken. Do not
-block for a nit, for a gap you can name but that costs nothing downstream, or for a testpoint
-with no drive or observe path at all (say so, non-blocking: the architecture is the fix, and
-this round cannot make it). If you find yourself writing prose that describes a real hole and
-then marking it non-blocking, one of the two is wrong.
+block for a nit or for a gap you can name but that costs nothing downstream. If you find yourself
+writing prose that describes a real hole and then marking it non-blocking, one of the two is wrong.
 
 ## Output
 

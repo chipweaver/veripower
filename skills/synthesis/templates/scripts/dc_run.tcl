@@ -84,6 +84,7 @@ if {[regexp -line {^Error:} $_check_content]} {
 
 # --- Timing constraints ---
 source [file join [pwd] constraints.sdc]
+source [file join [pwd] constraints.local.sdc]
 
 # --- Interconnect estimate ---
 # WIRE_LOAD_MODEL names a model the library carries, or `none`. A library declares neither a

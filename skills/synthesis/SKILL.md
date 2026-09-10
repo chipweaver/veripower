@@ -50,7 +50,7 @@ the reports then say `No wire load specified` where a reader can see it.
 One file under `{workdir}` is yours to edit, and it reaches you holding the previous round's work
 rather than the specification SDC:
 
-- `constraints.sdc`: every exception, every library value, and the `# notes:` that say why.
+- `constraints.local.sdc`: every exception, every library value, and the `# notes:` that say why.
 
 Treat what is in it as work you inherited. Re-check each exception against this run's reports and
 delete one whose path no longer exists, but re-deriving a set you already have costs a full
@@ -68,7 +68,7 @@ python3 <skill>/scripts/synthesis/__main__.py bootstrap --workdir {workdir} [--t
 ```
 
 It generates `scripts/rtl_load.tcl` and `scripts/config.tcl` from the rtl-design file layout, and
-assembles `constraints.sdc` from the specification SDC plus your inherited `constraints.local.sdc`.
+copies the specification SDC to `constraints.sdc`, preserving your inherited `constraints.local.sdc`.
 It aborts when `{workdir}/Makefile` already exists (the
 kernel-written `dispatch.json` does not count as "deployed"), and reads the top-module name from
 `manifest.module` when `--top` is omitted. Non-zero exit: stderr names the cause, and nothing was
@@ -77,7 +77,7 @@ deployed, so the retry is not blocked. `make` is the interface to everything it 
 ### 2. Constrain
 
 Union the `sdc` block across every child of `<annotations>/constraint-annotations.json` and render
-all three categories into `constraints.sdc` before you run anything:
+all three categories into `constraints.local.sdc` before you run anything:
 
 | sidecar key | what it carries | what you write |
 |---|---|---|
@@ -94,7 +94,7 @@ Transcribe, never invent. lint-cdc reads this same sidecar for its SGDC side, so
 add on your own authority has no counterpart there and the two constraint sets diverge silently.
 A path nobody declared is step 3's to report, not yours to except.
 
-Everything you write goes in `constraints.local.sdc`, which `bootstrap` sources after the seed.
+Everything you write goes in `constraints.local.sdc`, which DC reads after the seed on every run.
 Tcl takes the last assignment, so settling one of the seed's placeholders is a line here, not an
 edit there: the `set_clock_uncertainty -setup` / `-hold` values its `;#` notes flag, and
 `set_drive` / `set_load`, which it carries for no port — add those only where the IO cell library
@@ -102,9 +102,8 @@ documents them. Anything you leave at a placeholder, and anything you decide not
 `# notes:` line saying why: this file is promoted, and the next reader cannot tell a measured
 margin from a default or an omission from an oversight.
 
-`constraints.sdc` is the file dc_shell reads and is **generated every round** from the seed plus
-your local file. Editing it is pointless — the next round overwrites it — and that is what lets a
-corrected clock upstream reach the tool without touching what you measured.
+`constraints.sdc` is the specification seed, refreshed every round. Edit the local file;
+DC exports the effective post-synthesis constraints to `out/<TOP>_syn.sdc` for downstream stages.
 
 ### 3. Converge
 

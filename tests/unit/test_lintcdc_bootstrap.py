@@ -10,7 +10,7 @@ the skill code lives. Neither verb shells out to any Tier-2 script — bootstrap
 pure deploy.
 
 `_make_tree` pre-populates workdir/dispatch.json (rtl/annotations/sgdc_seed keys) the way
-kernel.py dispatch injects it at dispatch time, and (when given `carried_sgdc` /
+kernel.py dispatch injects it at dispatch time, and (when given `carried_local` /
 `carried_waiver`) pre-places files directly into workdir/scripts/ the way kernel.py's
 carry_self does before this verb runs — bootstrap reads upstream locations from
 dispatch.json and carried files from the workdir itself, instead of self-navigating
@@ -60,8 +60,8 @@ def _make_tree(
 ):
     """Build the upstream asic/<module>/... refs under a tmp design-tree root, and
     pre-populate workdir/dispatch.json (rtl/annotations/sgdc_seed keys) the way kernel.py
-    dispatch injects it. `carried_sgdc` / `carried_waiver`, when given, pre-place
-    scripts/constraints.sgdc / scripts/waiver.tcl directly INTO the workdir — the way
+    dispatch injects it. `carried_local` / `carried_waiver`, when given, pre-place
+    scripts/local.sgdc / scripts/waiver.tcl directly INTO the workdir — the way
     kernel.py's carry_self does before this verb runs.
     Returns (module, workdir, main). Deploy tests run `main` (the real shipped skill)
     with cwd=tmp_path, so the bootstrap anchors the design tree on the CWD."""
@@ -297,9 +297,7 @@ _ANN = {
 }
 
 
-def test_sgdc_is_assembled_seed_then_annotations_then_local(tmp_path):
-    """The file SpyGlass reads is generated, not maintained. Order matters only in that the
-    stage's own file comes last, where SGDC lets it associate what the seed declared."""
+def test_seed_and_annotations_are_separate_from_carried_local(tmp_path):
     m, workdir, main = _make_tree(
         tmp_path,
         cold="# SEED\ncurrent_design dut\nreset -name rst -value 0\n",
@@ -309,9 +307,12 @@ def test_sgdc_is_assembled_seed_then_annotations_then_local(tmp_path):
     r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     out = (workdir / "scripts" / "constraints.sgdc").read_text()
-    assert out.index("# SEED") < out.index("sync_cell") < out.index("# LOCAL")
+    assert out.index("# SEED") < out.index("sync_cell")
     assert "reset -name rst -value 0" in out
-    assert "# LOCAL" in out
+    assert "# LOCAL" not in out
+    assert (workdir / "scripts/local.sgdc").read_text() == (
+        "# LOCAL\nabstract_port -ports rst -clock clk -reset rst\n"
+    )
 
 
 def test_annotations_are_generated_from_the_sidecar_not_transcribed(tmp_path):
@@ -342,7 +343,48 @@ def test_a_corrected_seed_reaches_the_tool_without_the_stage_acting(tmp_path):
     assert r.returncode == 0, r.stderr
     out = (workdir / "scripts" / "constraints.sgdc").read_text()
     assert "reset -name rst -value 0" in out
-    assert "# carried local, untouched" in out
+    assert (
+        workdir / "scripts/local.sgdc"
+    ).read_text() == "# carried local, untouched\n"
+
+
+def test_project_reads_local_edits_on_each_invocation(tmp_path):
+    """Evaluate the deployed project with instrumented SGDC input commands.
+
+    Real SpyGlass runs separately verify its SGDC semantics.
+    """
+    _, workdir, main = _make_tree(tmp_path, cold="current_design dut\n", annotations={})
+    r = _run(workdir, main, extra=["--top", "dut"])
+    assert r.returncode == 0, r.stderr
+    local = workdir / "scripts/local.sgdc"
+    stub = local.read_text()
+    (workdir / "probe.tcl").write_text(
+        """set observed none
+proc read_file {args} {
+    if {[lindex $args 1] eq "sgdc"} {uplevel #0 [list source [lindex $args 2]]}
+}
+proc set_option args {}
+proc current_design {name} {set ::design $name}
+proc set_case_analysis {args} {set ::observed [lindex $args end]}
+source scripts/spyglass_lint.prj
+puts "observed=$observed design=$design"
+"""
+    )
+    for value in (0, 1, None):
+        local.write_text(
+            stub
+            + (
+                f"\nset_case_analysis -name mode -value {value}\n"
+                if value is not None
+                else ""
+            )
+        )
+        seen = subprocess.run(
+            ["tclsh", "probe.tcl"], cwd=workdir, capture_output=True, text=True
+        )
+        assert seen.returncode == 0, seen.stderr
+        expected = "none" if value is None else value
+        assert f"observed={expected} design=dut" in seen.stdout
 
 
 def test_missing_seed_fail_closed(tmp_path):

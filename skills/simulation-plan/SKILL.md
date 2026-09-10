@@ -43,7 +43,7 @@ Everything below is produced under `{workdir}`.
 | `plan-review/decisions.md` | The user's resolution of anything it called blocking. It accumulates across rounds — carried forward and appended to, never rewritten |
 | `result.json` | The status envelope |
 
-Each sidecar's shape, and per field whether it is yours to author or script-injected, is
+Each sidecar's shape and field semantics are in
 [`references/tb-scaffold.schema.json`](references/tb-scaffold.schema.json) /
 [`sequences.schema.json`](references/sequences.schema.json) /
 [`power-scenarios.schema.json`](references/power-scenarios.schema.json). Read them before authoring:
@@ -97,7 +97,7 @@ situation the RTL cannot legally reach — **narrow the testpoint's `intent`** r
 hole, and delete the testpoint outright if the whole thing is unreachable, recording the over-spec
 attribution in §5. Coverage does not fall; a hole that could never be hit was never coverage.
 
-**Gate, script.** Run `materialize-scaffold` to fill the script-injected fields, then
+**Gate, script.** Run `materialize-scaffold` to check the agents' interface groups, then
 `check-scaffold` to validate the sidecars' structure, semantics, and coverage matrix:
 
 ```bash

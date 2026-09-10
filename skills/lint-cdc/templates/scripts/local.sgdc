@@ -1,5 +1,5 @@
 # ==============================================================================
-# local.sgdc — this stage's own SGDC, appended after the specification seed and
+# local.sgdc — this stage's own SGDC, read after the specification seed and
 # the generated constraint-annotations block. The only SGDC file you edit, and
 # the only one carried into the next round.
 #
@@ -9,6 +9,8 @@
 # anything in constraint-annotations.json (generated — a wrong entry is its
 # author's to fix, and this stage's failure routing sends it there).
 # ==============================================================================
+
+current_design MY_TOP
 
 # Reset port association — bind a reset to the domain it resets.
 #   abstract_port -ports <rst> -clock <clk> -reset <rst>

@@ -9,6 +9,7 @@ and prove nothing about that.
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -267,9 +268,7 @@ def test_config_tcl_lib_db_does_not_override_the_environment(tmp_path):
     assert seen.stdout.strip() == "seen: /real/slow.db", seen
 
 
-def test_sdc_is_assembled_seed_then_local(tmp_path):
-    """The file dc_shell reads is generated, not maintained. The local file comes last so a
-    value settled there wins by Tcl's last-assignment rule, without editing the seed."""
+def test_seed_and_carried_local_remain_separate(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     (workdir / "constraints.local.sdc").write_text(
@@ -278,8 +277,11 @@ def test_sdc_is_assembled_seed_then_local(tmp_path):
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     out = (workdir / "constraints.sdc").read_text()
-    assert out.index("spec sdc for top") < out.index("# LOCAL")
-    assert "set_clock_uncertainty -setup 0.15" in out
+    assert "spec sdc for top" in out and "# LOCAL" not in out
+    assert (
+        "set_clock_uncertainty -setup 0.15"
+        in (workdir / "constraints.local.sdc").read_text()
+    )
 
 
 def test_a_corrected_seed_reaches_dc_without_the_stage_acting(tmp_path):
@@ -294,4 +296,46 @@ def test_a_corrected_seed_reaches_dc_without_the_stage_acting(tmp_path):
     assert proc.returncode == 0, proc.stderr
     out = (workdir / "constraints.sdc").read_text()
     assert "create_clock -period 4.0" in out
-    assert "# carried local, untouched" in out
+    assert (
+        workdir / "constraints.local.sdc"
+    ).read_text() == "# carried local, untouched\n"
+
+
+def test_driver_reads_local_edits_on_each_invocation(tmp_path):
+    """Exercise the deployed Tcl entrypoint, stopping at the mapping command.
+
+    Tool commands are stubbed here; real DC constraint observations run separately.
+    """
+    skill_dst, rtl, workdir = _mirror(tmp_path)
+    (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
+    seed = workdir.parents[2] / "specification/constraints/top.sdc"
+    seed.write_text("set audit_constraint seed\n")
+    assert _run(skill_dst, workdir, "--top", "top").returncode == 0
+    library = tmp_path / "test.db"
+    library.touch()
+    (workdir / "probe.tcl").write_text(
+        """proc set_app_var args {}
+proc get_app_var args {return {}}
+proc define_design_lib args {}
+proc analyze args {return 1}
+proc elaborate args {return 1}
+proc current_design args {}
+proc link args {return 1}
+proc check_design args {close [open [lindex $args end] w]}
+proc set_wire_load_mode args {}
+proc compile_ultra {} {puts "observed=$::audit_constraint"; exit 0}
+source scripts/dc_run.tcl
+"""
+    )
+    local = workdir / "constraints.local.sdc"
+    for value in ("first", "changed", None):
+        local.write_text(f"set audit_constraint {value}\n" if value else "")
+        seen = subprocess.run(
+            ["tclsh", "probe.tcl"],
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "LIB_DB": str(library), "WIRE_LOAD_MODEL": "none"},
+        )
+        assert seen.returncode == 0, seen.stderr
+        assert f"observed={value or 'seed'}" in seen.stdout

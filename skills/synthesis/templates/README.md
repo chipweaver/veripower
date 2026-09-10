@@ -14,8 +14,9 @@ way to set them.
 
 ## The one file you edit
 
-`constraints.sdc` holds the timing constraints DC reads: the specification SDC verbatim on a
-first run. Your `create_generated_clock` / `set_multicycle_path` / `set_false_path` exceptions
+`constraints.local.sdc` holds this stage's constraints and is carried into the next round.
+DC reads the specification seed in `constraints.sdc`, then this local file on every run.
+Your `create_generated_clock` / `set_multicycle_path` / `set_false_path` exceptions
 and the `set_clock_uncertainty` / `set_drive` / `set_load` values go here; flag any placeholder
 value you leave behind with a `# notes:` comment.
 

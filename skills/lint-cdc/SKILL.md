@@ -39,11 +39,9 @@ rather than a pristine template:
 - `scripts/local.sgdc`: your own SGDC — the port/clock associations the seed cannot know.
 - `scripts/waiver.tcl`: the waivers, each carrying its reason.
 
-`scripts/constraints.sgdc` is the file SpyGlass reads and is **generated every round** from the
-seed, the annotations and your `local.sgdc`, in that order. Editing it is pointless: the next
-round overwrites it. That split is what lets an upstream correction reach the tool without
-touching a round's own work, and it is why neither the clock/reset block nor the annotations are
-yours to restate — a wrong one belongs to whoever declared it, and step 4 routes it there.
+`scripts/constraints.sgdc` is generated every round from the seed and annotations. SpyGlass
+reads it, then `scripts/local.sgdc`, on every run. Edit the local file; corrections to the seed
+or annotations belong to their authors, and step 4 routes them there.
 
 Everything else under `{workdir}` is produced by the tools you invoke, and `finalize`
 enumerates it into `artifacts[]` for you.
@@ -59,8 +57,8 @@ python3 <skill>/scripts/lintcdc/__main__.py bootstrap --workdir {workdir} [--top
 ```
 
 It deploys NO-CLOBBER so your two files survive, substitutes the `MY_TOP` placeholder, and
-assembles `scripts/constraints.sgdc` from the specification seed, the generated annotations and
-your `scripts/local.sgdc`. It aborts when `{workdir}/Makefile` already exists (the kernel-written
+assembles `scripts/constraints.sgdc` from the specification seed and generated annotations,
+preserving your `scripts/local.sgdc`. It aborts when `{workdir}/Makefile` already exists (the kernel-written
 `dispatch.json` does not count as "deployed"), when the seed does not resolve, and when the
 annotations sidecar is unreadable — the first two would leave SpyGlass analysing a design with no
 clock declared, which it reports as a clean run. It reads the top-module name from

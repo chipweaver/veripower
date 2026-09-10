@@ -10,7 +10,7 @@ recommended first run; `make lint` and `make cdc` run one goal each.
 
 | File | Content |
 |---|---|
-| `scripts/constraints.sgdc` | Clock / reset / port constraints and the depth annotations (`sync_cell`, `reset_synchronizer`, `set_case_analysis`, `quasi_static`) that suppress false positives. Seeded from the specification stage on a first run, carried forward from the previous round after that. |
+| `scripts/local.sgdc` | This stage's port/clock associations and analysis scope, carried into the next round. SpyGlass reads it after the generated seed and annotations in `scripts/constraints.sgdc` on every run. |
 | `scripts/waiver.tcl` | Reviewed waivers, and any `set_option` the analysis needs. `run.tcl` sources it for both goals. |
 
 Everything else here is generated or make-internal. `scripts/filelist.txt` is regenerated from

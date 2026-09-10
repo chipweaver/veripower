@@ -10,6 +10,7 @@
 ##Data Import Section
 read_file -type sourcelist scripts/filelist.txt
 read_file -type sgdc       scripts/constraints.sgdc
+read_file -type sgdc       scripts/local.sgdc
 
 ##Common Options Section
 # Measured against a real ChipVerilog i2c lint run, one option removed at a time: each is

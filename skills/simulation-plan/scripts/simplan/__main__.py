@@ -85,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--spec",
         required=True,
         type=Path,
-        help="the specification workdir: check-hints/ and requirements.json are read from it",
+        help="the specification workdir: check-hints.json and requirements.json are read from it",
     )
     sp.set_defaults(func=_cmd_check_scaffold)
 

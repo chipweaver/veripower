@@ -59,9 +59,8 @@ its phase-by-phase description carry the cycle-level detail a row cannot.
 
 ## check-hints.json → testpoints[].covers[]
 
-One file per child declared in `manifest.json`; `check_id` is unique across all of them, which is why
-they are aggregated before the coverage matrix is checked. Each hint names the requirements rows it
-establishes and says how simulation observes them. You cluster the `check_id`s into
+One `check-hints.json` file for the module; `check_id` is unique within it. Each hint names the
+requirements rows it establishes and says how simulation observes them. You cluster the `check_id`s into
 `testpoints[].covers[]` — that clustering is the only authored input here. `simulation` reads each
 covered hint, and the rows it names, by id; nothing is copied into the scaffold.
 
