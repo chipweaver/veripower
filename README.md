@@ -51,7 +51,8 @@ Across these tasks, VeriPower closes verification gaps in coverage, CDC and test
 
 ## Quickstart
 
-**Claude Code**
+<details>
+<summary><strong>Claude Code</strong></summary>
 
 ```bash
 claude plugin marketplace add chipweaver/veripower
@@ -60,7 +61,12 @@ claude plugin install veripower@chipweaver
 
 Or point at a working copy: `claude --plugin-dir /path/to/veripower`.
 
-**opencode** — add the plugin to `~/.config/opencode/opencode.json`, or to a project-level
+</details>
+
+<details>
+<summary><strong>opencode</strong></summary>
+
+Add the plugin to `~/.config/opencode/opencode.json`, or to a project-level
 `opencode.json`:
 
 ```json
@@ -80,7 +86,12 @@ regardless of the model's declared limit. Long RTL-authoring completions can be 
 that cap. 131072 matches the GLM-5.x declared limit, and models declaring
 less keep their own.
 
-**DeepSeek Harness** — install into the profile you run:
+</details>
+
+<details>
+<summary><strong>DeepSeek Harness</strong></summary>
+
+Install into the profile you run:
 
 ```bash
 dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripower.git"
@@ -88,7 +99,12 @@ dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripo
 
 Run the `web` profile (`dsh web`), not the one-shot `headless` profile.
 
-**Codex** — native plugin and subagents (tested with CLI 0.153.4 on Linux):
+</details>
+
+<details>
+<summary><strong>Codex</strong></summary>
+
+Native plugin and subagents (tested with CLI 0.153.4 on Linux):
 
 ```bash
 codex plugin marketplace add chipweaver/veripower
@@ -100,6 +116,8 @@ then launch `codex --profile veripower`. Review the two VeriPower hooks in `/hoo
 and start a new session. Setup adds native command approval rules and a profile
 that routes oracle judgments to the human reviewer. See [Codex setup and runtime
 behavior](codex/README.md) for upgrades, background jobs and verification scope.
+
+</details>
 
 Ask it to list its skills — the twelve VeriPower ones confirm the install.
 
