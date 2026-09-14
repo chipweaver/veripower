@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""check-crossrefs — the joins that outlive the author who could see them.
+"""check-crossrefs — validate references between the ledger, boundary and check hints.
 
-The hints author holds the ledger too, so it can see a hint naming a row that is not the ledger's
-to hint, and a row simulation judges that nothing verifies. What it cannot do is hold them later:
-a repair that re-judges a row moves it in or out of the hintable set after the hints were written,
-and by finalize every author is gone. So finalize re-runs this to prove the gate's verdict still
-holds. Both are set operations over identifiers that exist for a downstream consumer anyway, so
-the whole verb is a join.
+Finalize repeats this check against the current files to catch inconsistencies introduced
+by later edits.
 
 Each violation names both sides in words — which file wrote the name, and which file was
 supposed to have it. WHICH side is wrong is a judgment, so the verdict states the disagreement

@@ -6,8 +6,6 @@ and the one judgment call that is yours.
 
 ## What the toolchain does to you
 
-- **Strict Verilog-2001 only.** No gate decides this and the downstream tools would happily compile
-  SystemVerilog, so it is on you. Nothing keys on the file extension.
 - **A ROM's contents have to survive the synthesis reader.** A procedural `initial` block is the one
   way to fill a ROM that simulates correctly and synthesizes to nothing: `dc_shell` reports
   `Warning: … The statements in initial blocks are ignored. (VER-281)`, then constant-folds the

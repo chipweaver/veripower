@@ -120,10 +120,8 @@ did not happen, so finalize a failure with that as the reason.
 **Handoff, not a gate.** Give the user the `verification-plan.md` path and the
 `plan-review/findings.md` path, echoing no body, so they can read the review themselves.
 
-Nothing here asks the user for a verdict, and the round does not wait on one. Nothing downstream
-re-checks testpoint-vs-spec — simulation's check-adequacy reviewer takes the plan as immutable and
-judges TB-vs-testpoint — so this review is the last reader of that question, and a gap it names is
-acted on below, never shipped under a word typed to keep the round moving.
+This review checks testpoints against the specification; simulation's check-adequacy review
+checks the testbench against those testpoints.
 
 Read the findings against the specification and repair defects in the plan. Revise incrementally,
 re-run the script gate, and re-dispatch the reviewer. Ask the user when resolution requires a

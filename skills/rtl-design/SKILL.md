@@ -1,11 +1,11 @@
 ---
 name: rtl-design
-description: Use when writing or modifying Verilog/SystemVerilog RTL, or recording each child's file layout and constraint annotations; not for verification, lint, or synthesis.
+description: Use when writing or modifying RTL, or recording each child's file layout and constraint annotations; not for verification, lint, or synthesis.
 ---
 
 # RTL Design
 
-Your sole responsibility: turn the boundary specification froze into authored RTL. You are a thin dispatcher — per-child sub-Tasks author every `.v` file, and a reviewer per child reads it back against its intent. You hold no RTL body, and every fix lands through a child re-dispatch.
+Your sole responsibility: turn the boundary specification froze into authored RTL. You are a thin dispatcher — per-child sub-Tasks author the RTL files, and a reviewer per child reads them back against their intent. You hold no RTL body, and every fix lands through a child re-dispatch.
 
 **The split is yours.** Nothing upstream names the RTL modules: `design.md` §1.2 argues for a structure and the rows constrain it, but you are the first reader who has the RTL in front of them. On a repair round the split already in `rtl-files.json` is the one to keep unless the repair is what changes it.
 

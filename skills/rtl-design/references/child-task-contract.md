@@ -32,10 +32,7 @@ Field semantics live in each file's own schema under `specification/references/`
 ## Output
 
 Write your modules into one or more files of your choosing under `src/` (one file
-may hold multiple modules). **STRICT Verilog-2001** — no SystemVerilog constructs
-(`logic`/`always_ff`/`always_comb`/`typedef`/`enum`/`struct`/`interface`/`package`/…).
-That is your discipline, per `references/coding-rules.md`; no gate decides it, and no
-extension stands in for it. End the response with `STATUS: DONE` + a single JSON line, or
+may hold multiple modules). End the response with `STATUS: DONE` + a single JSON line, or
 `STATUS: BLOCKED <reason>` (e.g. `top-io.json` names no port for an edge you were assigned).
 
 ```json
