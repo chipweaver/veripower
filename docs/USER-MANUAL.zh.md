@@ -40,8 +40,8 @@ OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true \
 OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
 ```
 
-第一个开关放开后台子 agent，阶段派发跑在上面。第二个不能省：opencode（1.18.x）会把每次
-补全截到 32,000 token，无视模型自身声明上限，较长的 RTL 编写输出可能因此被截断。
+第一个开关启用后台子 agent。opencode 1.18.30 默认将单次输出限制为 32,000 token。
+使用支持更长输出的模型时，将第二个开关设为模型声明的输出上限；`131072` 是示例值。
 
 DeepSeek Harness —— 装进你要跑的 profile：
 
@@ -413,11 +413,7 @@ Claude Code:
 claude plugin uninstall veripower@chipweaver
 ```
 
-opencode：从 `opencode.json` 删掉插件条目，再删掉插件建在 `~/.claude/skills/veripower` 的技能链接（它不会自行消失）：
-
-```bash
-rm ~/.claude/skills/veripower
-```
+opencode：从 `opencode.json` 删掉插件条目，然后开启新会话。
 
 **脱离这个工具，产物还能用吗**
 

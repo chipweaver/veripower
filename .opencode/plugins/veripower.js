@@ -1,17 +1,9 @@
-import fs from "fs"
-import os from "os"
 import path from "path"
 import { fileURLToPath } from "url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, "../..")
 const SKILLS_DIR = path.join(ROOT, "skills")
-
-// opencode discovers skills at ~/.claude/skills/** (a documented global path) and that
-// discovery is the ONLY one that reaches a subagent: a plugin-injected config.skills.paths
-// serves the main agent alone (measured). VeriPower's task stages run as subagents and load
-// their stage skill by name, so the link is the mechanism, not a convenience.
-const LINK = path.join(os.homedir(), ".claude", "skills", "veripower")
 
 // Deliberately loose: `*kernel.py signoff*` misses `kernel.py  signoff` (two spaces) and lets
 // an unreviewed signoff through. Over-matching costs one extra confirmation; missing costs a
@@ -52,60 +44,17 @@ const LOOP_REMINDER = (rule, run) =>
   "Your next call is `kernel.py decide` — now, before reaping it and before " +
   "reporting. Make it even when you expect YIELD."
 
-// False until the config hook has written the gate into the effective config. A judgment
-// verb arriving while false means the gate is not installed (config threw, or its write was
-// lost): fail CLOSED — a throw here aborts the bash call (measured), so nothing lands ungated.
-let armed = false
-
-// Reaches the main agent only — `messages.transform` reads the first user message of the
-// session, and a subagent's session is not it. Everything here is therefore addressed to the
-// orchestrator; a subagent gets what its rendered prompt and its own skill carry.
+// Applied to each session, including background subagents.
 const TOOL_MAPPING = `<EXTREMELY_IMPORTANT>
-You are running VeriPower (an IC design flow) on opencode. VeriPower's skills are written for a
-Claude Code harness. These translations apply here:
+You are running VeriPower (an IC design flow) on opencode. These tool translations apply:
 
 1. \`Skill(X)\` -> call the \`skill\` tool with { name: X } and follow the returned content.
+   Skills use bare names: \`veripower:lint-cdc\` becomes \`lint-cdc\`.
 2. \`Task(run_in_background=True, prompt=P)\` -> call the \`task\` tool with
    { subagent_type: "general", background: true, prompt: P }. It returns immediately; you are
    notified when the subagent finishes.
-3. VeriPower is installed at ${ROOT}. A skill's base directory is reached through a symlink, so
-   resolving \`<skill>/../..\` yourself lands outside the install — address anything above a
-   skill's own directory as \`${ROOT}/...\` instead (the kernel is
-   \`${ROOT}/framework/scripts/kernel.py\`).
-4. A subagent never sees this block. In the stage template's \`Skill({skill})\` line, render
-   the child's call yourself: the \`skill\` tool with { name: <skill> }, stripping the
-   \`veripower:\` namespace the dispatch return carries — skills register under bare names.
+3. VeriPower is installed at ${ROOT}. The kernel is \`${ROOT}/framework/scripts/kernel.py\`.
 </EXTREMELY_IMPORTANT>`
-
-// A throw in the factory is swallowed by opencode (measured: exit 0, empty stderr), so the
-// link is attempted and never forced. A live foreign target keeps whatever is already there
-// (hint printed below); a DANGLING link — the normal state after a cache/ref invalidation —
-// is removed, because leaving it makes symlinkSync throw EEXIST and kill the whole plugin,
-// gate included. A real directory never reaches the catch: realpath resolves it.
-function linkSkills() {
-  try {
-    if (fs.realpathSync(LINK) === fs.realpathSync(SKILLS_DIR)) return
-    console.error(
-      `veripower: ${LINK} points elsewhere; VeriPower's skills will not be registered. ` +
-        `Remove it and restart opencode.`,
-    )
-  } catch {
-    fs.mkdirSync(path.dirname(LINK), { recursive: true })
-    fs.rmSync(LINK, { force: true })
-    fs.symlinkSync(SKILLS_DIR, LINK, "dir")
-  }
-}
-
-// The coupling that makes a broken gate visible: skills ride the symlink, so if the gate
-// cannot be installed the symlink goes away and VeriPower's skills stop listing. Only ever
-// removes OUR link (realpath match), never an occupied path.
-function unlinkSkills() {
-  try {
-    if (fs.realpathSync(LINK) === fs.realpathSync(SKILLS_DIR)) fs.rmSync(LINK, { force: true })
-  } catch {
-    /* not ours or absent: leave it */
-  }
-}
 
 // Agent rules beat global ones and the last matching rule wins, so an agent carrying
 // `"*": "allow"` opens the judgment verbs again unless the gate is restated after it.
@@ -157,30 +106,32 @@ function remindLoop(msgs) {
 }
 
 export default async () => {
-  linkSkills()
+  // Judgment commands require the approval rules to be installed successfully.
+  let armed = false
   return {
     config: async (config) => {
+      armed = false
       try {
         config.permission = config.permission || {}
         gate(config.permission)
         config.permission.external_directory =
-          config.permission.external_directory || {}
+          typeof config.permission.external_directory === "string"
+            ? { "*": config.permission.external_directory }
+            : config.permission.external_directory || {}
         config.permission.external_directory[`${ROOT}/**`] = "allow"
         for (const agent of Object.values(config.agent || {})) {
           if (typeof agent.permission === "object" && agent.permission !== null) {
             gate(agent.permission)
           }
         }
+        config.skills = config.skills || {}
+        config.skills.paths = [...new Set([...(config.skills.paths || []), SKILLS_DIR])]
         armed = true
       } catch (e) {
-        // Fail loud and closed: opencode swallows plugin throws (measured), a banner on
-        // stderr and the skills vanishing are the symptoms left. The `armed` flag stays
-        // false, so any judgment verb is hard-blocked in tool.execute.before below.
-        unlinkSkills()
         console.error(
           `veripower: TRUST BOUNDARY GATE NOT INSTALLED (${e}). Judgment verbs ` +
-            `(kernel.py pin/reopen/signoff) are BLOCKED for this session and VeriPower's ` +
-            `skills were unregistered. Restart opencode or reinstall the plugin.`,
+            `(kernel.py pin/reopen/signoff) are BLOCKED for this session. ` +
+            `Restart opencode or reinstall the plugin.`,
         )
       }
     },

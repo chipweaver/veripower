@@ -83,10 +83,9 @@ OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true \
 OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
 ```
 
-Without the second flag, opencode (as of 1.18.x) caps every completion at 32,000 tokens
-regardless of the model's declared limit. Long RTL-authoring completions can be truncated at
-that cap. 131072 matches the GLM-5.x declared limit, and models declaring
-less keep their own.
+opencode 1.18.30 has a default 32,000-token completion ceiling. For models that support
+longer output, set the second flag to the model's declared output limit; `131072` is
+an example.
 
 See [opencode setup and runtime behavior](.opencode/README.md).
 

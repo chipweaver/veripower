@@ -6,6 +6,8 @@ a post-dispatch reminder.
 
 ## Install
 
+The integration below is verified on opencode 1.18.30.
+
 Add VeriPower to `~/.config/opencode/opencode.json`, or a project's
 `opencode.json`:
 
@@ -13,7 +15,7 @@ Add VeriPower to `~/.config/opencode/opencode.json`, or a project's
 { "plugin": ["veripower@git+https://github.com/chipweaver/veripower.git"] }
 ```
 
-The 1.18.x integration uses background subagents. Launch with:
+On opencode 1.18.30, background subagents require the following launch flag:
 
 ```bash
 OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true \
@@ -21,8 +23,8 @@ OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
 ```
 
 Set the output-token value to your selected model's declared output limit;
-`131072` is the example used here. The second flag lifts opencode 1.18.x's
-32,000-token completion ceiling, which can truncate long RTL responses.
+`131072` is the example used here. The second flag lifts opencode 1.18.30's
+32,000-token completion ceiling for models that support longer output.
 
 For a working copy, launch opencode from the checkout with the same environment
 flags. It discovers `.opencode/plugins/veripower.js` as a project plugin. Choose
@@ -35,11 +37,11 @@ Python and EDA prerequisites are in the [user manual](../docs/USER-MANUAL.md).
 
 ## Runtime behavior
 
-The adapter creates `~/.claude/skills/veripower` as a link to the installed
-`skills/` directory. This makes the same skills discoverable to the main agent
-and its subagents. They register under bare names, such as `design-flow`.
+The adapter registers its installed `skills/` directory through
+`config.skills.paths`. The main agent and its subagents discover the same skills
+under bare names, such as `design-flow`.
 
-[plugins/veripower.js](plugins/veripower.js) supplies the main agent with the
+[plugins/veripower.js](plugins/veripower.js) supplies each session with the
 installed root and tool translations: `Skill` becomes `skill`, and background
 `Task` becomes `task` with `background: true`. Child prompts use the same bare
 skill names and installed paths.
@@ -50,15 +52,10 @@ It also allows access to its installation directory. After a task dispatch, a
 reminder stays in the model's context until the next kernel call. Stage routing
 and results remain the shared kernel's responsibility.
 
-## Skill discovery and removal
+## Removal
 
-If skills do not appear, inspect `~/.claude/skills/veripower`. The adapter reports
-an existing path that points elsewhere and leaves it intact. Resolve that path
-conflict, then restart opencode. A dangling link is recreated on startup.
-
-To uninstall, remove the plugin entry from `opencode.json` and remove the skill
-symlink created by this adapter. Start a new session after changing the plugin
-or its configuration.
+Remove the plugin entry from `opencode.json`, or remove the project plugin if
+installed locally. Start a new session after changing the plugin or its configuration.
 
 ## Check the integration
 

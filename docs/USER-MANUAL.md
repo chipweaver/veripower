@@ -41,9 +41,9 @@ OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true \
 OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
 ```
 
-The first flag enables the background subagents stage dispatch runs on. Without the second,
-opencode (as of 1.18.x) caps every completion at 32,000 tokens regardless of the model's
-declared limit, which can truncate long RTL-authoring completions.
+The first flag enables background subagents. opencode 1.18.30 has a default
+32,000-token completion ceiling. For models that support longer output, set the
+second flag to the model's declared output limit; `131072` is an example.
 
 DeepSeek Harness — install into the profile you run:
 
@@ -419,12 +419,7 @@ Claude Code:
 claude plugin uninstall veripower@chipweaver
 ```
 
-opencode: remove the plugin entry from `opencode.json`, then remove the skill link the
-plugin created at `~/.claude/skills/veripower` (nothing removes it on its own):
-
-```bash
-rm ~/.claude/skills/veripower
-```
+opencode: remove the plugin entry from `opencode.json` and start a new session.
 
 **Can I use the artifacts without this tool?**
 
