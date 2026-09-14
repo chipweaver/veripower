@@ -80,6 +80,12 @@ of the evidence in a concise report. If a check cannot run, say why. Keep tempor
 workdirs and raw logs out of commits; retain only evidence needed to understand or
 reproduce the result. EDA prerequisites are in [docs/eda-env.md](docs/eda-env.md).
 
+## Versioning
+
+Use `X.Y.Z`. Routine releases increment `Z`; capability milestones increment `Y`
+and reset `Z`; a new product generation increments `X` and resets `Y` and `Z`.
+Default to a routine release. All platforms share one VeriPower version.
+
 ## Commits and pull requests
 
 Keep each change coherent and reviewable. Use a short `type: description` title,
