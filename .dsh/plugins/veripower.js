@@ -5,9 +5,8 @@
  * implements on dsh's interception points the two behaviours that ship as Claude
  * Code hooks (`hooks/hooks.json`) and as an opencode plugin
  * (`.opencode/plugins/veripower.js`): the ask-gate over the judgment verbs, and
- * the post-dispatch loop reminder. `framework/` and `skills/` are untouched — the
- * orchestrator reaches dsh's `skill` and `subagent` tools from the executor table
- * as written.
+ * the post-dispatch loop reminder. Shared `framework/` and `skills/` own the flow;
+ * the profile supplies the native `skill` and `subagent` tools.
  *
  * Parity is with `hooks/ask_judgment_verbs.py` and
  * `hooks/loop_after_task_dispatch.py`; the gate reason and REMINDER are the
@@ -85,9 +84,7 @@ export function apply(ctx) {
     customSkillDirs: [SKILLS_ROOT],
   })
 
-  // Fail-ASK: a gate against silent trust escalation must not vanish on its own
-  // bug, so a command it cannot read still asks. Owning the decision means
-  // returning without delegating.
+  // Request approval for matched judgment commands; delegate other calls.
   ctx.on('tools/pre-execute', async (exec, next) => {
     if (exec.name !== 'bash') return next()
     const verb = gatedVerb(commandOf(exec))
