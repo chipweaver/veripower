@@ -13,7 +13,7 @@
 
 VeriPower is an open-source agent flow that takes a natural-language spec all the way to front-end signoff on commercial EDA tools. A deterministic engine sits underneath, recording every action in an append-only log. All pipeline status is derived from that log on demand, never stored as a flag or snapshot. The agent can iterate on its own, but every LLM-authored oracle needs a human sign-off.
 
-Ships as a plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [opencode](https://opencode.ai), [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), and [Codex](codex/README.md).
+Ships as a plugin for [Claude Code](.claude-plugin/README.md), [opencode](.opencode/README.md), [DeepSeek Harness](.dsh/README.md), and [Codex](codex/README.md).
 
 ## How it works
 
@@ -61,6 +61,8 @@ claude plugin install veripower@chipweaver
 
 Or point at a working copy: `claude --plugin-dir /path/to/veripower`.
 
+See [Claude Code setup and runtime behavior](.claude-plugin/README.md).
+
 </details>
 
 <details>
@@ -86,6 +88,8 @@ regardless of the model's declared limit. Long RTL-authoring completions can be 
 that cap. 131072 matches the GLM-5.x declared limit, and models declaring
 less keep their own.
 
+See [opencode setup and runtime behavior](.opencode/README.md).
+
 </details>
 
 <details>
@@ -98,6 +102,8 @@ dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripo
 ```
 
 Run the `web` profile (`dsh web`), not the one-shot `headless` profile.
+
+See [DeepSeek Harness setup and runtime behavior](.dsh/README.md).
 
 </details>
 
@@ -144,4 +150,4 @@ Paper forthcoming.
 ```
 -->
 
-**Status:** alpha (v0.2.0). [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).
+**Status:** alpha (v0.2.3). [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).

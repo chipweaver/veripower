@@ -1,7 +1,7 @@
 {
   "name": "veripower",
   "description": "AI-assisted IC design flow skills — specification, RTL, lint/CDC, simulation, synthesis, timing analysis, and signoff",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "author": {
     "name": "chipweaver"
   },
