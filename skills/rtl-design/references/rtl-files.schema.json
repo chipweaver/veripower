@@ -12,7 +12,7 @@
     "additionalProperties": false,
     "properties": {
       "files": {
-        "description": "Paths under `src/`, relative to the rtl-design stage root, in the order the compiler is handed them. NOT the set that leaves your run: `src/` leaves as one tree, so a file inside it is delivered and versioned whether or not it is listed here — list what must be compiled, and a macro header your files reach through `incdirs` needs no entry. The child authors its own layout and its own file naming inside the tree; specification defines RTL modules, not files. No extension is required or refused here: what the kernel versions is the tree, and what a file may contain is the toolchain's and `references/coding-rules.md`'s business, neither of which a filename can decide.",
+        "description": "Paths under `src/`, relative to the rtl-design stage root, in the order the compiler is handed them. NOT the set that leaves your run: `src/` leaves as one tree, so a file inside it is delivered and versioned whether or not it is listed here — list what must be compiled, and a macro header your files reach through `incdirs` needs no entry. The child authors its own layout and its own file naming inside the tree; the rtl-design main thread assigns the modules it implements. No extension is required or refused here: what the kernel versions is the tree, and what a file may contain is the toolchain's and `references/coding-rules.md`'s business, neither of which a filename can decide.",
         "type": "array",
         "minItems": 1,
         "items": {

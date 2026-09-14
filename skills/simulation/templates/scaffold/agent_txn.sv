@@ -1,5 +1,5 @@
 // Transaction for {{AGENT_NAME}} agent.
-// Generated from scaffold-spec.json. Fill domain-labeled stubs per verification-plan.md test strategy.
+// Generated from the simulation-plan sidecars and specification boundary. Fill domain-labeled stubs per verification-plan.md test strategy.
 class {{MODULE}}_{{AGENT_NAME}}_txn extends uvm_sequence_item;
   `uvm_object_utils_begin({{MODULE}}_{{AGENT_NAME}}_txn)
   `include "{{MODULE}}_{{AGENT_NAME}}_field_macros.svh"  // generated every round

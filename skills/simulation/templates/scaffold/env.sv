@@ -1,5 +1,5 @@
 // Environment for {{MODULE}}.
-// Generated from scaffold-spec.json. Typically nothing to fill: fully assembled.
+// Generated from the simulation-plan sidecars and specification boundary. Typically nothing to fill: fully assembled.
 // The scoreboard owns the reference model. There is exactly one RM instance and it lives
 // there, so the component that compares is the component that fed the model it compares
 // against; an RM held here instead would be updated by an analysis fanout whose order

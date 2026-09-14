@@ -76,8 +76,8 @@ def _read_validated(path: Path, schema_name: str):
 def load_plan(workdir) -> dict:
     """Read + schema-validate all three sidecars and merge them into one dict.
 
-    `tb-scaffold.json` keeps `additionalProperties: true` so it tolerates the fields
-    materialize injects, which means a `sequences` or `power_scenarios` key left behind in it
+    `tb-scaffold.json` permits additional top-level properties, so a `sequences` or
+    `power_scenarios` key left behind in it
     would validate and then be silently replaced by the merge. That is the one way this split
     can regress into two homes, so it is rejected by name.
     """

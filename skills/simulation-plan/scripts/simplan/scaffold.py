@@ -1,7 +1,7 @@
 """The check-scaffold gate — validate the three plan sidecars.
 
-Runs AFTER the materialize-scaffold verb, so agents[] carry the injected
-interface/transaction objects, which the schema tolerates but does not deep-validate.
+Runs after materialize-scaffold checks the agents' interface groups. Signals and
+transaction fields are derived by simulation from the specification boundary.
 
 The three layers short-circuit because each makes the next readable: a schema violation
 makes the referential checks meaningless, and one unresolved name makes the coverage join

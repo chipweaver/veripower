@@ -1,5 +1,5 @@
 // Testbench top for {{TOP}}.
-// Generated from scaffold-spec.json and rewritten every round — everything here is derived
+// Generated from the simulation-plan sidecars and specification boundary and rewritten every round — everything here is derived
 // from the plan and the boundary. What this bench drives is authored elsewhere; the one
 // hand-written thing it reaches is the reset schedule it includes below.
 module {{TOP}}_tb_top;

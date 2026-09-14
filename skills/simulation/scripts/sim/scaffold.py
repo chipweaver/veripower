@@ -4,7 +4,7 @@
 Renders one tree of UVM source under <output-dir>/tb/uvm/ (interfaces, transactions, drivers,
 monitors, agents, sequences, tests, RM, scoreboard, env, tb_top, tb_pkg.sv, filelist.f,
 generated_tests.svh, tests/testlist.json), each carrying TODO markers for the simulation agent
-to fill. Consumes the scaffold-spec shape simulation-plan's materialize step produces: `rm.inports`
+to fill. Consumes the authored tb-scaffold.json and sequences.json: `rm.inports`
 and `scoreboard.observer` name agents, and the `<module>_<agent>_txn` type is built here, so
 nothing has to un-wrap a name to recover the identity inside it.
 """
@@ -40,7 +40,8 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
         sys.exit(
             "[sim bootstrap] tb-scaffold.json declares no agents. Nothing would drive or observe the "
             "DUT, and the tree this renders would compile against transaction types no agent "
-            "produces. Rerun simulation-plan's materialize step."
+            "produces. Author the agents and their interface_groups in simulation-plan's "
+            "tb-scaffold.json, then rerun check-scaffold."
         )
     rm_cfg = spec.get("rm", {})
     sb_cfg = spec.get("scoreboard", {})

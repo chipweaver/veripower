@@ -1,5 +1,5 @@
 // Test: {{TEST_NAME}}.
-// Generated from scaffold-spec.json.
+// Generated from the simulation-plan sidecars and specification boundary.
 class {{MODULE}}_{{TEST_NAME}}_test extends {{MODULE}}_base_test;
   `uvm_component_utils({{MODULE}}_{{TEST_NAME}}_test)
 

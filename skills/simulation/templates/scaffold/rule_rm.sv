@@ -1,13 +1,13 @@
 // Rule-based reference model: {{RM_NAME}}.
-// Generated from scaffold-spec.json. Fill domain-labeled stubs per verification-plan.md test strategy.
+// Generated from the simulation-plan sidecars and specification boundary. Fill domain-labeled stubs per verification-plan.md test strategy.
 {{RM_IMP_DECL_MACROS}}
 class {{MODULE}}_{{RM_NAME}} extends uvm_component;
   `uvm_component_utils({{MODULE}}_{{RM_NAME}})
 
 {{RM_ANALYSIS_IMPS}}
 
-  // TODO(rm): Add internal state mirrors from this testpoint's the covered check hints' reference_rule
-  // in scaffold-specification.json — materialize-scaffold already put the value there.
+  // TODO(rm): Add state required by the covered hints' reference_rule in check-hints.json
+  // and the rows they name in requirements.json.
 
   function new(string name = "{{MODULE}}_{{RM_NAME}}", uvm_component parent = null);
     super.new(name, parent);
@@ -34,8 +34,7 @@ class {{MODULE}}_{{RM_NAME}} extends uvm_component;
     return expected;
   endfunction
 
-  // TODO(rm): Reset internal state to power-on values from this testpoint's
-  // the covered check hints' reference_rule where it states a reset value.
+  // TODO(rm): Reset internal state according to the covered check hints and requirement rows.
   virtual function void reset();
     // ← Initialize all internal state mirrors.
   endfunction

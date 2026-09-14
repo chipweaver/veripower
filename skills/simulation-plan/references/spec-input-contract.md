@@ -45,8 +45,8 @@ from a requirement to what verifies it runs row → hint → `testpoints[].cover
 it. `reset_kind` / `encoding` are for the specification stage's constraint generation and its
 reviewers, not for you.
 
-Every `role: "clock"` port needs a `clocks.json` entry: the primary is the one the agents' vifs
-run on, the rest each get their own generator. simulation refuses a clock port with no entry
+Every `role: "clock"` port needs a `clocks.json` entry and gets a generator. Each agent's vif
+uses the clock domain declared by its ports. simulation refuses a clock port with no entry
 rather than leaving it out — a DUT clock port nothing binds compiles without an error and stops
 that domain for the whole run.
 

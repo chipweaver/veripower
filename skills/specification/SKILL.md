@@ -84,7 +84,7 @@ What the user decides here: every `unassignable` row (how it is measured, who ju
 
 Dispatch one Level-1 sub-Task per `references/check-hints-task-contract.md`, writing `check-hints.json`. It runs here rather than beside decompose because a row the human just ruled on can have become one simulation judges.
 
-**Gate, script.** Run `check-crossrefs`. The ledger, the boundary and the hints are authored by different sub-Tasks, so it reports what only a join can see: a hint naming a row that is not the ledger's to hint, a row simulation judges that no hint names, a `check_id` used twice, a port whose clock domain no clock declares.
+**Gate, script.** Run `check-crossrefs` to check references between the current ledger, boundary and hints. It reports invalid or missing requirement references, duplicate check IDs and undeclared clock domains. Finalize repeats this check against the files being delivered.
 
 ```bash
 python3 <skill>/scripts/spec/__main__.py check-crossrefs --workdir {workdir}

@@ -19,7 +19,7 @@ stage re-derives it, so what you land is what gets rebuilt.
 
 `<skill>` is this skill's own base directory, named on the first line of this file.
 
-Read `{workdir}/dispatch.json` first — the kernel writes it at dispatch. Its `inputs` table maps four keys to
+Read `{workdir}/dispatch.json` first — the kernel writes it at dispatch. Its `inputs` table maps keys to
 absolute cross-stage locations; read those directly and never construct a module-root-relative
 `Verification/…` or `Design/…` path yourself. Throughout this skill, `<sim_run>` is shorthand
 for the failed-run directory named by that key (and likewise `<design>` / `<rtl>` / `<plan>`).
@@ -92,9 +92,8 @@ Four things about `fsdbreport` are worth knowing before you trust what it prints
 You may build and run a scratch experiment under `{workdir}/experiment/`. That directory is why
 the read-only rule is scoped to canonical artifacts rather than to you.
 
-Reach for one when reading the evidence cannot settle whose fault it is. It costs a real slice of
-the pipeline's wall clock, and `low` plus a human is a legitimate cheaper answer; that tradeoff
-is yours to make. Pick the tool yourself — a lightweight open-source simulator, installed if it is
+Reach for one when reading the evidence cannot settle whose fault it is.
+Pick the tool yourself — a lightweight open-source simulator, installed if it is
 not already present, or the one the failing run used.
 
 Two constraints, both about making the result usable rather than merely expensive. Canonical RTL

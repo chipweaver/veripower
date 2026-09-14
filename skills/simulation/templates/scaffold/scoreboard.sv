@@ -1,5 +1,5 @@
 // Scoreboard: {{SB_NAME}}.
-// Generated from scaffold-spec.json. Fill domain-labeled stubs per verification-plan.md test strategy.
+// Generated from the simulation-plan sidecars and specification boundary. Fill domain-labeled stubs per verification-plan.md test strategy.
 class {{MODULE}}_{{SB_NAME}} extends uvm_scoreboard;
   `uvm_component_utils({{MODULE}}_{{SB_NAME}})
 

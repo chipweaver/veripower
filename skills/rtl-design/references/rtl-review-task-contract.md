@@ -20,20 +20,16 @@ nothing could audit it.
   the RTL was to realize, and it cites requirement rows by id. The RTL's module split is this
   stage's own call, so a split that differs from what §1.2 argues for is a finding only when the
   argument's reason still holds against the RTL.
-- `design.md` path, for integration intent: the wiring the top child instantiates and the
-  inter-module behaviour contract siblings must jointly keep. Nothing matches that edge list
-  against the RTL mechanically, so a module or wire the spec names and the RTL does not — or
-  renamed — is yours to catch.
 
 ## Your job: skeptical intent review
 
 You are a fresh reviewer. **Do not trust that the RTL is correct because it exists.** Read the
-actual RTL and compare it against the requirement rows and the child design, in both directions:
+actual RTL and compare it against the requirement rows and `design.md`, in both directions:
 what they require and the RTL lacks, and what the RTL does that neither asked for.
 
 Three things are worth flagging, and the third differently from the first two:
 
-- **Missing / under-built** — behavior a row or the child design requires that the RTL does not
+- **Missing / under-built** — behavior a row or `design.md` requires that the RTL does not
   implement.
 - **Wrong behavior** — RTL that compiles and reads plausibly but does not do what they say. An
   arbiter spec'd round-robin and built fixed-priority is the shape to look for.
@@ -53,8 +49,8 @@ what it covers. Prose, no schema. Then end the response with `STATUS: DONE`, or
 
 Every finding says four things:
 
-- **Where** — the file and line, or the requirement row / child-design clause it violates.
-- **What you compared against** — a row id, a child-design clause, the design.md integration
+- **Where** — the file and line, or the requirement row / design.md clause it violates.
+- **What you compared against** — a row id, a design.md clause, the integration
   intent, or nothing (then say
   so: an unreferenced finding is your opinion, and it is read as one).
 - **Whether it blocks** — would you let this ship? Say so plainly. Calibrate: reserve blocking for
@@ -63,6 +59,6 @@ Every finding says four things:
   value a row requires is the spec's; RTL that just does the wrong thing is the child's. Say which,
   and how sure you are, because the stage routes an upstream repair on your reading alone.
 
-Found nothing? Say that, in a sentence: you read the rows and the child design against the RTL
+Found nothing? Say that, in a sentence: you read the rows and `design.md` against the RTL
 and they hold. A child your
 files never name reads as RTL nobody reviewed.

@@ -1,5 +1,5 @@
 // Sequence: {{SEQ_NAME}} (agent: {{AGENT_NAME}}).
-// Generated from scaffold-spec.json. Fill domain-labeled stubs per verification-plan.md test strategy.
+// Generated from the simulation-plan sidecars and specification boundary. Fill domain-labeled stubs per verification-plan.md test strategy.
 // Description: {{SEQ_DESC}}
 class {{MODULE}}_{{SEQ_NAME}}_seq extends {{MODULE}}_base_seq;
   `uvm_object_utils({{MODULE}}_{{SEQ_NAME}}_seq)

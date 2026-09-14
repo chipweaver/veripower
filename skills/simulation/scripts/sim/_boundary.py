@@ -36,8 +36,8 @@ def _read(spec_dir: Path, name: str):
 class Boundary:
     """Clocks, reset and the per-group data ports, as specification declared them.
 
-    `primary` is the clock the agents' virtual interfaces run on; `extra` are the rest,
-    each of which the bench generates and binds. `reset.polarity` is what lets the bench
+    `primary` supplies the TB's `clk` net; `extra` are the other generated clocks.
+    clock_for selects each agent's clock from its ports' domains. `reset.polarity` lets the bench
     keep one active-low reset for every DUT and invert once, at the port.
     """
 

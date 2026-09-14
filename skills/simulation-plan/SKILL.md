@@ -35,7 +35,7 @@ Everything below is produced under `{workdir}`.
 
 | Path | What it is |
 |---|---|
-| `verification-plan.md` | The review anchor the human gate is held over (template: `references/verification-plan-template.md`) |
+| `verification-plan.md` | The plan's scope and verification strategy (template: `references/verification-plan-template.md`) |
 | `tb-scaffold.json` | What simulation builds the TB from: `agents` / `tests` / `testpoints[]` (each naming the checks it covers and the `seqs` that drive it) / `rm` / `scoreboard` / `skipped_checks[]` |
 | `sequences.json` | The sequence roster — the one part both simulation and power-analysis read |
 | `power-scenarios.json` | The power scenarios, read by power-analysis alone. Its own file so a scenario-only edit does not invalidate simulation's proof |
@@ -133,7 +133,7 @@ close the round with `--fail-reason` and name its owner as described below.
 
 ### Finalize
 
-Every run ends here, including one you could not carry to the human gate:
+Every run ends here, including one that could not complete the plan and its review:
 
 ```bash
 python3 <skill>/scripts/simplan/__main__.py finalize \

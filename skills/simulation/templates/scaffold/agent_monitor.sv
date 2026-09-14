@@ -1,5 +1,5 @@
 // Monitor for {{AGENT_NAME}} agent.
-// Generated from scaffold-spec.json. Fill domain-labeled stubs per verification-plan.md test strategy.
+// Generated from the simulation-plan sidecars and specification boundary. Fill domain-labeled stubs per verification-plan.md test strategy.
 class {{MODULE}}_{{AGENT_NAME}}_monitor extends uvm_monitor;
   `uvm_component_utils({{MODULE}}_{{AGENT_NAME}}_monitor)
 

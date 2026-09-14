@@ -1,5 +1,5 @@
 // Agent assembly for {{AGENT_NAME}}.
-// Generated from scaffold-spec.json. Typically nothing to fill — fully assembled.
+// Generated from the simulation-plan sidecars and specification boundary. Typically nothing to fill — fully assembled.
 class {{MODULE}}_{{AGENT_NAME}}_agent extends uvm_agent;
   `uvm_component_utils({{MODULE}}_{{AGENT_NAME}}_agent)
 

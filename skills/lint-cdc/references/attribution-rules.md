@@ -19,11 +19,12 @@ lists families rather than trying to be a decision table for the report as a who
 Families: `Clock_*`, `Reset_*`, `SGDC_*`, `Setup_*`, `Ac_unclocked*`
 
 The RTL may be entirely correct. What is absent is a `clock -name`, a reset constraint, or a
-case value. Check the SGDC before the RTL, and in this order, because only the first case is
-yours to fix:
+case value. Check the SGDC against this run's inputs before attributing the failure:
 
 1. Does the annotations sidecar declare it while `{workdir}/scripts/constraints.sgdc` lacks it?
-   Then you missed it transcribing: add it, re-run, and this never becomes a failure at all.
+   Bootstrap generates these lines automatically. Check the deployed files against this run's
+   inputs and investigate the generator if they disagree. Correct the source of the mismatch
+   and regenerate; do not patch the generated SGDC.
 2. Does the sidecar not declare it, though the RTL implies it? Then name `rtl-design`, whose
    authors own that claim. Adding it here instead would leave synthesis without the SDC half.
 3. Does the spec's own seed lack a clock, reset or port association? Then name `specification`.

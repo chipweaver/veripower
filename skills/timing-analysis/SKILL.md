@@ -95,9 +95,9 @@ the boundary and the verdict does not cover the design. That is a `tooling` fail
 before naming the owner.
 
 The check is on outputs alone, and `check_timing`'s unconstrained-endpoint count is in the report
-for you rather than for the gate. Inputs carry no comparable expectation: clock and reset ports
-are constrained by nothing here, so a healthy design leaves endpoints open by construction and
-that count is not evidence of anything on its own.
+for you rather than for the gate. Input timing depends on port role: clocks are declared as clocks,
+synchronous resets receive input delays, and asynchronous resets are excluded from those delays.
+Read the unconstrained endpoints against the port roles and SDC before judging them.
 
 The flags carry what the report cannot:
 

@@ -42,7 +42,7 @@ Three env vars are yours to supply before `make`:
 | `LIB_DB` | the Liberty `.db` synthesis linked against — PT maps activity to power through it, so a different library is a different answer |
 | `UVM_HOME` | the UVM tree the TB infrastructure was built against |
 
-`env.sh` refuses to run unless all three name readable files, and every target sources it, so a
+`env.sh` checks that `LIB_V`, `LIB_DB` and `UVM_HOME/src/dpi/uvm_dpi.cc` are readable. Every target sources it, so a
 wrong path stops the run at the first target instead of after the simulation.
 
 Everything under `{workdir}` is produced by the tools you invoke, and `finalize` enumerates it into

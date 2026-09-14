@@ -1,5 +1,5 @@
 // Interface for {{AGENT_NAME}} agent.
-// Generated from scaffold-spec.json. Fill domain-labeled stubs per verification-plan.md test strategy.
+// Generated from the simulation-plan sidecars and specification boundary. Fill domain-labeled stubs per verification-plan.md test strategy.
 interface {{MODULE}}_{{AGENT_NAME}}_if(input logic clk, input logic rst_n);
   `include "{{MODULE}}_{{AGENT_NAME}}_signals.svh"  // generated every round
 

@@ -52,8 +52,8 @@ back, and name every gap you find.
 - **What is deliberately left unconstrained** — a PPA dimension with no bound, a behaviour left
   to the implementer, a bound some outside authority owns. Say which: the ledger has a `judge`
   for each of those, and none for a silence it cannot read.
-- **Every open question** — a question is not a proposition, so it gets no ledger row, and the
-  document is frozen: a TBD settled later is settled somewhere else.
+- **Every open question** — resolve it before the document is frozen where possible.
+  Any remaining requirement gap becomes a human-judged ledger row for clarification.
 
 ## The document, and handing it off
 

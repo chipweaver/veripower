@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "check-hints.json — how simulation observes the requirements it judges",
-  "description": "A hint says how simulation observes requirements.json rows judged simulation and carrying no target: what is observed and against what rule. It names rows, never restates them; materialize inlines each named row's verbatim beside the hint. check-crossrefs: every such row is named by at least one hint; every hint names only such rows; check_id is unique in this file.",
+  "description": "A hint says how simulation observes requirements.json rows judged simulation and carrying no target: what is observed and against what rule. It names rows, never restates them; simulation reads each named row from requirements.json. check-crossrefs: every such row is named by at least one hint; every hint names only such rows; check_id is unique in this file.",
   "type": "array",
   "items": {
     "type": "object",

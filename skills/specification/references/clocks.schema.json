@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/specification/clocks.schema.json",
   "title": "clocks.json — the module's clock definitions (authored, never derived)",
-  "description": "The sole numeric + relationship source for constraints/<TOP>.{sdc,sgdc} and for the TB primary_clock. Exactly one entry is relationship=='primary'; JSON Schema cannot express that, so derive-constraints fails loud on it.",
+  "description": "The sole numeric + relationship source for constraints/<TOP>.{sdc,sgdc} and for the TB clock generators. Exactly one entry is relationship=='primary'; JSON Schema cannot express that, so derive-constraints fails loud on it.",
   "type": "array",
   "minItems": 1,
   "items": {
@@ -20,7 +20,7 @@
         "minLength": 1
       },
       "period_ns": {
-        "description": "Period in ns. Reaches the TB scaffold's primary_clock.period_ns, where it is halved to build the clock generator.",
+        "description": "Period in ns. The simulation renderer reads this value directly and halves it to build the clock generator.",
         "type": "number",
         "exclusiveMinimum": 0
       },

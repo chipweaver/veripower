@@ -1,7 +1,7 @@
 # `verification-plan.md` template
 
-The section outline for the plan document you author, and the one artifact the user's gate is
-held over. The rosters themselves live in the three sidecars: every section here is for what a
+The section outline for the plan document you author and the reviewer assesses.
+The rosters themselves live in the three sidecars: every section here is for what a
 per-field schema cannot hold, so a section that restates a table you just authored is a second
 copy that will drift.
 
@@ -23,7 +23,7 @@ verification, and which behaviors are deliberately left to downstream stages.
 ## 4. Power Scenarios
 One materialization note per scenario, per `power-scenarios-template.md`: the standard row's
 abstract states, what they reduce to on this module, and why a row was materialized that way or
-dropped as inapplicable. `power-scenarios.json` carries only the four fields power-analysis
+dropped as inapplicable. `power-scenarios.json` carries only `id` and `sequence_ref`, which power-analysis
 reads, so this section is the sole home for everything else about a scenario.
 
 ## 5. Revision Summary

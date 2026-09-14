@@ -14,8 +14,7 @@ The main thread hands over paths only; it reads none of these bodies.
   the boundary, the clocks, and the engineer's requirements. `design.md` is where the obligations
   more than one child must jointly keep are stated; you are held to those and may not restate them
   differently. **Every child reads `top-io.json`**, even one
-  that drives no top-level port: which ports are yours is your own doc's frontmatter claim, and
-  checking it against the boundary is how a wrong claim surfaces here rather than at the compile.
+  that drives no top-level port: check the main thread's assigned scope against the boundary.
   Read the requirements rows that bear on your RTL — the ones judged by `rtl-design` are yours to
   satisfy by construction, and the bounds judged by `synthesis` / `power-analysis` decide pipeline
   depth, operator sharing, RAM vs. register file, and clock-gating granularity.
@@ -68,8 +67,8 @@ extension stands in for it. End the response with `STATUS: DONE` + a single JSON
   (it owns the interconnect). Empty lists `[]` when a category genuinely has none.
 - `incdirs`: the include search paths your files `` `include `` through, relative to the stage
   root — `src` when your headers sit at the top of your tree, plus any subdirectory you include
-  from. You **author your own file/include layout** (specification defines RTL modules, not file
-  layout). Omit the field (or `[]`) only when your files use no `` `include `` — that is the
+  from. You **author your own file/include layout** for the modules assigned by the rtl-design
+  main thread. Omit the field (or `[]`) only when your files use no `` `include `` — that is the
   genuine "no include dirs" case, not a guess. A child that uses includes but omits `incdirs` is a
   contract violation: every downstream filelist is generated from `rtl-files.json`, so a missing
   entry means a missing include path and the compile fails downstream — do not omit.

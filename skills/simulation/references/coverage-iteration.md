@@ -36,7 +36,7 @@ While every uncovered item is a stimulus-layer gap:
 
 1. For each item, find the testpoint that claims it and the sequence wired toward it
    (`testpoints[].seqs` names them).
-2. Under `tb/uvm/<module>/seq/`, add seeds, tighten that sequence's constraint parameters, or append
+2. Under `tb/uvm/seq/`, add seeds, tighten that sequence's constraint parameters, or append
    a testcase to `tests/testlist.json` (append only: do not change the semantics of existing
    entries).
 3. Re-run `make regress` and read the new `structural-coverage.json`.
