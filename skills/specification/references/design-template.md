@@ -28,7 +28,7 @@ declare `design.md` as an input — rtl-design reads §1.2 to choose the module 
 
 | Content type | Recommended format | Notes |
 |----------|----------|------|
-| Architecture diagrams (§1.2 / submodule `<child>.md` bodies) | mermaid code block | GitHub / VSCode preview / mkdocs all render natively; for multiple side-by-side candidates use one code block each. |
+| Architecture diagrams (§1.2) | mermaid code block | GitHub / VSCode preview / mkdocs all render natively; for multiple side-by-side candidates use one code block each. |
 | Timing diagrams (§1.4 interface timing) | Hand-drawn ASCII (preferred) or wavedrom | wavedrom does **not** render on GitHub — if wavedrom is used, attach an ASCII equivalent or export a PNG when reviewing the PR; otherwise stick with ASCII. |
 
 A waveform is optional and never authoritative: the requirement rows and the scenario row below

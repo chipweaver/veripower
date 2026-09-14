@@ -10,8 +10,8 @@ SystemVerilog (driver / monitor bodies, RM `predict()`, scoreboard `check_txn`, 
 in the `simulation` stage. Do not add SV-rendering
 claims here.
 
-`requirements.json` holds what the engineer required, in the engineer's words; `design.md` and the
-per-child `<child>.md` hold the decisions made around it. Nothing derives the sidecars — there is
+`requirements.json` holds what the engineer required, in the engineer's words; `design.md` holds the
+decisions made around it. Nothing derives the sidecars — there is
 no intermediate cache to read instead of them.
 
 ---
