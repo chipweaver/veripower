@@ -104,11 +104,11 @@ It generates `constraints/<TOP>.{sdc,sgdc}` from `clocks.json` + `top-io.json`. 
 
 Dispatch one Level-1 reviewer per `references/review-task-contract.md`, naming its output `delivery.md`. Same contract as the first one, and everything the round delivers is now on disk — the ledger the human ruled on, the boundary, the hints, the constraints — so this is the pass where a hint's rule and a `specification`-judged row's realization can be checked at all.
 
-**Handoff, not a gate.** Give the user the paths, echoing no body: `design.md`, the `check-crossrefs` verdict, and both `spec-review/findings/` paths. You do not summarize the findings, rank them, or decide which ones matter: a review relayed through your summary is your judgment wearing the reviewer's name.
+**Handoff, not a gate.** Give the user the paths, echoing no body: `design.md`, the `check-crossrefs` verdict, and both `spec-review/findings/` paths, so they can read the reviews themselves.
 
 Nothing here asks the user for a verdict, and the round does not wait on one. What the reviews reach for is the engineering soundness no script can — port roles, reset polarity, clock relationships, whether the boundary carries what the rows require — and one word cannot carry an answer to each finding they raise. So a blocking finding is acted on below, never shipped under a word typed to keep the round moving.
 
-Act on what they say: a boundary change re-enters at decompose, a row change at transcribe, and a finding they tell you to accept as-is goes to `spec-review/decisions.md` in **their words, not yours**, so the reasoning travels with the review it overrode. A round that cannot deliver at all closes below with `--fail-reason`.
+Read the findings and dispatch sub-Tasks to assess and repair defects in this stage. A boundary change re-enters at decompose; a row change at transcribe. Re-run the affected checks and reviews after repair. Ask the user when resolution requires a decision about intent. Record any finding the user explicitly accepts as-is in `spec-review/decisions.md` in their words. If a blocking defect remains unresolved, close the round with `--fail-reason` naming it.
 
 ### Finalize
 

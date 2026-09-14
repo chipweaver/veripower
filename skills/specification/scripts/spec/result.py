@@ -68,19 +68,14 @@ def build_result(workdir, fail_reason=None) -> int:
     """Assemble the lean specification result.json. Returns 0 (written, pass or fail); a
     raise becomes finalize exit 2 (BLOCKED).
 
-    The status is derived, not supplied: a round either delivered what the stage owes or the
-    caller says in one line what stopped it. There is no human verdict to carry — the reviews
-    are prose nothing reduces to a pass, and the act that endorses them is `kernel.py pin`,
-    which anchors to their content and is what signoff requires.
+    The stage handles semantic review findings before calling finalize and supplies
+    fail_reason for an unresolved blocking defect. This function validates the sidecars
+    and regenerates constraints; it does not interpret review prose.
 
     Both re-derivations on the pass path were clean at the cross-reference gate, so a failure now
-    artifact was edited after the gate — hence BLOCKED rather than a routable fail. The
+    means an artifact was edited after the gate — hence BLOCKED rather than a routable fail. The
     fail path runs neither: an early-fail's inputs may be incomplete, and derive_constraints'
-    fail-loud exit would turn a routable fail into a BLOCKED.
-
-    The semantic review is NOT re-judged here, and re-adding that would not buy a check: a
-    verdict re-derived from the record would be checked against the --status of the same
-    caller that assembled the record."""
+    fail-loud exit would turn a routable fail into a BLOCKED."""
     workdir = Path(workdir)
 
     if fail_reason:

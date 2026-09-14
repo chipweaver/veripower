@@ -1,8 +1,8 @@
 # Plan adequacy review sub-Task contract
 
-Dispatched by the simulation-plan main thread AFTER `simplan check-scaffold` is green and BEFORE
-the user review loop. You write your findings to a file; the main thread never re-types them and
-never reads your body. A human resolves each blocker at the Step-4 gate. Do not call the Task tool:
+Dispatched by the simulation-plan main thread after `simplan check-scaffold` is green.
+Write your findings to a file. The main thread reads them, repairs defects in the plan and
+dispatches a fresh review; the user decides questions of intent. Do not call the Task tool:
 a sub-Task writes no events, so anything you dispatch is work the kernel cannot see or audit.
 
 ## Your job: the testpoints against the spec

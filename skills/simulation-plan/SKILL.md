@@ -118,19 +118,18 @@ the turn; reap before proceeding. A `STATUS: BLOCKED` reviewer is a crash, not a
 did not happen, so finalize a failure with that as the reason.
 
 **Handoff, not a gate.** Give the user the `verification-plan.md` path and the
-`plan-review/findings.md` path, echoing no body. You do not summarize the findings, rank them, or
-decide which ones matter: a review relayed through your summary is your judgment wearing the
-reviewer's name.
+`plan-review/findings.md` path, echoing no body, so they can read the review themselves.
 
 Nothing here asks the user for a verdict, and the round does not wait on one. Nothing downstream
 re-checks testpoint-vs-spec — simulation's check-adequacy reviewer takes the plan as immutable and
 judges TB-vs-testpoint — so this review is the last reader of that question, and a gap it names is
 acted on below, never shipped under a word typed to keep the round moving.
 
-Act on what they say: revise incrementally and re-present, re-running the script gate and
-re-dispatching the reviewer; a finding they tell you to accept as-is goes to
-`{workdir}/plan-review/decisions.md` in **their words, not yours**, so the reasoning travels with
-the review it overrode. A round that cannot deliver at all closes below with `--fail-reason`.
+Read the findings against the specification and repair defects in the plan. Revise incrementally,
+re-run the script gate, and re-dispatch the reviewer. Ask the user when resolution requires a
+decision about intent. Record any finding the user explicitly accepts as-is in
+`{workdir}/plan-review/decisions.md` in their words. If a blocking defect remains unresolved,
+close the round with `--fail-reason` and name its owner as described below.
 
 ### Finalize
 

@@ -61,13 +61,9 @@ def build_result(
     fail. The fail path does not run it: an early-fail workdir may hold no sidecars at all,
     and a fail-loud exit there would turn a routable fail into a BLOCKED.
 
-    The plan-adequacy review is NOT re-judged here, and re-adding that would not buy a check:
-    a verdict re-derived from the record would be checked against the record's own author.
-
-    The status is derived: a round either delivered the plan or the caller says in one line what
-    stopped it. There is no human verdict to carry — the review is prose nothing reduces to a
-    pass, and the act that endorses it is `kernel.py pin`, which anchors to its content and is
-    what signoff requires. `revision` is an amendment marker, not an outcome.
+    The stage handles plan review findings before calling finalize and supplies fail_reason
+    for an unresolved blocking defect. This function does not interpret review prose.
+    `revision` is an amendment marker, not an outcome.
     Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED)."""
     workdir = Path(workdir)
 
