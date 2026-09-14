@@ -122,11 +122,10 @@ did not happen, so finalize a failure with that as the reason.
 decide which ones matter: a review relayed through your summary is your judgment wearing the
 reviewer's name.
 
-Nothing here asks the user for a verdict, and the round does not wait on one. Endorsing the review
-is `kernel.py pin`, which anchors to its content and is what `signoff` refuses without — and
-nothing downstream re-checks testpoint-vs-spec (sim's check-adequacy review judges
-TB-vs-testpoint), so an unaddressed coverage gap leaves the module unsignable rather than shipping
-under a word typed to keep the round moving.
+Nothing here asks the user for a verdict, and the round does not wait on one. Nothing downstream
+re-checks testpoint-vs-spec — simulation's check-adequacy reviewer takes the plan as immutable and
+judges TB-vs-testpoint — so this review is the last reader of that question, and a gap it names is
+acted on below, never shipped under a word typed to keep the round moving.
 
 Act on what they say: revise incrementally and re-present, re-running the script gate and
 re-dispatching the reviewer; a finding they tell you to accept as-is goes to
