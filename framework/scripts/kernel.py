@@ -1,4 +1,4 @@
-"""VeriPower kernel CLI. The ONLY writer of events.jsonl."""
+"""Kernel CLI: validate commands, derive outcomes and coordinate storage updates."""
 
 from __future__ import annotations
 
@@ -23,13 +23,13 @@ def _resolve_inputs(module: str, rule_name: str) -> dict:
     """Version table of every input selector match (module-relative path -> fingerprint).
     Sole source of proof.inputs for proof-producing rules."""
     rule = rules.RULES[rule_name]
-    root = facts.module_root(module)
+    root = store.module_root(module)
     table: dict[str, str] = {}
     for globs in rule.inputs.values():
         for g in globs:
             for p in sorted(root.glob(g)):
                 rel = str(p.relative_to(root))
-                table[rel] = facts.fingerprint_cached(p, root)
+                table[rel] = facts.fingerprint(p)
     return table
 
 
@@ -38,14 +38,7 @@ def _run_envelope(rule_name, run) -> str:
 
 
 def _diagnosis_sources(events, diag) -> list[str]:
-    """The records this diagnosis rests on, DERIVED rather than stored: the run that
-    authored it, and the failing run it is about.
-
-    Both are addressable from the diagnosis's own `subject` plus the log — the failing run
-    directly, and the analysis as the latest dispatch of that proof's declared diagnostic
-    carrying `params.sim_run == outcome_run` — so neither is kept as a field. A stored copy
-    would be the same fact twice, and the analysis's argument and evidence are a third: its
-    `findings[].reason` and `artifacts[]` are inside the very envelope named here."""
+    """Return the failed run's result and, for triage, the analysis that authored the diagnosis."""
     subject = diag["subject"]
     out = []
     analyst = rules.RULES[subject["proof"]].triage
@@ -81,31 +74,19 @@ def cmd_dispatch(
     extra_params=None,
     caused_by=None,
 ):
-    """Re-checks dispatchability AT THIS INSTANT (decide→dispatch drift guard):
-    in-flight premise and input availability.
+    """Check input availability and in-flight work, then create and record a run.
 
-    The signoff gate is not among these checks — signoff is not dispatchable. `cmd_signoff`
-    runs it.
-
-    extra_params (parsed --params JSON object, e.g. {"sim_run": 5} for simulation-triage
-    per rules.RULES[rule].params) is merged into the recorded dispatch event's `params`
-    (the generic complement to schedule.py's disposition, which already computes
-    {"sim_run": <run>} for triage but had no CLI path to land it on the actual dispatch
-    event).
-
-    caused_by is the list of (rule, run) failures this dispatch answers, from --caused-by.
-    It is what makes a dispatch a rework, and it lands on the event as the record of which
-    failures were answered. dispatch.json's `caused_by` carries those envelopes plus, for
-    each referenced diagnosis, the record that named this owner (_diagnosis_sources)."""
-    events = facts.read_events(module)
+    Resolve diagnosis references and causal results before creating the workdir.
+    Parameters identify diagnostic inputs; caused_by and diagnosis_refs identify
+    the failures and attributions this run addresses."""
+    if extra_params is not None and not isinstance(extra_params, dict):
+        return {"ok": False, "error": "--params must be a JSON object"}
+    events = store.read_events(module)
     if any(f["rule"] == rule for f in facts.in_flight(events)):
         return {"ok": False, "error": f"{rule} already in-flight"}
     if not facts.rule_available(module, events, rule):
         return {"ok": False, "error": f"{rule} inputs not available"}
-    # Mandatory declared params must be supplied via --params. Missing them mints a
-    # malformed event downstream: a triage without sim_run derives a diagnosis with
-    # subject.outcome_run=None -> schema violation AFTER the outcome already landed ->
-    # half-reap (F8a). Reject up front.
+    # Check diagnostic parameters before creating a workdir.
     missing = [
         p for p in rules.RULES[rule].params if not (extra_params and p in extra_params)
     ]
@@ -115,7 +96,7 @@ def cmd_dispatch(
             "error": f"{rule} dispatch missing required --params {missing} "
             f"(Rule.params={list(rules.RULES[rule].params)})",
         }
-    root = facts.module_root(module)
+    root = store.module_root(module)
     # Resolve the two rework channels BEFORE allocating a run: an unresolvable one is a
     # caller error, and failing here leaves no half-created workdir behind.
     caused_by_paths = []
@@ -127,13 +108,7 @@ def cmd_dispatch(
                 "error": f"--caused-by {cb_rule}:{cb_run} has no result.json",
             }
         caused_by_paths.append(str(rel))
-    # A named diagnosis carries the two things the failing envelope does not: where its
-    # author says the fix lands, and (human-authored only) the reasoning behind it. An
-    # unknown ref would drop both silently — reject instead.
-    #
-    # It also puts the record that NAMED this owner into caused_by: for a triage-routed
-    # rework the fix owner is acting on an analysis, and a coordinate with no way to reach
-    # that analysis is the attribution arriving without its account.
+    # Resolve the records and human reasoning named by each diagnosis.
     by_id = {e["id"]: e for e in events if e["type"] == "diagnosis"}
     scope = facts.stale_inputs(module, events, rule)
     reasons = []
@@ -169,14 +144,12 @@ def cmd_dispatch(
         ev["inputs"] = _resolve_inputs(module, rule)
     if diagnosis_refs:
         ev["diagnosis_refs"] = diagnosis_refs
-    facts.append_event(module, ev, _now())
+    store.append_event(module, ev, _now())
     return {
         "ok": True,
         "rule": rule,
         "run": run,
-        # ABSOLUTE, while the event keeps the module-relative form: the log must not bake in
-        # one machine's layout, and the executor must not have to guess a root to resolve
-        # against. dispatch.json's input paths are absolute for the same reason.
+        # CLI paths are absolute; stored event paths remain module-relative.
         "workdir": str(abs_workdir.resolve()),
         "skill": rules.RULES[rule].skill,
         "execution": rules.RULES[rule].execution,
@@ -184,22 +157,18 @@ def cmd_dispatch(
 
 
 def cmd_reap(module, rule, run):
-    events = facts.read_events(module)
-    # Guard BEFORE deriving anything: a dispatch event for (rule, run) must exist, or
-    # there is no workdir to derive a verdict from (the prior bug: TypeError on
-    # `root / None`). Re-reaping an ALREADY-outcome'd run is deliberately still
-    # allowed — it is the documented crash-mid-promote repair path and the pin/regrade
-    # mechanism (test_pin_content_drift_regrades_...).
-    workdir = schedule._workdir_of(events, rule, run)
+    events = store.read_events(module)
+    # Repeated reaps support interrupted publication and oracle regrading.
+    workdir = facts.run_workdir(events, rule, run)
     if workdir is None:
         return {"ok": False, "error": f"no dispatch event for {rule} run {run}"}
-    root = facts.module_root(module)
+    root = store.module_root(module)
     rj = root / workdir / "result.json"
     # UNIFORM 4-tuple across proof rules AND triage — never a shape-shifting return.
     verdict, reason, proofs, diagnoses = _derive_verdict(module, rule, run, rj, events)
     if verdict != "blocked":  # promote produced artifacts (pass and fail both promote)
         try:
-            store.promote(facts.module_root(module), rule, run)
+            store.promote(store.module_root(module), rule, run)
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": f"promote failed: {e}"}
     outputs = _fingerprint_outputs(module, rule) if verdict != "blocked" else {}
@@ -215,34 +184,33 @@ def cmd_reap(module, rule, run):
     if reason:
         ev["reason"] = reason
     if verdict != "blocked":
-        # The verdicts ride into the log because signoff reads the log, and for the four tool
-        # stages signoff is the only place a human sees them at all. Re-read rather than
-        # threaded through _derive_verdict, whose return shape never varies by rule kind.
+        # Record requirement verdicts for signoff review.
         judged = json.loads(rj.read_text())["stage_specific"].get("requirements")
         if judged:
             ev["requirements"] = judged
-    facts.append_event(module, ev, _now())
+    store.append_event(module, ev, _now())
     for diagnosis in diagnoses:  # triage complete -> land the attributions
-        facts.append_event(module, diagnosis, _now())
-    return {"ok": True, "rule": rule, "run": run, "verdict": verdict}
+        store.append_event(module, diagnosis, _now())
+    return {
+        "ok": True,
+        "rule": rule,
+        "run": run,
+        "verdict": verdict,
+        **({"reason": reason} if reason else {}),
+    }
 
 
 def _fingerprint_outputs(module, rule):
-    """Version table of the ACTUAL promote set (落账指纹按实际 promote 集记录,
-    declared outputs are its lower bound): the canonical result.json itself plus every
-    artifacts[] entry it lists — exactly what store.promote just merged into canonical."""
-    root = facts.module_root(module)
+    """Fingerprint the published result.json and every artifact it declares."""
+    root = store.module_root(module)
     cdir = Path(*rules.workdir_root(rule))
     table = {}
     rj_rel = cdir / "result.json"
-    table[str(rj_rel)] = facts.fingerprint_cached(root / rj_rel, root)
-    try:
-        arts = json.loads((root / rj_rel).read_text()).get("artifacts", [])
-    except (OSError, ValueError):
-        arts = []
+    table[str(rj_rel)] = facts.fingerprint(root / rj_rel)
+    arts = json.loads((root / rj_rel).read_text())["artifacts"]
     for a in arts:
         rel = cdir / a["path"]
-        table[str(rel)] = facts.fingerprint_cached(root / rel, root)
+        table[str(rel)] = facts.fingerprint(root / rel)
     return table
 
 
@@ -267,10 +235,7 @@ def _tool_versions():
             text=True,
             timeout=5,
         )
-        # The installed plugin directory is not a git checkout, so this exits 128 with an
-        # empty stdout — the deployment where the key matters most. Write it only when git
-        # actually answered: a missing key reads as "no identity recorded", while the empty
-        # string it used to store is indistinguishable in the log from a recorded value.
+        # Record plugin identity when git can resolve the installation.
         if p.returncode == 0 and p.stdout.strip():
             ids["plugin"] = p.stdout.strip()
     except OSError:
@@ -279,14 +244,10 @@ def _tool_versions():
 
 
 def _stale_result_reason(produced_at, dispatch_ts) -> str | None:
-    """Temporal integrity of a reaped verdict: result.json must have been authored
-    by THIS run's executor, so its produced_at must not predate the run's own dispatch —
-    an older stamp means a carried-in stale envelope (e.g. a prior canonical result.json
-    copied into the workdir), which must never mint an outcome. The dispatch ts is floored
-    to whole seconds before comparing: skill finalizers stamp second-resolution UTC while
-    the kernel stamps microseconds, and a sub-second run must not be misjudged stale.
-    Unparseable produced_at blocks too (conservative — the envelope contract mandates
-    ISO-8601); a naive timestamp is taken as UTC."""
+    """Reject results authored before their run's dispatch.
+
+    Compare at second precision to match stage timestamps; interpret naive
+    timestamps as UTC and report unparseable result timestamps."""
 
     def parse(s):
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
@@ -306,12 +267,7 @@ def _stale_result_reason(produced_at, dispatch_ts) -> str | None:
 
 
 def _derive_verdict(module, rule_name, run, rj: Path, events):
-    """UNIFORM return: (verdict, reason, proofs, diagnoses) — proofs and diagnoses are []
-    whenever not applicable; the shape NEVER varies by rule kind. result.json status ->
-    verdict; missing/unparseable/malformed/schema-violation/stale -> blocked (stale =
-    produced_at predates this run's dispatch, _stale_result_reason). For simulation-triage
-    (proof=None) the triage branch derives the diagnosis events from
-    stage_specific — or blocked when it skipped/crashed."""
+    """Derive the verdict, failure reason, proofs and diagnoses from a stage result."""
     rule = rules.RULES[rule_name]
     if not rj.is_file():
         return "blocked", "missing", [], []
@@ -319,16 +275,11 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
         env = json.loads(rj.read_text())
     except (ValueError, OSError):
         return "blocked", "unparseable", [], []
-    status = env.get("status")
-    if status not in ("pass", "fail"):
-        return "blocked", "malformed", [], []
-    # schema validation reuses the per-stage result.schema.json via facts;
-    # a schema violation -> ("blocked", "schema_violation", [], []).
-    if facts.validate_result(rule_name, env) is not None:
-        return "blocked", "schema_violation", [], []
-    # Temporal integrity for EVERY rule kind (proof, triage, none) — the dispatch event
-    # exists by cmd_reap's guard. A re-reap of an old run compares against that run's OWN
-    # dispatch, so the crash-repair and pin-regrade paths are unaffected.
+    error = store.validate_result(rule_name, env)
+    if error is not None:
+        return "blocked", error, [], []
+    status = env["status"]
+    # Compare against this run's own dispatch timestamp.
     dispatch = next(
         e
         for e in reversed(events)
@@ -341,10 +292,7 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
         return _derive_triage(env, dispatch)  # same 4-tuple
     if rule.proof is None:
         return status, None, [], []
-    # No `evidence` list here. The report-class products ARE the evidence, and
-    # `outcome.outputs` — written from the same artifacts[] one call later — already
-    # names every one of them, with its fingerprint. A bare path list
-    # beside it is the same fact twice in one event, and the weaker copy.
+    # The outcome's artifact fingerprints also identify its evidence.
     proof = {
         "name": rule.proof,
         "verdict": status,
@@ -358,22 +306,11 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
 
 
 def _derive_triage(env, dispatch):
-    """Triage reap (the triage contract): findings -> (verdict, None, [], diagnosis-events);
-    none/crash -> blocked, no diagnosis (the sim failure stays ambiguous; next round
-    re-dispatches triage). `root_cause` IS the rule name, so no map decodes it: it
-    becomes `fix_owner` when it is a legal auto-rebuild target, and a self-pointing
-    attribution (root_cause == the failing rule) is outside simulation's input closure by
-    construction, so it lands recorded-but-unroutable.
+    """Group triage findings by root cause and derive one diagnosis per group.
 
-    ONE DIAGNOSIS PER ROOT CAUSE: a regression fails for as many reasons as it fails for, and
-    a finding can sit in a different stage's files from its neighbour, so the cause is named
-    per finding and the findings are grouped by it — each diagnosis carrying the loci of its
-    own. An analysis that found one thing has one group and lands the one diagnosis it always
-    did.
-
-    `dispatch` is THIS run's own dispatch event, located once in _derive_verdict (not
-    the latest triage dispatch, which would mislabel subject.outcome_run when
-    re-reaping an older run — F8b)."""
+    The originating dispatch identifies the failed simulation run. A root cause
+    inside its input closure can be a repair owner; other attributions require
+    clarification. Empty findings block completion."""
     import uuid
 
     ss = env.get("stage_specific", {})
@@ -381,12 +318,7 @@ def _derive_triage(env, dispatch):
     if not findings:
         return "blocked", "no_attribution", [], []
     sim_hit = dispatch["params"].get("sim_run")
-    # No evidence list: what this analysis rests on is derivable from the `subject` it
-    # carries (_diagnosis_sources), and whatever the analysis built is in that envelope's
-    # own artifacts[] — a stored copy would be the same paths twice.
-    # The distinct root causes, in the order the analysis wrote them. Where each one points
-    # and why is not copied out: `findings[].anchor` and `findings[].reason` are read from the
-    # analysis itself, which the dispatch that acts on this diagnosis names in caused_by.
+    # Group findings by root cause; their locations and reasoning remain in the analysis.
     causes = list(dict.fromkeys(f["root_cause"] for f in findings))
     out = []
     for cause in causes:
@@ -400,15 +332,8 @@ def _derive_triage(env, dispatch):
         if cause in rules.input_closure("simulation"):
             diagnosis["fix_owner"] = cause
         out.append(diagnosis)
-    # A complete triage is never a fail (triage 无独立 fail 态): it mints no proof,
-    # so its verdict is a plain non-blocked "pass" regardless of env["status"] (the envelope
-    # schema permits status=fail, but a triage fail outcome would crash repair's proof scan).
+    # Completed triage records diagnoses rather than an independent failed proof.
     return "pass", None, [], out
-
-
-# Oracle grade derivation (proposed/human ratchet) lives in facts.oracle_grade /
-# facts.oracle_content_fp — read LIVE by both the reap-time outcome record and the signoff
-# gate, so a post-reap pin/reopen takes effect without a re-reap.
 
 
 def cmd_diagnose(
@@ -422,22 +347,7 @@ def cmd_diagnose(
     reason,
     supersedes,
 ):
-    """Human-authored diagnosis (source="human"). Structural correlates enforced here
-    at write time, because the schema alone cannot express them:
-    - fix_owner, when present, must be a real auto-rebuild target: a producer inside
-      the TRANSITIVE input closure of subject_proof (rules.input_closure) — replaces
-      the old is_dag_ancestor. Omitting fix_owner (self-pointing attribution) is
-      always legal (P4): recorded as-is, disposition escalates it instead of
-      auto-rebuilding.
-    - provenance and reason are both required for source=human (the schema's `required`
-      array cannot make a field conditionally required on another field's value).
-      provenance is the bare identity that vouches; reason is the reasoning, and it is
-      what dispatch.json carries verbatim to the fix owner.
-
-    No evidence or locus list: what a diagnosis rests on is the failing run its `subject`
-    names, which the dispatch that acts on it derives (_diagnosis_sources). Anything else
-    the author wants the fix owner to see — including where they think the fix goes —
-    belongs in `reason`, which travels verbatim."""
+    """Record a human diagnosis with a legal repair owner, provenance and reason."""
     if fix_owner and fix_owner not in rules.input_closure(subject_proof):
         return {
             "ok": False,
@@ -460,7 +370,7 @@ def cmd_diagnose(
         ev["fix_owner"] = fix_owner
     if supersedes:
         ev["supersedes"] = supersedes
-    facts.append_event(module, ev, _now())
+    store.append_event(module, ev, _now())
     return {"ok": True, "id": diag_id}
 
 
@@ -474,9 +384,7 @@ def cmd_pin(module, rule, provenance, reason):
         }
     fp = facts.oracle_content_fp(module, r)
     if fp == facts.UNKNOWN:
-        # A pin must endorse REAL content. A zero-match selector records
-        # content_fingerprint="unknown" — an inert pin that can never grade human — yet
-        # returns ok:true. Reject so the human learns nothing was pinned (conservative).
+        # A pin endorses readable oracle content.
         return {
             "ok": False,
             "error": f"{rule} oracle selector {r.oracle_selector!r} matched no readable "
@@ -489,32 +397,26 @@ def cmd_pin(module, rule, provenance, reason):
         "provenance": provenance,
         "reason": reason,
     }
-    facts.append_event(module, ev, _now())
+    store.append_event(module, ev, _now())
     return {"ok": True, "oracle_ref": r.oracle[0], "content_fingerprint": fp}
 
 
 def cmd_reopen(module, pin_ref, reason):
-    events = facts.read_events(module)
-    # A reopen must revoke a real pin: pin_ref names a pinned oracle_ref. A typo'd
-    # ref would append a reopen that matches nothing — ok:true yet zero revocation, so the
-    # human believes trust was withdrawn when it was not. Reject instead (conservative).
+    events = store.read_events(module)
+    # Only an existing endorsement can be reopened.
     if not any(e["type"] == "pin" and e["oracle_ref"] == pin_ref for e in events):
         return {
             "ok": False,
             "error": f"reopen: no pin for oracle_ref {pin_ref!r} (nothing to revoke)",
         }
     ev = {"type": "reopen", "pin_ref": pin_ref, "reason": reason}
-    facts.append_event(module, ev, _now())
+    store.append_event(module, ev, _now())
     return {"ok": True, "pin_ref": pin_ref}
 
 
 def cmd_signoff(module, provenance, reason):
-    """Close signoff: run the gate, and only if it is clear record the human act.
-
-    The third ask-gated judgment verb, beside pin/reopen — and the only bypass surface the
-    gate has, which is why the gate runs HERE rather than being trusted from a prior
-    `decide`. A caller that skips decide entirely still cannot mint a signoff."""
-    events = facts.read_events(module)
+    """Check signoff readiness and record the human endorsement with its basis."""
+    events = store.read_events(module)
     reason_blocked = facts.signoff_gate(module, events)
     if reason_blocked is not None:
         return {"ok": False, "error": reason_blocked}
@@ -522,7 +424,7 @@ def cmd_signoff(module, provenance, reason):
     # not the state that includes the endorsement.
     basis = facts.signoff_basis(module, events)
     ev = {"type": "signoff", "provenance": provenance, "reason": reason}
-    facts.append_event(module, ev, _now())
+    store.append_event(module, ev, _now())
     return {
         "ok": True,
         "module": module,
@@ -532,7 +434,7 @@ def cmd_signoff(module, provenance, reason):
 
 
 def cmd_status(module):
-    events = facts.read_events(module)
+    events = store.read_events(module)
     return {
         "module": module,
         "stages": facts.projection(module, events),
@@ -545,22 +447,20 @@ def cmd_consequences(module, paths):
     that path's content changed — recomputed from the recorded input/output version
     tables of each proof's latest outcome (the same tables facts.proof_valid compares
     against disk), without touching disk."""
-    events = facts.read_events(module)
+    events = store.read_events(module)
     out: dict[str, list[str]] = {}
     for path in paths:
         affected = []
         for rule_name, r in rules.RULES.items():
             if not r.proof:
                 continue
-            hit = facts._proof_outcome(events, r.proof)
+            hit = facts.proof_outcome(events, r.proof)
             if hit is None:
                 continue
             _, outcome = hit
             proof = next(p for p in outcome["proofs"] if p["name"] == r.proof)
             touched = set(proof.get("inputs", {})) | set(outcome.get("outputs", {}))
-            # A recorded entry may be a TREE, whose version is a merkle over everything under
-            # it; a path inside one is therefore covered by it. Exact matching alone would
-            # under-report every consumer of a directory artifact.
+            # A tree fingerprint covers every path below it.
             covered = any(path == t or path.startswith(t + "/") for t in touched)
             if covered and facts.proof_valid(module, events, r.proof):
                 affected.append(r.proof)
@@ -571,10 +471,6 @@ def cmd_consequences(module, paths):
 def main():
     p = argparse.ArgumentParser(prog="kernel.py")
     sub = p.add_subparsers(dest="verb", required=True)
-    # Every verb is module-scoped and takes the same --module. Its help is the answer to
-    # "where does the kernel expect the module to be", a question the black-box rule leaves
-    # nowhere else to ask: the one real run reached for the source, was correctly stopped by
-    # that rule, and found this flag undocumented.
     module_help = (
         "path to the module directory — the one holding intent/, events.jsonl, "
         "Design/ and Verification/. Relative paths resolve against the current directory, "
@@ -583,12 +479,17 @@ def main():
     )
     d = sub.add_parser("decide")
     d.add_argument("--module", required=True, help=module_help)
-    d.add_argument("--wake", default=None)
+    d.add_argument(
+        "--wake",
+        default=None,
+        metavar="RULE:RUN",
+        help="reap a run whose executor has exited, including one that left no result.json",
+    )
     d.add_argument(
         "--closing",
         action="store_true",
-        help="arm the signoff gate at DONE and return what it clears (facts.signoff_basis); "
-        "a blocked gate comes back as ESCALATE. Which proofs are required is unaffected.",
+        help="check signoff readiness at completion and return its basis; "
+        "unmet signoff requirements return ESCALATE",
     )
     di = sub.add_parser("dispatch")
     di.add_argument("--module", required=True, help=module_help)
@@ -646,16 +547,8 @@ def main():
     co.add_argument("--module", required=True, help=module_help)
     co.add_argument("--paths", nargs="+", required=True)
     args = p.parse_args()
-    # A missing module directory is always an error and never a legitimate starting state:
-    # intent/brainstorm.md is a PIPELINE_INPUT that must already exist for `specification` to
-    # be dispatchable at all, so a module with no directory can never become schedulable.
-    # Without this, a mistyped or misresolved path produced two answers that both looked
-    # real — `status` inventing an all-`missing` projection at exit 0, and `decide` reporting
-    # an incomplete intent tree, which is what a module that merely has not been handed one
-    # gets. Only the resolved path separates the two.
-    # Name the resolved absolute path, so a relative one that landed somewhere unintended
-    # says so.
-    root = facts.module_root(args.module)
+    # Reject nonexistent module directories before querying or mutating them.
+    root = store.module_root(args.module)
     if not root.is_dir():
         sys.exit(f"kernel.py {args.verb}: no module directory at {root.resolve()}")
     refs = (
@@ -724,9 +617,7 @@ def main():
         "status": lambda: cmd_status(args.module),
         "consequences": lambda: cmd_consequences(args.module, args.paths),
     }
-    facts.freeze_inputs(
-        args.module
-    )  # every verb, before it reads: see facts.freeze_inputs
+    store.freeze_inputs(args.module)
     print(json.dumps(handlers[args.verb](), indent=2, ensure_ascii=False))
 
 

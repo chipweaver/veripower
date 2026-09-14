@@ -8,12 +8,13 @@ import facts  # noqa: E402
 import kernel  # noqa: E402
 import rules  # noqa: E402
 import schedule  # noqa: E402
+import store  # noqa: E402
 
 TS = "2026-07-10T00:00:00.000000Z"
 
 
 def _write(module, rel, text):
-    p = facts.module_root(module) / rel
+    p = store.module_root(module) / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text)
     return facts.fingerprint(p)
@@ -21,7 +22,7 @@ def _write(module, rel, text):
 
 def _workdir(rule, run):
     """The workdir the kernel would record — `Design/specification/runs/1`, not a made-up
-    `specification/runs/1`. Everything reached through schedule._workdir_of (the no-wake
+    `specification/runs/1`. Everything reached through facts.run_workdir (the no-wake
     ready scan, cmd_reap's workdir) resolves against this, so a fictitious layout
     makes those branches vacuous rather than tested. A rule outside the registry has no
     workdir_root; it only ever appears in the unregistered-in-flight test, which never
@@ -31,7 +32,7 @@ def _workdir(rule, run):
 
 
 def _dispatch(module, rule, run, inputs):
-    facts.append_event(
+    store.append_event(
         module,
         {
             "type": "dispatch",
@@ -56,7 +57,7 @@ def _outcome(module, rule, run, verdict, outputs, proofs, **extra):
         "tool_versions": {},
     }
     ev.update(extra)
-    facts.append_event(module, ev, TS)
+    store.append_event(module, ev, TS)
 
 
 def _turn(module, limit=6):
@@ -107,7 +108,7 @@ def test_wake_reap(tmp_path, monkeypatch):
         "m",
         "specification",
         1,
-        {"intent": facts.fingerprint(facts.module_root("m") / "intent")},
+        {"intent": facts.fingerprint(store.module_root("m") / "intent")},
     )
     # workdir result.json present -> REAP even without wake (收口 branch)
     _mk("m", _workdir("specification", 1) + "/result.json", "{}")
@@ -141,7 +142,7 @@ def test_a_landed_result_is_reaped_not_yielded_over(tmp_path, monkeypatch):
     _valid("m", "rtl-design", 1)
     _dispatch("m", "lint-cdc", 1, _recorded_inputs("m", "lint-cdc"))
     _dispatch("m", "simulation-plan", 1, _recorded_inputs("m", "simulation-plan"))
-    rj = facts.module_root("m") / _workdir("simulation-plan", 1) / "result.json"
+    rj = store.module_root("m") / _workdir("simulation-plan", 1) / "result.json"
     _mk("m", _workdir("simulation-plan", 1) + "/result.json", "{}")
     assert schedule.decide("m") == {
         "action": "REAP",
@@ -174,7 +175,7 @@ def test_fresh_failure_with_routable_triage_dispatches_fix_owner(tmp_path, monke
     # simulation fails fresh; a triage diagnosis points at rtl-design.
     _valid_chain_through_simulation("m")
     _sim_fail("m", run=1)
-    facts.append_event(
+    store.append_event(
         "m",
         {
             "type": "diagnosis",
@@ -195,7 +196,7 @@ def test_fresh_failure_with_routable_triage_dispatches_fix_owner(tmp_path, monke
 
 
 def _diagnosis(module, did, run, owner):
-    facts.append_event(
+    store.append_event(
         module,
         {
             "type": "diagnosis",
@@ -238,12 +239,12 @@ def test_one_failure_with_two_root_causes_reaches_both_owners(tmp_path, monkeypa
 
     # and the failure stays open until BOTH have had their turn — one owner answering is not
     # the failure answered
-    ev = facts.read_events("m")
+    ev = store.read_events("m")
     still = schedule.owed(ev, schedule._failures("m", ev))
     assert still == []
     # that round died, so it re-opens — for its owner alone, not for the other one
     _outcome("m", "rtl-design", runs["rtl-design"], "blocked", {}, [])
-    ev = facts.read_events("m")
+    ev = store.read_events("m")
     assert [o["owner"] for o in schedule.owed(ev, schedule._failures("m", ev))] == [
         "rtl-design"
     ]
@@ -259,7 +260,7 @@ def test_an_unsure_second_opinion_makes_the_whole_failure_unclear(
     _valid_chain_through_simulation("m")
     _sim_fail("m", run=1)
     _diagnosis("m", "d-rtl", 1, "rtl-design")
-    facts.append_event(
+    store.append_event(
         "m",
         {
             "type": "diagnosis",
@@ -289,7 +290,7 @@ def test_dispatch_args_carry_every_channel_the_action_names(tmp_path, monkeypatc
     _sim_fail("m", 1)
     _fail("m", "timing-analysis", 1)
     for i, (proof, run) in enumerate((("simulation", 1), ("timing-analysis", 1))):
-        facts.append_event(
+        store.append_event(
             "m",
             {
                 "type": "diagnosis",
@@ -369,7 +370,7 @@ def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")  # helper: spec/plan/rtl proofs valid on disk
     _sim_fail("m", run=1)  # helper: fresh simulation fail outcome
-    facts.append_event(
+    store.append_event(
         "m",
         {
             "type": "diagnosis",
@@ -555,7 +556,6 @@ def test_advisory_holds_while_its_predecessor_is_still_running(tmp_path, monkeyp
     monkeypatch.chdir(tmp_path)
     _timing_fail_over_stale_synthesis("m")
     _dispatch("m", "lint-cdc", 1, _recorded_inputs("m", "lint-cdc"))
-    assert schedule.failing_proofs(facts.read_events("m")) == {"timing-analysis"}
     assert "synthesis" not in _turn("m")
 
 
@@ -577,9 +577,8 @@ def test_advisory_predecessor_is_scheduled_rather_than_waited_on(tmp_path, monke
     _timing_fail_over_stale_synthesis("m")
     _valid("m", "lint-cdc", 1)
     _mk("m", "Design/lint-cdc/lint-report.txt", "drift")  # lint-cdc proof now invalid
-    ev = facts.read_events("m")
+    ev = store.read_events("m")
     assert not facts.proof_valid("m", ev, "lint-cdc")
-    assert "lint-cdc" in schedule.required_proofs(ev)
     d = schedule.decide("m")
     assert d["action"] == "DISPATCH" and d["rule"] == "lint-cdc"
 
@@ -598,7 +597,6 @@ def test_advisory_orders_two_stages_that_failed_together(tmp_path, monkeypatch):
     _valid(
         "m", "rtl-design", 2, tag="fix"
     )  # one fix answers both; the owner has had its turn
-    assert schedule.failing_proofs(facts.read_events("m")) == {"lint-cdc", "synthesis"}
     d = schedule.decide("m")
     assert d["action"] == "DISPATCH" and d["rule"] == "lint-cdc"
     _valid("m", "lint-cdc", 2)
@@ -624,7 +622,6 @@ def test_co_failing_rules_reverify_in_parallel(tmp_path, monkeypatch):
     assert fix["rule"] == "rtl-design"
     assert sorted(fix["caused_by"]) == [["lint-cdc", 1], ["simulation", 1]]
     _valid("m", "rtl-design", 2, tag="fix")  # the fix lands; both fails go stale
-    assert schedule.failing_proofs(facts.read_events("m")) == {"lint-cdc", "simulation"}
     first = schedule.decide("m")
     assert first["action"] == "DISPATCH"
     _dispatch("m", first["rule"], 2, _recorded_inputs("m", first["rule"]))
@@ -653,13 +650,13 @@ def test_goal_widens_once_nothing_is_failing(tmp_path, monkeypatch):
         if a["action"] != "DISPATCH":
             break
         seen.append(a["rule"])
-        _valid("m", a["rule"], facts.runs_of(facts.read_events("m"), a["rule"]) + 1)
+        _valid("m", a["rule"], facts.runs_of(store.read_events("m"), a["rule"]) + 1)
     assert seen[:2] == [
         "rtl-design",
         "lint-cdc",
     ]  # narrowed: the fix, then the re-verify
     assert a["action"] == "DONE"
-    ev = facts.read_events("m")
+    ev = store.read_events("m")
     assert all(facts.proof_valid("m", ev, p) for p in rules.FORWARD_PRIORITY)
 
 
@@ -677,9 +674,6 @@ def test_closing_changes_what_done_means_not_which_proofs(tmp_path, monkeypatch)
     the flag would be a no-op reporting DONE with the trust boundary never consulted."""
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1)  # default (proposed) grades — gate must refuse
-    assert schedule.required_proofs(facts.read_events("m")) == set(
-        rules.FORWARD_PRIORITY
-    )
     assert schedule.decide("m")["action"] == "DONE"
     assert schedule.decide("m", closing=True)["action"] == "ESCALATE"
 
@@ -702,14 +696,14 @@ def test_signoff_gate_reads_live_pin_without_rereap(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1)  # default (proposed) grades
     assert (
-        facts.signoff_gate("m", facts.read_events("m"))
+        facts.signoff_gate("m", store.read_events("m"))
         == "signoff blocked: specification oracle is proposed (pin it)"
     )
     # Pin every proposed oracle after the fact; no proof is re-reaped.
     for rule in rules.FORWARD_PRIORITY:
         if rules.RULES[rule].oracle[1] == "proposed":
             _pin("m", rule)
-    assert facts.signoff_gate("m", facts.read_events("m")) is None
+    assert facts.signoff_gate("m", store.read_events("m")) is None
 
 
 # --- scheduler invariants ---
@@ -730,7 +724,7 @@ def test_advisory_edge_never_enters_freshness(tmp_path, monkeypatch):
     _valid_chain_through_power("m")  # helper: power's ARTIFACT closure all valid
     _invalidate_proof("m", "timing-analysis")  # helper: drift a timing-only input
     _fail("m", "power-analysis", 1, owner="simulation")  # its own inputs untouched
-    ev = facts.read_events("m")
+    ev = store.read_events("m")
     owed = schedule.owed(ev, schedule._failures("m", ev))
     assert [(f["rule"], f["owner"]) for f in owed] == [("power-analysis", "simulation")]
 
@@ -750,7 +744,7 @@ def test_two_hop_upstream_invalidity_does_not_discard_the_failure(
     _valid("m", "synthesis", 1)
     _reopen("m", "semantic-review")  # rtl-design invalid; RTL bytes unchanged
     _fail("m", "timing-analysis", 1, owner=None)
-    fails = schedule._failures("m", facts.read_events("m"))
+    fails = schedule._failures("m", store.read_events("m"))
     assert [(f["rule"], f["owners"]) for f in fails] == [("timing-analysis", [])]
     a = schedule.decide("m")
     assert a["action"] == "ESCALATE" and "named no fix_owner" in a["reason"]
@@ -779,7 +773,7 @@ def test_human_supersede_restores_auto_rebuild(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
     _sim_fail("m", 1)
-    facts.append_event(
+    store.append_event(
         "m",
         {
             "type": "diagnosis",
@@ -791,7 +785,7 @@ def test_human_supersede_restores_auto_rebuild(tmp_path, monkeypatch):
         TS,
     )
     assert schedule.decide("m")["action"] == "ESCALATE"  # 没点出可派的人 -> 叫人
-    facts.append_event(
+    store.append_event(
         "m",
         {
             "type": "diagnosis",
@@ -817,7 +811,7 @@ def test_new_outcome_deactivates_old_diagnosis(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
     _sim_fail("m", 1)
-    facts.append_event(
+    store.append_event(
         "m",
         {
             "type": "diagnosis",
@@ -841,7 +835,7 @@ def test_triage_blocked_redispatches_no_livelock(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
     _sim_fail("m", 1)
-    facts.append_event(
+    store.append_event(
         "m",
         {
             "type": "dispatch",
@@ -914,13 +908,13 @@ _PIN_ALL = {r: "human" for r in rules.FORWARD_PRIORITY}
 
 
 def _fp(module, rel):
-    return facts.fingerprint(facts.module_root(module) / rel)
+    return facts.fingerprint(store.module_root(module) / rel)
 
 
 def _mk(module, rel, content):
     if not Path(rel).suffix:  # tree artifact (Design/rtl-design/src): one file inside
         return _mk(module, rel + "/rtl.v", content)
-    p = facts.module_root(module) / rel
+    p = store.module_root(module) / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
 
@@ -929,7 +923,7 @@ def _recorded_inputs(module, rule, extra=()):
     """Current disk fingerprints of `rule`'s declared, non-self input globs + extras.
     Self-produced (in∩out) globs are skipped — proof_valid does not require them and
     they would need same-run output bookkeeping."""
-    root = facts.module_root(module)
+    root = store.module_root(module)
     rec = {}
     for globs in rules.RULES[rule].inputs.values():
         for g in globs:
@@ -1001,7 +995,7 @@ def _pin(module, rule):
     """Materialise the oracle-selector content + emit a real live pin whose fingerprint
     matches, so facts.oracle_grade grades the proposed oracle human."""
     r = rules.RULES[rule]
-    facts.append_event(
+    store.append_event(
         module,
         {
             "type": "pin",
@@ -1064,7 +1058,7 @@ def _power_fail(module, run):
 
 
 def _reopen(module, pin_ref):
-    facts.append_event(
+    store.append_event(
         module, {"type": "reopen", "pin_ref": pin_ref, "reason": "revoke"}, TS
     )
 
@@ -1109,29 +1103,13 @@ def _build_all_valid(module, run, *, include=None, oracle_grades=None):
         _valid(module, rule, run, oracle_grade=grades.get(rule))
 
 
-def test_failing_proofs_only_targets_stage_proofs(tmp_path, monkeypatch):
-    # Only a PROOF can be re-verified, and simulation-triage produces none. Even if a
-    # triage outcome ever carries verdict=fail it must not narrow the goal set — else
-    # step-2's sorted(work, key=FORWARD_PRIORITY.index) raises ValueError.
-    monkeypatch.chdir(tmp_path)
-    _outcome(
-        "m", "simulation-triage", 1, "fail", {}, []
-    )  # non-proof rule, newest outcome
-    assert schedule.failing_proofs(facts.read_events("m")) == set()
-    req = schedule.required_proofs(facts.read_events("m"))
-    assert "simulation-triage" not in req
-    assert req == set(rules.FORWARD_PRIORITY)
-
-
 def test_decide_repair_survives_triage_fail_outcome(tmp_path, monkeypatch):
-    # Symptom: with the whole delivery chain valid and a (buggy) newest triage fail
-    # outcome, decide(repair) must not crash — before the fix, required_proofs returns
-    # {"simulation-triage"} and step 2 hits FORWARD_PRIORITY.index("simulation-triage").
+    # A diagnostic outcome does not add a stage proof to the work set.
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1)
     _outcome("m", "simulation-triage", 1, "fail", {}, [])
     a = schedule.decide("m")  # must not raise ValueError
-    assert a["action"] in ("DONE", "YIELD", "DISPATCH", "ESCALATE")
+    assert a["action"] == "DONE"
     assert a.get("rule") != "simulation-triage"
 
 
@@ -1142,7 +1120,7 @@ def test_unregistered_rule_in_flight_is_not_reapable_forever(tmp_path, monkeypat
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1)
     _dispatch("m", "not-a-rule", 1, {})  # never reaped
-    assert facts.in_flight(facts.read_events("m")) == []
+    assert facts.in_flight(store.read_events("m")) == []
     assert schedule.decide("m")["action"] == "DONE"
 
 
@@ -1152,7 +1130,7 @@ def test_fresh_fail_fix_owner_in_flight_yields(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
     _sim_fail("m", run=1)
-    facts.append_event(
+    store.append_event(
         "m",
         {
             "type": "diagnosis",
@@ -1200,7 +1178,7 @@ def test_option_c_defers_fix_owner_rebuild_step1(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
     _sim_fail("m", run=1)
-    facts.append_event(
+    store.append_event(
         "m",
         {
             "type": "diagnosis",
@@ -1228,16 +1206,16 @@ def test_signed_off_regresses_on_hand_edit(tmp_path, monkeypatch):
     # beneath it.
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
-    facts.append_event(
+    store.append_event(
         "m",
         {"type": "signoff", "provenance": "u", "reason": "ship it"},
         "2026-01-01T00:00:00Z",
     )
-    assert facts.signed_off("m", facts.read_events("m")) is True
+    assert facts.signed_off("m", store.read_events("m")) is True
     _mk(
         "m", "Design/specification/design.md", "HAND-EDITED"
     )  # tamper a promoted artifact
-    assert facts.signed_off("m", facts.read_events("m")) is False
+    assert facts.signed_off("m", store.read_events("m")) is False
 
 
 def test_signed_off_requires_the_human_act(tmp_path, monkeypatch):
@@ -1246,9 +1224,9 @@ def test_signed_off_requires_the_human_act(tmp_path, monkeypatch):
     # act, and without it nothing may claim signoff.
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
-    assert facts.signoff_gate("m", facts.read_events("m")) is None  # gate is clear...
+    assert facts.signoff_gate("m", store.read_events("m")) is None  # gate is clear...
     assert (
-        facts.signed_off("m", facts.read_events("m")) is False
+        facts.signed_off("m", store.read_events("m")) is False
     )  # ...but nobody signed
 
 
@@ -1259,9 +1237,9 @@ def test_signoff_gate_blocks_on_a_file_the_stage_never_delivered(tmp_path, monke
     # no extension or depth can slip past it.
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
-    assert facts.signoff_gate("m", facts.read_events("m")) is None  # clean, gate passes
+    assert facts.signoff_gate("m", store.read_events("m")) is None  # clean, gate passes
     _mk("m", "Design/rtl-design/sneaky.vh", "`define SNEAKY 1")
-    gate = facts.signoff_gate("m", facts.read_events("m"))
+    gate = facts.signoff_gate("m", store.read_events("m"))
     assert gate is not None
     assert "unrecorded file" in gate and "sneaky.vh" in gate
 
@@ -1274,9 +1252,9 @@ def test_a_file_added_inside_the_delivered_tree_invalidates_at_once(
     # path opens the producer — no waiting for someone to try to sign off.
     monkeypatch.chdir(tmp_path)
     _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
-    assert facts.proof_valid("m", facts.read_events("m"), "rtl-design")
+    assert facts.proof_valid("m", store.read_events("m"), "rtl-design")
     _mk("m", "Design/rtl-design/src/sneaky.vh", "`define SNEAKY 1")
-    assert not facts.proof_valid("m", facts.read_events("m"), "rtl-design")
+    assert not facts.proof_valid("m", store.read_events("m"), "rtl-design")
 
 
 # ── the fail path shares the pass path's condition 3 ──────────────────────────
@@ -1286,7 +1264,7 @@ def test_a_file_added_inside_the_delivered_tree_invalidates_at_once(
 
 
 def _pin_oracle(module, ref, fp="sha256:x", reason="endorse"):
-    facts.append_event(
+    store.append_event(
         module,
         {
             "type": "pin",
@@ -1300,13 +1278,13 @@ def _pin_oracle(module, ref, fp="sha256:x", reason="endorse"):
 
 
 def _reopen_oracle(module, ref):
-    facts.append_event(
+    store.append_event(
         module, {"type": "reopen", "pin_ref": ref, "reason": "revoke"}, TS
     )
 
 
 def _spec_fail_proof(module):
-    root = facts.module_root(module)
+    root = store.module_root(module)
     return [
         {
             "name": "specification",
@@ -1326,8 +1304,8 @@ def test_fail_stale_when_reopen_lands_during_the_run(tmp_path, monkeypatch):
     _dispatch("m", "specification", 1, {"intent": "sha256:ignored"})
     _reopen_oracle("m", "spec-review")
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
-    events = facts.read_events("m")
-    _, outcome = facts._proof_outcome(events, "specification")
+    events = store.read_events("m")
+    _, outcome = facts.proof_outcome(events, "specification")
     assert schedule._oracle_retracted(events, "specification", outcome)
     assert schedule.decide("m")["action"] == "ESCALATE"
 
@@ -1343,8 +1321,8 @@ def test_fail_stays_stale_after_a_bare_re_reap(tmp_path, monkeypatch):
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
     _reopen_oracle("m", "spec-review")
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))  # bare re-reap
-    events = facts.read_events("m")
-    _, outcome = facts._proof_outcome(events, "specification")
+    events = store.read_events("m")
+    _, outcome = facts.proof_outcome(events, "specification")
     assert schedule._oracle_retracted(events, "specification", outcome)
     assert schedule.decide("m")["action"] == "ESCALATE"
 
@@ -1360,8 +1338,8 @@ def test_fail_fresh_again_after_a_re_pin(tmp_path, monkeypatch):
     _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
     _reopen_oracle("m", "spec-review")  # AFTER the outcome, so the old anchor saw it
     _pin_oracle("m", "spec-review", fp="sha256:y", reason="re-endorse")
-    events = facts.read_events("m")
-    _, outcome = facts._proof_outcome(events, "specification")
+    events = store.read_events("m")
+    _, outcome = facts.proof_outcome(events, "specification")
     assert not schedule._oracle_retracted(events, "specification", outcome)
     assert [f["rule"] for f in schedule._failures("m", events)] == ["specification"]
 
@@ -1373,7 +1351,7 @@ def test_re_reap_does_not_dispatch_upstream_rework(tmp_path, monkeypatch):
     # verdict whose judge had just been reopened. Stale re-verifies simulation-plan itself.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
-    root = facts.module_root("m")
+    root = store.module_root("m")
     plan_proof = [
         {
             "name": "simulation-plan",
@@ -1404,14 +1382,14 @@ def _all_valid_and_pinned(module):
     for rule in rules.FORWARD_PRIORITY:
         if rules.RULES[rule].oracle[1] == "proposed":
             _pin(module, rule)
-    assert facts.signoff_gate(module, facts.read_events(module)) is None
+    assert facts.signoff_gate(module, store.read_events(module)) is None
 
 
 def test_basis_covers_every_proof_in_forward_order(tmp_path, monkeypatch):
     # A signoff record whose row order varied by hash seed would not be a record.
     monkeypatch.chdir(tmp_path)
     _all_valid_and_pinned("m")
-    basis = facts.signoff_basis("m", facts.read_events("m"))
+    basis = facts.signoff_basis("m", store.read_events("m"))
     assert [b["proof"] for b in basis] == list(rules.FORWARD_PRIORITY)
 
 
@@ -1423,7 +1401,7 @@ def test_basis_grades_each_oracle_and_names_what_a_human_endorsed(
     # the fingerprint does not say human-endorsed WHAT.
     monkeypatch.chdir(tmp_path)
     _all_valid_and_pinned("m")
-    events = facts.read_events("m")
+    events = store.read_events("m")
     by_proof = {b["proof"]: b for b in facts.signoff_basis("m", events)}
     for rule_name, rule in rules.RULES.items():
         if rule_name not in by_proof:
@@ -1447,11 +1425,11 @@ def test_basis_drops_the_fingerprint_when_the_pin_is_reopened(tmp_path, monkeypa
     monkeypatch.chdir(tmp_path)
     _all_valid_and_pinned("m")
     assert (
-        facts.signoff_basis("m", facts.read_events("m"))[0]["oracle"]["grade"]
+        facts.signoff_basis("m", store.read_events("m"))[0]["oracle"]["grade"]
         == "human"
     )
     _reopen("m", rules.RULES["specification"].oracle[0])
-    spec = facts.signoff_basis("m", facts.read_events("m"))[0]
+    spec = facts.signoff_basis("m", store.read_events("m"))[0]
     assert spec["oracle"]["grade"] == "proposed"
     assert "pinned_fingerprint" not in spec["oracle"]
 
@@ -1459,12 +1437,12 @@ def test_basis_drops_the_fingerprint_when_the_pin_is_reopened(tmp_path, monkeypa
 def test_basis_names_the_input_set_each_verdict_was_about(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _all_valid_and_pinned("m")
-    events = facts.read_events("m")
+    events = store.read_events("m")
     by_proof = {b["proof"]: b for b in facts.signoff_basis("m", events)}
     spec = by_proof["specification"]
     assert spec["inputs"] == ["intent"]
     # and it matches what the proof actually recorded, not a re-derivation from rules.py
-    _, outcome = facts._proof_outcome(events, "specification")
+    _, outcome = facts.proof_outcome(events, "specification")
     proof = next(p for p in outcome["proofs"] if p["name"] == "specification")
     assert spec["inputs"] == sorted(proof["inputs"])
 

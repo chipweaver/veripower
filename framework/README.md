@@ -14,16 +14,21 @@ defined here, but no skill *owns* this layer.
 | Path | What it is | Primary consumer | Available to |
 |---|---|---|---|
 | `references/schemas/envelope.schema.json` | The cross-stage `result.json` envelope that every stage's own `result.schema.json` composes by JSON Schema `$ref`, carrying the universal fields any reader can rely on regardless of which stage produced the file. | anyone reading a `result.json` | all skills, orchestrator, tests |
-| `references/schemas/events/` | One schema file per `<module-dir>/events.jsonl` event type: the audit-log contract. Events are written by `kernel.py` alone and validated against these at append time, and are readable by anyone debugging or auditing a run, not just the writer. | `kernel.py` | all consumers of `events.jsonl` |
+| `references/schemas/events/` | Schemas used to validate event records before appending to `<module-dir>/events.jsonl`. | `store.py` | all consumers of `events.jsonl` |
 | `references/prompts/stage-subagent.md.tpl` | The prompt template the orchestrator renders when dispatching a stage subagent. Defines the canonical injection points every stage skill documents in its SKILL.md input table. | `design-flow`, as renderer | designers studying the protocol |
-| `scripts/kernel.py` | The kernel CLI and the sole writer of `events.jsonl`. A project CLI for the orchestrator, tests and manual operation. | `design-flow` | tests, manual operators |
-| `scripts/rules.py` | The rule registry SSoT (`RULES`, `FORWARD_PRIORITY`, `PIPELINE_INPUTS`, `ADVISORY_ORDER`). One `Rule` is one kernel-scheduled unit, and the producer-consumer dependency graph is derived from each rule's artifact selectors rather than maintained as a separate stage-view DAG. Dependency-light leaf, bare-importable. | `kernel.py`, `facts.py`, `schedule.py`, by import | tests, anyone importing the registry |
-| `scripts/facts.py` | Event-log I/O, content fingerprints, and the freshness queries built on them. Owns nothing mutable: every answer is computed from the log plus disk on demand, never stored as a bit. | `kernel.py`, `schedule.py`, by import | tests, anyone reading `events.jsonl` |
-| `scripts/schedule.py` | The scheduler behind the `decide` verb: pure over (disk, log, args), returning exactly one action per call, with the goal set derived from the log rather than passed in. Also owns the fresh-failure disposition — a failure is attributed by its own envelope, and this file only checks that naming is legal. Import-only, reached solely through `kernel.py`. | `kernel.py`, by import | internal, tests |
-| `scripts/store.py` | Filesystem artifact-lifecycle helpers: dispatch-time input injection and author self-carry, reap-time promote and canonical-view rebuild. An import-only internal with a single caller. | `kernel.py`, by import | internal only |
+| `scripts/kernel.py` | CLI entry point: validates commands, derives outcomes and coordinates module updates through storage operations. | `design-flow` | tests, manual operators |
+| `scripts/rules.py` | Stage declarations and the producer graph derived from artifact inputs. | `kernel.py`, `facts.py`, `schedule.py`, `store.py` | tests, anyone importing the registry |
+| `scripts/facts.py` | Read-only event queries, content fingerprints, proof validity, input availability and signoff readiness. | `kernel.py`, `schedule.py` | internal, tests |
+| `scripts/schedule.py` | Selects one action from current facts, unresolved repairs, dependencies and execution order. | `kernel.py` | internal, tests |
+| `scripts/store.py` | Event-log I/O, schema validation, input protection, dispatch handoff, author carry and artifact publication. | `kernel.py`, `facts.py`, `schedule.py` | internal, tests |
 
-Invocation contract for the CLI: the command lines and flags come from
-`kernel.py <verb> --help`, and every verb prints a JSON envelope.
+Start with `kernel.main` for commands, `schedule.decide` for action selection,
+`facts.proof_valid` for validity, and `store.promote` for publication.
+`rules.RULES` defines the stages and their artifact inputs.
+
+Command lines and flags come from `kernel.py <verb> --help`. Commands return JSON;
+errors that prevent execution are reported on stderr. A blocked reap includes its
+reason in both the response and the recorded outcome.
 
 ## Related locations
 

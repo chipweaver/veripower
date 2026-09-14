@@ -2,7 +2,7 @@
 
 Template: test_state.py::TestFullLoop (multi-round dispatch/reap loop). Idioms are
 reused verbatim from the two landed kernel suites the brief names:
-  * test_schedule.py — in-process event construction (facts.append_event) with real
+  * test_schedule.py — in-process event construction (store.append_event) with real
     fingerprints and a per-run content marker so a rebuild genuinely drifts bytes;
   * test_kernel_cli.py — real kernel verbs (kernel.cmd_dispatch / cmd_reap with a
     crafted, schema-valid result.json) so triage mints a real diagnosis + a canonical
@@ -32,6 +32,7 @@ import facts  # noqa: E402
 import kernel  # noqa: E402
 import rules  # noqa: E402
 import schedule  # noqa: E402
+import store  # noqa: E402
 
 TS = "2026-07-10T00:00:00.000000Z"
 
@@ -90,19 +91,19 @@ _OUTPUTS = {
 
 
 def _fp(module, rel):
-    return facts.fingerprint(facts.module_root(module) / rel)
+    return facts.fingerprint(store.module_root(module) / rel)
 
 
 def _mk(module, rel, content):
     if not Path(rel).suffix:  # tree artifact (Design/rtl-design/src): one file inside
         return _mk(module, rel + "/rtl.v", content)
-    p = facts.module_root(module) / rel
+    p = store.module_root(module) / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
 
 
 def _dispatch(module, rule, run, inputs):
-    facts.append_event(
+    store.append_event(
         module,
         {
             "type": "dispatch",
@@ -127,11 +128,11 @@ def _outcome(module, rule, run, verdict, outputs, proofs, **extra):
         "tool_versions": {},
     }
     ev.update(extra)
-    facts.append_event(module, ev, TS)
+    store.append_event(module, ev, TS)
 
 
 def _recorded_inputs(module, rule, extra=()):
-    root = facts.module_root(module)
+    root = store.module_root(module)
     rec = {}
     for globs in rules.RULES[rule].inputs.values():
         for g in globs:
@@ -249,14 +250,14 @@ def test_step1_scaffold_fix_keeps_upstream_proofs_valid(tmp_path, monkeypatch):
     ):
         _valid(m, rule, 1)
 
-    evs = facts.read_events(m)
+    evs = store.read_events(m)
     # baseline (non-vacuous): every proof valid before the scaffold change.
     for rule in ("lint-cdc", "synthesis", "timing-analysis", "simulation"):
         assert facts.proof_valid(m, evs, rule), f"{rule} should start valid"
 
     # scaffold-only change: drift simulation-plan's tb-scaffold.json.
     _mk(m, "Verification/simulation-plan/tb-scaffold.json", "scaffold-v2")
-    evs = facts.read_events(m)
+    evs = store.read_events(m)
 
     # BINDING: lint / synth / timing proofs stay valid (no scaffold in their inputs).
     assert facts.proof_valid(m, evs, "lint-cdc")
@@ -291,12 +292,12 @@ def test_plan_sidecars_invalidate_only_their_own_consumer(tmp_path, monkeypatch)
 
     def flip(sidecar, content):
         _mk(m, f"{base}/{sidecar}", content)
-        evs = facts.read_events(m)
+        evs = store.read_events(m)
         return facts.proof_valid(m, evs, "simulation"), facts.proof_valid(
             m, evs, "power-analysis"
         )
 
-    evs = facts.read_events(m)
+    evs = store.read_events(m)
     assert facts.proof_valid(m, evs, "simulation")  # baseline: both start valid
     assert facts.proof_valid(m, evs, "power-analysis")
 
@@ -346,13 +347,13 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
     m = "round2"
     _chain_through_simulation(m)
     _valid(m, "lint-cdc", 1)  # a real lint proof, so (c) is non-vacuous
-    rtl1 = facts.latest_outcome(facts.read_events(m), "rtl-design")["outputs"]
+    rtl1 = facts.latest_outcome(store.read_events(m), "rtl-design")["outputs"]
 
     _fail(m, "simulation", 1)  # smoke fail — records matvec.v@r1 as an input
     _triage(m, sim_run=1, root_cause="rtl-design")
 
     # fresh sim fail + reliable triage diagnosis -> DISPATCH the fix owner rtl-design.
-    evs = facts.read_events(m)
+    evs = store.read_events(m)
     d1_id = [e for e in evs if e["type"] == "diagnosis"][-1]["id"]
     a = schedule.decide(m)
     assert a["action"] == "DISPATCH" and a["rule"] == "rtl-design"
@@ -369,7 +370,7 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
     )
     assert dr["ok"], dr
     doc = json.loads(
-        (facts.module_root(m) / dr["workdir"] / "dispatch.json").read_text()
+        (store.module_root(m) / dr["workdir"] / "dispatch.json").read_text()
     )
     assert doc["caused_by"] == [
         "Verification/simulation/runs/1/result.json",
@@ -398,7 +399,7 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
             }
         ],
     )
-    rtl2 = facts.latest_outcome(facts.read_events(m), "rtl-design")["outputs"]
+    rtl2 = facts.latest_outcome(store.read_events(m), "rtl-design")["outputs"]
 
     # (b) minimal-edit / hash-invariance: untouched outputs' fingerprints unchanged;
     # the edited file's fingerprint DID change (proves the edit landed).
@@ -413,7 +414,7 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
     # is to find out whether the fix worked. (c) lint went stale under the same RTL edit and
     # has no artifact edge to the failure, so the same turn opens it too — a `task`, sorted
     # first, costing the re-verify nothing.
-    assert not facts.proof_valid(m, facts.read_events(m), "lint-cdc")  # lint IS stale
+    assert not facts.proof_valid(m, store.read_events(m), "lint-cdc")  # lint IS stale
     opened = []
     while len(opened) < 2:
         a = schedule.decide(m)
@@ -436,12 +437,12 @@ def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
     m = "round2b"
     _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)
-    spec1 = facts.latest_outcome(facts.read_events(m), "specification")["outputs"]
-    assert facts.proof_valid(m, facts.read_events(m), "specification")
+    spec1 = facts.latest_outcome(store.read_events(m), "specification")["outputs"]
+    assert facts.proof_valid(m, store.read_events(m), "specification")
 
     # a design.md prose tweak (hand-edit spec's own output) expires the proof.
     _mk(m, "Design/specification/design.md", "design v2 — one prose sentence added")
-    assert not facts.proof_valid(m, facts.read_events(m), "specification")
+    assert not facts.proof_valid(m, store.read_events(m), "specification")
 
     # forward re-dispatch with NO directive.
     a = schedule.decide(m)
@@ -468,7 +469,7 @@ def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
             }
         ],
     )
-    spec2 = facts.latest_outcome(facts.read_events(m), "specification")["outputs"]
+    spec2 = facts.latest_outcome(store.read_events(m), "specification")["outputs"]
 
     # BINDING: every untouched output byte-identical to the previous run.
     touched = "Design/specification/design.md"
@@ -491,7 +492,7 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
     _fail(m, "simulation", 1)
 
     # d1: original diagnosis blaming simulation-plan.
-    facts.append_event(
+    store.append_event(
         m,
         {
             "type": "diagnosis",
@@ -504,7 +505,7 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
         TS,
     )
     # d2: a new diagnosis supersedes d1, re-attributing to rtl-design.
-    facts.append_event(
+    store.append_event(
         m,
         {
             "type": "diagnosis",
@@ -518,7 +519,7 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
         TS,
     )
 
-    evs = facts.read_events(m)
+    evs = store.read_events(m)
     sim_out = facts.latest_outcome(evs, "simulation")
     # the old attribution goes inactive (superseded); only d2 is active.
     active = schedule._active_diagnoses(evs, "simulation", sim_out)
@@ -540,7 +541,7 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
 
 def _timing_owed(module):
     """Is timing-analysis still owed a fix — i.e. has its owner not been dispatched since?"""
-    evs = facts.read_events(module)
+    evs = store.read_events(module)
     assert schedule._latest_fail(evs, "timing-analysis") is not None
     fails = schedule._failures(module, evs)
     return any(f["rule"] == "timing-analysis" for f in schedule.owed(evs, fails))
@@ -566,7 +567,7 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
     # _syn.v not yet regenerated, so timing's OWN inputs have not moved. The complaint stays
     # open: an upstream rebuild two hops away does not retract what timing reported.
     _valid(m, "rtl-design", 2)
-    assert not facts.proof_valid(m, facts.read_events(m), "synthesis")
+    assert not facts.proof_valid(m, store.read_events(m), "synthesis")
     assert _timing_owed(m)
 
     # the round rebuilds the producer (synthesis) — not timing, never ESCALATE. lint-cdc goes
@@ -583,7 +584,7 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
     # synthesis has now had its turn, so timing is no longer owed anything and the forward
     # step re-verifies it.
     _valid(m, "synthesis", 2)
-    assert facts.proof_valid(m, facts.read_events(m), "synthesis")
+    assert facts.proof_valid(m, store.read_events(m), "synthesis")
     assert not _timing_owed(m)
 
     # timing re-verifies LAST.
@@ -708,14 +709,14 @@ def test_step5_lintcdc_dispatchable_and_waiver_never_cached(tmp_path, monkeypatc
     _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)  # writes the SGDC seed constraints/top.sgdc
     _valid(m, "rtl-design", 1)
-    evs = facts.read_events(m)
+    evs = store.read_events(m)
     assert facts.rule_available(m, evs, "lint-cdc")  # dispatchable cold (no cache yet)
 
     # a prior lint run's warm cache seed exists, then is deleted -> still dispatchable.
     _mk(m, "Design/lint-cdc/scripts/constraints.sgdc", "cached-sgdc-v1")
     assert facts.rule_available(m, evs, "lint-cdc")
-    (facts.module_root(m) / "Design/lint-cdc/scripts/constraints.sgdc").unlink()
-    assert facts.rule_available(m, facts.read_events(m), "lint-cdc")
+    (store.module_root(m) / "Design/lint-cdc/scripts/constraints.sgdc").unlink()
+    assert facts.rule_available(m, store.read_events(m), "lint-cdc")
 
 
 # ── The four dispatch shapes (dispatch.json) ─────────────────────────────────────
@@ -723,7 +724,7 @@ def test_step5_lintcdc_dispatchable_and_waiver_never_cached(tmp_path, monkeypatc
 
 def _dispatch_doc(module, workdir):
     return json.loads(
-        (facts.module_root(module) / workdir / "dispatch.json").read_text()
+        (store.module_root(module) / workdir / "dispatch.json").read_text()
     )
 
 
@@ -736,11 +737,11 @@ def test_forward_redispatch_scope_names_the_drifted_inputs(tmp_path, monkeypatch
     _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)
     _valid(m, "rtl-design", 1)  # records design.md/child/manifest at r1 fingerprints
-    assert facts.proof_valid(m, facts.read_events(m), "rtl-design")
+    assert facts.proof_valid(m, store.read_events(m), "rtl-design")
 
     _valid(m, "specification", 2, tag="r2")  # spec re-runs, re-promoting those files
     assert not facts.proof_valid(
-        m, facts.read_events(m), "rtl-design"
+        m, store.read_events(m), "rtl-design"
     )  # inputs drifted
 
     d = kernel.cmd_dispatch(m, "rtl-design", None)
@@ -774,18 +775,18 @@ def test_reverify_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
     _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)
     oref = rules.RULES["specification"].oracle[0]
-    facts.append_event(
+    store.append_event(
         m, {"type": "reopen", "pin_ref": oref, "reason": "re-examine"}, TS
     )
-    assert not facts.proof_valid(m, facts.read_events(m), "specification")
-    assert facts.stale_inputs(m, facts.read_events(m), "specification") == []
+    assert not facts.proof_valid(m, store.read_events(m), "specification")
+    assert facts.stale_inputs(m, store.read_events(m), "specification") == []
 
     d = kernel.cmd_dispatch(m, "specification", None)
     assert d["ok"], d
     assert list(_dispatch_doc(m, d["workdir"])) == ["inputs"]
     # carry_self brought the prior round's products in: that is the disk fact the skill
     # branches on, and it is what makes this shape distinguishable from a first delivery.
-    assert (facts.module_root(m) / d["workdir"] / "design.md").is_file()
+    assert (store.module_root(m) / d["workdir"] / "design.md").is_file()
 
 
 def test_repair_dispatch_names_what_named_the_owner_and_the_human_reasoning(
@@ -825,7 +826,7 @@ def test_repair_dispatch_names_what_named_the_owner_and_the_human_reasoning(
     assert doc["reasons"] == ["the area target's unit is wrong, not the RTL"]
     ev = next(
         e
-        for e in reversed(facts.read_events(m))
+        for e in reversed(store.read_events(m))
         if e["type"] == "dispatch" and e["rule"] == "specification"
     )
     assert ev["caused_by"] == [["synthesis", 1]]
@@ -844,4 +845,4 @@ def test_repair_dispatch_rejects_an_unresolvable_channel(tmp_path, monkeypatch):
     r = kernel.cmd_dispatch(m, "rtl-design", ["diag-nope"], None)
     assert not r["ok"] and "unknown diagnosis ref" in r["error"]
     # neither attempt allocated a run
-    assert facts.runs_of(facts.read_events(m), "rtl-design") == 0
+    assert facts.runs_of(store.read_events(m), "rtl-design") == 0

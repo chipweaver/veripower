@@ -6,7 +6,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "framework" / "scripts"))
-import facts  # noqa: E402
 import rules  # noqa: E402
 import store  # noqa: E402
 
@@ -19,7 +18,7 @@ def test_inject_upstream_keys_are_producer_stage_roots(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     wd = tmp_path / "m" / "Design" / "synthesis" / "runs" / "1"
     wd.mkdir(parents=True)
-    store.write_dispatch(facts.module_root("m"), "synthesis", wd)
+    store.write_dispatch(store.module_root("m"), "synthesis", wd)
     table = _read(wd)["inputs"]
     base = str((tmp_path / "m").resolve())
     assert table["rtl"] == base + "/Design/rtl-design"
@@ -36,7 +35,7 @@ def test_every_rule_reaches_the_intent_tree(tmp_path, monkeypatch):
     for rule, r in rules.RULES.items():
         wd = tmp_path / "m" / Path(*r.workdir_root) / "runs" / "1"
         wd.mkdir(parents=True, exist_ok=True)
-        store.write_dispatch(facts.module_root("m"), rule, wd)
+        store.write_dispatch(store.module_root("m"), rule, wd)
         assert _read(wd)["inputs"]["intent"] == intent, rule
 
 
@@ -49,7 +48,7 @@ def test_inject_pipeline_input_resolves_to_the_container_not_the_module_root(
     monkeypatch.chdir(tmp_path)
     wd = tmp_path / "m" / "Design" / "specification" / "runs" / "1"
     wd.mkdir(parents=True)
-    store.write_dispatch(facts.module_root("m"), "specification", wd)
+    store.write_dispatch(store.module_root("m"), "specification", wd)
     table = _read(wd)["inputs"]
     assert table["intent"] == str((tmp_path / "m" / "intent").resolve())
     assert table["intent"] != str((tmp_path / "m").resolve())
@@ -60,7 +59,7 @@ def test_inject_sim_run_key_and_guard(tmp_path, monkeypatch):
     wd = tmp_path / "m" / "Verification" / "simulation-triage" / "runs" / "1"
     wd.mkdir(parents=True)
     store.write_dispatch(
-        facts.module_root("m"), "simulation-triage", wd, params={"sim_run": "3"}
+        store.module_root("m"), "simulation-triage", wd, params={"sim_run": "3"}
     )
     sim_root = str((tmp_path / "m" / "Verification" / "simulation").resolve())
     assert _read(wd)["inputs"]["sim_run"] == sim_root + "/runs/3"
@@ -73,7 +72,7 @@ def test_narrowing_keys_absent_when_empty(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     wd = tmp_path / "m" / "Design" / "synthesis" / "runs" / "1"
     wd.mkdir(parents=True)
-    store.write_dispatch(facts.module_root("m"), "synthesis", wd, None, [], [], [])
+    store.write_dispatch(store.module_root("m"), "synthesis", wd, None, [], [], [])
     assert list(_read(wd)) == ["inputs"]
 
 
@@ -82,7 +81,7 @@ def test_narrowing_keys_written_when_present(tmp_path, monkeypatch):
     wd = tmp_path / "m" / "Design" / "rtl-design" / "runs" / "2"
     wd.mkdir(parents=True)
     store.write_dispatch(
-        facts.module_root("m"),
+        store.module_root("m"),
         "rtl-design",
         wd,
         None,

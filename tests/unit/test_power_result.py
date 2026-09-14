@@ -810,7 +810,7 @@ def test_declared_fail_writes_the_envelope_without_touching_the_reports(tmp_path
 def test_declared_fail_validates_against_the_stage_schema(tmp_path):
     # The defect this whole change exists for: an envelope the schema rejects reaps as
     # `blocked`, so the fix_owner the agent already worked out never reaches the kernel.
-    from framework.scripts import facts
+    from framework.scripts import store
 
     _, wd = _declared(
         tmp_path,
@@ -818,7 +818,7 @@ def test_declared_fail_validates_against_the_stage_schema(tmp_path):
         fix_owner="simulation",
     )
     env = _json.loads((wd / "result.json").read_text())
-    assert facts.validate_result("power-analysis", env) is None
+    assert store.validate_result("power-analysis", env) is None
 
 
 def test_declared_fail_omits_fix_owner_when_the_caller_cannot_name_one(tmp_path):

@@ -56,7 +56,7 @@ def test_stage_has_result_schema(stage: str) -> None:
     p = PLUGIN_ROOT / "skills" / stage / "references" / "result.schema.json"
     assert p.is_file(), (
         f"FORWARD_PRIORITY lists {stage!r} but {p.relative_to(PLUGIN_ROOT)} "
-        f"is missing. facts.validate_result cannot resolve a schema at reap time."
+        f"is missing. store.validate_result cannot resolve a schema at reap time."
     )
 
 

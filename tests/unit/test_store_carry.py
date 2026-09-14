@@ -4,7 +4,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "framework" / "scripts"))
-import facts  # noqa: E402
 import store  # noqa: E402
 
 
@@ -31,7 +30,7 @@ def test_author_carry_brings_products_drops_review_and_internals(tmp_path, monke
     (c / "runs" / "1" / "junk").write_text("j")  # excluded (runs/)
     wd = c / "runs" / "2"
     wd.mkdir()
-    store.carry_self(facts.module_root("m"), "specification", wd)
+    store.carry_self(store.module_root("m"), "specification", wd)
     assert (wd / "design.md").read_text() == "D"
     assert (wd / "manifest.json").exists()
     assert (wd / "constraints" / "top.sdc").exists()
@@ -51,7 +50,7 @@ def test_carry_is_copy_not_hardlink_and_writable(tmp_path, monkeypatch):
     src.write_text("module top; endmodule")
     wd = c / "runs" / "1"
     wd.mkdir(parents=True)
-    store.carry_self(facts.module_root("m"), "rtl-design", wd)
+    store.carry_self(store.module_root("m"), "rtl-design", wd)
     dst = wd / "top.v"
     assert os.stat(dst).st_ino != os.stat(src).st_ino  # copy, not hardlink
     assert os.access(dst, os.W_OK)  # 0644 writable
@@ -70,7 +69,7 @@ def test_lint_carry_only_the_two_scripts(tmp_path, monkeypatch):
     (c / "lint-report.txt").write_text("r")  # NOT in carry globs
     wd = c / "runs" / "1"
     wd.mkdir(parents=True)
-    store.carry_self(facts.module_root("m"), "lint-cdc", wd)
+    store.carry_self(store.module_root("m"), "lint-cdc", wd)
     assert (wd / "scripts" / "waiver.tcl").exists()
     assert (wd / "scripts" / "local.sgdc").exists()
     assert not (wd / "scripts" / "constraints.sgdc").exists()
@@ -83,7 +82,7 @@ def test_first_run_no_canonical_is_noop(tmp_path, monkeypatch):
     wd = tmp_path / "m" / "Design" / "specification" / "runs" / "1"
     wd.mkdir(parents=True)
     store.carry_self(
-        facts.module_root("m"), "specification", wd
+        store.module_root("m"), "specification", wd
     )  # canonical parent has only runs/
     assert list(wd.iterdir()) == []
 
@@ -94,7 +93,7 @@ def test_transformer_carry_is_noop(tmp_path, monkeypatch):
     (c / "timing-report.txt").write_text("r")
     wd = c / "runs" / "1"
     wd.mkdir(parents=True)
-    store.carry_self(facts.module_root("m"), "timing-analysis", wd)  # carry=()
+    store.carry_self(store.module_root("m"), "timing-analysis", wd)  # carry=()
     assert list(wd.iterdir()) == []
 
 
@@ -109,7 +108,7 @@ def test_synthesis_carry_only_the_hand_edited_sdc(tmp_path, monkeypatch):
     (c / "reports" / "qor.rpt").write_text("q")  # regenerated, NOT in carry globs
     wd = c / "runs" / "2"
     wd.mkdir(parents=True)
-    store.carry_self(facts.module_root("m"), "synthesis", wd)
+    store.carry_self(store.module_root("m"), "synthesis", wd)
     assert (wd / "constraints.local.sdc").read_text() == "set_false_path -from x"
     assert [p.name for p in wd.iterdir()] == ["constraints.local.sdc"]
 
@@ -120,7 +119,7 @@ def test_no_canonical_stage_dir_is_noop(tmp_path, monkeypatch):
     wd = tmp_path / "wd"
     wd.mkdir()
     store.carry_self(
-        facts.module_root("m"), "specification", wd
+        store.module_root("m"), "specification", wd
     )  # drives `not stage_dir.is_dir()` early return
     assert list(wd.iterdir()) == []
 
@@ -134,7 +133,7 @@ def test_symlink_under_canonical_is_skipped(tmp_path, monkeypatch):
     wd = c / "runs" / "1"
     wd.mkdir(parents=True)
     store.carry_self(
-        facts.module_root("m"), "specification", wd
+        store.module_root("m"), "specification", wd
     )  # drives the `src.is_symlink()` skip
     assert not (wd / "linked.md").exists()
 
@@ -152,7 +151,7 @@ def test_rtl_carry_starstar_includes_nested_and_sidecar_files(tmp_path, monkeypa
     (c / "semantic-review" / "leaf.md").write_text("review")  # no_carry
     wd = c / "runs" / "1"
     wd.mkdir(parents=True)
-    store.carry_self(facts.module_root("m"), "rtl-design", wd)
+    store.carry_self(store.module_root("m"), "rtl-design", wd)
     assert (wd / "rtl" / "core.sv").exists()
     assert (wd / "rtl-files.json").exists()
     assert (wd / "constraint-annotations.json").exists()

@@ -1,9 +1,4 @@
-"""VeriPower rule registry — the single SSoT for what the kernel schedules.
-
-One Rule = one kernel-scheduled unit. Artifact-level input/output selectors are
-module-relative canonical-path globs. The dependency graph is DERIVED from these
-(producer_of): no separate stage-view DAG is maintained. Dependency-light leaf —
-import the bare way (`import rules`)."""
+"""Stage declarations and the producer graph derived from their artifact inputs."""
 
 from __future__ import annotations
 
@@ -25,10 +20,7 @@ class Rule:
         None  # proposed-oracle content selector (workdir-root-relative glob)
     )
     params: tuple[str, ...] = ()
-    # The diagnostic to dispatch when THIS rule fails and names nobody. A rule name rather
-    # than a scheduler branch: which stage has an analyzer behind it is a registry fact, and
-    # the one place that used to know it (`schedule._disposition`) carried the only rule-name
-    # literal in the scheduler.
+    # Diagnostic rule used when a failure names no repair owner.
     triage: str | None = None
     carry: tuple[
         str, ...
@@ -80,14 +72,10 @@ RULES: dict[str, Rule] = {
             "intent": ("intent",),
             "design": ("Design/specification/design.md",),
             "manifest": ("Design/specification/manifest.json",),
-            # Read by the child sub-Tasks (create_generated_clock, set_case_analysis and
-            # quasi_static annotations), not by any
-            # script in this stage.
+            # Consumed by authors for generated clocks, case analysis and quasi-static annotations.
             "clocks": ("Design/specification/clocks.json",),
             "top_io": ("Design/specification/top-io.json",),
-            # The engineer's requirements, one row each with the judge that establishes it.
-            # The child authors read the rows that bear on their RTL; the intent reviewers
-            # read the rows judged by this stage.
+            # Requirement rows name the stage that judges them.
             "requirements": ("Design/specification/requirements.json",),
         },
         proof="rtl-design",
@@ -108,9 +96,7 @@ RULES: dict[str, Rule] = {
             # constraint scripts, in the child's real module names.
             "annotations": ("Design/rtl-design/constraint-annotations.json",),
             "sgdc_seed": ("Design/specification/constraints/*.sgdc",),
-            # TOP comes from manifest.module. The specification stage root is already
-            # reachable through the constraints key, but only the declared globs are
-            # fingerprinted — without this edge a module rename would not invalidate.
+            # Track manifest.module so a module rename invalidates this stage.
             "manifest": ("Design/specification/manifest.json",),
             "requirements": ("Design/specification/requirements.json",),
         },
@@ -130,9 +116,7 @@ RULES: dict[str, Rule] = {
             # constraint scripts, in the child's real module names.
             "annotations": ("Design/rtl-design/constraint-annotations.json",),
             "sdc": ("Design/specification/constraints/*.sdc",),
-            # TOP comes from manifest.module. The specification stage root is already
-            # reachable through the constraints key, but only the declared globs are
-            # fingerprinted — without this edge a module rename would not invalidate.
+            # Track manifest.module so a module rename invalidates this stage.
             "manifest": ("Design/specification/manifest.json",),
             "requirements": ("Design/specification/requirements.json",),
         },
@@ -147,9 +131,7 @@ RULES: dict[str, Rule] = {
         workdir_root=("Design", "timing-analysis"),
         inputs={
             "intent": ("intent",),
-            # One key, because both resolve to the same producer stage root and the
-            # run reads them as a pair: PT links the netlist and constrains it with
-            # the SDC synthesis exported beside it.
+            # PrimeTime consumes the netlist and SDC from the same synthesis run.
             "netlist": ("Design/synthesis/out",),
             "requirements": ("Design/specification/requirements.json",),
         },
@@ -228,11 +210,7 @@ RULES: dict[str, Rule] = {
             "design": ("Design/specification/design.md",),
             "rtl": ("Design/rtl-design/src", "Design/rtl-design/rtl-files.json"),
             "plan": ("Verification/simulation-plan/verification-plan.md",),
-            # The failed run itself — the waveform kept at its run-dir root, the failing
-            # case list, the logs. Declaring what it already reads is what puts simulation
-            # in this rule's input closure, so the antichain holds the regression back
-            # while the analysis is open instead of spending it on the run being analysed.
-            # Availability is unaffected: a rule with no proof is always dispatchable.
+            # The simulation input orders regression work behind its active diagnosis.
             "sim": ("Verification/simulation/case-results-summary.md",),
             "requirements": ("Design/specification/requirements.json",),
         },
@@ -253,24 +231,13 @@ FORWARD_PRIORITY: list[str] = [
     "power-analysis",
 ]
 
-# The intent tree: the engineer's container at the module root, holding the intent document
-# and whatever they delivered with it that the document names as authoritative (a reference
-# model, a register map, a standard). It has no producer — a human puts it there — so every
-# rule binds it as a PIPELINE_INPUT, whose key resolves to the container itself and whose
-# version is one merkle over all of it. A row pointing at a file inside is read there by
-# whoever judges it.
+# The engineer-owned intent tree is an external input to every proof.
 PIPELINE_INPUTS: tuple[str, ...] = ("intent",)
 
-# The entry document inside the container. `input_available` requires THIS rather than the
-# container, so an empty intent/ blocks at the kernel instead of dispatching a stage that
-# would find no document and land blocked.
+# Specification requires this document inside the intent tree.
 INTENT_DOC: str = "intent/brainstorm.md"
 
-# Sequencing edges that are NOT data dependencies: synthesis does not consume lint's
-# reports, but a lint failure changes the RTL under it, so letting the cheap detector speak
-# first avoids spending the expensive stage on a round that is about to be redone. Read by
-# exactly one place — schedule._held_by_advisory — and never by freshness, input
-# availability, or failure attribution, which are artifact edges only.
+# Advisory ordering applies to scheduled or running predecessors, independently of artifact edges.
 ADVISORY_ORDER: dict[str, tuple[str, ...]] = {
     "synthesis": ("lint-cdc",),
     "power-analysis": ("timing-analysis",),
@@ -278,12 +245,7 @@ ADVISORY_ORDER: dict[str, tuple[str, ...]] = {
 
 
 def producer_of(artifact_relpath: str) -> str | None:
-    """The rule that produces `artifact_relpath` (module-relative canonical path), or None.
-
-    The stage root that contains the path IS the producer — workdir_roots are disjoint, so
-    this is exact. It replaces a match against declared output globs, which could only ever
-    be a lower bound on what a stage actually promotes (kernel._fingerprint_outputs records
-    the real set)."""
+    """Find the rule whose canonical directory contains the artifact path."""
     parts = tuple(artifact_relpath.split("/"))
     for rule in RULES.values():
         r = rule.workdir_root
@@ -305,10 +267,7 @@ def input_producers(rule_name: str) -> set[str]:
 
 
 def input_closure(rule_name: str) -> set[str]:
-    """TRANSITIVE closure of artifact-edge producers (输入闭包). Excludes
-    ADVISORY_ORDER by construction. Consumed by failure-freshness (schedule) and by
-    fix_owner legality (kernel diagnose: fix_owner must produce an artifact inside the
-    failed proof's input closure)."""
+    """Return transitive artifact producers, excluding advisory ordering edges."""
     seen: set[str] = set()
     frontier = input_producers(rule_name)
     while frontier:

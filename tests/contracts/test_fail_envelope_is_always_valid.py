@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from framework.scripts import facts
+from framework.scripts import store
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -64,7 +64,7 @@ def test_empty_reason_never_reaches_disk_as_a_fail_envelope(stage, tmp_path):
     env = json.loads(rj.read_text())
     if env.get("status") != "fail":
         return  # took the gate path instead; not this test's subject
-    err = facts.validate_result(stage, env)
+    err = store.validate_result(stage, env)
     assert err is None, (
         f"{stage}: finalize wrote a status=fail envelope its own schema rejects ({err}). "
         f"At reap that is a blocked outcome, not a routable fail, and the round is lost."

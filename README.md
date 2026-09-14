@@ -149,4 +149,4 @@ Paper forthcoming.
 ```
 -->
 
-**Version:** v0.2.3. [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).
+**Version:** v0.2.4. [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).

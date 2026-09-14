@@ -258,9 +258,9 @@ def test_golden_lean_against_a_real_run(tmp_path):
 
 
 def test_golden_is_schema_valid(tmp_path):
-    # Reuse framework.scripts.facts.validate_result (Draft202012Validator + Registry)
+    # Reuse framework.scripts.store.validate_result (Draft202012Validator + Registry)
     # on the produced result.json dict.
-    from framework.scripts import facts
+    from framework.scripts import store
 
     wd = tmp_path / "asic" / "dut_top" / "Design" / "lint-cdc"
     shutil.copytree(FIX, wd)
@@ -269,7 +269,7 @@ def test_golden_is_schema_valid(tmp_path):
     )  # the pass path is what this guards, so close the real findings
     rb.run(wd, [], [])
     result = json.loads((wd / "result.json").read_text())
-    err = facts.validate_result("lint-cdc", result)
+    err = store.validate_result("lint-cdc", result)
     assert err is None, f"golden lint-cdc result.json is not schema-valid: {err}"
     assert result["status"] == "pass"
 
@@ -277,7 +277,7 @@ def test_golden_is_schema_valid(tmp_path):
 def test_fail_envelope_is_schema_valid(tmp_path):
     # The FAIL path must also be schema-valid (the result schema requires fail_reason
     # on fail). Guard the fail shape explicitly.
-    from framework.scripts import facts
+    from framework.scripts import store
 
     wd = tmp_path / "asic" / "dut_top" / "Design" / "lint-cdc"
     shutil.copytree(FIX, wd)
@@ -302,7 +302,7 @@ def test_fail_envelope_is_schema_valid(tmp_path):
     )
     assert rb.run(wd, [], []) == 0
     result = json.loads((wd / "result.json").read_text())
-    err = facts.validate_result("lint-cdc", result)
+    err = store.validate_result("lint-cdc", result)
     assert err is None, f"fail-path lint-cdc result.json is not schema-valid: {err}"
     assert result["status"] == "fail"
 

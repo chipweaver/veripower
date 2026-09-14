@@ -1,12 +1,4 @@
-"""VeriPower filesystem artifact-lifecycle helpers.
-
-Split out so the kernel stays focused on state mutations. No I/O beyond the
-promote operation itself. Imports only stdlib + rules (no
-jsonschema/referencing deps).
-
-Imported by kernel.py, which passes the module root in: where a module's tree sits is
-facts.module_root's single call, and this file never re-derives it.
-"""
+"""Module storage: event I/O, artifact validation, input protection and publication."""
 
 from __future__ import annotations
 
@@ -15,10 +7,134 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
+
+import jsonschema
+from referencing import Registry, Resource
+from referencing.jsonschema import DRAFT202012
 
 sys.path.insert(0, str(Path(__file__).parent))
 import rules  # noqa: E402
+
+_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_EVENT_SCHEMA_DIR = _PLUGIN_ROOT / "framework" / "references" / "schemas" / "events"
+
+
+def module_root(module: str) -> Path:
+    """Use the module directory path supplied by the caller."""
+    return Path(module)
+
+
+def events_path(module: str) -> Path:
+    return module_root(module) / "events.jsonl"
+
+
+def read_events(module: str) -> list[dict]:
+    p = events_path(module)
+    if not p.exists():
+        return []
+    out = []
+    for i, line in enumerate(p.read_text().splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError as e:
+            sys.exit(f"read_events: corrupt line {i} of {p}: {e.msg}")
+    return out
+
+
+def _event_schema(etype: str) -> dict:
+    path = _EVENT_SCHEMA_DIR / f"{etype}.schema.json"
+    if not path.exists():
+        sys.exit(f"append_event: no schema for event type {etype!r}")
+    return json.loads(path.read_text())
+
+
+_ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
+_ENVELOPE_SCHEMA_PATH = (
+    _PLUGIN_ROOT / "framework" / "references" / "schemas" / "envelope.schema.json"
+)
+
+
+def _envelope_registry() -> Registry:
+    """Register the shared envelope for event and stage schema references."""
+    envelope = Resource.from_contents(
+        json.loads(_ENVELOPE_SCHEMA_PATH.read_text()),
+        default_specification=DRAFT202012,
+    )
+    return Registry().with_resource(_ENVELOPE_URI, envelope)
+
+
+def freeze_inputs(module: str) -> None:
+    """Remove owner-write permission from the intent tree at each CLI invocation.
+
+    Preserve other permission bits and leave symlink targets unchanged."""
+    for key in rules.PIPELINE_INPUTS:
+        root = module_root(module) / key
+        if not root.exists():
+            continue
+        for q in (root, *root.rglob("*")):
+            if (
+                q.is_symlink()
+            ):  # chmod follows a link; its target may be outside the tree
+                continue
+            q.chmod(q.stat().st_mode & ~0o200)
+
+
+def append_event(module: str, event: dict, ts: str) -> None:
+    etype = event.get("type")
+    record = {"ts": ts, **event}  # ts first
+    try:
+        jsonschema.Draft202012Validator(
+            _event_schema(etype), registry=_envelope_registry()
+        ).validate(record)
+    except jsonschema.ValidationError as e:
+        sys.exit(f"append_event: {etype} schema violation: {e.message}")
+    read_events(module)
+    p = events_path(module)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    previous = p.read_bytes() if p.exists() else b""
+    separator = b"\n" if previous and not previous.endswith(b"\n") else b""
+    record_bytes = json.dumps(record, ensure_ascii=False).encode() + b"\n"
+    payload = separator + record_bytes
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o666)
+    try:
+        if os.write(fd, payload) != len(payload):
+            raise OSError(f"append_event: incomplete write to {p}")
+    finally:
+        os.close(fd)
+
+
+def _stage_result_schema_path(rule_name: str) -> Path:
+    """The rule's own result.schema.json, resolved from its skill name
+    (`veripower:<dir>` -> skills/<dir>/references/result.schema.json)."""
+    skill_dir = rules.RULES[rule_name].skill.split(":", 1)[1]
+    return _PLUGIN_ROOT / "skills" / skill_dir / "references" / "result.schema.json"
+
+
+def validate_result(rule_name: str, result: dict) -> str | None:
+    """Return the first stage-schema error, or None for a valid result.
+
+    Schema-loading errors are reported as validation errors."""
+    try:
+        stage_schema = json.loads(_stage_result_schema_path(rule_name).read_text())
+        validator = jsonschema.Draft202012Validator(
+            stage_schema, registry=_envelope_registry()
+        )
+        errors = sorted(
+            validator.iter_errors(result), key=lambda e: list(e.absolute_path)
+        )
+    except Exception as e:
+        return f"schema validation internal error: {type(e).__name__}: {e}"
+    if not errors:
+        return None
+    err = errors[0]
+    path = "$" + "".join(
+        f"[{p!r}]" if isinstance(p, int) else f".{p}" for p in err.absolute_path
+    )
+    return f"schema violation at {path}: {err.message}"
 
 
 def _result_path(root: Path, rule: str) -> Path:
@@ -64,26 +180,11 @@ def write_dispatch(
     caused_by=None,
     reasons=None,
 ) -> None:
-    """dispatch-time dual of promote: write <workdir>/dispatch.json, the one thing the
-    kernel tells a run about itself. Four keys, and a key is written only when it carries
-    something:
+    """Write absolute input locations and supplied rework context to dispatch.json.
 
-    - `inputs` = {key: location (absolute)} — always present. A produced key resolves to
-      exactly one producer's canonical stage root; the consumer keeps the producer-output
-      subpath literal (out/, tb/uvm/, constraints/). A PIPELINE_INPUT (external, no producer)
-      resolves to its own selector path, so what the stage is handed is exactly what its
-      proof records — the module root around it, pipeline directories and anything an agent
-      wrote there included, is neither reachable through the table nor part of any version.
-      A rule declaring 'sim_run' gets an extra 'sim_run' key = <simulation-stage>/runs/<N>
-      (triage).
-    - `scope` — module-relative paths, or <file>:<line> anchors, that narrow this round.
-    - `caused_by` — module-relative record of whoever named this owner: the per-run
-      result.json of each failure whose own envelope did, or the evidence of the diagnoses
-      that did instead.
-    - `reasons` — verbatim human diagnosis reasoning.
-
-    The three narrowing keys are derived by the caller (cmd_dispatch); this function owns
-    only the file's shape."""
+    Stage inputs name their producer's canonical directory; external inputs name
+    their own root. The sim_run parameter selects a historical simulation run.
+    Scope, source records and human reasons are supplied by the kernel."""
     r = rules.RULES[rule]
     table: dict[str, str] = {}
     for key, globs in r.inputs.items():
@@ -114,21 +215,15 @@ def write_dispatch(
 _CARRY_EXCLUDE = (
     "result.json",
     "runs",
-    ".promote-tmp",
     "dispatch.json",
 )
 
 
 def carry_self(root: Path, rule: str, workdir) -> None:
-    """dispatch-time: copy the author's own previous round into the fresh workdir so it
-    edits incrementally. Source = the canonical stage root (the GC'd clean product set,
-    parent of runs/), NOT runs/N-1. copy2 (NOT hardlink — canonical shares inodes with the
-    producing run; a hardlink would let the author corrupt both), 0644 writable.
+    """Copy the rule's selected canonical products into a fresh run directory.
 
-    Copies files whose stage-root-relative path matches a Rule.carry glob, minus Rule.no_carry
-    (per-round review records), minus the framework-wide _CARRY_EXCLUDE top-level entries.
-    No-op when Rule.carry is empty (pure transformers) or canonical does not exist (first run).
-    Fresh empty workdir per dispatch → carry runs exactly once; session-resume does not re-dispatch."""
+    Use writable copies so edits leave the source run unchanged. Exclude framework
+    files and the rule's per-round review records."""
     r = rules.RULES[rule]
     if not r.carry:
         return
@@ -154,22 +249,13 @@ def carry_self(root: Path, rule: str, workdir) -> None:
 
 
 def _cp_al(src: Path, dst: Path) -> None:
-    """Tree hardlink (cp -al equivalent). Recreates dir structure with hardlinks.
-
-    Symlinks (whether to files or directories) are hardlinked at the symlink
-    level — i.e., the destination becomes a second hardlink to the same
-    symlink inode. This prevents unintended traversal outside the source
-    tree (a symlink-to-directory pointing to /etc would otherwise be
-    recursed into). The symlink itself is preserved as-is.
-    """
+    """Hardlink a directory tree, preserving symlink inodes without following them."""
     if dst.exists():
         raise FileExistsError(f"_cp_al dst exists: {dst}")
     dst.mkdir()
     for entry in src.iterdir():
         if entry.is_symlink():
-            # Hardlink the symlink inode itself (follow_symlinks=False) so the
-            # destination is a new hardlink to the same symlink — preserving it
-            # as-is rather than resolving and traversing the target directory.
+            # Preserve the symlink inode without traversing its target.
             os.link(str(entry), str(dst / entry.name), follow_symlinks=False)
         elif entry.is_dir():
             _cp_al(entry, dst / entry.name)
@@ -177,92 +263,61 @@ def _cp_al(src: Path, dst: Path) -> None:
             os.link(str(entry), str(dst / entry.name))
 
 
+def _artifact_roots(artifacts: list[dict]) -> list[Path]:
+    """Select each declared file once, including files covered by a directory."""
+    roots: list[Path] = []
+    for rel in sorted(
+        {Path(a["path"]) for a in artifacts}, key=lambda p: (len(p.parts), str(p))
+    ):
+        if rel == Path("result.json"):
+            continue
+        if not _is_safe_rel(str(rel)):
+            raise ValueError(f"artifact path escapes run dir: {rel}")
+        if not rel.parts or rel.parts[0] == "runs":
+            raise ValueError(f"artifact path conflicts with run storage: {rel}")
+        if not any(parent in rel.parents for parent in roots):
+            roots.append(rel)
+    return roots
+
+
 def promote(root: Path, rule: str, run_n: int) -> None:
-    """Atomic per-entry merge promote.
+    """Publish a prepared view; restore the previous view if a move fails.
 
-    1. Build new canonical view in .promote-tmp/ (all hardlinks)
-    2. Per-entry merge: for each entry in .promote-tmp/, rmtree/unlink
-       canonical's same-name target if exists, then os.rename into place
-    3. Best-effort delete old canonical entries not in new view
-
-    Step 1 failure (any hardlink/mkdir error) → .promote-tmp cleared,
-    canonical fully intact. Step 2 partial failure may leave canonical in
-    a partial state; the next reap that promotes this stage re-runs
-    promote(), which clears any stale .promote-tmp/ before starting and
-    rebuilds from scratch — promote is idempotent.
+    Run directories retain the source artifacts. Interrupted process termination
+    can leave a staging directory; an explicit reap rebuilds the requested view.
     """
-    stage_dir = _result_path(root, rule).parent
+    stage_dir = _result_path(root, rule).parent.resolve()
     run_dir = stage_dir / "runs" / str(run_n)
     rj_src = run_dir / "result.json"
-    if not rj_src.exists():
-        raise FileNotFoundError(f"run result.json missing: {rj_src}")
-    artifacts = json.loads(rj_src.read_text()).get("artifacts", [])
-
-    tmp = stage_dir / ".promote-tmp"
-    if tmp.exists():
-        shutil.rmtree(tmp)
-    tmp.mkdir()
-
+    artifacts = _artifact_roots(json.loads(rj_src.read_text()).get("artifacts", []))
+    temporary = Path(tempfile.mkdtemp(prefix=".promote-", dir=stage_dir))
+    ready, previous = temporary / "ready", temporary / "previous"
+    moved, published = [], []
     try:
-        # Step 1: build new canonical view in .promote-tmp/
-        os.link(str(rj_src), str(tmp / "result.json"))
-        for art in artifacts:
-            # result.json is already linked above; a producer that self-lists it
-            # in artifacts[] would re-link into the same path → FileExistsError.
-            # The envelope schema rejects self-listing, but keep the primitive safe.
-            if art["path"] == "result.json":
-                continue
-            # Same two-layer pattern as self-listing: the envelope schema rejects
-            # `..`/absolute paths at validate_result, but keep the primitive safe
-            # so a bypassed-validation producer can never hardlink outside runs/<N>/.
-            if not _is_safe_rel(art["path"]):
-                raise ValueError(f"artifact path escapes run dir: {art['path']}")
-            src = run_dir / art["path"]
-            if not src.exists():
-                raise FileNotFoundError(f"artifact missing: {src}")
-            dst = tmp / art["path"]
+        ready.mkdir()
+        previous.mkdir()
+        os.link(rj_src, ready / "result.json")
+        for rel in artifacts:
+            src, dst = run_dir / rel, ready / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
             if not src.is_symlink() and src.is_dir():
                 _cp_al(src, dst)
             else:
-                # Regular file OR symlink (to file or dir): hardlink at inode level.
-                # For symlinks, follow_symlinks=False preserves the symlink as-is.
-                os.link(
-                    str(src),
-                    str(dst),
-                    follow_symlinks=False if src.is_symlink() else True,
-                )
+                os.link(src, dst, follow_symlinks=False)
 
-        # Step 2: per-entry merge — handle non-empty target dirs (POSIX rename
-        # ENOTEMPTY guard). For each entry in .promote-tmp/, rmtree/unlink
-        # canonical target if exists, then rename .promote-tmp/X to canonical/X.
-        new_canonical_names = {entry.name for entry in tmp.iterdir()}
-        for entry in list(tmp.iterdir()):
-            target = stage_dir / entry.name
-            if target.exists():
-                if target.is_dir():
-                    shutil.rmtree(target)
-                else:
-                    target.unlink()
-            os.rename(str(entry), str(target))
-        tmp.rmdir()
-
-        # Step 3: best-effort delete old canonical entries not in new view
         for entry in list(stage_dir.iterdir()):
-            if entry.name in ("runs", ".promote-tmp"):
+            if entry.name == "runs" or entry == temporary:
                 continue
-            if entry.name in new_canonical_names:
-                continue  # part of new view, keep
-            try:
-                if entry.is_dir():
-                    shutil.rmtree(entry)
-                else:
-                    entry.unlink()
-            except OSError:
-                pass  # best-effort
-
-    except Exception:
-        # Step 1 failure rolls back fully — canonical untouched
-        if tmp.exists():
-            shutil.rmtree(tmp)
+            os.rename(entry, previous / entry.name)
+            moved.append(entry.name)
+        for entry in list(ready.iterdir()):
+            os.rename(entry, stage_dir / entry.name)
+            published.append(entry.name)
+    except BaseException:
+        for name in reversed(published):
+            os.rename(stage_dir / name, ready / name)
+        for name in reversed(moved):
+            os.rename(previous / name, stage_dir / name)
+        shutil.rmtree(temporary)
         raise
+    shutil.rmtree(temporary)

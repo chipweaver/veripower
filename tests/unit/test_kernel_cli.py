@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "framework" / "scripts"))
 import facts  # noqa: E402
 import kernel  # noqa: E402
 import rules  # noqa: E402
+import store  # noqa: E402
 
 TS = "2026-07-10T00:00:00.000000Z"
 
@@ -46,7 +47,7 @@ def _run_json(tmp_path, *args):
 def _write_file(module, rel, content):
     """The kernel leaves the intent tree unwritable, and revising it is `chmod u+w` then edit,
     so take the write bit back on every existing ancestor first."""
-    root = facts.module_root(module)
+    root = store.module_root(module)
     p = root / rel
     intent = root / "intent"
     # The kernel leaves the intent tree unwritable; revising it is `chmod -R u+w intent`
@@ -250,7 +251,7 @@ def test_reap_schema_violation_blocks_and_skips_promote(tmp_path, monkeypatch):
     # result.json parses and carries status=pass, but violates the stage schema
     # (missing the required envelope fields stage/module/produced_at
     # and the pass-path stage_specific.top_module) -> the reap records
-    # a blocked outcome with reason schema_violation and promote is NOT called: a
+    # a blocked outcome with the validation reason and promote is NOT called: a
     # malformed-but-status-bearing result.json must never mint a valid proof.
     monkeypatch.chdir(tmp_path)
     _write_file("m", "intent/brainstorm.md", "b1")
@@ -265,13 +266,14 @@ def test_reap_schema_violation_blocks_and_skips_promote(tmp_path, monkeypatch):
     r = _run_json(
         tmp_path, "reap", "--module", "m", "--rule", "specification", "--run", "1"
     )
-    assert r == {"ok": True, "rule": "specification", "run": 1, "verdict": "blocked"}
-    outcome = facts.read_events("m")[-1]
+    assert r["ok"] and r["verdict"] == "blocked"
+    assert "stage" in r["reason"] and "required" in r["reason"]
+    outcome = store.read_events("m")[-1]
     assert outcome["type"] == "outcome" and outcome["verdict"] == "blocked"
-    assert outcome["reason"] == "schema_violation"
+    assert outcome["reason"] == r["reason"]
     assert outcome["outputs"] == {} and outcome["proofs"] == []
     # promote not called: nothing appeared at the canonical stage dir
-    canonical = facts.module_root("m") / "Design" / "specification"
+    canonical = store.module_root("m") / "Design" / "specification"
     assert not (canonical / "result.json").exists()
     assert not (canonical / "design.md").exists()
 
@@ -408,12 +410,12 @@ def test_signoff_bypass_blocked_proposed_oracle(tmp_path, monkeypatch):
     )
     assert d["ok"] is False
     assert "oracle is proposed (pin it)" in d["error"]
-    assert not any(e["type"] == "signoff" for e in facts.read_events("gate3"))
+    assert not any(e["type"] == "signoff" for e in store.read_events("gate3"))
 
 
 def _latest_grade(module, proof_name="specification"):
-    events = facts.read_events(module)
-    _, outcome = facts._proof_outcome(events, proof_name)
+    events = store.read_events(module)
+    _, outcome = facts.proof_outcome(events, proof_name)
     proof = next(p for p in outcome["proofs"] if p["name"] == proof_name)
     return proof["oracle"]["grade"]
 
@@ -555,7 +557,7 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
     assert r["ok"] is True
     assert r["verdict"] == "pass"  # non-blocked
 
-    events = facts.read_events(module)
+    events = store.read_events(module)
     outcomes = [e for e in events if e["type"] == "outcome"]
     assert len(outcomes) == 1
     assert outcomes[0]["verdict"] == "pass"
@@ -575,7 +577,7 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
 
     # non-blocked -> promoted to canonical
     canonical = (
-        facts.module_root(module) / "Verification" / "simulation-triage" / "result.json"
+        store.module_root(module) / "Verification" / "simulation-triage" / "result.json"
     )
     assert canonical.exists()
 
@@ -629,7 +631,7 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
         str(d["run"]),
     )
     assert r["ok"] is True
-    diagnoses = [e for e in facts.read_events(module) if e["type"] == "diagnosis"]
+    diagnoses = [e for e in store.read_events(module) if e["type"] == "diagnosis"]
     by_owner = {e["fix_owner"]: e for e in diagnoses}
     assert set(by_owner) == {"simulation-plan", "rtl-design"}
     # both rest on the same analysis, and both bind to the run that was analysed
@@ -642,7 +644,7 @@ def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
     # triage 无独立 fail 态. A schema-legal result.json (the envelope allows
     # status ∈ {pass, fail}; the triage schema does not pin it) that carries status="fail"
     # carrying findings[] must NOT produce an outcome verdict="fail" — a non-proof
-    # rule's fail outcome later crashes required_proofs(repair)/step-2's FORWARD_PRIORITY.index.
+    # rule's fail outcome must not enter the stage-proof work set.
     monkeypatch.chdir(tmp_path)
     module = "triagefail"
     d = _dispatch_triage(tmp_path, module, sim_run=4)
@@ -668,10 +670,10 @@ def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
     )
     assert r["ok"] is True
     assert r["verdict"] != "fail"  # complete triage is never a fail
-    outcomes = [e for e in facts.read_events(module) if e["type"] == "outcome"]
+    outcomes = [e for e in store.read_events(module) if e["type"] == "outcome"]
     assert outcomes[0]["verdict"] != "fail"
     # the attribution still lands as a diagnosis (complete -> outcome + diagnosis)
-    assert any(e["type"] == "diagnosis" for e in facts.read_events(module))
+    assert any(e["type"] == "diagnosis" for e in store.read_events(module))
 
 
 def test_triage_skipped_reap_blocks_no_diagnosis(tmp_path, monkeypatch):
@@ -700,7 +702,7 @@ def test_triage_skipped_reap_blocks_no_diagnosis(tmp_path, monkeypatch):
     assert r["ok"] is True
     assert r["verdict"] == "blocked"
 
-    events = facts.read_events(module)
+    events = store.read_events(module)
     outcomes = [e for e in events if e["type"] == "outcome"]
     assert len(outcomes) == 1
     assert outcomes[0]["verdict"] == "blocked"
@@ -710,7 +712,7 @@ def test_triage_skipped_reap_blocks_no_diagnosis(tmp_path, monkeypatch):
 
     # blocked -> never promoted
     canonical = (
-        facts.module_root(module) / "Verification" / "simulation-triage" / "result.json"
+        store.module_root(module) / "Verification" / "simulation-triage" / "result.json"
     )
     assert not canonical.exists()
 
@@ -742,7 +744,7 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
     assert r["ok"] is True
     assert r["verdict"] == "pass"  # no schema violation, no crash
 
-    events = facts.read_events(module)
+    events = store.read_events(module)
     diagnoses = [e for e in events if e["type"] == "diagnosis"]
     assert len(diagnoses) == 1
     diag = diagnoses[0]
@@ -766,12 +768,12 @@ def test_reap_never_dispatched_ok_false_no_event_appended(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
     module = "reapguard1"
     _write_file(module, "intent/brainstorm.md", "b1")
-    before = facts.read_events(module)
+    before = store.read_events(module)
     r = _run_json(
         tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
     )
     assert r["ok"] is False
-    assert facts.read_events(module) == before
+    assert store.read_events(module) == before
 
 
 # ── B-group regression fixes (kernel-review disposition) ──────────────────
@@ -783,7 +785,7 @@ def test_reopen_unknown_pin_ref_rejected(tmp_path, monkeypatch):
     # was withdrawn when it was not (not a conservative failure). It must error instead.
     monkeypatch.chdir(tmp_path)
     module = "reopenbad"
-    facts.append_event(  # a real pin on 'spec-review'
+    store.append_event(  # a real pin on 'spec-review'
         module,
         {
             "type": "pin",
@@ -874,7 +876,7 @@ def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
         str(d["run"]),
     )
     assert r["ok"] is True
-    kinds = [e["type"] for e in facts.read_events(module)]
+    kinds = [e["type"] for e in store.read_events(module)]
     assert kinds.count("outcome") == 1 and kinds.count("diagnosis") == 1
 
 
@@ -934,7 +936,7 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
         "--run",
         str(d1["run"]),
     )
-    diags = [e for e in facts.read_events(module) if e["type"] == "diagnosis"]
+    diags = [e for e in store.read_events(module) if e["type"] == "diagnosis"]
     # the last diagnosis is from re-reaping run 1 -> must carry run 1's sim_run (5), not 9.
     assert diags[-1]["subject"]["outcome_run"] == 5
 
@@ -960,13 +962,13 @@ def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
     # reverts to A -> the latest pin (B) does not match -> regrade to proposed, not human.
     monkeypatch.chdir(tmp_path)
     module = "gradepin"
-    sr = facts.module_root(module) / "Design" / "specification"
+    sr = store.module_root(module) / "Design" / "specification"
     sr.mkdir(parents=True)
     (sr / "spec-review").mkdir()
     rev = sr / "spec-review" / "core.md"
     rev.write_text("REVIEW-A")
     fpA = facts.fingerprint(rev)
-    facts.append_event(
+    store.append_event(
         module,
         {
             "type": "pin",
@@ -979,7 +981,7 @@ def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
     )
     rev.write_text("REVIEW-B")
     fpB = facts.fingerprint(rev)
-    facts.append_event(
+    store.append_event(
         module,
         {
             "type": "pin",
@@ -992,7 +994,7 @@ def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
     )
     rev.write_text("REVIEW-A")  # oracle back to A; latest pin (B) no longer matches
     grade = facts.oracle_grade(
-        module, facts.read_events(module), rules.RULES["specification"]
+        module, store.read_events(module), rules.RULES["specification"]
     )
     assert grade == "proposed"
 
@@ -1005,7 +1007,7 @@ def test_outputs_name_the_artifacts_that_are_the_evidence(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
     _write_file("m", "intent/brainstorm.md", "b1")
     _dispatch_write_reap(tmp_path, "m", "specification", _STAGE_FILES["specification"])
-    _, outcome = facts._proof_outcome(facts.read_events("m"), "specification")
+    _, outcome = facts.proof_outcome(store.read_events("m"), "specification")
     outs = outcome["outputs"]
     assert "Design/specification/result.json" in outs
     assert any(o.endswith("design.md") for o in outs)  # an artifact beyond result.json
@@ -1092,11 +1094,17 @@ def test_reap_stale_produced_at_blocked_no_promote(tmp_path, monkeypatch):
     r = _run_json(
         tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
     )
-    assert r == {"ok": True, "rule": "specification", "run": 1, "verdict": "blocked"}
-    outcome = facts.read_events(module)[-1]
+    assert r == {
+        "ok": True,
+        "rule": "specification",
+        "run": 1,
+        "verdict": "blocked",
+        "reason": "stale_result",
+    }
+    outcome = store.read_events(module)[-1]
     assert outcome["reason"] == "stale_result"
     assert outcome["outputs"] == {} and outcome["proofs"] == []
-    canonical = facts.module_root(module) / "Design" / "specification"
+    canonical = store.module_root(module) / "Design" / "specification"
     assert not (canonical / "result.json").exists()  # blocked never promotes
 
 
@@ -1108,7 +1116,7 @@ def test_reap_same_second_produced_at_not_misjudged(tmp_path, monkeypatch):
     module = "boundary1"
     _write_file(module, "intent/brainstorm.md", "b1")
     d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
-    dispatch_ts = facts.read_events(module)[-1]["ts"]  # %Y-%m-%dT%H:%M:%S.%fZ
+    dispatch_ts = store.read_events(module)[-1]["ts"]  # %Y-%m-%dT%H:%M:%S.%fZ
     workdir = d["workdir"]
     for rel, content in _STAGE_FILES["specification"].items():
         _write_file(module, f"{workdir}/{rel}", content)
@@ -1148,7 +1156,7 @@ def test_reap_unparseable_produced_at_blocked(tmp_path, monkeypatch):
         tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
     )
     assert r["verdict"] == "blocked"
-    assert facts.read_events(module)[-1]["reason"] == "produced_at_unparseable"
+    assert store.read_events(module)[-1]["reason"] == "produced_at_unparseable"
 
 
 def test_stale_result_reason_boundaries():
@@ -1276,11 +1284,54 @@ def test_a_read_only_verb_freezes_the_intent_tree(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "frozen"
     _write_file(module, "intent/reference/model.py", "X = 1\n")
-    ref = facts.module_root(module) / "intent" / "reference" / "model.py"
+    ref = store.module_root(module) / "intent" / "reference" / "model.py"
     assert ref.stat().st_mode & 0o200  # the test wrote it, so it starts writable
 
     r = _run_json(tmp_path, "status", "--module", module)
     assert r["stages"]["specification"] == "missing"
 
-    for p in (ref, ref.parent, facts.module_root(module) / "intent"):
+    for p in (ref, ref.parent, store.module_root(module) / "intent"):
         assert not p.stat().st_mode & 0o200, p
+
+
+def test_dispatch_rejects_non_object_params_before_allocating_run(tmp_path):
+    module = tmp_path / "params"
+    (module / "intent").mkdir(parents=True)
+    (module / "intent/brainstorm.md").write_text("intent")
+    for params in ("[]", "[1]", '"text"', "5"):
+        reply = _run_json(
+            tmp_path,
+            "dispatch",
+            "--module",
+            str(module),
+            "--rule",
+            "specification",
+            "--params",
+            params,
+        )
+        assert reply["ok"] is False and "JSON object" in reply["error"]
+        assert not (module / "Design").exists()
+        assert not (module / "events.jsonl").exists()
+
+
+def test_reap_reports_non_object_result_schema_error(tmp_path):
+    module = tmp_path / "result-type"
+    (module / "intent").mkdir(parents=True)
+    (module / "intent/brainstorm.md").write_text("intent")
+    dispatched = _run_json(
+        tmp_path, "dispatch", "--module", str(module), "--rule", "specification"
+    )
+    (Path(dispatched["workdir"]) / "result.json").write_text("[]")
+    reply = _run_json(
+        tmp_path,
+        "reap",
+        "--module",
+        str(module),
+        "--rule",
+        "specification",
+        "--run",
+        "1",
+    )
+    assert reply["verdict"] == "blocked"
+    assert "object" in reply["reason"]
+    assert store.read_events(str(module))[-1]["reason"] == reply["reason"]

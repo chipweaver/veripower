@@ -15,7 +15,7 @@ Uniformly: no stage asks for a second field on a failure.
 
 import pytest
 
-from framework.scripts import facts, rules
+from framework.scripts import rules, store
 
 
 @pytest.mark.parametrize("stage", rules.FORWARD_PRIORITY)
@@ -31,7 +31,7 @@ def test_schema_validates_minimum_fail_envelope(stage):
         "stage_specific": stage_specific,
     }
 
-    err = facts.validate_result(stage, result)
+    err = store.validate_result(stage, result)
     assert err is None, f"stage {stage}: minimum status=fail envelope rejected: {err}"
 
 
@@ -58,7 +58,7 @@ def _fail_result(stage, stage_specific):
 
 @pytest.mark.parametrize("stage", sorted(_VERDICT_WITHOUT_ITS_MEASUREMENT))
 def test_a_verdict_without_its_measurement_is_rejected(stage):
-    err = facts.validate_result(
+    err = store.validate_result(
         stage,
         _fail_result(
             stage,
@@ -77,7 +77,7 @@ def test_a_verdict_without_its_measurement_is_rejected(stage):
         {**v, "measured": "area.rpt Total cell area"}
         for v in _VERDICT_WITHOUT_ITS_MEASUREMENT[stage]
     ]
-    err = facts.validate_result(
+    err = store.validate_result(
         stage,
         _fail_result(
             stage, {"fail_reason": "requirement(s) not met: R-1", "requirements": named}
@@ -86,7 +86,7 @@ def test_a_verdict_without_its_measurement_is_rejected(stage):
     assert err is None, f"stage {stage}: a named verdict rejected: {err}"
 
     # And an early fail, which carries neither because no gate ran, stays valid.
-    err = facts.validate_result(
+    err = store.validate_result(
         stage,
         _fail_result(stage, {"fail_reason": "no license"}),
     )

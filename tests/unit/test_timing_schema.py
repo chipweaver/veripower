@@ -1,6 +1,6 @@
 """Schema cases for the timing-analysis structured timing{} block (pass branch)."""
 
-from framework.scripts import facts
+from framework.scripts import store
 
 _TIMING_OK = {
     "setup": {"worst_slack_ns": 2.93, "met": True, "worst_path": "a -> b"},
@@ -18,7 +18,7 @@ def _validate(stage_specific, status="pass"):
         "artifacts": [],
         "stage_specific": stage_specific,
     }
-    err = facts.validate_result("timing-analysis", result)
+    err = store.validate_result("timing-analysis", result)
     return err is None, err
 
 

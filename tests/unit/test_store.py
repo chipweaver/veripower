@@ -249,3 +249,119 @@ class TestPromoteAtomic:
         assert sym.is_symlink()
         # but cannot follow it now (proves we didn't copy content)
         assert not (sym / "should_not_traverse.txt").exists()
+
+
+@pytest.mark.parametrize(
+    "artifacts",
+    [
+        ["reports", "reports/summary.txt"],
+        ["reports/summary.txt", "reports", "reports/summary.txt"],
+    ],
+)
+def test_promote_overlapping_artifacts_once(tmp_path, artifacts):
+    run = tmp_path / "Design/lint-cdc/runs/1"
+    (run / "reports").mkdir(parents=True)
+    (run / "reports/summary.txt").write_text("report")
+    (run / "result.json").write_text(
+        json.dumps({"artifacts": [{"path": p} for p in artifacts]})
+    )
+    store.promote(tmp_path, "lint-cdc", 1)
+    assert (tmp_path / "Design/lint-cdc/reports/summary.txt").read_text() == "report"
+
+
+@pytest.mark.parametrize("failed_move", range(1, 7))
+def test_failed_publish_restores_previous_view(tmp_path, monkeypatch, failed_move):
+    stage = tmp_path / "Design/lint-cdc"
+    for number in (1, 2):
+        run = stage / "runs" / str(number)
+        (run / "reports").mkdir(parents=True)
+        (run / "reports/summary.txt").write_text(f"report {number}")
+        (run / "design.txt").write_text(f"design {number}")
+        (run / "result.json").write_text(
+            json.dumps(
+                {
+                    "artifacts": [{"path": "reports"}, {"path": "design.txt"}],
+                    "run": number,
+                }
+            )
+        )
+    store.promote(tmp_path, "lint-cdc", 1)
+    before = {
+        name: (stage / name).read_bytes()
+        for name in ["result.json", "design.txt", "reports/summary.txt"]
+    }
+    rename = store.os.rename
+    count = 0
+
+    def interrupt_move(source, target):
+        nonlocal count
+        count += 1
+        if count == failed_move:
+            raise OSError("injected move failure")
+        return rename(source, target)
+
+    monkeypatch.setattr(store.os, "rename", interrupt_move)
+    with pytest.raises(OSError, match="injected move failure"):
+        store.promote(tmp_path, "lint-cdc", 2)
+    assert {name: (stage / name).read_bytes() for name in before} == before
+    assert not list(stage.glob(".promote-*"))
+    assert (stage / "runs/2/design.txt").read_text() == "design 2"
+    store.promote(tmp_path, "lint-cdc", 2)
+    assert (stage / "design.txt").read_text() == "design 2"
+
+
+def test_replacing_canonical_directory_symlink(tmp_path):
+    stage = tmp_path / "Design/lint-cdc"
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "keep.txt").write_text("keep")
+    for number in (1, 2):
+        run = stage / "runs" / str(number)
+        run.mkdir(parents=True)
+        (run / "reports").symlink_to(external, target_is_directory=True)
+        (run / "result.json").write_text(
+            json.dumps({"artifacts": [{"path": "reports"}]})
+        )
+        store.promote(tmp_path, "lint-cdc", number)
+    assert (stage / "reports").is_symlink()
+    assert (external / "keep.txt").read_text() == "keep"
+
+
+def test_artifact_cannot_replace_run_history(tmp_path):
+    run = tmp_path / "Design/lint-cdc/runs/1"
+    (run / "runs").mkdir(parents=True)
+    (run / "runs/report.txt").write_text("report")
+    envelope = json.dumps({"artifacts": [{"path": "runs"}]})
+    (run / "result.json").write_text(envelope)
+    with pytest.raises(ValueError, match="run storage"):
+        store.promote(tmp_path, "lint-cdc", 1)
+    assert (run / "result.json").read_text() == envelope
+    assert not list(run.parent.parent.glob(".promote-*"))
+
+
+def test_failed_restoration_retains_staging_evidence(tmp_path, monkeypatch):
+    stage = tmp_path / "Design/lint-cdc"
+    for number in (1, 2):
+        run = stage / "runs" / str(number)
+        run.mkdir(parents=True)
+        (run / "design.txt").write_text(f"design {number}")
+        (run / "result.json").write_text(
+            json.dumps({"artifacts": [{"path": "design.txt"}]})
+        )
+    store.promote(tmp_path, "lint-cdc", 1)
+    rename = store.os.rename
+
+    def fail_publication_and_restoration(source, target):
+        if Path(source).parent.name in {"ready", "previous"}:
+            raise OSError("move unavailable")
+        return rename(source, target)
+
+    monkeypatch.setattr(store.os, "rename", fail_publication_and_restoration)
+    with pytest.raises(OSError, match="move unavailable"):
+        store.promote(tmp_path, "lint-cdc", 2)
+    saved = list(stage.glob(".promote-*/previous/design.txt"))
+    assert len(saved) == 1 and saved[0].read_text() == "design 1"
+    monkeypatch.setattr(store.os, "rename", rename)
+    store.promote(tmp_path, "lint-cdc", 2)
+    assert (stage / "design.txt").read_text() == "design 2"
+    assert not list(stage.glob(".promote-*"))
