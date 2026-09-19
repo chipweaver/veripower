@@ -1,26 +1,18 @@
 #!/usr/bin/env python3
 """Parse the urg text coverage report into structural-coverage.json (deployed infra).
 
-Consumes cov_merge/dashboard.txt (aggregate) + cov_merge/modlist.txt (per-module) +
-cov_merge/modinfo.txt (the named uncovered items), the text report urg emits with
-`-report cov_merge -format text`. Column order is fixed: SCORE LINE COND TOGGLE FSM
-BRANCH. '--' means the dim does not apply to that scope -> None (e.g. a module with no
-FSM). Fail-loud (SystemExit) when the report is missing or the aggregate block is
-unparseable -- NEVER emit a file that could be read as 'coverage met'.
-
-A percentage says how much was missed; `uncovered[]` says WHICH branch, condition or
-FSM transition was missed, by module and source line. urg computes it either way -- a
-percentage is the only thing a reader can act on if the items are dropped, and
-'mgpt_rmsnorm.v:160 branch (div_q > QMAX) never taken' is actionable where '85.71%' is
-not. modinfo.txt is optional: absent, or a urg version whose format differs, yields an empty
-list rather than a failure. That leaves the gate intact, since it scores the DUT's own
-`per_module` row, but it does leave the gap classification with nothing to work on when a dimension is short.
+Consumes dashboard.txt (aggregate) and modinfo.txt (instance subtrees and uncovered
+items) from `urg -format text`. Each per_instance row is an "Instance's subtree"
+table keyed by its full instance path, including instantiated RTL below that path.
+Columns come from each table's header. '--' becomes None: the report alone does not
+establish whether the metric is inapplicable or instrumentation is missing.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -31,12 +23,16 @@ from pathlib import Path
 # and latches onto the next block's — on a real OpenTitan run that put an instance NAME
 # where a number belonged. So the header is the schema, and a dim urg did not measure is
 # simply absent, which is what the coverage gate already answers ("urg measured none").
-_HDR_TOKENS = ("SCORE", "LINE")
 
 
 def _num(tok: str):
     """'--' / 'n/a' -> None; otherwise float."""
-    return None if tok in ("--", "n/a", "") else float(tok)
+    if tok in ("--", "n/a"):
+        return None
+    value = float(tok)
+    if not math.isfinite(value) or not 0 <= value <= 100:
+        raise ValueError(f"invalid coverage percentage: {tok}")
+    return value
 
 
 def _dims(header: str) -> list[str]:
@@ -50,8 +46,11 @@ def _values_after_header(lines: list[str], start: int) -> dict | None:
     dims = _dims(lines[start])
     for ln in lines[start + 1 :]:
         toks = ln.split()
+        if not toks:
+            continue
         if len(toks) == len(dims) and re.match(r"^[\d.]+$|^--$", toks[0]):
             return dict(zip(dims, (_num(t) for t in toks)))
+        return None
     return None
 
 
@@ -60,30 +59,37 @@ def parse_aggregate(text: str) -> dict | None:
     lines = text.splitlines()
     for i, ln in enumerate(lines):
         if ln.strip().startswith("Total Coverage Summary"):
-            # next line is the SCORE LINE COND ... header
+            # The next table declares whichever metrics URG reported.
             for j in range(i + 1, min(i + 4, len(lines))):
-                if all(t in lines[j] for t in _HDR_TOKENS):
+                if lines[j].split()[:1] == ["SCORE"]:
                     return _values_after_header(lines, j)
     return None
 
 
-def parse_modules(text: str) -> list[dict]:
-    """Per-module rows from modlist.txt: the header's dim columns, then the module name."""
+def parse_instances(text: str) -> list[dict]:
+    """Read URG's subtree measurements, never module or instance-self tables."""
     out: list[dict] = []
-    dims: list[str] = []
-    for ln in text.splitlines():
-        if all(t in ln for t in _HDR_TOKENS) and "NAME" in ln:
-            dims = _dims(ln)
+    names = set()
+    for block in re.split(r"(?=^Module(?: Instance)? : \S)", text, flags=re.M):
+        match = re.match(r"Module Instance : (\S+)", block)
+        if not match:
             continue
-        if not dims:
-            continue
-        toks = ln.split()
-        if len(toks) != len(dims) + 1:
-            continue
-        if not re.match(r"^[\d.]+$|^--$", toks[0]):
-            continue
-        row = dict(zip(dims, (_num(t) for t in toks[: len(dims)])))
-        row["name"] = toks[len(dims)]
+        name = match.group(1)
+        if name in names:
+            raise ValueError(f"duplicate coverage instance: {name}")
+        names.add(name)
+        lines = block.splitlines()
+        row = None
+        for i, line in enumerate(lines):
+            if line.strip() == "Instance's subtree :":
+                for j in range(i + 1, min(i + 4, len(lines))):
+                    if lines[j].split()[:1] == ["SCORE"]:
+                        row = _values_after_header(lines, j)
+                        break
+                break
+        if row is None:
+            raise ValueError(f"missing or unparseable instance subtree: {name}")
+        row["name"] = name
         out.append(row)
     return out
 
@@ -239,6 +245,7 @@ def parse_uncovered(text: str) -> list[dict]:
 
 
 def build(cov_dir: Path, out_path: Path) -> int:
+    out_path.unlink(missing_ok=True)
     dashboard = cov_dir / "dashboard.txt"
     if not dashboard.is_file():
         sys.exit(
@@ -254,29 +261,25 @@ def build(cov_dir: Path, out_path: Path) -> int:
             f"(urg text format may differ on this version: {_urg_version(dtext)!r}). "
             f"Fix parse_coverage for this urg version; NOT emitting structural-coverage.json."
         )
-    modlist = cov_dir / "modlist.txt"
-    per_module = (
-        parse_modules(modlist.read_text(encoding="utf-8", errors="ignore"))
-        if modlist.is_file()
-        else []
-    )
     modinfo = cov_dir / "modinfo.txt"
-    uncovered = (
-        parse_uncovered(modinfo.read_text(encoding="utf-8", errors="ignore"))
-        if modinfo.is_file()
-        else []
-    )
+    if not modinfo.is_file():
+        sys.exit(f"parse_coverage: missing {modinfo}; no instance coverage to judge")
+    mtext = modinfo.read_text(encoding="utf-8", errors="strict")
+    per_instance = parse_instances(mtext)
+    if not per_instance:
+        sys.exit(f"parse_coverage: no instance subtrees in {modinfo}")
+    uncovered = parse_uncovered(mtext)
     data = {
         "aggregate": agg,
-        "per_module": per_module,
+        "per_instance": per_instance,
         "uncovered": uncovered,
-        "source": str(dashboard),
+        "source": str(modinfo),
         "urg_version": _urg_version(dtext),
     }
     out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     print(
         f"parse_coverage: wrote {out_path} "
-        f"(line={agg['line']} cond={agg['cond']} fsm={agg['fsm']} toggle={agg['toggle']}"
+        f"(line={agg.get('line')} cond={agg.get('cond')} fsm={agg.get('fsm')} toggle={agg.get('toggle')}"
         f"; {len(uncovered)} uncovered items)"
     )
     return 0
@@ -289,7 +292,7 @@ def main() -> int:
     p.add_argument(
         "--cov-dir",
         required=True,
-        help="urg report dir (contains dashboard.txt/modlist.txt/modinfo.txt)",
+        help="urg report dir (contains dashboard.txt and modinfo.txt)",
     )
     p.add_argument("--out", required=True, help="output structural-coverage.json path")
     args = p.parse_args()

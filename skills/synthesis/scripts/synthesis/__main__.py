@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""synthesis — synthesis-stage CLI.
-
-Verbs (one stage = one tool):
-  bootstrap   deploy templates into the run workdir + render rtl_load/config  (exit 0 / 1 / 2)
-  finalize    parse DC reports, judge PPA, assemble the result.json           (exit 0 written / 2 BLOCKED)
-
-Thin dispatcher: each subcommand parses its own flags and calls into the
-synthesis.* library. Library imports are deferred into each handler so they run
-AFTER the sys.path insert below, which is what makes `from synthesis import …`
-resolve at all. (Library modules themselves use top-level absolute imports; only
-this thin dispatcher defers.)
-"""
+"""Prepare tool setup, execute a calculation, or judge existing evidence."""
 
 import argparse
 import os
@@ -32,6 +21,7 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
+    (Path(a.workdir) / "result.json").unlink(missing_ok=True)
     from synthesis import requirements, result
 
     return result.finalize(
@@ -43,12 +33,19 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     )
 
 
+def _cmd_run(a):
+    from synthesis.execute import run
+
+    return run(a.workdir)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="synthesis", description="synthesis-stage CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser(
-        "bootstrap", help="deploy templates + render rtl_load/config into the workdir"
+        "bootstrap",
+        help="deploy templates + render RTL loading and tool configuration into the workdir",
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
@@ -57,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="top module; read from the specification manifest when omitted",
     )
     sp.set_defaults(func=_cmd_bootstrap)
+
+    sp = sub.add_parser(
+        "run", help="execute the prepared tool script and publish completed outputs"
+    )
+    sp.add_argument("--workdir", required=True, type=Path)
+    sp.set_defaults(func=_cmd_run)
 
     sp = sub.add_parser(
         "finalize", help="parse DC reports, judge PPA, assemble result.json"
@@ -90,9 +93,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        # The documented protocol is a reason on stderr and a non-zero exit. A traceback is
-        # not that: it answers with source, which every skill here tells the reader never to
-        # open. The verbs' own refusals keep their own exits; this is only the unexpected.
         print(
             f"[synthesis {args.cmd}] BLOCKED: {type(exc).__name__}: {exc}",
             file=sys.stderr,

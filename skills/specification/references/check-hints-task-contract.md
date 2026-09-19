@@ -1,17 +1,17 @@
 # Check hints
 
-Read `{workdir}/requirements.json`, `{workdir}/top-io.json` and `{workdir}/design.md`.
-A row that points at a file under `<intent>/` is read there.
-Write `{workdir}/check-hints.json` per `check-hints.schema.json`.
+Read requirements.json, top-io.json, design.md and the relevant original sources. Write
+check-hints.json using its schema: for each simulation-judged row without a numerical target,
+describe the observation and independent expected behavior. The hints together must establish the
+whole obligation, including its conditions and exceptions; several hints may name the same entry.
+Coverage targets are compared by the report parser instead.
 
-For every row judged `simulation` without a `target`, say how simulation observes it and against
-what rule. Rows with any other judge get no hint; they are established elsewhere, and a hint
-would turn them into gating checks the engineer did not ask for.
+Check assignments against the task if they would omit required behavior. Correct a mistaken
+assignment or observation rather than treating a stage label as permission to ignore a requirement.
+The cross-reference check validates the resulting IDs and assignments, not their engineering truth.
 
-Observe at the top boundary — it is the one boundary that exists no matter how the RTL is
-split. Name something inside only when no top-boundary stimulus and observation can tell the row
-holding from failing, and say why in that hint's `reference_rule`: the reader who has to trust the
-exception is looking at the hint, not elsewhere. A name from inside is a bet on a structure
-rtl-design has not chosen yet.
+Prefer observations at the top boundary. If those cannot distinguish the required behavior,
+explain the need for an internal observation in the hint and account for the implementation stage
+still owning the module split. Expected values come from the task's reference, not the DUT.
 
-End with `STATUS: DONE` and the path, or `STATUS: BLOCKED <reason>`.
+Return STATUS: DONE with the output path, or STATUS: BLOCKED with what prevented completion.

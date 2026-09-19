@@ -1,33 +1,25 @@
-# `verification-plan.md` template
+# Verification plan outline
 
-The section outline for the plan document you author and the reviewer assesses.
-The rosters themselves live in the three sidecars: every section here is for what a
-per-field schema cannot hold, so a section that restates a table you just authored is a second
-copy that will drift.
+Use this outline for the plan's reasoning. Keep rosters in their sidecars; explain choices and
+measurement meaning here without duplicating their tables.
 
 ```markdown
 # <module> Verification Plan
 
 ## 1. Scope
-Module name / Top / spec references.
+Module/top, requirements and verification boundary.
 
 ## 2. Test Strategy
-Agent grouping / sequence design / RM type / scoreboard boundary, as narrative. Write why each
-boundary falls where it does.
+How stimuli, reference models and checks establish the required behavior.
 
 ## 3. Testpoints
-The testpoints themselves are `tb-scaffold.json`'s `testpoints[]`; do not restate them as a
-table. What belongs here is what is not a per-testpoint field: how the testpoints partition the
-verification, and which behaviors are deliberately left to downstream stages.
+How the testpoints in tb-scaffold.json cover the task; justified exclusions and dependencies.
 
-## 4. Power Scenarios
-One materialization note per scenario, per `power-scenarios-template.md`: the standard row's
-abstract states, what they reduce to on this module, and why a row was materialized that way or
-dropped as inapplicable. `power-scenarios.json` carries only `id` and `sequence_ref`, which power-analysis
-reads, so this section is the sole home for everything else about a scenario.
+## 4. Power Measurements
+Explain the planned measurements using references/power-scenarios-template.md, keyed by the
+identifiers in power-scenarios.json.
 
-## 5. Revision Summary
-Append on a scoped revision when a real diff is present: trigger context + revision highlights.
-
-## Document Control
+## 5. Decisions and Assumptions
+Material choices and evidence affecting verification or acceptance. Keep the current rationale
+clear; record unresolved questions without inventing answers.
 ```

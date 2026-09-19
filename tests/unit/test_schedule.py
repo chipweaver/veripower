@@ -250,6 +250,24 @@ def test_one_failure_with_two_root_causes_reaches_both_owners(tmp_path, monkeypa
     ]
 
 
+def test_local_repair_waits_for_its_upstream_repair(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _valid_chain_through_simulation("m")
+    _sim_fail("m", run=1)
+    _diagnosis("m", "d-local", 1, "simulation")
+    _diagnosis("m", "d-rtl", 1, "rtl-design")
+    action = schedule.decide("m")
+    assert action["action"] == "DISPATCH" and action["rule"] == "rtl-design"
+    _valid("m", "rtl-design", 2)
+    action = schedule.decide("m")
+    # Independent lint may start first; no upstream repair remains before simulation.
+    if action["rule"] == "lint-cdc":
+        _dispatch("m", "lint-cdc", 1, {})
+        action = schedule.decide("m")
+    assert action["action"] == "DISPATCH" and action["rule"] == "simulation"
+    assert action["diagnosis_refs"] == ["d-local"]
+
+
 def test_an_unsure_second_opinion_makes_the_whole_failure_unclear(
     tmp_path, monkeypatch
 ):
@@ -331,40 +349,27 @@ def test_dispatch_args_carry_declared_params(tmp_path, monkeypatch):
     assert a["dispatch_args"][-2:] == ["--params", '{"sim_run": 3}']
 
 
-def test_neither_writer_can_mint_a_routable_self_pointing_diagnosis(
-    tmp_path, monkeypatch
-):
-    """The reliability gate refuses an oracle-side attribution on the `fix_owner` clause
-    alone, so it needs no separate attribution test — and could not use one, because neither
-    writer can produce a self-pointing diagnosis that carries a `fix_owner`."""
+def test_decision_diagnosis_can_route_a_local_repair(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _mk("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
     _valid("m", "simulation-plan", 1)
     _valid("m", "rtl-design", 1)
     _fail("m", "simulation", 1)
-    # the human path: cmd_diagnose rejects a fix_owner outside the subject's input closure,
-    # and the graph is acyclic, so the subject is never inside its own.
-    assert not any(r in rules.input_closure(r) for r in rules.RULES)
-    r = kernel.cmd_diagnose(
-        "m",
-        "d0",
-        "simulation",
-        1,
-        "simulation",
-        "simulation",
-        "op",
-        "why",
-        None,
-    )
-    assert not r["ok"] and "not in input closure" in r["error"]
-    # the triage path: _derive_triage writes fix_owner only for a root cause inside that
-    # same closure, so root_cause == simulation lands recorded but unroutable.
     assert "simulation" not in rules.input_closure("simulation")
+    result = kernel.cmd_diagnose(
+        "m", "d0", "simulation", 1, "simulation", "simulation", "op", "TB syntax", None
+    )
+    assert result["ok"]
+    action = schedule.decide("m")
+    assert action["action"] == "DISPATCH"
+    assert action["rule"] == "simulation"
+    assert action["caused_by"] == [["simulation", 1]]
+    assert action["diagnosis_refs"] == ["d0"]
 
 
 def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
-    # Regression: an oracle-side attribution (root_cause=simulation, so no fix_owner) is
+    # Regression: an oracle-side attribution without a fix_owner is
     # a 现成归因 with nothing to route to -> ESCALATE citing it as a candidate. NOT
     # re-dispatch triage, NOT auto-rebuild.
     monkeypatch.chdir(tmp_path)
@@ -455,10 +460,8 @@ def test_fresh_selfdescribing_failure_dispatches_the_owner_its_envelope_named(
     assert a["caused_by"] == [["lint-cdc", 1]]
 
 
-def test_fresh_failure_naming_itself_escalates(tmp_path, monkeypatch):
-    """A defect the stage could fix from here is fixed WITHIN its run, so it never arrives as
-    a failure. Naming itself therefore means the in-stage remedy is exhausted, and an
-    auto-rebuild would dispatch the failing rule at itself."""
+def test_fresh_failure_naming_itself_dispatches_repair(tmp_path, monkeypatch):
+    """A local defect can be repaired without changing upstream artifacts."""
     monkeypatch.chdir(tmp_path)
     _mk("m", "intent/brainstorm.md", "b1")
     _valid("m", "specification", 1)
@@ -477,8 +480,9 @@ def test_fresh_failure_naming_itself_escalates(tmp_path, monkeypatch):
         ),
     )
     a = schedule.decide("m")
-    assert a["action"] == "ESCALATE"
-    assert "fix_owner is itself" in a["reason"]
+    assert a["action"] == "DISPATCH"
+    assert a["rule"] == "lint-cdc"
+    assert a["caused_by"] == [["lint-cdc", 1]]
 
 
 def test_fresh_failure_naming_outside_its_closure_escalates(tmp_path, monkeypatch):
@@ -504,7 +508,7 @@ def test_fresh_failure_naming_outside_its_closure_escalates(tmp_path, monkeypatc
     )
     a = schedule.decide("m")
     assert a["action"] == "ESCALATE"
-    assert "outside its input closure" in a["reason"]
+    assert "neither itself nor an input producer" in a["reason"]
 
 
 def test_fresh_rtldesign_spec_locus_dispatches_specification(tmp_path, monkeypatch):
@@ -767,9 +771,9 @@ def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
     assert a["action"] == "DISPATCH" and a["rule"] == "synthesis"
 
 
-def test_human_supersede_restores_auto_rebuild(tmp_path, monkeypatch):
+def test_decision_supersede_restores_auto_rebuild(tmp_path, monkeypatch):
     # A triage diagnosis naming nobody schedulable escalates; after `diagnose
-    # source=human` supersedes it, decide auto-rebuilds the human-named fix_owner.
+    # source=decision` supersedes it, decide auto-rebuilds the human-named fix_owner.
     monkeypatch.chdir(tmp_path)
     _valid_chain_through_simulation("m")
     _sim_fail("m", 1)
@@ -794,7 +798,7 @@ def test_human_supersede_restores_auto_rebuild(tmp_path, monkeypatch):
             "subject": {"proof": "simulation", "outcome_run": 1},
             "attribution": "rtl-design",
             "fix_owner": "rtl-design",
-            "source": "human",
+            "source": "decision",
             "provenance": "operator",
         },
         TS,
@@ -898,13 +902,15 @@ _OUTPUTS = {
         # file ever forward-dispatched the last stage or reached DONE through step 2.
         "Verification/simulation/filelist.f",
         "Verification/simulation/rtl_filelist.f",
+        "Verification/simulation/scripts/run_vcs_regression.sh",
         "Verification/simulation/tb/uvm/agent.sv",
+        "Verification/simulation/tests/testlist.json",
     ],
     "power-analysis": ["Verification/power-analysis/reports_ptpx/run1/power_hier.rpt"],
 }
 
-# Grades that pin every proposed oracle to human — needed for a passing signoff gate.
-_PIN_ALL = {r: "human" for r in rules.FORWARD_PRIORITY}
+# Grades that pin every proposed oracle to endorsed — needed for a passing signoff gate.
+_PIN_ALL = {r: "endorsed" for r in rules.FORWARD_PRIORITY}
 
 
 def _fp(module, rel):
@@ -984,16 +990,16 @@ def _valid(
             }
         ],
     )
-    # A "human" grade on a proposed oracle is now earned by a REAL live pin, not a recorded
+    # A "endorsed" grade on a proposed oracle is now earned by a REAL live pin, not a recorded
     # snapshot: the signoff gate reads the live grade (facts.oracle_grade), so a post-reap pin
     # takes effect without a re-reap.
-    if oracle_grade == "human" and r.oracle[1] == "proposed":
+    if oracle_grade == "endorsed" and r.oracle[1] == "proposed":
         _pin(module, rule)
 
 
 def _pin(module, rule):
     """Materialise the oracle-selector content + emit a real live pin whose fingerprint
-    matches, so facts.oracle_grade grades the proposed oracle human."""
+    matches, so facts.oracle_grade grades the proposed oracle endorsed."""
     r = rules.RULES[rule]
     store.append_event(
         module,
@@ -1218,7 +1224,7 @@ def test_signed_off_regresses_on_hand_edit(tmp_path, monkeypatch):
     assert facts.signed_off("m", store.read_events("m")) is False
 
 
-def test_signed_off_requires_the_human_act(tmp_path, monkeypatch):
+def test_signed_off_requires_the_signoff_decision(tmp_path, monkeypatch):
     # First conjunct: every proof valid and every oracle pinned is NOT signed off. Pins are
     # per-oracle judgments made for delivery's sake; the module-level "ship it" is a separate
     # act, and without it nothing may claim signoff.
@@ -1397,7 +1403,7 @@ def test_basis_grades_each_oracle_and_names_what_a_human_endorsed(
     tmp_path, monkeypatch
 ):
     # The two things a signature rests on: which trust class each oracle is, and — for the
-    # human ones — the content fingerprint the pin actually named. "graded human" without
+    # human ones — the content fingerprint the pin actually named. "graded endorsed" without
     # the fingerprint does not say human-endorsed WHAT.
     monkeypatch.chdir(tmp_path)
     _all_valid_and_pinned("m")
@@ -1408,10 +1414,10 @@ def test_basis_grades_each_oracle_and_names_what_a_human_endorsed(
             continue
         o = by_proof[rule_name]["oracle"]
         assert o["ref"] == rule.oracle[0]
-        assert o["grade"] in ("tool", "human")
+        assert o["grade"] in ("tool", "endorsed")
         if rule.oracle[1] == "proposed":
-            # pinned here, so human — and the fingerprint must be the oracle's CURRENT content
-            assert o["grade"] == "human"
+            # pinned here, so endorsed — and the fingerprint must be the oracle's CURRENT content
+            assert o["grade"] == "endorsed"
             assert o["pinned_fingerprint"] == facts.oracle_content_fp("m", rule)
         else:
             # a tool oracle is never pinned; claiming a fingerprint would invent an endorsement
@@ -1426,7 +1432,7 @@ def test_basis_drops_the_fingerprint_when_the_pin_is_reopened(tmp_path, monkeypa
     _all_valid_and_pinned("m")
     assert (
         facts.signoff_basis("m", store.read_events("m"))[0]["oracle"]["grade"]
-        == "human"
+        == "endorsed"
     )
     _reopen("m", rules.RULES["specification"].oracle[0])
     spec = facts.signoff_basis("m", store.read_events("m"))[0]

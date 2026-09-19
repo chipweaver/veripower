@@ -102,7 +102,7 @@ RULES: dict[str, Rule] = {
         },
         proof="lint-cdc",
         oracle=("spyglass-ruleset", "tool"),
-        carry=("scripts/waiver.tcl", "scripts/local.sgdc"),
+        carry=("**",),
     ),
     "synthesis": Rule(
         name="synthesis",
@@ -122,7 +122,7 @@ RULES: dict[str, Rule] = {
         },
         proof="synthesis",
         oracle=("dc-shell", "tool"),
-        carry=("constraints.local.sdc",),  # the timing exceptions the agent supplements
+        carry=("**",),
     ),
     "timing-analysis": Rule(
         name="timing-analysis",
@@ -131,12 +131,13 @@ RULES: dict[str, Rule] = {
         workdir_root=("Design", "timing-analysis"),
         inputs={
             "intent": ("intent",),
-            # PrimeTime consumes the netlist and SDC from the same synthesis run.
+            # Consume the complete implementation, including referenced support files.
             "netlist": ("Design/synthesis/out",),
             "requirements": ("Design/specification/requirements.json",),
         },
         proof="timing-analysis",
         oracle=("pt-shell", "tool"),
+        carry=("**",),
     ),
     "simulation": Rule(
         name="simulation",
@@ -183,22 +184,23 @@ RULES: dict[str, Rule] = {
         inputs={
             "intent": ("intent",),
             "netlist": ("Design/synthesis/out",),
+            "design": ("Design/specification/design.md",),
             "tb_env": (
+                "Verification/simulation/tb",
+                "Verification/simulation/scripts",
+                "Verification/simulation/tests",
                 "Verification/simulation/env.sh",
                 "Verification/simulation/filelist.f",
-                "Verification/simulation/rtl_filelist.f",
-                "Verification/simulation/tb/uvm",
             ),
-            # sequences.json for the sequence_ref -> agent resolution, and the scenarios
-            # themselves; NOT tb-scaffold.json, whose testpoints/agents this stage never reads.
-            "scaffold": (
-                "Verification/simulation-plan/sequences.json",
+            "plan": (
+                "Verification/simulation-plan/verification-plan.md",
                 "Verification/simulation-plan/power-scenarios.json",
             ),
             "requirements": ("Design/specification/requirements.json",),
         },
         proof="power-analysis",
         oracle=("pt-shell", "tool"),
+        carry=("**",),
     ),
     "simulation-triage": Rule(
         name="simulation-triage",
@@ -278,6 +280,11 @@ def input_closure(rule_name: str) -> set[str]:
                 nxt |= input_producers(p)
         frontier = nxt
     return seen
+
+
+def repair_owners(rule_name: str) -> set[str]:
+    """A stage can repair its own work or ask an input producer to repair theirs."""
+    return {rule_name} | input_closure(rule_name)
 
 
 def workdir_root(rule_name: str) -> tuple[str, ...]:

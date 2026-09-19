@@ -203,11 +203,9 @@ def _spec(tmp_path, rows):
 _SCEN = [
     {
         "id": "S1",
-        "sequence_ref": "idle_seq",
     },
     {
         "id": "S2",
-        "sequence_ref": "busy_seq",
     },
 ]
 
@@ -313,7 +311,7 @@ def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
     assert all(a["id"] != "S1" for a in data["saif_artifacts"])
 
 
-def test_run_gls_uvm_failure_nulls_the_power_number(tmp_path, capsys):
+def test_run_experiment_failure_nulls_the_power_number(tmp_path, capsys):
     """The gate-level run is the only functional evidence this stage produces, and it is also
     what the SAIF is a recording of: activity dumped from a run whose stimulus reported errors
     does not qualify a power number, however cleanly PT-PX parses."""
@@ -329,9 +327,9 @@ def test_run_gls_uvm_failure_nulls_the_power_number(tmp_path, capsys):
     )
     rc, data = p.run(plan, wd, [_bound("R-P", "<=", 1.2)])
     assert rc != 0
-    assert "FAIL=gls_uvm:S1" in capsys.readouterr().err
+    assert "FAIL=experiment:S1" in capsys.readouterr().err
     f0 = data["failures"][0]
-    assert (f0["id"], f0["category"], f0["phase"]) == ("S1", "gls_uvm", "run")
+    assert (f0["id"], f0["category"], f0["phase"]) == ("S1", "experiment", "run")
     assert f0["log_excerpt"] == "saif/S1.run.log"
     assert data["power_by_scenario"][0]["power_mw"] is None
     assert (
@@ -351,7 +349,7 @@ def test_run_missing_gls_status_is_not_a_pass(tmp_path):
     )
     rc, data = p.run(plan, wd, [])
     assert rc != 0
-    assert data["failures"][0]["category"] == "gls_uvm"
+    assert data["failures"][0]["category"] == "experiment"
     assert "absent" in data["failures"][0]["error_summary"]
     assert data["measurements"][0]["value"] is None
 
@@ -416,7 +414,7 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
     # 6.0e-5 > _EPS_MW (1e-6) → trips the invariant AS-IS, but << 1% of total → must NOT flag.
     wd = tmp_path / "wd"
     (wd / "saif").mkdir(parents=True)
-    (wd / "saif" / "S1.saif").write_text("x" * 100)
+    (wd / "saif" / "S1.saif").write_bytes(_SAIF_ACTIVE.read_bytes())
     (wd / "saif" / "S1.status").write_text("PASS\n")
     rdir = wd / "reports_ptpx" / "S1"
     rdir.mkdir(parents=True)
@@ -428,7 +426,7 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
         "Cell Leakage Power   = 5.000e-05\n"  # 5.000e-05 W = 0.05000 mW
         "Total Power          = 1.653e-03\n"  # 1.653e-03 W = 1.653 mW; sum=1.65290 mW, diff=6.0e-5
     )
-    (rdir / "switching_activity.rpt").write_text("")
+    (rdir / "switching_activity.rpt").write_text(_SA_RPT)
     (wd / "gls-compile-log.txt").write_text("VCS L-2016.06_Full64\n")
     plan = tmp_path / "plan"
     plan.mkdir()
@@ -437,7 +435,6 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
             [
                 {
                     "id": "S1",
-                    "sequence_ref": "idle_seq",
                 }
             ]
         )
@@ -553,7 +550,7 @@ def test_finalize_cli_happy_path(tmp_path):
     )
     spec = _spec(tmp_path, [])
     (wd / "dispatch.json").write_text(
-        _json.dumps({"inputs": {"requirements": str(spec), "scaffold": str(plan)}})
+        _json.dumps({"inputs": {"requirements": str(spec), "plan": str(plan)}})
     )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
     r = subprocess.run(
@@ -598,7 +595,7 @@ def test_finalize_cli_reads_the_ledger(tmp_path):
         )
     )
     (wd / "dispatch.json").write_text(
-        _json.dumps({"inputs": {"requirements": str(spec_dir), "scaffold": str(plan)}})
+        _json.dumps({"inputs": {"requirements": str(spec_dir), "plan": str(plan)}})
     )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
     declared = _json.dumps(
@@ -656,48 +653,33 @@ def test_finalize_cli_reads_the_ledger(tmp_path):
 # ── artifacts[] enumeration ───────────────────────────────────────────────────
 
 
-def test_enumerate_artifacts_present_only_no_self(tmp_path):
-    wd = tmp_path / "wd"
-    wd.mkdir()
-    # present files + dirs
-    for f in [
-        "env.sh",
-        "Makefile",
-        "README.md",
-        "tb_filelist_abs.f",
-        "simv",
-        "gls-compile-log.txt",
-        "gls-run-log.txt",
-        "ptpx.log",
-        "make.out",
-    ]:
-        (wd / f).write_text("x")
-    for d in ["scripts", "scaffold", "simv.daidir", "saif", "reports_ptpx"]:
-        (wd / d).mkdir()
-    (wd / "result.json").write_text("{}")  # must NOT self-list
-    paths = [a["path"] for a in p.enumerate_artifacts(wd)]
-    # what this run produced or resolved
-    for expect in [
-        "env.sh",
-        "scaffold",
-        "tb_filelist_abs.f",
-        "saif",
-        "reports_ptpx",
-        "gls-compile-log.txt",
-    ]:
-        assert expect in paths
-    # what the skill shipped, or what a rebuild reproduces, or a log's second copy
-    for absent in [
-        "Makefile",
-        "README.md",
-        "scripts",
-        "simv",
-        "simv.daidir",
-        "make.out",
-    ]:
-        assert absent not in paths, f"{absent} is on disk but must not be promoted"
-    assert "result.json" not in paths
-    assert all((wd / pth).exists() for pth in paths)  # only present paths (file OR dir)
+def test_publication_preserves_authored_helpers_and_reusable_products(tmp_path):
+    files = {
+        "env.sh": ". ./site.sh\n",
+        "site.sh": "export STRIP_PATH=bench.dut\n",
+        "config/custom.tcl": "set operating_condition nominal\n",
+        "experiment/compile.sh": "# native experiment\n",
+        "bin/run-measurement": "#!/bin/sh\nexit 0\n",
+        "saif/idle.status": "PASS\n",
+        "reports_ptpx/idle/power_flat.rpt": "measurement\n",
+    }
+    for name, content in files.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    for name in (
+        "result.json",
+        "result.json.tmp",
+        "dispatch.json",
+        "runs/1/old",
+        "work/cache",
+        ".pending/idle/power_flat.rpt",
+    ):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("not a delivery")
+    paths = {a["path"] for a in p.enumerate_artifacts(tmp_path)}
+    assert paths == {name.split("/")[0] for name in files}
 
 
 # ── Golden test against a real run ────────────────────────────────────────────
@@ -713,6 +695,9 @@ def _copy_golden(tmp_path, root):
     shutil.copytree(root / "real", wd)
     for saif in (wd / "saif").glob("*.saif"):
         saif.with_suffix(".status").write_text("PASS\n")
+        saif.write_bytes(
+            _SAIF_ACTIVE.read_bytes()
+        )  # activity excerpt, not the capture's size placeholder
     return wd
 
 
@@ -846,7 +831,7 @@ def test_declared_fail_through_the_cli(tmp_path):
             {
                 "inputs": {
                     "requirements": str(_spec(tmp_path, [])),
-                    "scaffold": str(tmp_path / "plan"),
+                    "plan": str(tmp_path / "plan"),
                 }
             }
         )
@@ -920,3 +905,62 @@ def test_no_deployed_script_emits_a_category_for_the_agent_to_transcribe():
         for f in tmpl.rglob("*")
         if f.is_file() and f.suffix in {".sh", ".tcl"}
     )
+
+
+@pytest.mark.parametrize("fault", ["component", "mapping", "zero_mapping", "activity"])
+def test_incomplete_measurement_cannot_pass_without_a_budget(tmp_path, fault):
+    wd, plan = _make_workdir(
+        tmp_path, _SCEN[:1], {"S1": 1}, {"S1": _flat_rpt(1, 0.4, 0.4, 0.2)}
+    )
+    if fault == "component":
+        (wd / "reports_ptpx/S1/power_flat.rpt").write_text("Total Power = 1 mW\n")
+    elif fault == "mapping":
+        (wd / "reports_ptpx/S1/switching_activity.rpt").unlink()
+    elif fault == "zero_mapping":
+        (wd / "reports_ptpx/S1/switching_activity.rpt").write_text("Nets 0(0.00%)\n")
+    else:
+        (wd / "saif/S1.saif").write_text("nonempty but no activity")
+    assert p.build_result(wd, plan, [], []) == 0
+    assert _json.loads((wd / "result.json").read_text())["status"] == "fail"
+
+
+def test_blocked_finalize_removes_previous_success_and_cannot_override_budget(tmp_path):
+    wd, plan = _make_workdir(
+        tmp_path, _SCEN[:1], {"S1": 1}, {"S1": _flat_rpt(1, 0.4, 0.4, 0.2)}
+    )
+    assert p.finalize(wd, plan, [], []) == 0
+    row = _bound("POWER", "<=", 0.1)
+    assert (
+        p.finalize(
+            wd, plan, [row], [{"id": "POWER", "met": True, "measured": "asserted"}]
+        )
+        == 2
+    )
+    assert not (wd / "result.json").exists()
+    assert p.finalize(wd, plan, [row], []) == 0
+    assert _json.loads((wd / "result.json").read_text())["status"] == "fail"
+
+
+def test_blocked_finalize_missing_verdict_removes_previous_success(tmp_path):
+    wd, plan = _make_workdir(
+        tmp_path, _SCEN[:1], {"S1": 1}, {"S1": _flat_rpt(1, 0.4, 0.4, 0.2)}
+    )
+    assert p.finalize(wd, plan, [], []) == 0
+    assert p.finalize(wd, plan, [{"id": "REPORT"}], []) == 2
+    assert not (wd / "result.json").exists()
+
+
+def test_lower_bound_reports_the_smallest_measurement(tmp_path):
+    wd, plan = _make_workdir(
+        tmp_path,
+        _SCEN,
+        {"S1": 1, "S2": 1},
+        {
+            "S1": _flat_rpt(1, 0.4, 0.4, 0.2),
+            "S2": _flat_rpt(2, 0.8, 0.8, 0.4),
+        },
+    )
+    rc, data = p.run(plan, wd, [_bound("LOW", ">=", 1.5)])
+    assert rc == 0
+    assert data["requirements"][0]["actual"] == 1
+    assert data["requirements"][0]["met"] is False

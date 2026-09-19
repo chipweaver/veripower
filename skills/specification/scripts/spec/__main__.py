@@ -64,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "check-ledger",
-        help="validate requirements.json and print what the ledger and boundary gate hands the human",
+        help="validate requirements.json and show decisions, external scope and numerical targets",
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.set_defaults(func=_cmd_check_ledger)
@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     except SidecarError as exc:
         # One failure protocol for every verb. A sidecar defect is the caller's to fix, so it
         # reaches them as the message the reader is told to act on — not as a traceback, which
-        # is the one thing the skills tell an agent never to read.
+        # is unnecessary when the error already identifies the failing input.
         print(f"[spec {args.cmd}] {exc}", file=sys.stderr)
         return 1
 

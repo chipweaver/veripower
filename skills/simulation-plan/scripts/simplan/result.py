@@ -55,11 +55,8 @@ def build_result(
 ) -> int:
     """Assemble the lean simulation-plan result.json from the workdir.
 
-    The pass path re-runs check-scaffold in-process. It was clean at the script gate and every layer
-    of it is a set operation over the plan sidecars plus the authored check hints, so a
-    failure now means an artifact was edited after the gate — BLOCKED rather than a routable
-    fail. The fail path does not run it: an early-fail workdir may hold no sidecars at all,
-    and a fail-loud exit there would turn a routable fail into a BLOCKED.
+    The pass path validates the current sidecars. Invalid inputs block closure until repaired
+    or explicitly returned as an unresolved failure. The failure path can close incomplete work.
 
     The stage handles plan review findings before calling finalize and supplies fail_reason
     for an unresolved blocking defect. This function does not interpret review prose.
@@ -88,9 +85,7 @@ def build_result(
     if errors:
         listed = "; ".join(errors)
         raise ValueError(
-            f"check-scaffold no longer passes at finalize — {listed}. The script gate left it "
-            "clean, "
-            "so an artifact was edited after the gate: repair it, do not finalize."
+            f"check-scaffold failed: {listed}. Repair the plan or report the unresolved cause."
         )
 
     ss = {}
@@ -114,6 +109,7 @@ def finalize(
     """build_result, with the exit-code contract. exit 0 = result.json written (pass or fail);
     exit 2 = BLOCKED (an empty --fail-reason, a re-run check-scaffold failure, or any internal
     raise) — never conflated with status=fail."""
+    (Path(workdir) / "result.json").unlink(missing_ok=True)
     if fail_reason is not None and not fail_reason.strip():
         print(
             "[simplan finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",

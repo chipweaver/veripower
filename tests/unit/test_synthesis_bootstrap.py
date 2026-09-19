@@ -107,7 +107,7 @@ def test_rtl_load_gates_every_analyze(tmp_path):
     gen = (workdir / "scripts" / "rtl_load.tcl").read_text()
     assert "proc _analyze_or_die" in gen
     assert "exit 1" in gen
-    calls = [ln for ln in gen.splitlines() if ln.startswith("_analyze_or_die {")]
+    calls = [ln for ln in gen.splitlines() if ln.startswith("_analyze_or_die ")]
     assert len(calls) == 2, calls
     ungated = [ln for ln in gen.splitlines() if ln.startswith("analyze ")]
     assert ungated == [], ungated
@@ -124,8 +124,8 @@ def test_missing_spec_sdc_fails_closed(tmp_path):
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode != 0
     assert "SDC source of truth not found" in proc.stderr
-    # and nothing was deployed, so the already-deployed guard cannot block the retry
-    assert not (workdir / "Makefile").exists()
+    # Invalid input leaves setup uninstalled, and corrected input permits a retry.
+    assert not (workdir / "config.tcl").exists()
     assert not (workdir / "constraints.sdc").exists()
     assert _run(skill_dst, workdir, "--top", "M_top").returncode == 0  # retry works
 
@@ -135,12 +135,8 @@ def test_happy_path_substitutes_my_top(tmp_path):
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
-    env_sh = (workdir / "env.sh").read_text()
+    env_sh = (workdir / "config.tcl").read_text()
     assert "MY_TOP" not in env_sh and "top" in env_sh
-    cfg = (workdir / "scripts" / "config.tcl").read_text()
-    assert 'set ::env(TOP)    "top"' in cfg
-    assert "set ::env(LIB_DB)" in cfg  # dc_shell inherits no shell env vars
-    assert "set ::env(WIRE_LOAD_MODEL)" in cfg  # required too, and equally uninherited
     assert "MY_RTL_DIR" not in (workdir / "scripts" / "dc_run.tcl").read_text()
 
 
@@ -163,8 +159,7 @@ def test_empty_filelist_fail_closed(tmp_path):
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 1
     assert "lists no RTL files" in proc.stderr
-    # nothing deployed, so the already-deployed guard cannot block the retry
-    assert not (workdir / "Makefile").exists()
+    assert not (workdir / "config.tcl").exists()
     assert not (workdir / "scripts").exists()
 
 
@@ -173,7 +168,7 @@ def test_missing_filelist_fail_closed(tmp_path):
     proc = _run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 1
     assert "missing" in proc.stderr and "rtl-files.json" in proc.stderr
-    assert not (workdir / "Makefile").exists()
+    assert not (workdir / "config.tcl").exists()
     # and the retry works once rtl-design has written the layout
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     assert _run(skill_dst, workdir, "--top", "top").returncode == 0
@@ -186,7 +181,7 @@ def test_top_read_from_manifest(tmp_path):
     )
     assert _run(skill_dst, workdir).returncode == 0  # no --top
     # manifest.module wins; the filelist basename is not consulted at all
-    assert "M_top" in (workdir / "env.sh").read_text()
+    assert "M_top" in (workdir / "config.tcl").read_text()
 
 
 def test_cant_read_top_fail_closed(tmp_path):
@@ -199,13 +194,15 @@ def test_cant_read_top_fail_closed(tmp_path):
     assert "cannot read top" in proc.stderr
 
 
-def test_already_deployed_guard(tmp_path):
+def test_bootstrap_preserves_authored_driver(tmp_path):
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     assert _run(skill_dst, workdir, "--top", "top").returncode == 0
+    driver = workdir / "scripts/dc_run.tcl"
+    driver.write_text("# authored calculation with literal MY_RTL_DIR\n")
     proc = _run(skill_dst, workdir, "--top", "top")
-    assert proc.returncode == 1
-    assert "already deployed" in proc.stderr
+    assert proc.returncode == 0
+    assert driver.read_text() == "# authored calculation with literal MY_RTL_DIR\n"
 
 
 def test_relative_workdir_with_trailing_slash(tmp_path):
@@ -228,8 +225,8 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
         text=True,
     )
     assert proc.returncode == 0, proc.stderr
-    assert (workdir / "Makefile").is_file()  # resolved to the absolute location
-    assert (workdir / "scripts" / "config.tcl").is_file()
+    assert (workdir / "config.tcl").is_file()  # resolved to the absolute location
+    assert (workdir / "scripts" / "dc_run.tcl").is_file()
 
 
 def test_bootstrap_reanchors_rtl_load_to_absolute_from_dispatch_json(tmp_path):
@@ -245,27 +242,17 @@ def test_bootstrap_reanchors_rtl_load_to_absolute_from_dispatch_json(tmp_path):
     assert "../../../rtl-design" not in tcl and "relpath" not in tcl
 
 
-def test_config_tcl_lib_db_does_not_override_the_environment(tmp_path):
-    # env.sh refuses to run without LIB_DB in the environment, so the Makefile path always
-    # has one. An unconditional `set ::env(LIB_DB)` here would let the placeholder written
-    # by a bootstrap that ran first beat the real path exported afterwards.
+def test_tool_configuration_preserves_literal_values(tmp_path, monkeypatch):
+    value = 'space $variable [error injected] "quotes" \\path'
+    monkeypatch.setenv("LIB_DB", value)
     skill_dst, rtl, workdir = _mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"c": {"files": ["top.v"]}}))
     assert _run(skill_dst, workdir, "--top", "top").returncode == 0
-    cfg = (workdir / "scripts" / "config.tcl").read_text()
-    assert "info exists ::env(LIB_DB)" in cfg  # conditional, whatever value it recorded
-    assert "info exists ::env(WIRE_LOAD_MODEL)" in cfg
-
-    probe = workdir / "probe.tcl"
-    probe.write_text('source scripts/config.tcl\nputs "seen: $::env(LIB_DB)"\n')
+    (workdir / "probe.tcl").write_text("source config.tcl\nputs -nonewline $LIB_DB\n")
     seen = subprocess.run(
-        ["tclsh", "probe.tcl"],
-        cwd=str(workdir),
-        capture_output=True,
-        text=True,
-        env={"LIB_DB": "/real/slow.db", "PATH": "/usr/bin:/bin"},
+        ["tclsh", "probe.tcl"], cwd=workdir, capture_output=True, text=True
     )
-    assert seen.stdout.strip() == "seen: /real/slow.db", seen
+    assert seen.returncode == 0 and seen.stdout == value
 
 
 def test_seed_and_carried_local_remain_separate(tmp_path):
@@ -313,6 +300,9 @@ def test_driver_reads_local_edits_on_each_invocation(tmp_path):
     assert _run(skill_dst, workdir, "--top", "top").returncode == 0
     library = tmp_path / "test.db"
     library.touch()
+    (workdir / "config.tcl").write_text(
+        f'set TOP top\nset LIB_DB "{library}"\nset WIRE_LOAD_MODEL none\n'
+    )
     (workdir / "probe.tcl").write_text(
         """proc set_app_var args {}
 proc get_app_var args {return {}}
@@ -335,7 +325,34 @@ source scripts/dc_run.tcl
             cwd=workdir,
             capture_output=True,
             text=True,
-            env={**os.environ, "LIB_DB": str(library), "WIRE_LOAD_MODEL": "none"},
+            env={
+                **os.environ,
+                "TOP": "top",
+                "LIB_DB": str(library),
+                "WIRE_LOAD_MODEL": "none",
+            },
         )
         assert seen.returncode == 0, seen.stderr
         assert f"observed={value or 'seed'}" in seen.stdout
+
+
+def test_loader_preserves_source_and_include_paths(tmp_path):
+    skill, rtl, wd = _mirror(tmp_path / 'project [literal] $var {x} "quoted"')
+    source = "src/core [literal] $var {x}.v"
+    include = "src/include [literal] $var {x}"
+    (rtl / "rtl-files.json").write_text(
+        json.dumps({"core": {"files": [source], "incdirs": [include]}})
+    )
+    assert _run(skill, wd, "--top", "top").returncode == 0
+    (wd / "probe.tcl").write_text(
+        "proc get_app_var name {return {}}\n"
+        'proc set_app_var {name paths} {foreach p $paths {puts "INCLUDE:$p"}}\n'
+        'proc analyze args {puts "SOURCE:[lindex [lindex $args end] 0]"; return 1}\n'
+        "source scripts/rtl_load.tcl\n"
+    )
+    p = subprocess.run(["tclsh", "probe.tcl"], cwd=wd, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert p.stdout.splitlines() == [
+        f"INCLUDE:{rtl / include}",
+        f"SOURCE:{rtl / source}",
+    ]

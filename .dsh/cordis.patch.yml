@@ -1,5 +1,4 @@
-# The dsh bundle layer: mount the adapter. It registers this checkout's skills
-# and the two interception behaviours; nothing else in the tree is configured.
+# Register skills and post-dispatch context.
 - insert:
     - id: veripower-dsh
       name: veripower/.dsh/plugins/veripower.js

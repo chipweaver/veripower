@@ -1,22 +1,10 @@
 #!/usr/bin/env python3
-"""check-crossrefs — validate references between the ledger, boundary and check hints.
+"""Validate declared references between requirements, boundary and check hints.
 
-Finalize repeats this check against the current files to catch inconsistencies introduced
-by later edits.
-
-Each violation names both sides in words — which file wrote the name, and which file was
-supposed to have it. WHICH side is wrong is a judgment, so the verdict states the disagreement
-and leaves that call to whoever reads the two files.
-
-Deliberately NOT here: a sidecar's own shape (validated by whoever reads it — see sidecar.py),
-and anything needing a reference frame, such as whether a document realizes a requirement. Those
-are a reader's job.
-
-Usage: ``python3 scripts/spec/__main__.py check-crossrefs --workdir {workdir}``
-Exit: 0 if `status == "pass"`, 1 if `status == "fail"`. A missing or malformed sidecar is also 1,
-via the CLI's uniform SidecarError handler: it is routable — re-dispatch whoever authors that file
-— which is what exit 1 means. Nothing here can fail any other way, since every read goes through
-`read_sidecar`.
+Errors identify inconsistent or missing inputs. The stage owner determines which input
+is wrong from the task evidence; a nonzero exit does not determine the repair owner.
+Finalize repeats this check on the artifacts being delivered. Structural consistency
+alone does not establish that a requirement or observation is correct.
 """
 
 import json
@@ -41,9 +29,8 @@ def violations(workdir: Path) -> list[dict]:
     def say(where, what):
         out.append({"where": where, "what": what})
 
-    # A hint says how simulation observes a requirement. It may name only rows simulation judges
-    # without a coverage target: any other row is established elsewhere, and a hint for it would
-    # turn a requirement the engineer kept out of the testbench into a gate.
+    # Validate the declared simulation-check references. If an assignment omits required
+    # behavior, the author must correct it against the task rather than drop the check.
     named: set[str] = set()
     check_ids: set[str] = set()
     for h in read_sidecar(workdir, "check-hints.json"):

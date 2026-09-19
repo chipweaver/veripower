@@ -1,17 +1,18 @@
 """The rows of requirements.json this stage establishes, and the envelope entry each one gets.
 
-No row this stage judges can carry a target: it measures no dimension, so `mine` refuses one
-that does. Every row it judges is therefore judged by the agent that ran the tool and declared through
-`finalize --requirements`. `merge` refuses an envelope that does not account for every row this
-stage judges, so a row the agent never read cannot pass as silence.
+Numeric timing_slack_ns targets compare the worst setup/hold slack from PrimeTime.
+Other rows are judged by the agent through `finalize --requirements`.
 """
 
 from __future__ import annotations
 
 import json
+import math
+import operator
 from pathlib import Path
 
 STAGE = "timing-analysis"
+_OPS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge}
 
 
 def load(workdir) -> list[dict]:
@@ -25,18 +26,43 @@ def load(workdir) -> list[dict]:
 
 
 def mine(rows: list[dict]) -> list[dict]:
-    """The rows this stage judges. It compares no dimension, so a row it judges may carry no
-    target: there would be no measurement to hold the bound against, and the agent's own
-    verdict would stand in for a comparison nobody made."""
+    """Select this stage's rows and reject unsupported numeric targets."""
     ours = [r for r in rows if r["judge"] == STAGE]
-    bounded = [r["id"] for r in ours if "target" in r]
-    if bounded:
-        raise ValueError(
-            f"{bounded} are judged by {STAGE} and carry a target, but {STAGE} measures no "
-            f"dimension — either the row names the wrong judge, or the bound belongs in a "
-            f"row that judge can compare"
-        )
+    for row in ours:
+        if "target" not in row:
+            continue
+        t = row["target"]
+        value = t.get("value")
+        if (
+            t.get("dim") != "timing_slack_ns"
+            or t.get("op") not in _OPS
+            or isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+        ):
+            raise ValueError(f"{row['id']}: unsupported timing target {t}")
     return ours
+
+
+def compare(rows: list[dict], timing: dict) -> list[dict]:
+    """Compare report values without turning a rounded VIOLATED zero into a pass."""
+    setup, hold = timing["setup"], timing["hold"]
+    actual = min(setup["worst_slack_ns"], hold["worst_slack_ns"])
+    rounded_violation = actual == 0 and not (setup["met"] and hold["met"])
+    return [
+        {
+            "id": r["id"],
+            "actual": actual,
+            # VIOLATED supplies the sign lost when the report rounds slack to zero.
+            "met": r["target"]["op"] in ("<", "<=")
+            if rounded_violation and r["target"]["value"] == 0
+            else _OPS[r["target"]["op"]](actual, r["target"]["value"]),
+            "measured": "timing-report.txt: minimum worst setup/hold slack (ns); "
+            "VIOLATED disambiguates the sign of rounded zero",
+        }
+        for r in rows
+        if "target" in r
+    ]
 
 
 def parse_declared(text: str | None) -> list[dict]:
@@ -63,6 +89,11 @@ def merge(rows: list[dict], computed: list[dict], declared: list[dict]) -> list[
     """One entry per row this stage judges, in ledger order. Raises when a row has no entry or
     an entry names a row this stage does not judge."""
     ids = [r["id"] for r in rows]
+    computed_ids = {e["id"] for e in computed}
+    if computed_ids & {e["id"] for e in declared}:
+        raise ValueError("numeric timing targets cannot be overridden by declarations")
+    if len({e["id"] for e in declared}) != len(declared):
+        raise ValueError("duplicate requirement declarations")
     entries = {e["id"]: e for e in computed + declared}
     missing = [i for i in ids if i not in entries]
     extra = sorted(set(entries) - set(ids))

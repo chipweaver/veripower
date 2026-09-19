@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""timing — timing-analysis-stage CLI.
-
-Verbs (one stage = one tool):
-  bootstrap   deploy run_sta.tcl/config.tcl into the run workdir + substitute   (exit 0 / 1 / 2)
-  finalize    parse the PT STA report, judge setup/hold, assemble result.json   (exit 0 written / 2 BLOCKED)
-
-Thin dispatcher: each subcommand parses its own flags and calls into the
-timing.* library. Library imports are deferred into each handler (NOT top-level)
-so `--help` and verb dispatch stay runnable when a sibling module cannot import.
-(Library modules themselves use top-level absolute imports; only this thin
-dispatcher defers.)
-"""
+"""Prepare tool setup, execute a calculation, or judge existing evidence."""
 
 import argparse
 import os
@@ -32,6 +21,7 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
+    (Path(a.workdir) / "result.json").unlink(missing_ok=True)
     from timing import requirements, result
 
     return result.finalize(
@@ -43,12 +33,19 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     )
 
 
+def _cmd_run(a):
+    from timing.execute import run
+
+    return run(a.workdir)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="timing", description="timing-analysis-stage CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser(
-        "bootstrap", help="deploy run_sta.tcl/config.tcl + substitute into the workdir"
+        "bootstrap",
+        help="prepare missing run_sta.tcl and config.tcl from the netlist input",
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
@@ -57,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="top module; inferred from the single synthesis out/<TOP>_syn.v when omitted",
     )
     sp.set_defaults(func=_cmd_bootstrap)
+
+    sp = sub.add_parser(
+        "run", help="execute the prepared tool script and publish completed outputs"
+    )
+    sp.add_argument("--workdir", required=True, type=Path)
+    sp.set_defaults(func=_cmd_run)
 
     sp = sub.add_parser(
         "finalize", help="parse the PT report, judge setup/hold, assemble result.json"
@@ -77,8 +80,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--requirements",
         default=None,
-        help="your verdict on each requirements.json row judged by timing-analysis, as a JSON "
-        'array of {"id", "met", "actual"}',
+        help="your verdict on timing-analysis rows without a numeric target, as a JSON "
+        'array of {"id", "met", "measured", "actual"}; timing_slack_ns targets are computed',
     )
     sp.set_defaults(func=_cmd_finalize)
 
@@ -90,9 +93,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        # The documented protocol is a reason on stderr and a non-zero exit. A traceback is
-        # not that: it answers with source, which every skill here tells the reader never to
-        # open. The verbs' own refusals keep their own exits; this is only the unexpected.
         print(
             f"[timing {args.cmd}] BLOCKED: {type(exc).__name__}: {exc}", file=sys.stderr
         )

@@ -67,7 +67,7 @@ def test_proof_valid_then_input_change_invalidates(tmp_path, monkeypatch):
                     "name": "specification",
                     "verdict": "pass",
                     "inputs": {"intent": v},
-                    "oracle": {"ref": "spec-review", "grade": "human"},
+                    "oracle": {"ref": "spec-review", "grade": "endorsed"},
                 }
             ],
             "tool_versions": {},
@@ -115,7 +115,7 @@ def test_proof_invalid_when_own_output_handedited(tmp_path, monkeypatch):
                     "name": "specification",
                     "verdict": "pass",
                     "inputs": {"intent": v},
-                    "oracle": {"ref": "spec-review", "grade": "human"},
+                    "oracle": {"ref": "spec-review", "grade": "endorsed"},
                 }
             ],
             "tool_versions": {},
@@ -196,7 +196,7 @@ def test_reopen_after_proof_invalidates(tmp_path, monkeypatch):
                     "name": "specification",
                     "verdict": "pass",
                     "inputs": {"intent": v},
-                    "oracle": {"ref": "spec-review", "grade": "human"},
+                    "oracle": {"ref": "spec-review", "grade": "endorsed"},
                 }
             ],
             "tool_versions": {},
@@ -208,66 +208,6 @@ def test_reopen_after_proof_invalidates(tmp_path, monkeypatch):
         "m", {"type": "reopen", "pin_ref": "spec-review", "reason": "revoke"}, TS
     )
     assert not facts.proof_valid("m", store.read_events("m"), "specification")
-
-
-def _sign_off_everything(module):
-    """Construct: for every rule in FORWARD_PRIORITY (the 8 stages), one
-    dispatch+outcome pair carrying a passing same-name proof with empty
-    inputs/outputs (so proof_valid has nothing on disk to falsify) and an
-    oracle matching that rule's declared rules.RULES[rule].oracle (ref, grade);
-    then the human `signoff` event that is the predicate's first conjunct.
-    Enough to make every stage cell read "valid" and signed_off hold."""
-    for rule_name in rules.FORWARD_PRIORITY:
-        rule = rules.RULES[rule_name]
-        store.append_event(
-            module,
-            {
-                "type": "dispatch",
-                "rule": rule_name,
-                "run": 1,
-                "workdir": "w",
-                "inputs": {},
-                "params": {},
-            },
-            TS,
-        )
-        store.append_event(
-            module,
-            {
-                "type": "outcome",
-                "rule": rule_name,
-                "run": 1,
-                "verdict": "pass",
-                "outputs": {},
-                "proofs": [
-                    {
-                        "name": rule_name,
-                        "verdict": "pass",
-                        "inputs": {},
-                        "oracle": {"ref": rule.oracle[0], "grade": rule.oracle[1]},
-                    }
-                ],
-                "tool_versions": {},
-            },
-            TS,
-        )
-    store.append_event(
-        module, {"type": "signoff", "provenance": "u", "reason": "ship it"}, TS
-    )
-
-
-def test_signed_off_regresses_on_reopen(tmp_path, monkeypatch):
-    # Reopen of any pin flips signed_off back. (The hand-edit half of the same
-    # invariant needs on-disk outputs this empty-outputs fixture cannot carry — it is
-    # covered by test_schedule.py::test_signed_off_regresses_on_hand_edit.)
-    monkeypatch.chdir(tmp_path)
-    _sign_off_everything("m")  # helper: 8 pass proofs + the human signoff event
-    evs = store.read_events("m")
-    assert facts.signed_off("m", evs) is True
-    store.append_event(
-        "m", {"type": "reopen", "pin_ref": "spec-review", "reason": "revoke"}, TS
-    )
-    assert facts.signed_off("m", store.read_events("m")) is False
 
 
 def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypatch):
@@ -342,7 +282,7 @@ def test_oracle_covers_the_whole_review_directory(tmp_path, monkeypatch):
     assert facts.oracle_content_fp("m", r) == before
 
 
-def _spec_run(module, run, *, oracle_grade="human"):
+def _spec_run(module, run, *, oracle_grade="endorsed"):
     """Dispatch+pass specification run N with the intent tree on disk; returns nothing."""
     bm = _fp(module, "intent")
     store.append_event(

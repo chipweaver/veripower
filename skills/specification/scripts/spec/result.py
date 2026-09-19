@@ -96,8 +96,7 @@ def build_result(workdir, fail_reason=None) -> int:
     if xrefs["status"] == "fail":
         listed = "; ".join(f"{v['where']}: {v['what']}" for v in xrefs["violations"])
         raise ValueError(
-            f"check-crossrefs no longer passes at finalize — {listed}. The cross-reference gate left it clean, "
-            "so an artifact was edited after the gate: repair it, do not finalize."
+            f"check-crossrefs failed: {listed}. Repair the inconsistent input or report the unresolved cause."
         )
 
     info = derive_constraints(
@@ -128,6 +127,7 @@ def finalize(workdir, *, fail_reason=None) -> int:
     exit 2 = BLOCKED (an empty --fail-reason, an invalid or unresolved requirements.json, an
     unreadable manifest, a derivation fail-loud, or any internal raise) — never conflated with
     status=fail."""
+    (Path(workdir) / "result.json").unlink(missing_ok=True)
     if fail_reason is not None and not fail_reason.strip():
         print(
             "[spec finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",

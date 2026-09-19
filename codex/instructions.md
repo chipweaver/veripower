@@ -4,8 +4,7 @@ Apply these translations when running VeriPower:
 
 - `Skill(veripower:X)`: read @ROOT@/skills/X/SKILL.md in the current agent.
   Its directory is `<skill>`. Run the kernel as
-  `python3 @ROOT@/framework/scripts/kernel.py ...`; native approval rules cover
-  `pin`, `reopen` and `signoff` at this path.
+  `python3 @ROOT@/framework/scripts/kernel.py ...`.
 - `Task(run_in_background=True, prompt=P)`: use `spawn_agent` with `message=P`
   and `fork_context=false`. Render the child's Skill(...) line as a request to
   read its absolute SKILL.md path.

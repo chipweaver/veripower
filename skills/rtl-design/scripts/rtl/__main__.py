@@ -40,8 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--fail-reason",
         default=None,
-        help="one-line reason for an early exit no on-disk state can express (a child that "
-        "reported BLOCKED, or a malformed sidecar); writes the status=fail envelope directly",
+        help="unresolved requirement violation or incomplete work, even if compilation and "
+        "file checks pass; writes the failure result",
     )
     sp.add_argument(
         "--fix-owner",

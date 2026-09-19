@@ -66,6 +66,7 @@ def finalize(workdir, json_file, json_stdin) -> int:
     Exit 2 = BLOCKED (unreadable/malformed input JSON, or any internal exception) —
     never conflated with either status.
     """
+    (Path(workdir) / "result.json").unlink(missing_ok=True)
     if json_stdin:
         text = sys.stdin.read()
     else:

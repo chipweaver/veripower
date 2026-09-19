@@ -119,7 +119,7 @@ def run(reports_dir, target_rows) -> tuple[int, dict | None]:
             "dim": "timing_slack_ns",
             "value": worst,
             "source": f"qor.rpt worst Critical Path Slack across {n_groups} group(s) (min) "
-            f"— setup only; hold is timing-analysis's",
+            f"— setup only; does not measure hold",
         },
     ]
     by_dim = {m["dim"]: m for m in measurements}
@@ -261,9 +261,7 @@ def build_result(
         # no netlist. Promoting that as a pass publishes a synthesis the two downstream
         # rules declare as their input and cannot find.
         status = "fail"
-        ss["fail_reason"] = (
-            f"netlist incomplete: dc_shell wrote no {', '.join(missing)}"
-        )
+        ss["fail_reason"] = f"netlist incomplete: required {', '.join(missing)}"
     elif status == "fail":
         ss["fail_reason"] = f"requirement(s) not met: {', '.join(unmet)}"
     if status == "fail" and fix_owner:
@@ -280,11 +278,14 @@ def build_result(
 
 
 def _missing_netlist(workdir: Path) -> list[str]:
-    """Which of the three declared DC outputs are absent, as `out/*_syn.<ext>` labels."""
+    """A synthesis delivers one nonempty netlist with its matching SDC and SDF."""
+    netlists = list(workdir.glob("out/*_syn.v"))
+    if len(netlists) != 1:
+        return ["exactly one out/*_syn.v"]
     return [
-        f"out/*_syn.{ext}"
-        for ext in ("v", "sdc", "sdf")
-        if not any(p.is_file() for p in workdir.glob(f"out/*_syn.{ext}"))
+        str(p.relative_to(workdir))
+        for p in (netlists[0].with_suffix(ext) for ext in (".v", ".sdc", ".sdf"))
+        if not p.is_file() or not p.stat().st_size
     ]
 
 
@@ -300,32 +301,19 @@ def parse_tool(area_text: str) -> str:
 
 
 def enumerate_artifacts(workdir) -> list[dict]:
-    """Every promotable file this run produced, present-only.
-
-    `out/` leaves as one tree rather than a matched file set: whatever dc_shell wrote
-    into it is delivered and versioned, so a name nobody anticipated cannot drop the
-    netlist out of artifacts[] — promote publishes exactly what artifacts[] lists, and a
-    status=pass canonical root with no netlist leaves the two downstream rules
-    undispatchable. Whether the netlist is actually there is `_missing_outputs`'s job.
-    """
+    """Publish setup, authored helpers and completed products; omit private scratch."""
     workdir = Path(workdir)
-    out = ["out"] if (workdir / "out").is_dir() else []
-    candidates = [
-        *out,
-        "reports/qor.rpt",
-        "reports/area.rpt",
-        "reports/timing_setup.rpt",
-        "reports/timing_hold.rpt",
-        "reports/power.rpt",
-        "reports/check_design.rpt",
-        "constraints.sdc",
-        "constraints.local.sdc",
-        "run.log",
-        "scripts/dc_run.tcl",
-        "scripts/rtl_load.tcl",
-        "scripts/config.tcl",
-    ]  # envelope.schema forbids listing result.json itself; excluded by construction
-    return [{"path": p} for p in candidates if (workdir / p).exists()]
+    excluded = {
+        "result.json",
+        "result.json.tmp",
+        "dispatch.json",
+        "runs",
+        ".pending",
+        "work",
+    }
+    return [
+        {"path": p.name} for p in sorted(workdir.iterdir()) if p.name not in excluded
+    ]
 
 
 def finalize(
@@ -338,6 +326,7 @@ def finalize(
     """Parse DC reports, judge the rows synthesis establishes, write result.json. exit 0 =
     written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason, a row nobody judged, or
     any internal raise) — never conflated with status=fail."""
+    (Path(workdir) / "result.json").unlink(missing_ok=True)
     if fail_reason is not None:
         if not fail_reason.strip():
             print(

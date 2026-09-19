@@ -1,14 +1,11 @@
 [
   {
-    "id": "S1",
-    "sequence_ref": "tpu_top_idle_seq"
+    "id": "S1"
   },
   {
-    "id": "S4a",
-    "sequence_ref": "tpu_top_traffic_seq"
+    "id": "S4a"
   },
   {
-    "id": "S5",
-    "sequence_ref": "tpu_top_peak_toggle_seq"
+    "id": "S5"
   }
 ]

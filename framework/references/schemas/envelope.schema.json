@@ -75,7 +75,7 @@
   },
   "$defs": {
     "requirement_verdict": {
-      "description": "One verdict on one requirements.json row, as carried by a stage envelope's stage_specific.requirements[]. `measured` is what closes the row: the ledger names a dimension, this names the number the stage actually read, and reap carries it into the signoff basis — the only place the four tool stages' verdicts reach a human at all.",
+      "description": "One verdict on one requirements.json row, as carried by a stage envelope's stage_specific.requirements[]. `measured` is what closes the row: the ledger names a dimension, this names the number the stage actually read, and reap carries it into the signoff basis — the collected tool verdicts supporting the signoff decision.",
       "type": "object",
       "required": [
         "id",

@@ -1,34 +1,33 @@
-# The requirements ledger
+# Requirements ledger
 
-Read `<intent>/brainstorm.md`, all of it, in whatever shape the engineer wrote it. The intent is
-a tree: a file elsewhere under `<intent>/` that the document names as authoritative — a reference
-model, a register map, a standard — is part of the intent, and whoever judges a row that points at
-it reads it there. Write `{workdir}/requirements.json` per `requirements.schema.json`.
+Read the complete delivered intent and the named authorities needed to interpret it. Write
+`{workdir}/requirements.json` using [requirements.schema.json](requirements.schema.json).
+Account for requirements, scope, authorization, external responsibilities and decisions needed
+to proceed, including obligations this pipeline cannot establish.
 
-This is transcription, not classification. Walk the document top to bottom and account for every
-place it makes a claim or leaves a hole. A claim is a row in the engineer's own words, about the
-design, about you as its implementer, or about the context it lives in. A place it should have
-spoken and did not is a row too: `judge: human`, the surrounding sentence as `verbatim`, what is
-missing in `note`. Left out, a hole reaches every later reader as a settled question.
-Delegations, out-of-scope statements, pointers to external authorities, process requirements,
-acceptance tests you will never see, and restatements are rows too; nothing is skipped because no
-stage seems to want it.
+Organize entries by the conclusions they need. Repeated statements may share an entry when their
+meaning, conditions, scope and judge agree; retain source references and added qualifications in
+`note`. Keep independently judged obligations separate; give each automatic numerical bound its own
+target entry. Granularity should make each entry fully judgeable, rather than mirror every
+occurrence in the document.
 
-`judge` and `target` each hold one value, so a sentence two stages establish, or one bounding two
-dimensions, becomes one row per judge or per bound — each keeping the engineer's sentence as its
-`verbatim`, with `note` saying why it split. Rewriting the sentence to fit one row destroys the
-only wording every later reader is held to.
+`verbatim` quotes the relevant original wording, including labels and context needed to preserve
+meaning. Use `note` to explain the entry's scope, source locations, interpretations or decisions;
+keep these distinct from the user's words. Consult the source when an entry cannot be understood
+on its own. Preserve IDs for unchanged obligations and update affected references when revising.
 
-`verbatim` is a span of the document, so any reader can find it there. Take enough of it that the
-row means in isolation what the wording meant in place: a table row carries its header, a step its
-ordinal, a claim the section marker that scopes it. Never stitch a span from pieces the document
-does not put together — but a label and what it labels are put together, however many rows sit
-between them. Copy each piece as it stands and leave it whole: a header merged into the cells it
-names, or two levels of label folded into one line, is your wording, not the engineer's.
+Assign `judge` by who can establish the obligation with evidence. Stages can judge reports and
+other evidence without an automatic parser; `outside` identifies work not established by this
+workflow, with its responsibility made explicit. A numerical `target` is closed by the stage's
+computed comparison and covers only that quantity and measurement scope. Other independent
+obligations need their own judgment; a note cannot extend what the numeric verdict establishes.
 
-`judge` is who establishes the row; the schema says what each value means. Write `unassignable`
-with the reason in `note` when you cannot decide — including when the row rests on an authority
-that is not in the container, since nobody downstream can establish it either. `target` only when
-the engineer's number is already in a unit a stage's tool reports.
+Distinguish missing intent or necessary authority from tools, artifacts and decisions the task
+asks its implementer to prepare. Assign that work to its responsible stage. When the basis for
+an obligation remains unresolved, identify the concrete missing definition or evidence in `note`
+and use the appropriate judge from the schema. Resolve decisions under the actual authorization;
+do not invent acceptance conditions or replace missing authority with a convenient assumption.
 
-End with `STATUS: DONE` and the path, or `STATUS: BLOCKED <reason>`.
+Check both directions against the original intent: every obligation and material qualification
+is accounted for, and every claimed obligation has a source or an authorized decision. Return
+`STATUS: DONE` with the output path, or `STATUS: BLOCKED <cause>` if the work is incomplete.

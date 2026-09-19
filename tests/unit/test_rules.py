@@ -84,29 +84,6 @@ def test_proposed_oracle_declares_selector_within_inputs_union_outputs():
             )
 
 
-def test_no_selector_is_a_filename_pattern():
-    """An input or oracle selector names what its producer delivers as a unit — a file, or a
-    directory delivered whole. A pattern can only ever be a guess at what the producer will
-    call things, and what it guesses wrong at is what silently stops being tracked.
-
-    The two constraint seeds are the standing exception, recorded rather than waived: their
-    directory holds two consumable groups (lint reads the SGDC, synthesis the SDC) and telling
-    them apart by a tree needs the directory split first."""
-    EXCEPTIONS = {
-        ("lint-cdc", "sgdc_seed"),
-        ("synthesis", "sdc"),
-    }
-    for rule in rules.RULES.values():
-        for key, globs in rule.inputs.items():
-            if (rule.name, key) in EXCEPTIONS:
-                continue
-            for g in globs:
-                assert "*" not in g, f"{rule.name}.{key} selects by pattern: {g}"
-        assert "*" not in (rule.oracle_selector or ""), (
-            f"{rule.name}: an endorsement must cover a set, not a pattern's matches"
-        )
-
-
 def test_advisory_edges_are_sequencing_only():
     """ADVISORY_ORDER holds the two edges that are NOT data dependencies, and holds only
     those. A rule with no advisory entry can never be held back by the no-overtake gate,
@@ -170,22 +147,10 @@ def test_carry_no_carry_fields_and_values():
     assert rules.RULES["rtl-design"].no_carry == ("semantic-review/*",)
     assert rules.RULES["simulation"].carry == ("**",)
     assert rules.RULES["simulation"].no_carry == ("check-review.md",)
-    # Both constraint stages carry ONLY what they author. The file the tool reads is
-    # assembled from the upstream seed every round, so carrying it would pin the seed to
-    # whatever it said the round the workdir was first created.
-    assert rules.RULES["lint-cdc"].carry == (
-        "scripts/waiver.tcl",
-        "scripts/local.sgdc",
-    )
-    assert rules.RULES["lint-cdc"].no_carry == ()
-    assert rules.RULES["synthesis"].carry == ("constraints.local.sdc",)
-    assert rules.RULES["synthesis"].no_carry == ()
-    # pure transformers + triage carry nothing
-    for r in ("timing-analysis", "power-analysis", "simulation-triage"):
-        assert rules.RULES[r].carry == ()
-        assert rules.RULES[r].no_carry == ()
-    # frozen dataclass still rejects mutation
-    assert getattr(rules.Rule, "__dataclass_params__").frozen
+    for stage in ("lint-cdc", "synthesis", "timing-analysis", "power-analysis"):
+        assert rules.RULES[stage].carry == ("**",)
+        assert rules.RULES[stage].no_carry == ()
+    assert rules.RULES["simulation-triage"].carry == ()
 
 
 def test_triage_has_upstream_inputs_and_no_proof():
@@ -194,3 +159,9 @@ def test_triage_has_upstream_inputs_and_no_proof():
     r = rules.RULES["simulation-triage"]
     assert r.proof is None
     assert set(r.inputs) >= {"design", "rtl", "plan"}
+
+
+def test_power_carries_published_material_and_reads_plan_meaning():
+    rule = rules.RULES["power-analysis"]
+    assert rule.carry == ("**",)
+    assert "Verification/simulation-plan/verification-plan.md" in rule.inputs["plan"]

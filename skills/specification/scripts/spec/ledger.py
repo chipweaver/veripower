@@ -1,9 +1,6 @@
-"""requirements.json — the ledger of what the engineer's intent document requires.
+"""Shared requirement identifiers and decision-facing ledger views.
 
-One row per proposition, in the engineer's words, with `judge` naming who establishes it. Scripts
-act on `id`, `judge` and `target` only; `verbatim` and `note` are text they carry through. This
-module holds the two readings scripts need: which rows check-hints must name, and the rows a human
-must see verbatim at the ledger and boundary gate.
+Scripts select obligations by id, judge and target; readers interpret source wording and notes.
 """
 
 import json
@@ -12,8 +9,7 @@ from spec.sidecar import read_sidecar
 
 NAME = "requirements.json"
 
-# Rows the ledger and boundary gate shows verbatim: what the author could not place, what the pipeline does
-# not judge, what a person judges, and the numbers scripts will gate on with no later review.
+# Decision-facing groups; numerical targets are included separately.
 GATE_JUDGES = ("unassignable", "outside", "human")
 
 
@@ -36,7 +32,7 @@ def gate_view(rows: list[dict]) -> dict:
 
 
 def run(workdir: str) -> int:
-    """check-ledger: validate requirements.json and print what the ledger and boundary gate hands the human."""
+    """Validate the ledger and show unresolved decisions, external scope and targets."""
     rows = load(workdir)  # raises SidecarError naming every violation
     print(json.dumps(gate_view(rows), ensure_ascii=False, indent=2))
     return 0

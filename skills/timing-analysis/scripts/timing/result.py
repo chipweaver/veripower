@@ -230,14 +230,18 @@ def parse_tool(report_text: str) -> str:
 
 
 def enumerate_artifacts(workdir: Path) -> list:
+    """Publish setup, authored helpers and completed products; omit private scratch."""
     workdir = Path(workdir)
-    candidates = [
-        "run_sta.tcl",
-        "config.tcl",
-        "timing-report.txt",
+    excluded = {
+        "result.json",
+        "result.json.tmp",
+        "dispatch.json",
+        "runs",
+        ".pending",
+    }
+    return [
+        {"path": p.name} for p in sorted(workdir.iterdir()) if p.name not in excluded
     ]
-    # envelope.schema forbids listing result.json itself; excluded by construction.
-    return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
 def build_result(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
@@ -290,10 +294,9 @@ def build_result(workdir, rows, declared, fix_owner=None, fail_reason=None) -> i
 
     status = "pass" if actual["verdict"] == "pass" else "fail"
     report_text = report.read_text(errors="replace")
-    # PrimeTime's own verdict is the markers above; the rows requirements.json assigns to this
-    # stage carry no number it reports, so each verdict is the agent's, and merge refuses a row
-    # it did not judge.
-    judged = requirements.merge(rows, [], declared)
+    judged = requirements.merge(
+        rows, requirements.compare(rows, actual["timing"]), declared
+    )
     unmet = requirements.unmet(judged)
     ss = {
         "tool": parse_tool(report_text),
@@ -332,6 +335,7 @@ def finalize(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
     this stage, write the lean result.json. exit 0 = written (pass or fail); exit 2 = BLOCKED
     (an empty --fail-reason, a row nobody judged, or any internal raise) — never conflated
     with status=fail."""
+    (Path(workdir) / "result.json").unlink(missing_ok=True)
     if fail_reason is not None:
         if not fail_reason.strip():
             print(

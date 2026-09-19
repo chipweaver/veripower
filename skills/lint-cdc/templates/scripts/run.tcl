@@ -1,7 +1,7 @@
 # ==============================================================================
 # run.tcl — SpyGlass lint / CDC entry (single file, stage-parameterized).
 #
-# Invocation (from the runs/<N>/ deploy directory, launched by the Makefile):
+# Invocation (from the assigned workdir, launched by the Makefile):
 #   spyglass -64bit -shell -tcl scripts/run.tcl
 #
 # SPYGLASS_STAGE env var selects the goal subset:

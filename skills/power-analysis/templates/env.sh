@@ -1,71 +1,10 @@
 # shellcheck shell=sh
-# ==============================================================================
-# env.sh — power-analysis stage environment variables.
-# Sourced by the Makefile and scripts/ entries. Do not edit MY_TOP
-# placeholders post-deploy — the power bootstrap verb substitutes them.
-# ==============================================================================
+# Sourced from this run's working directory. Edit for the actual experiment.
+export TOP=@TOP@
+export NETLIST=@NETLIST@
+export SDC_FILE=@SDC@
+export SDF_FILE=@SDF@
 
-# Top module name, substituted by the power bootstrap verb. The UVM class prefix the
-# rendered power tests need is NOT here: emit_power_tests reads it out of the TB's own
-# `package <prefix>_tb_pkg;`, which is the declaration those tests are compiled against.
-export TOP="${TOP:-MY_TOP}"
-
-# External reference paths — MY_SYN_OUT / MY_SIM_DIR / MY_PLAN_DIR are
-# substituted at bootstrap with the absolute stage-root paths injected via
-# dispatch.json, so paths stay correct regardless of workdir depth (canonical
-# Verification/power-analysis/ vs runs/<N>/) without any relpath computation.
-export NETLIST="MY_SYN_OUT/${TOP}_syn.v"
-export SDC_FILE="MY_SYN_OUT/${TOP}_syn.sdc"
-export SDF_FILE="MY_SYN_OUT/${TOP}_syn.sdf"
-
-export TB_DIR="MY_SIM_DIR"
-export TB_FILELIST="${TB_DIR}/filelist.f"
-export TB_FILELIST_ABS="./tb_filelist_abs.f"
-export PLAN_DIR="MY_PLAN_DIR"
-
-export POWER_TESTS_DIR="./scaffold/power_tests"
-export POWER_FILELIST="./scaffold/power_filelist.f"
-
-# DUT instance hierarchy — the one place this stage writes the DUT path, which ptpx.tcl reads
-# from $STRIP_PATH rather than hardcoding. It must name the scope the testbench actually
-# instantiates, or the SAIF paths keep a prefix the netlist does not have and nothing annotates;
-# tests/contracts/test_cross_stage_contracts.py holds both ends to the same convention.
-# PT uses '/', VCS -sdf uses '.'.
-export TB_TOP="${TOP}_tb_top"
-export DUT_INST="u_dut"
-export STRIP_PATH="${TB_TOP}/${DUT_INST}"
-export VCS_SDF_SCOPE="${TB_TOP}.${DUT_INST}"
-
-# Required env vars.
-# Examples:
-#   export LIB_V=/home/eda/Foundry/TSMC.90/tsmc090.v
-#   export LIB_DB=/home/eda/Foundry/TSMC.90/slow.db
-#   export UVM_HOME=/home/eda/UVM/uvm-1.1d
-LIB_V="${LIB_V:?ERROR: LIB_V (standard cell Verilog models path) not set.}"
-LIB_DB="${LIB_DB:?ERROR: LIB_DB (standard cell Liberty .db path) not set. Must match synthesis stage.}"
-UVM_HOME="${UVM_HOME:?ERROR: UVM_HOME not set.}"
-export LIB_V LIB_DB UVM_HOME
-
-# Set is not the same as readable, and the three used to be checked at three
-# different moments: LIB_V before the compile, LIB_DB only once PT started, UVM_HOME
-# never. A LIB_DB typo therefore survived the compile and every scenario's simulation
-# before anything looked at it. Every target sources this file, so checking all three
-# here is the earliest moment any of them can be checked, and the only one.
-[ -r "$LIB_V" ] || {
-	echo "ERROR: LIB_V is not a readable file: $LIB_V" >&2
-	exit 1
-}
-[ -r "$LIB_DB" ] || {
-	echo "ERROR: LIB_DB is not a readable file: $LIB_DB" >&2
-	exit 1
-}
-[ -r "$UVM_HOME/src/dpi/uvm_dpi.cc" ] || {
-	echo "ERROR: UVM_HOME has no src/dpi/uvm_dpi.cc (the file VCS compiles): $UVM_HOME" >&2
-	exit 1
-}
-
-export VCS_TIMESCALE="-timescale=1ns/1ps"
-# VCS 2016: +vcs+initmem+N / +vcs+initreg+N are deprecated. Use compile-time
-# +vcs+initreg+random, then pick the actual value at runtime via
-# +vcs+initreg=<seed|0|1|random>.
-export VCS_INIT_FLAGS="+vcs+initreg+random"
+# Set LIB_DB (a Tcl list of linked .db paths) and STRIP_PATH for PT-PX here
+# or in the calling environment. STRIP_PATH is the captured DUT hierarchy.
+# The experiment's compile/run scripts own simulator, model and service setup.

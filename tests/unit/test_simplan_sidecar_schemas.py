@@ -29,5 +29,5 @@ def test_an_empty_power_scenario_table_is_refused(tmp_path):
 
 def test_one_row_is_enough(tmp_path):
     p = tmp_path / "power-scenarios.json"
-    p.write_text('[{"id": "S1", "sequence_ref": "s1"}]')
-    assert _read_validated(p, SCHEMA) == [{"id": "S1", "sequence_ref": "s1"}]
+    p.write_text('[{"id": "S1"}]')
+    assert _read_validated(p, SCHEMA) == [{"id": "S1"}]

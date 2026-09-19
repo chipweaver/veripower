@@ -1,8 +1,8 @@
 # VeriPower on opencode
 
 The adapter loads the shared `framework/` and `skills/` through opencode's plugin
-API, maps skill and task calls to native tools, and installs approval prompts and
-a post-dispatch reminder.
+API, maps skill and task calls to native tools, and supplies post-dispatch scheduling
+context.
 
 ## Install
 
@@ -46,11 +46,10 @@ installed root and tool translations: `Skill` becomes `skill`, and background
 `Task` becomes `task` with `background: true`. Child prompts use the same bare
 skill names and installed paths.
 
-The adapter adds `ask` permission rules for Bash commands matching `kernel.py`
-with `pin`, `reopen` or `signoff`, including agent-specific permission tables.
-It also allows access to its installation directory. After a task dispatch, a
-reminder stays in the model's context until the next kernel call. Stage routing
-and results remain the shared kernel's responsibility.
+The adapter preserves global and agent permissions and leaves command text unchanged.
+A dispatch reminder stays in context until the next kernel action, including across executor launch.
+The shared kernel owns stage routing and artifact validity. Design-flow coordinates execution
+and collection and follows the task's actual authorization for engineering decisions.
 
 ## Removal
 
@@ -68,5 +67,4 @@ python -m pytest tests/unit/ tests/contracts/
 
 The first command checks adapter syntax; the Python suite checks the shared
 flow. To check the host integration, use an opencode session with the launch
-flags above and confirm skill discovery, background task completion and approval
-prompts. See [testing](../tests/README.md) for experiment scope.
+flags above and confirm skill discovery, background task completion and the configured host permissions. See [testing](../tests/README.md) for experiment scope.

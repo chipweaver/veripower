@@ -42,8 +42,8 @@ def _active_diagnoses(events: list[dict], rule: str, outcome: dict) -> list[dict
 
 
 def _legal(rule: str, name: str | None) -> bool:
-    """A repair owner must be a transitive artifact producer of the failed rule."""
-    return bool(name) and name in rules.input_closure(rule)
+    """A repair owner is the failed stage or one of its input producers."""
+    return bool(name) and name in rules.repair_owners(rule)
 
 
 def _event_index(events: list[dict], event: dict) -> int:
@@ -194,7 +194,7 @@ def _escalation(c: dict) -> dict:
                     "attribution": d["attribution"],
                     "diagnosis": d["id"],
                     # present on the entries that DID name someone: they are held with the
-                    # rest, and the human deciding needs to see what was already attributed.
+                    # rest, and the decision maker needs to see what was already attributed.
                     **({"fix_owner": d["fix_owner"]} if d.get("fix_owner") else {}),
                 }
                 for d in c["unroutable"]
@@ -202,14 +202,9 @@ def _escalation(c: dict) -> dict:
         }
     if named is None:
         return {"rule": rule, "reason": f"{rule}: envelope named no fix_owner"}
-    if named == rule:
-        return {
-            "rule": rule,
-            "reason": f"{rule}: fix_owner is itself, in-stage remedy exhausted",
-        }
     return {
         "rule": rule,
-        "reason": f"{rule}: fix_owner {named!r} is outside its input closure",
+        "reason": f"{rule}: fix_owner {named!r} is neither itself nor an input producer",
     }
 
 
@@ -376,7 +371,7 @@ def _settle(module, events, inflight, required, closing):
             reason = facts.signoff_gate(module, events)
             if reason is not None:
                 return {"action": "ESCALATE", "reason": reason}
-            # "go stamp" is where the human decides; hand them the proposition, not just
+            # "go stamp" is where the authorized decision is made; hand them the proposition, not just
             # the permission (facts.signoff_basis).
             return {"action": "DONE", "basis": facts.signoff_basis(module, events)}
         return {"action": "DONE"}
@@ -411,10 +406,8 @@ def decide(
     owed_ = owed(events, fails)
 
     repair = _group(owed_)
-    # A rule still owed against does not run, in either role: re-verifying a proof whose
-    # failure nobody has answered spends the stage to rediscover what is already written
-    # down, and rebuilding a rule that is itself owed against answers nothing.
-    owed_rules = {f["rule"] for f in owed_}
+    # Wait for upstream repairs before re-verifying, but allow a stage to repair itself.
+    owed_rules = {f["rule"] for f in owed_ if f["owner"] != f["rule"]}
     required = set(_STAGE_PROOFS)
     candidates = _candidates(
         module,

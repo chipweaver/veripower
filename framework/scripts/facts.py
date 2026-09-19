@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -157,7 +158,7 @@ def oracle_content_fp(module: str, rule) -> str:
 
 
 def oracle_grade(module: str, events: list[dict], rule) -> str:
-    """Return human when the latest live pin matches current content, otherwise the declared grade."""
+    """Return endorsed when the latest live pin matches current content, otherwise the declared grade."""
     if rule.oracle[1] != "proposed":
         return rule.oracle[1]
     live = live_pins(events, rule.oracle[0])
@@ -167,7 +168,7 @@ def oracle_grade(module: str, events: list[dict], rule) -> str:
     if current == UNKNOWN:
         return "proposed"  # unreadable oracle content never inherits trust
     # Use the most recent live endorsement.
-    return "human" if live[-1]["content_fingerprint"] == current else "proposed"
+    return "endorsed" if live[-1]["content_fingerprint"] == current else "proposed"
 
 
 def verdict_trustworthy(
@@ -328,10 +329,36 @@ def projection(module: str, events: list[dict]) -> dict[str, str]:
 
 
 def signed_off(module: str, events: list[dict]) -> bool:
-    """Return whether a signoff exists and all stage proofs remain valid."""
-    if not any(e["type"] == "signoff" for e in events):
+    """The current evidence must still be the evidence accepted at the last signoff."""
+    anchor = next(
+        (i for i in range(len(events) - 1, -1, -1) if events[i]["type"] == "signoff"),
+        None,
+    )
+    if anchor is None or signoff_gate(module, events) is not None:
         return False
-    return all(proof_valid(module, events, r) for r in rules.FORWARD_PRIORITY)
+    accepted = events[:anchor]
+    for name in rules.FORWARD_PRIORITY:
+        before = proof_outcome(accepted, name)
+        current = proof_outcome(events, name)
+        if before is None or current is None:
+            return False
+        evidence = [copy.deepcopy(hit[1]) for hit in (before, current)]
+        for outcome in evidence:
+            del outcome["ts"]
+            # Reaping the same evidence can refresh its recorded grade. The gate
+            # above checks the actual endorsement against current oracle content.
+            for proof in outcome["proofs"]:
+                del proof["oracle"]["grade"]
+        if evidence[0] != evidence[1]:
+            return False
+        rule = rules.RULES[name]
+        if rule.oracle and rule.oracle[1] == "proposed":
+            pins = live_pins(accepted, rule.oracle[0])
+            if not pins or pins[-1]["content_fingerprint"] != oracle_content_fp(
+                module, rule
+            ):
+                return False
+    return True
 
 
 def _unrecorded(module: str, rule_name: str, outcome: dict) -> list[str]:
@@ -360,13 +387,13 @@ def _unrecorded(module: str, rule_name: str, outcome: dict) -> list[str]:
 def signoff_gate(module: str, events: list[dict]) -> str | None:
     """Return the first unmet signoff requirement in forward priority order.
 
-    Require valid proofs, tool or human oracle grades, and no unrecorded products."""
+    Require valid proofs, tool or endorsed oracle grades, and no unrecorded products."""
     for proof in rules.FORWARD_PRIORITY:
         if not proof_valid(module, events, proof):
             return f"signoff blocked: {proof} not valid"
         _, outcome = proof_outcome(events, proof)
         # Check live endorsement so pin/reopen applies immediately.
-        if oracle_grade(module, events, rules.RULES[proof]) not in ("tool", "human"):
+        if oracle_grade(module, events, rules.RULES[proof]) not in ("tool", "endorsed"):
             return f"signoff blocked: {proof} oracle is proposed (pin it)"
         added = _unrecorded(module, proof, outcome)
         if added:
@@ -392,7 +419,7 @@ def signoff_basis(module: str, events: list[dict]) -> list[dict]:
         rule = rules.RULES[proof_name]
         oracle: dict = {"ref": rule.oracle[0] if rule.oracle else None}
         oracle["grade"] = oracle_grade(module, events, rule) if rule.oracle else None
-        if oracle["grade"] == "human":
+        if oracle["grade"] == "endorsed":
             live = live_pins(events, rule.oracle[0])
             if live:
                 oracle["pinned_fingerprint"] = live[-1]["content_fingerprint"]

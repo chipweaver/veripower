@@ -16,7 +16,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from test_codex_adapter import setup
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.skipif(
@@ -47,7 +46,14 @@ def message(text="probe complete"):
     }
 
 
-def run_codex(tmp_path, responder, decision="decline"):
+def run_codex(
+    tmp_path,
+    responder,
+    decision="decline",
+    *,
+    approval_policy="on-request",
+    host_rule=None,
+):
     """Drive one app-server turn; fixtures and hook overrides stay under tmp_path."""
     fixture = tmp_path / "plugin"
     (fixture / "framework/scripts").mkdir(parents=True)
@@ -63,7 +69,12 @@ def run_codex(tmp_path, responder, decision="decline"):
     )
     config = tmp_path / ".codex"
     (config / "rules").mkdir(parents=True)
-    (config / "rules/veripower.rules").write_text(setup.rules_text(fixture))
+    if host_rule:
+        pattern = ["python3", str(fixture / "framework/scripts/kernel.py"), "pin"]
+        (config / "rules/host.rules").write_text(
+            f"prefix_rule(pattern={json.dumps(pattern)}, decision={json.dumps(host_rule)}, "
+            'justification="fixture host policy")\n'
+        )
     shutil.copyfile(ROOT / "codex/adapter.py", fixture / "codex/adapter.py")
     (config / "hooks.json").write_text(
         (ROOT / "codex/hooks.json").read_text().replace("${PLUGIN_ROOT}", str(fixture))
@@ -135,6 +146,10 @@ def run_codex(tmp_path, responder, decision="decline"):
         "features.remote_plugin=false",
         "-c",
         "features.plugins=false",
+        "-c",
+        "features.hooks=true",
+        "-c",
+        "features.multi_agent=true",
     ]
     events = []
     inbox = queue.Queue()
@@ -182,7 +197,7 @@ def run_codex(tmp_path, responder, decision="decline"):
                                 "cwd": str(tmp_path),
                                 "model": "gpt-5.4",
                                 "modelProvider": "veripower_probe",
-                                "approvalPolicy": "on-request",
+                                "approvalPolicy": approval_policy,
                                 "approvalsReviewer": "user",
                                 "sandbox": "workspace-write",
                                 "ephemeral": True,
@@ -233,33 +248,58 @@ def run_codex(tmp_path, responder, decision="decline"):
 
 
 @pytest.mark.parametrize("decision", ["accept", "decline"])
-@pytest.mark.parametrize(
-    "kernel",
-    [
-        "framework/scripts/kernel.py",
-        "skills/design-flow/../../framework/scripts/kernel.py",
-    ],
-)
-def test_judgment_gets_native_human_approval(tmp_path, decision, kernel):
+def test_host_prompt_policy_is_respected(tmp_path, decision):
     def response(_body, number, fixture):
         if number == 1:
             return call(
                 "exec_command",
                 {
-                    "cmd": f"python3 {fixture}/{kernel} pin",
+                    "cmd": f"python3 {fixture}/framework/scripts/kernel.py pin",
                     "workdir": str(tmp_path),
-                    "yield_time_ms": 1000,
                 },
             )
         return message()
 
-    events, _ = run_codex(tmp_path, response, decision)
+    events, _ = run_codex(tmp_path, response, decision, host_rule="prompt")
     approvals = [
         e for e in events if e.get("method") == "item/commandExecution/requestApproval"
     ]
     assert len(approvals) == 1
-    assert setup.REASON.format(verb="pin") in approvals[0]["params"]["reason"]
+    assert "fixture host policy" in approvals[0]["params"]["reason"]
     assert (tmp_path / "executed").exists() == (decision == "accept")
+
+
+@pytest.mark.parametrize(
+    "verb,host_rule,executed",
+    [
+        ("pin", None, True),
+        ("pin --help", None, True),
+        ("pin --module M --help", None, True),
+        ("pin", "forbidden", False),
+        ("pin", "prompt", False),
+    ],
+)
+def test_never_uses_host_policy_without_plugin_prompts(
+    tmp_path, verb, host_rule, executed
+):
+    def response(_body, number, fixture):
+        if number == 1:
+            return call(
+                "exec_command",
+                {
+                    "cmd": f"python3 {fixture}/framework/scripts/kernel.py {verb}",
+                    "workdir": str(tmp_path),
+                },
+            )
+        return message()
+
+    events, _ = run_codex(
+        tmp_path, response, approval_policy="never", host_rule=host_rule
+    )
+    assert not [
+        e for e in events if e.get("method") == "item/commandExecution/requestApproval"
+    ]
+    assert (tmp_path / "executed").exists() == executed
 
 
 def test_fresh_native_child_receives_adapter_and_parent_waits(tmp_path):

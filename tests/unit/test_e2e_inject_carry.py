@@ -106,9 +106,11 @@ _STAGE_FILES = {
     },
     "simulation": {
         "case-results-summary.md": "all pass",
+        "tests/testlist.json": "[]",
         "env.sh": "#!/bin/sh",
         "filelist.f": "-f rtl_filelist.f",
         "rtl_filelist.f": "top.v",
+        "scripts/run_vcs_regression.sh": "#!/bin/sh\n",
         # the TB's package declaration: what the rendered power tests read their prefix from
         "tb/uvm/pkg/tb_pkg.sv": "package top_tb_pkg;\nendpackage\n",
     },
@@ -227,10 +229,7 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
 def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     module = "m"
     _write_file(tmp_path, module, "intent/brainstorm.md", "b1")
-    # Real sidecar content — the deployed emit_power_tests.py (shelled out to by the real
-    # power bootstrap below) enforces the sim-plan -> power cross-stage contract (a
-    # scenario's sequence_ref must resolve to a sequences.json name), which is now a
-    # cross-FILE check.
+    # Power consumes the plan meaning and identifiers, independently of functional sequences.
     simplan_files = {
         "verification-plan.md": "plan v1",
         "tb-scaffold.json": "{}",
@@ -239,8 +238,6 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
             [
                 {
                     "id": "S1",
-                    "sequence_ref": "idle_seq",
-                    "scenario": "idle",
                 }
             ]
         ),
@@ -273,9 +270,9 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     base = str((tmp_path / module).resolve())
     assert table["netlist"] == base + "/Design/synthesis"
     assert table["tb_env"] == base + "/Verification/simulation"
-    assert table["scaffold"] == base + "/Verification/simulation-plan"
+    assert table["plan"] == base + "/Verification/simulation-plan"
     assert table["requirements"] == base + "/Design/specification"
-    for key in ("netlist", "tb_env", "scaffold", "requirements"):
+    for key in ("netlist", "tb_env", "plan", "requirements"):
         assert Path(table[key]).is_absolute()
 
     # EXECUTE: the real power bootstrap script, reading the kernel-injected
@@ -297,19 +294,29 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     )
     assert br.returncode == 0, br.stderr
     env_sh = (wd / "env.sh").read_text()
-    assert f'export NETLIST="{table["netlist"]}/out/' in env_sh
-    assert f'export TB_DIR="{table["tb_env"]}"' in env_sh
+    assert f"export NETLIST={table['netlist']}/out/top_syn.v" in env_sh
+    assert "TB_DIR" not in env_sh
     assert "/../" not in env_sh  # no relpath climb regardless of workdir depth
 
     # reap -> promote green
     for rel, content in _STAGE_FILES["power-analysis"].items():
         _write_file(tmp_path, module, f"{d['workdir']}/{rel}", content)
+    authored = {
+        "experiment/run.sh": "echo authored\n",
+        "scripts/ptpx.tcl": "# local setup\n",
+        "saif/idle.saif": "activity evidence\n",
+    }
+    for rel, content in authored.items():
+        _write_file(tmp_path, module, f"{d['workdir']}/{rel}", content)
+    (wd / "experiment/run.sh").chmod(0o755)
     result = {
         "stage": "power-analysis",
         "module": module,
         "produced_at": _now_iso(),
         "status": "pass",
-        "artifacts": [{"path": p} for p in _STAGE_FILES["power-analysis"]],
+        "artifacts": [
+            {"path": p} for p in [*_STAGE_FILES["power-analysis"], *authored]
+        ],
         "stage_specific": _STAGE_SPECIFIC["power-analysis"],
     }
     _write_file(tmp_path, module, f"{d['workdir']}/result.json", json.dumps(result))
@@ -331,6 +338,16 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     }
     canonical = tmp_path / module / "Verification" / "power-analysis"
     assert (canonical / "reports_ptpx" / "run1" / "power_hier.rpt").is_file()
+
+    again = _run_json(
+        tmp_path, "dispatch", "--module", module, "--rule", "power-analysis"
+    )
+    carried = tmp_path / module / again["workdir"]
+    for rel, content in authored.items():
+        assert (carried / rel).read_text() == content
+    assert (carried / "experiment/run.sh").stat().st_mode & 0o100
+    assert (carried / "reports_ptpx").exists()
+    assert (carried / "saif").exists()
 
 
 def test_relocation_invariance_consumer_reanchors(tmp_path):

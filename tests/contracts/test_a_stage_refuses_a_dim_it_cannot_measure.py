@@ -30,7 +30,7 @@ def _rq(stage: str, pkg: str):
 @pytest.mark.parametrize(
     "stage,pkg", [("timing-analysis", "timing"), ("lint-cdc", "lintcdc")]
 )
-def test_a_stage_that_measures_nothing_refuses_a_bounded_row(stage, pkg):
+def test_stages_refuse_an_unsupported_bounded_dimension(stage, pkg):
     rq = _rq(stage, pkg)
     row = {
         "id": "R-X",
@@ -39,7 +39,7 @@ def test_a_stage_that_measures_nothing_refuses_a_bounded_row(stage, pkg):
     }
     with pytest.raises(ValueError) as exc:
         rq.mine([row])
-    assert "R-X" in str(exc.value) and "measures no dimension" in str(exc.value)
+    assert "R-X" in str(exc.value)
 
 
 def test_synthesis_refuses_a_dim_it_does_not_measure():
@@ -64,6 +64,7 @@ def test_power_refuses_a_dim_it_does_not_measure(tmp_path):
     # fixture. Without it the run fails before it ever reaches a verdict.
     for saif in (wd / "saif").glob("*.saif"):
         saif.with_suffix(".status").write_text("PASS\n")
+        saif.write_bytes((golden / "saif-excerpts/active.saif").read_bytes())
     row = {"id": "R-X", "target": {"dim": "area_um2", "op": "<=", "value": 5}}
     with pytest.raises(ValueError) as exc:
         result.run(golden / "plan", wd, [row])

@@ -184,7 +184,7 @@ def write_dispatch(
 
     Stage inputs name their producer's canonical directory; external inputs name
     their own root. The sim_run parameter selects a historical simulation run.
-    Scope, source records and human reasons are supplied by the kernel."""
+    Scope, source records and decision reasons are supplied by the kernel."""
     r = rules.RULES[rule]
     table: dict[str, str] = {}
     for key, globs in r.inputs.items():
@@ -231,12 +231,16 @@ def carry_self(root: Path, rule: str, workdir) -> None:
     if not stage_dir.is_dir():
         return
     dest = Path(workdir)
-    for src in stage_dir.rglob("*"):
+    products = (
+        p
+        for p in stage_dir.iterdir()
+        if p.name not in _CARRY_EXCLUDE and not p.is_symlink()
+    )
+    sources = (src for p in products for src in (p.rglob("*") if p.is_dir() else [p]))
+    for src in sources:
         if not src.is_file() or src.is_symlink():
             continue
         rel = src.relative_to(stage_dir)
-        if rel.parts[0] in _CARRY_EXCLUDE:
-            continue
         rel_str = rel.as_posix()
         if not any(fnmatch.fnmatch(rel_str, g) for g in r.carry):
             continue
@@ -245,7 +249,7 @@ def carry_self(root: Path, rule: str, workdir) -> None:
         d = dest / rel
         d.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, d)
-        os.chmod(d, 0o644)
+        os.chmod(d, d.stat().st_mode | 0o200)
 
 
 def _cp_al(src: Path, dst: Path) -> None:

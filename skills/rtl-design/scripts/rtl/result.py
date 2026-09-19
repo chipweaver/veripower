@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
-"""rtl finalize — the lean rtl-design result.json.
+"""Validate the delivered RTL file set and record the stage owner's acceptance judgment.
 
-Derives the envelope from the on-disk workdir: artifacts via partition.exit_artifacts, which
-schema-validates both authored sidecars on the way (a malformed one is BLOCKED, never a silent
-pass). Nothing here judges the intent reviews — not their content, their coverage, or their
-presence; they reach canonical through artifacts[], and the kernel's own trust boundary is what
-refuses to pin an oracle that matched nothing. A `status=fail` comes only from the caller's
---fail-reason: what this stage can derive from disk it can also repair by re-dispatching a
-child. result.json is fully script-derived (run narration lives in events.jsonl). Exit 0 =
-written (pass or fail); exit 2 = BLOCKED (internal raise).
+The owner assesses requirement and review evidence. File presence alone cannot establish
+semantic correctness; --fail-reason records unresolved violations or incomplete work.
 """
 
 from __future__ import annotations
@@ -155,6 +149,10 @@ def finalize(workdir, fail_reason=None, fix_owner=None) -> int:
     """Build the lean rtl-design result.json from the on-disk workdir.
     exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (any internal
     raise) — never conflated with status=fail. (Owns the policy the deleted main() had.)"""
+    (Path(workdir) / "result.json").unlink(missing_ok=True)
+    if fail_reason is not None and not fail_reason.strip():
+        print("[rtl finalize] BLOCKED: empty --fail-reason", file=sys.stderr)
+        return 2
     try:
         return build_result(workdir, fail_reason=fail_reason, fix_owner=fix_owner)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED

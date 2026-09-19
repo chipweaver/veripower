@@ -79,7 +79,7 @@ def _make_tree(
     return m, workdir, _MAIN
 
 
-# A real file: bootstrap refuses a LIB_DB path that is not there, because config.tcl is
+# A real file: bootstrap refuses a LIB_DB path that is not there, because env.sh is
 # the record of which library the STA linked against. Created once for the module.
 _LIB_DB = str(Path(tempfile.mkdtemp(prefix="timing-lib-")) / "slow.db")
 Path(_LIB_DB).write_text("# stand-in for a .db\n")
@@ -114,13 +114,13 @@ def test_deploys_and_substitutes(tmp_path):
     assert r.returncode == 0, r.stderr
     tcl = (workdir / "run_sta.tcl").read_text()
     assert (
-        "asic/sdc_controller" in tcl
+        "asic/sdc_controller" in (workdir / "config.tcl").read_text()
     )  # NETLIST_DIR substituted (abs, contains asic/<m>)
     assert (
         "MY_MODULE" not in tcl and "MY_NETLIST" not in tcl and "MY_WORKDIR" not in tcl
     )
     cfg = (workdir / "config.tcl").read_text()
-    assert "set TOP    sdc_controller" in cfg  # MY_TOP substituted
+    assert 'set TOP "sdc_controller"' in cfg  # MY_TOP substituted
     assert "MY_TOP" not in cfg
 
 
@@ -130,9 +130,9 @@ def test_workdir_and_netlist_dir_are_absolute(tmp_path):
     tcl = (workdir / "run_sta.tcl").read_text()
     # pt_shell runs from the workdir; NETLIST_DIR/WORKDIR are absolute so reads resolve
     # from any CWD and PT's auto-logs land inside the gitignored workdir.
-    assert f"set WORKDIR     {workdir}" in tcl
+    assert "set WORKDIR [pwd]" in tcl
     # module root is a path-prefix of the (absolute) synthesis stage root NETLIST_DIR
-    assert str(tmp_path / "asic" / m) in tcl
+    assert str(tmp_path / "asic" / m) in (workdir / "config.tcl").read_text()
     assert "set WORKDIR     asic/" not in tcl  # the old tree-root-relative form is gone
 
 
@@ -148,7 +148,7 @@ def test_run_sta_reads_absolute_netlist_from_dispatch_json(tmp_path):
     r = _run(workdir, main)
     assert r.returncode == 0, r.stderr
     sta = (workdir / "run_sta.tcl").read_text()
-    assert f"set NETLIST_DIR {synth_root}" in sta
+    assert str(synth_root) in (workdir / "config.tcl").read_text()
     assert (
         "MY_MODULE_ROOT" not in sta
         and "MY_NETLIST_DIR" not in sta
@@ -157,42 +157,17 @@ def test_run_sta_reads_absolute_netlist_from_dispatch_json(tmp_path):
     assert "set WORKDIR" in sta  # same-stage $WORKDIR self-ref must survive
 
 
-def test_lib_db_captured_when_exported(tmp_path):
-    m, workdir, main = _make_tree(tmp_path)
-    assert _run(workdir, main).returncode == 0
-    cfg = (workdir / "config.tcl").read_text()
-    assert f"set LIB_DB {_LIB_DB}" in cfg
-    assert "FILL_IN_LIB_DB_PATH" not in cfg
-
-
-def test_fail_closed_when_lib_db_unset(tmp_path):
-    # pt_shell reads LIB_DB out of the config.tcl written here, so a workdir deployed
-    # without one can never run: exporting LIB_DB afterwards changes nothing.
-    m, workdir, main = _make_tree(tmp_path)
-    r = _run(workdir, main, lib_db=None)
-    assert r.returncode == 1
-    assert "LIB_DB" in r.stderr
-    assert not (workdir / "config.tcl").exists()  # nothing deployed
-
-
-def test_fail_closed_when_lib_db_empty(tmp_path):
-    m, workdir, main = _make_tree(tmp_path)
-    r = _run(workdir, main, lib_db="")
-    assert r.returncode == 1
-    assert "LIB_DB" in r.stderr
-    assert not (workdir / "config.tcl").exists()
-
-
-def test_fail_closed_when_lib_db_is_not_a_file(tmp_path):
-    # Set is not the same as readable. PT reads a missing library without raising, so a
-    # typo deployed here first shows up as a design that linked with no cells; and
-    # config.tcl, which claims to record the library the STA linked against, would be
-    # recording a path that is not there.
-    m, workdir, main = _make_tree(tmp_path)
-    r = _run(workdir, main, lib_db=str(tmp_path / "typo" / "slow.db"))
-    assert r.returncode == 1
-    assert "LIB_DB" in r.stderr
-    assert not (workdir / "config.tcl").exists()
+def test_setup_does_not_require_the_execution_library(tmp_path):
+    _, workdir, main = _make_tree(tmp_path)
+    assert _run(workdir, main, lib_db=None).returncode == 0
+    assert "set LIB_DB" not in (workdir / "config.tcl").read_text()
+    probe = subprocess.run(
+        ["tclsh", "run_sta.tcl"], cwd=workdir, capture_output=True, text=True
+    )
+    assert probe.returncode == 1 and "LIB_DB" in probe.stderr
+    assert (
+        "source [file join [pwd] config.tcl]" in (workdir / "run_sta.tcl").read_text()
+    )
 
 
 def test_fail_closed_when_netlist_missing(tmp_path):
@@ -231,12 +206,12 @@ def test_cant_infer_top_multiple(tmp_path):
     assert "cannot infer top" in r.stderr
 
 
-def test_aborts_when_already_deployed(tmp_path):
-    m, workdir, main = _make_tree(tmp_path)
+def test_bootstrap_preserves_authored_analysis(tmp_path):
+    _, workdir, main = _make_tree(tmp_path)
     assert _run(workdir, main).returncode == 0
-    r2 = _run(workdir, main)
-    assert r2.returncode == 1
-    assert "already deployed" in (r2.stderr + r2.stdout)
+    (workdir / "run_sta.tcl").write_text("# authored analysis\n")
+    assert _run(workdir, main).returncode == 0
+    assert (workdir / "run_sta.tcl").read_text() == "# authored analysis\n"
 
 
 def test_missing_template_dir_fail_closed(tmp_path):
@@ -267,3 +242,22 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
     assert proc.returncode == 0, proc.stderr
     assert (workdir / "run_sta.tcl").is_file()  # resolved to the absolute location
     assert (workdir / "config.tcl").is_file()
+
+
+def test_library_path_remains_one_tcl_argument(tmp_path):
+    _, workdir, main = _make_tree(tmp_path)
+    library = tmp_path / "cell library.db"
+    library.write_text("library input")
+    assert _run(workdir, main, lib_db=str(library)).returncode == 0
+    (workdir / "probe.tcl").write_text("""proc read_verilog args {return 1}
+proc link_design args {
+    if {[llength $::target_library] != 1 || [llength $::link_library] != 2} {exit 3}
+    if {[lindex $::target_library 0] ne $::LIB_DB} {exit 4}
+    exit 0
+}
+source run_sta.tcl
+""")
+    probe = subprocess.run(
+        ["tclsh", "probe.tcl"], cwd=workdir, capture_output=True, text=True
+    )
+    assert probe.returncode == 0, probe.stderr

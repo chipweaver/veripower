@@ -1,0 +1,56 @@
+Module Instance : microgpt_core_tb_top.u_dut.u_attn
+===============================================================================
+
+Instance :
+
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 84.36  99.05  83.12  81.88  66.67  91.11 
+
+
+Instance's subtree :
+
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 84.24  98.52  86.09  76.80  66.67  93.10 
+
+Module Instance : microgpt_core_tb_top.u_dut.u_attn.u_divs0
+===============================================================================
+
+Instance :
+
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 89.51 100.00  83.33  83.80 --      90.91 
+
+
+Instance's subtree :
+
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 89.81  97.83  91.67  77.73 --      92.00 
+
+Module Instance : microgpt_core_tb_top.u_dut.u_attn.u_divs1
+===============================================================================
+
+Instance :
+
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 89.63 100.00  83.33  84.26 --      90.91 
+
+
+Instance's subtree :
+
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 89.86  97.83  91.67  77.94 --      92.00 
+
+Module Instance : microgpt_core_tb_top.u_dut
+===============================================================================
+
+Instance :
+
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 96.77  98.51  94.03  94.21 100.00  97.10 
+
+
+Instance's subtree :
+
+SCORE  LINE   COND   TOGGLE FSM    BRANCH 
+ 93.58  99.13  89.69  88.77  92.00  98.31 
+

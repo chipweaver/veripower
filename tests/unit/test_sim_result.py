@@ -3,6 +3,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/simulation/scripts/sim/__main__.py"
 _COVERAGE_ROWS = [
@@ -23,8 +25,11 @@ SCAFFOLD = {
     "tests": [{"name": "t_smoke", "seqs": ["smoke"]}],
 }
 COV_PASS = {
-    "per_module": [
-        dict(name="m", **{"line": 92.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0})
+    "per_instance": [
+        dict(
+            name="m_top_tb_top.u_dut",
+            **{"line": 92.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0},
+        )
     ]
 }
 
@@ -52,7 +57,9 @@ def _final_workdir(tmp_path):
     (wd / "structural-coverage.json").write_text(json.dumps(COV_PASS))
     (wd / "requirements.json").write_text(json.dumps(_COVERAGE_ROWS))
     (wd / "case-results.json").write_text(
-        json.dumps({"total_tests": 3, "passed_tests": 3, "failed_tests": 0})
+        json.dumps(
+            {"total_tests": 3, "passed_tests": 3, "failed_tests": 0, "not_run_tests": 0}
+        )
     )
     _review(wd)
     return wd
@@ -162,9 +169,9 @@ def test_final_coverage_fail(tmp_path):
     (wd / "structural-coverage.json").write_text(
         json.dumps(
             {
-                "per_module": [
+                "per_instance": [
                     dict(
-                        name="m",
+                        name="m_top_tb_top.u_dut",
                         **{"line": 10.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0},
                     )
                 ]
@@ -177,12 +184,27 @@ def test_final_coverage_fail(tmp_path):
     )  # a coverage fail still writes result.json (exit 0, not BLOCKED)
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
+
     judged = {e["id"]: e for e in env["stage_specific"]["requirements"]}
     assert judged["R-0"]["met"] is False  # the line row
     assert judged["R-0"]["actual"] == 10.0
     # The verdict names the scope it scored, so a reader never has to guess it.
     assert "line coverage of the DUT" in judged["R-0"]["measured"]
     assert judged["R-1"]["met"] is True
+
+
+def test_coverage_uses_rtl_top_even_when_module_named_instance_passes(tmp_path):
+    wd = _final_workdir(tmp_path)
+    coverage = json.loads((wd / "structural-coverage.json").read_text())
+    actual = coverage["per_instance"][0]
+    coverage["per_instance"].append({**actual, "name": "m_tb_top.u_dut"})
+    actual["line"] = 10.0
+    (wd / "structural-coverage.json").write_text(json.dumps(coverage))
+    proc = _finalize_final(wd)
+    assert proc.returncode == 0, proc.stderr
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    assert env["stage_specific"]["requirements"][0]["actual"] == 10.0
 
 
 def test_final_check_review_trip_is_fail_not_pass(tmp_path):
@@ -234,7 +256,7 @@ def test_a_suite_that_did_not_finish_is_not_a_pass(tmp_path):
     assert proc.returncode == 0, proc.stderr
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
-    assert "did not finish" in env["stage_specific"]["fail_reason"]
+    assert "7 declared tests" in env["stage_specific"]["fail_reason"]
 
 
 def test_final_compile_fail_carries_no_coverage_companions(tmp_path):
@@ -325,3 +347,65 @@ def test_fail_phase_refuses_an_empty_reason(tmp_path):
     proc = _finalize(tmp_path, "--phase", "fail", "--fail-reason", "   ")
     assert proc.returncode == 2
     assert not (tmp_path / "result.json").exists()
+
+
+def test_failed_case_prevents_final_success(tmp_path):
+    wd = _final_workdir(tmp_path)
+    (wd / "case-results.json").write_text(
+        json.dumps(
+            {
+                "total_tests": 3,
+                "passed_tests": 2,
+                "failed_tests": 1,
+                "not_run_tests": 0,
+            }
+        )
+    )
+    proc = _finalize_final(wd)
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads((wd / "result.json").read_text())
+    assert (
+        result["status"] == "fail"
+        and "1 tests failed" in result["stage_specific"]["fail_reason"]
+    )
+
+
+def test_unmarked_violation_can_prevent_final_success(tmp_path):
+    wd = _final_workdir(tmp_path)
+    proc = _finalize_final(
+        wd,
+        "--fail-reason",
+        "observed violation despite review label",
+        "--fix-owner",
+        "simulation",
+    )
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads((wd / "result.json").read_text())
+    assert (
+        result["status"] == "fail"
+        and result["stage_specific"]["fix_owner"] == "simulation"
+    )
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [
+        {"total_tests": 3, "passed_tests": 3, "failed_tests": 0},
+        {"total_tests": 3, "passed_tests": 3, "failed_tests": 1, "not_run_tests": 0},
+        {"total_tests": 0, "passed_tests": 0, "failed_tests": 0, "not_run_tests": 0},
+        {"total_tests": 3, "passed_tests": True, "failed_tests": 0, "not_run_tests": 0},
+    ],
+)
+def test_invalid_case_evidence_clears_prior_result(tmp_path, counts):
+    wd = _final_workdir(tmp_path)
+    assert _finalize_final(wd).returncode == 0
+    (wd / "case-results.json").write_text(json.dumps(counts))
+    assert _finalize_final(wd).returncode == 2
+    assert not (wd / "result.json").exists()
+
+
+def test_empty_review_is_not_clean(tmp_path):
+    wd = _final_workdir(tmp_path)
+    (wd / "check-review.md").write_text(" ")
+    assert _finalize_final(wd).returncode == 2
+    assert not (wd / "result.json").exists()

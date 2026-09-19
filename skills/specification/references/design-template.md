@@ -6,9 +6,8 @@ scenarios the interfaces are held to. `rtl-design`, `simulation-plan` and `simul
 declare `design.md` as an input — rtl-design reads §1.2 to choose the module split, and is held to
 §1.3.2's obligations whatever it chooses.
 
-> **Cite, never restate.** What the engineer requires is in `requirements.json`, one row each, in
-> their words, and every stage reads that file. Mention a requirement here by its row id with at
-> most a short gloss; a paragraph that says again what a row says is a second home for one fact,
+> **Cite, never restate.** Source-grounded obligations are recorded in `requirements.json`,
+> which every stage reads. Mention a requirement here by its row id with at most a short gloss; a paragraph that says again what a row says is a second home for one fact,
 > and the two diverge invisibly. The requirements reviewer reads this document against the ledger
 > for exactly that.
 

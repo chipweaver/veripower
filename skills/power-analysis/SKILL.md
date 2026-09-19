@@ -1,137 +1,105 @@
 ---
 name: power-analysis
-description: Use when running gate-level power simulation + PT-PX averaged power analysis (SAIF flow) for PPA gating; not for RTL functional simulation, static timing, or time-resolved waveforms.
+description: Build and check power experiments, calculate averaged gate-level power with SAIF and PT-PX, and assess the results against the task's power requirements; not for functional regression or static timing analysis.
 ---
 
 # Power Analysis
 
-Your sole responsibility: run VCS gate-level simulation against the post-synthesis netlist and the
-UVM TB infrastructure to produce one SAIF per power scenario, run PrimeTime PX in averaged mode
-over each of them, and close the run through the `power` CLI. You never grade `power_mw` by eye —
-`finalize` parses the reports, judges the target, and writes the verdict.
+Establish the intended operating conditions, capture their activity, calculate power, and explain
+what the measurement establishes. The supplied tools use gate-level simulation, SAIF and PT-PX
+interval-average power; this does not establish instantaneous peak power or IR drop.
 
-## Iron Rule
+Read `{workdir}/dispatch.json` for input locations. `intent`, `design` and `requirements` give the
+goals, design choices and budgets. Read both `plan/verification-plan.md` for measurement meaning
+and `plan/power-scenarios.json` for identifiers. `netlist/out/` contains the implementation and
+constraints; `tb_env` provides reusable verification sources, data, scripts and setup. Inspect what
+you reuse, including any services behind a reference-model bridge. Write under `{workdir}`;
+shared inputs remain read-only.
 
-- Write only under `{workdir}`. Every injected input location is read-only, as is every other
-  stage's output.
-- **Scripts are black boxes, never Read their source.** Invoke them per this skill's documented
-  command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol
-  (stderr, stdout verdict), not the source. Sole exception: debugging a suspected bug in a
-  script itself.
+## Choose the work from the evidence
 
-## What you read, and what you produce
+The framework carries published experiment sources, setup and measurements into `{workdir}`,
+without the old verdict. Choose the work from changed inputs and the measurement being claimed.
+Reuse artifacts whose implementation, conditions and scope still apply; a budget-only change can use existing reports.
 
-`<skill>` is this skill's own base directory, named on the first line of this file.
-
-`{workdir}/dispatch.json` carries the `inputs` table, and you open almost none of what it points
-at: `bootstrap` resolves `<TOP>` from the single `out/<TOP>_syn.v` under the synthesis stage root
-and writes every upstream location into `env.sh`, which the `make` targets read from there. The
-netlist, the SDC and the SDF are consumed by the tools; VCS back-annotates delays out of the SDF,
-which is what makes the SAIF a gate-level one rather than an RTL toggle count.
-
-The one file you open yourself is `<requirements>/requirements.json`: the rows judged by
-`power-analysis` are yours; a row that points at a file under `<intent>/` is read there. A row with a `power_mw` target is compared by `finalize` itself, per
-scenario when the row names one; a row without a target is yours to judge from the reports and
-declare through `finalize --requirements`.
-
-Three env vars are yours to supply before `make`:
-
-| | |
-|---|---|
-| `LIB_V` | std-cell Verilog models, linked against the netlist at compile time |
-| `LIB_DB` | the Liberty `.db` synthesis linked against — PT maps activity to power through it, so a different library is a different answer |
-| `UVM_HOME` | the UVM tree the TB infrastructure was built against |
-
-`env.sh` checks that `LIB_V`, `LIB_DB` and `UVM_HOME/src/dpi/uvm_dpi.cc` are readable. Every target sources it, so a
-wrong path stops the run at the first target instead of after the simulation.
-
-Everything under `{workdir}` is produced by the tools you invoke, and `finalize` enumerates it into
-`artifacts[]`. Two parts of it are this stage's deliverable:
-
-| | |
-|---|---|
-| `saif/<id>.saif` | One per scenario, hardlinked to `saif/_dedup/<sequence_ref>.saif`: scenarios that reduce to the same stimulus are simulated once and share the result. |
-| `reports_ptpx/<id>/` | `power_flat.rpt` holds the totals the gate parses; `power_hier.rpt` shows where the power went, for whoever has to reduce it; `switching_activity.rpt` says how much of the activity came from the SAIF rather than from tool defaults; `ptpx.log` is that scenario's own log. |
-
-## Workflow
-
-### 1. Deploy
-
-Export the three env vars, then run `bootstrap` to lay down the run scaffold:
+For a new workdir, prepare editable setup (`<skill>` is this skill's directory):
 
 ```bash
 python3 <skill>/scripts/power/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
 ```
 
-It copies the templates, resolves `<TOP>`, substitutes the upstream locations into `env.sh`,
-renders the UVM power test classes from the plan, and verifies the netlist, the TB filelist and the
-plan sidecars its render needs. It aborts when `{workdir}` already holds a `Makefile`, since
-`make refresh-tests` is how a later plan change reaches the tests. Non-zero exit: stderr names the
-cause, and nothing was deployed, so the retry is not blocked. `make` is the interface to everything
-it deployed.
+Bootstrap resolves the netlist top and plan, and installs missing templates. It does not run tools
+or require simulation inputs for a calculation-only task. Existing authored files survive rework;
+check their settings against this round's inputs. Use the project's actual libraries and models.
 
-### 2. Run
+From `{workdir}`, source `env.sh` and select the needed command:
 
 ```bash
-cd {workdir} && make all >make.out 2>&1
+. ./env.sh
+python3 <skill>/scripts/power/__main__.py COMMAND --workdir .
 ```
 
-`all` is `gls-compile` (which re-renders the power tests and absolutizes the TB filelist first),
-then `gls-run` for one SAIF per scenario, then `ptpx`. The redirect keeps multi-thousand-line VCS
-and PT logs out of context; every step also tees its own log, which is what you read on a failure.
-`make all` outlives the foreground Bash timeout, so launch it detached (`run_in_background=True`)
-and stay in this turn until it exits — nothing resumes a subagent when a job it started finishes.
+| COMMAND | Work performed |
+|---|---|
+| `compile` | Build the authored experiment and check SDF annotation |
+| `simulate` | Run planned scenarios using the existing executable |
+| `calculate` | Read checked activity and calculate power in a fresh PT process per scenario |
 
-### 3. Close
+These commands are independent. They invalidate the artifacts they replace; interrupted calculations
+cannot publish reports. Wait for processes to exit, fix local errors and retry the affected work.
 
-Every run ends here, a non-zero `make` included. `finalize` is the only writer of `result.json`,
-and you never hand-assemble the envelope:
+## Build the experiment when needed
+
+Author `experiment/compile.sh` and `experiment/run.sh`; both run from `{workdir}`. The compiler
+script supplies the netlist, matching simulation models and SDF annotation. Put disposable build
+intermediates in `work/`; keep inputs and reusable outputs outside it. Finalize publishes the other
+workdir contents except framework files and execution scratch under `.pending/`. Inspect annotation
+warnings for unmapped arcs or model mismatches. Choose suitable TB components; no UVM inheritance,
+agent or DUT instance hierarchy is prescribed.
+
+`run.sh <scenario-id> <absolute-saif-path> <absolute-status-path>` controls workload, initialization,
+cooperating interfaces, clocks/resets, sampling and completion. Referenced helpers can manage data
+and services. Reuse suitable drivers, reference models and checks directly. Adapt checks to the
+measured behavior: idle need not have transactions, while an active workload must do useful work.
+Check useful behavior against the task's expected outcomes.
+
+Choose legal initialization and observation times from the measurement purpose and actual timing.
+Check that capture covers the intended conditions and interval. Write `PASS` to the supplied status
+path after the checks and SAIF capture complete; for UVM, account for report-server errors/fatals.
+A zero simulator exit alone is not completion evidence.
+
+## Calculate and interpret
+
+`env.sh` supplies calculation inputs. Set `LIB_DB` to the Tcl list of linked `.db` paths and
+`STRIP_PATH` to the captured DUT hierarchy using the SAIF separator. Adapt `scripts/ptpx.tcl` for
+needed macro, constraint or operating-condition setup. The calculator consumes the netlist, library,
+constraints and activity; SDF belongs to GLS. Review mapping, slew/load modeling and tool warnings
+against the design. Nonzero annotation and a parsed number do not establish a valid measurement.
+
+Activity and completion evidence are in `saif/<id>.{saif,status,run.log}`; calculation reports and
+logs are in `reports_ptpx/<id>/`. Failed/interrupted calculation output remains under `.pending/`.
+Explain the measured conditions, checks, results and limits concisely in `analysis.md`, referencing
+the original evidence. No budget means a measurement report, not compliance with an invented limit.
+
+## Close the stage
+
+Finalize when this stage's work is complete, or when an unresolved issue must be returned to its
+caller. Changes to acceptance meaning follow the user's actual authorization,
+whether decided by a person or under delegation.
 
 ```bash
-python3 <skill>/scripts/power/__main__.py finalize \
-  --workdir {workdir} [--fix-owner <rule>] \
-  [--fail-reason "<cause>"] \
-  [--requirements '[{"id": "R-252", "met": true, "actual": "reported only", "measured": "reports_ptpx/S4a/power_flat.rpt, internal+switching+leakage"}]']
+python3 <skill>/scripts/power/__main__.py finalize --workdir {workdir} \
+  [--fail-reason "<unresolved cause>"] [--fix-owner <rule>] \
+  [--requirements '[{"id":"R-1","met":true,"actual":"reported","measured":"analysis.md and reports_ptpx/idle/power_flat.rpt"}]']
 ```
 
-After a clean `make` it judges: it parses each `reports_ptpx/<id>/power_flat.rpt`, reconciles the
-total against internal + switching + leakage, and compares every `power-analysis` row with a
-`power_mw` target using the row's own operator — against the named scenario's measurement when the
-row names one, against every scenario's otherwise. It records the measurements as
-`stage_specific.power_by_scenario[]`, one verdict per row as
-`stage_specific.requirements[]` (your `--requirements` verdicts folded in for the rows with no
-target), the SAIF set as `stage_specific.saif_artifacts[]`, the VCS identity as
-`stage_specific.compile_info`, and the data faults it detected itself — an empty SAIF, a gate-level
-run that did not report `PASS`, an unreadable or irreconcilable report — as
-`stage_specific.failures[]`. It refuses to write an envelope that leaves a `power-analysis` row
-unjudged. No row at all means nothing was gated, and the empty `requirements[]` says so.
+Finalize checks completion and reports, reconciles components, and compares numerical `power_mw`
+targets with the named scenario, or all scenarios if unnamed. Give evidence-based `--requirements`
+verdicts for rows without numerical targets. Use `--fail-reason` for an invalid or incomplete
+measurement even if reports contain numbers; the CLI cannot infer workload meaning.
 
-The flags carry what the reports cannot:
+Name `--fix-owner` from the evidence, including this stage for its own experiment or calculation.
+Leave it unresolved when the cause is unknown.
 
-- **`--requirements`**, your verdict on each `power-analysis` row that carries no target. Every entry also carries `measured`: which report, which row, which scope you read it from. The row names a dimension; `measured` is what that name indexed, and it is the only way a later reader can tell whether the number answers the row's own words.
-
-- **`--fail-reason`**, which fills `stage_specific.fail_reason`, when `make` exited non-zero and
-  there is nothing gradeable. Read a **bounded** slice of the failing step's log
-  (`gls-compile-log.txt` / `gls-run-log.txt` / `ptpx.log`) — never the whole dump — and write the
-  cause you actually read rather than a category, since nothing parses it. Each step prefixes its
-  own error with `phase=<compile|run|ptpx>`; carry that phase into the sentence. Supplying the
-  flag is itself the declaration of failure, so it skips the gate.
-- **`--fix-owner`** on every failure, since it is what fills `stage_specific.fix_owner`. You read
-  the log, so you are the only party that can say whose artifact is at fault, and nothing
-  downstream re-derives it. Go by the file the error names: the synthesized netlist or SDF is
-  `synthesis`; a TB source under `<tb_env>` is `simulation`; an unresolvable `sequence_ref` or a
-  bogus scenario in `<scaffold>/power-scenarios.json` is `simulation-plan`. A missed row
-  compares a measured value against the engineer's words and either side can be wrong, so before
-  naming `rtl-design`, read the row's `verbatim`: name `specification` when the row itself is what
-  is malformed. Omit the flag when your own environment
-  broke, or when you have read both sides and still cannot name an owner: an unnamed owner is how
-  a human gets called in, and a guess spends a full rework round on a stage that cannot fix it.
-
-Exit 0 means written, pass or fail. Exit 2 is BLOCKED and never a `status=fail`: an empty
-`--fail-reason`, a `power-analysis` row nobody judged, or a program exception. stderr names which.
-
-## Return Contract
-
-Emit `STATUS: DONE` as your last line once `result.json` exists, or
-`STATUS: BLOCKED <one-line reason>` when nothing could be written. What runs next is the caller's
-decision, taken from `result.json`.
+Exit 0 means `result.json` was written, pass or fail; return `STATUS: DONE` and let the caller route
+it. Exit 2 means closure failed; resolve the reported cause or return `STATUS: BLOCKED <cause>`.

@@ -1,181 +1,70 @@
 ---
 name: synthesis
-description: Use when running Design Compiler synthesis, analyzing timing/area/power reports, supplementing SDC exceptions, or re-synthesizing after RTL changes; not for power analysis or static timing.
+description: Establish the synthesized implementation, its constraints and measurements, and assess them against the task's requirements.
 ---
 
 # Synthesis
 
-Your sole responsibility: carry this module's declared timing exceptions into the SDC, converge
-Design Compiler against it, and close the run through the `synthesis` CLI.
+Establish the implementation and evidence needed for the current task. Read `dispatch.json`,
+the original intent, requirements, RTL and constraints, and the materials carried into `{workdir}`. A new dispatch
+requires a current conclusion; it does not prescribe a new synthesis. Use measurements whose
+implementation, conditions and scope still apply, and perform the work the remaining questions need.
 
-## Iron Rule
+Write under `{workdir}`; upstream inputs remain read-only. The framework carries previously
+published setup and products into this directory, without the old verdict. Keep useful analysis
+and comparison material in `evidence/`.
 
-- Write only under `{workdir}`. Every injected input location is read-only, as is every other
-  stage's output.
-- **Scripts are black boxes, never Read their source.** Invoke them per this skill's documented
-  command lines (flags via `--help`); on a non-zero exit act on the documented failure protocol
-  (stderr, stdout verdict), not the source. Sole exception: debugging a suspected bug in a
-  script itself.
+## Tools
 
-## What you read, and what you edit
-
-`<skill>` is this skill's own base directory, named on the first line of this file.
-
-`{workdir}/dispatch.json` carries the `inputs` table below, so `<key>` denotes a location and you
-read `<key>/<subpath>`. It also carries `scope` and `caused_by` when the kernel knows what changed
-since your last run: those narrow which inherited exceptions you re-check and which violations you
-triage, never which declarations you render — step 2 carries all of them every round, because the
-SDC dc_shell reads is rebuilt every round.
-
-| Path | Use |
-|---|---|
-| `<annotations>/constraint-annotations.json` | The `sdc` block per child: every timing exception and generated clock this RTL implies, in real module names. Its authors declared it and this stage is its only consumer. |
-| `<rtl>/rtl-files.json` | Per-child file layout, which `bootstrap` turns into `scripts/rtl_load.tcl`. The RTL itself is under `<rtl>` too, and step 2 reads it for divider ratios. |
-| `<sdc>/constraints/<TOP>.sdc` | Clocks and IO delays from specification. `bootstrap` reads it every round, so a correction here arrives on its own; it is not yours to restate or override. |
-| `<requirements>/requirements.json` | The engineer's requirements, one row each with the stage that judges it. The rows judged by `synthesis` are yours: a row with a `target` in `area_um2` or `timing_slack_ns` is compared by `finalize` itself; a row without one — a budget in NAND2-equivalent gates, a rule the reports show but no number compares — is yours to judge from the reports and your library, and to declare. |
-| `<intent>/` | The intent tree: the engineer's container — `brainstorm.md` plus whatever they delivered with it. Open a file here only when a requirements row points at it, and read it there rather than from any copy |
-
-`LIB_DB` and `WIRE_LOAD_MODEL` must be in the environment before `make`: `env.sh` refuses to run
-without either, and the placeholders in `scripts/config.tcl` are a fallback for a `dc_shell`
-started outside the Makefile, not a second way to set them. Exporting them after step 1 is fine.
-`WIRE_LOAD_MODEL` names the interconnect estimate this block is synthesized against, or `none`
-for no estimate — `report_lib` lists what the library has. It is a judgment with no default
-because the choice moves both numbers you are judged on and nothing else records that it was
-made: measured on five designs against a TSMC 90 library, the smallest bucket cost OpenTitan's
-i2c its whole 2.47 ns of setup margin, and the largest raised total cell area by anywhere from a
-fifth to more than double. Each model is
-calibrated to a block size and the library declares no default, so `none` is a legal answer;
-the reports then say `No wire load specified` where a reader can see it.
-
-One file under `{workdir}` is yours to edit, and it reaches you holding the previous round's work
-rather than the specification SDC:
-
-- `constraints.local.sdc`: every exception, every library value, and the `# notes:` that say why.
-
-Treat what is in it as work you inherited. Re-check each exception against this run's reports and
-delete one whose path no longer exists, but re-deriving a set you already have costs a full
-re-synthesis per round. Everything else under `{workdir}` is produced by the tools you invoke, and
-`finalize` enumerates it into `artifacts[]` for you.
-
-## Workflow
-
-### 1. Deploy
-
-Run `bootstrap` to lay down the run scaffold:
+`<skill>` is this skill's directory. Setup, execution and judgment are independent operations:
 
 ```bash
-python3 <skill>/scripts/synthesis/__main__.py bootstrap --workdir {workdir} [--top <TOP>]
+python3 <skill>/scripts/synthesis/__main__.py bootstrap --workdir {workdir}
 ```
 
-It generates `scripts/rtl_load.tcl` and `scripts/config.tcl` from the rtl-design file layout, and
-copies the specification SDC to `constraints.sdc`, preserving your inherited `constraints.local.sdc`.
-It aborts when `{workdir}/Makefile` already exists (the
-kernel-written `dispatch.json` does not count as "deployed"), and reads the top-module name from
-`manifest.module` when `--top` is omitted. Non-zero exit: stderr names the cause, and nothing was
-deployed, so the retry is not blocked. `make` is the interface to everything it deployed.
+Bootstrap refreshes `scripts/rtl_load.tcl` and `constraints.sdc` from upstream inputs. It installs
+missing `config.tcl`, `constraints.local.sdc` and driver scripts, preserving existing copies of these
+editable files. `manifest.module` supplies the top; `rtl-files.json` supplies source order and include
+paths. Adapt `scripts/dc_run.tcl` for the required calculation. The supplied script maps
+RTL using DC-Ultra; examining an existing mapped implementation may require different tool work.
 
-### 2. Constrain
+Render the design's declared generated clocks and timing exceptions from
+`constraint-annotations.json` into `constraints.local.sdc`, which follows `constraints.sdc`.
+Check names and divider ratios against RTL. Record the engineering basis for exceptions, local
+clock uncertainty and library-specific IO settings alongside the SDC commands.
 
-Union the `sdc` block across every child of `<annotations>/constraint-annotations.json` and render
-all three categories into `constraints.local.sdc` before you run anything:
-
-| sidecar key | what it carries | what you write |
-|---|---|---|
-| `create_generated_clock` | `{module, pin}` — where a divider or PLL output leaves that child's RTL | `create_generated_clock` on that pin. `-source` is the master clock the specification SDC already declares; the divide factor comes from that module's RTL under `<rtl>` |
-| `set_multicycle_path` | one free-form description per exception its author knows the design needs | `set_multicycle_path` naming the real startpoint / endpoint |
-| `set_false_path` | the same, for architecturally unreachable paths | `set_false_path` naming the real startpoint / endpoint |
-
-Every category is always present, so an empty array is that child's claim to have none. These are
-design facts their authors declared rather than suppressions you are guessing at, which is why
-all three go in one pass: each one you leave for dc_shell to surface costs a full synthesis
-iteration to discover, and this sidecar is the only place rtl-design can state them.
-
-Transcribe, never invent. lint-cdc reads this same sidecar for its SGDC side, so an exception you
-add on your own authority has no counterpart there and the two constraint sets diverge silently.
-A path nobody declared is step 3's to report, not yours to except.
-
-Everything you write goes in `constraints.local.sdc`, which DC reads after the seed on every run.
-Tcl takes the last assignment, so settling one of the seed's placeholders is a line here, not an
-edit there: the `set_clock_uncertainty -setup` / `-hold` values its `;#` notes flag, and
-`set_drive` / `set_load`, which it carries for no port — add those only where the IO cell library
-documents them. Anything you leave at a placeholder, and anything you decide not to add, needs a
-`# notes:` line saying why: this file is promoted, and the next reader cannot tell a measured
-margin from a default or an omission from an oversight.
-
-`constraints.sdc` is the specification seed, refreshed every round. Edit the local file;
-DC exports the effective post-synthesis constraints to `out/<TOP>_syn.sdc` for downstream stages.
-
-### 3. Converge
-
-`make synthesis` runs `dc_shell` and outlives the foreground Bash timeout. Launch it as one
-detached background job (`run_in_background=True`) from `{workdir}`, stay in this turn until it
-exits, then read `run.log` once. The Makefile tees that log, so poll it — nothing resumes a
-subagent when a job it started finishes.
-
-Read the violated paths in `reports/timing_setup.rpt`, keeping each one's startpoint, endpoint and
-slack. Step 2 already carried in every exception the design declares, so a path that is still
-violating is one of two things:
-
-- **A declaration you rendered wrong** — the description named a path and your SDC command does
-  not match it. Fix the command and re-run.
-- **A path nobody declared** — a real violation. Stop iterating and go to step 4. Its negative
-  slack fails the `timing_slack_ns` target on its own, so `finalize` judges that row unmet and
-  records the measured slack; what it cannot write is who must fix it.
-
-Excepting the second kind here on your own judgement is the one way this stage can except its way
-to a passing PPA verdict. If the path really is multicycle or false, its author is the one who
-says so: name `rtl-design` in step 4 and it comes back declared, in the sidecar lint-cdc reads too.
-
-A non-zero `make` ends the run with nothing to grade, so go straight to step 4 carrying the cause
-you read in `run.log`.
-
-### 4. Close
-
-Run `finalize` to write the envelope. Every run ends here, a dc_shell that never reached the
-reports included, and you never hand-assemble it:
+Set the actual `LIB_DB` and `WIRE_LOAD_MODEL` (a library model or `none`) in `config.tcl`, then run:
 
 ```bash
-python3 <skill>/scripts/synthesis/__main__.py finalize \
-  --workdir {workdir} [--fix-owner <rule>] \
-  [--fail-reason "<cause>"] \
-  [--requirements '[{"id": "R-083", "met": false, "actual": "0.48M NAND2-eq", "measured": "area.rpt Total cell area / 2.8224 um2 per NAND2"}]']
+cd {workdir}
+python3 <skill>/scripts/synthesis/__main__.py run --workdir .
 ```
 
-It compares every `synthesis` row with a target (worst setup slack = `min` of `Critical Path
-Slack` across every clock-group block; area = `Total cell area`) using the row's own operator,
-writes one verdict per row into `stage_specific.requirements[]` — each carrying `measured`, the
-report line it read — folding your verdicts on the rows with no target in beside them, reads the DC version off the report
-header, and enumerates `artifacts[]`. It refuses to write an envelope that leaves any `synthesis`
-row unjudged: a row you did not read cannot pass as silence. A clean set of verdicts is not
-enough for a pass: all three of `out/*_syn.{v,sdc,sdf}` must be on disk, and an incomplete set is
-a `tooling` fail rather than a promoted synthesis the downstream stages cannot read.
+`run` computes in a temporary directory using the current setup. Scripts write outputs relative
+to `out/` and `reports/` in their working directory, including supplementary reports, and read
+inputs at explicit paths. Existing reports are withdrawn;
+`out/` and `reports/` are replaced only after successful, readable output. The log and failed
+calculation remain available until retry. Wait for completion and inspect warnings and conditions.
 
-The flags carry what the reports cannot:
+## Judge and close
 
-- **`--requirements`**, your verdict on each `synthesis` row that carries no target, in the
-  engineer's own unit. A budget in NAND2-equivalent gates is `Total cell area` divided by your
-  library's NAND2 cell area, compared with the row's wording; write the number you computed in
-  `actual` so the verdict can be re-checked. Every entry also carries `measured`: which report, which row, which scope you read it from. The row names a dimension; `measured` is what that name indexed, and it is the only way a later reader can tell whether the number answers the row's own words.
+Use current requirements with the applicable reports. `finalize` compares `area_um2` and
+`timing_slack_ns` targets; setup slack is the minimum over the DC clock groups. Declare evidence-based
+judgments for synthesis rows without numerical targets, including library-based equivalent-gate units.
+Numeric targets cannot be overridden by declarations.
 
-- **`--fail-reason`**, which fills `stage_specific.fail_reason`, when dc_shell produced nothing
-  gradeable: no license, an `analyze` / `elaborate` / `link` / `check_design` / `compile_ultra`
-  abort, or
-  a crash after the reports landed. You are the one who read `run.log`. Supplying it is itself the
-  declaration of failure, so it wins over the gate and forces `status=fail` even where the reports
-  parse clean; write the cause you actually read rather than a category, since nothing parses it.
-- **`--fix-owner`** on every failure, tool and license failures included, since it is what fills
-  `stage_specific.fix_owner`. A `fail_reason` naming the guilty stage in prose while the flag was
-  omitted reads to the caller as "this stage could not tell", and brings a human in to re-derive
-  an answer you already had. A missed row compares a measured value against the engineer's words,
-  and either side can be wrong: read the row's `verbatim` before naming `rtl-design`, and name
-  `specification` when the row itself is what is malformed. Omit the flag only when you have read
-  both sides and still cannot name an owner.
+```bash
+python3 <skill>/scripts/synthesis/__main__.py finalize --workdir {workdir} \
+  [--requirements '[{"id":"R-1","met":true,"actual":"measured value","measured":"report and scope"}]'] \
+  [--fail-reason "unresolved cause"] [--fix-owner <rule>]
+```
 
-Exit 0 means written, pass or fail. Exit 2 is BLOCKED and never a `status=fail`: an empty
-`--fail-reason`, a `synthesis` row nobody judged, or a program exception. stderr names which.
+`out/` delivers the netlist, matching nonempty SDC/SDF and any supporting files they require.
+Consumers track this complete directory. Keep reports and explanatory evidence outside `out/`;
+changes to the package require reassessment, not necessarily new computation. Use `--fail-reason` for invalid or incomplete work even when numbers
+exist. Name the repair owner from the defect, including this stage for its own work. Acceptance
+changes follow the user's actual authorization.
 
-## Return Contract
-
-Emit `STATUS: DONE` as your last line once `result.json` exists, or
-`STATUS: BLOCKED <one-line reason>` when nothing could be written. What runs next is the caller's
-decision, taken from `result.json`.
+Finalize withdraws the previous result before judging. Exit 0 means a pass/fail result was written;
+return `STATUS: DONE`. A nonzero exit means no result was produced; resolve the cause or return
+`STATUS: BLOCKED <cause>`. A failing requirement is a conclusion, not a tool execution failure.

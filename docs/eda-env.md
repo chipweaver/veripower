@@ -16,7 +16,7 @@ below against a live machine and smoke-runs each license checkout.
 |---|---|---|
 | `python3` >= 3.10 with `jsonschema` >= 4.18, `referencing`, `PyYAML` | The kernel and every stage gate validate result/review schemas (`registry=`-based `$ref` resolution needs the post-4.18 jsonschema API); the stage CLIs annotate `list[str] \| None` in evaluated signature position, which is a TypeError before 3.10 | all |
 | `LM_LICENSE_FILE` and/or `SNPSLMD_LICENSE_FILE` | Synopsys license server checkout — every tool reads these at launch, and VeriPower does not validate them | every EDA stage |
-| `make` | The stages that ship a Makefile drive their tool through it | lint-cdc, simulation, synthesis, power-analysis |
+| `make` | The stages that ship a Makefile drive their tool through it | lint-cdc, simulation |
 | `/bin/sh` → `bash` **where VCS runs** | The VCS launcher is `#!/bin/sh -h` and relies on bash semantics. That is the machine the launcher executes on, which is not always the one you type on: with a containerized install the host's `/bin/sh` can be `dash` and every other stage still runs | simulation, power-analysis |
 | `vcs`, `UVM_HOME` | Compiling and running the UVM testbench, and the gate-level run that produces the SAIF | simulation, power-analysis |
 | `urg` | Merging and reporting structural coverage, which the coverage gate parses | simulation's coverage gate |
@@ -39,7 +39,7 @@ below against a live machine and smoke-runs each license checkout.
 ## Coverage report (urg text layout)
 
 `simulation`'s structural-coverage gate parses the **text** report from `urg` (`dashboard.txt` +
-`modlist.txt`) into `structural-coverage.json` (`parse_coverage.py`). Two things it needs:
+`modinfo.txt`) into `structural-coverage.json` (`parse_coverage.py`). Two things it needs:
 
 - **`-format text`.** The parser reads urg's text tables.
 - **`-report <dir>` and `--cov-dir` naming the same directory.** `-report` names where urg writes,
@@ -49,8 +49,9 @@ below against a live machine and smoke-runs each license checkout.
 Which dim columns appear is not fixed. urg prints the columns it has, which follows the `-cm`
 metrics compiled in (`VCS_COV`) and what the `.vdb` holds: a real run without branch coverage
 prints five columns, and runs with covergroups print a `GROUP` column beside the structural ones.
-The parser takes its columns from the header above each table, so a different set parses; a dim
-urg did not measure is absent, and a requirements row bounding it fails with the dimension named.
+The parser reads each instance subtree table in `modinfo.txt` by its column header. A missing
+or N/A measurement cannot satisfy a numeric bound. The gate uses the full DUT instance path,
+including its children, and excludes the TB and peer instances.
 
 ## Convention
 

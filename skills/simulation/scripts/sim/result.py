@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""sim finalize — assemble the lean simulation result.json at the given exit phase.
+"""Close functional verification from current artifacts and the stage owner's judgment.
 
-result.json's sole owner. --phase final re-derives the exit verdict in-process from the three gate
-primitives in sim._gate (earliest failing wave wins), folds the reaped verify verdict, and writes
-pass|fail; no gate's fail can be argued past it. --phase fail writes the status=fail envelope from
-the reason the caller holds. Which companions ride along is read off the reaped verify verdict
-itself rather than declared: the verdict carries failing_cases or it carries the coverage gap
-lists, and that is already the answer. Exit 0 = result.json written (pass or fail);
-exit 2 = BLOCKED (internal raise, or a fail with no reason) — never conflated with status=fail.
+Final closure checks materialization, review markers, coverage and case results.
+An explicit fail_reason records unresolved work. Exit 0 means a pass/fail result was
+written; exit 2 means closure could not complete.
 """
 
 from __future__ import annotations
@@ -60,10 +56,8 @@ def _final_gate(workdir: Path, plan_dir: Path, requirements: Path, check_review)
     Returns (ok, verdict, phase, fail_reason); the earliest wave to fail wins, in the
     order the waves ran: materialization, check-adequacy review, coverage.
 
-    The check-review leg is the one the orchestrator could otherwise walk past. The other two
-    re-derive a verdict nobody else held; this one re-derives a verdict the main thread was
-    already handed and told not to override, which is worth nothing until something other than
-    the overriding party checks it."""
+    Unresolved review markers are retained as a closure barrier. The stage owner also
+    assesses unmarked findings against their evidence before invoking final closure."""
     scaffold_doc = load_plan(plan_dir)
     d1_errs = materialization_errors(Path(workdir), scaffold_doc)
     rows = coverage_rows(Path(requirements))
@@ -71,7 +65,7 @@ def _final_gate(workdir: Path, plan_dir: Path, requirements: Path, check_review)
     cov = (
         json.loads(cov_path.read_text(encoding="utf-8")) if cov_path.is_file() else None
     )
-    dut = scaffold_doc["module"]
+    dut = f"{scaffold_doc['top']}_tb_top.u_dut"
     cov_errs, judged = coverage_gate(cov, rows, dut)
     verdict = {
         "coverage_extractable": not cov_errs or bool(judged),
@@ -114,7 +108,7 @@ def build_result(
     artifacts = enumerate_artifacts(workdir)
     verify = json.loads(Path(verify_verdict).read_text()) if verify_verdict else {}
 
-    if phase != "final":
+    if phase != "final" or fail_reason is not None:
         ss = _early_exit_ss(fail_reason, verify)
         _write_result(
             workdir,
@@ -148,16 +142,17 @@ def build_result(
         )
         return 0
     cases = read_case_counts(workdir)
-    if cases["not_run"]:
-        # A declared test with no RESULT line did not run, and the counts finalize reports
-        # are over the lines that exist, so a suite cut short reads as a smaller clean one.
-        # Every test the plan declares is in a suite `make regress` selects, so this is the
-        # runner having stopped partway rather than a selection gap.
+    if cases["not_run"] or cases["failed"]:
+        reasons = []
+        if cases["failed"]:
+            reasons.append(f"{cases['failed']} tests failed")
+        if cases["not_run"]:
+            reasons.append(f"{cases['not_run']} declared tests produced no result")
         ss = {
-            "fail_reason": (
-                f"{cases['not_run']} of {cases['not_run'] + cases['total']} declared tests "
-                f"produced no result; the suite did not finish"
-            ),
+            "total_cases": cases["total"],
+            "passed": cases["passed"],
+            "failed": cases["failed"],
+            "fail_reason": "; ".join(reasons),
         }
         _write_result(
             workdir,
@@ -193,27 +188,29 @@ def read_case_counts(workdir: Path) -> dict:
         raise FileNotFoundError(f"case-results.json missing on the pass path: {f}")
     counts = json.loads(f.read_text(encoding="utf-8"))
 
-    def n(k):
-        v = counts.get(k)
-        return v if isinstance(v, int) else None
-
-    return {
-        "total": n("total_tests"),
-        "passed": n("passed_tests"),
-        "failed": n("failed_tests"),
-        "not_run": n("not_run_tests") or 0,
-    }
+    keys = ("total_tests", "passed_tests", "failed_tests", "not_run_tests")
+    for key in keys:
+        value = counts.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"case-results.json needs a nonnegative integer {key}")
+    if counts["total_tests"] != counts["passed_tests"] + counts["failed_tests"]:
+        raise ValueError("case-results.json total does not match passed + failed")
+    if counts["total_tests"] + counts["not_run_tests"] == 0:
+        raise ValueError("case-results.json contains no declared tests")
+    return dict(
+        zip(("total", "passed", "failed", "not_run"), (counts[k] for k in keys))
+    )
 
 
 def read_coverage_summary(workdir: Path, dut: str):
     """The dims the coverage gate just scored, and the scope they were scored in. Only the pass
-    path reaches this, and the gate it passed already required the DUT's per-module row, so
+    path reaches this, and the gate it passed already required the DUT's instance subtree, so
     this reads rather than checks.
 
     Which tree the number covers is not recorded beside it: the gate scores the DUT's row or
     fails, so there is no second answer for a field to disambiguate."""
     f = Path(workdir) / "structural-coverage.json"
-    per = json.loads(f.read_text(encoding="utf-8"))["per_module"]
+    per = json.loads(f.read_text(encoding="utf-8"))["per_instance"]
     row = next(m for m in per if m.get("name") == dut)
     return {k: row.get(k) for k in ("line", "cond", "fsm", "toggle")}
 
@@ -221,17 +218,19 @@ def read_coverage_summary(workdir: Path, dut: str):
 def enumerate_artifacts(workdir: Path) -> list[dict]:
     workdir = Path(workdir)
     candidates = [
+        "evidence",
         "Makefile",
         "env.sh",
         "filelist.f",
         "rtl_filelist.f",
-        "tb/uvm",
+        "tb",
         "scripts",
-        "tests/testlist.json",
+        "tests",
         "regression-log.txt",
         "logs",
         "check-review.md",
         "structural-coverage.json",
+        "cov_merge",
         "case-results.json",
         "case-results-summary.md",
     ]  # envelope.schema forbids listing result.json itself; excluded by construction
@@ -239,14 +238,10 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
 
 
 def _early_exit_ss(fail_reason, verify) -> dict:
-    """The fail envelope: the caller's reason, plus whatever the reaped verify verdict actually
-    carries. Nothing selects the companions but their own presence — a verdict holding
-    failing_cases is a regress or smoke failure, one holding the gap lists is a Rule-B route-out,
-    and a caller that reaped no verdict has neither to pass on."""
+    """Preserve the cause and case evidence; coverage reports carry the missed items."""
     ss = {"fail_reason": fail_reason}
-    for k in ("failing_cases", "gaps_in_testpoints", "gaps_not_in_testpoints"):
-        if verify.get(k):
-            ss[k] = verify[k]
+    if verify.get("failing_cases"):
+        ss["failing_cases"] = verify["failing_cases"]
     return ss
 
 
@@ -265,6 +260,12 @@ def finalize(
     exit 2 = BLOCKED, any internal raise, never conflated with status=fail. The --phase final
     argument precondition is checked in __main__.py, which maps it to exit 2 before calling
     here."""
+    (Path(workdir) / "result.json").unlink(missing_ok=True)
+    if (phase != "final" and not fail_reason) or (
+        fail_reason is not None and not fail_reason.strip()
+    ):
+        print("[sim finalize] BLOCKED: empty --fail-reason", file=sys.stderr)
+        return 2
     try:
         return build_result(
             workdir,

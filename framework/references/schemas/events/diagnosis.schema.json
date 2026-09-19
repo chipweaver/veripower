@@ -12,10 +12,10 @@
       "proof": {"type": "string"}, "outcome_run": {"type": "integer", "minimum": 1}
     }},
     "attribution": {"type": "string", "description": "root-cause rule name, or the failed rule itself when the attribution points at its own judge (oracle side)"},
-    "fix_owner": {"type": "string", "description": "auto-rebuild target, and the only thing that decides whether this diagnosis routes; ABSENT when the attribution is self-pointing (oracle side) — such a diagnosis is recorded as-is (P4) but escalates instead of auto-rebuilding"},
-    "source": {"type": "string", "enum": ["triage", "human"]},
-    "provenance": {"type": "string", "description": "the bare identity that vouches for this diagnosis; required when source=human"},
-    "reason": {"type": "string", "pattern": ".*\\S.*", "description": "the reasoning behind the attribution; required when source=human, and carried verbatim into the fix owner's dispatch.json. A triage diagnosis has none: its analysis is its own result.json."},
+    "fix_owner": {"type": "string", "description": "Repair target: the failed stage itself or one of its transitive input producers. Absent when the repair owner is unresolved."},
+    "source": {"type": "string", "enum": ["triage", "decision"]},
+    "provenance": {"type": "string", "description": "Decision maker and authorization basis; required when source=decision"},
+    "reason": {"type": "string", "pattern": ".*\\S.*", "description": "Reasoning behind the attribution, forwarded to the repair dispatch when recorded. Required for source=decision; generated triage findings refer to their analysis result."},
     "supersedes": {"type": "string"}
   }
 }

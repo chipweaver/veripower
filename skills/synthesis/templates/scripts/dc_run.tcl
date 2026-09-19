@@ -1,34 +1,30 @@
 # ==============================================================================
 # dc_run.tcl — Design Compiler synthesis driver.
 #
-# Invocation (from the Design/synthesis/ workdir, launched by the Makefile):
+# Invocation (from the Design/synthesis/ workdir, launched by the stage CLI):
 #   dc_shell -f scripts/dc_run.tcl | tee run.log
 #
-# Required env vars (provided by env.sh):
+# Calculation settings (provided by config.tcl):
 #   TOP     Top module name.
 #   LIB_DB  Standard-cell library .db path.
 # ==============================================================================
 
-# --- Load configuration (fallback when env.sh → dc_shell env handover fails) ---
-if {[file exists [file join [file dirname [info script]] config.tcl]]} {
-    source [file join [file dirname [info script]] config.tcl]
-}
-
-# --- Env-var validation ---
+# --- Calculation settings ---
+source [file join [pwd] config.tcl]
 foreach _var {TOP LIB_DB WIRE_LOAD_MODEL} {
-    if {![info exists ::env($_var)] || $::env($_var) eq ""} {
-        puts stderr "ERROR: environment variable $_var not set (source env.sh)"
+    if {![info exists $_var] || [set $_var] eq ""} {
+        puts stderr "ERROR: setting $_var not set in config.tcl"
         exit 1
     }
 }
-if {![file isfile $::env(LIB_DB)]} {
-    puts stderr "ERROR: LIB_DB is not a regular file: $::env(LIB_DB)"
+if {![file isfile $LIB_DB]} {
+    puts stderr "ERROR: LIB_DB is not a regular file: $LIB_DB"
     exit 1
 }
 
-set top    $::env(TOP)
-set lib_db $::env(LIB_DB)
-set wlm    $::env(WIRE_LOAD_MODEL)
+set top    $TOP
+set lib_db $LIB_DB
+set wlm    $WIRE_LOAD_MODEL
 
 set reports_dir [file join [pwd] reports]
 set results_dir [file join [pwd] out]
@@ -44,7 +40,7 @@ puts "INFO: results_dir = $results_dir"
 # --- Library configuration ---
 set_app_var target_library [list $lib_db]
 set_app_var link_library   [list "*" $lib_db]
-set_app_var search_path    [concat [list "." "MY_RTL_DIR" [file dirname $lib_db]] \
+set_app_var search_path    [concat [list "." MY_RTL_DIR [file dirname $lib_db]] \
                                    [get_app_var search_path]]
 
 # --- RTL ingest (analyze + elaborate) ---
@@ -55,10 +51,7 @@ set_app_var search_path    [concat [list "." "MY_RTL_DIR" [file dirname $lib_db]
 define_design_lib WORK -path ./work
 source [file join [file dirname [info script]] rtl_load.tcl]
 
-# elaborate / link return 0 on failure, and neither failure is caught downstream:
-# DC classifies an unresolved reference as a Warning, so the check_design gate below
-# never fires on it, and `compile_ultra` succeeds on the reduced design. The result would
-# be a netlist missing a whole module, reported as a passing (smaller) QoR. Gate both.
+# elaborate/link return 0 on failure; unresolved references can appear only as warnings.
 if {![elaborate $top]} {
     puts stderr "ERROR: elaborate failed for $top"
     exit 1
@@ -87,23 +80,14 @@ source [file join [pwd] constraints.sdc]
 source [file join [pwd] constraints.local.sdc]
 
 # --- Interconnect estimate ---
-# WIRE_LOAD_MODEL names a model the library carries, or `none`. A library declares neither a
-# default nor a selection group, so nothing selects one unless this does, and the choice is
-# not free either way: measured on five designs against a TSMC 90 library, the smallest bucket
-# cost OpenTitan's i2c its whole 2.47 ns of setup margin, and the largest raised total cell area
-# by a fifth to more than double. `none` is a legal answer, and what it buys is reports that
-# say so.
-# `write_sdc` below emits whichever was chosen, and both PT flows read that SDC, so this is
-# the one place it is decided.
+# Apply the selected interconnect estimate; write_sdc carries it downstream.
 if {$wlm ne "none"} {
     set_wire_load_model -name $wlm
 }
 set_wire_load_mode top
 
 # --- Synthesis ---
-# compile_ultra is this flow's mapping command: the PPA targets are judged against its
-# QoR, not plain compile's. It needs a DC-Ultra license, which env-precheck smoke-tests
-# before the pipeline runs. Return value is 0 on failure, as with elaborate / link.
+# The supplied mapping flow uses DC-Ultra. compile_ultra returns 0 on failure.
 if {![compile_ultra]} {
     puts stderr "ERROR: compile_ultra failed - design remains unmapped"
     exit 1
@@ -114,11 +98,7 @@ report_qor                                       > [file join $reports_dir "qor.
 set _area_rpt [file join $reports_dir "area.rpt"]
 report_area   -hierarchy                         > $_area_rpt
 
-# The area report is the only reliable signal of what actually took. `set_wire_load_model`
-# returns success for a name the library does not have (it prints `Error: Wire load ... not
-# found` without raising) and the design attribute stays unset either way, so neither the
-# return value nor the attribute distinguishes the cases. Checked both ways, because a run
-# whose reports disagree with what was asked for is not the run that was asked for.
+# set_wire_load_model can return success for an absent model. Check the effective setting.
 set _fh [open $_area_rpt r]
 set _area_content [read $_fh]
 close $_fh

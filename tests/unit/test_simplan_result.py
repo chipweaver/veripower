@@ -42,7 +42,6 @@ GOOD = {
     "power_scenarios": [
         {
             "id": "S1",
-            "sequence_ref": "smoke",
         }
     ],
 }
@@ -149,9 +148,8 @@ def test_build_result_carries_revision(tmp_path):
     }  # human-gate narration, not derivable from any artifact
 
 
-def test_pass_blocked_when_scaffold_edited_after_the_gate(tmp_path):
-    # The invariant finalize exists to re-witness: Step 2 left check-scaffold clean, so a
-    # failure here means an artifact changed afterwards — BLOCKED, not a routable fail.
+def test_invalid_plan_blocks_closure(tmp_path):
+    # The current inputs determine validity, independent of earlier validation.
     wd = _finalize_workdir(tmp_path)
     spec = _spec(tmp_path, hints=("CHK-0", "CHK-1"))  # CHK-1 covered by nothing
     assert vs.finalize(wd, spec, revision=None) == 2
@@ -292,3 +290,12 @@ def test_earlyfail_seeded_workdir_carries_products(tmp_path):
     env = json.loads((tmp_path / "result.json").read_text())
     paths = {a["path"] for a in env["artifacts"]}
     assert paths == {"verification-plan.md", "tb-scaffold.json"}
+
+
+def test_invalid_reclose_removes_old_result(tmp_path):
+    wd = _finalize_workdir(tmp_path)
+    spec = _spec(tmp_path)
+    assert vs.finalize(wd, spec, revision=None) == 0
+    (wd / "tb-scaffold.json").write_text("{}")
+    assert vs.finalize(wd, spec, revision=None) == 2
+    assert not (wd / "result.json").exists()

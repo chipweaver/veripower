@@ -16,6 +16,36 @@ FIX5 = Path(__file__).resolve().parent / "fixtures" / "parse_coverage-5col"
 import parse_coverage as pc  # noqa: E402
 
 
+def test_instance_subtrees_include_children_and_keep_peer_instances_separate():
+    rows = {
+        r["name"]: r for r in pc.parse_instances((FIX / "instances.txt").read_text())
+    }
+    dut = "microgpt_core_tb_top.u_dut"
+    assert rows[dut]["cond"] == 89.69  # module self is 94.03
+    assert rows[dut]["toggle"] == 88.77  # module self is 94.21
+    assert rows[dut + ".u_attn.u_divs0"]["toggle"] == 77.73
+    assert rows[dut + ".u_attn.u_divs1"]["toggle"] == 77.94
+
+
+def test_instance_subtrees_follow_report_columns():
+    text = "Module Instance : tb.dut\nInstance's subtree :\n\nSCORE LINE TOGGLE\n91 92 90\n"
+    assert pc.parse_instances(text) == [
+        dict(name="tb.dut", score=91, line=92, toggle=90)
+    ]
+
+
+@pytest.mark.parametrize("body", ["", "SCORE LINE\n\nModule :\nSCORE LINE\n100 100\n"])
+def test_missing_subtree_cannot_borrow_a_module_table(body):
+    with pytest.raises(ValueError, match="subtree"):
+        pc.parse_instances("Module Instance : tb.dut\nInstance's subtree :\n" + body)
+
+
+def test_duplicate_instance_path_is_not_arbitrarily_selected():
+    text = "Module Instance : tb.dut\nInstance's subtree :\nSCORE LINE\n90 91\n"
+    with pytest.raises(ValueError, match="duplicate"):
+        pc.parse_instances(text + text)
+
+
 def test_parse_aggregate_dims():
     agg = pc.parse_aggregate((FIX / "dashboard.txt").read_text())
     assert agg == pytest.approx(
@@ -43,30 +73,17 @@ def test_columns_come_from_the_header_not_from_an_assumed_set():
     )
     assert "branch" not in agg  # a dim urg did not measure is absent, never guessed
 
-    mods = {m["name"]: m for m in pc.parse_modules((FIX5 / "modlist.txt").read_text())}
-    assert len(mods) == 34
-    assert mods["uart_core"]["line"] == pytest.approx(81.03)
-    assert "branch" not in mods["uart_core"]
-
 
 def test_parse_aggregate_missing_returns_none():
     assert pc.parse_aggregate("no coverage summary here") is None
-
-
-def test_parse_modules_with_na_dims():
-    mods = {m["name"]: m for m in pc.parse_modules((FIX / "modlist.txt").read_text())}
-    # sd_crc_16 has no COND/FSM -> '--' -> None (datapath-no-FSM skip case)
-    assert mods["sd_crc_16"]["fsm"] is None
-    assert mods["sd_crc_16"]["cond"] is None
-    assert mods["sd_crc_16"]["line"] == pytest.approx(10.53)
-    assert mods["sd_cmd_master"]["fsm"] == pytest.approx(75.00)
 
 
 def test_build_writes_structural_coverage_json(tmp_path):
     cov_dir = tmp_path / "cov_merge"
     cov_dir.mkdir()
     (cov_dir / "dashboard.txt").write_text((FIX / "dashboard.txt").read_text())
-    (cov_dir / "modlist.txt").write_text((FIX / "modlist.txt").read_text())
+    with (cov_dir / "modinfo.txt").open("a") as f:
+        f.write("\n" + (FIX / "instances.txt").read_text())
     out = tmp_path / "structural-coverage.json"
     rc = pc.build(cov_dir, out)
     assert rc == 0 and out.is_file()
@@ -74,7 +91,7 @@ def test_build_writes_structural_coverage_json(tmp_path):
 
     data = json.loads(out.read_text())
     assert data["aggregate"]["fsm"] == pytest.approx(31.25)
-    assert any(m["name"] == "sd_crc_16" for m in data["per_module"])
+    assert any(m["name"] == "microgpt_core_tb_top.u_dut" for m in data["per_instance"])
     assert "L-2016.06" in data.get("urg_version", "")
 
 
@@ -98,24 +115,23 @@ def test_parse_uncovered_tolerates_unknown_format():
     assert pc.parse_uncovered("Module : foo\nnothing recognisable here\n") == []
 
 
-def test_build_without_modinfo_yields_empty_uncovered(tmp_path):
-    """modinfo.txt is optional -- its absence must not fail the run or the gate."""
+def test_build_without_modinfo_refuses_to_emit(tmp_path):
     cov_dir = tmp_path / "cov_merge"
     cov_dir.mkdir()
     (cov_dir / "dashboard.txt").write_text((FIX / "dashboard.txt").read_text())
     out = tmp_path / "structural-coverage.json"
-    assert pc.build(cov_dir, out) == 0
-    import json
-
-    assert json.loads(out.read_text())["uncovered"] == []
+    with pytest.raises(SystemExit, match="no instance coverage"):
+        pc.build(cov_dir, out)
+    assert not out.exists()
 
 
 def test_build_includes_uncovered_when_modinfo_present(tmp_path):
     cov_dir = tmp_path / "cov_merge"
     cov_dir.mkdir()
     (cov_dir / "dashboard.txt").write_text((FIX / "dashboard.txt").read_text())
-    (cov_dir / "modlist.txt").write_text((FIX / "modlist.txt").read_text())
     (cov_dir / "modinfo.txt").write_text((FIX / "modinfo.txt").read_text())
+    with (cov_dir / "modinfo.txt").open("a") as f:
+        f.write("\n" + (FIX / "instances.txt").read_text())
     out = tmp_path / "structural-coverage.json"
     assert pc.build(cov_dir, out) == 0
     import json
@@ -128,7 +144,10 @@ def test_build_includes_uncovered_when_modinfo_present(tmp_path):
 def test_build_fail_loud_when_dashboard_missing(tmp_path):
     cov_dir = tmp_path / "cov_merge"
     cov_dir.mkdir()  # no dashboard.txt
+    with (cov_dir / "modinfo.txt").open("a") as f:
+        f.write("\n" + (FIX / "instances.txt").read_text())
     out = tmp_path / "structural-coverage.json"
+    out.write_text('{"per_instance": [{"name": "stale", "line": 100}]}')
     with pytest.raises(SystemExit):
         pc.build(cov_dir, out)
     assert not out.exists()  # never emit a "claim met" file
@@ -138,7 +157,40 @@ def test_build_fail_loud_when_aggregate_unparseable(tmp_path):
     cov_dir = tmp_path / "cov_merge"
     cov_dir.mkdir()
     (cov_dir / "dashboard.txt").write_text("garbage with no summary block")
+    with (cov_dir / "modinfo.txt").open("a") as f:
+        f.write("\n" + (FIX / "instances.txt").read_text())
     out = tmp_path / "structural-coverage.json"
     with pytest.raises(SystemExit):
         pc.build(cov_dir, out)
     assert not out.exists()  # never emit a "claim met" file on unparseable input
+
+
+@pytest.mark.parametrize("metric", ["TOGGLE", "FSM", "COND"])
+def test_report_without_line_coverage_is_judged_by_requested_metric(tmp_path, metric):
+    import json
+
+    sys.path.insert(0, str(ROOT / "skills/simulation/scripts"))
+    from sim._gate import coverage_gate
+
+    table = f"SCORE {metric}\n84.5 84.5\n"
+    (tmp_path / "dashboard.txt").write_text("Total Coverage Summary\n" + table)
+    (tmp_path / "modinfo.txt").write_text(
+        "Module Instance : bench.dut\nInstance's subtree :\n" + table
+    )
+    destination = tmp_path / "coverage.json"
+    assert pc.build(tmp_path, destination) == 0
+    coverage = json.loads(destination.read_text())
+    assert "line" not in coverage["per_instance"][0]
+    rows = [
+        {
+            "id": "present",
+            "target": {"dim": "coverage_" + metric.lower(), "op": ">", "value": 80},
+        },
+        {"id": "absent", "target": {"dim": "coverage_line", "op": ">=", "value": 0}},
+    ]
+    errors, judged = coverage_gate(coverage, rows, "bench.dut")
+    assert errors
+    assert [(r["id"], r["met"], r["actual"]) for r in judged] == [
+        ("present", True, 84.5),
+        ("absent", False, None),
+    ]

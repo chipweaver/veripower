@@ -143,7 +143,7 @@ AREA_SRC = "area.rpt Total cell area"
 # The slack a synthesis run compares is setup only — the sentence says so, which is the point.
 SLACK_SRC = (
     "qor.rpt worst Critical Path Slack across 2 group(s) (min) "
-    "— setup only; hold is timing-analysis's"
+    "— setup only; does not measure hold"
 )
 
 
@@ -447,7 +447,7 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
         (tmp_path / rel).write_text("x")
     (tmp_path / "result.json").write_text("{}")  # must NOT self-list
     paths = [a["path"] for a in sp.enumerate_artifacts(tmp_path)]
-    assert "out" in paths and "reports/area.rpt" in paths
+    assert "out" in paths and "reports" in paths
     assert "constraints.sdc" in paths
     assert "result.json" not in paths
     assert all((tmp_path / p).exists() for p in paths)  # only what is there
@@ -470,7 +470,7 @@ def test_enumerate_artifacts_delivers_the_out_tree_whatever_dc_named_inside_it(
 _FIXTURE = Path(__file__).resolve().parent / "fixtures" / "synthesis-golden"
 
 
-def test_golden_lean_against_a_real_run(tmp_path):
+def test_recorded_report_judgment_with_placeholder_deliverables(tmp_path):
     import shutil
 
     wd = tmp_path / "synthesis"
@@ -493,7 +493,7 @@ def test_golden_lean_against_a_real_run(tmp_path):
     for k in ("rtl_filelist", "power_report", "timing_exceptions", "notes"):
         assert k not in ss
     paths = [a["path"] for a in env["artifacts"]]
-    assert "out" in paths and "reports/area.rpt" in paths
+    assert "out" in paths and "reports" in paths
     assert "result.json" not in paths
     assert env["produced_at"].endswith("Z")
 
@@ -540,6 +540,27 @@ def test_finalize_cli_happy_path(tmp_path):
     env = json.loads((wd / "result.json").read_text())
     assert (env["stage"], env["status"]) == ("synthesis", "pass")
     assert env["stage_specific"]["requirements"][0]["id"] == "R-A"
+
+
+def test_declared_verdict_cannot_replace_a_numeric_failure(tmp_path):
+    wd = _workdir(tmp_path)
+    _spec(tmp_path, [AREA_TINY])
+    (wd / "result.json").write_text('{"status":"pass"}')
+    attempt = _cli(
+        wd,
+        "--requirements",
+        json.dumps(
+            [
+                {
+                    "id": "R-A",
+                    "met": True,
+                    "measured": "declaration contrary to the report",
+                }
+            ]
+        ),
+    )
+    assert attempt.returncode == 2
+    assert not (wd / "result.json").exists()
 
 
 # ── the rows requirements.json assigns to synthesis ───────────────────────────
@@ -650,7 +671,7 @@ def test_pass_requires_the_full_netlist_trio(tmp_path):
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
-    assert "out/*_syn.v" in ss["fail_reason"] and "out/*_syn.sdf" in ss["fail_reason"]
+    assert "out/*_syn.v" in ss["fail_reason"]
     # Each verdict names the report line behind it; nothing else travels beside them.
     assert all(v["measured"] for v in ss["requirements"])
 
@@ -662,7 +683,7 @@ def test_partial_netlist_names_only_what_is_absent(tmp_path):
     (wd / "out" / "m_syn.sdc").write_text("sdc")
     assert sp.build_result(wd, [], []) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss["fail_reason"] == "netlist incomplete: dc_shell wrote no out/*_syn.sdf"
+    assert ss["fail_reason"] == "netlist incomplete: required out/m_syn.sdf"
 
 
 def test_missing_netlist_outranks_a_missed_row(tmp_path):

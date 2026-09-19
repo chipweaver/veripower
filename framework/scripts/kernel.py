@@ -108,7 +108,7 @@ def cmd_dispatch(
                 "error": f"--caused-by {cb_rule}:{cb_run} has no result.json",
             }
         caused_by_paths.append(str(rel))
-    # Resolve the records and human reasoning named by each diagnosis.
+    # Resolve the records and decision reasoning named by each diagnosis.
     by_id = {e["id"]: e for e in events if e["type"] == "diagnosis"}
     scope = facts.stale_inputs(module, events, rule)
     reasons = []
@@ -119,7 +119,7 @@ def cmd_dispatch(
         for rel in _diagnosis_sources(events, diag):
             if rel not in caused_by_paths and (root / rel).is_file():
                 caused_by_paths.append(rel)
-        if diag["source"] == "human" and diag.get("reason"):
+        if diag.get("reason"):
             reasons.append(diag["reason"])
     run = facts.runs_of(events, rule) + 1
     workdir = str(Path(*rules.workdir_root(rule), "runs", str(run)))
@@ -309,7 +309,7 @@ def _derive_triage(env, dispatch):
     """Group triage findings by root cause and derive one diagnosis per group.
 
     The originating dispatch identifies the failed simulation run. A root cause
-    inside its input closure can be a repair owner; other attributions require
+    in the failed stage or its input producers can be a repair owner; other attributions require
     clarification. Empty findings block completion."""
     import uuid
 
@@ -329,7 +329,7 @@ def _derive_triage(env, dispatch):
             "attribution": cause,
             "source": "triage",
         }
-        if cause in rules.input_closure("simulation"):
+        if cause in rules.repair_owners("simulation"):
             diagnosis["fix_owner"] = cause
         out.append(diagnosis)
     # Completed triage records diagnoses rather than an independent failed proof.
@@ -347,22 +347,25 @@ def cmd_diagnose(
     reason,
     supersedes,
 ):
-    """Record a human diagnosis with a legal repair owner, provenance and reason."""
-    if fix_owner and fix_owner not in rules.input_closure(subject_proof):
+    """Record a diagnosis decision with a legal repair owner, provenance and reason."""
+    if fix_owner and fix_owner not in rules.repair_owners(subject_proof):
         return {
             "ok": False,
-            "error": f"fix_owner {fix_owner!r} not in input closure of {subject_proof!r}",
+            "error": f"fix_owner {fix_owner!r} is neither {subject_proof!r} nor an input producer",
         }
     if not provenance:
-        return {"ok": False, "error": "diagnose requires --provenance (source=human)"}
+        return {
+            "ok": False,
+            "error": "diagnose requires --provenance (source=decision)",
+        }
     if not reason or not reason.strip():
-        return {"ok": False, "error": "diagnose requires --reason (source=human)"}
+        return {"ok": False, "error": "diagnose requires --reason (source=decision)"}
     ev = {
         "type": "diagnosis",
         "id": diag_id,
         "subject": {"proof": subject_proof, "outcome_run": subject_run},
         "attribution": attribution,
-        "source": "human",
+        "source": "decision",
         "provenance": provenance,
         "reason": reason,
     }
@@ -415,7 +418,7 @@ def cmd_reopen(module, pin_ref, reason):
 
 
 def cmd_signoff(module, provenance, reason):
-    """Check signoff readiness and record the human endorsement with its basis."""
+    """Check signoff readiness and record the authorized endorsement with its basis."""
     events = store.read_events(module)
     reason_blocked = facts.signoff_gate(module, events)
     if reason_blocked is not None:

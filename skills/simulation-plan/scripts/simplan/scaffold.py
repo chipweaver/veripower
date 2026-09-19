@@ -6,7 +6,7 @@ transaction fields are derived by simulation from the specification boundary.
 The three layers short-circuit because each makes the next readable: a schema violation
 makes the referential checks meaningless, and one unresolved name makes the coverage join
 unreadable. The merge in `_plan.load_plan` exists for the middle layer — the referential
-integrity spans all three files (`power_scenarios[].sequence_ref` and `tests[].seqs[]` both
+integrity joins the scaffold and sequence roster (`tests[].seqs[]`
 resolve against `sequences[]`), so no single schema can express it.
 
 finalize re-runs the whole thing in-process. That is affordable because every layer is a
@@ -28,7 +28,7 @@ from simplan.hints import HintsError, load_check_hints
 
 def semantic_errors(scaffold: dict) -> list:
     """Referential-integrity checks the JSON Schema cannot express: name uniqueness,
-    observer/inports/sequences.agent/tests.seqs/testpoints.seqs/power_scenarios.sequence_ref
+    observer/inports/sequences.agent/tests.seqs/testpoints.seqs
     resolution,
     and option-c (observer omitted with multiple agents). Returns human-readable errors."""
     agents = scaffold.get("agents", [])
@@ -105,38 +105,14 @@ def semantic_errors(scaffold: dict) -> list:
                     f"{sorted(n for n in seq_names if n)}."
                 )
 
-    # Two rows on one sequence_ref are one measurement: emit_power_tests groups by it and
-    # ptpx.tcl loads a single LIB_DB, so both rows are computed from the same SAIF at the same
-    # operating condition and report the same number to the digit (measured on 5 runs across 2
-    # modules). Declaring both publishes one measurement as two.
-    by_ref: dict[str, list[str]] = {}
-    for ps in scaffold.get("power_scenarios", []):
-        ref = ps.get("sequence_ref")
-        if ref not in seq_names:
-            errs.append(
-                f"power_scenarios[{ps.get('id')!r}].sequence_ref {ref!r} not in sequences[] "
-                f"{sorted(n for n in seq_names if n)}."
-            )
-        by_ref.setdefault(ref, []).append(ps.get("id"))
-    for ref, ids in by_ref.items():
-        if len(ids) > 1:
-            errs.append(
-                f"power_scenarios {sorted(i for i in ids if i)} all point at sequence_ref "
-                f"{ref!r}, so they are one measurement reported several times. Give each row "
-                f"the stimulus that distinguishes it (clock, reset or low-power state drive "
-                f"through the sequence, not through the row), or drop the row and say why in "
-                f"verification-plan.md §4."
-            )
-
     return errs
 
 
 def coverage_errors(scaffold: dict, check_hints: list) -> list:
-    """Bidirectional coverage matrix: every authored check_id is covered (in some
-    testpoints[].covers[]) or skipped (in skipped_checks[]); every non-empty covers[] entry
-    resolves to a real check_id. references/plan-review-task-contract.md puts this defect
-    class out of scope for the LLM reviewer on the strength of this check, so dropping it
-    would leave the class owned by nobody."""
+    """Each authored check is covered or explicitly skipped; all references resolve.
+
+    Semantic adequacy and justified exclusions remain the plan review's responsibility.
+    """
     check_ids = {h["check_id"] for h in check_hints if h.get("check_id")}
     covered, errs = set(), []
     for tp in scaffold.get("testpoints", []):

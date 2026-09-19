@@ -42,6 +42,7 @@ def _cmd_check_materialization(a: argparse.Namespace) -> int:
 def _cmd_finalize(a: argparse.Namespace) -> int:
     from sim import result
 
+    (Path(a.workdir) / "result.json").unlink(missing_ok=True)
     if a.phase == "final" and not (a.plan and a.requirements and a.check_review):
         print(
             "[sim finalize] ERROR: --plan, --requirements and --check-review are "
@@ -124,7 +125,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--verify-verdict", type=Path, default=None, help="reaped verify-child JSON"
     )
     sp.add_argument(
-        "--fail-reason", default=None, help="one-line reason for an early-exit phase"
+        "--fail-reason",
+        default=None,
+        help="unresolved violation or incomplete work, even if tool results otherwise pass",
     )
     sp.add_argument(
         "--fix-owner",

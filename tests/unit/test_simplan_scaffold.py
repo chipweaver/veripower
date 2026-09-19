@@ -47,7 +47,6 @@ GOOD = {
     "power_scenarios": [
         {
             "id": "S1",
-            "sequence_ref": "smoke",
         }
     ],
 }
@@ -306,8 +305,7 @@ def test_sequence_agent_unknown_fails(tmp_path):
 
 
 def test_sequence_without_agent_fails(tmp_path):
-    # power-analysis's emit_power_tests builds m_<agent>_agent from it and hard-fails when
-    # it is absent, so an entry omitting it must not clear this stage's gate.
+    # Functional sequences need the agent they drive.
     s = copy.deepcopy(GOOD)
     del s["sequences"][0]["agent"]
     proc = _run(tmp_path, s, check=False)

@@ -11,11 +11,19 @@
 set -euo pipefail
 log="${1:?usage: check_sdf_annotated.sh <gls-compile-log>}"
 
+# Completion does not mean success: VCS can complete with annotation errors.
+if grep -qiE 'Total errors:[[:space:]]*[1-9][0-9]*' "$log"; then
+	echo "[check_sdf_annotated] ERROR: SDF annotation reported errors (phase=compile)" >&2
+	exit 1
+fi
+
 # Signature 1: an explicit "Number of <X> annotated" count line, when the tool emits it.
 lines=$(grep -iE "Number of [^[:space:]]+ annotated" "$log" || true)
 if [ -n "$lines" ]; then
-	total=$(printf '%s\n' "$lines" | grep -oE "[0-9]+" | paste -sd+ - | bc 2>/dev/null || echo 0)
-	total=${total:-0}
+	total=0
+	while read -r count; do
+		total=$((total + count))
+	done < <(printf '%s\n' "$lines" | grep -oE '[0-9]+')
 	if [ "$total" -eq 0 ]; then
 		echo "[check_sdf_annotated] ERROR: SDF annotated 0 elements (phase=compile)" >&2
 		exit 1

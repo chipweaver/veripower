@@ -43,7 +43,7 @@ def test_completion_marker_without_count_passes(tmp_path):
     r = _run(
         tmp_path,
         "   ***    SDF annotation begin: Tue Jul 14 02:06:43 2026\n"
-        "Total errors: 8153\nTotal warnings: 173577\n"
+        "Total errors: 0\nTotal warnings: 0\n"
         "   ***    SDF annotation completed: Tue Jul 14 02:06:46 2026\n",
     )
     assert r.returncode == 0
@@ -56,7 +56,7 @@ def test_begin_without_completed_fails_loud(tmp_path):
     assert b"no SDF annotation summary" in r.stderr
 
 
-def test_real_vcs_fixture_passes():
+def test_real_vcs_fixture_with_annotation_errors_is_rejected():
     # Regression: the plugin's own captured real VCS log (begin/completed markers, no
     # count line) must pass this gate rather than false-fail on format.
     fixture = (
@@ -69,4 +69,10 @@ def test_real_vcs_fixture_passes():
         / "gls-compile-log.txt"
     )
     r = subprocess.run(["bash", str(SCRIPT), str(fixture)], capture_output=True)
-    assert r.returncode == 0, r.stderr
+    assert r.returncode == 1
+    assert b"annotation reported errors" in r.stderr
+
+
+def test_completion_with_errors_is_not_success(tmp_path):
+    r = _run(tmp_path, "Total errors: 8153\n*** SDF annotation completed\n")
+    assert r.returncode == 1

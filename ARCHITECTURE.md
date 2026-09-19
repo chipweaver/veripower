@@ -50,7 +50,7 @@ own.
 
 | Rule | What it does | Oracle | Grade |
 |---|---|---|---|
-| specification | Transcribes the engineer's intent document into a requirements ledger, one row per proposition with the stage that judges it, then derives the partition, design docs and timing constraints from it | spec-review (LLM) | proposed |
+| specification | Accounts for the delivered intent in a source-grounded requirements ledger with explicit judgment responsibilities, then derives design decisions, interfaces and timing constraints | spec-review (LLM) | proposed |
 | simulation-plan | Maps every specified behavior to a testpoint, produces the verification plan and TB scaffold | plan-review (LLM) | proposed |
 | rtl-design | Generates RTL from the specification | semantic-review (LLM) | proposed |
 | lint-cdc | SpyGlass lint and CDC checks | spyglass ruleset | tool |
@@ -73,7 +73,7 @@ twice. The graph stays aligned with those input declarations.
 
 *\*Specification's outputs (constraints, PPA targets, interface declarations)
 are also consumed directly by lint-cdc, synthesis, simulation, and
-power-analysis. Simulation-plan's outputs (sequences, power scenarios) are
+power-analysis. Simulation-plan's outputs (verification plan, power scenario identifiers) are
 consumed by power-analysis. These edges are omitted from the diagram for
 clarity.*
 
@@ -95,7 +95,7 @@ did. The tool applies those rules independently of the RTL author.
 
 The four proposed-graded rules all deal with intent and functional correctness
 (specification, verification plan, RTL, simulation). Their oracles express
-engineering intent and receive human endorsement before signoff (§5).
+engineering intent and receive authorized endorsement before signoff (§5).
 
 ---
 
@@ -176,15 +176,12 @@ chain.
 ### How attribution works
 
 The failing stage names who needs to act. The kernel's only job is to check
-that the name is legal, meaning it sits inside the failing rule's transitive
-dependency closure. There's no fixed table of labels. A closed set could only
+that the name is legal: the failed stage itself or a transitive input producer. There's no fixed table of labels. A closed set could only
 cover failure modes someone thought of ahead of time, and where a symptom shows
 up is not necessarily where its cause lives.
 
-Three situations escalate to a human: the stage names nobody, names itself
-(meaning it's tried everything it can), or names something outside its closure.
-When that happens, the escalation comes with the candidates and the evidence,
-not just a request for help.
+Unresolved or unrelated attributions require a decision from the available evidence under the
+task's actual authorization. A stage can repair itself. Escalation includes candidates and evidence.
 
 If multiple failures point to the same rule, they get bundled into one
 dispatch. Lint-cdc and synthesis both blaming rtl-design won't make it run
@@ -211,10 +208,9 @@ does not establish conformance to the spec.
 Design and verification both start from the specification, then they split.
 The design path produces RTL. The verification path produces the test
 environment, and everything on that path (plan, scaffold, sequences, reference
-model) derives from the specification, not from the RTL. Simulation does
-consume RTL as a declared input, but only as the compiled DUT. The reference
-model that actually judges the simulation is built from the spec's behavioral
-requirements, not by reading RTL source.
+model) derives from the specification. Simulation compiles the RTL and may
+inspect it to diagnose failures. Expected behavior comes from the task's
+independent references, so implementation behavior does not become its own oracle.
 
 Every specified behavior gets mapped to a testpoint through structured artifact
 handoffs between simulation-plan and simulation. After each simulation round,
@@ -222,10 +218,10 @@ an independent check-adequacy review checks
 what the tests actually exercised against what the specification asked for.
 This catches both missing checks and checks that test the wrong thing.
 
-### From proposed to human
+### From proposed to endorsed
 
-A human can endorse a proposed oracle through **pin**, which raises its grade
-to human. The endorsement is anchored to a fingerprint of the oracle's content
+An authorized decision can endorse a proposed oracle through **pin**, which raises its grade
+to endorsed. The endorsement is anchored to a fingerprint of the oracle's content
 at that moment. If the oracle gets regenerated and the content changes, the
 endorsement goes away on its own. Nobody has to remember to revoke it.
 **Reopen** is the explicit withdrawal, and it invalidates every proof that
@@ -234,11 +230,13 @@ depended on the endorsed oracle.
 ### Signoff
 
 Closing a module demands everything at once. Every proof currently valid. Every
-oracle at tool or human grade. No input file on disk that showed up after the
-proof was recorded without being verified. The pipeline can iterate just fine
+oracle at tool or endorsed grade. Every file in a published stage directory must be covered by that stage's latest outcome. The pipeline can iterate just fine
 under proposed oracles, but it can't close under them.
 
-The human has four named acts: endorse an oracle (`pin`), withdraw one
+Signoff accepts the stage evidence current at that event. The status remains signed off only
+while that evidence and its endorsements still hold; new conclusions require a new signoff.
+
+Four decisions are recorded: endorse an oracle (`pin`), withdraw one
 (`reopen`), state an attribution (`diagnose`), close the module (`signoff`).
 Everything else is computed.
 
@@ -267,11 +265,10 @@ lives.
 
 **Signoff closes the declared verification obligations.** These are the
 eight proofs the rule registry lists, each held to the
-requirements-ledger rows that name it as judge. The ledger is a transcription of
-the engineer's document that a second reader checks against it, not a derivation
-from language semantics; rows judged `outside` remain the responsibility of
-their external judges
-and are not established by pipeline signoff.
+requirements-ledger rows that name it as judge. The ledger organizes source-grounded obligations and material context; a second reader checks
+that nothing required is lost or invented. Shared wording can cover multiple obligations, and
+repeated statements can share an entry when their meaning and judgment agree. Rows judged
+`outside` retain explicit external responsibility and are not established by pipeline signoff.
 
 **Human judgments are reusable and durable.** The architecture
 makes each judgment reusable across runs while its endorsed content is unchanged.
@@ -284,7 +281,7 @@ makes each judgment reusable across runs while its endorsed content is unchanged
 |---|---|
 | **proof** | A verification conclusion tied to exact input versions, output versions, and an oracle. Validity gets recomputed every time it's queried. |
 | **oracle** | What a proof was judged against. Could be an EDA tool's ruleset or an LLM-authored review or reference model. |
-| **grade** | How much you can trust an oracle. **tool** means authoritative. **proposed** means an LLM assessed its own work (good enough to iterate on, not enough for signoff). **human** means a person endorsed a proposed oracle via pin. |
-| **pin** / **reopen** | How humans grant and withdraw trust in a proposed oracle. A pin is anchored to the oracle content's fingerprint, so if the content changes, the pin lapses. |
+| **grade** | How much you can trust an oracle. **tool** means authoritative. **proposed** means an LLM assessed its own work (good enough to iterate on, not enough for signoff). **endorsed** means the current oracle content has a live pin; provenance records the decision maker and authorization. |
+| **pin** / **reopen** | How authorized decisions grant and withdraw endorsement in a proposed oracle. A pin is anchored to the oracle content's fingerprint, so if the content changes, the pin lapses. |
 | **rule** | One unit of work the kernel schedules, with declared inputs, outputs, proof, and oracle. The dependency graph falls out of these declarations. |
 | **projection** | Per-rule status (valid, stale, failed, blocked, in-flight, or missing) computed from the event log and disk on demand. Never stored. |

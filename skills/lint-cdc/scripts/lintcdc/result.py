@@ -231,19 +231,16 @@ def parse_tool(workdir: Path) -> str:
 
 def enumerate_artifacts(workdir: Path) -> list[dict]:
     workdir = Path(workdir)
-    candidates = [
-        "scripts/constraints.sgdc",  # generated; promoted as the SGDC the tool actually read
-        "scripts/local.sgdc",  # authored here, and the only SGDC the next round inherits
-        "lint-report.txt",
-        "cdc-report.txt",
-        "lint-violations.json",
-        "cdc-violations.json",
-        "scripts/waiver.tcl",
+    excluded = {
+        "result.json",
+        "result.json.tmp",
+        "dispatch.json",
+        "runs",
+        "spyglass_work",
+    }
+    return [
+        {"path": p.name} for p in sorted(workdir.iterdir()) if p.name not in excluded
     ]
-    # envelope.schema forbids listing result.json itself; excluded by construction.
-    # A *-violations.json the parser did not emit is simply absent (write-fresh-or-nothing
-    # unlinked it) and therefore not listed.
-    return [{"path": p} for p in candidates if (workdir / p).is_file()]
 
 
 def finalize(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
@@ -251,6 +248,7 @@ def finalize(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
     judge the rows requirements.json assigns to this stage. exit 0 = result.json written
     (status pass or fail); exit 2 = BLOCKED (an unreasoned waiver, an empty --fail-reason, a
     row nobody judged, or any internal raise), never a status=fail."""
+    (Path(workdir) / "result.json").unlink(missing_ok=True)
     if fail_reason is not None and not fail_reason.strip():
         print(
             "[lintcdc finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",

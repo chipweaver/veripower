@@ -3,9 +3,8 @@
 
   materialization_errors  every sequences[]/agents[] SV file present; no TODO residue.
   check_review_flagged     the testpoints the reviewer marked BLOCKING in its own record.
-  coverage_gate           structural-coverage.json carries the DUT's own per-module row, and each coverage
-                          bound requirements.json assigns to simulation holds (a null or '--'
-                          dim is skipped; a bounded dim urg did not measure fails).
+  coverage_gate           structural-coverage.json carries the full DUT instance subtree;
+                          every bounded dimension must have a measurement and meet its bound.
 
 check-materialization calls the first as the env child's own early exit, which saves a
 regression run on a hollow TB. The other two have no caller but finalize: reading them is
@@ -16,6 +15,7 @@ Status truth is the caller's exit code, not narration.
 from __future__ import annotations
 
 import json
+import math
 import operator
 import re
 from pathlib import Path
@@ -103,38 +103,32 @@ def materialization_errors(workdir: Path, scaffold: dict) -> list[str]:
 def coverage_gate(
     cov: dict | None, rows: list[dict], dut: str
 ) -> tuple[list[str], list[dict]]:
-    """Extractable, scoped to the DUT, and every bounded dim satisfies its row (a null dim is
-    skipped). Returns (errors, one {id, met, actual, measured} entry per row) — `measured` names the
-    row of the report the number came from, so a verdict cannot be read without seeing what
-    scope produced it.
+    """Judge the subtree at the exact DUT instance path, including its children.
 
-    Scored against the DUT's own row in `per_module`, never the report's `aggregate`. The
-    aggregate is the TB top's whole instance tree — the DUT plus every agent interface plus
-    every ROM the design instantiates — so it is a mixture the engineer's row never asked
-    about, and the mixture reads high wherever those companions are fully swept. On a real run
-    it read toggle 92.57 where the DUT itself was 76.37, and passed a `> 90` bound the DUT
-    misses by 13 points. A DUT row the report does not carry is a failure to attribute
-    coverage, never a reason to score something else instead."""
-    per = (cov or {}).get("per_module")
+    Missing or N/A measurements do not satisfy numeric requirements. No module-self
+    or TB aggregate value can stand in for the requested instance subtree.
+    """
+    per = (cov or {}).get("per_instance")
     if not isinstance(per, list) or not per:
         return (
             [
                 "coverage not extractable: structural-coverage.json missing or carries no "
-                "per-module rows (urg did not produce a parseable report; cannot gate -> "
+                "instance subtree rows (urg did not produce a parseable report; cannot gate -> "
                 "fail, never claim met)"
             ],
             [],
         )
-    agg = next((m for m in per if m.get("name") == dut), None)
-    if agg is None:
+    matches = [m for m in per if m.get("name") == dut]
+    if len(matches) != 1:
         return (
             [
-                f"coverage not attributable: no per-module row named {dut!r} in "
+                f"coverage not attributable: expected one instance subtree named {dut!r} in "
                 f"structural-coverage.json (rows: {sorted(m.get('name') for m in per)}) — "
                 "the DUT's own coverage is what the row bounds"
             ],
             [],
         )
+    agg = matches[0]
     errs: list[str] = []
     judged: list[dict] = []
     for r in rows:
@@ -158,15 +152,21 @@ def coverage_gate(
             continue
         val = agg[dim]
         if (
-            val is None
-        ):  # measured as N/A ('--', e.g. a DUT with no FSM) -> skip, do not fail
+            isinstance(val, bool)
+            or not isinstance(val, (int, float))
+            or not math.isfinite(val)
+            or not 0 <= val <= 100
+        ):
             judged.append(
                 {
                     "id": r["id"],
-                    "met": True,
+                    "met": False,
                     "actual": None,
-                    "measured": f"{dim} coverage of {dut!r}: reported N/A by urg",
+                    "measured": f"{dim} coverage of {dut!r}: no numeric measurement from urg",
                 }
+            )
+            errs.append(
+                f"{r['id']}: {dim} of {dut!r} has no numeric measurement; cannot judge the bound"
             )
             continue
         ok = _OPS[t["op"]](val, t["value"])
@@ -175,8 +175,8 @@ def coverage_gate(
                 "id": r["id"],
                 "met": ok,
                 "actual": val,
-                "measured": f"{dim} coverage of the DUT {dut!r}, from the per-module row of "
-                f"structural-coverage.json (not the TB top aggregate)",
+                "measured": f"{dim} coverage of the DUT {dut!r}, from the instance subtree row of "
+                f"structural-coverage.json (complete instance subtree)",
             }
         )
         if not ok:
@@ -187,11 +187,10 @@ def coverage_gate(
 
 
 def check_review_flagged(review_path: Path) -> list[str]:
-    """The testpoints the reviewer marked BLOCKING, read off its own record.
-
-    Whether a finding stops the round is the reviewer's call, made in one place and in one
-    word. Nothing here re-derives it from anything else, and nothing reads the prose."""
+    """Read unresolved review markers; the stage owner also assesses the underlying evidence."""
     text = Path(review_path).read_text(encoding="utf-8")
+    if not text.strip():
+        raise ValueError("check-review.md is empty; review did not establish adequacy")
     flagged = [
         m.group("tp_id")
         for m in (_FINDING.match(ln) for ln in text.splitlines())

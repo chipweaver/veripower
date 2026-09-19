@@ -11,6 +11,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = str(ROOT / "framework" / "scripts" / "kernel.py")
 sys.path.insert(0, str(ROOT / "framework" / "scripts"))
@@ -178,7 +180,9 @@ _STAGE_FILES = {
         "env.sh": "#!/bin/sh",
         "filelist.f": "-f rtl_filelist.f",
         "rtl_filelist.f": "top.v",
+        "scripts/run_vcs_regression.sh": "#!/bin/sh\n",
         "tb/uvm/dummy.sv": "// tb",
+        "tests/testlist.json": "[]",
     },
     "power-analysis": {
         "reports_ptpx/run1/power_hier.rpt": "power ok",
@@ -309,7 +313,7 @@ def _pin_every_proposed_oracle(tmp_path, module):
 def test_signoff_close_end_to_end(tmp_path, monkeypatch):
     # The whole trust boundary in one pass, through the real CLI: a delivered chain is NOT
     # signed off; decide refuses while any oracle is merely proposed; pinning each one lifts
-    # the gate to DONE ("go stamp"); the verb lands the human act; only then does status say
+    # the gate to DONE ("go stamp"); the verb lands the signoff decision; only then does status say
     # signed_off. Each step is the reason the next one is allowed.
     monkeypatch.chdir(tmp_path)
     _build_full_chain(tmp_path, "close")
@@ -331,12 +335,12 @@ def test_signoff_close_end_to_end(tmp_path, monkeypatch):
     assert s["ok"] is True
     assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is True
     # and the verb hands back WHAT was signed, not just that it worked: every proof, its
-    # oracle's live grade, and for a human grade the fingerprint the pin named.
+    # oracle's live grade, and for an endorsed grade the fingerprint the pin named.
     basis = {b["proof"]: b for b in s["basis"]}
     assert set(basis) == set(a["basis"][i]["proof"] for i in range(len(a["basis"])))
     for b in basis.values():
-        assert b["oracle"]["grade"] in ("tool", "human")
-        if b["oracle"]["grade"] == "human":
+        assert b["oracle"]["grade"] in ("tool", "endorsed")
+        if b["oracle"]["grade"] == "endorsed":
             # a review tree versions as a merkle; a single-file oracle as a sha256
             assert b["oracle"]["pinned_fingerprint"].split(":")[0] in (
                 "sha256",
@@ -350,6 +354,60 @@ def test_signoff_close_end_to_end(tmp_path, monkeypatch):
         basis["synthesis"]["requirements"]
         == _STAGE_SPECIFIC["synthesis"]["requirements"]
     )
+
+
+def test_signoff_stays_bound_to_the_accepted_evidence(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    module = "accepted-evidence"
+    _build_full_chain(tmp_path, module)
+    _pin_every_proposed_oracle(tmp_path, module)
+
+    def status():
+        return kernel.cmd_status(module)["signed_off"]
+
+    def sign():
+        assert kernel.cmd_signoff(
+            module, "delegated reviewer", "accept current evidence"
+        )["ok"]
+
+    sign()
+    assert status()
+    # A normal repeat reap refreshes the recorded grade, not the evidence.
+    assert kernel.cmd_reap(module, "specification", 1)["ok"]
+    assert status()
+    assert kernel.cmd_reopen(module, "spec-review", "reconsider review")["ok"]
+    assert not status()
+    assert kernel.cmd_pin(module, "specification", "reviewer", "same content")["ok"]
+    assert status()
+
+    extra = store.module_root(module) / "Verification/power-analysis/extra.txt"
+    extra.write_text("unrecorded")
+    assert not status()
+    extra.unlink()
+    assert status()
+
+    events = store.read_events(module)
+    wd = store.module_root(module) / facts.run_workdir(events, "power-analysis", 1)
+    (wd / "reports_ptpx/run1/power_hier.rpt").write_text("changed measurement")
+    assert kernel.cmd_reap(module, "power-analysis", 1)["ok"]
+    assert facts.signoff_gate(module, store.read_events(module)) is None
+    assert not status()  # Same run, different evidence requires new acceptance.
+    sign()
+    assert status()
+
+    files = dict(_STAGE_FILES["power-analysis"])
+    files["reports_ptpx/run1/power_hier.rpt"] = "new run measurement"
+    assert _dispatch_write_reap(tmp_path, module, "power-analysis", files)["ok"]
+    assert facts.signoff_gate(module, store.read_events(module)) is None
+    assert not status()
+    sign()
+    assert status()
+
+    files = {**_STAGE_FILES["rtl-design"], **_ORACLE_CONTENT["rtl-design"]}
+    files["semantic-review/leaf.md"] = "new review, not yet endorsed"
+    assert _dispatch_write_reap(tmp_path, module, "rtl-design", files)["ok"]
+    assert "oracle is proposed" in facts.signoff_gate(module, store.read_events(module))
+    assert not status()
 
 
 def test_reopen_drops_a_landed_signoff(tmp_path, monkeypatch):
@@ -420,7 +478,7 @@ def _latest_grade(module, proof_name="specification"):
     return proof["oracle"]["grade"]
 
 
-def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human(
+def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_endorsed(
     tmp_path, monkeypatch
 ):
     monkeypatch.chdir(tmp_path)
@@ -434,7 +492,7 @@ def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human(
     # proposed, regardless of any pin. Not asserted; this reap only seeds canonical.
 
     # pin the CURRENT (canonical, now-promoted) content, then reap again: the grade
-    # check now sees a live pin whose recorded fingerprint matches canonical -> human.
+    # check now sees a live pin whose recorded fingerprint matches canonical -> endorsed.
     p1 = _run_json(
         tmp_path,
         "pin",
@@ -452,7 +510,7 @@ def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human(
         tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
     )
     assert r2["ok"] is True
-    assert _latest_grade(module) == "human"
+    assert _latest_grade(module) == "endorsed"
 
     # Drift the oracle's RUN-DIR content (the source promote reads from). The grade
     # check runs BEFORE promote each reap, so it takes two reaps for the drift to be
@@ -488,7 +546,7 @@ def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human(
         tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
     )
     assert r5["ok"] is True
-    assert _latest_grade(module) == "human"
+    assert _latest_grade(module) == "endorsed"
 
 
 # ── simulation-triage reap path (proof=None -> diagnosis event, not a proof) ───────────
@@ -717,7 +775,7 @@ def test_triage_skipped_reap_blocks_no_diagnosis(tmp_path, monkeypatch):
     assert not canonical.exists()
 
 
-def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeypatch):
+def test_triage_local_root_cause_names_local_repair(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "triage3"
     d = _dispatch_triage(tmp_path, module, sim_run=9)
@@ -749,7 +807,7 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
     assert len(diagnoses) == 1
     diag = diagnoses[0]
     assert diag["attribution"] == "simulation"
-    assert "fix_owner" not in diag
+    assert diag["fix_owner"] == "simulation"
 
 
 # ── reap guard: never-dispatched run (defensive, no TypeError) ─────────────────
@@ -757,7 +815,7 @@ def test_triage_self_pointing_root_cause_no_fix_owner_no_crash(tmp_path, monkeyp
 # NOTE: a re-reap of an ALREADY-outcome'd (rule, run) is deliberately NOT guarded
 # against here — promote is idempotent, so a crash mid-promote is repaired by the
 # next reap, and
-# test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_human above
+# test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_endorsed above
 # reaps the same run 4 times in a row (post-pin regrade) and asserts ok:True each
 # time. Guarding on "already has an outcome" would break that documented, tested
 # behavior, so only the never-dispatched case (no workdir to derive from -> the
@@ -959,7 +1017,7 @@ def test_dispatch_consumer_in_virgin_module_rejected(tmp_path, monkeypatch):
 def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
     # Reap compares the oracle's current content against the LATEST pin
     # record, not ANY live pin. Two live pins (A then B, no reopen between); oracle content
-    # reverts to A -> the latest pin (B) does not match -> regrade to proposed, not human.
+    # reverts to A -> the latest pin (B) does not match -> regrade to proposed, not endorsed.
     monkeypatch.chdir(tmp_path)
     module = "gradepin"
     sr = store.module_root(module) / "Design" / "specification"
@@ -1335,3 +1393,149 @@ def test_reap_reports_non_object_result_schema_error(tmp_path):
     assert reply["verdict"] == "blocked"
     assert "object" in reply["reason"]
     assert store.read_events(str(module))[-1]["reason"] == reply["reason"]
+
+
+@pytest.mark.parametrize("source", ["stage", "triage", "decision"])
+def test_cli_local_tb_repair_preserves_upstream_and_resumes(
+    tmp_path, monkeypatch, source
+):
+    """Replay the FSA endend failure through real dispatch/reap/decide, not a mocked scheduler."""
+    monkeypatch.chdir(tmp_path)
+    module = "local-repair"
+    _build_full_chain(tmp_path, module)
+    upstream = store.module_root(module) / "Design/rtl-design/src"
+    before = facts.fingerprint(upstream)
+    d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "simulation")
+    result = {
+        "stage": "simulation",
+        "produced_at": _now_iso(),
+        "status": "fail",
+        "artifacts": [
+            {"path": p} for p in [*_STAGE_FILES["simulation"], "tb/uvm/check.sv"]
+        ],
+        "stage_specific": {
+            "fix_owner": "simulation",
+            "fail_reason": "VCS syntax error: endend in the simulation-owned checker",
+        },
+    }
+    if source != "stage":
+        result["stage_specific"].pop("fix_owner")
+    _write_file(module, d["workdir"] + "/tb/uvm/check.sv", "endend\n")
+    _write_file(module, d["workdir"] + "/result.json", json.dumps(result))
+    assert (
+        _run_json(
+            tmp_path,
+            "reap",
+            "--module",
+            module,
+            "--rule",
+            "simulation",
+            "--run",
+            str(d["run"]),
+        )["verdict"]
+        == "fail"
+    )
+    if source == "triage":
+        triage = _dispatch_triage(tmp_path, module, sim_run=d["run"])
+        _write_triage_result(
+            module,
+            triage["workdir"],
+            status="pass",
+            stage_specific={
+                "findings": [
+                    {
+                        "anchor": "tb/uvm/check.sv:1",
+                        "root_cause": "simulation",
+                        "reason": "endend is a TB syntax error",
+                    }
+                ]
+            },
+        )
+        assert (
+            _run_json(
+                tmp_path,
+                "reap",
+                "--module",
+                module,
+                "--rule",
+                "simulation-triage",
+                "--run",
+                str(triage["run"]),
+            )["verdict"]
+            == "pass"
+        )
+    elif source == "decision":
+        assert _run_json(
+            tmp_path,
+            "diagnose",
+            "--module",
+            module,
+            "--id",
+            "review",
+            "--subject-proof",
+            "simulation",
+            "--subject-run",
+            str(d["run"]),
+            "--attribution",
+            "simulation",
+            "--fix-owner",
+            "simulation",
+            "--provenance",
+            "reviewer",
+            "--reason",
+            "TB syntax error",
+        )["ok"]
+    action = _run_json(tmp_path, "decide", "--module", module)
+    assert (action["action"], action["rule"]) == ("DISPATCH", "simulation")
+    repair = _run_json(tmp_path, *action["dispatch_args"])
+    assert repair["ok"]
+    dispatch = json.loads(
+        (store.module_root(module) / repair["workdir"] / "dispatch.json").read_text()
+    )
+    assert any(f"runs/{d['run']}/result.json" in p for p in dispatch["caused_by"])
+    assert _run_json(tmp_path, "decide", "--module", module)["action"] == "YIELD"
+    _write_file(module, repair["workdir"] + "/tb/uvm/check.sv", "// repaired checker\n")
+    result.update(status="pass", produced_at=_now_iso(), stage_specific={})
+    _write_file(module, repair["workdir"] + "/result.json", json.dumps(result))
+    assert (
+        _run_json(
+            tmp_path,
+            "reap",
+            "--module",
+            module,
+            "--rule",
+            "simulation",
+            "--run",
+            str(repair["run"]),
+        )["verdict"]
+        == "pass"
+    )
+    status = _run_json(tmp_path, "status", "--module", module)
+    assert status["stages"]["simulation"] == "valid"
+    assert facts.fingerprint(upstream) == before
+    assert _run_json(tmp_path, "decide", "--module", module)["action"] != "ESCALATE"
+
+
+@pytest.mark.parametrize("source", ["decision", "triage"])
+def test_dispatch_preserves_a_diagnosis_reason_from_any_source(tmp_path, source):
+    module = tmp_path / "module"
+    _write_file(str(module), "intent/brainstorm.md", "fixture intent")
+    reason = "Retain the specified clock period while repairing the constraint."
+    store.append_event(
+        str(module),
+        {
+            "type": "diagnosis",
+            "id": "d1",
+            "subject": {"proof": "synthesis", "outcome_run": 1},
+            "attribution": "specification",
+            "fix_owner": "specification",
+            "source": source,
+            "provenance": "fixture reviewer",
+            "reason": reason,
+        },
+        TS,
+    )
+    result = kernel.cmd_dispatch(str(module), "specification", ["d1"])
+    assert result["ok"]
+    dispatch = json.loads((Path(result["workdir"]) / "dispatch.json").read_text())
+    assert dispatch["reasons"] == [reason]

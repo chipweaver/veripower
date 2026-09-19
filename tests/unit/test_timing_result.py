@@ -241,6 +241,7 @@ def test_unconstrained_endpoints_alone_never_fail_a_run(tmp_path):
     # carry no input delay. Measured 0..4242 across eight synthesized designs with a
     # complete SDC, and identical to the broken SDC on two of them.
     wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+    (wd / "config.tcl").write_text("# current test setup\n")
     assert sp.build_result(wd, [], []) == 0
     assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
@@ -251,6 +252,7 @@ def test_an_untimed_boundary_outranks_a_missed_target(tmp_path):
     wd = _workdir(
         tmp_path, report=_SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING + _COV_SHORT
     )
+    (wd / "config.tcl").write_text("# current test setup\n")
     assert sp.build_result(wd, [], []) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["timing"]["hold"]["met"] is False
@@ -328,6 +330,7 @@ def _workdir(tmp_path, report=None, rows=()):
 
 def test_build_result_pass_lean_shape(tmp_path):
     wd = _workdir(tmp_path)
+    (wd / "config.tcl").write_text("# current test setup\n")
     assert sp.build_result(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["stage"] == "timing-analysis"
@@ -343,6 +346,7 @@ def test_build_result_tooling_fail_on_unparseable(tmp_path):
     # test_run_no_slack_line_exit3 above).
     broken = re.sub(r"slack \(MET\)\s+2\.93", "", _SETUP_MET)
     wd = _workdir(tmp_path, report=broken + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+    (wd / "config.tcl").write_text("# current test setup\n")
     assert sp.build_result(wd, [], []) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "timing-report.txt unparseable"
@@ -495,6 +499,85 @@ def test_a_row_nobody_judged_is_blocked(tmp_path):
     assert not (wd / "result.json").exists()
 
 
+def _target(value=0, op=">=", dim="timing_slack_ns"):
+    return {
+        "id": "T",
+        "judge": "timing-analysis",
+        "verbatim": "timing bound",
+        "target": {"dim": dim, "op": op, "value": value},
+    }
+
+
+@pytest.mark.parametrize(
+    "value,op,expected",
+    [
+        (0, ">=", True),
+        (0.2, ">=", True),
+        (0.2, ">", False),
+        (0.3, ">=", False),
+        (0.2, "<=", True),
+        (0.2, "<", False),
+    ],
+)
+def test_numeric_targets_are_computed_from_worst_setup_and_hold(
+    tmp_path, value, op, expected
+):
+    wd = _workdir(tmp_path, rows=[_target(value, op)])
+    r = _cli(wd)
+    assert r.returncode == 0, r.stderr
+    env = json.loads((wd / "result.json").read_text())
+    row = env["stage_specific"]["requirements"][0]
+    assert row["actual"] == 0.2
+    assert row["met"] is expected
+    assert env["status"] == ("pass" if expected else "fail")
+
+
+def test_numeric_target_cannot_pass_a_rounded_zero_violation(tmp_path):
+    wd = _workdir(
+        tmp_path,
+        rows=[_target()],
+        report=_SETUP_MET + _HOLD_VIOLATED_ZERO + _CHECK_TIMING + _COV_FULL,
+    )
+    assert _cli(wd).returncode == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    assert env["stage_specific"]["requirements"][0]["met"] is False
+
+
+def test_declared_verdict_cannot_replace_numeric_comparison(tmp_path):
+    wd = _workdir(tmp_path, rows=[_target(5)])
+    r = _cli(
+        wd,
+        "--requirements",
+        json.dumps([{"id": "T", "met": True, "actual": 99, "measured": "claimed"}]),
+    )
+    assert r.returncode == 2 and "overridden" in r.stderr
+    assert not (wd / "result.json").exists()
+
+
+@pytest.mark.parametrize(
+    "row",
+    [_target(dim="unknown"), _target(op="=="), _target(True), _target(float("nan"))],
+)
+def test_unknown_or_invalid_timing_target_is_named(tmp_path, row):
+    wd = _workdir(tmp_path, rows=[row])
+    r = _cli(wd)
+    assert r.returncode == 2 and "unsupported timing target" in r.stderr
+    assert not (wd / "result.json").exists()
+
+
+def test_numeric_and_agent_judged_rows_can_coexist(tmp_path):
+    wd = _workdir(tmp_path, rows=[_target(), _ROWS[0]])
+    declared = [{"id": "R-1", "met": True, "measured": "report scope inspected"}]
+    r = _cli(wd, "--requirements", json.dumps(declared))
+    assert r.returncode == 0, r.stderr
+    rows = json.loads((wd / "result.json").read_text())["stage_specific"][
+        "requirements"
+    ]
+    assert [r["id"] for r in rows] == ["T", "R-1"]
+    assert rows[1] == declared[0]
+
+
 def test_parse_tool_from_primetime_version():
     assert sp.parse_tool("Version: M-2016.12-SP1\n") == "PrimeTime M-2016.12-SP1"
     assert sp.parse_tool("no version here") == "PrimeTime unknown"
@@ -508,11 +591,7 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
         (tmp_path / rel).write_text("x")
     (tmp_path / "result.json").write_text("{}")  # must NOT self-list
     paths = [a["path"] for a in sp.enumerate_artifacts(tmp_path)]
-    assert paths == [
-        "run_sta.tcl",
-        "config.tcl",
-        "timing-report.txt",
-    ]
+    assert set(paths) == {"run_sta.tcl", "config.tcl", "timing-report.txt"}
     assert "result.json" not in paths
     assert all((tmp_path / p).is_file() for p in paths)  # only present files
 
@@ -527,6 +606,7 @@ def test_golden_lean_against_a_real_run(tmp_path):
     # Fixture is rooted at Design/ (no `asic` path component — it would be .gitignored).
     shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
     wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
+    (wd / "config.tcl").write_text("# current test setup\n")
     assert sp.build_result(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
@@ -552,11 +632,7 @@ def test_golden_lean_against_a_real_run(tmp_path):
         assert dropped not in ss
     # artifacts present + no self-listing; produced_at normalized
     paths = [a["path"] for a in env["artifacts"]]
-    assert paths == [
-        "run_sta.tcl",
-        "config.tcl",
-        "timing-report.txt",
-    ]
+    assert set(paths) == {"run_sta.tcl", "config.tcl", "timing-report.txt"}
     assert "result.json" not in paths
     assert env["produced_at"].endswith("Z")
 
@@ -570,6 +646,7 @@ def test_golden_is_schema_valid(tmp_path):
     ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-golden"
     shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
     wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
+    (wd / "config.tcl").write_text("# test setup\n")
     sp.build_result(wd, [], [])
     env = json.loads((wd / "result.json").read_text())
     env_schema = json.loads(
@@ -585,3 +662,62 @@ def test_golden_is_schema_valid(tmp_path):
     Draft202012Validator(stage_schema, registry=registry).validate(
         env
     )  # raises on invalid
+
+
+@pytest.mark.parametrize("direction", ["setup", "hold"])
+def test_numeric_rows_do_not_inherit_overall_sta_failure(tmp_path, direction):
+    comparisons = [
+        (">=", -2, True),
+        (">", -2, True),
+        ("<=", 0, True),
+        ("<", 0, True),
+        (">=", -1, True),
+        (">", -1, False),
+        ("<=", -2, False),
+        ("<", -1, False),
+    ]
+    rows = [
+        dict(_target(value, op), id=str(i))
+        for i, (op, value, _) in enumerate(comparisons)
+    ]
+    setup, hold = _SETUP_MET, _HOLD_MET
+    if direction == "setup":
+        setup = setup.replace("slack (MET)", "slack (VIOLATED)").replace(
+            "2.93", "-1.00"
+        )
+    else:
+        hold = hold.replace("slack (MET)", "slack (VIOLATED)").replace("0.20", "-1.00")
+    wd = _workdir(tmp_path, rows=rows, report=setup + hold + _CHECK_TIMING + _COV_FULL)
+    assert _cli(wd).returncode == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    assert env["stage_specific"]["fail_reason"] == "setup/hold timing not met"
+    verdicts = env["stage_specific"]["requirements"]
+    assert [r["actual"] for r in verdicts] == [-1.0] * len(rows)
+    assert [r["met"] for r in verdicts] == [v for _, _, v in comparisons]
+
+
+@pytest.mark.parametrize("display", ["0.00", "-0.00"])
+def test_rounded_violation_respects_the_comparison_direction(tmp_path, display):
+    comparisons = [
+        (">=", 0, False),
+        (">", 0, False),
+        ("<=", 0, True),
+        ("<", 0, True),
+        (">=", -1, True),
+        ("<=", -1, False),
+    ]
+    rows = [
+        dict(_target(value, op), id=str(i))
+        for i, (op, value, _) in enumerate(comparisons)
+    ]
+    hold = _HOLD_VIOLATED_ZERO.replace("0.00", display)
+    wd = _workdir(
+        tmp_path, rows=rows, report=_SETUP_MET + hold + _CHECK_TIMING + _COV_FULL
+    )
+    assert _cli(wd).returncode == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    verdicts = env["stage_specific"]["requirements"]
+    assert all(r["actual"] == 0 for r in verdicts)
+    assert [r["met"] for r in verdicts] == [v for _, _, v in comparisons]

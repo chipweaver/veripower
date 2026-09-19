@@ -11,7 +11,7 @@
 
 ---
 
-VeriPower is an open-source agent flow that takes a natural-language spec all the way to front-end signoff on commercial EDA tools. A deterministic engine sits underneath, recording every action in an append-only log. All pipeline status is derived from that log on demand, never stored as a flag or snapshot. The agent can iterate on its own, but every LLM-authored oracle needs a human sign-off.
+VeriPower is an open-source agent flow that takes a natural-language spec all the way to front-end signoff on commercial EDA tools. A deterministic engine sits underneath, recording every action in an append-only log. All pipeline status is derived from that log on demand, never stored as a flag or snapshot. The agent can iterate on its own; every LLM-authored oracle needs explicit, authorized endorsement before signoff.
 
 Ships as a plugin for [Claude Code](.claude-plugin/README.md), [opencode](.opencode/README.md), [DeepSeek Harness](.dsh/README.md), and [Codex](codex/README.md).
 
@@ -23,7 +23,7 @@ A deterministic engine owns the facts. Agents and humans are proposers. The engi
   <img src="assets/architecture.png" alt="VeriPower architecture" width="460" />
 </p>
 
-Every verification conclusion is fingerprinted against the content it consumed and produced. Edit something upstream and the downstream conclusions go invalid on the next query. Design and verification both start from the spec but then diverge, so the reference model is derived from the spec, not from the implementation. EDA tool verdicts are authoritative. LLM-authored oracles are good enough for iteration but need human endorsement for signoff, and that endorsement lapses if the oracle content changes.
+Verification conclusions track their declared inputs and published outputs by content fingerprint. Changes to those dependencies invalidate the affected conclusions on the next query. Design and verification both start from the spec but then diverge, so the reference model is derived from the spec, not from the implementation. EDA tool verdicts are authoritative. LLM-authored oracles are good enough for iteration but need authorized endorsement for signoff, and that endorsement lapses if the oracle content changes.
 
 More in [ARCHITECTURE.md](ARCHITECTURE.md) ([中文](ARCHITECTURE.zh.md)).
 
@@ -109,18 +109,16 @@ See [DeepSeek Harness setup and runtime behavior](.dsh/README.md).
 <details>
 <summary><strong>Codex</strong></summary>
 
-Native plugin and subagents (tested with CLI 0.153.4 on Linux):
+Native plugin and subagents (tested with CLI 0.154.0 on Linux):
 
 ```bash
 codex plugin marketplace add chipweaver/veripower
 codex plugin add veripower@chipweaver --json
 ```
 
-Use the returned `installedPath` to run `python3 <installedPath>/codex/setup.py`,
-then launch `codex --profile veripower`. Review the two VeriPower hooks in `/hooks`
-and start a new session. Setup adds native command approval rules and a profile
-that routes oracle judgments to the human reviewer. See [Codex setup and runtime
-behavior](codex/README.md) for upgrades, background jobs and verification scope.
+Launch with `codex --enable hooks --enable multi_agent`, review the two VeriPower hooks in
+`/hooks`, and start a new session. The plugin uses native subagents and preserves the host's
+permission configuration. See [Codex setup and runtime behavior](codex/README.md).
 
 </details>
 

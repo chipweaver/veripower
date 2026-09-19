@@ -1,14 +1,13 @@
 """simplan._plan — the plan's three sidecars: their names, their schemas, and the merge.
 
-`tb-scaffold.json` (what simulation builds the TB from), `sequences.json` (the roster both
-consumers read) and `power-scenarios.json` (power-analysis's alone) together hold everything the
+`tb-scaffold.json` (what simulation builds the TB from), `sequences.json` (simulation's functional roster) and `power-scenarios.json` (power-analysis's alone) together hold everything the
 plan carries in machine form. They are three files so each consumer declares only what it reads
 (rules.py).
 
 The name-to-schema table lives here rather than in either verb: materialize-scaffold runs before
 check-scaffold, so it must not import from the gate, and result.py enumerates the same set a
 third time. load_plan then merges them, because one dict is the shape the referential-integrity
-checks operate on — `power_scenarios[].sequence_ref` and `tests[].seqs[]` both resolve against
+checks operate on — `tests[].seqs[]` resolve against
 `sequences[]`. Each file is still validated against its own schema on the way in.
 """
 

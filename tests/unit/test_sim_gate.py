@@ -3,6 +3,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "simulation" / "scripts"))
 from sim import _gate  # noqa: E402
@@ -96,7 +98,7 @@ def test_a_dim_simulation_does_not_measure_is_refused_by_name(tmp_path):
     p.write_text(json.dumps(rows))
     selected = _gate.coverage_rows(p)
     assert [r["id"] for r in selected] == ["R-9"], "the row must reach the gate at all"
-    cov = {"per_module": [dict(name="m", **{"line": 92.0})]}
+    cov = {"per_instance": [dict(name="m", **{"line": 92.0})]}
     errs, judged = _gate.coverage_gate(cov, selected, "m")
     assert judged[0]["met"] is False
     assert any("single_tile_latency is bounded but" in e for e in errs)
@@ -105,7 +107,7 @@ def test_a_dim_simulation_does_not_measure_is_refused_by_name(tmp_path):
 def test_coverage_gate_pass(tmp_path):
     rows = _rows(tmp_path, "line", "cond", "fsm", "toggle")
     cov = {
-        "per_module": [
+        "per_instance": [
             dict(name="m", **{"line": 92.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0})
         ]
     }
@@ -115,7 +117,7 @@ def test_coverage_gate_pass(tmp_path):
 
 def test_coverage_gate_uses_the_engineers_operator(tmp_path):
     # "> 90" is strict: exactly 90.0 does not pass. ">= 90" would.
-    cov = {"per_module": [dict(name="m", **{"line": 90.0})]}
+    cov = {"per_instance": [dict(name="m", **{"line": 90.0})]}
     errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line"), "m")
     assert judged[0]["met"] is False and "not > 90" in errs[0]
     errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line", op=">="), "m")
@@ -124,7 +126,7 @@ def test_coverage_gate_uses_the_engineers_operator(tmp_path):
 
 def test_coverage_gate_below_threshold(tmp_path):
     cov = {
-        "per_module": [
+        "per_instance": [
             dict(name="m", **{"line": 10.0, "cond": 91.0, "fsm": 95.0, "toggle": 93.0})
         ]
     }
@@ -132,24 +134,24 @@ def test_coverage_gate_below_threshold(tmp_path):
     assert any("R-0: line coverage 10.0 is not > 90" in e for e in errs)
 
 
-def test_coverage_gate_null_dim_skipped(tmp_path):
+def test_coverage_gate_null_dim_fails(tmp_path):
     cov = {
-        "per_module": [
+        "per_instance": [
             dict(name="m", **{"line": 92.0, "cond": 91.0, "fsm": None, "toggle": 93.0})
         ]
     }
     errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "fsm"), "m")
-    assert errs == [] and judged[0] == {
+    assert errs and judged[0] == {
         "id": "R-0",
-        "met": True,
+        "met": False,
         "actual": None,
-        "measured": "fsm coverage of 'm': reported N/A by urg",
+        "measured": "fsm coverage of 'm': no numeric measurement from urg",
     }
 
 
 def test_coverage_gate_absent_dim_fails(tmp_path):
     cov = {
-        "per_module": [dict(name="m", **{"line": 92.0, "cond": 91.0, "toggle": 93.0})]
+        "per_instance": [dict(name="m", **{"line": 92.0, "cond": 91.0, "toggle": 93.0})]
     }  # fsm absent
     errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "fsm"), "m")
     assert any("fsm is bounded but" in e for e in errs)
@@ -158,7 +160,7 @@ def test_coverage_gate_absent_dim_fails(tmp_path):
 
 def test_coverage_gate_unbounded_dim_is_not_gated(tmp_path):
     # No row for fsm: it is reported, not judged.
-    cov = {"per_module": [dict(name="m", **{"line": 92.0, "fsm": 3.0})]}
+    cov = {"per_instance": [dict(name="m", **{"line": 92.0, "fsm": 3.0})]}
     errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line"), "m")
     assert errs == [] and [j["id"] for j in judged] == ["R-0"]
 
@@ -208,13 +210,10 @@ def test_a_locus_with_spaces_still_parses(tmp_path):
 
 
 def test_coverage_gate_scores_the_dut_not_the_report_aggregate(tmp_path):
-    """The numbers are a real run's. Its report aggregate read toggle 92.57 — the DUT plus
-    eleven fully-swept ROM modules plus three agent interfaces — while the DUT itself was
-    76.37. The engineer's bound was `> 90`, and the aggregate passed it: the gate shipped a
-    pass on a requirement the design misses by 13 points."""
+    """Only the selected subtree is judged, not the aggregate or its peer instances."""
     cov = {
         "aggregate": {"line": 99.78, "cond": 97.33, "fsm": 100.0, "toggle": 92.57},
-        "per_module": [
+        "per_instance": [
             {
                 "name": "rom_wq",
                 "line": 100.0,
@@ -241,7 +240,7 @@ def test_coverage_gate_refuses_a_report_that_does_not_carry_the_dut(tmp_path):
     """Not attributable is not a licence to score the aggregate instead."""
     cov = {
         "aggregate": {"toggle": 99.0},
-        "per_module": [{"name": "somebody_else", "toggle": 99.0}],
+        "per_instance": [{"name": "somebody_else", "toggle": 99.0}],
     }
     errs, judged = _gate.coverage_gate(cov, _rows(tmp_path, "toggle"), "m")
     assert judged == [] and "not attributable" in errs[0]
@@ -255,3 +254,27 @@ def test_materialization_env_never_builds_a_declared_agent(tmp_path):
         _materialized(tmp_path, drop_env=True), SCAFFOLD
     )
     assert any("never names obs" in e for e in errs)
+
+
+@pytest.mark.parametrize("value", [None, True, float("nan"), float("inf"), -1, 101])
+def test_a_bound_requires_a_valid_percentage(tmp_path, value):
+    cov = {"per_instance": [{"name": "tb.dut", "toggle": value}]}
+    errors, judged = _gate.coverage_gate(cov, _rows(tmp_path, "toggle"), "tb.dut")
+    assert errors and judged[0]["met"] is False
+
+
+def test_the_full_path_distinguishes_two_instances_of_the_same_module(tmp_path):
+    cov = {
+        "per_instance": [
+            {"name": "tb.other.u_dut", "toggle": 100},
+            {"name": "tb.u_dut", "toggle": 25},
+        ]
+    }
+    errors, judged = _gate.coverage_gate(cov, _rows(tmp_path, "toggle"), "tb.u_dut")
+    assert errors and judged[0]["actual"] == 25
+
+
+def test_duplicate_scope_is_not_arbitrarily_selected(tmp_path):
+    cov = {"per_instance": [dict(name="tb.u_dut", line=v) for v in [100, 10]]}
+    errors, judged = _gate.coverage_gate(cov, _rows(tmp_path, "line"), "tb.u_dut")
+    assert errors and not judged

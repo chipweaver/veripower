@@ -1,28 +1,5 @@
 #!/usr/bin/env python3
-"""timing bootstrap — deploy the timing-analysis templates into a run workdir.
-
-shutil.copytree + str.replace do the `cp -a` + `sed -i` work; str.replace has no
-sed-delimiter hazard on the '/'-containing paths every substitution here carries.
-
-The upstream synthesis-stage-root location comes from the injected
-`<workdir>/dispatch.json` `inputs."netlist"`, not by self-navigating
-<module>/Design/synthesis.
-
-Deploys templates/ into the caller-provided workdir
-(<module>/Design/timing-analysis/runs/<N>/), verifies the netlist+SDC the TCL
-reads, resolves TOP, and substitutes the MY_NETLIST_DIR / MY_WORKDIR (run_sta.tcl)
-and MY_TOP / FILL_IN_LIB_DB_PATH (config.tcl) placeholders. Fail-closed on an
-un-inferrable top, a missing external reference, or an unset LIB_DB. Idempotency
-guard: aborts when the workdir is already deployed. The kernel only dispatches
-timing once synthesis's proof is valid, so no upstream result.json status is
-re-checked here.
-
-Exit codes (returned as int; __main__ does sys.exit):
-  0  deployed
-  1  fail-closed guard (missing template dir / cannot infer top / missing netlist or
-     SDC / LIB_DB unset / already deployed)
-  (2 = usage is owned by argparse in __main__.py)
-"""
+"""Install missing tool setup from the dispatched inputs, preserving authored files."""
 
 from __future__ import annotations
 
@@ -55,12 +32,8 @@ def infer_top(syn_dir: Path) -> str | None:
     return cands[0].name[: -len("_syn.v")]
 
 
-def _sub(path: Path, placeholder: str, value: str) -> None:
-    """In-place placeholder substitution (str.replace — no sed-delimiter hazard)."""
-    path.write_text(path.read_text().replace(placeholder, value))
-
-
 def run(workdir, top: str | None = None) -> int:
+    (Path(workdir) / "result.json").unlink(missing_ok=True)
     if not _TEMPLATE_DIR.is_dir():
         _err(f"missing {_TEMPLATE_DIR}")
         return 1
@@ -92,35 +65,32 @@ def run(workdir, top: str | None = None) -> int:
             _err(f"missing external reference: {f}")
             return 1
 
-    # config.tcl is written once, here, and pt_shell reads LIB_DB from it rather than
-    # from the environment. Exporting LIB_DB after this point therefore changes
-    # nothing, so refuse to deploy a workdir whose STA cannot run.
-    lib_db = os.environ.get("LIB_DB")
-    if not lib_db:
-        _err("LIB_DB is not in the environment; export it before bootstrap")
-        return 1
-    # Set is not the same as readable, and config.tcl is the record of which library the
-    # STA was linked against — a path that is not there makes that record false. PT reads
-    # a missing library without raising, so the first sign of it is a linked design with
-    # no cells, three commands later.
-    if not Path(lib_db).is_file():
-        _err(f"LIB_DB is not a readable file: {lib_db}")
-        return 1
-
     workdir.mkdir(parents=True, exist_ok=True)
-    if (workdir / "run_sta.tcl").is_file():
-        _err(f"already deployed (detected {workdir / 'run_sta.tcl'})")
-        return 1
+    for source in _TEMPLATE_DIR.rglob("*"):
+        target = workdir / source.relative_to(_TEMPLATE_DIR)
+        if source.is_file() and not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
 
-    # cp -a templates/. workdir  (copy template CONTENTS into the existing workdir).
-    shutil.copytree(_TEMPLATE_DIR, workdir, dirs_exist_ok=True)
+    config = workdir / "config.tcl"
+    if not config.exists():
+        settings = {
+            "TOP": top,
+            "NETLIST_DIR": str(syn_dir),
+            "LIB_DB": os.environ.get("LIB_DB"),
+        }
+        lines = [
+            "# Tool configuration; supply the task's libraries and calculation settings."
+        ]
+        for key, value in settings.items():
+            if value:
+                literal = (
+                    json.dumps(value, ensure_ascii=False)
+                    .replace("$", "\\$")
+                    .replace("[", "\\[")
+                )
+                lines.append(f"set {key} {literal}")
+        config.write_text("\n".join(lines) + "\n")
 
-    # Substitute placeholders (str.replace — paths contain '/', no sed hazard).
-    _sub(workdir / "run_sta.tcl", "MY_NETLIST_DIR", str(syn_dir))
-    _sub(workdir / "run_sta.tcl", "MY_WORKDIR", str(workdir))
-
-    _sub(workdir / "config.tcl", "MY_TOP", top)
-    _sub(workdir / "config.tcl", "FILL_IN_LIB_DB_PATH", lib_db)
-
-    print(f"[timing bootstrap] deployed {workdir} (TOP={top}, LIB_DB={lib_db})")
+    print(f"[timing bootstrap] deployed {workdir} (TOP={top})")
     return 0

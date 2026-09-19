@@ -1,23 +1,5 @@
 #!/usr/bin/env python3
-"""lintcdc bootstrap — deploy the lint-cdc templates into a run workdir.
-
-Upstream locations (rtl-design, the specification SGDC seed) come from the injected
-`<workdir>/dispatch.json` `inputs` table ("rtl" / "sgdc_seed"), never by
-self-navigating <module>/Design/.... str.replace does the `sed -i`
-work: it has no delimiter hazard.
-
-The deploy preserves the previous round's local.sgdc and waiver.tcl. It regenerates
-constraints.sgdc from the current specification seed and RTL annotations. SpyGlass
-reads constraints.sgdc and local.sgdc separately on each invocation.
-
-Fail-closed on a missing template dir, an un-inferrable top, an already-deployed
-workdir, or an rtl-design file layout that yields no RTL.
-
-Exit codes (returned as int; __main__ does sys.exit):
-  0  deployed
-  1  fail-closed guard (stderr names which one)
-  (2 = usage is owned by argparse in __main__.py)
-"""
+"""Preserve authored setup and refresh lint inputs from the current dispatch."""
 
 from __future__ import annotations
 
@@ -115,10 +97,11 @@ def _sync_filelist(dest: Path, rtl_dir: Path) -> int:
     return 0
 
 
-def _deploy_no_clobber(src_root: Path, dest: Path) -> None:
+def _deploy_no_clobber(src_root: Path, dest: Path) -> set[str]:
     """Copy every template file into dest UNLESS dest already has one at that path —
     a carried human-audited file (brought forward by kernel.py's carry_self before
     this verb runs) always wins over the pristine template."""
+    installed = set()
     for p in src_root.rglob("*"):
         if p.is_dir():
             continue
@@ -127,6 +110,8 @@ def _deploy_no_clobber(src_root: Path, dest: Path) -> None:
             continue  # carried human-audited file — never overwrite
         d.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(p, d)
+        installed.add(p.relative_to(src_root).as_posix())
+    return installed
 
 
 _SGDC_ROW = {
@@ -201,6 +186,7 @@ def _assemble_sgdc(dest: Path, seed: Path, rtl_dir: Path) -> int:
 
 
 def run(workdir, top: str | None = None) -> int:
+    (Path(workdir) / "result.json").unlink(missing_ok=True)
     if not _TEMPLATE_DIR.is_dir():
         _err(f"missing template directory: {_TEMPLATE_DIR}")
         return 1
@@ -227,21 +213,6 @@ def run(workdir, top: str | None = None) -> int:
         return 1
 
     dest.mkdir(parents=True, exist_ok=True)
-    # Every fresh workdir already holds the kernel's dispatch.json; only treat it as
-    # already-deployed when a Makefile is present.
-    if (dest / "Makefile").is_file():
-        _err(f"already deployed (detected {dest / 'Makefile'})")
-        _err(
-            f"  To redeploy, back up and remove {dest}/{{Makefile,env.sh,scripts/}} first."
-        )
-        return 1
-
-    # Carried-file check MUST happen BEFORE the no-clobber deploy — once the template
-    # is deployed at these paths they become indistinguishable from a genuinely
-    # carried file.
-    carried_waiver = (dest / "scripts" / "waiver.tcl").is_file()
-    carried_local = (dest / "scripts" / "local.sgdc").is_file()
-
     # The seed is a declared input, so its absence is a broken upstream, not a case to
     # fall back from: SpyGlass reading a design with no clock declared reports a clean run.
     seed = Path(inputs["sgdc_seed"]) / "constraints" / f"{top}.sgdc"
@@ -253,28 +224,21 @@ def run(workdir, top: str | None = None) -> int:
         )
         return 1
 
-    _deploy_no_clobber(_TEMPLATE_DIR, dest)
-
-    sub_targets = ["env.sh", "scripts/spyglass_lint.prj"]
-    # Waiver and local.sgdc: carried -> template. Both hold this stage's own judgment, so
-    # the no-clobber deploy leaves a carried one untouched; only a fresh template stub
-    # needs MY_TOP.
-    if not carried_waiver:
-        sub_targets.append("scripts/waiver.tcl")
-    if not carried_local:
-        sub_targets.append("scripts/local.sgdc")
-    for rel in sub_targets:
-        _sub(dest / rel, "MY_TOP", top)
+    installed = _deploy_no_clobber(_TEMPLATE_DIR, dest)
+    for rel in (
+        "env.sh",
+        "scripts/spyglass_lint.prj",
+        "scripts/waiver.tcl",
+        "scripts/local.sgdc",
+    ):
+        if rel in installed:
+            _sub(dest / rel, "MY_TOP", top)
 
     if _assemble_sgdc(dest, seed, rtl_dir) != 0:
         return 1
 
-    # Make the deployed shell scripts executable (best-effort).
     for sh in (dest / "scripts").glob("*.sh"):
-        try:
-            sh.chmod(sh.stat().st_mode | 0o111)
-        except OSError:
-            pass
+        sh.chmod(sh.stat().st_mode | 0o111)
 
     rc = _sync_filelist(dest, rtl_dir)
     if rc != 0:

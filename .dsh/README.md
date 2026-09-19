@@ -1,8 +1,7 @@
 # VeriPower on DeepSeek Harness
 
 VeriPower installs as a DeepSeek Harness profile layer. The adapter registers
-the shared skills and connects approval prompts and post-dispatch reminders to
-the harness's tool events.
+the shared skills through the native provider.
 
 ## Install
 
@@ -41,15 +40,9 @@ The adapter locates this installation's `skills/` directory and registers it
 through an isolated filesystem skill provider. No global skill symlink or
 manually configured skill path is needed.
 
-Two tool-event handlers connect the flow to the host:
-
-- `tools/pre-execute` requests approval for Bash calls to `kernel.py pin`,
-  `reopen` and `signoff`.
-- `tools/post-execute` adds a reminder to query `kernel.py decide` after a task
-  dispatch, so the parent continues scheduling or waits for the running work.
-
-The profile supplies the execution tools; the shared kernel and skills own the
-stage workflow and results.
+The adapter supplies post-dispatch scheduling context. The profile supplies execution tools
+and permissions. The shared design-flow skill coordinates
+execution and collection; the kernel owns stage routing and validity.
 
 ## Update or remove
 
@@ -76,7 +69,7 @@ dsh --profile web --dump-config
 
 The composed configuration should include the `veripower-dsh` layer entry. In the
 web session, check that skills are available, task completions return to the
-parent, and judgment calls request approval.
+parent, and host permissions remain effective.
 
 From a VeriPower checkout, `node --check .dsh/plugins/veripower.js` checks adapter
 syntax. Shared tests and the distinction between runtime, model and EDA checks

@@ -32,6 +32,7 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
+    (Path(a.workdir) / "result.json").unlink(missing_ok=True)
     from lintcdc import requirements, result
 
     return result.finalize(
@@ -91,9 +92,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        # The documented protocol is a reason on stderr and a non-zero exit. A traceback is
-        # not that: it answers with source, which every skill here tells the reader never to
-        # open. The verbs' own refusals keep their own exits; this is only the unexpected.
         print(
             f"[lintcdc {args.cmd}] BLOCKED: {type(exc).__name__}: {exc}",
             file=sys.stderr,

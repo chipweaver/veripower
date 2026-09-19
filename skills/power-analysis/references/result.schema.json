@@ -18,7 +18,7 @@
           "properties": {
             "fix_owner": {
               "type": "string",
-              "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."
+              "description": "Repair stage supported by the evidence: this stage or a transitive input producer, checked by the scheduler. Omit when attribution is unresolved."
             },
             "fail_reason": {
               "type": "string",
@@ -30,8 +30,7 @@
                 "type": "object",
                 "required": [
                   "id",
-                  "saif_path",
-                  "sequence_ref"
+                  "saif_path"
                 ],
                 "properties": {
                   "id": {
@@ -39,11 +38,9 @@
                   },
                   "saif_path": {
                     "type": "string"
-                  },
-                  "sequence_ref": {
-                    "type": "string"
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "compile_info": {
@@ -61,7 +58,7 @@
             },
             "failures": {
               "type": "array",
-              "description": "Tooling/data failures (NOT a missed bound — that is a requirements[] entry with met=false).",
+              "description": "Tooling/data failures (NOT a missed bound \u2014 that is a requirements[] entry with met=false).",
               "items": {
                 "type": "object",
                 "required": [
@@ -84,10 +81,10 @@
                   "category": {
                     "enum": [
                       "saif_dump",
-                      "gls_uvm",
+                      "experiment",
                       "ptpx_data"
                     ],
-                    "description": "What the parser itself detected, and only that: saif_dump = the SAIF came out empty; gls_uvm = that scenario's gate-level run reported a UVM error, or left no verdict beside its SAIF at all; ptpx_data = a PT-PX report is absent, missing its Total, or fails the Total = internal+switching+leakage reconciliation. Nothing else writes this array, so the enum is exactly the set of conditions the parser has a branch for. The upstream-naming values it used to carry (netlist/sdf/tb_uvm/gls_runtime/plan) encoded WHOSE artifact was at fault, which fix_owner now states directly; tooling named this stage's own environment, which the parser cannot detect and never wrote."
+                    "description": "Missing/invalid activity, failed experiment completion, or invalid calculation reports."
                   },
                   "error_summary": {
                     "type": "string"
@@ -100,7 +97,7 @@
             },
             "power_by_scenario": {
               "type": "array",
-              "description": "One row per scenario, all of them computed at the single LIB_DB the batch loaded: ptpx.tcl sets link_path once, outside its loop. The operating condition PT actually used is printed in the power_flat.rpt this row was parsed from.",
+              "description": "Measurements by planned scenario. The raw power report records the calculation operating condition.",
               "items": {
                 "type": "object",
                 "required": [
@@ -109,8 +106,7 @@
                   "internal_mw",
                   "switching_mw",
                   "leakage_mw",
-                  "toggled_net_fraction",
-                  "sequence_ref"
+                  "toggled_net_fraction"
                 ],
                 "properties": {
                   "scenario_id": {
@@ -147,17 +143,15 @@
                     ],
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Fraction of the SAIF's nets that toggled at least once, counted from its own (TC n) entries. Qualifies power_mw by saying whether the design was doing anything: near 0 the number is clock tree plus leakage, whatever the scenario was named. Nothing PrimeTime reports carries this — its activity reports say where the activity came from, not how much there was. null = the SAIF is absent or carries no TC entry."
-                  },
-                  "sequence_ref": {
-                    "type": "string"
+                    "description": "Fraction of SAIF TC entries with a nonzero toggle count. Null when activity entries are absent. Interpret against the workload and capture interval; it does not establish useful work."
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "requirements": {
               "type": "array",
-              "description": "One entry per requirements.json row this stage judges: the script's verdict for a row with a target, the agent's (finalize --requirements) for the rest. finalize refuses an envelope that leaves any such row out, so a row nobody read cannot pass as silence.",
+              "description": "One verdict per requirement assigned to this stage. Supported numerical targets are computed from reports; other judgments are supplied through finalize --requirements.",
               "items": {
                 "$ref": "https://veripower.local/schemas/envelope.schema.json#/$defs/requirement_verdict"
               }

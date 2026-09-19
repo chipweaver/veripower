@@ -202,10 +202,10 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
         (tmp_path / rel).write_text("x")
     (tmp_path / "result.json").write_text("{}")  # must NOT self-list
     paths = [a["path"] for a in rb.enumerate_artifacts(tmp_path)]
-    assert "scripts/constraints.sgdc" in paths  # Iron Rule: warm-start anchor
+    assert "scripts" in paths  # Iron Rule: warm-start anchor
     assert "lint-violations.json" in paths and "cdc-report.txt" in paths
     assert "result.json" not in paths
-    assert all((tmp_path / p).is_file() for p in paths)  # present files only
+    assert all((tmp_path / p).exists() for p in paths)  # files or complete trees
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +252,7 @@ def test_golden_lean_against_a_real_run(tmp_path):
         assert k not in ss
     # artifacts present + no self-listing; produced_at normalized
     paths = [a["path"] for a in env["artifacts"]]
-    assert "scripts/constraints.sgdc" in paths and "lint-violations.json" in paths
+    assert "scripts" in paths and "lint-violations.json" in paths
     assert "result.json" not in paths
     assert env["produced_at"].endswith("Z")
 

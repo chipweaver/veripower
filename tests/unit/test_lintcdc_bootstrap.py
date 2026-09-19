@@ -221,12 +221,28 @@ def test_cant_read_top_fail_closed(tmp_path):
     assert "cannot read top" in r.stderr
 
 
-def test_already_deployed_guard(tmp_path):
-    m, workdir, main = _make_tree(tmp_path)
-    assert _run(workdir, main, extra=["--top", "dut"]).returncode == 0
-    r2 = _run(workdir, main, extra=["--top", "dut"])
-    assert r2.returncode == 1
-    assert "already deployed" in r2.stderr
+def test_reprepare_preserves_authored_setup_and_refreshes_upstream_inputs(tmp_path):
+    _, workdir, main = _make_tree(tmp_path)
+    assert _run(workdir, main).returncode == 0
+    authored = (
+        "env.sh",
+        "Makefile",
+        "scripts/spyglass_lint.prj",
+        "scripts/local.sgdc",
+        "scripts/helper.tcl",
+    )
+    for name in authored:
+        (workdir / name).write_text("# MY_TOP is authored literal\n")
+    rtl = _rtl_dir(workdir)
+    (rtl / "rtl-files.json").write_text('{"dut":{"files":["src/new.sv"]}}')
+    seed = workdir.parents[2] / "specification/constraints/dut.sgdc"
+    seed.write_text("current_design dut\nclock -name clk -period 20\n")
+    r2 = _run(workdir, main)
+    assert r2.returncode == 0, r2.stderr
+    for name in authored:
+        assert (workdir / name).read_text() == "# MY_TOP is authored literal\n"
+    assert "src/new.sv" in (workdir / "scripts/filelist.txt").read_text()
+    assert "-period 20" in (workdir / "scripts/constraints.sgdc").read_text()
 
 
 def test_missing_template_dir_fail_closed(tmp_path):

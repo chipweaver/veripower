@@ -2,6 +2,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "framework" / "scripts"))
 import store  # noqa: E402
@@ -56,25 +58,36 @@ def test_carry_is_copy_not_hardlink_and_writable(tmp_path, monkeypatch):
     assert os.access(dst, os.W_OK)  # 0644 writable
 
 
-def test_lint_carry_only_the_two_scripts(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "stage", ["lint-cdc", "synthesis", "timing-analysis", "power-analysis"]
+)
+def test_tool_carry_preserves_published_setup_and_measurements(
+    tmp_path, monkeypatch, stage
+):
     monkeypatch.chdir(tmp_path)
-    c = _canon(tmp_path, "Design/lint-cdc")
-    (c / "scripts").mkdir()
-    (c / "scripts" / "waiver.tcl").write_text("w")
-    (c / "scripts" / "local.sgdc").write_text("s")
-    (c / "scripts" / "constraints.sgdc").write_text(
-        "assembled"
-    )  # generated, NOT carried
-    (c / "scripts" / "filelist.txt").write_text("f")  # NOT in carry globs
-    (c / "lint-report.txt").write_text("r")  # NOT in carry globs
-    wd = c / "runs" / "1"
+    directory = "Verification" if stage == "power-analysis" else "Design"
+    c = _canon(tmp_path, f"{directory}/{stage}")
+    files = {
+        "scripts/helper.tcl": "authored helper",
+        "config.tcl": "source scripts/helper.tcl",
+        "reports/measurement.txt": "measured under recorded conditions",
+        "out/netlist.v": "module top; endmodule",
+    }
+    for name, content in files.items():
+        p = c / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content)
+    (c / "result.json").write_text('{"status":"pass"}')
+    (c / "dispatch.json").write_text("{}")
+    wd = c / "runs" / "2"
     wd.mkdir(parents=True)
-    store.carry_self(store.module_root("m"), "lint-cdc", wd)
-    assert (wd / "scripts" / "waiver.tcl").exists()
-    assert (wd / "scripts" / "local.sgdc").exists()
-    assert not (wd / "scripts" / "constraints.sgdc").exists()
-    assert not (wd / "scripts" / "filelist.txt").exists()
-    assert not (wd / "lint-report.txt").exists()
+    store.carry_self(store.module_root("m"), stage, wd)
+    for name, content in files.items():
+        assert (wd / name).read_text() == content
+        (wd / name).write_text("changed")
+        assert (c / name).read_text() == content
+    for excluded in ("result.json", "dispatch.json", "runs"):
+        assert not (wd / excluded).exists()
 
 
 def test_first_run_no_canonical_is_noop(tmp_path, monkeypatch):
@@ -85,32 +98,6 @@ def test_first_run_no_canonical_is_noop(tmp_path, monkeypatch):
         store.module_root("m"), "specification", wd
     )  # canonical parent has only runs/
     assert list(wd.iterdir()) == []
-
-
-def test_transformer_carry_is_noop(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    c = _canon(tmp_path, "Design/timing-analysis")
-    (c / "timing-report.txt").write_text("r")
-    wd = c / "runs" / "1"
-    wd.mkdir(parents=True)
-    store.carry_self(store.module_root("m"), "timing-analysis", wd)  # carry=()
-    assert list(wd.iterdir()) == []
-
-
-def test_synthesis_carry_only_the_hand_edited_sdc(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    c = _canon(tmp_path, "Design/synthesis")
-    (c / "constraints.local.sdc").write_text("set_false_path -from x")
-    (c / "constraints.sdc").write_text("assembled")  # generated, NOT carried
-    (c / "out").mkdir()
-    (c / "out" / "m_syn.v").write_text("netlist")  # regenerated, NOT in carry globs
-    (c / "reports").mkdir()
-    (c / "reports" / "qor.rpt").write_text("q")  # regenerated, NOT in carry globs
-    wd = c / "runs" / "2"
-    wd.mkdir(parents=True)
-    store.carry_self(store.module_root("m"), "synthesis", wd)
-    assert (wd / "constraints.local.sdc").read_text() == "set_false_path -from x"
-    assert [p.name for p in wd.iterdir()] == ["constraints.local.sdc"]
 
 
 def test_no_canonical_stage_dir_is_noop(tmp_path, monkeypatch):
@@ -157,3 +144,20 @@ def test_rtl_carry_starstar_includes_nested_and_sidecar_files(tmp_path, monkeypa
     assert (wd / "constraint-annotations.json").exists()
     assert (wd / "notes" / "fsm.md").exists()
     assert not (wd / "semantic-review" / "leaf.md").exists()
+
+
+def test_carry_does_not_walk_run_history(tmp_path, monkeypatch):
+    c = _canon(tmp_path, "Design/synthesis")
+    (c / "reports").mkdir()
+    (c / "reports/area.rpt").write_text("measurement")
+    wd = c / "runs/2"
+    wd.mkdir(parents=True)
+    rglob = Path.rglob
+
+    def traverse(path, pattern):
+        assert path != c / "runs", "history is not a carry source"
+        return rglob(path, pattern)
+
+    monkeypatch.setattr(Path, "rglob", traverse)
+    store.carry_self(tmp_path / "m", "synthesis", wd)
+    assert (wd / "reports/area.rpt").read_text() == "measurement"

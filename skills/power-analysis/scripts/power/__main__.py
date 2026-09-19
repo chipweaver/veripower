@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""power — power-analysis-stage CLI.
-
-Verbs (one stage = one tool):
-  bootstrap   deploy templates + substitute env.sh + render power tests          (exit 0 / 1 / 2)
-  finalize    parse PT-PX reports, judge the power requirements, assemble result.json (exit 0 written / 2 BLOCKED)
-
-Thin dispatcher: each subcommand parses its own flags and calls into the
-power.* library. Library imports are deferred into each handler (NOT top-level)
-so --help and verb dispatch run during incremental per-task TDD, before the
-sibling modules (bootstrap.py / result.py) exist. A top-level
-`from power import bootstrap, result` would ImportError until both verbs are
-built. Keep them lazy. (Library modules themselves use top-level absolute
-imports; only this thin dispatcher defers.)
-"""
+"""Power experiment setup, execution, calculation and closure."""
 
 import argparse
 import json
@@ -43,11 +30,12 @@ def _cmd_bootstrap(a: argparse.Namespace) -> int:
 
 
 def _cmd_finalize(a: argparse.Namespace) -> int:
+    (Path(a.workdir) / "result.json").unlink(missing_ok=True)
     from power import requirements, result
 
     return result.finalize(
         a.workdir,
-        _inputs(a.workdir)["scaffold"],
+        _inputs(a.workdir)["plan"],
         requirements.mine(requirements.load(a.workdir)),
         requirements.parse_declared(a.requirements),
         a.fix_owner,
@@ -55,12 +43,18 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     )
 
 
+def _cmd_execute(a):
+    from power.execute import run
+
+    return run(a.workdir, a.cmd)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="power", description="power-analysis-stage CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser(
-        "bootstrap", help="deploy templates + substitute env.sh + render power tests"
+        "bootstrap", help="prepare editable setup; execution checks its own inputs"
     )
     sp.add_argument("--workdir", required=True, type=Path)
     sp.add_argument(
@@ -69,6 +63,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="top module; inferred from the injected synthesis netlist's out/<TOP>_syn.v when omitted",
     )
     sp.set_defaults(func=_cmd_bootstrap)
+
+    for mode in ("compile", "simulate", "calculate"):
+        sp = sub.add_parser(mode)
+        sp.add_argument("--workdir", required=True, type=Path)
+        sp.set_defaults(func=_cmd_execute)
 
     sp = sub.add_parser(
         "finalize", help="parse PT-PX reports, judge power_mw PPA, assemble result.json"
@@ -82,15 +81,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--fail-reason",
         default=None,
-        help="cause of a run with no gradeable reports (missing external reference, "
-        "license, a non-zero make); supplying it declares the failure and skips the "
-        "gate.",
+        help="unresolved reason the measurement is invalid or incomplete, even if reports "
+        "contain numbers; declares failure without qualifying those measurements",
     )
     sp.add_argument(
         "--requirements",
         default=None,
-        help="your verdict on each requirements.json row judged by power-analysis that carries "
-        'no target, as a JSON array of {"id", "met", "actual"}; rows with a target are compared here',
+        help="judgments for power-analysis rows without numeric targets: JSON array entries "
+        "require id, met and measured; actual is optional. Numeric targets are computed",
     )
     sp.set_defaults(func=_cmd_finalize)
 
@@ -102,9 +100,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        # The documented protocol is a reason on stderr and a non-zero exit. A traceback is
-        # not that: it answers with source, which every skill here tells the reader never to
-        # open. The verbs' own refusals keep their own exits; this is only the unexpected.
         print(
             f"[power {args.cmd}] BLOCKED: {type(exc).__name__}: {exc}", file=sys.stderr
         )

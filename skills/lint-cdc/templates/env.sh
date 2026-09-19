@@ -12,6 +12,3 @@ export TOP="${TOP:-MY_TOP}"
 # target; for direct invocation it can be overridden. Default is all
 # (lint + CDC in a single session).
 export SPYGLASS_STAGE="${SPYGLASS_STAGE:-all}"
-
-# Per-run SpyGlass timeout in seconds.
-export SPYGLASS_TIMEOUT="${SPYGLASS_TIMEOUT:-1800}"

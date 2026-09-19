@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "requirements.json — everything the engineer's intent document requires, one row each",
-  "description": "Transcribed from brainstorm.md by specification, one row per atomic proposition, in the engineer's words. Downstream stages bind this file; brainstorm.md is read by nobody after this stage. Scripts act on id, judge and target; verbatim and note are text they carry through unparsed.",
+  "title": "requirements.json — source-grounded obligations and their judgment responsibilities",
+  "description": "Accounts for the delivered intent and its material context. Entries retain source wording and explicit responsibility; repeated statements can share an obligation. Readers consult the original sources to resolve meaning.",
   "type": "array",
   "minItems": 1,
   "items": {
@@ -16,12 +16,12 @@
       "id": {
         "type": "string",
         "minLength": 1,
-        "description": "Unique in this file, in document order. check-hints and design documents refer to it; it never changes once written."
+        "description": "Unique in this file and stable for an unchanged obligation. Design and verification artifacts reference it; update affected references when entries are revised."
       },
       "verbatim": {
         "type": "string",
         "minLength": 1,
-        "description": "The engineer's own words, copied, original language — a clause, or a label and what it labels with each piece left as it stands. Every later reader is held to this wording."
+        "description": "Quoted source wording with the labels and context needed to preserve meaning. Interpretations and decisions belong in note rather than being presented as user wording."
       },
       "judge": {
         "type": "string",
@@ -39,7 +39,7 @@
           "none",
           "unassignable"
         ],
-        "description": "Who establishes that this holds. A stage name (the eight are rules.FORWARD_PRIORITY): that stage's artifact or run is the evidence and that stage reads this row. specification: something inside this stage's own artifacts makes it true — a sidecar entry, or an obligation design.md states at the boundary. The test is whether you could point at the entry: a row whose truth needs a structure or a schedule nobody has chosen yet is not this stage's, however much it reads like a specification. simulation: a testbench observes it or a coverage report measures it. rtl-design: only reading the RTL establishes it. lint-cdc, synthesis, timing-analysis, power-analysis: the tool's report. simulation-plan: the plan itself must contain it. human: a person decides at the specification gate from the documents available there. outside: something the pipeline does not run establishes it; the pipeline does not claim it. none: nothing to establish, a delegation, a scoping statement, background. unassignable: you could not decide; say why in note; finalize refuses the file until a human resolves it."
+        "description": "Who establishes this entry: a stage, a decision under the actual authorization (human), or an explicit responsibility outside this workflow (outside). none records context without a separate verification obligation. unassignable records unresolved treatment or necessary basis, explained in note, and prevents successful specification closure. Lack of an automatic parser does not by itself put an obligation outside; stages can judge other evidence."
       },
       "target": {
         "type": "object",
@@ -49,12 +49,12 @@
           "value"
         ],
         "additionalProperties": false,
-        "description": "Only when the engineer's bound is in a unit the judging stage's tool reports natively; the stage's script then compares, and its verdict carries `measured` — the report row it actually read. Any other unit stays in verbatim and the stage's reader judges it.",
+        "description": "A numerical bound in a dimension and unit supported by the judging stage. The computed verdict covers that quantity and measurement scope only; other independent obligations require their own judgment. Non-target obligations are judged from evidence by the responsible reader.",
         "properties": {
           "dim": {
             "type": "string",
             "minLength": 1,
-            "description": "Deliberately NOT an enum — which dimensions a stage measures is that stage's own fact, declared and implemented in one place by the script that reads the report, and refused by name there when a row names one it does not measure. An enum here would be a second copy that drifts: the one this replaced listed nothing for timing-analysis, though PrimeTime reports slack natively."
+            "description": "Measurement dimension supported by the selected stage; that stage validates and interprets it."
           },
           "op": {
             "type": "string",
@@ -79,7 +79,7 @@
       "note": {
         "type": "string",
         "minLength": 1,
-        "description": "Free text when a row needs one: the reason a judge could not be assigned, or which earlier row this one restates."
+        "description": "Entry scope, source references, interpretation, decision and authorization basis, or the concrete unresolved issue. A note does not add obligations to an automatic numerical verdict."
       }
     },
     "if": {

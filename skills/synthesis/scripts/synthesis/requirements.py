@@ -58,6 +58,12 @@ def merge(rows: list[dict], computed: list[dict], declared: list[dict]) -> list[
     """One entry per row this stage judges, in ledger order. Raises when a row has no entry or
     an entry names a row this stage does not judge."""
     ids = [r["id"] for r in rows]
+    numeric = {r["id"] for r in rows if "target" in r}
+    overlap = numeric.intersection(e["id"] for e in declared)
+    if overlap:
+        raise ValueError(
+            f"numeric targets are computed from reports: {sorted(overlap)}"
+        )
     entries = {e["id"]: e for e in computed + declared}
     missing = [i for i in ids if i not in entries]
     extra = sorted(set(entries) - set(ids))

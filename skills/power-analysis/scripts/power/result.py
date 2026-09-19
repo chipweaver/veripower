@@ -10,11 +10,10 @@ Source files:
                                 stable verbose-summary sentence form is more
                                 regex-friendly than the hierarchical table.
   - saif/<id>.saif            ← from the gate-level run's $toggle_report.
-  - saif/<id>.status          ← from base_test.report_phase, one token per
-                                gate-level run (see _read_gls_status).
+  - saif/<id>.status          ← explicit experiment completion after checks/capture.
 
 Each function returns None on missing file / parse failure; the caller
-(typically build_result_json or the subagent writing result.json) decides
+(build_result) decides
 whether to map None to status=fail + failures[] or to a nullable field.
 """
 
@@ -22,11 +21,13 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 import re
 import sys
 from pathlib import Path
 
 from power import requirements
+from power.scenarios import load
 
 # ── Unit handling ──────────────────────────────────────────────
 
@@ -95,7 +96,8 @@ def _resolve_mw(
     )
     if factor is None:
         return None
-    return value * factor
+    converted = value * factor
+    return converted if math.isfinite(converted) and converted >= 0 else None
 
 
 # ── parse_total_power_mw ───────────────────────────────────────
@@ -187,15 +189,7 @@ def _parse_vcs_version(log_path: Path | str) -> str:
 
 
 def _read_gls_status(workdir: Path, sid: str) -> str | None:
-    """The one-token verdict `base_test.report_phase` wrote for that scenario's gate-level
-    run, or None when the run left none.
-
-    The token is computed from the UVM report server's own UVM_ERROR + UVM_FATAL counts, so
-    it is the same pass/fail contract the RTL regression closes on. None is not "clean": a
-    run that hit $fatal or died never reached report_phase, and the simulator's exit code
-    says nothing (the eda-exec shim normalizes it to 0). A SAIF is produced either way, and
-    activity recorded off a run whose stimulus failed does not qualify a power number.
-    """
+    """Explicit completion after the authored experiment's checks and capture."""
     p = Path(workdir) / "saif" / f"{sid}.status"
     return p.read_text(errors="replace").strip() if p.is_file() else None
 
@@ -207,18 +201,14 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
     already carries every field of it. Never writes result.json."""
     workdir = Path(workdir)
 
-    scenarios = json.loads(
-        (Path(plan_path) / "power-scenarios.json").read_text(encoding="utf-8")
-    )
+    scenarios = load(plan_path)
 
     failures: list[dict] = []
     saif_artifacts: list[dict] = []
     measurements: list[dict] = []
     power_by_scenario: list[dict] = []
 
-    for s in scenarios:
-        sid = s.get("id", "")
-        seq = s.get("sequence_ref", "")
+    for sid in scenarios:
         saif = workdir / "saif" / f"{sid}.saif"
         size = saif.stat().st_size if saif.is_file() else 0
         flat = workdir / "reports_ptpx" / sid / "power_flat.rpt"
@@ -236,7 +226,7 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
                     "phase": "run",
                     "category": "saif_dump",
                     "error_summary": f"SAIF empty or absent: {saif.name}",
-                    "log_excerpt": "gls-run-log.txt",
+                    "log_excerpt": f"saif/{sid}.run.log",
                 }
             )
             scenario_failed = True
@@ -245,7 +235,6 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
                 {
                     "id": sid,
                     "saif_path": f"saif/{sid}.saif",
-                    "sequence_ref": seq,
                 }
             )
 
@@ -255,13 +244,41 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
                 {
                     "id": sid,
                     "phase": "run",
-                    "category": "gls_uvm",
+                    "category": "experiment",
                     "error_summary": (
                         f"gate-level run reported {status}: saif/{sid}.status"
                         if status
                         else f"gate-level run left no verdict: saif/{sid}.status absent"
                     ),
                     "log_excerpt": f"saif/{sid}.run.log",
+                }
+            )
+            scenario_failed = True
+
+        activity = _read(workdir / "reports_ptpx" / sid / "switching_activity.rpt")
+        annotated = re.search(
+            r"^\s*Nets\s+(\d+)\(([0-9.]+)%\)", activity or "", re.MULTILINE
+        )
+        if not annotated or int(annotated.group(1)) == 0:
+            failures.append(
+                {
+                    "id": sid,
+                    "phase": "ptpx",
+                    "category": "ptpx_data",
+                    "error_summary": "missing or zero SAIF net annotation",
+                    "log_excerpt": f"reports_ptpx/{sid}/switching_activity.rpt",
+                }
+            )
+            scenario_failed = True
+
+        if toggled is None and size:
+            failures.append(
+                {
+                    "id": sid,
+                    "phase": "run",
+                    "category": "saif_dump",
+                    "error_summary": "SAIF has no activity entries",
+                    "log_excerpt": f"saif/{sid}.saif",
                 }
             )
             scenario_failed = True
@@ -278,6 +295,18 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
                     "phase": "parse",
                     "category": "ptpx_data",
                     "error_summary": summ,
+                    "log_excerpt": f"reports_ptpx/{sid}/power_flat.rpt",
+                }
+            )
+            scenario_failed = True
+
+        if three is None:
+            failures.append(
+                {
+                    "id": sid,
+                    "phase": "parse",
+                    "category": "ptpx_data",
+                    "error_summary": "missing or invalid power components",
                     "log_excerpt": f"reports_ptpx/{sid}/power_flat.rpt",
                 }
             )
@@ -321,7 +350,6 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
                 "switching_mw": None if scenario_failed else switching,
                 "leakage_mw": None if scenario_failed else leakage,
                 "toggled_net_fraction": toggled,
-                "sequence_ref": seq,
             }
         )
 
@@ -338,8 +366,8 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
         }
         f0 = failures[0]
         summ = f0["error_summary"]
-        if f0["category"] == "gls_uvm":
-            token = "gls_uvm"
+        if f0["category"] == "experiment":
+            token = "experiment"
         elif "!=" in summ:
             token = "invariant"
         elif "not found" in summ:
@@ -385,7 +413,9 @@ def run(plan_path, workdir, target_rows) -> tuple[int, dict]:
             {
                 "id": r["id"],
                 "met": all(requirements.met(e["value"], t) for e in picked),
-                "actual": max(e["value"] for e in picked),
+                "actual": (min if t["op"] in (">", ">=") else max)(
+                    e["value"] for e in picked
+                ),
                 "measured": (
                     f"{dim} from " + ", ".join(sorted(e["source"] for e in picked))
                     if len(picked) == 1
@@ -455,34 +485,19 @@ def _data_failure_reason(data: dict) -> str:
 
 
 def enumerate_artifacts(workdir: Path) -> list[dict]:
-    """What promote copies into canonical and the kernel fingerprints on every reap and
-    every freshness query. The rule: what this run produced or resolved, not what the
-    skill shipped.
-
-    So `Makefile`, `README.md` and `scripts/` are absent — they arrive from templates/
-    byte-identical every round, and the plugin version that carries them is already in
-    the outcome's tool identity. `env.sh` stays because bootstrap substitutes this run's
-    TOP and upstream locations into it, and `scaffold/` because its power tests are
-    rendered from this round's plan.
-
-    Absent for a different reason: `simv` and `simv.daidir`, VCS build output regenerable
-    from the netlist and the filelists — on a real module the daidir alone is ~200 MB of
-    incremental-compile cache; and `make.out`, which is the tee'd steps' own logs
-    concatenated (measured line-for-line against them), so it is those files a second
-    time.
-    """
+    """Publish the experiment and reusable products, excluding disposable working data."""
     workdir = Path(workdir)
-    candidates = [
-        "env.sh",
-        "scaffold",
-        "tb_filelist_abs.f",
-        "saif",
-        "reports_ptpx",
-        "gls-compile-log.txt",
-        "gls-run-log.txt",
-        "ptpx.log",
-    ]  # files AND dirs; envelope.schema forbids self-listing result.json (excluded by construction)
-    return [{"path": pth} for pth in candidates if (workdir / pth).exists()]
+    excluded = {
+        "result.json",
+        "result.json.tmp",
+        "dispatch.json",
+        "runs",
+        "work",
+        ".pending",
+    }
+    return [
+        {"path": p.name} for p in sorted(workdir.iterdir()) if p.name not in excluded
+    ]
 
 
 def build_result(
@@ -504,10 +519,9 @@ def build_result(
     fix_owner — which rule must act. The reports say what failed; whose artifact is at
     fault is the caller's reading.
 
-    fail_reason — the cause of a run that produced no gradeable reports: a missing
-    external reference, a license, a non-zero `make`. Supplying it IS the declaration of
-    failure, so it short-circuits the gate — which cannot run anyway, since the reports
-    it parses are the thing that never landed."""
+    fail_reason — an unresolved reason this measurement cannot answer the task, including
+    invalid experimental conditions even when reports contain numbers. It declares failure
+    without treating those numbers as qualifying evidence."""
     workdir = Path(workdir)
 
     if fail_reason is not None:
@@ -555,7 +569,7 @@ def build_result(
 
 def finalize(
     workdir,
-    scaffold,
+    plan,
     rows,
     declared,
     fix_owner=None,
@@ -564,7 +578,8 @@ def finalize(
     """Parse PT-PX reports, judge the rows power-analysis establishes, write the lean
     result.json. exit 0 = written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason, a
     row nobody judged, or any internal raise) — never conflated with status=fail.
-    `scaffold` is the simulation-plan workdir (build_result's `plan_path`)."""
+    `plan` is the simulation-plan workdir (build_result's `plan_path`)."""
+    (Path(workdir) / "result.json").unlink(missing_ok=True)
     if fail_reason is not None:
         if not fail_reason.strip():
             print(
@@ -574,7 +589,7 @@ def finalize(
             )
             return 2
     try:
-        return build_result(workdir, scaffold, rows, declared, fix_owner, fail_reason)
+        return build_result(workdir, plan, rows, declared, fix_owner, fail_reason)
     except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
         print(f"[power finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

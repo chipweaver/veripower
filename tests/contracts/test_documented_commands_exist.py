@@ -35,30 +35,27 @@ def _cli_for(cmd: str, skill: str) -> Path | None:
     return base / "__main__.py" if (base / "__main__.py").is_file() else base
 
 
-def _documented():
-    for md in sorted(
-        (ROOT / "skills").glob("*/SKILL.md"),
-    ) + sorted((ROOT / "skills").glob("*/references/*.md")):
+def _commands():
+    for md in sorted((ROOT / "skills").glob("*/SKILL.md")) + sorted(
+        (ROOT / "skills").glob("*/references/*.md")
+    ):
         skill = md.relative_to(ROOT / "skills").parts[0]
         for block in BLOCK.findall(md.read_text(encoding="utf-8")):
-            cmd = " ".join(block.replace("\\\n", " ").split())
-            cli = _cli_for(cmd, skill)
-            if cli is None or not cli.exists():
-                continue
-            tail = cmd.split(cli.name)[-1] if cli.name in cmd else cmd
-            words = [
-                w
-                for w in tail.split()
-                if not w.startswith(("-", "<", "{", "[", "'", '"'))
-            ]
-            if not words or not VERB.match(words[0]):
-                continue
-            yield (
-                str(md.relative_to(ROOT)),
-                cli,
-                words[0],
-                tuple(sorted(set(LONG_FLAG.findall(tail)))),
-            )
+            for line in block.replace("\\\n", " ").splitlines():
+                cmd = " ".join(line.split())
+                cli = _cli_for(cmd, skill)
+                if cli is not None:
+                    yield str(md.relative_to(ROOT)), cli, cmd
+
+
+def _documented():
+    for md, cli, cmd in _commands():
+        tail = cmd.split(cli.name)[-1] if cli.name in cmd else cmd
+        words = [
+            w for w in tail.split() if not w.startswith(("-", "<", "{", "[", "'", '"'))
+        ]
+        if words and VERB.fullmatch(words[0]):
+            yield md, cli, words[0], tuple(sorted(set(LONG_FLAG.findall(tail))))
 
 
 CASES = list(_documented())
@@ -73,11 +70,11 @@ def _help(cli: Path, verb: str):
 
 
 def test_every_skill_command_block_is_checked():
-    # A guard nothing reaches is not a guard. If this drops, a documented command stopped
-    # being resolvable and is now silently unchecked. Lowering the floor is only correct when a
-    # command was deliberately deleted — last: specification's derive-ports, with the roster
-    # it computed.
-    assert len(CASES) >= 24
+    commands = list(_commands())
+    assert commands
+    for md, cli, cmd in commands:
+        assert cli.is_file(), f"{md} documents missing CLI {cli}: {cmd}"
+    assert {c[1] for c in CASES} == {c[1] for c in commands}
 
 
 @pytest.mark.parametrize(

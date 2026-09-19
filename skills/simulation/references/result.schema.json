@@ -17,14 +17,14 @@
           "properties": {
             "fix_owner": {
               "type": "string",
-              "description": "On status=fail: the rule that must act, named by this stage from what it read in the raw tool output. Deliberately NOT an enum — the derived input closure in rules.py is the only authority on which names are legal, and decide checks it there. Naming this stage itself (its in-stage remedy is exhausted) or naming nobody both mean a human decides."
+              "description": "Repair stage supported by the evidence: this stage or a transitive input producer, checked by the scheduler. Omit when attribution is unresolved."
             },
             "fail_reason": {
               "type": "string",
               "minLength": 1
             },
             "failing_cases": {
-              "description": "One entry per case that failed this run, written by the verify child and read by simulation-triage. The shape is declared here because the triage contract names these fields: without test_id it cannot reach logs/<test_id>.log, and error_message is the log anchor its Step-1 reasoning starts from.",
+              "description": "Failed testcase identifiers and diagnostics for simulation-triage.",
               "type": "array",
               "items": {
                 "type": "object",
@@ -48,20 +48,6 @@
                   }
                 }
               }
-            },
-            "gaps_not_in_testpoints": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "Uncovered items no testpoint claims — an intent gap. Present only on a coverage route-out; it is what sends the rework to simulation-plan rather than back into the stimulus loop."
-            },
-            "gaps_in_testpoints": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "Uncovered items a testpoint does claim, reported alongside intent-layer gaps. Present only on a coverage route-out."
             }
           },
           "additionalProperties": true
