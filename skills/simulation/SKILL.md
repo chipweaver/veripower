@@ -14,6 +14,7 @@ Read `{workdir}/dispatch.json` for the current inputs and work scope. `intent`, 
 strategy, boundary and implementation. Write under `{workdir}`; upstream artifacts are read-only.
 Use the original algorithm/specification as the reference. Inspecting RTL to diagnose a failure
 must not turn the implementation into its own expected behavior.
+See [artifacts.md](references/artifacts.md) for report locations and which diagnostic files are published or retained per run.
 
 ## Build and check
 

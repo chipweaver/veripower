@@ -216,8 +216,8 @@ def waiver_defects(workdir: Path) -> list[str]:
 
 
 def parse_tool(workdir: Path) -> str:
-    """The ruleset version the report itself states. This stage's oracle IS the SpyGlass
-    ruleset, and the kernel's reap-time identity record scrapes only the library env vars,
+    """The ruleset version the report itself states. The kernel's reap-time
+    identity record reads only the library env vars,
     so the envelope is the one place the ruleset that produced the proof is written down."""
     rpt = Path(workdir) / "lint-report.txt"
     if rpt.is_file():

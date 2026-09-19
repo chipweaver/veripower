@@ -190,11 +190,8 @@ _STAGE_FILES = {
 }
 
 
-# Content each proposed-oracle rule's oracle_selector points at. Kept out of _STAGE_FILES
-# (which other tests share) and folded in only by _build_full_chain: without it a pin has
-# nothing to endorse — oracle_content_fp reads UNKNOWN and cmd_pin refuses. The oracles stay
-# `proposed` until someone actually pins them; writing the record is not endorsing it.
-_ORACLE_CONTENT = {
+# Include delivered reviews and the reference model in the full-chain fixture.
+_REVIEW_CONTENT = {
     "specification": {"spec-review/core.md": "spec review v1"},
     "simulation-plan": {"plan-review/review.md": "plan review v1"},
     "rtl-design": {"semantic-review/leaf.md": "semantic review v1"},
@@ -203,11 +200,10 @@ _ORACLE_CONTENT = {
 
 
 def _build_full_chain(tmp_path, module):
-    """Dispatch+write+reap every stage, in FORWARD_PRIORITY order, leaving every
-    oracle unpinned (proposed) but pinnable."""
+    """Dispatch, write and reap all stages without recording acceptance."""
     _write_file(module, "intent/brainstorm.md", "b1")
     for rule in rules.FORWARD_PRIORITY:
-        files = {**_STAGE_FILES[rule], **_ORACLE_CONTENT.get(rule, {})}
+        files = {**_STAGE_FILES[rule], **_REVIEW_CONTENT.get(rule, {})}
         outcome = _dispatch_write_reap(tmp_path, module, rule, files)
         assert outcome["ok"] is True and outcome["verdict"] == "pass", outcome
 
@@ -282,43 +278,11 @@ def test_reap_schema_violation_blocks_and_skips_promote(tmp_path, monkeypatch):
     assert not (canonical / "design.md").exists()
 
 
-def test_signoff_decide_gates_on_proposed_oracle(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    _build_full_chain(tmp_path, "gate1")
-    a = _run_json(tmp_path, "decide", "--module", "gate1", "--closing")
-    assert a == {
-        "action": "ESCALATE",
-        "reason": "signoff blocked: specification oracle is proposed (pin it)",
-    }
-
-
-def _pin_every_proposed_oracle(tmp_path, module):
-    for rule in rules.FORWARD_PRIORITY:
-        if rules.RULES[rule].oracle[1] == "proposed":
-            p = _run_json(
-                tmp_path,
-                "pin",
-                "--module",
-                module,
-                "--rule",
-                rule,
-                "--provenance",
-                "reviewer",
-                "--reason",
-                "endorsed",
-            )
-            assert p["ok"] is True, p
-
-
 def test_signoff_close_end_to_end(tmp_path, monkeypatch):
-    # The whole trust boundary in one pass, through the real CLI: a delivered chain is NOT
-    # signed off; decide refuses while any oracle is merely proposed; pinning each one lifts
-    # the gate to DONE ("go stamp"); the verb lands the signoff decision; only then does status say
-    # signed_off. Each step is the reason the next one is allowed.
+    # Readiness is distinct from the explicit acceptance recorded by signoff.
     monkeypatch.chdir(tmp_path)
     _build_full_chain(tmp_path, "close")
     assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is False
-    _pin_every_proposed_oracle(tmp_path, "close")
     a = _run_json(tmp_path, "decide", "--module", "close", "--closing")
     assert a["action"] == "DONE"  # gate clear — but nothing is signed off yet
     assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is False
@@ -334,18 +298,10 @@ def test_signoff_close_end_to_end(tmp_path, monkeypatch):
     )
     assert s["ok"] is True
     assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is True
-    # and the verb hands back WHAT was signed, not just that it worked: every proof, its
-    # oracle's live grade, and for an endorsed grade the fingerprint the pin named.
+    # The response identifies the conclusions and evidence accepted.
     basis = {b["proof"]: b for b in s["basis"]}
     assert set(basis) == set(a["basis"][i]["proof"] for i in range(len(a["basis"])))
     for b in basis.values():
-        assert b["oracle"]["grade"] in ("tool", "endorsed")
-        if b["oracle"]["grade"] == "endorsed":
-            # a review tree versions as a merkle; a single-file oracle as a sha256
-            assert b["oracle"]["pinned_fingerprint"].split(":")[0] in (
-                "sha256",
-                "merkle",
-            )
         assert b["inputs"] == sorted(b["inputs"])
     # and the bound judgments themselves, carried up from the stage's own result.json:
     # for the four tool stages this is the only place one reaches a human, and a verdict
@@ -360,7 +316,6 @@ def test_signoff_stays_bound_to_the_accepted_evidence(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "accepted-evidence"
     _build_full_chain(tmp_path, module)
-    _pin_every_proposed_oracle(tmp_path, module)
 
     def status():
         return kernel.cmd_status(module)["signed_off"]
@@ -372,14 +327,9 @@ def test_signoff_stays_bound_to_the_accepted_evidence(tmp_path, monkeypatch):
 
     sign()
     assert status()
-    # A normal repeat reap refreshes the recorded grade, not the evidence.
+    # A normal repeat reap preserves unchanged evidence.
     assert kernel.cmd_reap(module, "specification", 1)["ok"]
     assert status()
-    assert kernel.cmd_reopen(module, "spec-review", "reconsider review")["ok"]
-    assert not status()
-    assert kernel.cmd_pin(module, "specification", "reviewer", "same content")["ok"]
-    assert status()
-
     extra = store.module_root(module) / "Verification/power-analysis/extra.txt"
     extra.write_text("unrecorded")
     assert not status()
@@ -403,44 +353,6 @@ def test_signoff_stays_bound_to_the_accepted_evidence(tmp_path, monkeypatch):
     sign()
     assert status()
 
-    files = {**_STAGE_FILES["rtl-design"], **_ORACLE_CONTENT["rtl-design"]}
-    files["semantic-review/leaf.md"] = "new review, not yet endorsed"
-    assert _dispatch_write_reap(tmp_path, module, "rtl-design", files)["ok"]
-    assert "oracle is proposed" in facts.signoff_gate(module, store.read_events(module))
-    assert not status()
-
-
-def test_reopen_drops_a_landed_signoff(tmp_path, monkeypatch):
-    # A signoff is only as good as the proofs beneath it. The signoff event is
-    # permanent and there is no unsign verb — reopening any pin invalidates that proof
-    # (cond 3), which drops the predicate's second conjunct. No ceremony required.
-    monkeypatch.chdir(tmp_path)
-    _build_full_chain(tmp_path, "revoke")
-    _pin_every_proposed_oracle(tmp_path, "revoke")
-    _run_json(
-        tmp_path,
-        "signoff",
-        "--module",
-        "revoke",
-        "--provenance",
-        "owner",
-        "--reason",
-        "tapeout rc1",
-    )
-    assert _run_json(tmp_path, "status", "--module", "revoke")["signed_off"] is True
-    r = _run_json(
-        tmp_path,
-        "reopen",
-        "--module",
-        "revoke",
-        "--pin-ref",
-        "spec-review",
-        "--reason",
-        "found a hole",
-    )
-    assert r["ok"] is True
-    assert _run_json(tmp_path, "status", "--module", "revoke")["signed_off"] is False
-
 
 def test_unknown_rule_argparse_exits_cleanly(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
@@ -448,105 +360,6 @@ def test_unknown_rule_argparse_exits_cleanly(tmp_path, monkeypatch):
     assert r.returncode == 2
     assert "invalid choice" in r.stderr
     assert "Traceback" not in r.stderr
-
-
-def test_signoff_bypass_blocked_proposed_oracle(tmp_path, monkeypatch):
-    # The gate must not be bypassable. The verb is now its ONLY surface, so calling
-    # `signoff` directly — never going near `decide` — must still hit the gate and refuse.
-    # No signoff event may land behind a refusal.
-    monkeypatch.chdir(tmp_path)
-    _build_full_chain(tmp_path, "gate3")
-    d = _run_json(
-        tmp_path,
-        "signoff",
-        "--module",
-        "gate3",
-        "--provenance",
-        "someone",
-        "--reason",
-        "ship it",
-    )
-    assert d["ok"] is False
-    assert "oracle is proposed (pin it)" in d["error"]
-    assert not any(e["type"] == "signoff" for e in store.read_events("gate3"))
-
-
-def _latest_grade(module, proof_name="specification"):
-    events = store.read_events(module)
-    _, outcome = facts.proof_outcome(events, proof_name)
-    proof = next(p for p in outcome["proofs"] if p["name"] == proof_name)
-    return proof["oracle"]["grade"]
-
-
-def test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_endorsed(
-    tmp_path, monkeypatch
-):
-    monkeypatch.chdir(tmp_path)
-    module = "pintest"
-    _write_file(module, "intent/brainstorm.md", "b1")
-    files = dict(_STAGE_FILES["specification"])
-    files["spec-review/core.md"] = "review-v1"
-    outcome = _dispatch_write_reap(tmp_path, module, "specification", files)
-    assert outcome["verdict"] == "pass"
-    # First-ever reap: canonical spec-review/core.md didn't exist pre-reap (UNKNOWN) ->
-    # proposed, regardless of any pin. Not asserted; this reap only seeds canonical.
-
-    # pin the CURRENT (canonical, now-promoted) content, then reap again: the grade
-    # check now sees a live pin whose recorded fingerprint matches canonical -> endorsed.
-    p1 = _run_json(
-        tmp_path,
-        "pin",
-        "--module",
-        module,
-        "--rule",
-        "specification",
-        "--provenance",
-        "andrew",
-        "--reason",
-        "review v1",
-    )
-    assert p1["ok"] is True
-    r2 = _run_json(
-        tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
-    )
-    assert r2["ok"] is True
-    assert _latest_grade(module) == "endorsed"
-
-    # Drift the oracle's RUN-DIR content (the source promote reads from). The grade
-    # check runs BEFORE promote each reap, so it takes two reaps for the drift to be
-    # observed: the first propagates the new content onto canonical (still grades
-    # human, comparing against the stale pre-promote canonical); the second sees the
-    # now-drifted canonical mismatch the old pin -> proposed.
-    _write_file(module, "Design/specification/runs/1/spec-review/core.md", "review-v2")
-    r3 = _run_json(
-        tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
-    )
-    assert r3["ok"] is True
-    r4 = _run_json(
-        tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
-    )
-    assert r4["ok"] is True
-    assert _latest_grade(module) == "proposed"
-
-    # Re-pin at the new (drifted) content -> a fresh live pin matches canonical again.
-    p2 = _run_json(
-        tmp_path,
-        "pin",
-        "--module",
-        module,
-        "--rule",
-        "specification",
-        "--provenance",
-        "andrew",
-        "--reason",
-        "review v2",
-    )
-    assert p2["ok"] is True
-    r5 = _run_json(
-        tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
-    )
-    assert r5["ok"] is True
-    assert _latest_grade(module) == "endorsed"
 
 
 # ── simulation-triage reap path (proof=None -> diagnosis event, not a proof) ───────────
@@ -810,16 +623,7 @@ def test_triage_local_root_cause_names_local_repair(tmp_path, monkeypatch):
     assert diag["fix_owner"] == "simulation"
 
 
-# ── reap guard: never-dispatched run (defensive, no TypeError) ─────────────────
-#
-# NOTE: a re-reap of an ALREADY-outcome'd (rule, run) is deliberately NOT guarded
-# against here — promote is idempotent, so a crash mid-promote is repaired by the
-# next reap, and
-# test_pin_content_drift_regrades_to_proposed_then_repin_regrades_to_endorsed above
-# reaps the same run 4 times in a row (post-pin regrade) and asserts ok:True each
-# time. Guarding on "already has an outcome" would break that documented, tested
-# behavior, so only the never-dispatched case (no workdir to derive from -> the
-# actual TypeError) is guarded.
+# Repeated reap supports interrupted publication; an undispatched run has no workdir.
 
 
 def test_reap_never_dispatched_ok_false_no_event_appended(tmp_path, monkeypatch):
@@ -835,49 +639,6 @@ def test_reap_never_dispatched_ok_false_no_event_appended(tmp_path, monkeypatch)
 
 
 # ── B-group regression fixes (kernel-review disposition) ──────────────────
-
-
-def test_reopen_unknown_pin_ref_rejected(tmp_path, monkeypatch):
-    # Reopen must not silently no-op on a typo'd pin_ref — a reopen that matches no
-    # pinned oracle_ref revokes nothing yet returns ok:true, so the human believes trust
-    # was withdrawn when it was not (not a conservative failure). It must error instead.
-    monkeypatch.chdir(tmp_path)
-    module = "reopenbad"
-    store.append_event(  # a real pin on 'spec-review'
-        module,
-        {
-            "type": "pin",
-            "oracle_ref": "spec-review",
-            "content_fingerprint": "sha256:x",
-            "provenance": "p",
-            "reason": "endorse",
-        },
-        "2026-07-10T00:00:00.000000Z",
-    )
-    r = _run_json(
-        tmp_path,
-        "reopen",
-        "--module",
-        module,
-        "--pin-ref",
-        "spec-reviewX",
-        "--reason",
-        "typo",
-    )
-    assert r["ok"] is False
-    assert "spec-reviewX" in r["error"]
-    # the good ref still works
-    ok = _run_json(
-        tmp_path,
-        "reopen",
-        "--module",
-        module,
-        "--pin-ref",
-        "spec-review",
-        "--reason",
-        "revoke",
-    )
-    assert ok["ok"] is True
 
 
 def test_dispatch_triage_without_sim_run_rejected(tmp_path, monkeypatch):
@@ -1014,49 +775,6 @@ def test_dispatch_consumer_in_virgin_module_rejected(tmp_path, monkeypatch):
 # ── C-group regression fixes (low-risk corners, kernel-review disposition) ──
 
 
-def test_graded_uses_latest_pin_not_any_live_pin(tmp_path, monkeypatch):
-    # Reap compares the oracle's current content against the LATEST pin
-    # record, not ANY live pin. Two live pins (A then B, no reopen between); oracle content
-    # reverts to A -> the latest pin (B) does not match -> regrade to proposed, not endorsed.
-    monkeypatch.chdir(tmp_path)
-    module = "gradepin"
-    sr = store.module_root(module) / "Design" / "specification"
-    sr.mkdir(parents=True)
-    (sr / "spec-review").mkdir()
-    rev = sr / "spec-review" / "core.md"
-    rev.write_text("REVIEW-A")
-    fpA = facts.fingerprint(rev)
-    store.append_event(
-        module,
-        {
-            "type": "pin",
-            "oracle_ref": "spec-review",
-            "content_fingerprint": fpA,
-            "provenance": "p",
-            "reason": "A",
-        },
-        TS,
-    )
-    rev.write_text("REVIEW-B")
-    fpB = facts.fingerprint(rev)
-    store.append_event(
-        module,
-        {
-            "type": "pin",
-            "oracle_ref": "spec-review",
-            "content_fingerprint": fpB,
-            "provenance": "p",
-            "reason": "B",
-        },
-        TS,
-    )
-    rev.write_text("REVIEW-A")  # oracle back to A; latest pin (B) no longer matches
-    grade = facts.oracle_grade(
-        module, store.read_events(module), rules.RULES["specification"]
-    )
-    assert grade == "proposed"
-
-
 def test_outputs_name_the_artifacts_that_are_the_evidence(tmp_path, monkeypatch):
     # The report-class products ARE the evidence, so the outcome must name
     # the canonical result.json AND every artifacts[] path — recording only result.json
@@ -1072,28 +790,6 @@ def test_outputs_name_the_artifacts_that_are_the_evidence(tmp_path, monkeypatch)
     assert all(v.startswith(("sha256:", "merkle:")) for v in outs.values())
     proof = next(p for p in outcome["proofs"] if p["name"] == "specification")
     assert "evidence" not in proof
-
-
-def test_pin_zero_match_selector_rejected(tmp_path, monkeypatch):
-    # Pinning an oracle whose content selector matches nothing records
-    # content_fingerprint="unknown" and returns ok:true — an inert pin that can never grade
-    # human. A pin must endorse real content; reject when nothing matches (conservative).
-    monkeypatch.chdir(tmp_path)
-    _write_file("m", "intent/brainstorm.md", "b1")
-    r = _run_json(
-        tmp_path,
-        "pin",
-        "--module",
-        "m",
-        "--rule",
-        "specification",
-        "--provenance",
-        "p",
-        "--reason",
-        "endorse",
-    )
-    assert r["ok"] is False
-    assert "unknown" in r["error"].lower() or "no content" in r["error"].lower()
 
 
 def test_triage_complete_without_findings_blocked(tmp_path, monkeypatch):

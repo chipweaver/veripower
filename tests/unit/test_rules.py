@@ -66,24 +66,6 @@ def test_advisory_edges_reference_registered_rules_and_stay_acyclic():
     _assert_acyclic(graph)
 
 
-def test_proposed_oracle_declares_selector_within_inputs_union_outputs():
-    # Validity condition-3 structural premise: a proposed oracle's content selector names
-    # something the rule can actually reach — its own promoted tree, or a declared input.
-    for rule in rules.RULES.values():
-        if rule.oracle and rule.oracle[1] == "proposed":
-            sel = rule.oracle_selector
-            assert sel, f"{rule.name}: proposed oracle without oracle_selector"
-            own = (Path(*rule.workdir_root) / sel).as_posix()
-            covered = rules.producer_of(own) == rule.name or any(
-                g.endswith(sel) for globs in rule.inputs.values() for g in globs
-            )
-            assert covered, f"{rule.name}: oracle_selector {sel} unreachable"
-        elif rule.oracle:
-            assert rule.oracle_selector is None, (
-                f"{rule.name}: tool oracle must not carry a selector"
-            )
-
-
 def test_advisory_edges_are_sequencing_only():
     """ADVISORY_ORDER holds the two edges that are NOT data dependencies, and holds only
     those. A rule with no advisory entry can never be held back by the no-overtake gate,
@@ -138,7 +120,7 @@ def test_carry_no_carry_fields_and_values():
     import rules
 
     # authors carry everything, drop this round's review record — and only that: the
-    # human rulings sit beside it under the same oracle directory and must carry.
+    # human rulings sit beside it under the same review directory and must carry.
     assert rules.RULES["specification"].carry == ("**",)
     assert rules.RULES["specification"].no_carry == ("spec-review/findings/*",)
     assert rules.RULES["simulation-plan"].carry == ("**",)

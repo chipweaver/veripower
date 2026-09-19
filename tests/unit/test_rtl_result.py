@@ -94,9 +94,7 @@ def test_build_result_pass_lean_shape(tmp_path):
 
 
 def test_reviews_are_enumerated_off_disk_not_off_the_roster(tmp_path):
-    # How the wave splits the RTL between its reviewers is the stage's call, so nothing here
-    # coverage counts, and the review directory is delivered whatever the wave called the files
-    # in it — the tree is the only route by which the oracle ever sees them.
+    # Review layout is chosen by the stage; the complete directory is delivered.
     wd = _workdir(tmp_path)
     (wd / "semantic-review" / "mac.md").unlink()
     (wd / "semantic-review" / "topc.md").rename(wd / "semantic-review" / "mac+topc.md")
@@ -107,10 +105,9 @@ def test_reviews_are_enumerated_off_disk_not_off_the_roster(tmp_path):
     assert (wd / "semantic-review" / "mac+topc.md").is_file()
 
 
-def test_pass_over_an_unreviewed_workdir_is_the_kernels_call_not_this_gate(tmp_path):
-    # finalize does not check that any review landed: the kernel already refuses to pin an
-    # oracle whose selector matched nothing, and the signoff gate blocks while the grade is
-    # proposed. A second copy here would only fail the round earlier for the same defect.
+def test_result_writer_leaves_review_judgment_to_the_stage_owner(tmp_path):
+    # This result writer validates RTL artifacts. The stage owner reports incomplete
+    # review with --fail-reason; absence of that report is not a semantic review.
     wd = _workdir(tmp_path, reviews=False)
     assert ve.build_result(wd) == 0
     env = json.loads((wd / "result.json").read_text())

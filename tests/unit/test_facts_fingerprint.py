@@ -29,15 +29,24 @@ def test_same_size_and_mtime_replacement_invalidates_recorded_input(tmp_path):
     path = tmp_path / "netlist.v"
     path.write_text("old")
     recorded = facts.fingerprint(path)
+    outcome = {
+        "type": "outcome",
+        "outputs": {},
+        "proofs": [
+            {
+                "name": "timing-analysis",
+                "verdict": "pass",
+                "inputs": {"netlist.v": recorded},
+            }
+        ],
+    }
+    assert facts.proof_valid(str(tmp_path), [outcome], "timing-analysis")
     st = path.stat()
     replacement = tmp_path / "replacement.v"
     replacement.write_text("new")
     os.utime(replacement, ns=(st.st_atime_ns, st.st_mtime_ns))
     replacement.replace(path)
-    outcome = {
-        "proofs": [{"name": "timing-analysis", "inputs": {"netlist.v": recorded}}]
-    }
-    assert not facts.inputs_unchanged(str(tmp_path), "timing-analysis", outcome)
+    assert not facts.proof_valid(str(tmp_path), [outcome], "timing-analysis")
 
 
 def test_dir_merkle_order_independent(tmp_path):

@@ -17,10 +17,9 @@ for the runtime model. Existing code and documentation are open to correction.
   authorization to decisions. Platform adapters provide native tool integration and preserve
   host permissions.
 
-A live `pin` endorses specific oracle content. Content changes expire it; `reopen` withdraws it.
-`endorsed` describes that state, while `provenance` and `reason` record who decided, their
-authorization and basis. `signoff` records an authorized acceptance after checking current proofs.
-A ready module is not automatically signed off.
+`signoff` records acceptance when the task calls for it, after checking current proofs.
+`provenance` and `reason` identify the decision maker, authorization and basis. The record
+applies to the accepted evidence; readiness alone does not record acceptance.
 
 ## Stage artifacts
 

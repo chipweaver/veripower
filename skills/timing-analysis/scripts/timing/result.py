@@ -224,7 +224,7 @@ def _write_result(workdir: Path, env: dict) -> None:
 def parse_tool(report_text: str) -> str:
     """The PrimeTime version off the report header. The kernel's reap-time identity
     record covers the library environment variables and no tool version, and this
-    stage's oracle IS pt_shell, so nothing else names which engine produced the proof."""
+    reports come from pt_shell; record which engine produced them."""
     m = _VERSION_RE.search(report_text)
     return f"PrimeTime {m.group(1)}" if m else "PrimeTime unknown"
 
@@ -307,7 +307,7 @@ def build_result(workdir, rows, declared, fix_owner=None, fail_reason=None) -> i
     if left_out:
         # A pair of MET markers says nothing about how much of the boundary was timed:
         # PT reports MET on the paths it analyzed whether the SDC reached two output
-        # bits or two hundred. Promoting that as a pass publishes a tool-grade proof
+        # bits or two hundred. Promoting that as a pass publishes a passing conclusion
         # over a boundary the STA never covered, and this stage exists to be the
         # independent check that catches it.
         status = "fail"

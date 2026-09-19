@@ -48,17 +48,17 @@ Eight rules make up the flow. A ninth, simulation triage, is a diagnostic that
 analyzes simulation failures without recording a verification conclusion of its
 own.
 
-| Rule | What it does | Oracle | Grade |
-|---|---|---|---|
-| specification | Accounts for the delivered intent in a source-grounded requirements ledger with explicit judgment responsibilities, then derives design decisions, interfaces and timing constraints | spec-review (LLM) | proposed |
-| simulation-plan | Maps every specified behavior to a testpoint, produces the verification plan and TB scaffold | plan-review (LLM) | proposed |
-| rtl-design | Generates RTL from the specification | semantic-review (LLM) | proposed |
-| lint-cdc | SpyGlass lint and CDC checks | spyglass ruleset | tool |
-| synthesis | Design Compiler synthesis | dc-shell | tool |
-| timing-analysis | PrimeTime timing analysis | pt-shell | tool |
-| simulation | Builds and runs UVM testbench against the RTL | tb-refmodel (LLM) | proposed |
-| power-analysis | PrimeTime power analysis | pt-shell | tool |
-| simulation-triage | Root-cause analysis for simulation failures | n/a | n/a |
+| Rule | What it does |
+|---|---|
+| specification | Accounts for the delivered intent in a source-grounded requirements ledger with explicit judgment responsibilities, then derives design decisions, interfaces and timing constraints |
+| simulation-plan | Maps every specified behavior to a testpoint, produces the verification plan and TB scaffold |
+| rtl-design | Generates RTL from the specification |
+| lint-cdc | SpyGlass lint and CDC checks |
+| synthesis | Design Compiler synthesis |
+| timing-analysis | PrimeTime timing analysis |
+| simulation | Builds and runs UVM testbench against the RTL |
+| power-analysis | PrimeTime power analysis |
+| simulation-triage | Root-cause analysis for simulation failures |
 
 ### Dependency graph
 
@@ -86,17 +86,6 @@ python3 -c "import sys; sys.path.insert(0,'framework/scripts'); import rules
 for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 ```
 
-### The 4 + 4 symmetry
-
-Look at the Oracle column. The four tool-graded rules all deal with structural
-and physical correctness (lint, synthesis, timing, power). Their oracles, the
-EDA tool rulesets and constraint decks, existed before the design under test
-did. The tool applies those rules independently of the RTL author.
-
-The four proposed-graded rules all deal with intent and functional correctness
-(specification, verification plan, RTL, simulation). Their oracles express
-engineering intent and receive authorized endorsement before signoff (§5).
-
 ---
 
 ## 3. State and Proofs
@@ -115,13 +104,12 @@ right action from disk.
 ### Proofs
 
 When a rule completes, the kernel records a **proof**. That's a verdict (pass
-or fail) bound to content fingerprints of every input consumed, every output
-produced, and the oracle that judged the run.
+or fail) bound to content fingerprints of every input consumed and every output
+produced.
 
 Validity is not stored anywhere. It's recomputed as a query. A proof holds
 right now only if the verdict was pass, every recorded fingerprint for inputs
-and outputs still matches what's on disk, and the oracle hasn't been retracted.
-All three have to hold.
+and outputs still matches what's on disk.
 
 Say you edit one line of RTL. Next time anything checks the log, lint-cdc's,
 synthesis's, and simulation's input fingerprints won't match anymore. Three
@@ -191,18 +179,6 @@ twice.
 
 ## 5. The Trust Boundary
 
-### Two kinds of oracle
-
-A tool-graded oracle is independent of the design it judges. SpyGlass's lint
-rules existed before any RTL was written. Their verdicts establish the checks
-performed under the supplied constraints.
-
-A proposed-graded oracle is different. An LLM-authored review or reference
-model comes from the same information the artifact was built from. If the LLM
-misunderstands a spec requirement, it can produce RTL and a reference model
-that agree with each other while both being wrong. Agreement alone therefore
-does not establish conformance to the spec.
-
 ### Verification independence
 
 Design and verification both start from the specification, then they split.
@@ -218,27 +194,16 @@ an independent check-adequacy review checks
 what the tests actually exercised against what the specification asked for.
 This catches both missing checks and checks that test the wrong thing.
 
-### From proposed to endorsed
+### Acceptance record
 
-An authorized decision can endorse a proposed oracle through **pin**, which raises its grade
-to endorsed. The endorsement is anchored to a fingerprint of the oracle's content
-at that moment. If the oracle gets regenerated and the content changes, the
-endorsement goes away on its own. Nobody has to remember to revoke it.
-**Reopen** is the explicit withdrawal, and it invalidates every proof that
-depended on the endorsed oracle.
+When the task calls for recorded acceptance, `signoff` checks that all stage conclusions are
+current and published files are covered by their stage outcomes, then records the decision
+maker, authorization and basis. Reserved decisions wait for the user; delegated decisions follow
+the existing authorization. Ordinary completion does not require a separate signoff.
 
-### Signoff
-
-Closing a module demands everything at once. Every proof currently valid. Every
-oracle at tool or endorsed grade. Every file in a published stage directory must be covered by that stage's latest outcome. The pipeline can iterate just fine
-under proposed oracles, but it can't close under them.
-
-Signoff accepts the stage evidence current at that event. The status remains signed off only
-while that evidence and its endorsements still hold; new conclusions require a new signoff.
-
-Four decisions are recorded: endorse an oracle (`pin`), withdraw one
-(`reopen`), state an attribution (`diagnose`), close the module (`signoff`).
-Everything else is computed.
+The record binds the stage evidence accepted at that event. Changed evidence invalidates it;
+new stage conclusions need new acceptance. Signoff does not replace technical verification.
+Concrete issues are checked by the responsible stage through the existing failure and repair flow.
 
 ---
 
@@ -270,18 +235,12 @@ that nothing required is lost or invented. Shared wording can cover multiple obl
 repeated statements can share an entry when their meaning and judgment agree. Rows judged
 `outside` retain explicit external responsibility and are not established by pipeline signoff.
 
-**Human judgments are reusable and durable.** The architecture
-makes each judgment reusable across runs while its endorsed content is unchanged.
-
 ---
 
 ## Key Terms
 
 | Term | Meaning |
 |---|---|
-| **proof** | A verification conclusion tied to exact input versions, output versions, and an oracle. Validity gets recomputed every time it's queried. |
-| **oracle** | What a proof was judged against. Could be an EDA tool's ruleset or an LLM-authored review or reference model. |
-| **grade** | How much you can trust an oracle. **tool** means authoritative. **proposed** means an LLM assessed its own work (good enough to iterate on, not enough for signoff). **endorsed** means the current oracle content has a live pin; provenance records the decision maker and authorization. |
-| **pin** / **reopen** | How authorized decisions grant and withdraw endorsement in a proposed oracle. A pin is anchored to the oracle content's fingerprint, so if the content changes, the pin lapses. |
-| **rule** | One unit of work the kernel schedules, with declared inputs, outputs, proof, and oracle. The dependency graph falls out of these declarations. |
+| **proof** | A verification conclusion tied to exact input and output versions. Validity gets recomputed every time it's queried. |
+| **rule** | One unit of work the kernel schedules, with declared inputs, outputs and proof. The dependency graph falls out of these declarations. |
 | **projection** | Per-rule status (valid, stale, failed, blocked, in-flight, or missing) computed from the event log and disk on demand. Never stored. |

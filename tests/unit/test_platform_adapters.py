@@ -16,7 +16,7 @@ def test_opencode_registers_skills_without_changing_permissions(policy):
 import assert from 'node:assert/strict';
 const {default: plugin} = await import(process.argv[1]);
 const policy = process.argv[2];
-const config = {permission: {bash: {'*': policy, '*kernel.py*pin*': policy}, external_directory: 'deny'},
+const config = {permission: {bash: {'*': policy, '*kernel.py*signoff*': policy}, external_directory: 'deny'},
  agent: {general: {permission: {bash: policy}}}};
 const original = structuredClone(config);
 const hooks = await plugin();
@@ -24,9 +24,9 @@ await hooks.config(config);
 assert.deepEqual(config.permission, original.permission);
 assert.deepEqual(config.agent, original.agent);
 assert.ok(config.skills.paths.length > 0);
-const output = {args: {command: 'python3 /plugin/kernel.py pin --module M --help'}};
+const output = {args: {command: 'python3 /plugin/kernel.py signoff --module M --help'}};
 if (hooks['tool.execute.before']) await hooks['tool.execute.before']({}, output);
-assert.equal(output.args.command, 'python3 /plugin/kernel.py pin --module M --help');
+assert.equal(output.args.command, 'python3 /plugin/kernel.py signoff --module M --help');
 """
     subprocess.run(
         [

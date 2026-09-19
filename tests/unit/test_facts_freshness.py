@@ -67,7 +67,6 @@ def test_proof_valid_then_input_change_invalidates(tmp_path, monkeypatch):
                     "name": "specification",
                     "verdict": "pass",
                     "inputs": {"intent": v},
-                    "oracle": {"ref": "spec-review", "grade": "endorsed"},
                 }
             ],
             "tool_versions": {},
@@ -81,7 +80,7 @@ def test_proof_valid_then_input_change_invalidates(tmp_path, monkeypatch):
 
 
 def test_proof_invalid_when_own_output_handedited(tmp_path, monkeypatch):
-    # Validity condition 4: hand-editing the rule's own output invalidates its proof.
+    # Hand-editing the rule's own output invalidates its proof.
     monkeypatch.chdir(tmp_path)
     _write("m", "intent/brainstorm.md", "v1")
     dm = _write("m", "Design/specification/design.md", "d1")
@@ -115,7 +114,6 @@ def test_proof_invalid_when_own_output_handedited(tmp_path, monkeypatch):
                     "name": "specification",
                     "verdict": "pass",
                     "inputs": {"intent": v},
-                    "oracle": {"ref": "spec-review", "grade": "endorsed"},
                 }
             ],
             "tool_versions": {},
@@ -157,63 +155,17 @@ def test_fail_verdict_is_not_valid(tmp_path, monkeypatch):
                     "name": "specification",
                     "verdict": "fail",
                     "inputs": {"intent": v},
-                    "oracle": {"ref": "spec-review", "grade": "proposed"},
                 }
             ],
             "tool_versions": {},
         },
         TS,
-    )
-    assert not facts.proof_valid("m", store.read_events("m"), "specification")
-
-
-def test_reopen_after_proof_invalidates(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    _write("m", "intent/brainstorm.md", "v1")
-    v = _fp("m", "intent")
-    store.append_event(
-        "m",
-        {
-            "type": "dispatch",
-            "rule": "specification",
-            "run": 1,
-            "workdir": "w",
-            "inputs": {"intent": v},
-            "params": {},
-        },
-        TS,
-    )
-    store.append_event(
-        "m",
-        {
-            "type": "outcome",
-            "rule": "specification",
-            "run": 1,
-            "verdict": "pass",
-            "outputs": {},
-            "proofs": [
-                {
-                    "name": "specification",
-                    "verdict": "pass",
-                    "inputs": {"intent": v},
-                    "oracle": {"ref": "spec-review", "grade": "endorsed"},
-                }
-            ],
-            "tool_versions": {},
-        },
-        TS,
-    )
-    assert facts.proof_valid("m", store.read_events("m"), "specification")
-    store.append_event(
-        "m", {"type": "reopen", "pin_ref": "spec-review", "reason": "revoke"}, TS
     )
     assert not facts.proof_valid("m", store.read_events("m"), "specification")
 
 
 def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypatch):
-    # The canonical result.json is in the rule's OWN output binding, so hand-
-    # editing it (coverage-inflation / "灌水即作废") invalidates the proof via condition 4 —
-    # exactly like tampering any other promoted output. End-to-end freshness assertion.
+    # The published result.json is fingerprinted like every other delivered output.
     monkeypatch.chdir(tmp_path)
     _write("m", "intent/brainstorm.md", "b1")
     rjrel = "Design/specification/result.json"
@@ -245,7 +197,6 @@ def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypa
                     "name": "specification",
                     "verdict": "pass",
                     "inputs": {"intent": bm},
-                    "oracle": {"ref": "spec-review", "grade": "proposed"},
                 }
             ],
             "tool_versions": {},
@@ -259,30 +210,29 @@ def test_hand_editing_canonical_result_json_invalidates_proof(tmp_path, monkeypa
     assert not facts.proof_valid("m", store.read_events("m"), "specification")
 
 
-def test_oracle_covers_the_whole_review_directory(tmp_path, monkeypatch):
-    """What a human endorses is the set they read. The selector names the review directory, so
-    a reviewer that writes a file the old `*.md` pattern would not have matched — a note, a
-    per-child subdirectory — is inside the version the pin is anchored to, and editing it drops
-    the endorsement like any other change."""
+def test_recorded_review_directory_changes_invalidate_the_conclusion(
+    tmp_path, monkeypatch
+):
     monkeypatch.chdir(tmp_path)
-    r = rules.RULES["rtl-design"]
-    base = store.module_root("m") / Path(*rules.workdir_root("rtl-design"))
-    (base / r.oracle_selector / "per-child").mkdir(parents=True)
-    (base / r.oracle_selector / "review.md").write_text("holds\n")
-    (base / r.oracle_selector / "notes.txt").write_text("side notes\n")
-    (base / r.oracle_selector / "per-child" / "top.md").write_text("# top\n")
-    before = facts.oracle_content_fp("m", r)
-    assert before.startswith("merkle:")
-    for rel in ("notes.txt", "per-child/top.md"):
-        (base / r.oracle_selector / rel).write_text("edited\n")
-        assert facts.oracle_content_fp("m", r) != before, rel
-        (base / r.oracle_selector / rel).write_text(
-            "side notes\n" if rel == "notes.txt" else "# top\n"
-        )
-    assert facts.oracle_content_fp("m", r) == before
+    _write("m", "intent/brainstorm.md", "requirements")
+    review = store.module_root("m") / "Design/specification/spec-review"
+    (review / "per-child").mkdir(parents=True)
+    files = {"review.md": "holds", "notes.txt": "notes", "per-child/top.md": "top"}
+    for rel, text in files.items():
+        (review / rel).write_text(text)
+    _spec_run("m", 1)
+    events = store.read_events("m")
+    event = events[-1]
+    event["outputs"] = {"Design/specification/spec-review": facts.fingerprint(review)}
+    assert facts.proof_valid("m", events, "specification")
+    for rel, text in files.items():
+        (review / rel).write_text("changed")
+        assert not facts.proof_valid("m", events, "specification")
+        (review / rel).write_text(text)
+    assert facts.proof_valid("m", events, "specification")
 
 
-def _spec_run(module, run, *, oracle_grade="endorsed"):
+def _spec_run(module, run):
     """Dispatch+pass specification run N with the intent tree on disk; returns nothing."""
     bm = _fp(module, "intent")
     store.append_event(
@@ -310,124 +260,12 @@ def _spec_run(module, run, *, oracle_grade="endorsed"):
                     "name": "specification",
                     "verdict": "pass",
                     "inputs": {"intent": bm},
-                    "oracle": {"ref": "spec-review", "grade": oracle_grade},
                 }
             ],
             "tool_versions": {},
         },
         TS,
     )
-
-
-def test_re_reap_after_reopen_does_not_resurrect_proof(tmp_path, monkeypatch):
-    # Reopen withdraws trust; a bare RE-REAP (re-reading the same run, no re-execution,
-    # no re-pin) must NOT resurrect the proof. Condition 3 anchors on the run's DISPATCH.
-    monkeypatch.chdir(tmp_path)
-    _write("m", "intent/brainstorm.md", "b1")
-    _spec_run("m", 1)  # dispatch(run1) + outcome(run1)
-    store.append_event(
-        "m",
-        {
-            "type": "pin",
-            "oracle_ref": "spec-review",
-            "content_fingerprint": "sha256:x",
-            "provenance": "p",
-            "reason": "endorse",
-        },
-        TS,
-    )
-    assert facts.proof_valid("m", store.read_events("m"), "specification")
-    store.append_event(
-        "m", {"type": "reopen", "pin_ref": "spec-review", "reason": "revoke"}, TS
-    )
-    assert not facts.proof_valid("m", store.read_events("m"), "specification")
-    # RE-REAP run 1: append a later outcome for the SAME run (no new dispatch, no re-pin)
-    store.append_event(
-        "m",
-        {
-            "type": "outcome",
-            "rule": "specification",
-            "run": 1,
-            "verdict": "pass",
-            "outputs": {},
-            "proofs": [
-                {
-                    "name": "specification",
-                    "verdict": "pass",
-                    "inputs": {"intent": _fp("m", "intent")},
-                    "oracle": {"ref": "spec-review", "grade": "proposed"},
-                }
-            ],
-            "tool_versions": {},
-        },
-        TS,
-    )
-    assert not facts.proof_valid(
-        "m", store.read_events("m"), "specification"
-    )  # STAYS invalid
-
-
-def test_repin_after_reopen_restores_validity(tmp_path, monkeypatch):
-    # Companion: a genuine re-pin (human re-endorses) after reopen DOES restore validity —
-    # the second conjunct (no live pin) is then false. The legitimate pin/regrade path lives.
-    monkeypatch.chdir(tmp_path)
-    _write("m", "intent/brainstorm.md", "b1")
-    _spec_run("m", 1)
-    store.append_event(
-        "m",
-        {
-            "type": "pin",
-            "oracle_ref": "spec-review",
-            "content_fingerprint": "sha256:x",
-            "provenance": "p",
-            "reason": "endorse",
-        },
-        TS,
-    )
-    store.append_event(
-        "m", {"type": "reopen", "pin_ref": "spec-review", "reason": "revoke"}, TS
-    )
-    assert not facts.proof_valid("m", store.read_events("m"), "specification")
-    store.append_event(
-        "m",
-        {
-            "type": "pin",
-            "oracle_ref": "spec-review",
-            "content_fingerprint": "sha256:y",
-            "provenance": "p",
-            "reason": "re-endorse",
-        },
-        TS,
-    )
-    assert facts.proof_valid(
-        "m", store.read_events("m"), "specification"
-    )  # re-pin restores
-
-
-def test_fresh_dispatch_after_reopen_is_valid(tmp_path, monkeypatch):
-    # Companion: a genuine re-execution (new dispatch AFTER the reopen, then reaped) is
-    # valid — its dispatch post-dates the reopen, so condition 3 does not fire.
-    monkeypatch.chdir(tmp_path)
-    _write("m", "intent/brainstorm.md", "b1")
-    _spec_run("m", 1)
-    store.append_event(
-        "m",
-        {
-            "type": "pin",
-            "oracle_ref": "spec-review",
-            "content_fingerprint": "sha256:x",
-            "provenance": "p",
-            "reason": "endorse",
-        },
-        TS,
-    )
-    store.append_event(
-        "m", {"type": "reopen", "pin_ref": "spec-review", "reason": "revoke"}, TS
-    )
-    _spec_run(
-        "m", 2, oracle_grade="proposed"
-    )  # fresh dispatch(run2)+outcome AFTER the reopen
-    assert facts.proof_valid("m", store.read_events("m"), "specification")
 
 
 def test_stale_inputs_returns_changed_declared_inputs(tmp_path, monkeypatch):
@@ -467,7 +305,6 @@ def test_stale_inputs_returns_changed_declared_inputs(tmp_path, monkeypatch):
                     "name": "rtl-design",
                     "verdict": "pass",
                     "inputs": recorded,
-                    "oracle": {"ref": "semantic-review", "grade": "proposed"},
                 }
             ],
             "tool_versions": {},
@@ -541,10 +378,6 @@ def _land_every_proof(module):
                         "name": name,
                         "verdict": "pass",
                         "inputs": inputs,
-                        "oracle": {
-                            "ref": r.oracle[0] if r.oracle else "tool",
-                            "grade": r.oracle[1] if r.oracle else "tool",
-                        },
                     }
                 ],
                 "tool_versions": {},

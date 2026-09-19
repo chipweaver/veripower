@@ -295,7 +295,7 @@ _VERSION_RE = re.compile(r"^\s*Version:\s*(\S+)", re.M)
 def parse_tool(area_text: str) -> str:
     """The DC version off the report header. The kernel's reap-time identity record
     covers the library environment variables and no tool version, and this stage's
-    oracle IS dc_shell, so nothing else names which compiler produced the proof."""
+    reports come from dc_shell; record which compiler produced them."""
     m = _VERSION_RE.search(area_text)
     return f"Design Compiler {m.group(1)}" if m else "Design Compiler unknown"
 

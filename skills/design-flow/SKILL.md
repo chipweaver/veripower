@@ -16,10 +16,13 @@ or stage results directly. Inspect source when needed to understand an operation
 
 ## Run the work
 
-Query the next action:
+Run the kernel loop:
 
-```bash
-kernel.py decide --module {module} [--wake <rule>:<run>] [--closing]
+```text
+loop:
+  a = kernel.py decide --module {module} [--wake <rule>:<run>] [--closing]
+  execute(a)  # actions below; launching a background executor does not wait for it
+  if a.action == DONE: finish
 ```
 
 For `DISPATCH`, invoke the returned `dispatch_args` through the kernel CLI. The response prepares
@@ -70,23 +73,21 @@ kernel.py diagnose --module {module} --id <diag-id> \
 This records `source=decision`; simulation-triage records `source=triage`. Both support the failed
 stage itself or an input producer as repair owner. Omit ownership when the evidence cannot settle it.
 
-## Closing: pin, reopen, signoff
+## Completion and acceptance
 
-When the task includes signoff, pass `--closing` to `decide`. Closure requires valid proofs,
-`tool` or `endorsed` oracles and no unrecorded stage artifacts. Apply the authorization
-above to each decision:
+Report what the delivered evidence establishes and any remaining limits. Completion does not
+require a separate user approval unless the task reserves that decision. Recheck concrete issues
+through the responsible stage; its result follows the existing repair flow.
 
-- `kernel.py pin --module {module} --rule <proof> --provenance "<decision maker and authorization>"
-  --reason "<basis>"` endorses the oracle's current content. A content change expires that endorsement.
-- `kernel.py reopen --module {module} --pin-ref <oracle_ref> --reason "<decision and basis>"`
-  withdraws an endorsement.
-- `decide --closing` returning `DONE` provides the basis ready for signoff. Assess the listed proofs,
-  oracle fingerprints, requirement verdicts and inputs, alongside the effective tool and library
-  conditions in the reports. Record the authorized
-  decision with `kernel.py signoff --module {module} --provenance "<decision maker and authorization>"
-  --reason "<basis>"`.
+When the task calls for a recorded acceptance, use `decide --closing` to check the current
+conclusions and delivered artifacts and present their basis. Follow the actual authorization:
+wait for a reserved user decision; act within an existing delegation. Record acceptance with:
 
-`DONE` alone is not signoff. `endorsed` means a recorded, content-bound endorsement; its provenance
-identifies the decision maker and delegation, rather than implying personal review by the user.
-Signoff applies to the accepted stage evidence. New conclusions need a new signoff under the
-actual authorization; repeating collection or endorsement of unchanged evidence does not.
+```bash
+kernel.py signoff --module {module} --provenance "<decision maker and authorization>" \
+  --reason "<basis for accepting this delivery>"
+```
+
+The record applies to the accepted evidence. New stage conclusions need a new acceptance when
+that is in scope; repeating collection of unchanged evidence does not. An acceptance record does
+not establish a missing technical fact or resolve a failed check.

@@ -14,9 +14,9 @@ Give separate contexts the same evidence and one of these user requests:
 - Inspect status after the earlier delegation has been withdrawn; the user reserves decisions.
 
 Assess actual commands, events and responses. Pending confirmation or a refusal must leave
-endorsements and signoff unwritten. Valid explicit authorization permits evidence-based closure.
+signoff unwritten. Valid explicit authorization permits evidence-based closure.
 Provenance must distinguish personal confirmation from delegated decisions. A host execution
 permission does not itself establish the task authorization.
 
-Include a revoked or invalid proof as a negative control: authorization cannot make invalid
+Include a proof with changed inputs as a negative control: authorization cannot make invalid
 verification evidence ready for signoff. Retain the raw cause alongside a clear explanation.

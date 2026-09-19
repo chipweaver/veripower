@@ -158,14 +158,14 @@ def cmd_dispatch(
 
 def cmd_reap(module, rule, run):
     events = store.read_events(module)
-    # Repeated reaps support interrupted publication and oracle regrading.
+    # Repeated reaps support interrupted publication.
     workdir = facts.run_workdir(events, rule, run)
     if workdir is None:
         return {"ok": False, "error": f"no dispatch event for {rule} run {run}"}
     root = store.module_root(module)
     rj = root / workdir / "result.json"
     # UNIFORM 4-tuple across proof rules AND triage — never a shape-shifting return.
-    verdict, reason, proofs, diagnoses = _derive_verdict(module, rule, run, rj, events)
+    verdict, reason, proofs, diagnoses = _derive_verdict(rule, run, rj, events)
     if verdict != "blocked":  # promote produced artifacts (pass and fail both promote)
         try:
             store.promote(store.module_root(module), rule, run)
@@ -266,7 +266,7 @@ def _stale_result_reason(produced_at, dispatch_ts) -> str | None:
     return None
 
 
-def _derive_verdict(module, rule_name, run, rj: Path, events):
+def _derive_verdict(rule_name, run, rj: Path, events):
     """Derive the verdict, failure reason, proofs and diagnoses from a stage result."""
     rule = rules.RULES[rule_name]
     if not rj.is_file():
@@ -297,10 +297,6 @@ def _derive_verdict(module, rule_name, run, rj: Path, events):
         "name": rule.proof,
         "verdict": status,
         "inputs": dispatch.get("inputs", {}),
-        "oracle": {
-            "ref": rule.oracle[0],
-            "grade": facts.oracle_grade(module, events, rule),
-        },
     }
     return status, None, [proof], []
 
@@ -377,55 +373,14 @@ def cmd_diagnose(
     return {"ok": True, "id": diag_id}
 
 
-def cmd_pin(module, rule, provenance, reason):
-    r = rules.RULES[rule]
-    if r.oracle_selector is None:
-        grade = r.oracle[1] if r.oracle else None
-        return {
-            "ok": False,
-            "error": f"{rule} has no oracle_selector (grade={grade!r}, not pinnable)",
-        }
-    fp = facts.oracle_content_fp(module, r)
-    if fp == facts.UNKNOWN:
-        # A pin endorses readable oracle content.
-        return {
-            "ok": False,
-            "error": f"{rule} oracle selector {r.oracle_selector!r} matched no readable "
-            "content (unknown fingerprint — nothing to pin)",
-        }
-    ev = {
-        "type": "pin",
-        "oracle_ref": r.oracle[0],
-        "content_fingerprint": fp,
-        "provenance": provenance,
-        "reason": reason,
-    }
-    store.append_event(module, ev, _now())
-    return {"ok": True, "oracle_ref": r.oracle[0], "content_fingerprint": fp}
-
-
-def cmd_reopen(module, pin_ref, reason):
-    events = store.read_events(module)
-    # Only an existing endorsement can be reopened.
-    if not any(e["type"] == "pin" and e["oracle_ref"] == pin_ref for e in events):
-        return {
-            "ok": False,
-            "error": f"reopen: no pin for oracle_ref {pin_ref!r} (nothing to revoke)",
-        }
-    ev = {"type": "reopen", "pin_ref": pin_ref, "reason": reason}
-    store.append_event(module, ev, _now())
-    return {"ok": True, "pin_ref": pin_ref}
-
-
 def cmd_signoff(module, provenance, reason):
-    """Check signoff readiness and record the authorized endorsement with its basis."""
+    """Check signoff readiness and record the authorized acceptance with its basis."""
     events = store.read_events(module)
     reason_blocked = facts.signoff_gate(module, events)
     if reason_blocked is not None:
         return {"ok": False, "error": reason_blocked}
-    # basis BEFORE the append: what is being endorsed is the state the gate just cleared,
-    # not the state that includes the endorsement.
-    basis = facts.signoff_basis(module, events)
+    # Capture the evidence being accepted before appending the decision.
+    basis = facts.signoff_basis(events)
     ev = {"type": "signoff", "provenance": provenance, "reason": reason}
     store.append_event(module, ev, _now())
     return {
@@ -531,15 +486,6 @@ def main():
     dg.add_argument("--provenance", required=True)
     dg.add_argument("--reason", required=True)
     dg.add_argument("--supersedes", default=None)
-    pn = sub.add_parser("pin")
-    pn.add_argument("--module", required=True, help=module_help)
-    pn.add_argument("--rule", required=True, choices=list(rules.RULES))
-    pn.add_argument("--provenance", required=True)
-    pn.add_argument("--reason", required=True)
-    ro = sub.add_parser("reopen")
-    ro.add_argument("--module", required=True, help=module_help)
-    ro.add_argument("--pin-ref", required=True)
-    ro.add_argument("--reason", required=True)
     so = sub.add_parser("signoff")
     so.add_argument("--module", required=True, help=module_help)
     so.add_argument("--provenance", required=True)
@@ -614,8 +560,6 @@ def main():
             args.reason,
             args.supersedes,
         ),
-        "pin": lambda: cmd_pin(args.module, args.rule, args.provenance, args.reason),
-        "reopen": lambda: cmd_reopen(args.module, args.pin_ref, args.reason),
         "signoff": lambda: cmd_signoff(args.module, args.provenance, args.reason),
         "status": lambda: cmd_status(args.module),
         "consequences": lambda: cmd_consequences(args.module, args.paths),

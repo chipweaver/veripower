@@ -70,7 +70,7 @@ def run_codex(
     config = tmp_path / ".codex"
     (config / "rules").mkdir(parents=True)
     if host_rule:
-        pattern = ["python3", str(fixture / "framework/scripts/kernel.py"), "pin"]
+        pattern = ["python3", str(fixture / "framework/scripts/kernel.py"), "signoff"]
         (config / "rules/host.rules").write_text(
             f"prefix_rule(pattern={json.dumps(pattern)}, decision={json.dumps(host_rule)}, "
             'justification="fixture host policy")\n'
@@ -254,7 +254,7 @@ def test_host_prompt_policy_is_respected(tmp_path, decision):
             return call(
                 "exec_command",
                 {
-                    "cmd": f"python3 {fixture}/framework/scripts/kernel.py pin",
+                    "cmd": f"python3 {fixture}/framework/scripts/kernel.py signoff",
                     "workdir": str(tmp_path),
                 },
             )
@@ -272,11 +272,11 @@ def test_host_prompt_policy_is_respected(tmp_path, decision):
 @pytest.mark.parametrize(
     "verb,host_rule,executed",
     [
-        ("pin", None, True),
-        ("pin --help", None, True),
-        ("pin --module M --help", None, True),
-        ("pin", "forbidden", False),
-        ("pin", "prompt", False),
+        ("signoff", None, True),
+        ("signoff --help", None, True),
+        ("signoff --module M --help", None, True),
+        ("signoff", "forbidden", False),
+        ("signoff", "prompt", False),
     ],
 )
 def test_never_uses_host_policy_without_plugin_prompts(

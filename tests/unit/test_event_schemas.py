@@ -10,13 +10,11 @@ EXPECTED = {
     "dispatch",
     "outcome",
     "diagnosis",
-    "pin",
-    "reopen",
     "signoff",
 }
 
 
-def test_exactly_six_event_schemas():
+def test_exactly_four_event_schemas():
     got = {p.stem.replace(".schema", "") for p in SCHEMA_DIR.glob("*.schema.json")}
     assert got == EXPECTED
 

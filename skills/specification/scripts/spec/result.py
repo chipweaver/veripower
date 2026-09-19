@@ -46,7 +46,7 @@ def enumerate_artifacts(workdir: Path, top: str) -> list[dict]:
     (module-root, outside the workdir — would break promote()) or result.json (self).
 
     The reviews leave as one tree, so however they are laid out inside it they are delivered and
-    endorsed together, which needs no roster: <TOP>
+    versioned together, which needs no roster: <TOP>
     is the caller's (build_result reads manifest.module, and an unreadable manifest is BLOCKED
     there)."""
     workdir = Path(workdir)

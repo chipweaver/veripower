@@ -6,7 +6,7 @@ For front-end design and verification engineers. Walks through the full flow fro
 
 ## §0 In one sentence
 
-VeriPower takes a finalized module requirement all the way to front-end signoff. Spec, verification plan, RTL, lint/CDC, synthesis, timing, simulation, power. Eight stages, dispatched and reworked automatically by an Orchestrator. You step in at four types of checkpoints to control quality.
+VeriPower takes a finalized module requirement all the way to front-end signoff. Spec, verification plan, RTL, lint/CDC, synthesis, timing, simulation, power. Eight stages, dispatched and reworked automatically by an Orchestrator. Your participation follows the decisions needed and the authorization you give.
 
 ---
 
@@ -151,16 +151,16 @@ intent/brainstorm.md
                                             ↓
                                     [power-analysis]
                                             ↓
-                                      signoff (you, §1.6)
+                                      signoff (when in scope, §1.6)
 ```
 
 The work tree splits into `Design/` and `Verification/`. Each stage below covers three things: **what it does**, **artifacts**, and **your action**.
 
-The third column in artifact tables tells you whether to read it. **Must read** means the pipeline will put the path in front of you at a gate. **Optional** means you'd look at it during review. Unmarked files are consumed by scripts or downstream tools.
+The third column in artifact tables tells you whether to read it. **Must read** marks material needed for the corresponding decision; who makes it follows the task's authorization. **Optional** means you'd look at it during review. Unmarked files are consumed by scripts or downstream tools.
 
-**The pipeline follows the actual authorization.** It presents unresolved decisions when human input is needed, continues within an existing delegation, and retains the signoff endorsement requirements.
+**The pipeline follows the actual authorization.** It presents unresolved decisions when human input is needed, continues within an existing delegation, and records acceptance when it is in scope.
 
-The items marked "read xx" or "glance at xx" are review actions. The pipeline won't stop for them. `semantic-review` and `refmodel` will get caught at signoff if you haven't endorsed them yet. Review lint-cdc's `waiver.tcl` directly; it has no separate approval prompt.
+The items marked "read xx" or "glance at xx" are review actions. The pipeline won't stop for them. Review lint-cdc's `waiver.tcl` directly; it has no separate approval prompt.
 
 ---
 
@@ -180,7 +180,7 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 | `clocks.json` / `top-io.json` | Boundary info: clocks and their arrival budgets, top-level ports | `design.md` §1.3 is the human-readable version |
 | `constraints/<TOP>.sdc` / `.sgdc` | Constraint pair generated from clocks + top-io | Generated, not a decision |
 
-**Your participation:** review unresolved requirements, numerical bounds and boundary choices. Decisions needing your input arrive with their basis; work within an existing delegation continues. Review `design.md` and the findings at delivery. An unresolved violation prevents this stage from passing; signoff is not a substitute for resolving it. Review endorsement still uses `kernel.py pin` (§1.6).
+**Your participation:** review unresolved requirements, numerical bounds and boundary choices. Decisions needing your input arrive with their basis; work within an existing delegation continues. Review `design.md` and the findings at delivery. An unresolved violation prevents this stage from passing; signoff is not a substitute for resolving it.
 
 ---
 
@@ -193,12 +193,12 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 | File | What it is | Read it? |
 |---|---|---|
 | `verification-plan.md` | §3 testpoint matrix + §4 power scenarios. This is what you read when the round is handed over | **Must read** |
-| `plan-review/findings.md` / `decisions.md` | Review findings and your rulings | **Must read** |
+| `plan-review/findings.md` / `decisions.md` | Review findings and recorded decisions | **Must read** |
 | `tb-scaffold.json` | TB scaffold: testpoint and agent definitions | Optional, plan §3 is the human-readable version |
 | `power-scenarios.json` | Power scenarios, consumed by power-analysis | Optional, plan §4 is the human-readable version |
 | `sequences.json` | Stimulus sequence definitions | No need |
 
-**Your participation:** review `verification-plan.md` and `plan-review/findings.md`. The stage resolves findings against their evidence; an unresolved blocking finding prevents the stage from passing. Decisions follow the actual authorization and are recorded with their basis in `plan-review/decisions.md`. Endorsing the review uses `kernel.py pin` (#6 below); endorsement does not replace resolving a defect.
+**Your participation:** review `verification-plan.md` and `plan-review/findings.md`. The stage resolves findings against their evidence; an unresolved blocking finding prevents the stage from passing. Decisions follow the actual authorization and are recorded with their basis in `plan-review/decisions.md`.
 
 > The testpoint matrix guides TB authoring, regression and coverage convergence.
 
@@ -212,12 +212,12 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 
 | File | What it is | Read it? |
 |---|---|---|
-| `semantic-review/*.md` | Review of RTL against design intent | **Must read**, required for signoff endorsement |
+| `semantic-review/*.md` | Review of RTL against design intent | Useful for reviewing this delivery |
 | `*.v` | RTL source | Optional |
 | `constraint-annotations.json` | Timing exceptions and generated clocks implied by this RTL, using real module names. Lint-cdc and synthesis constraints come from here | Optional |
 | `rtl-files.json` | Per-child `files[]` + `incdirs[]`, every downstream filelist is generated from it | No need |
 
-**Your action: read `semantic-review/*.md`.** It's one of the four artifacts you need to endorse before signoff (§1.6). The pipeline won't stop here to wait for you, but reading it early can save a rework round.
+**Your participation:** `semantic-review/*.md` explains the RTL review findings and their resolution. Use it to assess the delivery or discuss a concrete concern.
 
 After this stage, the pipeline forks into the implementation chain and the simulation chain, running in parallel.
 
@@ -254,7 +254,7 @@ After this stage, the pipeline forks into the implementation chain and the simul
 | `out/<TOP>_syn.v` / `_syn.sdc` / `_syn.sdf` | Post-synthesis netlist, exported SDC, delay annotation | Consumed by downstream timing/power |
 | `constraints.sdc` | Assembled constraints: spec SDC + `constraints.local.sdc` | Assembly product |
 
-**Your action: none.** To review, read `reports/qor.rpt` and `result.json`'s `requirements[]`. The judgment comes from dc_shell's QoR report, against the rows you approved at the ledger gate. SDC exceptions come from the `constraint-annotations.json` declared by rtl-design. A path that cannot meet timing is routed upstream for repair.
+**Your action: none.** To review, read `reports/qor.rpt` and `result.json`'s `requirements[]`. The judgment comes from dc_shell's QoR report, against the requirements recorded in the ledger. SDC exceptions come from the `constraint-annotations.json` declared by rtl-design. A path that cannot meet timing is routed upstream for repair.
 
 ---
 
@@ -282,7 +282,7 @@ Synthesis and STA choose work from the actual change. Applicable measurements ca
 
 | File | What it is | Read it? |
 |---|---|---|
-| `tb/uvm/refmodel/**` | Reference model that judges correctness | **Must read**, required for signoff endorsement |
+| `tb/uvm/refmodel/**` | Reference model that judges correctness | Useful for reviewing this delivery |
 | `case-results-summary.md` | Per-case result summary | Optional |
 | `structural-coverage.json` | Structural coverage: line / cond / branch / toggle / fsm | Optional |
 | `regression-log.txt` + `logs/` | Regression log plus per-case logs | Optional, check when you want to know why a specific case failed |
@@ -290,7 +290,7 @@ Synthesis and STA choose work from the actual change. Applicable measurements ca
 | `check-review.md` | Per-testpoint check adequacy review | Used by the stage to direct check repairs |
 | `env.sh` / `filelist.f` / `rtl_filelist.f` / `tests/testlist.json` / `case-results.json` | Environment, compile file lists, case list, machine-readable results | No need |
 
-**Your action: read the reference model `tb/uvm/refmodel/*` carefully.** It supplies the expected behavior for regression checks and is one of the four artifacts you endorse (§1.6). The pipeline won't stop here, and rework doesn't need your direction.
+**Your participation:** `tb/uvm/refmodel/*` supplies expected behavior for regression checks. Inspect it when assessing what the tests establish or investigating a discrepancy.
 
 ---
 
@@ -309,7 +309,7 @@ Synthesis and STA choose work from the actual change. Applicable measurements ca
 | `saif/<id>.saif` | Activity used for each scenario | No need |
 | `reports_ptpx/<id>/ptpx.log` | PT-PX log for this scenario | Only when something goes wrong |
 
-For review, start with `analysis.md` for measured conditions, checks and conclusions, then inspect the referenced reports. Decisions about acceptance follow the actual human or delegated authorization. After this stage, the pipeline has nothing left to run. Signoff is a separate act you initiate (§1.6).
+For review, start with `analysis.md` for measured conditions, checks and conclusions, then inspect the referenced reports. Decisions about acceptance follow the actual human or delegated authorization. After this stage, the pipeline has nothing left to run. Signoff records acceptance when it is in scope (§1.6).
 
 ---
 
@@ -319,8 +319,8 @@ For review, start with `analysis.md` for measured conditions, checks and conclus
 |---|---|
 | `missing` | Never been run |
 | `in-flight` | Currently running |
-| `valid` | Completed, result currently trustworthy |
-| `stale` | Completed, but something upstream changed. Result is now invalid, will be rebuilt next round |
+| `valid` | Recorded pass; its input and output fingerprints still match |
+| `stale` | Recorded pass, but an input or output has changed; the affected work needs reassessment |
 | `failed` | Completed, judgment says it didn't pass |
 | `blocked` | Can't proceed (missing environment, crashed) |
 
@@ -348,21 +348,15 @@ More error messages in [Appendix B](#appendix-b-error-reference).
 
 ### 1.6 Signoff
 
-Signoff records acceptance of the current verification evidence. It runs when included in the
-task, for example: “Run signoff for {module}.” The flow assesses the stage results, oracle content,
-measured requirements, tool identities and inputs. Tool reports still need valid scope and conditions.
+`signoff` records acceptance of the current verification evidence, when the task calls for it.
+The flow checks the stage conclusions and delivered artifacts, then follows the actual authorization:
+reserved decisions are presented with their basis and wait for you; delegated decisions proceed in
+scope. `provenance` records the decision maker and authorization; `reason` records the acceptance
+basis. Host execution permissions remain separate.
 
-The specification, plan and RTL reviews, and simulation's reference model, need explicit content-bound
-endorsement through `pin`. The resulting `endorsed` grade records that acceptance, not personal review
-by a particular actor. `provenance` identifies the decision maker and authorization; `reason` explains
-its basis. Changes to the endorsed content expire the pin; `reopen` withdraws it explicitly.
-
-When you retain a decision, the flow presents the evidence and waits. Within your explicit delegation,
-it decides in scope and records that delegation. A refusal remains binding. Host command permissions
-are separate and remain effective. Ready results do not automatically sign off the module: the final
-accepted decision is recorded by `signoff`.
-
-**Signoff follows the accepted evidence.** Changed evidence or withdrawn endorsement makes it invalid. Restoring the same evidence and endorsement can restore its validity; new stage conclusions need a new signoff under the actual authorization.
+Signoff binds the accepted evidence. Changed evidence invalidates it; restoring the same evidence
+can restore validity, while new stage conclusions need new acceptance. Signoff does not replace
+technical verification or turn a failed check into a pass.
 
 Files in a published stage directory must be covered by that stage's recorded artifacts. For an unrecorded file, determine whether it belongs in the delivery, then remove it or close the stage with the relevant evidence.
 
@@ -418,12 +412,8 @@ The body of this manual uses familiar terms where possible. Below are the words 
 | Plugin term | What it means |
 |---|---|
 | stage / rule | A pipeline stage. One stage = one rule |
-| proof | Evidence that a stage's result is currently trustworthy. Records which files it read, which it produced (content fingerprints), and what judged it |
-| oracle / judge | **The judgment artifact**, the thing that determines pass/fail. Either a tool report or an LLM-authored review |
-| grade (`proposed` / `tool` / `endorsed`) | How trustworthy the judgment is. `proposed` = LLM-authored, needs authorized endorsement before signoff (becomes `endorsed` after endorsement) |
-| pin | Your **endorsement** of an LLM-authored judgment. Records a fingerprint of the content at that moment |
-| reopen | Withdraw an endorsement |
-| stale | Something upstream changed, this result is no longer valid. Not a flag. Recomputed on every query |
+| proof | A stage's pass/fail conclusion, bound to recorded input and output fingerprints |
+| stale | An input or output changed, so the recorded pass is no longer current. Recomputed on every query |
 | event log / `events.jsonl` | Audit log, the only persistent state file |
 | dispatch / reap | Send a stage off to run / collect its result |
 | decide | The scheduler. Ask it "what next?" and it returns exactly one action |
@@ -431,7 +421,7 @@ The body of this manual uses familiar terms where possible. Below are the words 
 | workdir / run | A stage's working directory for a particular round / the round number |
 | input closure | All upstream artifacts a result transitively depends on |
 | fix_owner | Which stage should fix this failure |
-| signoff | The act of putting your name on a set of results |
+| signoff | A recorded acceptance of specific stage evidence under the task's authorization |
 
 ---
 
@@ -441,13 +431,12 @@ The body of this manual uses familiar terms where possible. Below are the words 
 |---|---|---|---|---|---|
 | 1 | Requirements dialogue | brainstorm (before pipeline) | Requirements and architecture, including PPA targets | No | §1.2 |
 | 2 | Requirements and boundary decisions | specification | Resolve open requirements and confirm bounds/boundary with their evidence | Follow the actual authorization; do not infer technical proof from approval | §1.4 |
-| 3 | Delivery handoff | specification, after independent review | Review the design and findings; unresolved violations are handled before endorsement at #6 | Yes | §1.4 |
-| 4 | Delivery handoff | simulation-plan | Nothing — same; you endorse the plan review at #6 | Yes | §1.4 |
+| 3 | Delivery handoff | specification, after independent review | Review the design and findings; the stage resolves violations before passing | Yes | §1.4 |
+| 4 | Delivery handoff | simulation-plan | Review the plan and findings as needed | Yes | §1.4 |
 | 5 | ESCALATE | any stage | Attribute the failure to a stage and say why | No | §1.5 |
-| 6 | Endorse judgments | four LLM-authored artifacts | Read, confirm, give a reason | Required before signoff | §1.6 |
-| 7 | Signoff | after all stages | Review the signoff basis and approve | Yes. Without it the module stays in delivery state | §1.6 |
+| 6 | Signoff | after all stages | Accept the evidence under the actual authorization | Only needed when recorded acceptance is in scope | §1.6 |
 
-These are decision and review points, not mandatory permission prompts. Human participation follows the actual authorization; endorsement and signoff remain explicit recorded decisions.
+These are decision and review points, not mandatory permission prompts. Human participation follows the actual authorization; signoff records acceptance when the task calls for it.
 
 ## Appendix B: Error reference
 
@@ -459,15 +448,13 @@ These are decision and review points, not mandatory permission prompts. Human pa
 | `<stage>: envelope named no fix_owner` | Stage failed but didn't say who should fix it | Identify the failed stage itself or an input producer as the repair owner, with the reason (§1.5) |
 | `<stage>: fix_owner ... is neither itself nor an input producer` | Repair owner is unrelated to the failed stage | Name the failed stage or a stage whose artifacts it consumes |
 | `<stage>: diagnosis named no fix_owner` | Triage ran but didn't identify who should fix it | It lists the candidates for you. Pick one and explain why |
-| `<stage>: the oracle that judged this failure was reopened` | You withdrew your endorsement of the judgment that found this failure | Let it rerun the stage |
 | `intent tree incomplete: intent/brainstorm.md is not there…` | The pipeline has no intent document to start from | Put your document at `{module}/intent/brainstorm.md`, with anything it names as authoritative beside it |
 
 **Signoff gate**
 
 | Message | What it means | What to do |
 |---|---|---|
-| `signoff blocked: <stage> not valid` | That stage's result has gone stale | Let the flow continue running to rebuild it |
-| `signoff blocked: <stage> oracle is proposed (pin it)` | You haven't endorsed that stage's LLM-authored judgment yet | Read it, confirm, and give a reason. See §1.6 |
+| `signoff blocked: <stage> not valid` | That stage has no current passing conclusion | Let the flow resolve the missing work, failure or changed evidence |
 | `signoff blocked: <stage> has unrecorded file(s) <file>` | A published stage directory contains files not covered by its latest outcome | Assess whether the files belong in the delivery, then remove them or close the stage with the relevant evidence |
 
 **Environment and tools**

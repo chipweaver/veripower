@@ -145,20 +145,10 @@ def _recorded_inputs(module, rule, extra=()):
     return rec
 
 
-def _oracle_rel(rule):
-    """The concrete path the rule's oracle selector resolves to in these fixtures."""
-    sel = rules.RULES[rule].oracle_selector
-    if not sel:
-        return None
-    rel = sel.replace("*", "oracle_stub.sv") if "*" in sel else sel
-    return "/".join((*rules.workdir_root(rule), rel))
-
-
 def _valid(module, rule, run, *, tag=None, out_content=None):
     """Dispatch+pass `rule`: write its declared outputs (content per `out_content`
     override else the run-tagged default), record inputs/outputs at current-disk
-    fingerprints, emit a passing same-name proof carrying the rule's declared oracle."""
-    r = rules.RULES[rule]
+    fingerprints, and emit a passing same-name proof."""
     marker = tag if tag is not None else f"r{run}"
     for rel in _OUTPUTS[rule]:
         content = (out_content or {}).get(rel, f"{rule}:{rel}:{marker}")
@@ -177,7 +167,6 @@ def _valid(module, rule, run, *, tag=None, out_content=None):
                 "name": rule,
                 "verdict": "pass",
                 "inputs": inputs,
-                "oracle": {"ref": r.oracle[0], "grade": r.oracle[1]},
             }
         ],
     )
@@ -190,7 +179,6 @@ def _fail(module, rule, run, owner="auto"):
     requires one on a failure (`--fix-owner` on every failure) and the scheduler now stops
     the round on a failure nobody attributed. `owner="auto"` picks the first legal target;
     pass `owner=None` for the deliberately-unattributed case."""
-    r = rules.RULES[rule]
     if owner == "auto":
         legal = sorted(rules.input_closure(rule), key=rules.FORWARD_PRIORITY.index)
         owner = legal[0] if legal else None
@@ -215,7 +203,6 @@ def _fail(module, rule, run, owner="auto"):
                 "name": rule,
                 "verdict": "fail",
                 "inputs": inputs,
-                "oracle": {"ref": r.oracle[0], "grade": r.oracle[1]},
             }
         ],
     )
@@ -395,7 +382,6 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
                 "name": "rtl-design",
                 "verdict": "pass",
                 "inputs": inputs,
-                "oracle": {"ref": "semantic-review", "grade": "proposed"},
             }
         ],
     )
@@ -465,7 +451,6 @@ def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
                 "name": "specification",
                 "verdict": "pass",
                 "inputs": inputs,
-                "oracle": {"ref": "spec-review", "grade": "proposed"},
             }
         ],
     )
@@ -766,19 +751,12 @@ def test_first_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
 
 
 def test_reverify_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
-    """Shape 4 — a re-verify: the oracle was reopened, so the proof is invalid with ZERO
-    input drift. Same empty-narrowing shape as a first delivery, and the skill separates the
-    two on disk: its prior products were carried in, so it re-derives its gate and rewrites
-    nothing."""
+    """An explicit recheck with unchanged inputs carries prior products without narrowing."""
     monkeypatch.chdir(tmp_path)
     m = "reverify"
     _mk(m, "intent/brainstorm.md", "b1")
     _valid(m, "specification", 1)
-    oref = rules.RULES["specification"].oracle[0]
-    store.append_event(
-        m, {"type": "reopen", "pin_ref": oref, "reason": "re-examine"}, TS
-    )
-    assert not facts.proof_valid(m, store.read_events(m), "specification")
+    assert facts.proof_valid(m, store.read_events(m), "specification")
     assert facts.stale_inputs(m, store.read_events(m), "specification") == []
 
     d = kernel.cmd_dispatch(m, "specification", None)

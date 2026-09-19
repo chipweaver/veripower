@@ -15,10 +15,6 @@ class Rule:
     workdir_root: tuple[str, ...]
     inputs: dict[str, tuple[str, ...]] = field(default_factory=dict)
     proof: str | None = None
-    oracle: tuple[str, str] | None = None  # (ref, grade)
-    oracle_selector: str | None = (
-        None  # proposed-oracle content selector (workdir-root-relative glob)
-    )
     params: tuple[str, ...] = ()
     # Diagnostic rule used when a failure names no repair owner.
     triage: str | None = None
@@ -38,8 +34,6 @@ RULES: dict[str, Rule] = {
         workdir_root=("Design", "specification"),
         inputs={"intent": ("intent",)},
         proof="specification",
-        oracle=("spec-review", "proposed"),
-        oracle_selector="spec-review",
         carry=("**",),
         no_carry=("spec-review/findings/*",),
     ),
@@ -58,8 +52,6 @@ RULES: dict[str, Rule] = {
             "top_io": ("Design/specification/top-io.json",),
         },
         proof="simulation-plan",
-        oracle=("plan-review", "proposed"),
-        oracle_selector="plan-review",
         carry=("**",),
         no_carry=("plan-review/findings.md",),
     ),
@@ -79,8 +71,6 @@ RULES: dict[str, Rule] = {
             "requirements": ("Design/specification/requirements.json",),
         },
         proof="rtl-design",
-        oracle=("semantic-review", "proposed"),
-        oracle_selector="semantic-review",
         carry=("**",),
         no_carry=("semantic-review/*",),
     ),
@@ -101,7 +91,6 @@ RULES: dict[str, Rule] = {
             "requirements": ("Design/specification/requirements.json",),
         },
         proof="lint-cdc",
-        oracle=("spyglass-ruleset", "tool"),
         carry=("**",),
     ),
     "synthesis": Rule(
@@ -121,7 +110,6 @@ RULES: dict[str, Rule] = {
             "requirements": ("Design/specification/requirements.json",),
         },
         proof="synthesis",
-        oracle=("dc-shell", "tool"),
         carry=("**",),
     ),
     "timing-analysis": Rule(
@@ -136,7 +124,6 @@ RULES: dict[str, Rule] = {
             "requirements": ("Design/specification/requirements.json",),
         },
         proof="timing-analysis",
-        oracle=("pt-shell", "tool"),
         carry=("**",),
     ),
     "simulation": Rule(
@@ -169,9 +156,6 @@ RULES: dict[str, Rule] = {
         },
         # promoted products (sim/result.py enumerate_artifacts) — power-analysis consumes them
         proof="simulation",
-        oracle=("tb-refmodel", "proposed"),
-        oracle_selector="tb/uvm/refmodel",  # pin endorses the JUDGE itself —
-        # survives runs; content drift (LLM regenerates refmodel) drops the pin at reap
         triage="simulation-triage",  # the one stage with a deeper analyzer behind it
         carry=("**",),
         no_carry=("check-review.md",),
@@ -199,7 +183,6 @@ RULES: dict[str, Rule] = {
             "requirements": ("Design/specification/requirements.json",),
         },
         proof="power-analysis",
-        oracle=("pt-shell", "tool"),
         carry=("**",),
     ),
     "simulation-triage": Rule(
@@ -217,7 +200,6 @@ RULES: dict[str, Rule] = {
             "requirements": ("Design/specification/requirements.json",),
         },
         proof=None,
-        oracle=None,
         params=("sim_run",),
     ),
 }

@@ -28,17 +28,17 @@ VeriPower 是一个芯片前端设计与验证系统。它把一个 LLM 编码 a
 
 八条规则构成整个流程。第九条 simulation triage 是一个诊断工具，它分析仿真失败但不记录自己的验证结论。
 
-| 规则 | 做什么 | Oracle | 等级 |
-|---|---|---|---|
-| specification | 从自然语言的头脑风暴产出结构化设计文档、子设计和时序约束 | spec-review（LLM） | proposed |
-| simulation-plan | 把每条规格行为映射到测试点，产出验证计划和 TB 脚手架 | plan-review（LLM） | proposed |
-| rtl-design | 根据规格生成 RTL | semantic-review（LLM） | proposed |
-| lint-cdc | SpyGlass lint 和 CDC 检查 | spyglass 规则集 | tool |
-| synthesis | Design Compiler 综合 | dc-shell | tool |
-| timing-analysis | PrimeTime 时序分析 | pt-shell | tool |
-| simulation | 构建并运行 UVM 测试平台，对 RTL 做验证 | tb-refmodel（LLM） | proposed |
-| power-analysis | PrimeTime 功耗分析 | pt-shell | tool |
-| simulation-triage | 仿真失败的根因分析 | 无 | 无 |
+| 规则 | 做什么 |
+|---|---|
+| specification | 依据原始意图建立需求账本和判断责任，形成设计决策、接口与时序约束 |
+| simulation-plan | 把每条规格行为映射到测试点，产出验证计划和 TB 脚手架 |
+| rtl-design | 根据规格生成 RTL |
+| lint-cdc | SpyGlass lint 和 CDC 检查 |
+| synthesis | Design Compiler 综合 |
+| timing-analysis | PrimeTime 时序分析 |
+| simulation | 构建并运行 UVM 测试平台，对 RTL 做验证 |
+| power-analysis | PrimeTime 功耗分析 |
+| simulation-triage | 仿真失败的根因分析 |
 
 ### 依赖图
 
@@ -57,12 +57,6 @@ python3 -c "import sys; sys.path.insert(0,'framework/scripts'); import rules
 for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 ```
 
-### 4 + 4 对称性
-
-看 Oracle 那一列。四条 tool 等级的规则都处理结构和物理正确性：lint、综合、时序、功耗。它们的 oracle，也就是 EDA 工具的规则集和约束文件，在被测设计存在之前就有了。工具独立于 RTL 作者应用这些规则。
-
-四条 proposed 等级的规则都处理意图和功能正确性：specification、verification plan、RTL、simulation。这些判据表达工程意图，在签核前依据实际授权获得明确背书（§5）。
-
 ---
 
 ## 3. 状态与证明
@@ -75,9 +69,9 @@ for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
 
 ### 证明
 
-一条规则跑完后，内核记录一条**证明**（proof）。这是一个裁决（pass 或 fail），绑定了所有被消费输入的内容指纹、所有被产出输出的内容指纹，以及判定这次运行的 oracle。
+一条规则跑完后，内核记录一条**证明**（proof）。这是一个裁决（pass 或 fail），绑定了所有被消费输入的内容指纹、所有被产出输出的内容指纹。
 
-有效性不存储在任何地方，而是作为查询重新计算。一条证明此刻成立，当且仅当裁决是 pass，每一个落账的输入输出指纹都还和磁盘上的文件吻合，并且 oracle 没有被撤回。三个条件必须同时满足。
+有效性不存储在任何地方，而是作为查询重新计算。一条证明此刻成立，当且仅当裁决是 pass，每一个落账的输入输出指纹都还和磁盘上的文件吻合。
 
 举个例子，你改了一行 RTL。下次任何东西查日志的时候，lint-cdc、synthesis、simulation 的输入指纹就对不上了，三条证明同时失效。没有人去标记什么东西过期。过期就是指纹不再匹配这件事本身。与此同时 specification 和 simulation-plan 不受影响，因为它们的输入里没有 RTL。
 
@@ -117,29 +111,17 @@ Specification 修正了声明。下游约束随之变化。内核算出哪些证
 
 ## 5. 信任边界
 
-### 两种 oracle
-
-Tool 等级的 oracle 独立于它所判定的设计。SpyGlass 的 lint 规则在任何 RTL 被写出之前就存在了。裁决确立的是给定约束下所执行检查的结果。
-
-Proposed 等级的 oracle 不一样。LLM 撰写的评审或参考模型，来源和被测制品相同。如果 LLM 对规格的某条需求理解错了，它可以产出一份 RTL 和一份参考模型，两者彼此一致，但都是错的。因此，两者一致本身并不能确立对规格的符合性。
-
 ### 验证独立性
 
 设计和验证都从 specification 出发。设计路径产出 RTL，验证路径据规格建立计划、脚手架、序列和参考模型。Simulation 编译 RTL，也可读取它诊断失败；预期行为来自任务的独立依据，实现本身不成为自己的判据。
 
 每条规格行为都通过 simulation-plan 和 simulation 之间的结构化制品交接映射到测试点。每轮仿真结束后，一个独立的合规性审查会对比测试实际覆盖了什么和规格要求了什么，既能抓到缺失的检查，也能抓到检查错了方向的情况。
 
-### 从 proposed 到 endorsed
+### 接受记录
 
-在任务授权下可通过 **pin** 背书一个 proposed oracle，把它的等级提升到 endorsed。这个背书锚定在 oracle 内容当时的指纹上。如果 oracle 被重新生成、内容变了，背书自动失效。不需要谁记着去撤销它。**Reopen** 是显式撤回，它会让所有依赖这个被背书 oracle 的证明失效。
+任务要求记录接受决定时，`signoff` 核对所有阶段结论当前有效，且发布目录的文件均被阶段结果记录，再保存决定者、授权和依据。人工保留的决定等待本人作出；明确委托范围内按授权处理。正常完成不要求额外签核。
 
-### 签核
-
-关闭一个模块要求所有条件同时满足：每条证明当前有效，每个 oracle 达到 tool 或 endorsed 等级，阶段发布目录中没有未被最新 outcome 覆盖的文件。流水线在 proposed oracle 下可以正常迭代，但不能在它们下面关闭。
-
-签核接受该事件发生时的阶段证据。只有这份证据和背书仍成立时，状态才是已签核；新结论需要重新签核。
-
-系统记录四种决定：背书一个 oracle（`pin`），撤回一个背书（`reopen`），陈述一个归因（`diagnose`），关闭模块（`signoff`）。其余一切都是计算出来的。
+记录绑定当时接受的阶段证据。证据变化会使签核失效；新阶段结论需要重新接受。签核不替代技术验证，具体问题仍由相应阶段核查、按已有失败与返工流程处理。
 
 ---
 
@@ -151,17 +133,12 @@ Proposed 等级的 oracle 不一样。LLM 撰写的评审或参考模型，来�
 
 **签核闭合声明的验证义务。** 包括规则注册表列出的八条证明，每条再对上需求账本里点它做判官的那些行。账本依据原文组织需要确立的义务和重要上下文，由独立读者核对是否遗漏或新增要求。同一段原文可以承载不同义务；含义、条件和判断责任相同的重述可以共用条目。`outside` 条目保留明确的外部责任，不由流水线签核确立。
 
-**人类判断可复用、可持久。** 架构让每次判断在被背书内容不变时跨轮次生效。
-
 ---
 
 ## 关键术语
 
 | 术语 | 含义 |
 |---|---|
-| **proof**（证明） | 绑定了精确输入版本、输出版本和 oracle 的验证结论。有效性在每次查询时重新计算。 |
-| **oracle** | 证明的判定依据。可能是 EDA 工具的规则集，也可能是 LLM 撰写的评审或参考模型。 |
-| **grade**（等级） | oracle 的可信程度。**tool** 表示权威。**proposed** 表示 LLM 在评估自己的工作，够迭代用，不够签核用。**endorsed** 表示当前判据内容有有效 pin；来源记录决定者和授权。 |
-| **pin** / **reopen** | 人授予和撤回对 proposed oracle 信任的方式。Pin 锚定在 oracle 内容的指纹上，内容变了 pin 就失效。 |
-| **rule**（规则） | 内核调度的一个工作单元，声明了自己的输入、输出、证明和 oracle。依赖图从这些声明中推导得出。 |
+| **proof**（证明） | 绑定了精确输入版本和输出版本 的验证结论。有效性在每次查询时重新计算。 |
+| **rule**（规则） | 内核调度的一个工作单元，声明了自己的输入、输出和证明。依赖图从这些声明中推导得出。 |
 | **projection**（投影） | 按需从事件日志和磁盘计算的每条规则状态（valid、stale、failed、blocked、in-flight 或 missing）。从不存储。 |

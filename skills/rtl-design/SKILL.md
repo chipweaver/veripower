@@ -17,6 +17,7 @@ Choose the module split to suit the task. Continue from carried RTL and use chan
 reported failures and decisions in `dispatch.json` to scope repairs. Preserve unaffected work.
 Implement directly or delegate cohesive parts using [child-task-contract.md](references/child-task-contract.md).
 Coordinate shared interfaces and avoid concurrent edits to the same files.
+Apply the toolchain constraints in [coding-rules.md](references/coding-rules.md), whether implementing directly or delegating.
 
 Deliver `src/`, `rtl-files.json` and `constraint-annotations.json`. Their formats are in the matching
 reference schemas. Include every implemented child and the source/include order needed to compile

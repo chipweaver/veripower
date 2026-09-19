@@ -369,7 +369,7 @@ def test_decision_diagnosis_can_route_a_local_repair(tmp_path, monkeypatch):
 
 
 def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
-    # Regression: an oracle-side attribution without a fix_owner is
+    # Regression: an self-attribution without a fix_owner is
     # a 现成归因 with nothing to route to -> ESCALATE citing it as a candidate. NOT
     # re-dispatch triage, NOT auto-rebuild.
     monkeypatch.chdir(tmp_path)
@@ -381,7 +381,7 @@ def test_fresh_failure_self_pointing_escalates(tmp_path, monkeypatch):
             "type": "diagnosis",
             "id": "d1",
             "subject": {"proof": "simulation", "outcome_run": 1},
-            "attribution": "simulation",  # oracle side — no fix_owner
+            "attribution": "simulation",  # own checks — no fix_owner
             "source": "triage",
         },
         TS,
@@ -541,7 +541,7 @@ def test_fresh_rtldesign_spec_locus_dispatches_specification(tmp_path, monkeypat
 
 
 def _timing_fail_over_stale_synthesis(module):
-    """spec/plan/rtl valid; synthesis built then its oracle reopened (proof invalid, RTL
+    """spec/plan/rtl valid; synthesis report changed (proof invalid, RTL
     bytes untouched); timing-analysis a stale fail. The repair runs through synthesis, whose
     advisory predecessor lint-cdc has never run."""
     _write(module, "intent/brainstorm.md", "b1")
@@ -549,7 +549,7 @@ def _timing_fail_over_stale_synthesis(module):
     _valid(module, "simulation-plan", 1)
     _valid(module, "rtl-design", 1)
     _valid(module, "synthesis", 1)
-    _reopen(module, "dc-shell")
+    _mk(module, "Design/synthesis/reports/qor.rpt", "changed measurement")
     _fail(module, "timing-analysis", 1, owner="synthesis")
 
 
@@ -664,11 +664,10 @@ def test_goal_widens_once_nothing_is_failing(tmp_path, monkeypatch):
     assert all(facts.proof_valid("m", ev, p) for p in rules.FORWARD_PRIORITY)
 
 
-def test_signoff_all_valid_pinned_done(tmp_path, monkeypatch):
-    # all 8 stage proofs valid with every oracle pinned -> objective=signoff is DONE,
-    # meaning "the gate is clear, go stamp".
+def test_signoff_all_valid_done(tmp_path, monkeypatch):
+    # All eight stage conclusions are current and the delivery can be accepted.
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
+    _build_all_valid("m", 1)
     assert schedule.decide("m", closing=True)["action"] == "DONE"
 
 
@@ -677,37 +676,10 @@ def test_closing_changes_what_done_means_not_which_proofs(tmp_path, monkeypatch)
     proofs give opposite verdicts, and the gate is the whole of the difference — without it
     the flag would be a no-op reporting DONE with the trust boundary never consulted."""
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1)  # default (proposed) grades — gate must refuse
+    _build_all_valid("m", 1)
+    _mk("m", "Design/specification/unrecorded.md", "not delivered")
     assert schedule.decide("m")["action"] == "DONE"
     assert schedule.decide("m", closing=True)["action"] == "ESCALATE"
-
-
-def test_signoff_gate_blocks_on_proposed_oracle(tmp_path, monkeypatch):
-    # Every stage proof valid; default oracle grades leave several "proposed". The reason
-    # must name the FIRST offender in FORWARD_PRIORITY order (specification) —
-    # deterministic, never hash-seed-dependent set order.
-    monkeypatch.chdir(tmp_path)
-    _build_all_valid("proposed", 1)
-    a = schedule.decide("proposed", closing=True)
-    assert a["action"] == "ESCALATE"
-    assert a["reason"] == "signoff blocked: specification oracle is proposed (pin it)"
-
-
-def test_signoff_gate_reads_live_pin_without_rereap(tmp_path, monkeypatch):
-    # A pin recorded AFTER a proof's reap (its outcome snapshot still reads "proposed")
-    # lifts the signoff gate immediately, with NO re-reap: the gate reads the live grade
-    # (facts.oracle_grade over the current event log), not the reap-time snapshot.
-    monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1)  # default (proposed) grades
-    assert (
-        facts.signoff_gate("m", store.read_events("m"))
-        == "signoff blocked: specification oracle is proposed (pin it)"
-    )
-    # Pin every proposed oracle after the fact; no proof is re-reaped.
-    for rule in rules.FORWARD_PRIORITY:
-        if rules.RULES[rule].oracle[1] == "proposed":
-            _pin("m", rule)
-    assert facts.signoff_gate("m", store.read_events("m")) is None
 
 
 # --- scheduler invariants ---
@@ -746,7 +718,9 @@ def test_two_hop_upstream_invalidity_does_not_discard_the_failure(
     _valid("m", "specification", 1)
     _valid("m", "rtl-design", 1)
     _valid("m", "synthesis", 1)
-    _reopen("m", "semantic-review")  # rtl-design invalid; RTL bytes unchanged
+    _mk(
+        "m", "Design/rtl-design/semantic-review/review.md", "changed review"
+    )  # rtl-design invalid; RTL bytes unchanged
     _fail("m", "timing-analysis", 1, owner=None)
     fails = schedule._failures("m", store.read_events("m"))
     assert [(f["rule"], f["owners"]) for f in fails] == [("timing-analysis", [])]
@@ -765,7 +739,9 @@ def test_repair_rebuild_chain_dispatches_producer_first(tmp_path, monkeypatch):
     _valid("m", "rtl-design", 1)
     _valid("m", "lint-cdc", 1)
     _valid("m", "synthesis", 1)
-    _reopen("m", "dc-shell")  # synthesis proof invalid, inputs still valid
+    _mk(
+        "m", "Design/synthesis/reports/qor.rpt", "changed measurement"
+    )  # synthesis proof invalid, inputs still valid
     _fail("m", "timing-analysis", 1, owner="synthesis")
     a = schedule.decide("m")
     assert a["action"] == "DISPATCH" and a["rule"] == "synthesis"
@@ -909,9 +885,6 @@ _OUTPUTS = {
     "power-analysis": ["Verification/power-analysis/reports_ptpx/run1/power_hier.rpt"],
 }
 
-# Grades that pin every proposed oracle to endorsed — needed for a passing signoff gate.
-_PIN_ALL = {r: "endorsed" for r in rules.FORWARD_PRIORITY}
-
 
 def _fp(module, rel):
     return facts.fingerprint(store.module_root(module) / rel)
@@ -942,38 +915,22 @@ def _recorded_inputs(module, rule, extra=()):
     return rec
 
 
-def _oracle_rel(rule):
-    """The concrete path the rule's oracle selector resolves to in these fixtures."""
-    sel = rules.RULES[rule].oracle_selector
-    if not sel:
-        return None
-    rel = sel.replace("*", "oracle_stub.sv") if "*" in sel else sel
-    return "/".join((*rules.workdir_root(rule), rel))
-
-
-def _valid(
-    module,
-    rule,
-    run,
-    *,
-    oracle_grade=None,
-    extra_inputs=(),
-    tag=None,
-):
-    """Dispatch+pass `rule`: write its outputs, record inputs/outputs at current-disk
-    fingerprints, emit a passing same-name proof carrying the rule's declared oracle
-    (grade optionally overridden)."""
-    r = rules.RULES[rule]
+def _valid(module, rule, run, *, extra_inputs=(), tag=None):
+    """Publish fixture evidence and record its current input/output fingerprints."""
     marker = tag if tag is not None else f"r{run}"
     rels = list(_OUTPUTS[rule])
-    orel = _oracle_rel(rule)
-    if orel and r.oracle[1] == "proposed":  # the review IS a product of the round
-        rels.append(orel)
+    reviews = {
+        "specification": "spec-review/review.md",
+        "simulation-plan": "plan-review/review.md",
+        "rtl-design": "semantic-review/review.md",
+        "simulation": "tb/uvm/refmodel/ref.sv",
+    }
+    if rule in reviews:
+        rels.append("/".join((*rules.workdir_root(rule), reviews[rule])))
     for rel in rels:
         _mk(module, rel, f"{rule}:{rel}:{marker}")
     inputs = _recorded_inputs(module, rule, extra_inputs)
     outputs = {rel: _fp(module, rel) for rel in rels}
-    grade = oracle_grade or r.oracle[1]
     _dispatch(module, rule, run, inputs)
     _outcome(
         module,
@@ -981,36 +938,7 @@ def _valid(
         run,
         "pass",
         outputs,
-        [
-            {
-                "name": rule,
-                "verdict": "pass",
-                "inputs": inputs,
-                "oracle": {"ref": r.oracle[0], "grade": grade},
-            }
-        ],
-    )
-    # A "endorsed" grade on a proposed oracle is now earned by a REAL live pin, not a recorded
-    # snapshot: the signoff gate reads the live grade (facts.oracle_grade), so a post-reap pin
-    # takes effect without a re-reap.
-    if oracle_grade == "endorsed" and r.oracle[1] == "proposed":
-        _pin(module, rule)
-
-
-def _pin(module, rule):
-    """Materialise the oracle-selector content + emit a real live pin whose fingerprint
-    matches, so facts.oracle_grade grades the proposed oracle endorsed."""
-    r = rules.RULES[rule]
-    store.append_event(
-        module,
-        {
-            "type": "pin",
-            "oracle_ref": r.oracle[0],
-            "content_fingerprint": facts.oracle_content_fp(module, r),
-            "provenance": "test",
-            "reason": "test signoff pin",
-        },
-        TS,
+        [{"name": rule, "verdict": "pass", "inputs": inputs}],
     )
 
 
@@ -1021,7 +949,6 @@ def _fail(module, rule, run, owner="auto"):
     requires one on a failure (`--fix-owner` on every failure) and the scheduler now stops
     the round on a failure nobody attributed. `owner="auto"` picks the first legal target;
     pass `owner=None` for the deliberately-unattributed case."""
-    r = rules.RULES[rule]
     if owner == "auto":
         legal = sorted(rules.input_closure(rule), key=rules.FORWARD_PRIORITY.index)
         owner = legal[0] if legal else None
@@ -1046,7 +973,6 @@ def _fail(module, rule, run, owner="auto"):
                 "name": rule,
                 "verdict": "fail",
                 "inputs": inputs,
-                "oracle": {"ref": r.oracle[0], "grade": r.oracle[1]},
             }
         ],
     )
@@ -1061,12 +987,6 @@ def _sim_fail(module, run):
 
 def _power_fail(module, run):
     _fail(module, "power-analysis", run)
-
-
-def _reopen(module, pin_ref):
-    store.append_event(
-        module, {"type": "reopen", "pin_ref": pin_ref, "reason": "revoke"}, TS
-    )
 
 
 def _valid_chain_through_simulation(module):
@@ -1097,16 +1017,15 @@ def _invalidate_proof(module, rule):
     _mk(module, priv, "priv-v2-drift")
 
 
-def _build_all_valid(module, run, *, include=None, oracle_grades=None):
+def _build_all_valid(module, run, *, include=None):
     """Dispatch+pass every rule in `include` (default all 8), FORWARD order so each
     rule's upstream outputs already exist on disk when its inputs are recorded."""
     _mk(module, "intent/brainstorm.md", "b1")
     include = include if include is not None else rules.FORWARD_PRIORITY
-    grades = oracle_grades or {}
     for rule in rules.FORWARD_PRIORITY:
         if rule not in include:
             continue
-        _valid(module, rule, run, oracle_grade=grades.get(rule))
+        _valid(module, rule, run)
 
 
 def test_decide_repair_survives_triage_fail_outcome(tmp_path, monkeypatch):
@@ -1205,13 +1124,9 @@ def test_option_c_defers_fix_owner_rebuild_step1(tmp_path, monkeypatch):
 
 
 def test_signed_off_regresses_on_hand_edit(tmp_path, monkeypatch):
-    # The reopen-named freshness test's fixture (empty outputs) structurally cannot
-    # exercise a hand-edit. Build a real signed-off chain (on-disk artifacts) and hand-edit
-    # one -> its proof invalidates (cond 4) -> signed_off drops. This is the second conjunct
-    # of the predicate: the signoff event stays, but a signoff is only as good as the proofs
-    # beneath it.
+    # Editing accepted evidence invalidates the acceptance without deleting its event.
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
+    _build_all_valid("m", 1)
     store.append_event(
         "m",
         {"type": "signoff", "provenance": "u", "reason": "ship it"},
@@ -1225,11 +1140,9 @@ def test_signed_off_regresses_on_hand_edit(tmp_path, monkeypatch):
 
 
 def test_signed_off_requires_the_signoff_decision(tmp_path, monkeypatch):
-    # First conjunct: every proof valid and every oracle pinned is NOT signed off. Pins are
-    # per-oracle judgments made for delivery's sake; the module-level "ship it" is a separate
-    # act, and without it nothing may claim signoff.
+    # Valid evidence does not itself constitute an acceptance decision.
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
+    _build_all_valid("m", 1)
     assert facts.signoff_gate("m", store.read_events("m")) is None  # gate is clear...
     assert (
         facts.signed_off("m", store.read_events("m")) is False
@@ -1237,12 +1150,10 @@ def test_signed_off_requires_the_signoff_decision(tmp_path, monkeypatch):
 
 
 def test_signoff_gate_blocks_on_a_file_the_stage_never_delivered(tmp_path, monkeypatch):
-    # promote makes canonical == artifacts[], so a file the latest outcome does not record got
-    # there out of band. Conditions 2/4 compare RECORDED paths only, so an ADD escapes them at
-    # the stage root; the gate rejects it by set difference against the record — no pattern, so
-    # no extension or depth can slip past it.
+    # A new file outside the recorded artifact paths is not covered by their fingerprints.
+    # The acceptance gate checks that the whole published delivery is recorded.
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
+    _build_all_valid("m", 1)
     assert facts.signoff_gate("m", store.read_events("m")) is None  # clean, gate passes
     _mk("m", "Design/rtl-design/sneaky.vh", "`define SNEAKY 1")
     gate = facts.signoff_gate("m", store.read_events("m"))
@@ -1253,198 +1164,33 @@ def test_signoff_gate_blocks_on_a_file_the_stage_never_delivered(tmp_path, monke
 def test_a_file_added_inside_the_delivered_tree_invalidates_at_once(
     tmp_path, monkeypatch
 ):
-    # Inside the tree the gate is not even reached: the tree's version is a merkle over every
-    # path under it, so the add breaks condition 4 the moment it lands and the daily repair
-    # path opens the producer — no waiting for someone to try to sign off.
+    # Adding a file inside a recorded tree changes its fingerprint immediately.
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1, oracle_grades=_PIN_ALL)
+    _build_all_valid("m", 1)
     assert facts.proof_valid("m", store.read_events("m"), "rtl-design")
     _mk("m", "Design/rtl-design/src/sneaky.vh", "`define SNEAKY 1")
     assert not facts.proof_valid("m", store.read_events("m"), "rtl-design")
 
 
-# ── the fail path shares the pass path's condition 3 ──────────────────────────
-# Condition 3 leans two ways when re-derived: anchored on the outcome instead of the dispatch
-# it is too loose, without the live-pin conjunct too tight. These pin the three scenarios that
-# separate them.
-
-
-def _pin_oracle(module, ref, fp="sha256:x", reason="endorse"):
-    store.append_event(
-        module,
-        {
-            "type": "pin",
-            "oracle_ref": ref,
-            "content_fingerprint": fp,
-            "provenance": "p",
-            "reason": reason,
-        },
-        TS,
-    )
-
-
-def _reopen_oracle(module, ref):
-    store.append_event(
-        module, {"type": "reopen", "pin_ref": ref, "reason": "revoke"}, TS
-    )
-
-
-def _spec_fail_proof(module):
-    root = store.module_root(module)
-    return [
-        {
-            "name": "specification",
-            "verdict": "fail",
-            "inputs": {"intent": facts.fingerprint(root / "intent")},
-            "oracle": {"ref": "spec-review", "grade": "proposed"},
-        }
-    ]
-
-
-def test_fail_stale_when_reopen_lands_during_the_run(tmp_path, monkeypatch):
-    # The oracle is reopened between dispatch and outcome, so the verdict this run
-    # produced was judged by an oracle nobody stands behind by the time it lands.
-    monkeypatch.chdir(tmp_path)
-    _write("m", "intent/brainstorm.md", "b1")
-    _pin_oracle("m", "spec-review")
-    _dispatch("m", "specification", 1, {"intent": "sha256:ignored"})
-    _reopen_oracle("m", "spec-review")
-    _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
-    events = store.read_events("m")
-    _, outcome = facts.proof_outcome(events, "specification")
-    assert schedule._oracle_retracted(events, "specification", outcome)
-    assert schedule.decide("m")["action"] == "ESCALATE"
-
-
-def test_fail_stays_stale_after_a_bare_re_reap(tmp_path, monkeypatch):
-    # The re-reap case on the fail path. A re-reap appends a later outcome for the SAME run — it
-    # re-executes nothing and re-pins nothing, so it must not launder the fail into a fresh
-    # one. Anchoring condition 3 on the dispatch is what makes the second outcome irrelevant.
-    monkeypatch.chdir(tmp_path)
-    _write("m", "intent/brainstorm.md", "b1")
-    _pin_oracle("m", "spec-review")
-    _dispatch("m", "specification", 1, {"intent": "sha256:ignored"})
-    _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
-    _reopen_oracle("m", "spec-review")
-    _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))  # bare re-reap
-    events = store.read_events("m")
-    _, outcome = facts.proof_outcome(events, "specification")
-    assert schedule._oracle_retracted(events, "specification", outcome)
-    assert schedule.decide("m")["action"] == "ESCALATE"
-
-
-def test_fail_fresh_again_after_a_re_pin(tmp_path, monkeypatch):
-    # The other direction. A human re-endorses the oracle after reopening it; the fail
-    # verdict is trustworthy again, so the repair path must come back rather than the fail
-    # being written off as stale.
-    monkeypatch.chdir(tmp_path)
-    _write("m", "intent/brainstorm.md", "b1")
-    _pin_oracle("m", "spec-review")
-    _dispatch("m", "specification", 1, {"intent": "sha256:ignored"})
-    _outcome("m", "specification", 1, "fail", {}, _spec_fail_proof("m"))
-    _reopen_oracle("m", "spec-review")  # AFTER the outcome, so the old anchor saw it
-    _pin_oracle("m", "spec-review", fp="sha256:y", reason="re-endorse")
-    events = store.read_events("m")
-    _, outcome = facts.proof_outcome(events, "specification")
-    assert not schedule._oracle_retracted(events, "specification", outcome)
-    assert [f["rule"] for f in schedule._failures("m", events)] == ["specification"]
-
-
-def test_re_reap_does_not_dispatch_upstream_rework(tmp_path, monkeypatch):
-    # The harm that case causes once the failed rule routes somewhere. simulation-plan's failures
-    # route to specification, so laundering a stale fail into a fresh one sent a directive-
-    # carrying rework at the upstream design doc — on the authority of a simulation-plan
-    # verdict whose judge had just been reopened. Stale re-verifies simulation-plan itself.
-    monkeypatch.chdir(tmp_path)
-    _valid_chain_through_simulation("m")
-    root = store.module_root("m")
-    plan_proof = [
-        {
-            "name": "simulation-plan",
-            "verdict": "fail",
-            "inputs": {
-                "Design/specification/design.md": facts.fingerprint(
-                    root / "Design/specification/design.md"
-                )
-            },
-            "oracle": {"ref": "plan-review", "grade": "proposed"},
-        }
-    ]
-    _pin_oracle("m", "plan-review")
-    _dispatch("m", "simulation-plan", 2, {"Design/specification/design.md": "sha256:i"})
-    _outcome("m", "simulation-plan", 2, "fail", {}, plan_proof)
-    _reopen_oracle("m", "plan-review")
-    _outcome("m", "simulation-plan", 2, "fail", {}, plan_proof)  # bare re-reap
-    a = schedule.decide("m")
-    assert a["action"] == "ESCALATE", (
-        f"a verdict whose judge was reopened must not direct rework at all; got {a}"
-    )
-    assert "reopened" in a["reason"]
-
-
 # ── the gate says whether; the basis says what ────────────────────────────────
-def _all_valid_and_pinned(module):
+def _all_valid(module):
     _build_all_valid(module, 1)
-    for rule in rules.FORWARD_PRIORITY:
-        if rules.RULES[rule].oracle[1] == "proposed":
-            _pin(module, rule)
     assert facts.signoff_gate(module, store.read_events(module)) is None
 
 
 def test_basis_covers_every_proof_in_forward_order(tmp_path, monkeypatch):
     # A signoff record whose row order varied by hash seed would not be a record.
     monkeypatch.chdir(tmp_path)
-    _all_valid_and_pinned("m")
-    basis = facts.signoff_basis("m", store.read_events("m"))
+    _all_valid("m")
+    basis = facts.signoff_basis(store.read_events("m"))
     assert [b["proof"] for b in basis] == list(rules.FORWARD_PRIORITY)
-
-
-def test_basis_grades_each_oracle_and_names_what_a_human_endorsed(
-    tmp_path, monkeypatch
-):
-    # The two things a signature rests on: which trust class each oracle is, and — for the
-    # human ones — the content fingerprint the pin actually named. "graded endorsed" without
-    # the fingerprint does not say human-endorsed WHAT.
-    monkeypatch.chdir(tmp_path)
-    _all_valid_and_pinned("m")
-    events = store.read_events("m")
-    by_proof = {b["proof"]: b for b in facts.signoff_basis("m", events)}
-    for rule_name, rule in rules.RULES.items():
-        if rule_name not in by_proof:
-            continue
-        o = by_proof[rule_name]["oracle"]
-        assert o["ref"] == rule.oracle[0]
-        assert o["grade"] in ("tool", "endorsed")
-        if rule.oracle[1] == "proposed":
-            # pinned here, so endorsed — and the fingerprint must be the oracle's CURRENT content
-            assert o["grade"] == "endorsed"
-            assert o["pinned_fingerprint"] == facts.oracle_content_fp("m", rule)
-        else:
-            # a tool oracle is never pinned; claiming a fingerprint would invent an endorsement
-            assert o["grade"] == "tool"
-            assert "pinned_fingerprint" not in o
-
-
-def test_basis_drops_the_fingerprint_when_the_pin_is_reopened(tmp_path, monkeypatch):
-    # Withdrawing the endorsement must withdraw the claim that something was endorsed, not
-    # leave a stale fingerprint standing next to a downgraded grade.
-    monkeypatch.chdir(tmp_path)
-    _all_valid_and_pinned("m")
-    assert (
-        facts.signoff_basis("m", store.read_events("m"))[0]["oracle"]["grade"]
-        == "endorsed"
-    )
-    _reopen("m", rules.RULES["specification"].oracle[0])
-    spec = facts.signoff_basis("m", store.read_events("m"))[0]
-    assert spec["oracle"]["grade"] == "proposed"
-    assert "pinned_fingerprint" not in spec["oracle"]
 
 
 def test_basis_names_the_input_set_each_verdict_was_about(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _all_valid_and_pinned("m")
+    _all_valid("m")
     events = store.read_events("m")
-    by_proof = {b["proof"]: b for b in facts.signoff_basis("m", events)}
+    by_proof = {b["proof"]: b for b in facts.signoff_basis(events)}
     spec = by_proof["specification"]
     assert spec["inputs"] == ["intent"]
     # and it matches what the proof actually recorded, not a re-derivation from rules.py
@@ -1455,15 +1201,16 @@ def test_basis_names_the_input_set_each_verdict_was_about(tmp_path, monkeypatch)
 
 def test_decide_signoff_done_carries_the_basis(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _all_valid_and_pinned("m")
+    _all_valid("m")
     a = schedule.decide("m", closing=True)
     assert a["action"] == "DONE"
     assert [b["proof"] for b in a["basis"]] == list(rules.FORWARD_PRIORITY)
 
 
 def test_decide_signoff_escalate_carries_no_basis(tmp_path, monkeypatch):
-    # Nothing is being endorsed when the gate blocks; a basis there would read as an offer.
+    # Nothing is being accepted when the gate blocks; a basis there would read as an offer.
     monkeypatch.chdir(tmp_path)
-    _build_all_valid("m", 1)  # proposed oracles -> gate blocks
+    _build_all_valid("m", 1)
+    _mk("m", "Design/specification/unrecorded.md", "not delivered")
     a = schedule.decide("m", closing=True)
     assert a["action"] == "ESCALATE" and "basis" not in a

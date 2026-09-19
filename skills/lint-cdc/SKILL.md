@@ -44,7 +44,8 @@ Declare a judgment for every lint-cdc requirement using the reports and the actu
 `finalize` reads `lint-violations.json` and `cdc-violations.json` and checks waiver reasoning.
 Use `--fail-reason` for invalid or incomplete checks even if old reports contain numbers. Name
 the repair owner from the defect, including this stage for its own setup; do not infer ownership
-from the path of an error. Acceptance changes follow the user's actual authorization.
+from the path of an error. [Attribution guidance](references/attribution-rules.md) describes the constraint sources to check.
+Acceptance changes follow the user's actual authorization.
 
 Finalize withdraws the previous result before judging. Exit 0 means a pass/fail result was written;
 return `STATUS: DONE`. On a nonzero exit, resolve the cause or return `STATUS: BLOCKED <cause>`.

@@ -54,38 +54,15 @@ def _event_index(events: list[dict], event: dict) -> int:
     return 0
 
 
-def _oracle_retracted(events: list[dict], rule: str, outcome: dict) -> bool:
-    """Return whether the run's oracle was reopened after dispatch and has no live pin."""
-    proof = next((p for p in outcome["proofs"] if p["name"] == rule), None)
-    if proof is None or not rules.RULES[rule].oracle:
-        return False
-    oref = proof["oracle"]["ref"]
-    d_idx = facts.dispatch_index(events, rule, outcome["run"])
-    anchor = d_idx if d_idx is not None else 0
-    return facts.oracle_reopened_after(events, oref, anchor) and not facts.live_pins(
-        events, oref
-    )
-
-
 def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) -> dict:
     """Resolve repair owners from diagnoses, the stage's result, then its diagnostic rule.
 
-    Reopened oracles cannot direct repairs. An unresolved diagnosis holds the
-    whole failure for clarification; otherwise group diagnoses by owner and
-    record when each attribution became known."""
-    if _oracle_retracted(events, rule, outcome):
-        return {
-            "attribution": None,
-            "owners": [],
-            "unroutable": [],
-            "retracted": True,
-        }
-    base = {"retracted": False}
+    An unresolved diagnosis holds the failure for clarification; otherwise group
+    diagnoses by owner and record when each attribution became known."""
     diags = _active_diagnoses(events, rule, outcome)
     if diags:  # source 1: a later analysis outranks the stage's own self-report
         if not all(d.get("fix_owner") for d in diags):
             return {
-                **base,
                 "attribution": diags[-1]["attribution"],
                 "owners": [],
                 "unroutable": diags,
@@ -98,7 +75,6 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
             o["since"] = max(o["since"], _event_index(events, d))
             o["diagnoses"].append(d)
         return {
-            **base,
             "attribution": diags[-1]["attribution"],
             "owners": sorted(owners.values(), key=lambda o: o["since"]),
             "unroutable": [],
@@ -108,7 +84,6 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
     )  # source 2: the failing stage's own envelope
     if named:
         return {
-            **base,
             "attribution": named,
             "owners": (
                 [{"owner": named, "since": idx, "diagnoses": []}]
@@ -120,7 +95,6 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
     # source 3: nobody named anyone, so the stage's declared diagnostic must find out
     triage = rules.RULES[rule].triage
     return {
-        **base,
         "attribution": None,
         "owners": [{"owner": triage, "since": idx, "diagnoses": []}] if triage else [],
         "unroutable": [],
@@ -180,11 +154,6 @@ def owed(events: list[dict], fails: list[dict]) -> list[dict]:
 def _escalation(c: dict) -> dict:
     """Describe why the failure cannot be assigned an automatic repair."""
     rule, named = c["rule"], c["attribution"]
-    if c.get("retracted"):
-        return {
-            "rule": rule,
-            "reason": f"{rule}: the oracle that judged this failure was reopened",
-        }
     if c["unroutable"]:
         return {
             "rule": rule,
@@ -373,7 +342,7 @@ def _settle(module, events, inflight, required, closing):
                 return {"action": "ESCALATE", "reason": reason}
             # "go stamp" is where the authorized decision is made; hand them the proposition, not just
             # the permission (facts.signoff_basis).
-            return {"action": "DONE", "basis": facts.signoff_basis(module, events)}
+            return {"action": "DONE", "basis": facts.signoff_basis(events)}
         return {"action": "DONE"}
     # The producer graph terminates at the intent document.
     return {

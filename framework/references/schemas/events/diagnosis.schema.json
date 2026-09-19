@@ -11,7 +11,7 @@
     "subject": {"type": "object", "required": ["proof", "outcome_run"], "properties": {
       "proof": {"type": "string"}, "outcome_run": {"type": "integer", "minimum": 1}
     }},
-    "attribution": {"type": "string", "description": "root-cause rule name, or the failed rule itself when the attribution points at its own judge (oracle side)"},
+    "attribution": {"type": "string", "description": "Root-cause stage, including the failed stage itself for its own checks or setup."},
     "fix_owner": {"type": "string", "description": "Repair target: the failed stage itself or one of its transitive input producers. Absent when the repair owner is unresolved."},
     "source": {"type": "string", "enum": ["triage", "decision"]},
     "provenance": {"type": "string", "description": "Decision maker and authorization basis; required when source=decision"},

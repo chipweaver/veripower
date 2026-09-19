@@ -11,7 +11,7 @@
 
 ---
 
-VeriPower is an open-source agent flow that takes a natural-language spec all the way to front-end signoff on commercial EDA tools. A deterministic engine sits underneath, recording every action in an append-only log. All pipeline status is derived from that log on demand, never stored as a flag or snapshot. The agent can iterate on its own; every LLM-authored oracle needs explicit, authorized endorsement before signoff.
+VeriPower is an open-source agent flow that takes a natural-language spec all the way to front-end signoff on commercial EDA tools. A deterministic engine sits underneath, recording every action in an append-only log. All pipeline status is derived from that log on demand, never stored as a flag or snapshot. The agent works within the task's authorization; signoff records acceptance when the task calls for it.
 
 Ships as a plugin for [Claude Code](.claude-plugin/README.md), [opencode](.opencode/README.md), [DeepSeek Harness](.dsh/README.md), and [Codex](codex/README.md).
 
@@ -23,7 +23,7 @@ A deterministic engine owns the facts. Agents and humans are proposers. The engi
   <img src="assets/architecture.png" alt="VeriPower architecture" width="460" />
 </p>
 
-Verification conclusions track their declared inputs and published outputs by content fingerprint. Changes to those dependencies invalidate the affected conclusions on the next query. Design and verification both start from the spec but then diverge, so the reference model is derived from the spec, not from the implementation. EDA tool verdicts are authoritative. LLM-authored oracles are good enough for iteration but need authorized endorsement for signoff, and that endorsement lapses if the oracle content changes.
+Verification conclusions track their declared inputs and published outputs by content fingerprint. Changes to those dependencies invalidate the affected conclusions on the next query. Design and verification both start from the spec but then diverge, so the reference model is derived from the spec, not from the implementation. Stage owners assess tool results and independent reviews against the requirements and analysis conditions. Signoff records acceptance of that evidence; it does not establish technical correctness.
 
 More in [ARCHITECTURE.md](ARCHITECTURE.md) ([中文](ARCHITECTURE.zh.md)).
 

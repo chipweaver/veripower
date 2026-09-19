@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import os
@@ -115,123 +114,21 @@ def proof_outcome(events: list[dict], proof_name: str) -> tuple[int, dict] | Non
     return None
 
 
-def oracle_reopened_after(
-    events: list[dict], oracle_ref: str, anchor_index: int
-) -> bool:
-    """True iff a reopen of oracle_ref appears at/after `anchor_index`."""
-    for i, e in enumerate(events):
-        if i >= anchor_index and e["type"] == "reopen" and e["pin_ref"] == oracle_ref:
-            return True
-    return False
-
-
-def dispatch_index(events: list[dict], rule: str, run: int) -> int | None:
-    """Return the run's dispatch position, which anchors oracle authority to execution."""
-    for i, e in enumerate(events):
-        if e["type"] == "dispatch" and e["rule"] == rule and e["run"] == run:
-            return i
-    return None
-
-
-def live_pins(events: list[dict], oracle_ref: str) -> list[dict]:
-    """Return endorsements without a later reopen, in event order."""
-    return [
-        e
-        for i, e in enumerate(events)
-        if e["type"] == "pin"
-        and e["oracle_ref"] == oracle_ref
-        and not any(
-            r["type"] == "reopen" and r["pin_ref"] == oracle_ref
-            for r in events[i + 1 :]
-        )
-    ]
-
-
-def oracle_content_fp(module: str, rule) -> str:
-    """Fingerprint the oracle file or directory selected by the rule."""
-    p = (
-        store.module_root(module)
-        / Path(*rules.workdir_root(rule.name))
-        / rule.oracle_selector
-    )
-    return fingerprint(p) if p.exists() else UNKNOWN
-
-
-def oracle_grade(module: str, events: list[dict], rule) -> str:
-    """Return endorsed when the latest live pin matches current content, otherwise the declared grade."""
-    if rule.oracle[1] != "proposed":
-        return rule.oracle[1]
-    live = live_pins(events, rule.oracle[0])
-    if not live:
-        return "proposed"
-    current = oracle_content_fp(module, rule)
-    if current == UNKNOWN:
-        return "proposed"  # unreadable oracle content never inherits trust
-    # Use the most recent live endorsement.
-    return "endorsed" if live[-1]["content_fingerprint"] == current else "proposed"
-
-
-def verdict_trustworthy(
-    module: str, events: list[dict], proof_name: str, idx: int, outcome: dict
-) -> bool:
-    """Check that recorded outputs and oracle endorsement still support the verdict.
-
-    Input freshness is separate: changed inputs invalidate a pass but do not
-    answer a failure's attribution. Oracle reopening is anchored to dispatch;
-    a later live pin can restore its authority."""
-    proof = next((p for p in outcome["proofs"] if p["name"] == proof_name), None)
-    if proof is None:
-        return False
-    root = store.module_root(module)
-    rule = rules.RULES[proof_name]
-    # condition 4 (own outputs, incl. canonical result.json)
-    for path, recorded in outcome.get("outputs", {}).items():
-        if not versions_match(recorded, fingerprint(root / path)):
-            return False
-    # Anchor oracle authority to dispatch; reaping alone cannot restore it.
-    if rule.oracle:
-        oref = proof["oracle"]["ref"]
-        d_idx = dispatch_index(events, proof_name, outcome["run"])
-        anchor = d_idx if d_idx is not None else idx
-        if oracle_reopened_after(events, oref, anchor) and not live_pins(events, oref):
-            return False
-    return True
-
-
-def inputs_unchanged(module: str, proof_name: str, outcome: dict) -> bool:
-    """Condition 2 alone: every recorded input version still matches disk."""
-    proof = next((p for p in outcome["proofs"] if p["name"] == proof_name), None)
-    if proof is None:
-        return False
-    root = store.module_root(module)
-    for path, recorded in proof.get("inputs", {}).items():
-        if not versions_match(recorded, fingerprint(root / path)):
-            return False
-    return True
-
-
-def proof_fresh_except_verdict(
-    module: str, events: list[dict], proof_name: str, idx: int, outcome: dict
-) -> bool:
-    """Conditions 2, 3 and 4 of proof validity — everything except the verdict itself.
-    proof_valid adds `verdict == pass`."""
-    return inputs_unchanged(module, proof_name, outcome) and verdict_trustworthy(
-        module, events, proof_name, idx, outcome
-    )
-
-
 def proof_valid(module: str, events: list[dict], proof_name: str) -> bool:
-    """A proof is currently valid iff verdict==pass AND every recorded input
-    version matches disk AND its oracle ref was not reopened after the proof landed AND
-    every recorded output version matches disk (condition 4)."""
+    """A passing conclusion remains valid while its recorded inputs and outputs match."""
     hit = proof_outcome(events, proof_name)
     if hit is None:
         return False
-    idx, outcome = hit
+    _, outcome = hit
     proof = next(p for p in outcome["proofs"] if p["name"] == proof_name)
     if proof["verdict"] != "pass":
         return False
-    return proof_fresh_except_verdict(module, events, proof_name, idx, outcome)
+    root = store.module_root(module)
+    return all(
+        versions_match(recorded, fingerprint(root / path))
+        for table in (proof["inputs"], outcome["outputs"])
+        for path, recorded in table.items()
+    )
 
 
 def stale_inputs(module: str, events: list[dict], rule: str) -> list[str]:
@@ -342,22 +239,12 @@ def signed_off(module: str, events: list[dict]) -> bool:
         current = proof_outcome(events, name)
         if before is None or current is None:
             return False
-        evidence = [copy.deepcopy(hit[1]) for hit in (before, current)]
-        for outcome in evidence:
-            del outcome["ts"]
-            # Reaping the same evidence can refresh its recorded grade. The gate
-            # above checks the actual endorsement against current oracle content.
-            for proof in outcome["proofs"]:
-                del proof["oracle"]["grade"]
+        evidence = [
+            {key: value for key, value in hit[1].items() if key != "ts"}
+            for hit in (before, current)
+        ]
         if evidence[0] != evidence[1]:
             return False
-        rule = rules.RULES[name]
-        if rule.oracle and rule.oracle[1] == "proposed":
-            pins = live_pins(accepted, rule.oracle[0])
-            if not pins or pins[-1]["content_fingerprint"] != oracle_content_fp(
-                module, rule
-            ):
-                return False
     return True
 
 
@@ -387,14 +274,11 @@ def _unrecorded(module: str, rule_name: str, outcome: dict) -> list[str]:
 def signoff_gate(module: str, events: list[dict]) -> str | None:
     """Return the first unmet signoff requirement in forward priority order.
 
-    Require valid proofs, tool or endorsed oracle grades, and no unrecorded products."""
+    Require valid proofs and no unrecorded products."""
     for proof in rules.FORWARD_PRIORITY:
         if not proof_valid(module, events, proof):
             return f"signoff blocked: {proof} not valid"
         _, outcome = proof_outcome(events, proof)
-        # Check live endorsement so pin/reopen applies immediately.
-        if oracle_grade(module, events, rules.RULES[proof]) not in ("tool", "endorsed"):
-            return f"signoff blocked: {proof} oracle is proposed (pin it)"
         added = _unrecorded(module, proof, outcome)
         if added:
             # Signoff also checks for unrecorded products.
@@ -402,11 +286,10 @@ def signoff_gate(module: str, events: list[dict]) -> str | None:
     return None
 
 
-def signoff_basis(module: str, events: list[dict]) -> list[dict]:
+def signoff_basis(events: list[dict]) -> list[dict]:
     """Assemble the proposition being signed, in forward priority order.
 
-    Include each proof's run, live oracle grade and endorsed fingerprint, tool
-    identity, requirement verdicts and input paths."""
+    Include each proof's run, tool identity, requirement verdicts and input paths."""
     basis: list[dict] = []
     for proof_name in rules.FORWARD_PRIORITY:
         hit = proof_outcome(events, proof_name)
@@ -416,18 +299,10 @@ def signoff_basis(module: str, events: list[dict]) -> list[dict]:
         proof = next((p for p in outcome["proofs"] if p["name"] == proof_name), None)
         if proof is None:
             continue
-        rule = rules.RULES[proof_name]
-        oracle: dict = {"ref": rule.oracle[0] if rule.oracle else None}
-        oracle["grade"] = oracle_grade(module, events, rule) if rule.oracle else None
-        if oracle["grade"] == "endorsed":
-            live = live_pins(events, rule.oracle[0])
-            if live:
-                oracle["pinned_fingerprint"] = live[-1]["content_fingerprint"]
         basis.append(
             {
                 "proof": proof_name,
                 "run": outcome["run"],
-                "oracle": oracle,
                 "tool_versions": outcome.get("tool_versions", {}),
                 "requirements": outcome.get("requirements", []),
                 "inputs": sorted(proof.get("inputs", {})),

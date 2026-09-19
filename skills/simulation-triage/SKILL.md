@@ -24,6 +24,7 @@ Use retained waveforms when useful. Passing simulation tests normally discard th
 coverage failure may need a focused rerun to observe the relevant behavior. Discover actual signal
 paths from the TB and design. For the supplied fsdbreport tool, query one signal per invocation:
 it retains only the last `-s`, and its paths are slash-form rooted at the testbench.
+An unmatched path can return exit code 0 with an empty report; inspect the warning before interpreting that as missing waveform data.
 
 ```bash
 fsdbreport <waveform.fsdb> -s /<actual-signal-path> -bt <t0> -et <t1> -of h -o experiment/window.txt

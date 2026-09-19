@@ -133,7 +133,7 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert env["stage"] == "simulation-plan"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     # Lean shape: nothing at all on a plain pass. The review is prose under plan-review/,
-    # fingerprinted as the oracle; no verdict derived from it reaches the envelope.
+    # delivered and fingerprinted; the script does not interpret its prose.
     assert env["stage_specific"] == {}
 
 

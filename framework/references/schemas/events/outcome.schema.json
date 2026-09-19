@@ -15,15 +15,11 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "verdict", "inputs", "oracle"],
+        "required": ["name", "verdict", "inputs"],
         "properties": {
           "name": {"type": "string"},
           "verdict": {"type": "string", "enum": ["pass", "fail"]},
-          "inputs": {"type": "object"},
-          "oracle": {"type": "object", "required": ["ref", "grade"], "properties": {
-            "ref": {"type": "string"},
-            "grade": {"type": "string", "enum": ["tool", "endorsed", "proposed"]}
-          }}
+          "inputs": {"type": "object"}
         }
       }
     },

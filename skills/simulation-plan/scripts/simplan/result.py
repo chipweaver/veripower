@@ -38,7 +38,7 @@ def _write_result(workdir: Path, env: dict) -> None:
 def enumerate_artifacts(workdir) -> list:
     """Fixed simulation-plan artifact set, present-only. Never lists result.json (self) —
     the envelope schema forbids it. The review leaves as one tree, whatever the reviewer
-    called the files in it, so the endorsement reads back the set that was delivered.
+    called the files in it, so its recorded fingerprint covers the delivered set.
     Present-only keeps a seeded rework workdir carrying the full prior product set, so a
     promoted fail cannot GC canonical down to a hollow view."""
     workdir = Path(workdir)

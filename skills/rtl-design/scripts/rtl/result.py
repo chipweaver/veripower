@@ -55,7 +55,7 @@ def _reviews(workdir: Path) -> list:
     """The review directory, as one tree entry. How the wave splits the RTL between reviewers —
     and so how many files they write, and what they call them — is theirs to decide, so this
     delivers the directory rather than a file list: everything they left in it is promoted and
-    versioned, and the oracle that reads it back sees the same set."""
+    versioned together."""
     d = workdir / REVIEW_DIR
     return [{"path": REVIEW_DIR}] if d.is_dir() else []
 
