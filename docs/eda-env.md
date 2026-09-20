@@ -9,19 +9,20 @@ standard-cell libraries and compilers that support the stages you run.
 
 ## Mandatory
 
-Requirements and the stages that use them. The `env-precheck` skill probes every row
-below against a live machine and smoke-runs each license checkout.
+The table lists the requirements and the stages that use them. The `env-precheck`
+skill checks tool and environment availability, then runs license and execution
+smoke checks for the stages selected by the user.
 
 | Required | Purpose | Used by |
 |---|---|---|
-| `python3` >= 3.10 with `jsonschema` >= 4.18, `referencing`, `PyYAML` | The kernel and every stage gate validate result/review schemas (`registry=`-based `$ref` resolution needs the post-4.18 jsonschema API); the stage CLIs annotate `list[str] \| None` in evaluated signature position, which is a TypeError before 3.10 | all |
-| `LM_LICENSE_FILE` and/or `SNPSLMD_LICENSE_FILE` | Synopsys license server checkout — every tool reads these at launch, and VeriPower does not validate them | every EDA stage |
+| `python3` >= 3.10 with `jsonschema` >= 4.18, `referencing`, `PyYAML` | Python runtime and schema validation used by the engine and stage scripts | all |
+| `LM_LICENSE_FILE` and/or `SNPSLMD_LICENSE_FILE` | License server configuration read by the Synopsys tools at launch. `env-precheck` exercises checkouts for the selected stages | every EDA stage |
 | `make` | The stages that ship a Makefile drive their tool through it | lint-cdc, simulation |
 | `/bin/sh` → `bash` **where VCS runs** | The VCS launcher is `#!/bin/sh -h` and relies on bash semantics. That is the machine the launcher executes on, which is not always the one you type on: with a containerized install the host's `/bin/sh` can be `dash` and every other stage still runs | simulation, power-analysis |
 | `vcs`, `UVM_HOME` | Compiling and running the UVM testbench, and the gate-level run that produces the SAIF | simulation, power-analysis |
 | `urg` | Merging and reporting structural coverage, which the coverage gate parses | simulation's coverage gate |
 | `fsdbreport`, `fsdb2vcd` | Querying the FSDB simulation dumps (`vcs -debug_access+all -kdb -lca` plus a `-ucli` do-file `$fsdbDumpvars`) | simulation-triage |
-| `dc_shell`, and a **DC-Ultra** entitlement on the license server | Mapping with `compile_ultra` in `dc_run.tcl`; the PPA checks use its QoR reports | synthesis |
+| `dc_shell`, and a **DC-Ultra** entitlement on the license server | Mapping with `compile_ultra` in `dc_run.tcl`; timing and area measurements come from `timing_setup.rpt` and `area.rpt`, with `qor.rpt` used to cross-check setup violations | synthesis |
 | `pt_shell` | Timing and power analysis of the mapped netlist | timing-analysis, power-analysis |
 | `LIB_DB` | The std-cell Liberty `.db` that mapping links against and that both analyses re-link | synthesis, timing-analysis, power-analysis |
 | `LIB_V` | The std-cell Verilog models the gate-level run needs | power-analysis |
@@ -60,4 +61,4 @@ Keep all of the above in a site-level EDA env file sourced from your `~/.bashrc`
 ## Troubleshooting
 
 - **`/bin/sh` resolves to something other than `bash`** (e.g., `dash` on some Debian-family defaults): repoint with the distro's standard mechanism — on Debian/Ubuntu that is `sudo dpkg-reconfigure dash` answered "No".
-- **Variable looks unset:** first run `echo $VAR_NAME` to confirm. If it's set, trust it — do **not** fall through to filesystem search. Only when genuinely unset, locate the path via `find` or by reading the example paths in stage `env.sh` comments.
+- **A variable is missing or a configured path cannot be found:** check the exported value and whether it is visible to the tool process. Load the site's EDA environment file or correct the setting before searching for a replacement. Stage `env.sh` comments describe the expected paths.

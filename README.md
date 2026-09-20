@@ -5,37 +5,41 @@
   </picture>
 </p>
 
-<h3 align="center">An open-source agent flow for front-end chip design</h3>
+<h3 align="center">Chip front-end design and verification with coding agents</h3>
 
 <!-- <p align="center"><a href="">Paper</a></p> -->
 
 ---
 
-VeriPower is an open-source agent flow that takes a natural-language spec all the way to front-end signoff on commercial EDA tools. A deterministic engine sits underneath, recording every action in an append-only log. All pipeline status is derived from that log on demand, never stored as a flag or snapshot. The agent works within the task's authorization; signoff records acceptance when the task calls for it.
+VeriPower is an open-source plugin for chip front-end design and verification. Working from your specification, a coding agent develops RTL and a UVM testbench, runs EDA tools, and revises the design based on their results. VeriPower manages the work across stages, keeping track of what has passed and what needs to run again.
 
-Ships as a plugin for [Claude Code](.claude-plugin/README.md), [opencode](.opencode/README.md), [DeepSeek Harness](.dsh/README.md), and [Codex](codex/README.md).
+Works with [Claude Code](.claude-plugin/README.md), [opencode](.opencode/README.md), [DeepSeek Harness](.dsh/README.md), and [Codex](codex/README.md).
 
 ## How it works
 
-A deterministic engine owns the facts. Agents and humans are proposers. The engine keeps an append-only record of every action and conclusion, and whether a stage is done, stale, or failed gets computed from that record each time you ask. An orchestrator queries the engine for one action, carries it out, queries again. No state carried between queries.
+Each stage has a skill containing instructions and supporting scripts. The agent follows the skill to carry out the work, while a workflow engine records the result and selects what should run next. When a check fails, the agent investigates the cause and the engine schedules the repair.
 
 <p align="center">
-  <img src="assets/architecture.png" alt="VeriPower architecture" width="460" />
+  <img src="assets/plugin-architecture.png" alt="VeriPower plugin, coding agent, EDA tools, and engineer interactions" width="900" />
 </p>
 
-Verification conclusions track their declared inputs and published outputs by content fingerprint. Changes to those dependencies invalidate the affected conclusions on the next query. Design and verification both start from the spec but then diverge, so the reference model is derived from the spec, not from the implementation. Stage owners assess tool results and independent reviews against the requirements and analysis conditions. Signoff records acceptance of that evidence; it does not establish technical correctness.
+Each run records the versions of its input and output files. The engine compares these with the current files to determine which results still apply and which checks need to be repeated. An RTL edit requires simulation, lint/CDC, and synthesis to run again, while a testbench edit leaves lint/CDC results intact. The files and execution history are stored on disk, allowing work to resume in a new session.
 
-More in [ARCHITECTURE.md](ARCHITECTURE.md) ([中文](ARCHITECTURE.zh.md)).
+The verification plan and reference model are based on the specification. Stage scripts verify that every planned test ran and passed, and check coverage, timing, and power against the specified targets. Independent model reviews examine whether the test stimulus and checking logic can detect incorrect behavior. Together, these checks and reviews determine whether a stage passes.
 
-## Pipeline
+Before the flow completes, the engine checks that all required stages have passed and their results still apply. The generated RTL, testbench, constraints, and reports are available in the project directory.
 
-Eight stages, spec through power analysis. The dependency graph falls out of each rule's artifact declarations.
+More in the [architecture guide](ARCHITECTURE.md) ([中文](ARCHITECTURE.zh.md)).
+
+## Design flow
+
+The flow covers eight stages, from specification to power analysis. Simulation triage is a separate task that investigates simulation failures when the cause is unclear.
 
 <p align="center">
   <img src="assets/pipeline-dag.png" alt="Pipeline dependency graph" width="660" />
 </p>
 
-Reference implementation wraps Synopsys tools (SpyGlass, Design Compiler, PrimeTime, VCS+UVM). Each stage is a self-contained skill, so you can swap one (Verilator for simulation, Yosys for synthesis) without touching the rest.
+The included skills use Synopsys SpyGlass for lint and CDC, Design Compiler for synthesis, PrimeTime for timing and power analysis, and VCS with UVM for simulation.
 
 ## Results
 
@@ -147,4 +151,4 @@ Paper forthcoming.
 ```
 -->
 
-**Version:** v0.2.4. [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).
+**Version:** v0.2.5. [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).

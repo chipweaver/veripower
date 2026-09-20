@@ -9,8 +9,9 @@ for the runtime model. Existing code and documentation are open to correction.
 - `framework/scripts/kernel.py` owns the module's append-only `events.jsonl`, dispatch,
   outcome collection, decisions and signoff. `decide` derives the next action from events
   and current artifact fingerprints; `status` is read-only.
-- `framework/scripts/rules.py` declares stage inputs, outputs and execution placement.
+- `framework/scripts/rules.py` declares stage inputs, directory roots and execution placement.
   These declarations define dependencies and legal repair owners, including the failed stage.
+  Each stage's `result.json` lists the outputs delivered by that run.
 - `framework/scripts/facts.py` computes validity and signoff readiness;
   `schedule.py` selects work; `store.py` handles artifacts and event storage.
 - `skills/design-flow/SKILL.md` defines orchestration and applies the task's actual

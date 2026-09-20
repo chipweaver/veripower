@@ -38,7 +38,6 @@ Shared helpers live in `skills_source.py`; fixtures live beside the tests that u
 
 Report parser fixtures isolate tool syntax and measurement semantics. They do not
 encode a benchmark design or set acceptance thresholds from its measurements.
-Native tool and benchmark experiments live under [experiments/](../experiments/).
 
 Use controlled tool responses to test entrypoint routing and error propagation.
 Those tests exercise the shipped scripts; they do not claim the tool ran or the

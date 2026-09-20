@@ -1,102 +1,76 @@
-# skill-structure-design.md — skill containment + references organization
+# Skill and reference organization
 
-## 1. Self-containment
+This guide describes where stage instructions and shared contracts belong.
+For the execution model, see [Architecture](../ARCHITECTURE.md). General
+contribution guidance is in [Contributing](../CONTRIBUTING.md).
 
-### Background
+## Skill responsibilities
 
-VeriPower's DAG topology is derived from `rules.py`'s artifact selectors and every routing
-decision is computed by `schedule.decide`; `design-flow` is the thin executor that runs the
-one action `decide` returns. Its subject matter is executing the routing decision.
-Individual stage skills, in contrast, describe a bounded operation: what they receive, what
-they produce, and what they decide internally. They do not describe DAG position or who calls
-them. DAG-agnostic descriptions stay composable and replaceable — topology can evolve without
-touching stage content.
+A stage skill describes its task, the inputs it receives, the artifacts it
+produces, the judgments it must make, and how it closes the run. The dependency
+graph comes from the input declarations in `rules.py`, and the engine selects
+the next stage. Keep cross-stage scheduling in `design-flow` and the engine.
 
-**A failing stage names its own `fix_owner`.** It reports what it found in the raw tool
-output; the symptom's location does not necessarily identify the artifact to fix. A stage still decides
-nothing about scheduling: it names a rule, and `schedule.py` checks that naming against the
-derived input closure before anything is dispatched.
+A failed stage can report a repair owner with the supporting evidence. The
+engine checks whether that owner is the failed stage itself or an upstream
+input producer. Diagnostic tasks and later decisions can supply or revise an
+attribution.
 
-### Principle — describe self, not orchestration
+Some stages coordinate authoring and review subtasks as part of their own work.
+Their skills should explain that coordination where it is needed. The stage's
+execution placement is declared in the rule registry, and platform integration
+translates the shared tool calls to the host's execution facilities.
 
-A stage skill describes what *this skill* does, its inputs, its outputs, and its internal
-decision rules. Keep orchestration detail where it is needed to execute the task.
+## Writing the entry point
 
-### Dispatching skills
+Use the skill's frontmatter to identify when it applies. In the body, introduce
+the task and the information needed to begin, then organize the instructions
+around the work the executor must perform. Explain the output and closure
+requirements where the executor will use them.
 
-Two kinds of skill describe dispatch as part of their work:
+Section names should fit the task. There is no required sequence of headings
+such as `Iron Rule`, `Artifacts`, or `Return Contract`. Important boundaries
+should appear before the work that depends on them, and detailed references
+should be linked at the relevant step.
 
-1. **Router** — `design-flow`. What it executes *is* a routing decision; DAG / orchestrator /
-   routing vocabulary is what the skill is about.
-2. **Fan-out dispatchers** — `specification`, `rtl-design`, `simulation`, and
-   `simulation-plan`. These are main-thread skills that hold Level-1 sub-Task dispatch
-   authority: each dispatches its authoring and reviewing children around its own gates.
+A skill should be usable from an installed plugin without the author's session
+history. Resolve bundled resources from the skill directory and write project
+artifacts to the assigned work directory. Keep host-specific execution syntax
+in platform integration.
 
-## 2. References organization
+## Choosing a home for supporting material
 
-### Background
+| Location | Content |
+|---|---|
+| `skills/<stage>/SKILL.md` | Task instructions and links needed to execute the stage |
+| `skills/<stage>/references/` | Stage-specific schemas, authoring guidance, review contracts, and templates |
+| `skills/<stage>/scripts/` | Stage implementation and command-line helpers |
+| `framework/references/` | Contracts and handoff material shared across stages and the orchestrator |
+| Project documentation | Explanations for users and contributors |
 
-VeriPower uses a three-layer content model:
+Keep short guidance in the skill when it is needed throughout the task. Move a
+topic to a reference when it has its own readers or can be consulted separately.
+A contract consumed by several stages belongs in a shared location.
 
-1. **SKILL.md body** — entry point; inline-friendly content the agent reads in a single
-   context load.
-2. **`skills/<name>/references/`** — skill-private externalizations; specific to one stage.
-3. **`framework/references/`** — cross-skill shared references.
+Use one maintained definition for each rule. A field's schema, a command's
+`--help`, or the responsible skill may be the appropriate home. Other readers
+should link to that definition rather than maintain another copy.
 
-Each layer serves a different set of readers.
+Small sets of stage-private references can use a flat directory. Shared
+references are grouped by function, including `schemas/`, `schemas/events/`,
+and `prompts/` under `framework/references/`. Choose directory structure for
+the material it contains rather than applying a flat-directory rule to both.
 
-### Principles
+## Naming and links
 
-**P1 — Single canonical home.** Every rule has exactly one canonical home; cross-references
-use markdown links, never duplication. Applied to a rule's own placement, the home is whichever
-artifact a reader will consult anyway: the schema description for a field, the `--help` for a
-flag, the corpus of SKILL.md for an authoring convention.
+Use descriptive filenames. Markdown references generally use kebab-case,
+Python modules use snake_case, and suffixes such as `.schema.json`,
+`-template.md`, and `-task-contract.md` identify a file's purpose.
 
-**P2 — Reader need.** Externalize a topic when readers benefit from consulting it separately.
+Refer to another executable skill by its `veripower:` name, for example
+`veripower:simulation-plan`. Link to supporting documents where they are read.
+Avoid loading another skill's full instructions merely to explain a dependency
+already represented by the rule registry. Shared contracts should be referenced
+from their common home.
 
-**P3 — One-layer `references/`.** `references/` is a flat directory: no nested
-subdirectories. Private references (`skills/<name>/references/`) must not cross-reference
-other skills' private references; only `framework/references/` is shareable across skills.
-
-**P4 — Filename default.** Markdown files use kebab-case; Python files follow PEP 8
-snake_case. Use descriptive suffixes such as `*.schema.json`, `*-rules.md` and `*-template.md`.
-
-### When to externalize
-
-Consider the consumers and the topic's independence.
-
-1. **Reasons to externalize:**
-   - Machine contract: program-consumed structured data (e.g., `result.schema.json`,
-     `envelope.schema.json`).
-   - Cross-skill shared: consumers in different skills.
-   - A self-contained topic that is readable without surrounding SKILL.md context.
-
-2. **Other considerations:**
-   - Concept orthogonal to the surrounding workflow context.
-   - Evolution cadence differs from the skill body.
-
-3. **Default: keep inline.**
-
-### SKILL.md entry-point content
-
-The SKILL.md body introduces the task and links to detail where it is used.
-
-- **Iron Rule** — architectural boundary constraints; must be visible before step 1.
-- **Artifacts** — one section, split by who writes each file, not by in/out. Stage-specific.
-- **Workflow** — the execution sequence, with links to task references.
-- **Return Contract** — the terminal action.
-
-### Cross-skill reference syntax
-
-Reference other skills by name with the `veripower:` namespace prefix. Never use `@`-path
-includes or file-path cross-links that force-load another skill's context.
-
-**Good:** *"For verification-plan authoring, see veripower:simulation-plan."*
-
-**Bad:** *"For verification-plan authoring, see `@skills/simulation-plan/SKILL.md`."*
-
-**Bad:** *"Read `skills/simulation-plan/SKILL.md` first, then return here."*
-(sequence dependency)
-
-Markdown links within a doc are fine — they are navigation aids that do not force-load
-context.
+Language conventions are described in [Language conventions](language-posture-design.md).

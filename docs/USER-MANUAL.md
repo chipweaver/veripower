@@ -1,479 +1,271 @@
 # VeriPower User Manual
 
-For front-end design and verification engineers. Walks through the full flow from environment setup to signoff, in the order you'll actually do things. Intervention points are marked inline. Two cheat sheets at the end.
+[中文版](USER-MANUAL.zh.md)
 
----
+This guide covers preparing a design task, running the flow, reviewing its
+outputs, and continuing after changes or interruptions. `{module_dir}` means
+the directory containing the whole design workspace. Use its absolute path
+when asking the agent to work on it.
 
-## §0 In one sentence
+## 1. Prepare the environment
 
-VeriPower takes a finalized module requirement all the way to front-end signoff. Spec, verification plan, RTL, lint/CDC, synthesis, timing, simulation, power. Eight stages, dispatched and reworked automatically by an Orchestrator. Your participation follows the decisions needed and the authorization you give.
+Install VeriPower using the [README quickstart](../README.md#quickstart).
+Host-specific setup is documented for [Claude Code](../.claude-plugin/README.md),
+[opencode](../.opencode/README.md), [DeepSeek Harness](../.dsh/README.md), and
+[Codex](../codex/README.md).
 
----
-
-## §1 Full Walkthrough
-
-`{module}` refers to the module name throughout. The entire work tree lives in a directory with that name, and that's what you pass in commands. If you're not in its parent directory, give the path.
-
-### 1.1 Before you start
-
-**Install the plugin**
-
-Claude Code:
+The Python scripts require Python 3.10 or later and the packages listed in
+`requirements.txt`. From a source checkout, install them with:
 
 ```bash
-claude plugin marketplace add chipweaver/veripower
-claude plugin install veripower@chipweaver
+python3 -m pip install -r requirements.txt
 ```
 
-Or clone the source and launch from the command line: `claude --plugin-dir /path/to/veripower`.
+The full flow uses SpyGlass, Design Compiler, PrimeTime, and VCS with UVM.
+The specification, verification planning, and RTL design stages can run
+without these EDA tools. Tool paths, licenses, libraries, and environment
+variables are described in [EDA Tool Environment](eda-env.md). Export the
+settings in the environment used to launch the coding agent.
 
-opencode — add the plugin to `~/.config/opencode/opencode.json`, or to a project-level
-`opencode.json`:
+To check readiness before a design run, ask in a separate session:
 
-```json
-{ "plugin": ["veripower@git+https://github.com/chipweaver/veripower.git"] }
+> Run the env-precheck skill.
+
+The check inspects tools and environment settings, then runs small tool jobs
+for the stages you select. It reports which stages can run and suggests
+settings for missing variables. It does not edit your shell configuration.
+Resolve the reported environment issues before launching the affected stages.
+
+## 2. Prepare the design input
+
+The flow starts from `{module_dir}/intent/brainstorm.md`. The filename is fixed,
+but the document can use your existing specification format. Keep referenced
+material in the same `intent/` tree.
+
+```text
+module_dir/
+└── intent/
+    ├── brainstorm.md
+    └── ...                 Reference models, register maps, standards, or other sources
 ```
 
-then start it with:
+### Use an existing specification
 
-```bash
-OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true \
-OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
-```
+Save your specification as `intent/brainstorm.md` and include the material
+needed to interpret it. Describe the required behavior, interfaces, clocks,
+resets, and any timing, area, power, or coverage targets. State the conditions
+under which a target applies, such as the operating scenario for a power bound.
+Mark open questions and choices you want the agent to make.
 
-The first flag enables background subagents. opencode 1.18.30 has a default
-32,000-token completion ceiling. For models that support longer output, set the
-second flag to the model's declared output limit; `131072` is an example.
+Copy authoritative reference files into `intent/` so their content is tracked
+with the specification. A file outside this tree is not automatically included
+as intent. A symbolic link records where it points, rather than changes to the
+target's content.
 
-DeepSeek Harness — install into the profile you run:
+Existing RTL or tests can be supplied as reference material. Explain their role
+in the specification. The flow creates and records its own stage deliveries.
+Putting files in the module directory does not register a completed stage.
 
-```bash
-dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripower.git"
-dsh web
-```
+### Develop requirements with the agent
 
-It installs as a profile layer and finds its own `skills/`, so there is nothing to
-configure. Use `web`, not the one-shot `headless` profile — a dispatched stage outlives the
-turn that started it, and `headless` exits when the turn ends.
+If the requirements need discussion, use a separate session:
 
-Codex — install the native plugin (tested with CLI 0.154.0 on Linux):
+> Run the brainstorm skill for {module_dir}.
 
-```bash
-codex plugin marketplace add chipweaver/veripower
-codex plugin add veripower@chipweaver --json
-```
+The skill works through the requirements and unresolved choices, then writes
+`intent/brainstorm.md`. It returns the path and a short description of what it
+covered or changed. Review the document before starting the flow. When you
+already have a suitable specification, you can start directly from that file.
 
-Launch with `codex --enable hooks --enable multi_agent`, review the two VeriPower hooks in
-`/hooks`, and start a new session. The plugin uses native subagents and preserves host permissions.
-See [Codex setup](../codex/README.md) for integration and verification scope.
+## 3. Start and monitor the flow
 
-**Python**
+Start a separate session and ask:
 
-Supports **3.10 / 3.11 / 3.12**.
+> Run the design-flow skill for {module_dir}.
 
-```bash
-python3 --version
-```
+The agent coordinates stage execution and repairs. It continues within your
+authorization and brings back decisions that need your input, along with the
+relevant evidence. Review deliveries whenever useful. Reading a report does
+not itself require the flow to pause.
 
-Install dependencies:
+<p align="center">
+  <img src="../assets/pipeline-dag.png" alt="Main artifact dependencies across the design and verification stages" width="760" />
+</p>
 
-```bash
-pip install "jsonschema>=4.18" referencing PyYAML
-```
+The diagram shows the main artifact dependencies. RTL design and verification
+planning both start from specification. Ready work can run in parallel, and
+the scheduler also accounts for ongoing work and repairs. The flow can revisit
+earlier stages when a later check finds a problem.
 
-Or from the source directory:
+To check progress, ask:
 
-```bash
-pip install -r requirements.txt
-```
+> Show the current status of {module_dir}, including any failed checks and unfinished runs.
 
-**EDA tools and licenses**
-
-See [`eda-env.md`](eda-env.md) for the full list of tools and variables. This includes `dc_shell` / `pt_shell` / `vcs` / `spyglass`, `fsdbreport` / `fsdb2vcd`, `make` / `urg`, license variables, `LIB_DB` / `LIB_V` / `UVM_HOME`, and `/bin/sh` pointing to `bash`.
-
-If you're only running `specification` / `simulation-plan` / `rtl-design`, skip this. No EDA tools needed.
-
-**`env-precheck` environment check**
-
-Once the environment is ready, in a **separate session**:
-
-> Run the env-precheck skill
-
-It checks each tool and variable, does a live checkout of each license, and reports which stages this machine can run. It reports the findings without changing your environment. When a variable is missing, it prints the `export` line for you to paste.
-
-### 1.2 Input
-
-The entire pipeline reads one directory: `{module}/intent/`. The document goes in it as `brainstorm.md`, and everything the document leans on goes in with it — organize the inside however you like. Two ways to get there.
-
-**Option A: you already have a spec.** Save it as `{module}/intent/brainstorm.md`, in whatever shape it is, and put anything it refers to in that directory too: a reference model, a register map, a standard's text. Whatever your document names as authoritative is read there by the stage that needs it. Two things to know. Files outside `intent/` are not automatically delivered or versioned as intent. Identify any necessary missing basis; tools and artifacts assigned to later work are prepared by their responsible stage. And a symlink is recorded by where it points, not by what is there, so a shared spec that changes under the link changes invisibly — copy it in instead. No need to run brainstorm: `specification` accounts for the intent in `requirements.json`, preserving source wording, conditions and responsibility. Repeated statements can share an obligation without forcing the document into a fixed format.
-
-**Option B: generate from scratch.** In a **separate session**:
-
-> Run the brainstorm skill for {module}
-
-It asks one question at a time, each with the answer it would give and why, so you are picking
-rather than composing. It is done when your scope, functions, top-level IO, clocks and resets
-and their crossings, architecture partition, timing scenarios, PPA targets, and what the
-downstream stages need are each either settled or deliberately left open. What you already
-brought, it does not ask again.
-
-When it finishes, it **hands you the path only**, not the content. Read the file on disk and **confirm it looks right to start the pipeline**.
-
-Whichever route you take, what the document says is what the pipeline will hold the design to, and nothing more: a bound you did not write is not judged, each obligation is assigned to a stage, a decision under the actual authorization, or an explicit external responsibility. Necessary missing definitions remain visible; implementation choices and assets to be created are assigned to their responsible work.
-
-> **Not currently supported:** importing existing RTL or testbench as engineering artifacts. They can serve as conversational input to brainstorm, but RTL and TB are still regenerated by the pipeline.
-
-### 1.3 Launch
-
-In a **separate session**:
-
-> Run the design-flow skill for {module}
-
-The Orchestrator takes over. Each round it asks the scheduler "what next?", and the scheduler returns **exactly one** action for it to carry out. From this point on, you only step in at intervention points.
-
-### 1.4 Stage by stage
-
-```
-[brainstorm]  (before the pipeline, separate session)
-     ↓
-intent/brainstorm.md
-     ↓
-[specification] → [simulation-plan] → [rtl-design]
-                                            │
-                          ┌─────────────────┴──────────────────┐
-                          ↓                                    ↓
-                     [lint-cdc]                          [simulation]
-                          ↓                                    │
-                     [synthesis]                               │
-                          ↓                                    │
-                  [timing-analysis]                            │
-                          └─────────────────┬──────────────────┘
-                                            ↓
-                                    [power-analysis]
-                                            ↓
-                                      signoff (when in scope, §1.6)
-```
-
-The work tree splits into `Design/` and `Verification/`. Each stage below covers three things: **what it does**, **artifacts**, and **your action**.
-
-The third column in artifact tables tells you whether to read it. **Must read** marks material needed for the corresponding decision; who makes it follows the task's authorization. **Optional** means you'd look at it during review. Unmarked files are consumed by scripts or downstream tools.
-
-**The pipeline follows the actual authorization.** It presents unresolved decisions when human input is needed, continues within an existing delegation, and records acceptance when it is in scope.
-
-The items marked "read xx" or "glance at xx" are review actions. The pipeline won't stop for them. Review lint-cdc's waived findings and their basis in its reports; there is no separate approval prompt.
-
----
-
-#### specification
-
-**What it does:** establishes requirements, design choices and interface/clock boundaries from the original intent, derives constraints and obtains independent review. Organize authoring and delegation around the work; RTL design owns the module split.
-
-**Artifacts** (`{module}/Design/specification/`)
-
-| File | What it is | Read it? |
+| State | Meaning | What to do |
 |---|---|---|
-| `design.md` | Architecture, boundary, joint obligations and timing scenarios | **Must read** |
-| `requirements.json` | Source-grounded obligations and judgment responsibilities. Independent conclusions remain distinguishable; repeated statements can share an entry. The ledger view shows unresolved items (`unassignable`), external responsibilities, decisions and numerical bounds | **Must read those four groups** |
-| `manifest.json` | The top RTL module's name, and nothing else | Optional |
-| `spec-review/findings/` / `decisions.md` | Independent review and material decisions with their basis and authorization | **Must read** |
-| `check-hints.json` | How simulation will observe each requirement row it judges | Optional |
-| `clocks.json` / `top-io.json` | Boundary info: clocks and their arrival budgets, top-level ports | `design.md` §1.3 is the human-readable version |
-| `constraints/<TOP>.sdc` / `.sgdc` | Constraint pair generated from clocks + top-io | Generated, not a decision |
+| `missing` | No result has been collected for this stage | Let the flow schedule the required work |
+| `in-flight` | A dispatched run has not been collected | Let the agent check its executor and collect it when it exits |
+| `valid` | The latest result passes and its recorded files still match | Review the result as needed |
+| `stale` | The latest result passed, but a recorded input or output changed | Ask the flow to reassess the affected work |
+| `failed` | The latest result reports a failure | Inspect the finding and follow the repair work |
+| `blocked` | The latest collection could not establish a pass/fail result | Resolve the reported cause, such as a missing or malformed result |
 
-**Your participation:** review unresolved requirements, numerical bounds and boundary choices. Decisions needing your input arrive with their basis; work within an existing delegation continues. Review `design.md` and the findings at delivery. An unresolved violation prevents this stage from passing; signoff is not a substitute for resolving it.
+`in-flight` describes an uncollected run. The executor may already have exited.
+A `blocked` result identifies incomplete execution or collection, while
+`failed` carries a stage's technical failure conclusion.
 
----
+## 4. Review the results
 
-#### simulation-plan
+Each stage publishes files below `Design/` or `Verification/`. Its
+`result.json` records the verdict and delivered artifact list. The tables
+below identify the files most useful for review, relative to `{module_dir}`.
 
-**What it does:** derives the testpoint matrix, TB scaffold, stimulus sequences, and power scenarios from the spec.
+### Requirements and verification plan
 
-**Artifacts** (`{module}/Verification/simulation-plan/`)
-
-| File | What it is | Read it? |
+| Directory | Files to start with | Review focus |
 |---|---|---|
-| `verification-plan.md` | §3 testpoint matrix + §4 power scenarios. This is what you read when the round is handed over | **Must read** |
-| `plan-review/findings.md` / `decisions.md` | Review findings and recorded decisions | **Must read** |
-| `tb-scaffold.json` | TB scaffold: testpoint and agent definitions | Optional, plan §3 is the human-readable version |
-| `power-scenarios.json` | Power scenarios, consumed by power-analysis | Optional, plan §4 is the human-readable version |
-| `sequences.json` | Stimulus sequence definitions | No need |
+| `Design/specification/` | `design.md`, `requirements.json`, `spec-review/findings/`, `spec-review/decisions.md` | Required behavior, unresolved requirements, numerical targets, interface and clock decisions |
+| `Verification/simulation-plan/` | `verification-plan.md`, `plan-review/findings.md`, `plan-review/decisions.md` | Whether the planned tests cover the requirements and how review findings were resolved |
 
-**Your participation:** review `verification-plan.md` and `plan-review/findings.md`. The stage resolves findings against their evidence; an unresolved blocking finding prevents the stage from passing. Decisions follow the actual authorization and are recorded with their basis in `plan-review/decisions.md`.
+The requirements ledger preserves source wording and names who judges each
+entry. Review open items, decisions, external responsibilities, and numerical
+bounds. `unassignable` entries must be resolved before specification passes.
+Other specification outputs include `manifest.json`, `clocks.json`,
+`top-io.json`, `check-hints.json`, and `constraints/`.
 
-> The testpoint matrix guides TB authoring, regression and coverage convergence.
+The verification plan is supported by `tb-scaffold.json`, `sequences.json`,
+and `power-scenarios.json`. The power scenarios describe the measurements the
+power stage needs to perform.
 
----
+### RTL and static analysis
 
-#### rtl-design
-
-**What it does:** implements the required behavior and boundary, reviews the RTL, and declares timing exceptions and generated clocks in `constraint-annotations.json`. Downstream lint-cdc and synthesis constraints both come from here.
-
-**Artifacts** (`{module}/Design/rtl-design/`)
-
-| File | What it is | Read it? |
+| Directory | Files to start with | Review focus |
 |---|---|---|
-| `semantic-review/*.md` | Review of RTL against design intent | Useful for reviewing this delivery |
-| `*.v` | RTL source | Optional |
-| `constraint-annotations.json` | Timing exceptions and generated clocks implied by this RTL, using real module names. Lint-cdc and synthesis constraints come from here | Optional |
-| `rtl-files.json` | Global ordered `files[]`, include paths and simulation-only DPI sources; downstream filelists are generated from it | No need |
+| `Design/rtl-design/` | `src/`, `rtl-files.json`, `constraint-annotations.json`, `semantic-review/` | Implementation, source layout, timing annotations, and design review findings |
+| `Design/lint-cdc/` | `lint-report.txt`, `cdc-report.txt`, `scripts/waiver.tcl` | Reported violations and the technical basis for each waiver |
+| `Design/synthesis/` | `reports/timing_setup.rpt`, `reports/area.rpt`, `reports/qor.rpt`, `out/` | Setup slack, cell area, report consistency, and the synthesized design |
+| `Design/timing-analysis/` | `timing-report.txt` | Setup/hold results, analysis coverage, and timing exceptions |
 
-**Your participation:** `semantic-review/*.md` explains the RTL review findings and their resolution. Use it to assess the delivery or discuss a concrete concern.
+RTL sources are under `Design/rtl-design/src/`. Use `rtl-files.json` for the
+source list and associated compilation inputs. Constraint annotations supply
+RTL-specific information to lint/CDC and synthesis. Stage-local constraint
+files include `scripts/local.sgdc` for lint/CDC and `constraints.local.sdc`
+for synthesis.
 
-After this stage, the pipeline forks into the implementation chain and the simulation chain, running in parallel.
+Synthesis measures setup slack from `timing_setup.rpt` and cell area from
+`area.rpt`, using `qor.rpt` to cross-check setup violations. Numerical judgments
+are recorded under `stage_specific.requirements` in `result.json`.
+The `out/` directory contains the netlist, exported SDC, SDF, and any support
+files used downstream. A new stage run can reuse applicable measurements when
+the change only requires reassessing the existing evidence.
 
----
+### Simulation and power
 
-#### lint-cdc
-
-**What it does:** runs SpyGlass lint and CDC checks in the background.
-
-**Artifacts** (`{module}/Design/lint-cdc/`)
-
-| File | What it is | Read it? |
+| Directory | Files to start with | Review focus |
 |---|---|---|
-| `scripts/waiver.tcl` | Waiver declarations and analysis options | As needed |
-| `lint-report.txt` / `cdc-report.txt` | Native reported and waived findings, including recorded waiver reasons | Review when waivers are used |
-| `lint-violations.json` / `cdc-violations.json` | Structured violation lists | Optional |
-| `scripts/local.sgdc` | SGDC annotations added by this stage for port/clock associations the seed can't know | Optional |
-| `scripts/constraints.sgdc` | Assembled SGDC: spec seed + RTL annotations + `local.sgdc` | Reassembled each run; edit `scripts/local.sgdc` for stage-local annotations |
+| `Verification/simulation/` | `case-results-summary.md`, `structural-coverage.json`, `check-review.md`, `tb/uvm/refmodel/` | Executed tests, DUT coverage, checking logic, and expected behavior |
+| `Verification/power-analysis/` | `analysis.md`, `experiment/`, `reports_ptpx/<id>/` | Measurement conditions, experiment checks, switching activity, and power for each scenario |
 
-Review the actual waived findings and their basis against the task's requirements and authorization.
-The scripts check report completeness and counts; they do not judge whether a waiver is justified.
+For a failed simulation case, inspect `regression-log.txt` and the case logs
+under `logs/`. `tests/testlist.json` lists declared tests and `case-results.json`
+records their counts. The compilation environment is described by `env.sh`,
+`filelist.f`, and `rtl_filelist.f`. When the cause is unclear, the flow can run
+`simulation-triage` and publish its analysis under `Verification/simulation-triage/`.
 
----
+For power, begin with the measured conditions and conclusions in `analysis.md`.
+Each scenario has a `power_flat.rpt` total, a `power_hier.rpt` breakdown, and a
+`switching_activity.rpt` describing activity annotation. Its SAIF data is under
+`saif/<id>.saif`. These are interval-average measurements for the executed
+scenario, so compare them with the matching requirement and conditions.
 
-#### synthesis
+## 5. Make changes and resume work
 
-**What it does:** runs `compile_ultra` synthesis in the background, judges every `requirements.json` row assigned to synthesis.
+### Change a design or test
 
-**Artifacts** (`{module}/Design/synthesis/`)
+Tell the agent what needs to change and what behavior must be preserved. For
+example:
 
-| File | What it is | Read it? |
-|---|---|---|
-| `reports/timing_setup.rpt` / `reports/area.rpt` | Precise setup slack and cell-area measurements | Optional |
-| `reports/qor.rpt` | QoR summary and consistency context | Optional |
-| `constraints.local.sdc` | Timing exceptions transcribed from `constraint-annotations.json` | Optional |
-| `out/<TOP>_syn.v` / `_syn.sdc` / `_syn.sdf` | Post-synthesis netlist, exported SDC, delay annotation | Consumed by downstream timing/power |
-| `constraints.sdc` | Assembled constraints: spec SDC + `constraints.local.sdc` | Assembly product |
+> Update the RTL in {module_dir} to address this timing finding, then run the affected checks.
 
-**Your action: none.** To review, read the timing and area reports alongside `result.json`'s `requirements[]`. Their measurements are compared with the requirements recorded in the ledger. SDC exceptions come from the `constraint-annotations.json` declared by rtl-design. A path that cannot meet timing is routed upstream for repair.
+If you edited a file yourself, identify the file and the purpose of the edit.
+The next status query compares recorded versions with the current files.
+The producing stage and consumers that recorded the changed artifact may
+become `stale`. Later analyses are reassessed against their own inputs, such
+as the netlist delivered by synthesis.
 
----
+A new run copies the stage's selected existing artifacts into a fresh work
+directory. Those files are a starting point for the agent's work, and the
+agent may revise them to satisfy the task. Keep changes you want to preserve
+in version control and state that requirement when continuing.
 
-#### timing-analysis
+### Revise the requirements
 
-**What it does:** reads the synthesis netlist + SDC and runs static timing analysis in the background.
+The running flow treats `intent/` as read-only. Finish or stop active work
+before revising it. Ask the agent to update the specification, or use the
+brainstorm skill again in a separate session to discuss the revision.
+Then resume the flow with the updated input. Every stage records the intent
+tree, so a content change there causes the flow to reassess all eight stages.
 
-**Artifacts** (`{module}/Design/timing-analysis/`)
+### Continue after an interruption
 
-| File | What it is | Read it? |
-|---|---|---|
-| `timing-report.txt` | Setup/hold slack, endpoint checks, port delays and untested reasons | Optional |
+Keep the module directory and ask in a new session:
 
-**Your action: none.** To review, read `timing-report.txt`. The stage assesses reported timing and whether the analysis scope and exceptions match the task.
+> Continue the design flow for {module_dir}. Check any unfinished executors before collecting their results.
 
-Synthesis and STA choose work from the actual change. Applicable measurements can be judged against current requirements without recalculation. The `run` entrypoint uses `config.tcl` and temporary working data. Successful calculations move checked products into the workdir; failed calculations retain logs and temporary output for diagnosis until retry. Source notes travel with the result without becoming downstream hardware inputs. Setup, calculation and closure are independent; a new stage run does not require a new synthesis.
+The agent checks the event history and files, and determines whether previously
+launched jobs are still running. It waits for or stops those jobs as appropriate
+to the task, confirms exit, and collects the run. A run without a usable result
+can be collected as `blocked`, after which the reported cause can be addressed.
+Existing passing results remain reusable when their recorded versions match.
 
----
+### Resolve a blocker
 
-#### simulation
+Ask the agent for the failing stage, run, relevant report, and proposed repair.
+A stage may repair its own work or route a change to an input-producing stage.
+If more information or a decision is needed, provide it and ask the flow to
+continue. Later diagnosis can correct an earlier repair attribution.
 
-**What it does:** implements the testbench, independently reviews its checks, runs regression and investigates coverage gaps. The stage owner assesses findings against evidence and repairs local defects. RTL may inform diagnosis; expected behavior still comes from independent sources. When a test case fails and the stage can't tell who should fix it, it automatically dispatches `simulation-triage` to dig through waveforms (`fsdbreport`), failure logs, and case lists, attributing each failure. The scheduler routes rework to whichever stage the attribution names.
+## 6. Complete and keep the delivery
 
-**Artifacts** (`{module}/Verification/simulation/`)
+The flow finishes when all required stages have current passing results and
+all dispatched runs have been collected. Ask for a delivery summary identifying
+the requirements checked, key reports, and any external responsibilities.
 
-| File | What it is | Read it? |
-|---|---|---|
-| `tb/uvm/refmodel/**` | Reference model that judges correctness | Useful for reviewing this delivery |
-| `case-results-summary.md` | Per-case result summary | Optional |
-| `structural-coverage.json` | Structural coverage: line / cond / branch / toggle / fsm | Optional |
-| `regression-log.txt` + `logs/` | Regression log plus per-case logs | Optional, check when you want to know why a specific case failed |
-| `tb/uvm/**` (rest) | UVM testbench proper | Optional |
-| `check-review.md` | Per-testpoint check adequacy review | Used by the stage to direct check repairs |
-| `env.sh` / `filelist.f` / `rtl_filelist.f` / `tests/testlist.json` / `case-results.json` | Environment, compile file lists, case list, machine-readable results | No need |
+If the task includes a recorded acceptance, ask the agent to prepare signoff.
+It checks current results and whether published files are covered by the stage
+records, then presents the acceptance evidence. Decisions follow your existing
+authorization. The record includes the decision maker and basis.
 
-**Your participation:** `tb/uvm/refmodel/*` supplies expected behavior for regression checks. Inspect it when assessing what the tests establish or investigating a discrepancy.
+Signoff applies to the accepted stage evidence. Changes that invalidate that
+evidence invalidate its acceptance, and results from a new stage run need a
+new acceptance when that is in scope. Ordinary completion does not require
+an additional signoff.
 
----
+For source control, keep the intent, specification, RTL source tree and file
+lists, constraint annotations, verification plan, testbench sources, experiment
+sources, and reports needed for review. The stage's `result.json` identifies
+its published artifacts.
 
-#### power-analysis
+For a resumable snapshot, retain the whole module directory, including
+`events.jsonl`, published results, and `runs/`, together with the tool and
+library configuration. Archive the module directory as an independent copy,
+since run and published paths can share file content through hard links.
 
-**What it does:** the two chains converge here. Reads the planned measurement purpose, reuses suitable verification components, and authors a complete power experiment. Checks actual conditions, captures SAIF and calculates interval-average power with PT-PX, then assesses requirements using both experimental validity and tool results.
+The delivered RTL, UVM sources, SDC/SGDC constraints, netlists, and reports use
+the EDA tools' normal formats. They can be used outside VeriPower with their
+required files and environment settings.
 
-**Artifacts** (`{module}/Verification/power-analysis/`, `<id>` = power scenario)
+## 7. Troubleshooting
 
-| File | What it is | Read it? |
-|---|---|---|
-| `analysis.md` / `experiment/` | Measurement interpretation and runnable experiment sources | When reviewing |
-| `reports_ptpx/<id>/power_flat.rpt` | Total power for this scenario. PPA judgment reads this | Optional |
-| `reports_ptpx/<id>/switching_activity.rpt` | How much switching came from SAIF vs. tool defaults | Optional, check that the measured scenario activity was annotated |
-| `reports_ptpx/<id>/power_hier.rpt` | Hierarchical power breakdown | Optional, look at it when you need to reduce power |
-| `saif/<id>.saif` | Activity used for each scenario | No need |
-| `reports_ptpx/<id>/ptpx.log` | PT-PX log for this scenario | Only when something goes wrong |
-
-For review, start with `analysis.md` for measured conditions, checks and conclusions, then inspect the referenced reports. Decisions about acceptance follow the actual human or delegated authorization. After this stage, the pipeline has nothing left to run. Signoff records acceptance when it is in scope (§1.6).
-
----
-
-**Check progress anytime.** Ask "where is {module} right now?" Each stage is in one of six states:
-
-| State | Meaning |
+| Symptom | Next step |
 |---|---|
-| `missing` | Never been run |
-| `in-flight` | Currently running |
-| `valid` | Recorded pass; its input and output fingerprints still match |
-| `stale` | Recorded pass, but an input or output has changed; the affected work needs reassessment |
-| `failed` | Completed, judgment says it didn't pass |
-| `blocked` | Can't proceed (missing environment, crashed) |
+| Module directory or `intent/brainstorm.md` is missing | Check the absolute module path and place the input document in its `intent/` directory |
+| An EDA tool cannot run or obtain a license | Check the launch environment and the affected stage with `env-precheck` |
+| A run remains `in-flight` after the session ends | Have the agent inspect the executor, confirm exit, and collect the run |
+| Collection reports a missing or invalid result | Inspect the run's logs and result error, then let the stage complete its work and write a new result |
+| Coverage cannot be read | Check the URG text reports and DUT instance scope against [EDA Tool Environment](eda-env.md#coverage-report-urg-text-layout) |
+| VCS compilation fails during C/C++ linking | Check compiler compatibility with the installed VCS and the `VCS_CC` / `VCS_CPP` settings in [EDA Tool Environment](eda-env.md#optional) |
+| Signoff reports an invalid stage | Resume the flow to resolve its missing, failed, or stale result |
+| Signoff reports unrecorded files | Review whether those files belong in the delivery, then have the stage record the intended artifacts or remove the extras |
 
-### 1.5 Special situations
-
-**I edited RTL by hand. Will it get overwritten? What's the source of truth?**
-
-Disk is the source of truth. The moment you save, **the stage that produced that file and every downstream stage that reads it all go invalid at once**. Every result records content fingerprints of its inputs and outputs. If the fingerprints don't match, the result no longer holds.
-
-**Your edit will not be rolled back.** But because the stage that produced the file also went invalid, the next scheduling round will rebuild it. The agent works **on top of your edit**. Your version is its starting point, not something it discards.
-
-**Ctrl-C / SSH dropped / machine rebooted**
-
-Just say "continue the design flow for {module}" in a new session. There's no separate recovery procedure. The scheduler queries the event log and the files on disk to pick up where things left off. As long as the directory is there, any new session can resume.
-
-The one thing that needs you: the interrupted round will still show as "in-flight." Once you confirm the executor is dead, tell it to close out that run. The next round reroutes from there.
-
-**It's stuck / keeps editing the same thing**
-
-The flow reports what prevents progress. Address that cause under the actual task authorization, then resume scheduling. Stage results and triage findings can already route repairs; `diagnose` records a later addition or correction to repair ownership.
-
-A stage may repair its own work. Revise intent only when the evidence and authorization support a requirement change.
-
-More error messages in [Appendix B](#appendix-b-error-reference).
-
-### 1.6 Signoff
-
-`signoff` records acceptance of the current verification evidence, when the task calls for it.
-The flow checks the stage conclusions and delivered artifacts, then follows the actual authorization:
-reserved decisions are presented with their basis and wait for you; delegated decisions proceed in
-scope. `provenance` records the decision maker and authorization; `reason` records the acceptance
-basis. Host execution permissions remain separate.
-
-Signoff binds the accepted evidence. Changed evidence invalidates it; restoring the same evidence
-can restore validity, while new stage conclusions need new acceptance. Signoff does not replace
-technical verification or turn a failed check into a pass.
-
-Files in a published stage directory must be covered by that stage's recorded artifacts. For an unrecorded file, determine whether it belongs in the delivery, then remove it or close the stage with the relevant evidence.
-
-### 1.7 Artifacts and exit paths
-
-**Directory tree**
-
-```
-{module}/
-├── intent/                        # The pipeline's sole input: brainstorm.md + what it leans on (yours, pipeline reads only)
-├── events.jsonl                   # Audit log, the only persistent state file
-├── Design/
-│   ├── specification/             # design.md / *.json / constraints/ / spec-review/
-│   ├── rtl-design/                # *.v / rtl-files.json / semantic-review/
-│   ├── lint-cdc/                  # reports + violations JSON + scripts/
-│   ├── synthesis/                 # out/*_syn.{v,sdc,sdf} / reports/qor.rpt
-│   └── timing-analysis/           # timing-report.txt
-└── Verification/
-    ├── simulation-plan/           # verification-plan.md / *.json / plan-review/
-    ├── simulation/                # tb/uvm/ / filelist.f / env.sh / case-results-summary.md
-    ├── simulation-triage/         # failure analysis (only exists if triggered)
-    └── power-analysis/            # reports_ptpx/*/power_hier.rpt
-```
-
-Each stage also produces a `result.json` (that round's status envelope).
-
-**What to put in git** (suggested, not enforced)
-
-Track: `intent/`, `events.jsonl` (audit trail), `Design/specification/`, `Design/rtl-design/*.v` + `rtl-files.json`, `Verification/simulation-plan/`, `Verification/simulation/tb/`, and the final reports from each stage.
-
-Ignore: tool intermediates and run directories. `*.svf`, `*.pvl`, `command.log`, `pt_shell_command.log`, `simv*`, `csrc/`, synthesis and PT work directories, waveforms (FSDB files tend to be large).
-
-**Uninstall**
-
-Claude Code:
-
-```bash
-claude plugin uninstall veripower@chipweaver
-```
-
-opencode: remove the plugin entry from `opencode.json` and start a new session.
-
-**Can I use the artifacts without this tool?**
-
-Yes. RTL is standard `.v` plus a filelist (`rtl-files.json`). The TB is standard UVM with `filelist.f` + `env.sh`, and `vcs` can compile it directly. Constraints are standard SDC/SGDC. Synthesis, timing, and power artifacts are just the tools' own netlists and reports. `events.jsonl` preserves the VeriPower audit trail; the design artifacts also run with the EDA tools directly.
-
----
-
-## §2 Glossary
-
-The body of this manual uses familiar terms where possible. Below are the words you'll see in the plugin internals and log files.
-
-| Plugin term | What it means |
-|---|---|
-| stage / rule | A pipeline stage. One stage = one rule |
-| proof | A stage's pass/fail conclusion, bound to recorded input and output fingerprints |
-| stale | An input or output changed, so the recorded pass is no longer current. Recomputed on every query |
-| event log / `events.jsonl` | Audit log, the only persistent state file |
-| dispatch / reap | Send a stage off to run / collect its result |
-| decide | The scheduler. Ask it "what next?" and it returns exactly one action |
-| DISPATCH / REAP / YIELD / DONE / ESCALATE | Send off / collect / something is still running, wait / all green / **a reported blocker needs resolution** |
-| workdir / run | A stage's working directory for a particular round / the round number |
-| input closure | All upstream artifacts a result transitively depends on |
-| fix_owner | Which stage should fix this failure |
-| signoff | A recorded acceptance of specific stage evidence under the task's authorization |
-
----
-
-## Appendix A: Intervention point reference
-
-| # | When | Stage | What you decide | Can you skip it? | Details |
-|---|---|---|---|---|---|
-| 1 | Requirements dialogue | brainstorm (before pipeline) | Requirements and architecture, including PPA targets | No | §1.2 |
-| 2 | Requirements and boundary decisions | specification | Resolve open requirements and confirm bounds/boundary with their evidence | Follow the actual authorization; do not infer technical proof from approval | §1.4 |
-| 3 | Delivery handoff | specification, after independent review | Review the design and findings; the stage resolves violations before passing | Yes | §1.4 |
-| 4 | Delivery handoff | simulation-plan | Review the plan and findings as needed | Yes | §1.4 |
-| 5 | ESCALATE | any stage | Address the reported blocker; clarify repair ownership when needed | The blocker must be resolved; human involvement follows authorization | §1.5 |
-| 6 | Signoff | after all stages | Accept the evidence under the actual authorization | Only needed when recorded acceptance is in scope | §1.6 |
-
-These are decision and review points, not mandatory permission prompts. Human participation follows the actual authorization; signoff records acceptance when the task calls for it.
-
-## Appendix B: Error reference
-
-**Scheduling and rework**
-
-| Message | What it means | What to do |
-|---|---|---|
-| `no module directory at <path>` | Module directory doesn't exist, probably a wrong path | Retry with the absolute path to the module directory |
-| `<stage>: envelope named no fix_owner` | Stage failed but didn't say who should fix it | Identify the failed stage itself or an input producer as the repair owner, with the reason (§1.5) |
-| `<stage>: fix_owner ... is neither itself nor an input producer` | Repair owner is unrelated to the failed stage | Name the failed stage or a stage whose artifacts it consumes |
-| `<stage>: diagnosis named no fix_owner` | Triage ran but didn't identify who should fix it | It lists the candidates for you. Pick one and explain why |
-| `intent tree incomplete: intent/brainstorm.md is not there…` | The pipeline has no intent document to start from | Put your document at `{module}/intent/brainstorm.md`, with anything it names as authoritative beside it |
-
-**Signoff gate**
-
-| Message | What it means | What to do |
-|---|---|---|
-| `signoff blocked: <stage> not valid` | That stage has no current passing conclusion | Let the flow resolve the missing work, failure or changed evidence |
-| `signoff blocked: <stage> has unrecorded file(s) <file>` | A published stage directory contains files not covered by its latest outcome | Assess whether the files belong in the delivery, then remove them or close the stage with the relevant evidence |
-
-**Environment and tools**
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| An EDA stage immediately reports an unset variable | `LIB_DB` / `LIB_V` / `UVM_HOME` not exported | First `echo $VAR` to confirm it's really unset (don't go searching the filesystem yet), then export and rerun |
-| `compile_ultra` can't check out a license | No DC-Ultra license | Provide a DC-Ultra entitlement for `compile_ultra` |
-| Linker error when building `simv` | Host GCC incompatible with VCS pre-compiled objects | `export VCS_CC=<gcc>` / `export VCS_CPP=<g++>` (GCC 4.8 is a known-good combination on some VCS + newer distro setups) |
-| Coverage parsing fails | Your `urg` version has a different report layout than L-2016.06 | Switch to L-2016.06, or report the version difference to the plugin maintainers. |
-| VCS launcher behaves strangely | `/bin/sh` is not bash | Debian/Ubuntu: `sudo dpkg-reconfigure dash` and select No |
-| Environment check hangs on license probing | License server unreachable | Fix the network first, or point to a different license server |
-
----
-
-## Further reading
-
-- [`../ARCHITECTURE.md`](../ARCHITECTURE.md): why it's built this way. The pipeline and how the dependency graph is derived, proof validity, how a failure gets attributed, the trust boundary, and the scope of verification.
-- [`eda-env.md`](eda-env.md): full EDA tool, license, and environment requirements.
-- [`../CONTRIBUTING.md`](../CONTRIBUTING.md): replacing a stage's implementation (e.g. Verilator for simulation, Yosys for synthesis).
+For the execution and data model, see [Architecture](../ARCHITECTURE.md).

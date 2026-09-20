@@ -1,248 +1,269 @@
 # VeriPower Architecture
 
-> How VeriPower organizes agent-driven chip design, and why it's built this way.
+[中文版](ARCHITECTURE.zh.md)
 
----
+VeriPower consists of a workflow engine, stage skills, and integration with a
+coding agent harness. This document describes their boundaries, the data they
+share, and the rules that govern execution. Setup and usage are covered in the
+[user manual](docs/USER-MANUAL.md).
 
-## 1. Overview
+## 1. System boundary
 
-VeriPower is a chip front-end design and verification system. It takes an LLM
-coding agent through eight stages, from a natural-language spec all the way to
-power analysis, on commercial EDA tools (SpyGlass, Design Compiler, PrimeTime,
-VCS+UVM).
-
-The whole system is built around one idea. A deterministic kernel owns every
-fact about the design flow. It knows which verification conclusions still hold,
-what got invalidated by a change, what should run next, and who's responsible
-for fixing a failure. LLM agents and human engineers both sit outside this
-kernel. They can propose work and propose judgments. The kernel records them
-through schema-validated, append-only operations.
+The host harness provides the model, conversation context, file access, command
+execution, and subagents. VeriPower provides the design and verification tasks
+and the machinery that coordinates them. EDA tools run as external programs
+and produce files that the stages inspect and publish.
 
 <p align="center">
-  <img src="assets/architecture.png" alt="VeriPower architecture" width="460" />
+  <img src="assets/plugin-architecture.png" alt="VeriPower and its host, EDA tools, and engineer" width="900" />
 </p>
 
-The **Orchestrator** is the `design-flow` skill running in the main
-conversation. It asks the kernel for one action, carries it out, then asks
-again. It holds nothing between queries and makes no routing decisions on its
-own.
+There are three roles within the flow.
 
-The **Deterministic kernel** (`framework/scripts/`) records events, derives
-status, computes the dependency graph, schedules work, and checks whether an
-attribution is legal. Everything it does is pure computation over the event log
-and what's on disk.
-
-The **Filesystem** is the only persistence layer. An append-only event log
-(`events.jsonl`) plus whatever artifacts each stage produces. No database, no
-daemon, no HTTP.
-
-Stage agents don't talk to the orchestrator or to each other. Each one gets a
-structured handoff written to disk by the kernel, not a natural-language
-summary of the orchestrator's context, and writes its results back to disk.
-
----
-
-## 2. The Pipeline
-
-Eight rules make up the flow. A ninth, simulation triage, is a diagnostic that
-analyzes simulation failures without recording a verification conclusion of its
-own.
-
-| Rule | What it does |
+| Role | Responsibility |
 |---|---|
-| specification | Accounts for the delivered intent in a source-grounded requirements ledger with explicit judgment responsibilities, then derives design decisions, interfaces and timing constraints |
-| simulation-plan | Maps every specified behavior to a testpoint, produces the verification plan and TB scaffold |
-| rtl-design | Generates RTL from the specification |
-| lint-cdc | SpyGlass lint and CDC checks |
-| synthesis | Design Compiler synthesis |
-| timing-analysis | PrimeTime timing analysis |
-| simulation | Builds and runs UVM testbench against the RTL |
-| power-analysis | PrimeTime power analysis |
-| simulation-triage | Root-cause analysis for simulation failures |
+| Stage executor | Develop artifacts, run checks, interpret evidence, and report a verdict or repair recommendation |
+| Workflow engine | Record runs, evaluate result validity, and select work using dependencies and outstanding failures |
+| Orchestrator | Carry out the engine's actions through host tools and manage executor completion |
 
-### Dependency graph
+The orchestrator is the agent following the `design-flow` skill. Stage work
+runs either in the main conversation or in a background subagent, according
+to the stage declaration.
 
-The graph comes from each rule's declared inputs in `rules.py`. An input names
-a path under some stage's directory, and that stage is its producer — stage
-roots are disjoint, so the producer is exact and nothing declares its outputs
-twice. The graph stays aligned with those input declarations.
+This division places engineering judgment with the work that produces its
+evidence. Cross-stage decisions use a common representation of dependencies,
+runs, and artifact versions. The host retains control of tool permissions.
+Engineers supply requirements and determine which decisions to delegate.
+
+## 2. Component design
+
+The engine exposes a CLI through `kernel.py`. Each call reads the module's
+records and files, performs the requested operation, and returns a structured
+response. The orchestrator uses this interface to coordinate the flow.
 
 <p align="center">
-  <img src="assets/pipeline-dag.png" alt="Pipeline dependency graph" width="660" />
+  <img src="assets/implementation-architecture.png" alt="Workflow engine modules and their connections to stage skills and schemas" width="1000" />
 </p>
 
-*\*Specification's outputs (constraints, PPA targets, interface declarations)
-are also consumed directly by lint-cdc, synthesis, simulation, and
-power-analysis. Simulation-plan's outputs (verification plan, power scenario identifiers) are
-consumed by power-analysis. These edges are omitted from the diagram for
-clarity.*
+| Component | Responsibility |
+|---|---|
+| [rules.py](framework/scripts/rules.py) | Stage declarations and the artifact graph derived from their inputs |
+| [facts.py](framework/scripts/facts.py) | Read-only queries for fingerprints, result validity, stage status, and acceptance readiness |
+| [schedule.py](framework/scripts/schedule.py) | Selection of the next action from current facts and unresolved repairs |
+| [store.py](framework/scripts/store.py) | Event storage, schema validation, task handoff, and artifact publication |
+| [kernel.py](framework/scripts/kernel.py) | CLI operations that coordinate these components |
 
-Concurrency falls out naturally. Rules with no artifact edge between them can
-run at the same time. Lint-cdc and simulation, for instance, share nothing and
-regularly run in parallel. You can inspect the live graph yourself:
+A stage package under `skills/<stage>/` contains its instructions, scripts,
+and result schema. Tool invocation, report parsing, and stage checks belong
+there. The shared engine handles the lifecycle of the result, while the stage
+package determines its technical meaning.
 
-```bash
-python3 -c "import sys; sys.path.insert(0,'framework/scripts'); import rules
-for r in rules.FORWARD_PRIORITY: print(r, sorted(rules.input_producers(r)))"
+Each stage schema extends the shared
+[result envelope](framework/references/schemas/envelope.schema.json). The
+common fields identify the stage, production time, pass/fail verdict, artifact
+list, and stage-specific evidence. This interface lets stages use different
+tools and checking methods while participating in the same workflow.
+
+The `design-flow` skill connects the engine to the host's execution facilities.
+Platform integration supplies the corresponding tool calls. Stage definitions
+and result semantics remain in the shared engine and stage packages.
+
+## 3. Project data model
+
+### Stages and artifact ownership
+
+One module directory is the workspace for one design flow. It contains the
+original intent, published stage artifacts, run directories, and event history.
+
+```text
+module/
+├── intent/                 Original requirements and supporting material
+├── events.jsonl            Execution and decision history
+├── Design/<stage>/         Published design-stage artifacts
+│   └── runs/<run>/          Work for a numbered execution
+└── Verification/<stage>/   Published verification-stage artifacts
+    └── runs/<run>/          Work for a numbered execution
 ```
 
----
+A stage declaration names its skill, execution mode, directory root, and input
+selectors. Published directories have distinct owners. Inputs select files or
+directory trees, and their paths identify the producing stage. Consumers use
+these artifacts as read-only inputs. Changes belong to the producing stage.
 
-## 3. State and Proofs
+These declarations form the dependency graph. Simulation, for example, uses
+RTL from `rtl-design`, verification artifacts from `simulation-plan`, and
+boundary declarations and requirements from `specification`. Its execution
+and repair dependencies follow those relationships.
 
-### The event log
+The registry contains eight stages with required conclusions, covering
+specification through power analysis. `simulation-triage` is an additional
+diagnostic task whose output is a diagnosis. `brainstorm` and `env-precheck`
+prepare requirements and check the environment before the flow starts.
+The [README](README.md#design-flow) shows the complete stage overview.
 
-A module's entire state lives in one append-only file, `events.jsonl`. There's
-no status snapshot. Whether a stage is done, stale, failed, or still running
-gets computed from the log against disk every time you ask. The kernel is the
-only writer, and every record is schema-validated before it lands.
+### Runs, results, and events
 
-The orchestrator carries nothing between turns. If a context window gets
-compacted or the process crashes, the next `decide` call just re-derives the
-right action from disk.
+A run is identified by its stage and run number. The engine creates a work
+directory and writes `dispatch.json` with input locations and repair context.
+For stages that produce conclusions, the dispatch event also records input
+fingerprints. Reusable products are carried into the new work directory
+according to the stage declaration.
 
-### Proofs
+The stage CLI writes `result.json`. On collection, the engine validates its
+schema and timestamp, publishes the listed artifacts, and appends an `outcome`
+event containing the verdict, output fingerprints, and reported requirement
+judgments. Passing and failing runs both publish evidence. A missing,
+unreadable, or invalid result envelope is collected as `blocked` without
+replacing the published artifacts.
 
-When a rule completes, the kernel records a **proof**. That's a verdict (pass
-or fail) bound to content fingerprints of every input consumed and every output
-produced.
+Published files are hard-linked from the run directory. The two paths share
+file content, while fingerprints in the event log preserve the version
+identifiers recorded at collection. The log is append-only, and the engine
+validates each event before writing it.
 
-Validity is not stored anywhere. It's recomputed as a query. A proof holds
-right now only if the verdict was pass, every recorded fingerprint for inputs
-and outputs still matches what's on disk.
-Only the latest collected outcome of that stage can supply the proof. An incomplete
-collection leaves no current conclusion until it is resolved.
+### Current conclusions
 
-Say you edit one line of RTL. Next time anything checks the log, lint-cdc's,
-synthesis's, and simulation's input fingerprints won't match anymore. Three
-proofs go invalid at once. Nobody marks anything stale. Staleness is just the
-absence of a matching fingerprint. Meanwhile specification and simulation-plan
-are fine, because their inputs don't include RTL.
+The implementation calls a stage conclusion a **proof**. Its verdict and
+input fingerprints, together with the `outcome` event's output fingerprints, bind it
+to the artifacts from one run.
 
-You can also query impact before making a change. Ask the kernel which
-currently-valid proofs would break if a given file changed, so that when you
-skip a stage, the decision rests on a graph computation, not a guess.
+Only the stage's latest collected outcome supplies its current conclusion.
+A pass remains valid when all recorded inputs and outputs are readable and
+still match their fingerprints. A later failure or blocked outcome replaces
+an earlier pass. If the latest outcome is a pass, restoring the recorded file
+versions can restore validity without another run.
 
----
+This rule covers changes to both dependencies and a stage's own outputs. A
+testbench edit affects simulation and power analysis that consumed it, while
+lint/CDC can remain valid. An RTL edit affects RTL design, lint/CDC, synthesis,
+and simulation. Timing and power results are subsequently checked against the
+netlist and other inputs they recorded.
 
-## 4. Failure and Repair
+Stage status is derived from the event log and current files on each query.
 
-### A direct attribution
-
-Synthesis reports a timing violation. It read Design Compiler's QoR report,
-decided the critical path is too long in the RTL, and names rtl-design as the
-rule that must fix it.
-
-The kernel checks whether that's legal. Is rtl-design inside synthesis's
-transitive dependency closure? It is (rtl-design produces RTL, synthesis
-consumes it), so the attribution stands.
-
-Next round, the kernel dispatches rtl-design with the failed synthesis run as
-context. The RTL agent reads the timing report and shortens the critical path.
-Now the RTL outputs have different fingerprints, so lint-cdc, synthesis, and
-simulation all lose their proofs. The kernel re-verifies them in dependency
-order. Everything passes. Done.
-
-### A failure that needs investigation
-
-Simulation fails, but it can't tell whether the bug is in the RTL, the
-specification, or the testbench reference model. It doesn't name anyone.
-
-The kernel sees an unattributed simulation failure. Simulation's rule points to
-`simulation-triage` as its diagnostic, so the kernel dispatches triage. The
-triage agent goes into the failed run's directory (UVM logs, FSDB waveforms,
-coverage data), reads the spec and reference model, and if the evidence isn't
-conclusive, builds a controlled experiment in its own workspace to nail down
-the cause.
-
-Triage finds that a clock-domain relationship was declared wrong in the spec.
-The kernel confirms specification is inside simulation's dependency closure,
-records the diagnosis, and routes the failure there.
-
-Specification fixes the declaration. Downstream constraints change with it. The
-kernel figures out which proofs are now invalid and re-verifies the affected
-chain.
-
-### How attribution works
-
-The failing stage names who needs to act. The kernel's only job is to check
-that the name is legal: the failed stage itself or a transitive input producer. There's no fixed table of labels. A closed set could only
-cover failure modes someone thought of ahead of time, and where a symptom shows
-up is not necessarily where its cause lives.
-
-Unresolved or unrelated attributions require a decision from the available evidence under the
-task's actual authorization. A stage can repair itself. Escalation includes candidates and evidence.
-
-If multiple failures point to the same rule, they get bundled into one
-dispatch. Lint-cdc and synthesis both blaming rtl-design won't make it run
-twice.
-
----
-
-## 5. The Trust Boundary
-
-### Verification independence
-
-Design and verification both start from the specification, then they split.
-The design path produces RTL. The verification path produces the test
-environment, and everything on that path (plan, scaffold, sequences, reference
-model) derives from the specification. Simulation compiles the RTL and may
-inspect it to diagnose failures. Expected behavior comes from the task's
-independent references, so implementation behavior does not become its own oracle.
-
-Every specified behavior gets mapped to a testpoint through structured artifact
-handoffs between simulation-plan and simulation. After each simulation round,
-an independent check-adequacy review checks
-what the tests actually exercised against what the specification asked for.
-This catches both missing checks and checks that test the wrong thing.
-
-### Acceptance record
-
-When the task calls for recorded acceptance, `signoff` checks that all stage conclusions are
-current and published files are covered by their stage outcomes, then records the decision
-maker, authorization and basis. Reserved decisions wait for the user; delegated decisions follow
-the existing authorization. Ordinary completion does not require a separate signoff.
-
-The record binds the stage evidence accepted at that event. Changed evidence invalidates it;
-new stage conclusions need new acceptance. Signoff does not replace technical verification.
-Concrete issues are checked by the responsible stage through the existing failure and repair flow.
-
----
-
-## 6. Verification Scope
-
-**Proof coverage follows declared inputs.** A rule can read other files, but
-changes to those files are outside its recorded dependencies. What a stage
-delivers is bounded — an input names a tree, and the tree
-versions as a merkle over everything under it, so nothing inside one escapes by
-being named unexpectedly — and the signoff gate refuses a stage whose canonical
-directory holds a file its own outcome does not record.
-
-**Versioning of the intent stops at the container's edge.** The intent tree is
-one directory, `intent/`, holding `brainstorm.md` and whatever the engineer
-delivered with it; every proof records one merkle over all of it, so editing the
-document, editing an authority, or delivering the first one invalidates all eight
-proofs and sends the flow back to `specification`. What that does not cover is
-anything the document points at from outside: a path above the container is
-neither handed to a stage nor versioned, and a symlink inside it is recorded by
-its target path, not its target's content, so a shared spec that moves under the
-link moves invisibly. Such a reference becomes a ledger row like any other
-sentence, and whoever the row names has to establish it by reading it where it
-lives.
-
-**Signoff closes the declared verification obligations.** These are the
-eight proofs the rule registry lists, each held to the
-requirements-ledger rows that name it as judge. The ledger organizes source-grounded obligations and material context; a second reader checks
-that nothing required is lost or invented. Shared wording can cover multiple obligations, and
-repeated statements can share an entry when their meaning and judgment agree. Rows judged
-`outside` retain explicit external responsibility and are not established by pipeline signoff.
-
----
-
-## Key Terms
-
-| Term | Meaning |
+| Status | Meaning |
 |---|---|
-| **proof** | A verification conclusion tied to exact input and output versions. Validity gets recomputed every time it's queried. |
-| **rule** | One unit of work the kernel schedules, with declared inputs, outputs and proof. The dependency graph falls out of these declarations. |
-| **projection** | Per-rule status (valid, stale, failed, blocked, in-flight, or missing) computed from the event log and disk on demand. Never stored. |
+| `missing` | No outcome has been collected |
+| `in-flight` | A dispatched run has no outcome yet |
+| `blocked` | The latest collection could not establish a pass/fail result |
+| `failed` | The latest outcome is a failure |
+| `valid` | The latest outcome passes and its recorded versions match |
+| `stale` | The latest outcome passes but its recorded versions no longer match |
+
+An uncollected run takes precedence over the stage's previous outcome when
+status is displayed. Executor exit alone does not close the run. The
+orchestrator reports that exit and collects the result, including a missing
+result. After a session interruption, the same records identify outstanding
+runs and the results available for reuse.
+
+### Versioning boundary
+
+Files use content hashes, and directory fingerprints cover their paths and
+contents. Every stage proof includes the whole `intent/` tree, including
+`brainstorm.md` and the material supplied with it.
+
+The tracked set consists of declared inputs and recorded outputs. An extra
+file read by an agent does not automatically enter that set. Symbolic links
+are fingerprinted by their target paths without following the target content.
+Tool and library identifiers are recorded for audit rather than used in result
+validity checks. These distinctions determine which changes the engine can
+recognize from its records.
+
+## 4. Execution and rework
+
+The engine returns one action at a time. The orchestrator executes it and
+queries again as work completes or new evidence becomes available.
+
+| Action | Orchestrator's work |
+|---|---|
+| `DISPATCH` | Ask the engine to prepare a run, then execute the assigned stage skill |
+| `REAP` | Confirm executor exit and collect the run's result through the engine |
+| `YIELD` | Wait for outstanding executors |
+| `ESCALATE` | Resolve the reported blocker under the task's authorization |
+| `DONE` | Finish the requested flow |
+
+The scheduler first selects results ready for collection. It then handles
+unresolved attribution, schedules repairs and ready stages, or waits for work
+already running. The engine derives the next action from the records and
+current files, so the orchestrator does not need to maintain a second model
+of stage status.
+
+### Dependency rules
+
+A design or verification stage requires available inputs and current passing
+results from their producers. A running producer or consumer prevents work
+that would conflict with it. Pending upstream repairs are handled before the
+affected checks run again. Independent stages can execute concurrently,
+including lint/CDC and simulation reading the same RTL.
+
+The registry also declares advisory ordering for lint/CDC before synthesis
+and timing analysis before power analysis. These preferences apply when the
+predecessor needs work and is scheduled or running. They affect scheduling,
+while artifact dependencies define result validity and repair scope.
+
+### Repair routing
+
+The failing stage can report a `fix_owner`. The owner must be that stage
+itself or an upstream producer in its dependency graph. This ties repair
+scope to artifact ownership. The agent establishes the technical cause,
+and the engine checks whether the proposed owner is within that scope.
+
+Simulation failures without an identified owner trigger `simulation-triage`.
+It investigates the failed run and records diagnoses. A diagnosis can explicitly
+supersede an earlier one, and active diagnoses take precedence over the stage's
+original attribution. An unresolved or unrelated attribution requires a
+decision before scheduling continues.
+
+Failures assigned to the same owner are grouped into one repair run. The run
+receives the relevant results and diagnoses as context. Once repaired artifacts
+are published, the engine recomputes validity and schedules the checks that
+need to be repeated.
+
+## 5. Engineering judgments and acceptance
+
+### Meaning of a stage verdict
+
+A stage's passing criteria are defined by its skill and scripts. Scripts check
+artifact structure, execution results, and numerical targets. Agents review
+design choices, checking logic, and tool findings against the requirements.
+The stage CLI records the resulting verdict and evidence in the common result
+format. The engine checks that format and the versions it refers to.
+
+The specification stage creates a requirements ledger with stable identifiers,
+source wording, judgment responsibility, and numerical targets where applicable.
+Stages use these identifiers to relate design choices, testpoints, measurements,
+and verdicts to the original requirements. Numerical verdicts record measured
+values and their source.
+
+RTL and verification share the specification's interface, clock, and reset
+declarations. Verification plans and reference models derive expected behavior
+from the specification and independent references. Simulation may inspect RTL
+to diagnose failures. Independent reviews examine whether the stimulus,
+observations, and checking logic can detect violations of the testpoints.
+
+The ledger also records decisions, external responsibilities, and context.
+Unresolved requirements marked `unassignable` prevent specification from
+passing. Requirements assigned `outside` retain a named responsibility beyond
+the design flow.
+
+### Completion and acceptance records
+
+The flow completes when all required stages have current passing results and
+all dispatched runs have been collected. The closing check additionally
+requires the published files to be covered by stage output records and returns
+the evidence for acceptance. Run history under `runs/` is excluded from this
+published-file check. The CLI exposes this check through `decide --closing`.
+
+When the task includes recorded acceptance, `signoff` applies the validity and
+artifact checks and appends a decision with `provenance` and `reason`. These
+identify the decision maker, authorization, and acceptance basis. Reserved
+decisions remain with the engineer, while delegated decisions follow existing
+authorization. Ordinary completion does not require a separate signoff.
+
+The acceptance record binds the stage evidence present at that event. Changes
+that invalidate those results also invalidate acceptance. Restoring the same
+evidence can restore validity, while a new stage run requires acceptance of
+its new result.
+
+For shared interface definitions, see the [framework guide](framework/README.md).
+Development guidance is in [Contributing](CONTRIBUTING.md).
