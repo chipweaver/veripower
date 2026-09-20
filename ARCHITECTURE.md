@@ -15,7 +15,11 @@ and the machinery that coordinates them. EDA tools run as external programs
 and produce files that the stages inspect and publish.
 
 <p align="center">
-  <img src="assets/plugin-architecture.png" alt="VeriPower and its host, EDA tools, and engineer" width="900" />
+  <a href="assets/plugin-architecture.png">
+    <img src="assets/plugin-architecture.png" alt="VeriPower and its host, EDA tools, and engineer" width="600" />
+  </a>
+  <br>
+  <sub><a href="assets/plugin-architecture.png">System context · View full size</a></sub>
 </p>
 
 There are three roles within the flow.
@@ -42,7 +46,11 @@ records and files, performs the requested operation, and returns a structured
 response. The orchestrator uses this interface to coordinate the flow.
 
 <p align="center">
-  <img src="assets/implementation-architecture.png" alt="Workflow engine modules and their connections to stage skills and schemas" width="1000" />
+  <a href="assets/implementation-architecture.png">
+    <img src="assets/implementation-architecture.png" alt="Workflow engine modules and their connections to stage skills and schemas" width="600" />
+  </a>
+  <br>
+  <sub><a href="assets/implementation-architecture.png">Implementation structure · View full size</a></sub>
 </p>
 
 | Component | Responsibility |

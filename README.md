@@ -20,7 +20,7 @@ Works with [Claude Code](.claude-plugin/README.md), [opencode](.opencode/README.
 Each stage has a skill containing instructions and supporting scripts. The agent follows the skill to carry out the work, while a workflow engine records the result and selects what should run next. When a check fails, the agent investigates the cause and the engine schedules the repair.
 
 <p align="center">
-  <img src="assets/plugin-architecture.png" alt="VeriPower plugin, coding agent, EDA tools, and engineer interactions" width="900" />
+  <img src="assets/plugin-architecture.png" alt="VeriPower plugin, coding agent, EDA tools, and engineer interactions" width="680" />
 </p>
 
 Each run records the versions of its input and output files. The engine compares these with the current files to determine which results still apply and which checks need to be repeated. An RTL edit requires simulation, lint/CDC, and synthesis to run again, while a testbench edit leaves lint/CDC results intact. The files and execution history are stored on disk, allowing work to resume in a new session.

@@ -9,7 +9,11 @@ VeriPower 由流程引擎、阶段 skills 及与 coding agent harness 的集成�
 宿主 harness 提供模型、会话上下文、文件访问、命令执行和子 agent。VeriPower 提供设计与验证任务，以及协调这些任务的机制。EDA 工具作为外部程序运行，其输出文件由各阶段分析并发布。
 
 <p align="center">
-  <img src="assets/plugin-architecture.png" alt="VeriPower 与宿主、EDA 工具和工程师的关系" width="900" />
+  <a href="assets/plugin-architecture.png">
+    <img src="assets/plugin-architecture.png" alt="VeriPower 与宿主、EDA 工具和工程师的关系" width="600" />
+  </a>
+  <br>
+  <sub><a href="assets/plugin-architecture.png">系统关系 · 点击查看原图</a></sub>
 </p>
 
 流程中有三种角色。
@@ -29,7 +33,11 @@ VeriPower 由流程引擎、阶段 skills 及与 coding agent harness 的集成�
 引擎通过 `kernel.py` 提供 CLI。每次调用读取模块的记录和文件，执行指定操作，再返回结构化响应。编排器通过这个接口协调流程。
 
 <p align="center">
-  <img src="assets/implementation-architecture.png" alt="流程引擎模块及其与阶段 skills、schema 的连接" width="1000" />
+  <a href="assets/implementation-architecture.png">
+    <img src="assets/implementation-architecture.png" alt="流程引擎模块及其与阶段 skills、schema 的连接" width="600" />
+  </a>
+  <br>
+  <sub><a href="assets/implementation-architecture.png">实现结构 · 点击查看原图</a></sub>
 </p>
 
 | 组件 | 职责 |
